@@ -19,12 +19,13 @@ import type {
 import {
   base64ToUtf8,
   formatBytes,
-  jsonRestFetch,
   externalIdOf,
   buildMultipartBody,
   normalizeQuotaUsage,
+  pathEncode,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import { createUploadThingApi, type UploadThingApi, type UtAppInfo, type UtFile } from "./api.js";
 import { UtAppResourceType } from "./resources/ut-app.js";
 
 /**
@@ -49,8 +50,6 @@ import { UtAppResourceType } from "./resources/ut-app.js";
  * Auth is the `x-uploadthing-api-key` header, not a bearer token.
  */
 
-const API_BASE = "https://api.uploadthing.com";
-
 /**
  * Page size for `listFiles`, which accepts up to 100,000 per page.
  *
@@ -74,72 +73,6 @@ const METRICS_BUCKETS = 60;
 
 /** How many file keys to send per `deleteFiles` call when clearing a folder. */
 const DELETE_BATCH_SIZE = 250;
-
-// ---------------------------------------------------------------------------
-// API response shapes
-// ---------------------------------------------------------------------------
-
-/** `POST /v7/getAppInfo` */
-interface UtAppInfo {
-  appId: string;
-  defaultACL: string;
-  allowACLOverride: boolean;
-}
-
-/** `POST /v6/getUsageInfo` */
-interface UtUsageInfo {
-  /** Bytes counted against the quota. On the free tier this spans every free app. */
-  totalBytes: number;
-  /** Bytes used by this app alone. */
-  appTotalBytes: number;
-  filesUploaded: number;
-  limitBytes: number;
-}
-
-/** One entry of `POST /v6/listFiles`. */
-interface UtFile {
-  /** Deprecated in the API in favour of `key`; kept because it is still sent. */
-  id: string;
-  customId: string | null;
-  key: string;
-  name: string;
-  /** "Uploaded" | "Uploading" | "Failed" | "Deletion Pending" */
-  status: string;
-  size: number;
-  /** Epoch milliseconds. */
-  uploadedAt: number;
-}
-
-interface UtFileList {
-  hasMore: boolean;
-  files: UtFile[];
-}
-
-/** `GET /v6/pollUpload/:fileKey`: the only per-file read, and the only source of MIME type. */
-interface UtPollUpload {
-  status: string;
-  fileData?: {
-    fileKey: string;
-    fileName: string;
-    fileSize: number;
-    fileType: string | null;
-    fileUrl: string | null;
-    customId: string | null;
-  };
-}
-
-/** `POST /v7/prepareUpload` */
-interface UtPreparedUpload {
-  key: string;
-  url: string;
-}
-
-/** `POST /v6/requestFileAccess` */
-interface UtFileAccess {
-  ufsUrl: string;
-  /** Deprecated utfs.io form; kept as the fallback when `ufsUrl` is absent. */
-  url: string;
-}
 
 // ---------------------------------------------------------------------------
 // Credentials
@@ -346,7 +279,7 @@ async function downloadFromUrl(sourceUrl: string): Promise<Response> {
 async function readCappedBlob(res: Response, limit: number): Promise<Blob> {
   if (!res.body) return res.blob();
   const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
   let total = 0;
   for (;;) {
     const { done, value } = await reader.read();
@@ -359,7 +292,7 @@ async function readCappedBlob(res: Response, limit: number): Promise<Blob> {
     }
     chunks.push(value);
   }
-  return new Blob(chunks as BlobPart[], {
+  return new Blob(chunks, {
     ...(res.headers.get("content-type") ? { type: res.headers.get("content-type")! } : {}),
   });
 }
@@ -385,6 +318,7 @@ export class UploadThingClient implements PluginClient {
   private readonly region: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  private readonly api: UploadThingApi;
 
   /**
    * Per-client cache of `getAppInfo`. Every file listed needs the app id (to
@@ -406,44 +340,15 @@ export class UploadThingClient implements PluginClient {
     this.region = decoded.region ?? "";
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-  }
-
-  /** Every UploadThing endpoint is a POST, including the read-only ones. */
-  private async post<T>(path: string, body?: unknown): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "UploadThing",
-      url: `${API_BASE}${path}`,
-      errorPath: path,
-      headers: { "x-uploadthing-api-key": this.apiKey },
-      init: { method: "POST", body: JSON.stringify(body ?? {}) },
-      // Independently spread. Coupling `http` to `caCert` (as the helper this
-      // was cribbed from does) means an account with a bastion attached but no
-      // custom CA (the normal case) silently falls through to bare `fetch`
-      // and skips bastion routing entirely, despite `uploadthing` being in the
-      // egress allowlist.
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-    });
-  }
-
-  private async get<T>(path: string): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "UploadThing",
-      url: `${API_BASE}${path}`,
-      errorPath: path,
-      headers: { "x-uploadthing-api-key": this.apiKey },
-      // Independently spread. Coupling `http` to `caCert` (as the helper this
-      // was cribbed from does) means an account with a bastion attached but no
-      // custom CA (the normal case) silently falls through to bare `fetch`
-      // and skips bastion routing entirely, despite `uploadthing` being in the
-      // egress allowlist.
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
+    this.api = createUploadThingApi({
+      apiKey: this.apiKey,
+      caCert: this.caCert,
+      http: services?.http,
     });
   }
 
   private appInfo(): Promise<UtAppInfo> {
-    this.appInfoPromise ??= this.post<UtAppInfo>("/v7/getAppInfo");
+    this.appInfoPromise ??= this.api.post("/v7/getAppInfo", { body: {} });
     return this.appInfoPromise;
   }
 
@@ -467,7 +372,7 @@ export class UploadThingClient implements PluginClient {
   private async loadApp(accountId: string): Promise<ResourceInstance> {
     const [info, usage] = await Promise.all([
       this.appInfo(),
-      this.post<UtUsageInfo>("/v6/getUsageInfo"),
+      this.api.post("/v6/getUsageInfo", { body: {} }),
     ]);
     const now = new Date().toISOString();
     return {
@@ -516,9 +421,8 @@ export class UploadThingClient implements PluginClient {
       const files: UtFile[] = [];
       let offset = 0;
       for (;;) {
-        const page = await this.post<UtFileList>("/v6/listFiles", {
-          limit: FILE_PAGE_SIZE,
-          offset,
+        const page = await this.api.post("/v6/listFiles", {
+          body: { limit: FILE_PAGE_SIZE, offset },
         });
         const batch = page.files ?? [];
         files.push(...batch);
@@ -595,9 +499,7 @@ export class UploadThingClient implements PluginClient {
         // never does. It is best-effort: it is really an upload-progress endpoint
         // and is not guaranteed to still know about an older file.
         try {
-          const poll = await this.get<UtPollUpload>(
-            `/v6/pollUpload/${encodeURIComponent(found.key)}`,
-          );
+          const poll = await this.api.get(`/v6/pollUpload/${pathEncode(found.key)}`);
           const type = poll.fileData?.fileType;
           if (type) resource.fields["contentType"] = type;
         } catch {
@@ -633,7 +535,9 @@ export class UploadThingClient implements PluginClient {
         }
         if (outputKey === "signedUrl") {
           // Defaults to the app's configured expiry when `expiresIn` is omitted.
-          const access = await this.post<UtFileAccess>("/v6/requestFileAccess", { fileKey: key });
+          const access = await this.api.post("/v6/requestFileAccess", {
+            body: { fileKey: key },
+          });
           return access.ufsUrl || access.url || "";
         }
       }
@@ -798,13 +702,15 @@ export class UploadThingClient implements PluginClient {
     contentType: string,
     opts: { customId?: string; acl?: string; contentDisposition?: "inline" | "attachment" },
   ): Promise<string> {
-    const prepared = await this.post<UtPreparedUpload>("/v7/prepareUpload", {
-      fileName: name,
-      fileSize: blob.size,
-      ...(contentType ? { fileType: contentType } : {}),
-      ...(opts.customId ? { customId: opts.customId } : {}),
-      ...(opts.acl ? { acl: opts.acl } : {}),
-      ...(opts.contentDisposition ? { contentDisposition: opts.contentDisposition } : {}),
+    const prepared = await this.api.post("/v7/prepareUpload", {
+      body: {
+        fileName: name,
+        fileSize: blob.size,
+        ...(contentType ? { fileType: contentType } : {}),
+        ...(opts.customId ? { customId: opts.customId } : {}),
+        ...(opts.acl ? { acl: opts.acl } : {}),
+        ...(opts.contentDisposition ? { contentDisposition: opts.contentDisposition } : {}),
+      },
     });
 
     // UploadThing's docs use multipart FormData for this PUT
@@ -867,8 +773,8 @@ export class UploadThingClient implements PluginClient {
       const newName = (fields["name"] ?? "").trim();
       if (!newName) throw new Error("A file name is required");
 
-      await this.post<{ success: boolean; renamedCount: number }>("/v6/renameFiles", {
-        updates: [{ fileKey: key, newName }],
+      await this.api.post("/v6/renameFiles", {
+        body: { updates: [{ fileKey: key, newName }] },
       });
       // Before the re-read below, which walks the listing.
       this.invalidateFiles();
@@ -884,9 +790,7 @@ export class UploadThingClient implements PluginClient {
       }
       const key = externalIdOf(resourceId);
       if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
-      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-        fileKeys: [key],
-      });
+      await this.api.post("/v6/deleteFiles", { body: { fileKeys: [key] } });
       this.invalidateFiles();
     });
   }
@@ -911,17 +815,15 @@ export class UploadThingClient implements PluginClient {
         const key = externalIdOf(resourceId);
         if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
         const acl = actionId === "make-public" ? "public-read" : "private";
-        await this.post<{ success: boolean; updatedCount: number }>("/v6/updateACL", {
-          updates: [{ fileKey: key, acl }],
-        });
+        await this.api.post("/v6/updateACL", { body: { updates: [{ fileKey: key, acl }] } });
         return;
       }
       if (typeId === "ut-app" && actionId === "delete-failed") {
         const files = await this.fetchFiles();
         const fileKeys = files.filter((f) => f.status === "Failed").map((f) => f.key);
         for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
-          await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-            fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+          await this.api.post("/v6/deleteFiles", {
+            body: { fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE) },
           });
         }
         this.invalidateFiles();
@@ -1039,9 +941,7 @@ export class UploadThingClient implements PluginClient {
   deleteStorageObject(_bucket: string, key: string): PluginEffect<void> {
     return attempt(async () => {
       if (!key.endsWith("/")) {
-        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-          fileKeys: [key],
-        });
+        await this.api.post("/v6/deleteFiles", { body: { fileKeys: [key] } });
         this.invalidateFiles();
         return;
       }
@@ -1054,8 +954,8 @@ export class UploadThingClient implements PluginClient {
       // the API documents no ceiling on the array, which is not the same as
       // there being none.
       for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
-        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-          fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+        await this.api.post("/v6/deleteFiles", {
+          body: { fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE) },
         });
       }
       this.invalidateFiles();
@@ -1104,7 +1004,7 @@ export class UploadThingClient implements PluginClient {
     return attempt(async () => {
       const [info, usage] = await Promise.all([
         this.appInfo(),
-        this.post<UtUsageInfo>("/v6/getUsageInfo"),
+        this.api.post("/v6/getUsageInfo", { body: {} }),
       ]);
       return normalizeQuotaUsage([
         {
