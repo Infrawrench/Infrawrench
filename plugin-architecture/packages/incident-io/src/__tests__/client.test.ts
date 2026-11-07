@@ -374,6 +374,44 @@ describe("edits", () => {
     ).rejects.toThrow("has no id");
     expect(calls).toHaveLength(0);
   });
+
+  const severity = { id: "V1", name: "Major", description: "Bad", rank: 3 };
+  function severityClient(current: unknown) {
+    return client((call) =>
+      call.method === "GET" ? { status: 200, body: current } : { status: 200, body: { severity } },
+    );
+  }
+
+  it("keeps a severity's rank when the rank field is left blank", async () => {
+    const { c, calls } = severityClient({ severity });
+    await c.updateResource("incident-io-severity", "acc:incident-io-severity:V1", "acc", {
+      name: "Renamed",
+      rank: "",
+    });
+    expect(calls.find((x) => x.method === "PUT")!.body).toEqual({
+      name: "Renamed",
+      description: "Bad",
+      rank: 3,
+    });
+  });
+
+  it("sends a rank of 0 when that is what was typed", async () => {
+    const { c, calls } = severityClient({ severity });
+    await c.updateResource("incident-io-severity", "acc:incident-io-severity:V1", "acc", {
+      rank: "0",
+    });
+    expect(calls.find((x) => x.method === "PUT")!.body).toMatchObject({ rank: 0 });
+  });
+
+  it("refuses to replace a severity it could not read", async () => {
+    const { c, calls } = severityClient({});
+    await expect(
+      c.updateResource("incident-io-severity", "acc:incident-io-severity:V1", "acc", {
+        rank: "2",
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(calls.some((x) => x.method === "PUT")).toBe(false);
+  });
 });
 
 describe("paging: alert events", () => {

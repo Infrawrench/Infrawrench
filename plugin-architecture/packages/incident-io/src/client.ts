@@ -584,11 +584,14 @@ export class IncidentIoClient implements PluginClient {
       if (typeId === "incident-io-severity") {
         const current = await this.api.get(`/v1/severities/${id}`);
         const s = current?.severity;
-        const rank = "rank" in fields ? Number(trimmed(fields, "rank")) : s?.rank;
+        // The PUT replaces the severity, so it needs what this read should have returned.
+        if (!s) throw new IncidentIoApiError(404, "incident.io severity not found");
+        const typedRank = trimmed(fields, "rank");
+        const rank = typedRank ? Number(typedRank) : s.rank;
         await this.api.put(`/v1/severities/${id}`, {
           body: {
-            name: "name" in fields ? trimmed(fields, "name") : s?.name,
-            description: "description" in fields ? trimmed(fields, "description") : s?.description,
+            name: "name" in fields ? trimmed(fields, "name") : s.name,
+            description: "description" in fields ? trimmed(fields, "description") : s.description,
             ...(typeof rank === "number" && Number.isFinite(rank) ? { rank } : {}),
           },
         });
