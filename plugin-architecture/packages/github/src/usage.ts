@@ -19,12 +19,12 @@
  * `/enterprises/{enterprise}/settings/billing` (see `billingBase`).
  */
 
-import type { ApiBody, ApiResponse } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiResponse, NoSlashString } from "@infrawrench/plugin-base";
 import { pathEncode } from "@infrawrench/plugin-base";
 import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext, Sparse } from "./api.js";
-import { billingBase, byOwner, ghUnlisted, ghecApi } from "./api.js";
+import { byOwner, ghecApi } from "./api.js";
 
 type Row<Answer> = Answer extends { usageItems?: readonly (infer Item)[] } ? Item : never;
 
@@ -150,33 +150,32 @@ export async function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]
 }
 
 /**
- * Cost centres only exist on enterprises, and no document lists an organization
- * route for them, but creating and editing one has never checked the owner.
+ * The enterprise whose cost centres these are. Neither of GitHub's documents has a
+ * cost centre route for an organization, so a write there is refused rather than sent.
  */
-function orgCostCenters(ctx: GitHubContext): string {
-  return `${billingBase(ctx.owner)}/cost-centers`;
+export function costCenterEnterprise(ctx: GitHubContext): NoSlashString {
+  if (ctx.owner.kind !== "enterprise") {
+    throw new Error(
+      "Cost centres only exist on GitHub enterprises. Connect the enterprise that owns this organization to manage them.",
+    );
+  }
+  return pathEncode(ctx.owner.slug);
 }
 
 export type CostCenterMembers = ApiBody<GhecOps["billing/add-resource-to-cost-center"]>;
 
-export function createCostCenter(
+export async function createCostCenter(
   ctx: GitHubContext,
   body: ApiBody<GhecOps["billing/create-cost-center"]>,
 ): Promise<CostCenter> {
-  return byOwner(ctx, {
-    org: () => ghUnlisted<CostCenter>(ctx, "POST", orgCostCenters(ctx), body),
-    enterprise: (api, enterprise) =>
-      api.post(`/enterprises/${enterprise}/settings/billing/cost-centers`, { body }),
-  });
+  const enterprise = costCenterEnterprise(ctx);
+  return ghecApi(ctx).post(`/enterprises/${enterprise}/settings/billing/cost-centers`, { body });
 }
 
-export function getCostCenter(ctx: GitHubContext, id: string): Promise<CostCenter> {
+export async function getCostCenter(ctx: GitHubContext, id: string): Promise<CostCenter> {
+  const enterprise = costCenterEnterprise(ctx);
   const center = pathEncode(id);
-  return byOwner(ctx, {
-    org: () => ghUnlisted<CostCenter>(ctx, "GET", `${orgCostCenters(ctx)}/${center}`),
-    enterprise: (api, enterprise) =>
-      api.get(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`),
-  });
+  return ghecApi(ctx).get(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`);
 }
 
 export async function updateCostCenter(
@@ -184,21 +183,17 @@ export async function updateCostCenter(
   id: string,
   body: ApiBody<GhecOps["billing/update-cost-center"]>,
 ): Promise<void> {
+  const enterprise = costCenterEnterprise(ctx);
   const center = pathEncode(id);
-  await byOwner(ctx, {
-    org: () => ghUnlisted<object>(ctx, "PATCH", `${orgCostCenters(ctx)}/${center}`, body),
-    enterprise: (api, enterprise) =>
-      api.patch(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`, { body }),
+  await ghecApi(ctx).patch(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`, {
+    body,
   });
 }
 
 export async function deleteCostCenter(ctx: GitHubContext, id: string): Promise<void> {
+  const enterprise = costCenterEnterprise(ctx);
   const center = pathEncode(id);
-  await byOwner(ctx, {
-    org: () => ghUnlisted<object>(ctx, "DELETE", `${orgCostCenters(ctx)}/${center}`),
-    enterprise: (api, enterprise) =>
-      api.delete(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`),
-  });
+  await ghecApi(ctx).delete(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`);
 }
 
 export async function addCostCenterMembers(
@@ -206,14 +201,12 @@ export async function addCostCenterMembers(
   id: string,
   body: CostCenterMembers,
 ): Promise<void> {
+  const enterprise = costCenterEnterprise(ctx);
   const center = pathEncode(id);
-  await byOwner(ctx, {
-    org: () => ghUnlisted<object>(ctx, "POST", `${orgCostCenters(ctx)}/${center}/resource`, body),
-    enterprise: (api, enterprise) =>
-      api.post(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`, {
-        body,
-      }),
-  });
+  await ghecApi(ctx).post(
+    `/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`,
+    { body },
+  );
 }
 
 export async function removeCostCenterMembers(
@@ -221,14 +214,12 @@ export async function removeCostCenterMembers(
   id: string,
   body: CostCenterMembers,
 ): Promise<void> {
+  const enterprise = costCenterEnterprise(ctx);
   const center = pathEncode(id);
-  await byOwner(ctx, {
-    org: () => ghUnlisted<object>(ctx, "DELETE", `${orgCostCenters(ctx)}/${center}/resource`, body),
-    enterprise: (api, enterprise) =>
-      api.delete(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`, {
-        body,
-      }),
-  });
+  await ghecApi(ctx).delete(
+    `/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`,
+    { body },
+  );
 }
 
 /** One month of dated line items, each tagged with the cost centre it belongs to. */

@@ -75,6 +75,7 @@ import {
 import type { CostCenter, CostCenterMembers, SummaryItem, TaggedUsageItem } from "./usage.js";
 import {
   addCostCenterMembers,
+  costCenterEnterprise,
   createCostCenter,
   currentYearMonth,
   deleteCostCenter,
@@ -678,6 +679,7 @@ export class GitHubClient implements PluginClient {
         case "budget":
           return { fields: await this.budgetFields() };
         case "cost-center":
+          costCenterEnterprise(this.ctx);
           return { fields: costCenterFields() };
         default:
           throw new Error(`GitHub plugin: cannot create "${typeId}" from Infrawrench`);

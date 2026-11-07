@@ -631,6 +631,30 @@ describe("budgets", () => {
 });
 
 describe("cost centres", () => {
+  it("refuses every write on an organization account, before calling GitHub", async () => {
+    const { c, calls } = client(() => {
+      throw new Error("no request should be made");
+    });
+    const id = "acc:cost-center:cc1";
+    const refused = /only exist on GitHub enterprises/;
+    await expect(c.getCreateConfig!("cost-center")).rejects.toThrow(refused);
+    await expect(c.createResource!("cost-center", "acc", { name: "Platform" })).rejects.toThrow(
+      refused,
+    );
+    await expect(c.updateResource!("cost-center", id, "acc", { name: "New" })).rejects.toThrow(
+      refused,
+    );
+    await expect(c.deleteResource!("cost-center", id, "acc")).rejects.toThrow(refused);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("still gives an enterprise account the form", async () => {
+    const { c, calls } = client(() => ({ body: {} }), "enterprise:big");
+    const { fields } = await c.getCreateConfig!("cost-center");
+    expect(fields.map((f) => f.key)).toContain("name");
+    expect(calls).toHaveLength(0);
+  });
+
   it("diffs member edits into add and remove calls", async () => {
     const { c, calls } = client((url, method) => {
       if (url.pathname.endsWith("/cost-centers/cc1") && method === "GET") {
