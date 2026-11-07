@@ -484,6 +484,62 @@ describe("rolling a flag out to everyone", () => {
   });
 });
 
+describe("writing to a versioned flag", () => {
+  const FLAG = "/api/projects/7/feature_flags/1/";
+  const flagClient = (flag: object) => {
+    const { http, calls } = makeHttp((url, method) => {
+      if (url.pathname === FLAG && method === "GET") return { body: { id: 1, ...flag } };
+      if (method !== "GET") return { body: { id: 1 } };
+      return undefined;
+    });
+    const writes = () => calls.filter((c) => c.method !== "GET");
+    return { client: hostClient(new PostHogClient(CREDS, { http })), calls, writes };
+  };
+  const RESOURCE = "acct:feature-flag:7/1";
+
+  it("sends the version it has just read when turning a flag on or off", async () => {
+    for (const action of ["enable", "disable"]) {
+      const { client, writes } = flagClient({ version: 4, filters: { version: 2 } });
+      await client.invokeAction?.("feature-flag", RESOURCE, action);
+      expect(writes()[0]?.url.pathname).toBe(`${FLAG}${action}/`);
+      expect(writes()[0]?.body).toEqual({ version: 4 });
+    }
+  });
+
+  it("sends the version with an edit, reading the flag once", async () => {
+    const { client, calls, writes } = flagClient({ version: 4, filters: { groups: [] } });
+    await client.updateResource("feature-flag", RESOURCE, "acct", {
+      name: "New",
+      rolloutPercentage: "30",
+    });
+    expect(writes()[0]?.body).toEqual({
+      name: "New",
+      filters: { groups: [{ properties: [], rollout_percentage: 30 }] },
+      version: 4,
+    });
+    // One read before the write, one after it for the answer.
+    expect(calls.map((c) => c.method)).toEqual(["GET", "PATCH", "GET"]);
+  });
+
+  it("sends nothing for an edit with nothing in it", async () => {
+    const { client, writes } = flagClient({ version: 4 });
+    await client.updateResource("feature-flag", RESOURCE, "acct", {});
+    expect(writes()).toEqual([]);
+  });
+
+  it("sends the version when deleting", async () => {
+    const { client, writes } = flagClient({ version: 4 });
+    await client.deleteResource("feature-flag", RESOURCE);
+    expect(writes()[0]?.body).toEqual({ deleted: true, version: 4 });
+  });
+
+  it("leaves it out of a PATCH for a flag from before versioning, which reads as null", async () => {
+    const { client, writes } = flagClient({ version: null });
+    await client.deleteResource("feature-flag", RESOURCE);
+    expect(writes()[0]?.body).toEqual({ deleted: true });
+  });
+});
+
 describe("helpers", () => {
   it("builds rollouts, escapes HogQL and reads spend keys", () => {
     expect(withRollout({}, 20)).toEqual({ groups: [{ properties: [], rollout_percentage: 20 }] });

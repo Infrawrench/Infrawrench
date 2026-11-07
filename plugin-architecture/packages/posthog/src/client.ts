@@ -70,6 +70,15 @@ export function withRollout(filters: FlagFilters, rollout: number): FlagFilters 
   return { ...filters, groups };
 }
 
+/**
+ * What a write to a flag sends so PostHog can refuse it if the flag has moved on, and
+ * which it needs for a flag whose `filters.version` is 2. A flag from before
+ * versioning reads as null, which a PATCH does not take.
+ */
+function versionOf(flag: { version?: number | null }): { version?: number } {
+  return typeof flag.version === "number" ? { version: flag.version } : {};
+}
+
 /** Organizations the key can see, for the organization picker. */
 export async function listOrganizations(ctx: PostHogContext) {
   return ctx.api.getAll("/api/organizations/", "results");
@@ -561,14 +570,16 @@ export class PostHogClient implements PluginClient {
           if (has("name")) body.name = fields["name"] ?? "";
           if (has("active")) body.active = fields["active"] === "true";
           if (has("tags")) body.tags = csv(fields["tags"]);
+          let rollout: number | undefined;
           if (has("rolloutPercentage") && fields["rolloutPercentage"] !== "") {
-            const rollout = Number(fields["rolloutPercentage"]);
+            rollout = Number(fields["rolloutPercentage"]);
             if (!Number.isFinite(rollout) || rollout < 0 || rollout > 100)
               throw new Error("Rollout must be between 0 and 100.");
-            const current = await this.getObject(typeId, pid, id);
-            body.filters = withRollout(current.filters ?? {}, rollout);
           }
-          await this.patchIfAny(typeId, pid, id, body);
+          if (rollout === undefined && Object.keys(body).length === 0) break;
+          const current = await this.getObject(typeId, pid, id);
+          if (rollout !== undefined) body.filters = withRollout(current.filters ?? {}, rollout);
+          await this.patch(typeId, pid, id, { ...body, ...versionOf(current) });
           break;
         }
         case "dashboard": {
@@ -629,7 +640,10 @@ export class PostHogClient implements PluginClient {
           : listRouteRequest(this.ctx, "DELETE", OBJECTS[type].route, pid));
         return;
       }
-      await this.patch(type, pid, id, { deleted: true });
+      await this.patch(type, pid, id, {
+        deleted: true,
+        ...(type === "feature-flag" ? versionOf(await this.getObject(type, pid, id)) : {}),
+      });
     });
   }
 
@@ -678,13 +692,17 @@ export class PostHogClient implements PluginClient {
       }
       switch (`${typeId}:${actionId}`) {
         case "feature-flag:enable":
-          await post("feature_flags", "enable", () =>
-            api.post(`/api/projects/${project}/feature_flags/${target}/enable/`, { body }),
+          await post("feature_flags", "enable", async () =>
+            api.post(`/api/projects/${project}/feature_flags/${target}/enable/`, {
+              body: versionOf(await this.getObject("feature-flag", pid, id)),
+            }),
           );
           return;
         case "feature-flag:disable":
-          await post("feature_flags", "disable", () =>
-            api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, { body }),
+          await post("feature_flags", "disable", async () =>
+            api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, {
+              body: versionOf(await this.getObject("feature-flag", pid, id)),
+            }),
           );
           return;
         case "experiment:launch":
