@@ -23,24 +23,18 @@ import {
   decodePromptArgs,
   externalIdOf,
   pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
   unencodedSegment,
   utf8ToBase64,
+  withinListCap,
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
 import type { HubApi, HubContext } from "./api.js";
-import {
-  FIRST_PAGE,
-  HubApiError,
-  hubApi,
-  hubPaged,
-  hubPagedAll,
-  rawRequest,
-  secretKind,
-  statusOf,
-} from "./api.js";
+import { HubApiError, hubApi, isDeniedOrGone, rawRequest, secretKind, statusOf } from "./api.js";
 import { dockerSeatPrice, mapDockerSeats } from "./seats.js";
-import type { HubMember, HubOatResource, HubOrg, HubRepository, HubTeam } from "./mappers.js";
+import type { HubMember, HubOatResource, HubRepository, HubTag, HubTeam } from "./mappers.js";
 import {
   mapInvite,
   mapMember,
@@ -56,8 +50,15 @@ import {
 import { COMMANDS, TEAMS_KEY, renderDockerHubDetail, renderDockerHubSidebar } from "./render.js";
 
 const enc = pathEncode;
-const TAGS_PER_REPO = 25;
-const MAX_TAG_REPOS = 100;
+const VENDOR = "Docker Hub";
+/** 10,000 rows of one repository or team, read a page of 100 at a time. */
+const MAX_CHILD_PAGES = 100;
+/** Listing tags asks once per repository at least. */
+const MAX_TAG_REPOS = 1000;
+/** All of an account's tags, which the resource sync has to fit (#572). */
+const MAX_TAGS = 50_000;
+/** Part of a long list is fine in a create form, and it should not take long to open. */
+const PICKER = { maxPages: 20, partial: true };
 
 const PAT_SCOPES = [
   { id: "repo:read", label: "Read-only", description: "Pull public and private repositories" },
@@ -143,15 +144,14 @@ export async function listNamespaces(
   ctx: HubContext,
 ): Promise<Array<{ name: string; kind: "user" | "organization"; label?: string }>> {
   if (secretKind(ctx.secret) === "oat") return [{ name: ctx.identifier, kind: "organization" }];
-  // A 401 here is a bad credential and must surface; anything else just
-  // means the organization list is unavailable to this token.
-  const api = hubApi(ctx);
-  const orgs = await hubPaged(ctx, () => api.get("/v2/user/orgs/", FIRST_PAGE)).catch(
-    (err: unknown): HubOrg[] => {
-      if (statusOf(err) === 401) throw err;
-      return [];
-    },
-  );
+  // A token may not be allowed to list organizations. Any other failure must surface:
+  // reading it as none would drop every organization's resources from the next sync.
+  const orgs = await hubApi(ctx)
+    .getAll("/v2/user/orgs/", "results")
+    .catch((err: unknown) => {
+      if (isDeniedOrGone(err)) return [];
+      throw err;
+    });
   return [
     { name: ctx.identifier, kind: "user" },
     ...orgs
@@ -211,29 +211,61 @@ export class DockerHubClient implements PluginClient {
     return (await this.namespaces()).filter((n) => n.kind === "organization").map((n) => n.name);
   }
 
-  private repos(ns: string): Promise<HubRepository[]> {
-    return hubPaged(this.ctx, () =>
-      this.api.get(`/v2/namespaces/${enc(ns)}/repositories`, FIRST_PAGE),
-    );
+  private repos(ns: string, read?: typeof PICKER): Promise<HubRepository[]> {
+    return this.api.getAll(`/v2/namespaces/${enc(ns)}/repositories`, "results", read);
   }
 
   private repo(ns: string, name: string) {
     return this.api.get(`/v2/namespaces/${enc(ns)}/repositories/${enc(name)}`);
   }
 
-  private teams(org: string): Promise<HubTeam[]> {
-    return hubPaged(this.ctx, () => this.api.get(`/v2/orgs/${enc(org)}/groups`, FIRST_PAGE));
+  private teams(org: string, read?: typeof PICKER): Promise<HubTeam[]> {
+    return this.api.getAll(`/v2/orgs/${enc(org)}/groups`, "results", read);
   }
 
   private members(org: string): Promise<HubMember[]> {
-    return hubPaged(this.ctx, () => this.api.get(`/v2/orgs/${enc(org)}/members`, FIRST_PAGE));
+    return this.api.getAll(`/v2/orgs/${enc(org)}/members`, "results");
   }
 
   private async teamMembers(org: string, team: string): Promise<string[]> {
-    const members = await hubPaged(this.ctx, () =>
-      this.api.get(`/v2/orgs/${enc(org)}/groups/${enc(team)}/members`, FIRST_PAGE),
+    const members = await this.api.getAll(
+      `/v2/orgs/${enc(org)}/groups/${enc(team)}/members`,
+      "results",
+      { maxPages: MAX_CHILD_PAGES },
     );
     return members.map((m) => m.username).filter(Boolean);
+  }
+
+  /** A team's members for its row, which still has its other fields when these fail. */
+  private teamMembersIfReadable(org: string, team: string): Promise<string[] | undefined> {
+    return this.teamMembers(org, team).catch((err: unknown) => {
+      rethrowIncompleteList(err);
+      return undefined;
+    });
+  }
+
+  private async invites(org: string) {
+    const path = `/v2/orgs/${enc(org)}/invites` as const;
+    const res = await this.api.get(path);
+    return requireListPage(res?.data, { vendor: VENDOR, path, key: "data" });
+  }
+
+  /**
+   * The organizations whose seats to read. Unlike {@link namespaces}, a token that may
+   * not list them fails here: "no organizations" would read as every seat removed.
+   */
+  private async seatOrgs(): Promise<string[]> {
+    if (this.isOat || this.configured.length > 0) return this.orgs();
+    try {
+      const orgs = await this.api.getAll("/v2/user/orgs/", "results");
+      return orgs.flatMap((o) => (o.orgname ? [o.orgname] : []));
+    } catch (err) {
+      if (!isDeniedOrGone(err)) throw err;
+      throw new HubApiError(
+        statusOf(err),
+        `Docker Hub plugin: cannot list the organizations this token belongs to (${statusOf(err)}). Use a token that can, or pick them in the account's Namespaces.`,
+      );
+    }
   }
 
   /** Run per-namespace listers, skipping organizations the token cannot read. */
@@ -244,7 +276,7 @@ export class DockerHubClient implements PluginClient {
         out.push(...(await fn(org)));
       } catch (err) {
         // A member without admin rights cannot list an org's teams or tokens.
-        if (statusOf(err) === 403 || statusOf(err) === 404) continue;
+        if (isDeniedOrGone(err)) continue;
         throw err;
       }
     }
@@ -268,14 +300,12 @@ export class DockerHubClient implements PluginClient {
     return attempt(async () => {
       const price = dockerSeatPrice(this.seatPriceMonthly);
       const seats: SeatRecord[] = [];
-      for (const org of await this.orgs()) {
+      for (const org of await this.seatOrgs()) {
         let members: HubMember[];
         try {
-          members = await hubPagedAll(this.ctx, `/v2/orgs/${enc(org)}/members`, () =>
-            this.api.get(`/v2/orgs/${enc(org)}/members`, FIRST_PAGE),
-          );
+          members = await this.members(org);
         } catch (err) {
-          if (statusOf(err) === 403 || statusOf(err) === 404) {
+          if (isDeniedOrGone(err)) {
             throw new HubApiError(
               statusOf(err),
               `Docker Hub plugin: cannot list the members of ${org} (${statusOf(err)}). Use an owner's token, or leave ${org} out of the account's Namespaces.`,
@@ -332,18 +362,23 @@ export class DockerHubClient implements PluginClient {
           return out;
         }
         case "dockerhub-tag": {
+          const repos: Array<{ ns: string; name: string }> = [];
+          for (const { name: ns } of await this.namespaces())
+            for (const { name } of await this.repos(ns)) repos.push({ ns, name });
+          const path = "/v2/namespaces/{namespace}/repositories/{repository}/tags";
+          withinListCap(repos, MAX_TAG_REPOS, { vendor: VENDOR, path });
           const out: ResourceInstance[] = [];
-          let repos = 0;
-          for (const ns of await this.namespaces()) {
-            for (const r of await this.repos(ns.name)) {
-              if (repos++ >= MAX_TAG_REPOS) return out;
-              const page = await this.api
-                .get(`/v2/namespaces/${enc(ns.name)}/repositories/${enc(r.name)}/tags`, {
-                  query: { page_size: TAGS_PER_REPO },
-                })
-                .catch(() => undefined);
-              out.push(...(page?.results ?? []).map((t) => mapTag(accountId, ns.name, r.name, t)));
-            }
+          for (const { ns, name } of repos) {
+            const tags = await this.api
+              .getAll(`/v2/namespaces/${enc(ns)}/repositories/${enc(name)}/tags`, "results", {
+                maxPages: MAX_CHILD_PAGES,
+              })
+              .catch((err: unknown): HubTag[] => {
+                if (isDeniedOrGone(err)) return [];
+                throw err;
+              });
+            out.push(...tags.map((t) => mapTag(accountId, ns, name, t)));
+            withinListCap(out, MAX_TAGS, { vendor: VENDOR, path });
           }
           return out;
         }
@@ -352,8 +387,7 @@ export class DockerHubClient implements PluginClient {
             const teams = await this.teams(org);
             const out: ResourceInstance[] = [];
             for (const t of teams) {
-              const members = await this.teamMembers(org, t.name).catch(() => undefined);
-              out.push(mapTeam(accountId, org, t, members));
+              out.push(mapTeam(accountId, org, t, await this.teamMembersIfReadable(org, t.name)));
             }
             return out;
           });
@@ -362,23 +396,20 @@ export class DockerHubClient implements PluginClient {
             (await this.members(org)).map((m) => mapMember(accountId, org, m)),
           );
         case "dockerhub-invite":
-          return this.perOrg(async (org) => {
-            const res = await this.api.get(`/v2/orgs/${enc(org)}/invites`);
-            return (res?.data ?? []).map((i) => mapInvite(accountId, org, i));
-          });
+          return this.perOrg(async (org) =>
+            (await this.invites(org)).map((i) => mapInvite(accountId, org, i)),
+          );
         case "dockerhub-access-token": {
           if (this.isOat) return [];
-          return (
-            await hubPaged(this.ctx, () => this.api.get("/v2/access-tokens", FIRST_PAGE))
-          ).map((t) => mapPat(accountId, t));
+          return (await this.api.getAll("/v2/access-tokens", "results")).map((t) =>
+            mapPat(accountId, t),
+          );
         }
         case "dockerhub-org-access-token":
           return this.perOrg(async (org) =>
-            (
-              await hubPaged(this.ctx, () =>
-                this.api.get(`/v2/orgs/${enc(org)}/access-tokens`, FIRST_PAGE),
-              )
-            ).map((t) => mapOat(accountId, org, t)),
+            (await this.api.getAll(`/v2/orgs/${enc(org)}/access-tokens`, "results")).map((t) =>
+              mapOat(accountId, org, t),
+            ),
           );
         default:
           throw new Error(`Docker Hub plugin: unknown resource type "${typeId}"`);
@@ -395,7 +426,10 @@ export class DockerHubClient implements PluginClient {
       kind === "user"
         ? await this.api.get("/v2/user/").catch(() => undefined)
         : await this.api.get(`/v2/orgs/${enc(ns)}`).catch(() => undefined);
-    const repos = await this.repos(ns).catch(() => undefined);
+    const repos = await this.repos(ns).catch((err: unknown) => {
+      rethrowIncompleteList(err);
+      return undefined;
+    });
     const stats = repos
       ? {
           repositories: repos.length,
@@ -445,7 +479,7 @@ export class DockerHubClient implements PluginClient {
           const r = mapRepository(accountId, await this.repo(ns, rest));
           const isOrg = (await this.orgs()).includes(ns);
           if (!isOrg) return r;
-          const teams = await this.teams(ns).catch((): HubTeam[] => []);
+          const teams = await this.teams(ns, PICKER).catch((): HubTeam[] => []);
           const slim = teams
             .filter((t) => t.id !== undefined)
             .map((t) => ({ id: t.id, name: t.name }));
@@ -463,7 +497,7 @@ export class DockerHubClient implements PluginClient {
         case "dockerhub-team": {
           const { ns, rest } = splitScoped(id);
           const t = await this.api.get(`/v2/orgs/${enc(ns)}/groups/${enc(rest)}`);
-          return mapTeam(accountId, ns, t, await this.teamMembers(ns, rest).catch(() => undefined));
+          return mapTeam(accountId, ns, t, await this.teamMembersIfReadable(ns, rest));
         }
         case "dockerhub-member": {
           const { ns, rest } = splitScoped(id);
@@ -474,8 +508,12 @@ export class DockerHubClient implements PluginClient {
         }
         case "dockerhub-invite": {
           for (const org of await this.orgs()) {
-            const res = await this.api.get(`/v2/orgs/${enc(org)}/invites`).catch(() => undefined);
-            const hit = res?.data?.find((i) => i.id === id);
+            // Only an organization this token may not read can stand for "not in that one".
+            const invites = await this.invites(org).catch((err: unknown) => {
+              if (isDeniedOrGone(err)) return [];
+              throw err;
+            });
+            const hit = invites.find((i) => i.id === id);
             if (hit) return mapInvite(accountId, org, hit);
           }
           throw new HubApiError(404, `Docker Hub plugin: invite ${id} not found`);
@@ -667,10 +705,12 @@ export class DockerHubClient implements PluginClient {
       if (typeId !== "dockerhub-repository") return { items: [] };
       const { ns, rest } = splitScoped(externalIdOf(resourceId));
       const page = Number(params?.pageToken ?? "1") || 1;
-      const res = await this.api.get(`/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/tags`, {
+      const path = `/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/tags` as const;
+      const res = await this.api.get(path, {
         query: { page, page_size: 100, ...(params?.prefix ? { name: params.prefix } : {}) },
       });
-      const items = (res?.results ?? []).map<ArtifactEntry>((t) => {
+      const tags = requireListPage(res?.results, { vendor: VENDOR, path, key: "results" });
+      const items = tags.map<ArtifactEntry>((t) => {
         const digest = t.digest ?? t.images?.[0]?.digest ?? undefined;
         return {
           name: `${ns}/${rest}`,
@@ -755,7 +795,7 @@ export class DockerHubClient implements PluginClient {
           };
         case "dockerhub-invite": {
           const org = parentNs ?? (await this.orgs().catch(() => []))[0];
-          const teams = org ? await this.teams(org).catch((): HubTeam[] => []) : [];
+          const teams = org ? await this.teams(org, PICKER).catch((): HubTeam[] => []) : [];
           return {
             fields: [
               ...(await nsField(true)),
@@ -821,7 +861,7 @@ export class DockerHubClient implements PluginClient {
           };
         case "dockerhub-org-access-token": {
           const org = parentNs ?? (await this.orgs().catch(() => []))[0];
-          const repos = org ? await this.repos(org).catch((): HubRepository[] => []) : [];
+          const repos = org ? await this.repos(org, PICKER).catch((): HubRepository[] => []) : [];
           return {
             fields: [
               ...(await nsField(true)),

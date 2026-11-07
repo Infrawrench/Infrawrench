@@ -1,8 +1,7 @@
 import {
   createApiClient,
-  restRequest,
+  withLinkPagination,
   type ApiBody,
-  type ApiClient,
   type ApiResponse,
   type HttpHostServices,
 } from "@infrawrench/plugin-base";
@@ -40,6 +39,11 @@ export class HubApiError extends Error {
 
 export function statusOf(err: unknown): number {
   return err instanceof HubApiError ? err.status : 0;
+}
+
+/** The one failure that means "nothing here for this token", rather than "could not tell". */
+export function isDeniedOrGone(err: unknown): boolean {
+  return statusOf(err) === 403 || statusOf(err) === 404;
 }
 
 /** What kind of secret the user pasted, from its documented prefix. */
@@ -149,27 +153,46 @@ function isJson(text: string): boolean {
   }
 }
 
+/** How long a `Retry-After` the plugin will wait out, in place of failing the pass. */
+const MAX_RATE_LIMIT_WAIT_MS = 60_000;
+const MAX_RATE_LIMIT_WAITS = 3;
+
+/** A `Retry-After` in seconds, as the document describes it, if it is one worth waiting for. */
+function rateLimitWaitMs(res: RawResponse): number | undefined {
+  const raw = res.headers["retry-after"]?.trim();
+  if (!raw) return undefined;
+  const ms = Number(raw) * 1000;
+  return Number.isFinite(ms) && ms >= 0 && ms <= MAX_RATE_LIMIT_WAIT_MS ? ms : undefined;
+}
+
 /**
  * The host service or `fetch`, whichever {@link rawRequest} picks, with what Docker
  * Hub's calls have always had around it: a 401 drops the cached JWT and retries
  * once (the token may have expired mid-pass), and a 2xx whose body is not JSON
  * reads as that text rather than failing, which `restRequest` would otherwise do.
+ *
+ * A 429 waits out a short `Retry-After` and asks again. The limit is per minute with
+ * no documented number, and listing tags reads every repository one after another.
  */
 function hubTransport(ctx: HubContext): HttpHostServices {
   return {
     async request({ url, method, headers, body: sent }) {
       // Every body here is JSON text; the interface also allows bytes.
       const body = typeof sent === "string" ? sent : undefined;
-      let res = await rawRequest(ctx.http, url, method, headers, body);
+      const send = async (withHeaders: Record<string, string>): Promise<RawResponse> => {
+        let answer = await rawRequest(ctx.http, url, method, withHeaders, body);
+        for (let waits = 0; answer.status === 429 && waits < MAX_RATE_LIMIT_WAITS; waits++) {
+          const wait = rateLimitWaitMs(answer);
+          if (wait === undefined) break;
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          answer = await rawRequest(ctx.http, url, method, withHeaders, body);
+        }
+        return answer;
+      };
+      let res = await send(headers);
       if (res.status === 401) {
         delete ctx.jwt;
-        res = await rawRequest(
-          ctx.http,
-          url,
-          method,
-          { ...headers, Authorization: `Bearer ${await bearer(ctx)}` },
-          body,
-        );
+        res = await send({ ...headers, Authorization: `Bearer ${await bearer(ctx)}` });
       }
       const ok = res.status >= 200 && res.status < 300;
       return {
@@ -182,95 +205,27 @@ function hubTransport(ctx: HubContext): HttpHostServices {
   };
 }
 
-export type HubApi = ApiClient<paths>;
-
-/** Docker Hub, typed from its document (`plugingen.json`). */
-export function hubApi(ctx: HubContext): HubApi {
-  return createApiClient<paths>({
-    vendor: "Docker Hub",
-    baseUrl: HUB,
-    headers: () => authHeaders(ctx),
-    http: hubTransport(ctx),
-    contentType: "with-body",
-    httpError: ({ status, path, body }) => apiError(status, path, body),
-  });
-}
-
-/** What every list asks for on its first page. */
-export const FIRST_PAGE = { query: { page_size: 100 } };
-
-/** One page of a `{results, next}` list. */
-export interface HubPage<Row> {
-  results?: Row[];
-  next?: string | null;
-}
+/** The document states no maximum page size, so this is the size the plugin has always sent. */
+const PAGE_SIZE = 100;
+/** 50,000 rows, the most one list should put through the resource sync (#572). */
+const MAX_PAGES = 500;
 
 /**
- * A next link as Docker Hub wrote it, absolute on the real service. The parameter
- * is `path` because a `next` that is not text fails right here, and that is the
- * message a failed sync has always carried.
+ * Docker Hub, typed from its document (`plugingen.json`). Lists answer `{results, next}`
+ * with an absolute `next` on the host that was asked, so `getAll` refuses any other.
  */
-async function followLink<Row>(ctx: HubContext, path: string): Promise<HubPage<Row> | undefined> {
-  const absolute = path.startsWith("http");
-  const { body } = await restRequest<HubPage<Row> | undefined>({
-    vendor: "Docker Hub",
-    url: absolute ? path : `${HUB}${path}`,
-    headers: await authHeaders(ctx),
-    http: hubTransport(ctx),
-    contentType: "with-body",
-    httpError: ({ status, body: text }) =>
-      apiError(status, absolute ? new URL(path).pathname : path, text),
-  });
-  return body;
+export function hubApi(ctx: HubContext) {
+  return withLinkPagination(
+    createApiClient<paths>({
+      vendor: "Docker Hub",
+      baseUrl: HUB,
+      headers: () => authHeaders(ctx),
+      http: hubTransport(ctx),
+      contentType: "with-body",
+      httpError: ({ status, path, body }) => apiError(status, path, body),
+    }),
+    { next: "next", sizeParam: "page_size", pageSize: PAGE_SIZE, maxPages: MAX_PAGES },
+  );
 }
 
-/**
- * Every page of a `{results, next}` list from its first page, bounded so a looping
- * `next` cannot spin forever.
- *
- * This is a hand loop rather than `withLinkPagination` because that reads a
- * `results` that is not an array as an empty page, and the host prunes what a sync
- * stops seeing. Here it fails the sync, as it always has.
- */
-export async function hubPaged<Row>(
-  ctx: HubContext,
-  first: () => Promise<HubPage<Row> | undefined>,
-  maxPages = 20,
-): Promise<Row[]> {
-  const out: Row[] = [];
-  let res = await first();
-  for (let page = 0; ; page++) {
-    out.push(...(res?.results ?? []));
-    const next = res?.next;
-    if (!next || page + 1 >= maxPages) break;
-    res = await followLink<Row>(ctx, next);
-  }
-  return out;
-}
-
-/**
- * Like {@link hubPaged}, but every page or nothing: running past `maxPages`
- * throws instead of truncating, because a reader that stores the result as
- * the complete set (the seat inventory) must never see a partial list.
- */
-export async function hubPagedAll<Row>(
-  ctx: HubContext,
-  /** Names the list in the error. */
-  path: string,
-  first: () => Promise<HubPage<Row> | undefined>,
-  maxPages = 500,
-): Promise<Row[]> {
-  const out: Row[] = [];
-  let res = await first();
-  for (let page = 1; ; page++) {
-    out.push(...(res?.results ?? []));
-    const next = res?.next;
-    if (!next) return out;
-    if (page >= maxPages)
-      throw new HubApiError(
-        500,
-        `Docker Hub plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
-      );
-    res = await followLink<Row>(ctx, next);
-  }
-}
+export type HubApi = ReturnType<typeof hubApi>;

@@ -134,7 +134,7 @@ export const TagResourceType = rt({
   parentTypeId: "dockerhub-repository",
   pinnable: false,
   description:
-    "An image tag: digest, size, platforms and when it was last pushed and pulled. The 25 most recently pushed tags of each repository are listed (the Tags tab on a repository browses them all). Delete a tag.",
+    "An image tag: digest, size, platforms and when it was last pushed and pulled. Every tag of every repository is listed. Delete a tag.",
   fields: [
     f("repository", "Repository", { ...ro, showcase: true }),
     f("tag", "Tag", ro),
