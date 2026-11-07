@@ -130,7 +130,7 @@ type SendGridPaths = AlertPaths &
   VerifiedSenderPaths &
   WebhookPaths;
 
-const PAGE_SIZE = 100;
+export const PAGE_SIZE = 100;
 
 /** `limit`/`offset` lists that answer a bare array: 50 pages, so 5000 items at most. */
 function withOffsetLists(client: ApiClient<SendGridPaths>) {

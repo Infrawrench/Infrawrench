@@ -173,6 +173,110 @@ describe("SendGrid client", () => {
     });
   });
 
+  describe("detail pages read what only the list documents", () => {
+    const WEBHOOK = "/v3/user/webhooks/event/settings/wh1";
+    const DOMAIN = "/v3/whitelabel/domains/5";
+    const IP = "/v3/ips/1.2.3.4";
+
+    it("dates an event webhook from the list", async () => {
+      const { c } = client((url) =>
+        url.pathname === WEBHOOK
+          ? { body: { id: "wh1", url: "https://example.com/e" } }
+          : {
+              body: {
+                webhooks: [
+                  { id: "other", created_date: "2020-01-01T00:00:00Z" },
+                  {
+                    id: "wh1",
+                    created_date: "2021-01-01T00:00:00Z",
+                    updated_date: "2022-01-01T00:00:00Z",
+                  },
+                ],
+              },
+            },
+      );
+      const r = await c.getResource("sendgrid-event-webhook", `a:t:wh1`, "a");
+      expect(r.fields["createdAt"]).toBe("2021-01-01T00:00:00Z");
+      expect(r.fields["updatedAt"]).toBe("2022-01-01T00:00:00Z");
+      expect(r.fields["url"]).toBe("https://example.com/e");
+    });
+
+    it("reads an IP's assignment date from the list, matching the exact address", async () => {
+      const { c, calls } = client((url) =>
+        url.pathname === IP
+          ? { body: { ip: "1.2.3.4", pools: ["p1"], warmup: false } }
+          : {
+              body: [
+                { ip: "1.2.3.40", assigned_at: 1000 },
+                { ip: "1.2.3.4", assigned_at: 1600000000, pools: ["stale"] },
+              ],
+            },
+      );
+      const r = await c.getResource("sendgrid-ip", "a:t:1.2.3.4", "a");
+      expect(r.fields["assignedAt"]).toBe(new Date(1600000000_000).toISOString());
+      expect(r.fields["pools"]).toBe("p1");
+      expect(calls[1]!.url.pathname).toBe("/v3/ips");
+      expect(calls[1]!.url.searchParams.get("ip")).toBe("1.2.3.4");
+    });
+
+    it("reads a domain's subusers and last validation from the list", async () => {
+      const { c, calls } = client((url) =>
+        url.pathname === DOMAIN
+          ? { body: { id: 5, domain: "example.com", valid: true, dns: {} } }
+          : {
+              body: [
+                { id: 4, domain: "example.com", subusers: [{ username: "wrong" }] },
+                {
+                  id: 5,
+                  domain: "example.com",
+                  valid: false,
+                  subusers: [{ user_id: 1, username: "sub1" }],
+                  last_validation_attempt_at: 1600000000,
+                },
+              ],
+            },
+      );
+      const r = await c.getResource("sendgrid-domain", "a:t:5", "a");
+      expect(r.fields["subusers"]).toBe("sub1");
+      expect(r.fields["lastValidationAt"]).toBe(new Date(1600000000_000).toISOString());
+      expect(r.fields["valid"]).toBe(true);
+      expect(calls[1]!.url.pathname).toBe("/v3/whitelabel/domains");
+      expect(calls[1]!.url.searchParams.get("domain")).toBe("example.com");
+    });
+
+    it("skips the list when the single read already has the fields", async () => {
+      const { c, calls } = client((url) => {
+        if (url.pathname === WEBHOOK) {
+          return { body: { id: "wh1", created_date: "2021", updated_date: "2022" } };
+        }
+        if (url.pathname === IP) return { body: { ip: "1.2.3.4", assigned_at: null } };
+        if (url.pathname === DOMAIN) {
+          return { body: { id: 5, subusers: [], last_validation_attempt_at: 1 } };
+        }
+        throw new Error(`unexpected ${url.pathname}`);
+      });
+      await c.getResource("sendgrid-event-webhook", "a:t:wh1", "a");
+      await c.getResource("sendgrid-ip", "a:t:1.2.3.4", "a");
+      await c.getResource("sendgrid-domain", "a:t:5", "a");
+      expect(calls).toHaveLength(3);
+    });
+
+    it("still opens the page when the list read fails", async () => {
+      const { c } = client((url) => {
+        if (url.pathname === WEBHOOK) return { body: { id: "wh1", url: "https://e.example" } };
+        if (url.pathname === IP) return { body: { ip: "1.2.3.4" } };
+        if (url.pathname === DOMAIN) return { body: { id: 5, domain: "example.com" } };
+        return { status: 500, body: { errors: [{ message: "down" }] } };
+      });
+      const hook = await c.getResource("sendgrid-event-webhook", "a:t:wh1", "a");
+      expect(hook.fields["url"]).toBe("https://e.example");
+      expect((await c.getResource("sendgrid-ip", "a:t:1.2.3.4", "a")).fields["ip"]).toBe("1.2.3.4");
+      expect((await c.getResource("sendgrid-domain", "a:t:5", "a")).fields["domain"]).toBe(
+        "example.com",
+      );
+    });
+  });
+
   it("synthesises DNS records and reads the key id", () => {
     const recs = domainDnsRecords("a", {
       id: 5,

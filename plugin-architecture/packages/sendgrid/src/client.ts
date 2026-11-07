@@ -15,7 +15,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { SendGridApi, SendGridApis, SendGridContext, SendGridRegion } from "./api.js";
-import { createSendGridApis, listTemplates, statusOf } from "./api.js";
+import { PAGE_SIZE, createSendGridApis, listTemplates, statusOf } from "./api.js";
 import type { operations as AlertOperations } from "./api-types.alerts.gen.js";
 import type { operations as DomainOperations } from "./api-types.domain-authentication.gen.js";
 import type { operations as SubuserOperations } from "./api-types.subusers.gen.js";
@@ -25,6 +25,8 @@ import type { operations as WebhookOperations } from "./api-types.webhooks.gen.j
 import type {
   AccountSummary,
   SgApiKey,
+  SgDomain,
+  SgEventWebhook,
   SgIp,
   SgSubuserCredits,
   SgVerifiedSender,
@@ -259,6 +261,33 @@ export class SendGridClient implements PluginClient {
     return out;
   }
 
+  // The single reads below are documented with less than their lists, and a detail page shows
+  // what the single read says. The page is still worth opening when the extra read fails.
+
+  private async domainWithListFields(d: SgDomain): Promise<SgDomain> {
+    if (d.subusers !== undefined && d.last_validation_attempt_at !== undefined) return d;
+    const listed = await this.api
+      .getAll("/v3/whitelabel/domains", null, { query: d.domain ? { domain: d.domain } : {} })
+      .catch((): SgDomain[] => []);
+    return { ...listed.find((x) => x.id === d.id), ...d };
+  }
+
+  private async ipWithListFields(ip: SgIp, address: string): Promise<SgIp> {
+    if (ip.assigned_at !== undefined) return ip;
+    const listed = await this.api
+      .get("/v3/ips", { query: { ip: address, limit: PAGE_SIZE } })
+      .catch(() => undefined);
+    return { ...(listed ?? []).find((x) => x.ip === address), ...ip };
+  }
+
+  private async webhookWithListFields(w: SgEventWebhook, id: string): Promise<SgEventWebhook> {
+    if (w.created_date !== undefined && w.updated_date !== undefined) return w;
+    const listed = await this.api
+      .get("/v3/user/webhooks/event/settings/all")
+      .catch(() => undefined);
+    return { ...listed?.webhooks?.find((x) => x.id === id), ...w };
+  }
+
   private async poolIps(name: string): Promise<string[]> {
     const res = await this.api.get(`/v3/ips/pools/${pathEncode(name)}`);
     return (res?.ips ?? [])
@@ -423,7 +452,9 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-api-key":
           return mapApiKey(accountId, await this.apiKeyDetail(id), keyIdOf(this.ctx.apiKey));
         case "sendgrid-domain": {
-          const d = await this.api.get(`/v3/whitelabel/domains/${enc}`);
+          const d = await this.domainWithListFields(
+            await this.api.get(`/v3/whitelabel/domains/${enc}`),
+          );
           return stash(mapDomain(accountId, d), {
             [DNS_KEY]: toRows(domainDnsRecords(accountId, d)),
           });
@@ -439,7 +470,10 @@ export class SendGridClient implements PluginClient {
           });
         }
         case "sendgrid-ip":
-          return mapIp(accountId, await this.api.get(`/v3/ips/${enc}`));
+          return mapIp(
+            accountId,
+            await this.ipWithListFields(await this.api.get(`/v3/ips/${enc}`), id),
+          );
         case "sendgrid-ip-pool": {
           const [ips, all] = await Promise.all([
             this.poolIps(id),
@@ -477,7 +511,10 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-event-webhook":
           return mapEventWebhook(
             accountId,
-            await this.api.get(`/v3/user/webhooks/event/settings/${enc}`),
+            await this.webhookWithListFields(
+              await this.api.get(`/v3/user/webhooks/event/settings/${enc}`),
+              id,
+            ),
           );
         case "sendgrid-inbound-parse":
           return mapParse(accountId, await this.api.get(`/v3/user/webhooks/parse/settings/${enc}`));
