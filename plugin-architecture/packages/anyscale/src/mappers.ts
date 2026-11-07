@@ -5,15 +5,15 @@ import type {
   AsCloud,
   AsCluster,
   AsComputeConfig,
+  AsComputeConfigBody,
   AsJob,
-  AsNodeType,
   AsOrganization,
   AsProject,
   AsService,
   AsUserInfo,
   AsWorkspace,
   MiniUser,
-} from "./types.js";
+} from "./api.js";
 
 export const PLUGIN_ID = "anyscale";
 
@@ -291,7 +291,9 @@ export function mapService(accountId: string, s: AsService): ResourceInstance {
   );
 }
 
-function describeNode(n: AsNodeType): string {
+type AsWorkerNode = NonNullable<AsComputeConfigBody["worker_node_types"]>[number];
+
+function describeNode(n: AsWorkerNode): string {
   const type = n.instance_type || n.name || "auto";
   const bounds =
     n.min_workers !== undefined || n.max_workers !== undefined
@@ -302,7 +304,7 @@ function describeNode(n: AsNodeType): string {
 
 export function mapComputeConfig(accountId: string, c: AsComputeConfig): ResourceInstance {
   const id = c.id ?? "";
-  const cfg = c.config ?? {};
+  const cfg: Partial<AsComputeConfigBody> = c.config ?? {};
   const workers = cfg.worker_node_types ?? [];
   const maxWorkers = workers.reduce<number | undefined>(
     (sum, w) => (typeof w.max_workers === "number" ? (sum ?? 0) + w.max_workers : sum),

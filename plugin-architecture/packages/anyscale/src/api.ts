@@ -1,5 +1,10 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
 
 /**
  * The Anyscale control plane. Every organization, whatever cloud its clusters
@@ -9,11 +14,36 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
  */
 export const ANYSCALE_HOST = "https://console.anyscale.com";
 
-/** Everything a request needs; split out so collectors can be tested alone. */
-export interface AnyscaleContext {
-  apiKey: string;
-  http?: HttpHostServices;
-}
+export type AnyscaleApi = ApiClient<paths>;
+
+type Schemas = components["schemas"];
+
+export type MiniUser = Schemas["MiniUser"];
+// `Partial` where a row is read with something missing: `userinfo` falls back to
+// nothing, a new project answers with little more than its id, and usage rows are
+// taken apart field by field.
+export type AsUserInfo = Partial<Schemas["UserInfo"]>;
+export type AsOrganization = Partial<Schemas["Organization"]>;
+export type AsProject = Partial<Schemas["Project"]>;
+export type AsCloud = Schemas["DecoratedCloud"];
+export type AsCluster = Schemas["DecoratedSession"];
+export type AsWorkspace = Schemas["ExperimentalWorkspace"];
+export type AsJob = Schemas["DecoratedProductionJob"];
+export type AsService =
+  Schemas["DecoratedListServiceAPIModel"] | Schemas["DecoratedProductionServiceV2APIModel"];
+export type AsComputeConfig = Schemas["DecoratedComputeTemplate"];
+export type AsComputeConfigBody = Schemas["DecoratedComputeTemplateConfig"];
+export type AsBudget = Schemas["InstanceUsageBudget"];
+export type AsSessionState = Schemas["SessionState"];
+export type AsUsageByCluster = Partial<Schemas["UsageByCluster"]>;
+export type AsUtilizationTimeseries = Schemas["Response_ClusterUtilizationTimeseries_"];
+export type AsCreditRecord =
+  Partial<Schemas["CreditRecordCreditV2"]> | Partial<Schemas["CreditRecordCommitV2"]>;
+export type AsCredits = {
+  [K in keyof Schemas["CreditsV2"]]?: Schemas["CreditsV2"][K] extends readonly (infer Row)[]
+    ? Partial<Row>[]
+    : Schemas["CreditsV2"][K];
+};
 
 /** Thrown for any non-2xx answer, carrying the status callers branch on. */
 export class AnyscaleApiError extends Error {
@@ -25,49 +55,40 @@ export class AnyscaleApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE = /Anyscale API error (\d{3})/;
-
-export type Query = Record<string, string | number | boolean | string[] | undefined>;
-
-/**
- * JSON request against the control plane. Anyscale authenticates API keys
- * (user keys and service account keys alike) as the `cli_token` cookie, which
- * is exactly what the official CLI and SDK send. Routed through the host HTTP
- * service whenever there is one: that path honours bastion egress, and it is
- * the only path on which a `Cookie` header survives (browsers forbid setting
- * it from script).
- */
-export async function anyscaleFetch<T>(
-  ctx: AnyscaleContext,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
+/** An empty value is not sent, and any other is its `String()`. */
+function writeQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(init?.query ?? {})) {
+  for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, item);
+    if (Array.isArray(v)) for (const item of v) params.append(k, String(item));
     else params.set(k, String(v));
   }
-  const qs = params.toString();
-  const { query: _query, ...rest } = init ?? {};
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Anyscale",
-      url: `${ANYSCALE_HOST}${path}${qs ? `?${qs}` : ""}`,
-      errorPath: path,
-      headers: {
-        Accept: "application/json",
-        Cookie: `cli_token=${ctx.apiKey}`,
-      },
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new AnyscaleApiError(status, message);
-    throw err;
-  }
+  return params.toString();
+}
+
+/**
+ * The typed client. Anyscale authenticates API keys (user keys and service account
+ * keys alike) as the `cli_token` cookie, which is exactly what the official CLI and
+ * SDK send. Routed through the host HTTP service whenever there is one: that path
+ * honours bastion egress, and it is the only path on which a `Cookie` header survives
+ * (browsers forbid setting it from script).
+ */
+export function createAnyscaleApi(options: {
+  apiKey: string;
+  http?: HttpHostServices | undefined;
+}): AnyscaleApi {
+  return createApiClient<paths>({
+    vendor: "Anyscale",
+    baseUrl: ANYSCALE_HOST,
+    headers: {
+      Accept: "application/json",
+      Cookie: `cli_token=${options.apiKey}`,
+    },
+    http: options.http,
+    serializeQuery: writeQuery,
+    httpError: ({ status, path, body }) =>
+      new AnyscaleApiError(status, `Anyscale API error ${status} for ${path}: ${body}`),
+  });
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */
@@ -81,32 +102,33 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-export interface ListResponse<T> {
+interface ListPage<T> {
   results?: T[];
-  metadata?: { total?: number; next_paging_token?: string | null };
+  metadata?: { next_paging_token?: string | null };
+}
+
+/** The paging half of a list's query string, for the caller to send last. */
+export interface PageQuery {
+  count: number;
+  paging_token?: string;
 }
 
 /**
  * Walk a `paging_token` list to the end, or to `maxPages`. Every Anyscale list
  * route shares the `{ results, metadata.next_paging_token }` envelope; GET
  * routes take the token as a query parameter and POST search routes as well.
+ * A hand loop because half of them page by POST, and an empty page with a token
+ * still goes on.
  */
-export async function anyscalePaged<T>(
-  ctx: AnyscaleContext,
-  path: string,
-  opts: { query?: Query; body?: unknown; count: number; maxPages: number },
+export async function listPages<T>(
+  maxPages: number,
+  count: number,
+  fetchPage: (query: PageQuery) => Promise<ListPage<T>>,
 ): Promise<T[]> {
   const out: T[] = [];
   let token: string | undefined;
-  for (let page = 0; page < opts.maxPages; page++) {
-    const query: Query = { ...opts.query, count: opts.count, paging_token: token };
-    const res = await anyscaleFetch<ListResponse<T>>(
-      ctx,
-      path,
-      opts.body !== undefined
-        ? { method: "POST", body: JSON.stringify(opts.body), query }
-        : { query },
-    );
+  for (let page = 0; page < maxPages; page++) {
+    const res = await fetchPage({ count, ...(token ? { paging_token: token } : {}) });
     out.push(...(res.results ?? []));
     token = res.metadata?.next_paging_token ?? undefined;
     if (!token) break;

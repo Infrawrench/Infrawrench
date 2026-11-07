@@ -1,8 +1,7 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import type { AnyscaleContext } from "./api.js";
-import { anyscaleFetch, anyscalePaged, isPermissionError } from "./api.js";
-import type { AsCloud, AsUsageByCluster, AsUsageGroup } from "./types.js";
+import type { AnyscaleApi, AsCloud, AsUsageByCluster, PageQuery } from "./api.js";
+import { isPermissionError, listPages } from "./api.js";
 
 /**
  * Anyscale's own charges, read from the usage dashboard's data
@@ -54,11 +53,10 @@ export interface CloudInfo {
 }
 
 /** Cloud id → region and hosting model, for the region dimension and the tag. */
-export async function cloudDirectory(ctx: AnyscaleContext): Promise<Map<string, CloudInfo>> {
-  const clouds = await anyscalePaged<AsCloud>(ctx, "/api/v2/clouds/", {
-    count: 1000,
-    maxPages: 5,
-  }).catch(() => [] as AsCloud[]);
+export async function cloudDirectory(api: AnyscaleApi): Promise<Map<string, CloudInfo>> {
+  const clouds = await listPages(5, 1000, (query) => api.get("/api/v2/clouds/", { query })).catch(
+    (): AsCloud[] => [],
+  );
   const out = new Map<string, CloudInfo>();
   for (const c of clouds) {
     if (!c.id) continue;
@@ -137,29 +135,26 @@ export function aggregateCostRows(rows: CostRow[]): CostRow[] {
 }
 
 export async function fetchAnyscaleCostData(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
   let usage: AsUsageByCluster[];
   try {
-    usage = await anyscalePaged<AsUsageByCluster>(
-      ctx,
-      "/api/v2/aggregated_instance_usage/cluster",
-      {
+    usage = await listPages(MAX_PAGES, PAGE, (query) =>
+      api.post("/api/v2/aggregated_instance_usage/cluster", {
+        query,
         body: {
           start_date: range.fromDate,
           end_date: range.toDate,
           group_by_date: true,
           asc: true,
         },
-        count: PAGE,
-        maxPages: MAX_PAGES,
-      },
+      }),
     );
   } catch (err) {
     rethrow(err);
   }
-  const clouds = await cloudDirectory(ctx);
+  const clouds = await cloudDirectory(api);
   const rows: CostRow[] = [];
   for (const u of usage) {
     const row = usageRowToCost(u, clouds);
@@ -174,47 +169,74 @@ export interface UsageBreakdownLine {
   credits: number;
 }
 
+/** A usage row once one grouping has given it a label. */
+interface LabelledUsage {
+  label: string;
+  dollar_value?: number | null;
+  anyscale_credits?: number | null;
+}
+
+/** One grouping's rows, each labelled the way that grouping reads. */
+async function labelledUsage(
+  api: AnyscaleApi,
+  group: "cluster_type" | "project" | "user",
+  fromDate: string,
+  toDate: string,
+): Promise<LabelledUsage[]> {
+  const page = (query: PageQuery) => ({
+    query,
+    body: { start_date: fromDate, end_date: toDate, group_by_date: false },
+  });
+  switch (group) {
+    case "cluster_type":
+      return (
+        await listPages(5, PAGE, (query) =>
+          api.post("/api/v2/aggregated_instance_usage/cluster_type", page(query)),
+        )
+      ).map((r) => ({ ...r, label: r.cluster_type ?? "Other" }));
+    case "project":
+      return (
+        await listPages(5, PAGE, (query) =>
+          api.post("/api/v2/aggregated_instance_usage/project", page(query)),
+        )
+      ).map((r) => ({
+        ...r,
+        label: [r.project_name, r.cloud_name].filter(Boolean).join(" / ") || "Unknown project",
+      }));
+    case "user":
+      return (
+        await listPages(5, PAGE, (query) =>
+          api.post("/api/v2/aggregated_instance_usage/user", page(query)),
+        )
+      ).map((r) => ({ ...r, label: r.user_email ?? r.user_name ?? "Unknown user" }));
+  }
+}
+
 /** Totals over a window grouped one way, largest first: for detail views. */
 export async function fetchUsageBreakdown(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   group: "cluster_type" | "project" | "user",
   fromDate: string,
   toDate: string,
 ): Promise<UsageBreakdownLine[]> {
-  const rows = await anyscalePaged<AsUsageGroup>(
-    ctx,
-    `/api/v2/aggregated_instance_usage/${group}`,
-    {
-      body: { start_date: fromDate, end_date: toDate, group_by_date: false },
-      count: PAGE,
-      maxPages: 5,
-    },
-  );
+  const rows = await labelledUsage(api, group, fromDate, toDate);
   const totals = new Map<string, UsageBreakdownLine>();
   for (const r of rows) {
-    const label =
-      group === "cluster_type"
-        ? (r.cluster_type ?? "Other")
-        : group === "project"
-          ? [r.project_name, r.cloud_name].filter(Boolean).join(" / ") || "Unknown project"
-          : (r.user_email ?? r.user_name ?? "Unknown user");
-    const line = totals.get(label) ?? { label, dollars: 0, credits: 0 };
+    const line = totals.get(r.label) ?? { label: r.label, dollars: 0, credits: 0 };
     line.dollars += Number(r.dollar_value ?? 0);
     line.credits += Number(r.anyscale_credits ?? 0);
-    totals.set(label, line);
+    totals.set(r.label, line);
   }
   return [...totals.values()].sort((a, b) => b.dollars - a.dollars);
 }
 
 /** Organization total over a window: `GET /api/v2/aggregated_instance_usage/`. */
 export async function fetchTotalUsage(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   fromDate: string,
   toDate: string,
 ): Promise<{ dollars: number; credits: number }> {
-  const res = await anyscaleFetch<{
-    result?: { dollar_value?: number | null; anyscale_credits?: number | null };
-  }>(ctx, "/api/v2/aggregated_instance_usage/", {
+  const res = await api.get("/api/v2/aggregated_instance_usage/", {
     query: { start_date: fromDate, end_date: toDate },
   });
   return {
@@ -225,20 +247,21 @@ export async function fetchTotalUsage(
 
 /** Daily spend per workload over a window, keyed by workload id. */
 export async function fetchWorkloadSpend(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   nameContains: string,
   fromDate: string,
   toDate: string,
 ): Promise<AsUsageByCluster[]> {
-  return anyscalePaged<AsUsageByCluster>(ctx, "/api/v2/aggregated_instance_usage/cluster", {
-    body: {
-      start_date: fromDate,
-      end_date: toDate,
-      group_by_date: true,
-      asc: true,
-      ...(nameContains ? { name_contains: nameContains } : {}),
-    },
-    count: PAGE,
-    maxPages: 10,
-  });
+  return listPages(10, PAGE, (query) =>
+    api.post("/api/v2/aggregated_instance_usage/cluster", {
+      query,
+      body: {
+        start_date: fromDate,
+        end_date: toDate,
+        group_by_date: true,
+        asc: true,
+        ...(nameContains ? { name_contains: nameContains } : {}),
+      },
+    }),
+  );
 }
