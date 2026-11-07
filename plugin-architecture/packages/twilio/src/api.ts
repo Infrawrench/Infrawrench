@@ -125,8 +125,9 @@ const onHost = (host: string) => (pathOrUrl: string) =>
   pathOrUrl.startsWith("http") ? pathOrUrl : `${host}${pathOrUrl}`;
 
 /**
- * A list asks for 1000 a page and may run past an empty page. 50 pages is 50,000
- * rows, and a list longer than that fails rather than come back short.
+ * A list asks for 1000 a page, the most Twilio's documents allow. 50 pages is 50,000
+ * rows, and a list longer than that fails rather than come back short. The next link
+ * is the only end of list the documents give, so an empty page that names one goes on.
  */
 const LISTS = {
   sizeParam: "PageSize",

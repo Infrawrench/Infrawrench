@@ -398,7 +398,10 @@ export class TwilioClient implements PluginClient {
       api.get(`${main}/Balance.json`).catch(() => undefined),
       this.totalFor("ThisMonth"),
       this.totalFor("LastMonth"),
-      this.subaccounts().catch(() => null),
+      this.subaccounts().catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return null;
+      }),
     ]);
     const balanceValue = num(balance?.balance);
     const summary: AccountSummary = {
@@ -423,7 +426,8 @@ export class TwilioClient implements PluginClient {
       const r = records[0];
       if (!r) return undefined;
       return { price: num(r.price) ?? 0, unit: (r.price_unit ?? "usd").toUpperCase() };
-    } catch {
+    } catch (err) {
+      rethrowIncompleteList(err);
       return undefined;
     }
   }
@@ -843,7 +847,9 @@ export class TwilioClient implements PluginClient {
     methodOptions: Array<{ id: string; label: string }>,
   ): Promise<CreateFieldConfig[]> {
     const records = await v2010(this.ctx)
-      .getAll(`${accountPath(this.ctx.accountSid)}/Usage/Records/ThisMonth.json`, "usage_records")
+      .getAll(`${accountPath(this.ctx.accountSid)}/Usage/Records/ThisMonth.json`, "usage_records", {
+        partial: true,
+      })
       .catch(() => []);
     const common = new Set(COMMON_TRIGGER_CATEGORIES.map((c) => c.id));
     const rest = records

@@ -290,6 +290,61 @@ describe("the subaccount list behind cost data", () => {
   });
 });
 
+describe("the account's summary", () => {
+  const endless = (url: URL, key: string) => ({
+    body: {
+      [key]: [{ sid: SUB, category: "totalprice" }],
+      next_page_uri: `${url.pathname}?Page=1`,
+    },
+  });
+  const quiet = (url: URL): Reply =>
+    url.pathname === "/2010-04-01/Accounts.json"
+      ? { body: page("accounts", []) }
+      : url.pathname.includes("/Usage/Records/")
+        ? { body: page("usage_records", []) }
+        : { body: { sid: MAIN, balance: "1", currency: "usd" } };
+
+  it("refuses a subaccount list past its cap", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json" ? endless(url, "accounts") : quiet(url),
+    );
+    await expect(c.listResources("account", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("refuses a month's total past its cap", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/Usage/Records/ThisMonth.json")
+        ? endless(url, "usage_records")
+        : quiet(url),
+    );
+    await expect(c.listResources("account", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("still lists the account when a summary figure fails to read", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json" || url.pathname.includes("/Usage/")
+        ? { status: 500, body: { message: "boom" } }
+        : quiet(url),
+    );
+    await expect(c.listResources("account", ACCOUNT)).resolves.toHaveLength(1);
+  });
+});
+
+describe("a page with nothing on it", () => {
+  it("does not end the list while Twilio still names a next page", async () => {
+    const { c } = client((url) =>
+      url.searchParams.get("Page") === "1"
+        ? { body: page("usage_triggers", [{ sid: "UT1" }]) }
+        : { body: { usage_triggers: [], next_page_uri: "/next.json?Page=1" } },
+    );
+    await expect(c.listResources("usage-trigger", ACCOUNT)).resolves.toHaveLength(1);
+  });
+});
+
 describe("phone numbers", () => {
   const numbersRoute = (url: URL): Reply => {
     if (url.pathname === "/2010-04-01/Accounts.json") {
@@ -441,6 +496,22 @@ describe("usage triggers", () => {
     expect(ids[0]).toBe("totalprice");
     expect(ids).toContain("verify-push");
     expect(ids.filter((i) => i === "sms")).toHaveLength(1);
+  });
+
+  it("offers the categories it read when this month's usage runs past the cap", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/Usage/Records/ThisMonth.json")
+        ? {
+            body: {
+              usage_records: [{ category: "verify-push", description: "Verify Push" }],
+              next_page_uri: `${url.pathname}?Page=1`,
+            },
+          }
+        : { status: 404 },
+    );
+    const cfg = await c.getCreateConfig("usage-trigger");
+    const category = cfg.fields.find((f) => f.key === "usageCategory")!;
+    expect(category.options!.map((o) => o.id)).toContain("verify-push");
   });
 
   it("creates a monthly budget trigger as a form post", async () => {
