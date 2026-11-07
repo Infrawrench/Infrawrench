@@ -14,7 +14,8 @@
  * modelled: rows are the list value of what was consumed.
  */
 import type { CostFetchRange, CostRow, MetricSeries } from "@infrawrench/plugin-base";
-import { pathEncode } from "@infrawrench/plugin-base";
+import { pathEncode, requireListPage } from "@infrawrench/plugin-base";
+import { VENDOR } from "./api.js";
 import type { PulumiApi } from "./api.js";
 
 export interface PlanRates {
@@ -97,12 +98,13 @@ export async function fetchSummary(
 ): Promise<DayUsage[]> {
   const floor = Date.now() - 364 * 24 * 3600 * 1000;
   const start = Math.floor(Math.max(sinceMs, floor) / 1000);
-  const parsed = await api.get(`/api/orgs/${pathEncode(org)}/${kind}/summary`, {
+  const path = `/api/orgs/${pathEncode(org)}/${kind}/summary` as const;
+  const parsed = await api.get(path, {
     query: { granularity: "daily", lookbackStart: start },
   });
   if (parsed === undefined) return [];
   const out: DayUsage[] = [];
-  for (const r of parsed.summary ?? []) {
+  for (const r of requireListPage(parsed.summary, { vendor: VENDOR, path, key: "summary" })) {
     if (!r.year || !r.month || !r.day) continue;
     const date = `${r.year}-${String(r.month).padStart(2, "0")}-${String(r.day).padStart(2, "0")}`;
     out.push({

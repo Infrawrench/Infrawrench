@@ -87,8 +87,9 @@ export function errorDetail(body: string): string {
   return body.slice(0, 500);
 }
 
-const VENDOR = "Pulumi Cloud";
-const MAX_LIST_PAGES = 20;
+export const VENDOR = "Pulumi Cloud";
+/** These lists run at the server's own page size, so this leaves room for a small one. */
+const MAX_LIST_PAGES = 200;
 
 function pulumiError(status: number, path: string, body: string): PulumiApiError {
   return new PulumiApiError(
@@ -143,8 +144,9 @@ export function createPulumiApi(ctx: PuContext): PulumiApi {
   const lists = {
     cursorParam: "continuationToken",
     maxPages: MAX_LIST_PAGES,
+    // Pulumi's apitype: "A value of nil means that all stacks have been returned", so
+    // the token ends a list, and an empty page holding one is not the end.
     continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
   } as const;
   return {
     /** Lists hand back their next page in `continuationToken`. */

@@ -17,11 +17,17 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { ApiBody, NoSlashString } from "@infrawrench/plugin-base";
 import type { EnvironmentPath, PuContext, PulumiApi, StackPath } from "./api.js";
 import {
   PulumiApiError,
+  VENDOR,
   consoleUrl,
   createPulumiApi,
   enc,
@@ -63,13 +69,22 @@ import { DETAIL_KEYS, OPERATIONS, renderPulumiDetail, renderPulumiSidebar } from
 import type { PlanRates } from "./usage.js";
 import { fetchSummary, fetchUsageCost, ratesFor, usageSeries } from "./usage.js";
 
-const DEPLOYMENT_LIMIT = 50;
+/** The route's largest page. */
+const DEPLOYMENT_LIMIT = 100;
+/** 500 rows a page makes this the 50,000 rows the host can prune. */
+const MAX_STACK_PAGES = 100;
 const YAML_ACCEPT = { Accept: "application/x-yaml" };
 const MAX_LOG_PAGES = 40;
 /** The referrers route's largest page. */
 const REFERRER_PAGE_SIZE = 500;
 const MAX_REFERRER_PAGES = 20;
 const bool = (v: string | undefined) => v === "true" || v === "1";
+
+/** For a count on the organization's row: none is fine, and a list that lied is not. */
+const noCount = (err: unknown): undefined => {
+  rethrowIncompleteList(err);
+  return undefined;
+};
 
 function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInstance {
   const extra: Record<string, string> = {};
@@ -169,6 +184,7 @@ export class PulumiCloudClient implements PluginClient {
     this.stacksCache ??= this.api
       .getAll("/api/user/stacks", "stacks", {
         query: { organization: this.org, maxResults: 500 },
+        maxPages: MAX_STACK_PAGES,
       })
       .catch((err: unknown) => {
         this.stacksCache = undefined;
@@ -225,7 +241,12 @@ export class PulumiCloudClient implements PluginClient {
             if (!s.resourceCount) continue;
             const res = await this.api
               .get(`${this.sp(s.projectName, s.stackName)}/outputs`)
-              .catch(() => undefined);
+              .catch((err: unknown) => {
+                // Deleted since the list, or a role that cannot read it. Anything else
+                // would read as this stack having lost every output.
+                if (statusOf(err) === 404 || statusOf(err) === 403) return undefined;
+                throw err;
+              });
             for (const [name, value] of Object.entries(res?.outputs ?? {})) {
               out.push(
                 mapOutput(
@@ -243,12 +264,16 @@ export class PulumiCloudClient implements PluginClient {
         }
         case "deployment": {
           try {
-            const res = await this.api.get(`/api/orgs/${this.orgSegment}/deployments`, {
+            // Rolling window: the newest N. Older rows falling off is what this type means.
+            const path = `/api/orgs/${this.orgSegment}/deployments` as const;
+            const res = await this.api.get(path, {
               query: { pageSize: DEPLOYMENT_LIMIT, page: 1 },
             });
-            return (res?.deployments ?? []).map((d) =>
-              mapDeployment(accountId, d, this.deploymentUrl(d)),
-            );
+            return requireListPage(res?.deployments, {
+              vendor: VENDOR,
+              path,
+              key: "deployments",
+            }).map((d) => mapDeployment(accountId, d, this.deploymentUrl(d)));
           } catch (err) {
             if (statusOf(err) === 404 || statusOf(err) === 403) return [];
             throw err;
@@ -267,29 +292,41 @@ export class PulumiCloudClient implements PluginClient {
             ),
           );
         case "team":
-          return this.optional(async () =>
-            ((await this.api.get(`/api/orgs/${this.orgSegment}/teams`))?.teams ?? []).map((t) =>
-              mapTeam(accountId, this.org, t),
-            ),
-          );
+          return this.optional(async () => {
+            const path = `/api/orgs/${this.orgSegment}/teams` as const;
+            return requireListPage((await this.api.get(path))?.teams, {
+              vendor: VENDOR,
+              path,
+              key: "teams",
+            }).map((t) => mapTeam(accountId, this.org, t));
+          });
         case "webhook":
-          return this.optional(async () =>
-            ((await this.api.get(`/api/orgs/${this.orgSegment}/hooks`)) ?? []).map((w) =>
-              mapWebhook(accountId, this.org, w),
-            ),
-          );
+          return this.optional(async () => {
+            const path = `/api/orgs/${this.orgSegment}/hooks` as const;
+            return requireListPage(await this.api.get(path), {
+              vendor: VENDOR,
+              path,
+              key: null,
+            }).map((w) => mapWebhook(accountId, this.org, w));
+          });
         case "policy-pack":
-          return this.optional(async () =>
-            (
-              (await this.api.get(`/api/orgs/${this.orgSegment}/policypacks`))?.policyPacks ?? []
-            ).map((p) => mapPolicyPack(accountId, this.org, p)),
-          );
+          return this.optional(async () => {
+            const path = `/api/orgs/${this.orgSegment}/policypacks` as const;
+            return requireListPage((await this.api.get(path))?.policyPacks, {
+              vendor: VENDOR,
+              path,
+              key: "policyPacks",
+            }).map((p) => mapPolicyPack(accountId, this.org, p));
+          });
         case "policy-group":
-          return this.optional(async () =>
-            (
-              (await this.api.get(`/api/orgs/${this.orgSegment}/policygroups`))?.policyGroups ?? []
-            ).map((g) => mapPolicyGroup(accountId, this.org, g)),
-          );
+          return this.optional(async () => {
+            const path = `/api/orgs/${this.orgSegment}/policygroups` as const;
+            return requireListPage((await this.api.get(path))?.policyGroups, {
+              vendor: VENDOR,
+              path,
+              key: "policyGroups",
+            }).map((g) => mapPolicyGroup(accountId, this.org, g));
+          });
         default:
           throw new Error(`Pulumi Cloud plugin: unknown resource type "${typeId}"`);
       }
@@ -354,12 +391,12 @@ export class PulumiCloudClient implements PluginClient {
     const since = Date.now() - 30 * 86_400_000;
     const [user, stacks, members, envs, resources, deployments, secrets] = await Promise.all([
       this.api.get("/api/user").catch(() => undefined),
-      this.stacks().catch(() => undefined),
-      this.api.getAll(`/api/orgs/${this.orgSegment}/members`, "members").catch(() => undefined),
-      this.envList().catch(() => undefined),
-      fetchSummary(this.api, this.org, "resources", since).catch(() => undefined),
-      fetchSummary(this.api, this.org, "deployments", since).catch(() => undefined),
-      fetchSummary(this.api, this.org, "secrets", since).catch(() => undefined),
+      this.stacks().catch(noCount),
+      this.api.getAll(`/api/orgs/${this.orgSegment}/members`, "members").catch(noCount),
+      this.envList().catch(noCount),
+      fetchSummary(this.api, this.org, "resources", since).catch(noCount),
+      fetchSummary(this.api, this.org, "deployments", since).catch(noCount),
+      fetchSummary(this.api, this.org, "secrets", since).catch(noCount),
     ]);
     const sum = (d: Array<{ value: number }> | undefined) =>
       d ? d.reduce((s, x) => s + x.value, 0) : undefined;

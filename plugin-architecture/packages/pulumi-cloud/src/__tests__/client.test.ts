@@ -528,3 +528,145 @@ describe("environment referrers (#444)", () => {
     expect(r.fields["environmentReferrers"]).toBeUndefined();
   });
 });
+
+describe("lists that cannot be trusted (#384)", () => {
+  const TRUNCATED = "has more than Infrawrench reads";
+  const NOT_A_LIST = "is not a list";
+
+  it.each([
+    ["stack", "/api/user/stacks", "stacks", "continuationToken", 100],
+    ["environment", "/api/esc/environments/acme", "environments", "nextToken", 200],
+    ["access-token", "/api/orgs/acme/tokens", "tokens", "continuationToken", 200],
+  ])("refuses %s rows past the cap", async (type, path, key, next, pages) => {
+    const { c, calls } = client((call) => {
+      expect(call.url.pathname).toBe(path);
+      return {
+        [key]: [{ id: `${calls.length}`, name: "x", projectName: "p", stackName: "s" }],
+        [next]: "more",
+      };
+    });
+    await expect(c.listResources(type, ACC)).rejects.toThrow(TRUNCATED);
+    expect(calls).toHaveLength(pages);
+  });
+
+  it("asks for stacks 500 at a time, so the cap is 50,000 rows", async () => {
+    const { c, calls } = client(() => ({ stacks: [] }));
+    await c.listResources("stack", ACC);
+    expect(calls[0]!.url.searchParams.get("maxResults")).toBe("500");
+  });
+
+  it("follows the token past an empty page: only its absence ends a list", async () => {
+    const { c } = client((call) =>
+      call.url.searchParams.get("continuationToken")
+        ? { stacks: [{ orgName: "acme", projectName: "net", stackName: "prod" }] }
+        : { stacks: [], continuationToken: "more" },
+    );
+    expect(await c.listResources("stack", ACC)).toHaveLength(1);
+  });
+
+  it.each([
+    ["stack", { stack: [] }],
+    ["environment", { items: [] }],
+    ["access-token", { items: [] }],
+    ["team", { items: [] }],
+    ["policy-pack", { items: [] }],
+    ["policy-group", { items: [] }],
+    ["webhook", { hooks: [] }],
+    ["deployment", { items: [] }],
+  ])("refuses a first page of %s with its list renamed", async (type, body) => {
+    const { c } = client(() => body);
+    await expect(c.listResources(type, ACC)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("refuses a later page with its list renamed", async () => {
+    const { c } = client((call) =>
+      call.url.searchParams.get("continuationToken")
+        ? { items: [] }
+        : {
+            stacks: [{ orgName: "acme", projectName: "net", stackName: "prod" }],
+            continuationToken: "more",
+          },
+    );
+    await expect(c.listResources("stack", ACC)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("refuses an empty answer to a list", async () => {
+    const { c } = client(() => ({ status: 200, body: "" }));
+    await expect(c.listResources("environment", ACC)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("reads the newest deployments, at the document's largest page", async () => {
+    const { c, calls } = client(() => ({ deployments: [] }));
+    await c.listResources("deployment", ACC);
+    expect(calls[0]!.url.searchParams.get("pageSize")).toBe("100");
+    expect(calls[0]!.url.searchParams.get("page")).toBe("1");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fails the outputs list when one stack's outputs cannot be read", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/user/stacks"
+        ? {
+            stacks: [
+              { orgName: "acme", projectName: "net", stackName: "prod", resourceCount: 2 },
+              { orgName: "acme", projectName: "net", stackName: "dev", resourceCount: 2 },
+            ],
+          }
+        : call.url.pathname.includes("/dev/")
+          ? { status: 500, body: { message: "boom" } }
+          : { outputs: { vpcId: "vpc-1" } },
+    );
+    await expect(c.listResources("stack-output", ACC)).rejects.toThrow(/boom/);
+  });
+
+  it.each([404, 403])("lists no outputs for a stack answering %i", async (status) => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/user/stacks"
+        ? {
+            stacks: [
+              { orgName: "acme", projectName: "net", stackName: "prod", resourceCount: 2 },
+              { orgName: "acme", projectName: "net", stackName: "gone", resourceCount: 2 },
+            ],
+          }
+        : call.url.pathname.includes("/gone/")
+          ? { status, body: { message: "no" } }
+          : { outputs: { vpcId: "vpc-1" } },
+    );
+    expect((await c.listResources("stack-output", ACC)).map((o) => o.externalId)).toEqual([
+      "net/prod/vpcId",
+    ]);
+  });
+
+  it("carries a refused list through the organization row's catches", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/user/stacks"
+        ? { items: [] }
+        : call.url.pathname.endsWith("/summary")
+          ? { summary: [] }
+          : call.url.pathname === "/api/esc/environments/acme"
+            ? { environments: [] }
+            : call.url.pathname === "/api/orgs/acme/members"
+              ? { members: [] }
+              : {},
+    );
+    await expect(c.listResources("organization", ACC)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("still lists the organization when a read it does not need fails", async () => {
+    const { c } = client(() => ({ status: 403, body: { message: "no" } }));
+    const [row] = await c.listResources("organization", ACC);
+    expect(row!.fields["stackCount"]).toBeUndefined();
+  });
+
+  it("refuses a usage summary with its rows renamed, rather than pricing nothing", async () => {
+    const { http } = makeHttp(() => ({ days: [] }));
+    await expect(
+      fetchUsageCost(
+        createPulumiApi({ token: "t", apiUrl: "https://api.pulumi.com", http }),
+        "acme",
+        ratesFor("pro", ""),
+        { fromDate: "2026-09-30", toDate: "2026-10-01" },
+      ),
+    ).rejects.toThrow(NOT_A_LIST);
+  });
+});
