@@ -15,7 +15,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, type NoSlashString } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import type { CircleApi, CircleContext } from "./api.js";
 import { circleApi, slugSegment, statusOf } from "./api.js";
@@ -45,7 +50,6 @@ import {
   mapSchedule,
   mapTrigger,
   mapWorkflow,
-  runnerClassOf,
   splitScoped,
 } from "./mappers.js";
 import {
@@ -370,6 +374,22 @@ export class CircleCIClient implements PluginClient {
     });
   }
 
+  /**
+   * A class's connected runners, by its id: the one filter that needs nothing but
+   * what every class has. Unknown when the read fails, which is not the same as none.
+   */
+  private runnerCount(classId: string): Promise<number | undefined> {
+    return this.api.v3Paged
+      .getAll("/runner/agents", "data", {
+        query: { "filter[resource_class_id]": classId, "page[limit]": 250 },
+      })
+      .then((agents) => agents.length)
+      .catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      });
+  }
+
   /** Waiting and running task counts for a runner resource class (runner API). */
   private async runnerTasks(
     resourceClass: string,
@@ -517,16 +537,14 @@ export class CircleCIClient implements PluginClient {
             if (statusOf(err) === 403 || statusOf(err) === 404) return [];
             throw err;
           }
-          const agents = await this.runnerAgents().catch(() => undefined);
           const out: ResourceInstance[] = [];
           for (const rc of classes) {
             const name = rc.attributes?.resource_class ?? "";
-            const count = agents?.filter((a) => runnerClassOf(a).id === rc.id).length;
             out.push(
               mapRunnerResourceClass(
                 accountId,
                 rc,
-                count,
+                await this.runnerCount(rc.id),
                 name ? await this.runnerTasks(name) : {},
               ),
             );
@@ -656,15 +674,10 @@ export class CircleCIClient implements PluginClient {
           const rc = (await this.api.v3.get(`/runner/resource-classes/${pathEncode(id)}`))?.data;
           if (!rc) throw new Error(`CircleCI plugin: runner resource class "${id}" not found`);
           const name = rc.attributes?.resource_class ?? "";
-          const agents = await this.api.v3Paged
-            .getAll("/runner/agents", "data", {
-              query: { "filter[resource_class]": name, "page[limit]": 250 },
-            })
-            .catch(() => undefined);
           return mapRunnerResourceClass(
             accountId,
             rc,
-            agents?.length,
+            await this.runnerCount(rc.id),
             name ? await this.runnerTasks(name) : {},
           );
         }

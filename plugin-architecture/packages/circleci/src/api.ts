@@ -19,7 +19,10 @@ import type { paths as V3Paths } from "./api-types.v3.gen.js";
  * takes it as a Bearer token instead.
  *
  * Types come from each API's OpenAPI document (`../plugingen.json`). The runner
- * host publishes none, so {@link RunnerPaths} is written by hand.
+ * host publishes none, so {@link RunnerPaths} is written by hand. The v3 document
+ * shows runner items as `{id}` alone; CircleCI's own CLI decodes `attributes` and
+ * `references` on them (`internal/apiclient/runner.go`), so the document is short.
+ * Those reads stay optional, and nothing depends on one that an id could do instead.
  */
 export const API_BASE = "https://circleci.com/api/v2";
 /**

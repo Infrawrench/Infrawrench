@@ -504,3 +504,47 @@ describe("host transport", () => {
     );
   });
 });
+
+describe("runner views on the answers the v3 document shows (#456)", () => {
+  /** Every agent read must carry the class's id, the filter that needs no name. */
+  function runnerClient(classes: unknown, agents: unknown[]) {
+    return client((call) => {
+      const { pathname, searchParams } = call.url;
+      if (pathname === "/api/v3/runner/resource-classes") return { data: classes };
+      if (pathname === "/api/v3/runner/resource-classes/rc1") return { data: { id: "rc1" } };
+      if (pathname === "/api/v3/runner/agents") {
+        expect(searchParams.get("filter[resource_class_id]")).toBe("rc1");
+        expect(searchParams.get("filter[org_id]")).toBeNull();
+        expect(searchParams.get("filter[resource_class]")).toBeNull();
+        return { data: agents, page: { next: null } };
+      }
+      throw new Error(`unexpected ${call.url}`);
+    });
+  }
+
+  it("counts a class's runners when items hold only an id", async () => {
+    const { c } = runnerClient([{ id: "rc1" }], [{ id: "a1" }, { id: "a2" }]);
+    const [rc] = await c.listResources("runner-resource-class", ACC);
+    expect(rc!.displayName).toBe("rc1");
+    expect(rc!.fields["runnerCount"]).toBe(2);
+  });
+
+  it("counts a class's runners in its detail view, with no name to filter on", async () => {
+    const { c } = runnerClient([], [{ id: "a1" }]);
+    const rc = await c.getResource(
+      "runner-resource-class",
+      `${ACC}:runner-resource-class:rc1`,
+      ACC,
+    );
+    expect(rc.fields["runnerCount"]).toBe(1);
+  });
+
+  it("does not report zero runners when the count could not be read", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/api/v3/runner/resource-classes") return { data: [{ id: "rc1" }] };
+      return { status: 500, body: { message: "boom" } };
+    });
+    const [rc] = await c.listResources("runner-resource-class", ACC);
+    expect(rc!.fields).not.toHaveProperty("runnerCount");
+  });
+});
