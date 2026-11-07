@@ -40,7 +40,7 @@ What the token can do depends on its **scope** and its **owner's role**:
 | Purge everything                                             | `purge_all`    | any                   |
 | Activate versions, edit services and stores, enable products | `global`       | Engineer or Superuser |
 
-Scopes combine: `global:read purge_all` reads everything and can purge. **Check credentials** on the add-account form or the account page tells you which of these your token can do. Its [least-privilege generator](../core-concepts/credential-preflight.md) tells you which token settings to choose for the features you tick. A token limited to some services only shows those services.
+Scopes combine: `global:read purge_all` reads everything and can purge. **Check credentials** on the add-account form or the account page tells you which of these your token can do. Its [least-privilege generator](../core-concepts/credential-preflight.md) tells you which token settings to choose for the features you tick. A token limited to some services only shows those services. If you narrow a token later, what Infrawrench already stored for a type or a service the token can no longer read stays listed with its last known details instead of disappearing. The desktop app keeps nothing between syncs, so there a type the token can't read shows the refusal instead.
 
 <insert [Fastly Check credentials panel listing inventory and costs as OK and purge and change configuration as missing for a global:read token] here>
 
@@ -61,3 +61,4 @@ Incidents come from Fastly's status page. Incidents at a POP show under the POP 
 
 - Changing a service's domains, backends or logging endpoints needs a new service version. Clone the active version here, then edit and activate it in Fastly or with the Fastly CLI.
 - Upload certificates and create TLS subscriptions in Fastly.
+- Large accounts refresh in turns. Each sync reads full details for up to 2,000 services, logging endpoints for 100 services and dictionaries for 500, starting somewhere different each time. The rest keep their last values until their turn comes.

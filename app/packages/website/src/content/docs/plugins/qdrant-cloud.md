@@ -58,4 +58,4 @@ You can [export to Terraform](../features/terraform-export.md) clusters, backup 
 - Disks only grow. Extra disk can't be reduced, and Qdrant refuses a downscale that wouldn't fit your stored data.
 - Qdrant shows a database key's value once. Keys created in the console are listed, but their values aren't available here.
 - Collection-scoped database keys need JWT RBAC turned on for the cluster.
-- Hybrid cloud clusters use whatever endpoint your Kubernetes exposes. Their collections only show if Infrawrench can reach that endpoint.
+- Hybrid cloud clusters use whatever endpoint your Kubernetes exposes. Their collections only show if Infrawrench can reach that endpoint. If the account goes through a bastion, pick those endpoints under **Hybrid Cluster Endpoints** in the account's **Advanced options** so the bastion lets collection reads and edits through. The picker lists your clusters whose endpoint isn't on `cloud.qdrant.io`. A bastion only reaches public addresses.

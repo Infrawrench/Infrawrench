@@ -44,7 +44,7 @@ You'll find the values in Horizon under **Project > API Access** (download the O
 
 ## Tips and limits
 
-- Every endpoint in your cloud's service catalog must be reachable from where Infrawrench runs. A bastion only covers the Keystone URL, and only on a public address. An SSH tunnel on the account only covers the Keystone URL, so it won't help if the other services are private too.
+- Every endpoint in your cloud's service catalog must be reachable from where Infrawrench runs. A bastion lets through the Keystone URL's host and, if your catalog puts Nova, Neutron or other services on other hostnames, the hosts you pick under **Service Endpoint Hosts** in the account's **Advanced options**. The picker lists the catalog hosts for the account's region and interface. A bastion only reaches public addresses. An SSH tunnel on the account only covers the Keystone URL, so it won't help if the other services are private too.
 - There's no cost data. OpenStack has no standard billing API (CloudKitty is optional and rarely exposed to projects).
 - You see what's in the project you signed in to. Shared and external networks from other projects are listed too, so you can use them as pools and attachment targets.
 - Servers need compute API microversion 2.47, available since the Pike release.

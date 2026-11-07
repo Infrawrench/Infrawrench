@@ -71,6 +71,8 @@ Afterwards, you can only change a trigger's name and webhook. To change the cate
 
 A number with no voice or messaging webhook, no TwiML app, no SIP trunk and no messaging service has nothing answering it, but Twilio still bills it every month. These show under [Potential savings](../features/orphan-finder.md), with the monthly price on the number's page.
 
+Numbers in subaccounts aren't flagged. Twilio only lets a credential list the messaging services of its own account, so Infrawrench can't tell whether a subaccount's number is a sender in one of them.
+
 ## Status
 
 Open incidents on [status.twilio.com](https://status.twilio.com) show on your Twilio accounts. SendGrid and Zipwhip components on the same page are left out.

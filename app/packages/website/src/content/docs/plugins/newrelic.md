@@ -51,6 +51,6 @@ New Relic accounts feed [cost graphs and budgets](../features/cloud-costs.md) wi
 ## Tips and limits
 
 - On an organization with several accounts, the usage account must be the parent account. Picking a child account only shows that account's own usage.
-- Alert policies and conditions are listed for the first 100 accounts the key can access. Entities have no such limit.
+- Alert policies and conditions are read for up to 1,000 of the accounts the key can access on each sync. With more accounts than that, each sync starts somewhere different and the rest keep their last values until their turn comes. Entities have no such limit.
 - Only NRQL alert conditions are listed. Older condition types (APM metric, infrastructure, synthetics) are managed in New Relic.
 - [Export to Terraform](../features/terraform-export.md) writes alert policies as `newrelic_alert_policy` resources.

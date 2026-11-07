@@ -48,6 +48,7 @@ Incidents on [status.northflank.com](https://status.northflank.com) show on your
 ## Tips and limits
 
 - Northflank allows 1000 API requests per hour per account by default (ask Northflank support for more). Infrawrench keeps well inside that, even for a large team, by loading details such as builds, deployments, ports and backups only when you open a resource.
+- Teams with more than 40 projects or domains refresh in turns: each sync reads the per-project lists (services, jobs, addons, secret groups, volumes, pipelines) for 40 projects and the details of 40 domains, starting somewhere different each time. The rest keep their last values until their turn comes.
 - Plan, image and networking details for services and addons fill in the first time you open the resource or refresh it.
 - Runtime variable values are never shown here, only their names. Setting variables restarts the workload.
 - Northflank has no official Terraform provider, so Export to Terraform isn't available.

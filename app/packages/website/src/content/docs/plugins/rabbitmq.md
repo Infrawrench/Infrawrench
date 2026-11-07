@@ -45,7 +45,7 @@ The cluster's resource limits (file descriptors, sockets, Erlang processes and m
 
 <insert [RabbitMQ Add-account form with the management URL, username and password filled in] here>
 
-**Check credentials** shows which of the management, monitoring, policy and administrator capabilities the user has, and names the tag each missing one needs. Lists the user's tags can't see (for example users and permissions, for a non-administrator) show as empty instead of failing.
+**Check credentials** shows which of the management, monitoring, policy and administrator capabilities the user has, and names the tag each missing one needs. A list the user's tags don't cover (for example users and permissions, for a non-administrator) doesn't fail the sync. In the cloud app it keeps whatever was already stored for it, so a new account just shows it empty. The desktop app shows the refusal on that list instead.
 
 <insert [RabbitMQ queue detail page with depth and rates, the Consumers and Bindings tables, and the Purge button] here>
 
@@ -58,7 +58,7 @@ The cluster's resource limits (file descriptors, sockets, Erlang processes and m
 - **Private brokers**: the desktop app connects directly. The cloud app reaches a private broker through an [SSH tunnel](../features/ssh-tunnels.md) on the account (forward to the management port). Through a tunnel the connection goes to `127.0.0.1`, so an HTTPS certificate must also cover that address. Plain HTTP over the tunnel avoids the problem.
 - **Peeking requeues.** The Describe tab reads messages like the management UI's Get messages button and puts them back, so they come back marked redelivered and may change position. Streams can't be peeked this way.
 - **Charts need management statistics.** Rates and history go back up to a day at the default retention. If statistics collection is off, the Metrics tab shows current readings only.
-- Up to 5,000 queues, 2,000 exchanges, 1,000 connections and 2,000 channels are listed.
+- Up to 50,000 queues (across all virtual hosts), 50,000 exchanges, 50,000 connections and 50,000 channels are listed. Past that the list fails rather than showing part of it.
 - Only users in RabbitMQ's internal user store are listed. LDAP and OAuth users don't appear.
 - The default exchange's implicit binding to every queue isn't listed as a binding.
 - Deleting one topic permission clears all of that user's topic permissions in the virtual host and grants the others back, since RabbitMQ can only clear them all at once.

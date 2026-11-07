@@ -55,5 +55,5 @@ Each day covers exactly one calendar day in the importer's timezone, so days wit
 - Reload needs Prometheus started with `--web.enable-lifecycle`. Snapshots, deleting series and cleaning tombstones need `--web.enable-admin-api`. Without them, the action tells you which flag is missing.
 - Rules, scrape jobs and the Alertmanager configuration live in files on the server, so they're read only here. Edit the files and use **Reload config**.
 - The server charts need Prometheus to scrape itself. Thanos, Mimir and VictoriaMetrics don't offer every status endpoint, so some fields stay empty.
-- Up to 3,000 targets are listed. Alerts and notified alerts come and go with their state.
+- Every active target is listed, up to 100,000. Past that the target list fails rather than showing part of it. Alerts and notified alerts come and go with their state.
 - Prometheus has no cost data and no status page to follow, and there's no Terraform provider for its configuration.

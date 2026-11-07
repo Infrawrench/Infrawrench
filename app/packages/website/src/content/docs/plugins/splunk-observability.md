@@ -51,6 +51,6 @@ Detectors, teams and dashboard groups export to the `splunk-terraform/signalfx` 
 
 ## Limits
 
-- Lists show up to 20,000 items per type.
+- Lists show up to 100,000 items per type. Splunk answers at most 10,000 objects to one query, so a type with more than that (and synthetic tests past 10,000) fails with an error rather than showing part of the list.
 - You can rename dashboards and charts here. Edit their layout and visual options in Splunk.
 - Edit SLO and synthetic test definitions in Splunk.

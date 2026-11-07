@@ -1,6 +1,6 @@
 ---
 title: Perplexity
-description: Chat with Sonar, Agent API and Router models in the Playground, compare Router prices, run asynchronous deep-research requests, and review your Agent API skills on Perplexity.
+description: Chat with Sonar, Agent API and Router models in the Playground, compare Router prices, and review your Agent API skills on Perplexity.
 sidebar_order: 44
 ---
 
@@ -9,7 +9,7 @@ sidebar_order: 44
 - **Sonar Models**: `sonar`, `sonar-pro`, `sonar-reasoning-pro` and `sonar-deep-research`, each with a **Playground** that streams search-grounded answers.
 - **Agent API Models**: every model the Agent API accepts, from Perplexity and other providers, with a **Playground**.
 - **Router Models**: the open-weight and third-party models on the OpenAI-compatible Router API, with input, output and cache prices per million tokens and a streaming **Playground**.
-- **Async Sonar Requests**: create a request (usually a `sonar-deep-research` report) from a question and an optional recency filter, then read the answer, its citations and its cost when it's done.
+- **Async Sonar Requests**: Perplexity retired asynchronous Sonar requests on September 27, 2026. Any your project still has are listed with their answer, citations and cost, and the list is empty once Perplexity stops answering for it. Creating a new one fails with a message saying so.
 - **Skills**: the Agent API skills in your project, with each skill's revision history. You can delete a skill.
 
 ## Connect your account
@@ -28,10 +28,7 @@ Sonar and Router models stream token by token. Agent API replies appear once the
 
 ## Run a deep-research request
 
-1. Click **New Async Sonar Request**.
-2. Pick the model, type the question, and optionally set a search recency (past day, week, month or year).
-3. Deep-research reports take minutes. Refresh the request to watch its status go from `CREATED` to `IN_PROGRESS` to `COMPLETED`.
-4. Read the answer and citations on the detail page.
+Perplexity no longer accepts asynchronous Sonar requests. Ask the question from the **Playground** on `sonar-deep-research` or an Agent API model instead.
 
 ## Status
 
@@ -41,5 +38,5 @@ Perplexity incidents that affect the API show as provider-wide. Website, app and
 
 - **There's no usage or billing data.** Check spend, credits, usage tiers and keys in the API console.
 - API keys aren't listed, since Perplexity doesn't expose them.
-- The async request list shows one page, so very old requests may not appear.
+- Every page of the async request list is read. Perplexity keeps each request for 7 days.
 - Skill bundles are zip uploads. Create and update them with Perplexity's SDK or CLI.
