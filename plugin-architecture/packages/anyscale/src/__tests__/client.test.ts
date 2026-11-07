@@ -233,3 +233,75 @@ describe("metrics", () => {
     expect(nodeHours(series)).toBe(4);
   });
 });
+
+describe("creating a project", () => {
+  const submitted = { name: "research", cloudId: "cld_1", description: "Model training" };
+  const cloudsPage = { results: [{ id: "cld_1", name: "prod-aws" }] };
+
+  it("reads the new project back, since the POST answers only its id", async () => {
+    const { client, calls } = clientWith((url, method) => {
+      if (url.pathname === "/api/v2/projects/" && method === "POST") {
+        return { status: 201, body: { result: { id: "prj_1" } } };
+      }
+      if (url.pathname === "/api/v2/projects/prj_1") {
+        return {
+          body: {
+            result: {
+              id: "prj_1",
+              name: "research",
+              description: "Model training",
+              parent_cloud_id: "cld_1",
+              is_default: false,
+              created_at: "2026-11-07T00:00:00Z",
+              owners: [{ email: "a@example.com" }],
+            },
+          },
+        };
+      }
+      if (url.pathname === "/api/v2/clouds/") return { body: cloudsPage };
+      return { status: 404 };
+    });
+    const created = await client.createResource("project", "acc", submitted);
+    expect(created.displayName).toBe("research");
+    expect(created.externalId).toBe("prj_1");
+    expect(created.fields).toMatchObject({
+      name: "research",
+      description: "Model training",
+      cloudId: "cld_1",
+      cloudName: "prod-aws",
+      owners: "a@example.com",
+      createdAt: "2026-11-07T00:00:00Z",
+    });
+    expect(calls[0]!.body).toEqual({
+      name: "research",
+      description: "Model training",
+      cloud_id: "cld_1",
+      parent_cloud_id: "cld_1",
+    });
+  });
+
+  it("still returns what was submitted when the read back fails, as the project exists", async () => {
+    const { client } = clientWith((url, method) => {
+      if (url.pathname === "/api/v2/projects/" && method === "POST") {
+        return { status: 201, body: { result: { id: "prj_1" } } };
+      }
+      return { status: 500 };
+    });
+    const created = await client.createResource("project", "acc", submitted);
+    expect(created.displayName).toBe("research");
+    expect(created.fields).toMatchObject({
+      name: "research",
+      description: "Model training",
+      cloudId: "cld_1",
+      projectId: "prj_1",
+    });
+  });
+
+  it("refuses an answer with no id instead of inventing a resource", async () => {
+    const { client, calls } = clientWith(() => ({ status: 201, body: { result: {} } }));
+    await expect(client.createResource("project", "acc", submitted)).rejects.toThrow(
+      "project create returned nothing",
+    );
+    expect(calls).toHaveLength(1);
+  });
+});

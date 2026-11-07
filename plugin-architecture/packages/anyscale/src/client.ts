@@ -643,8 +643,28 @@ export class AnyscaleClient implements PluginClient {
             ...(cloudId ? { cloud_id: cloudId, parent_cloud_id: cloudId } : {}),
           },
         });
-        if (!res.result) throw new Error("Anyscale plugin: project create returned nothing");
-        return mapProject(accountId, res.result, new Map());
+        const id = res.result?.id;
+        if (!id) throw new Error("Anyscale plugin: project create returned nothing");
+        // The POST answers only `{ id }`. The project exists by now, so a failed read
+        // back must not report the create as failed: what was submitted stands in.
+        const [stored, clouds] = await Promise.all([
+          this.api
+            .get(`/api/v2/projects/${pathEncode(id)}`)
+            .then((r) => r.result)
+            .catch(() => undefined),
+          cloudId ? this.clouds().catch((): AsCloud[] => []) : Promise.resolve<AsCloud[]>([]),
+        ]);
+        return mapProject(
+          accountId,
+          {
+            name: (fields["name"] ?? "").trim(),
+            description: fields["description"] ?? "",
+            ...(cloudId ? { parent_cloud_id: cloudId } : {}),
+            ...stored,
+            id,
+          },
+          new Map(clouds.map((c) => [c.id ?? "", c.name ?? ""])),
+        );
       }
       if (typeId === "budget") {
         const [kind, a, b] = (fields["scope"] ?? "org").split(":");

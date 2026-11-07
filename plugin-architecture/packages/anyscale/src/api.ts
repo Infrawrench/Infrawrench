@@ -20,8 +20,8 @@ type Schemas = components["schemas"];
 
 export type MiniUser = Schemas["MiniUser"];
 // `Partial` where a row is read with something missing: `userinfo` falls back to
-// nothing, a new project answers with little more than its id, and usage rows are
-// taken apart field by field.
+// nothing, a new project is built from what was submitted if it cannot be read back,
+// and usage rows are taken apart field by field.
 export type AsUserInfo = Partial<Schemas["UserInfo"]>;
 export type AsOrganization = Partial<Schemas["Organization"]>;
 export type AsProject = Partial<Schemas["Project"]>;

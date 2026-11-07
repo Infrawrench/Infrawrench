@@ -361,7 +361,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_project_api_v2_projects__project_id__get"];
         put?: never;
         post?: never;
         delete: operations["delete_project_api_v2_projects__project_id__delete"];
@@ -1607,6 +1607,9 @@ export interface components {
         Response_InternalProductionJob_: {
             result: components["schemas"]["InternalProductionJob"];
         };
+        Response_Project_: {
+            result: components["schemas"]["Project"];
+        };
         Response_ProjectBase_: {
             result: components["schemas"]["ProjectBase"];
         };
@@ -2497,6 +2500,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Response_ProjectBase_"];
+                };
+            };
+        };
+    };
+    get_project_api_v2_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Response_Project_"];
                 };
             };
         };

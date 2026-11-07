@@ -61,7 +61,7 @@
     "/api/v2/instance_usage_budgets/{instance_usage_budget_id}/toggle_is_enabled": ["post"],
     "/api/v2/organization_billing/credits_v2": ["get"],
     "/api/v2/projects/": ["get", "post"],
-    "/api/v2/projects/{project_id}": ["delete"],
+    "/api/v2/projects/{project_id}": ["get", "delete"],
     "/api/v2/services-v2/": ["get"],
     "/api/v2/services-v2/{service_id}": ["get"],
     "/api/v2/services-v2/{service_id}/rollback": ["post"],
