@@ -397,3 +397,59 @@ describe("the usage fallback", () => {
     await expect(fetch()).rejects.toThrow(/Temporal Cloud API error 500/);
   });
 });
+
+describe("downloading a billing report", () => {
+  it("estimates instead when the download cannot be reached, as it does for a failed status", async () => {
+    const { http: base } = makeHttp((url, method) => {
+      if (url.pathname === "/cloud/billing-reports" && method === "POST") {
+        return { body: { billingReportId: "br-1" } };
+      }
+      if (url.pathname === "/cloud/billing-reports/br-1") {
+        return {
+          body: {
+            billingReport: {
+              state: "BILLING_REPORT_STATE_GENERATED",
+              downloadInfo: [{ url: "https://download.example/r.csv" }],
+            },
+          },
+        };
+      }
+      if (url.pathname === "/cloud/usage") {
+        return {
+          body: {
+            summaries: [
+              {
+                startTime: "2026-10-02T00:00:00Z",
+                recordGroups: [
+                  {
+                    groupBys: [{ key: "GROUP_BY_KEY_NAMESPACE", value: "prod.a2dd6" }],
+                    records: [{ type: "RECORD_TYPE_ACTIONS", value: 1_000_000 }],
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected request to ${url.pathname}`);
+    });
+    const http = {
+      request(req: Parameters<typeof base.request>[0]) {
+        if (req.url.startsWith("https://download.example")) {
+          return Promise.reject(new Error("That host is not on the bastion's allowlist"));
+        }
+        return base.request(req);
+      },
+    };
+    const collector = new TemporalCostCollector(
+      ctxWith(http),
+      ratesFromCredentials({}),
+      async () => new Map(),
+      { timeoutMs: 1, initialPollMs: 1, maxPollMs: 1 },
+      () => new Date("2026-10-03T12:00:00Z"),
+    );
+    const rows = await collector.fetch({ fromDate: "2026-10-01", toDate: "2026-10-03" });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.tags?.["cost_source"] === "estimated")).toBe(true);
+  });
+});

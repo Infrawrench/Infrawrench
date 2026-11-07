@@ -317,7 +317,13 @@ export async function generateBillingReport(
       }
       const parts: string[] = [];
       for (const url of urls) {
-        const file = await fetchText(ctx, url);
+        const file = await fetchText(ctx, url).catch((err: unknown) => {
+          // Its host is undocumented, so a bastion's allowlist may well refuse it.
+          throw new BillingReportUnavailable(
+            `Downloading the billing report failed: ${err}`,
+            false,
+          );
+        });
         if (file.status < 200 || file.status >= 300) {
           throw new BillingReportUnavailable(
             `Downloading the billing report failed with HTTP ${file.status}`,
