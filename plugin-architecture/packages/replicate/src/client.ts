@@ -18,15 +18,35 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   joinSubtitle,
-  jsonRestFetch,
   externalIdOf,
   formatBytes,
+  pathEncode,
   withMetricsCapability,
+  type ApiBody,
+  type ApiClient,
 } from "@infrawrench/plugin-base";
+import {
+  API_BASE,
+  createReplicateApi,
+  createReplicateTextApi,
+  deleteVersionRequest,
+  encodePath,
+  walkList,
+  type ListPage,
+  type ReplicateAccount,
+  type ReplicateCollection,
+  type ReplicateConnection,
+  type ReplicateDeployment,
+  type ReplicateFile,
+  type ReplicateHardware,
+  type ReplicateModel,
+  type ReplicatePrediction,
+  type ReplicateTraining,
+  type ReplicateVersion,
+} from "./api.js";
+import type { operations, paths } from "./api-types.gen.js";
 import { DeploymentResourceType } from "./resources/deployment.js";
 import { ModelResourceType } from "./resources/model.js";
-
-const API_BASE = "https://api.replicate.com/v1";
 
 /**
  * Replicate's list endpoints have no page-size control at all: they return a
@@ -53,138 +73,6 @@ const METRICS_BUCKETS = 48;
 
 /** The two types with a Metrics tab, for `withMetricsCapability`. */
 const METRIC_RESOURCE_TYPES = [DeploymentResourceType, ModelResourceType];
-
-// ---------------------------------------------------------------------------
-// Wire shapes: mirrored from https://api.replicate.com/openapi.json (1.0.0-a1)
-// ---------------------------------------------------------------------------
-
-/**
- * Every list endpoint answers `{next, previous, results}` where the cursors are
- * fully-qualified URLs carrying an opaque `cursor` query param. They must be
- * followed verbatim: there is no documented way to build one by hand.
- * https://replicate.com/docs/reference/http
- */
-interface Page<T> {
-  next?: string | null;
-  previous?: string | null;
-  results?: T[];
-}
-
-interface ReplicateAccount {
-  type?: string;
-  username?: string;
-  name?: string | null;
-  github_url?: string | null;
-  avatar_url?: string | null;
-}
-
-interface ReplicatePrediction {
-  id: string;
-  model?: string;
-  /** Either a 64-char version id or the literal string `"hidden"` for official models. */
-  version?: string;
-  input?: Record<string, unknown> | null;
-  output?: unknown;
-  logs?: string | null;
-  error?: string | null;
-  status?: string;
-  source?: string | null;
-  deployment?: string | null;
-  deadline?: string | null;
-  data_removed?: boolean;
-  created_at?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  /** Open bag, only `total_time` is declared in the schema. */
-  metrics?: Record<string, number> | null;
-  urls?: { web?: string; get?: string; cancel?: string; stream?: string } | null;
-}
-
-interface ReplicateVersion {
-  id?: string;
-  created_at?: string | null;
-  cog_version?: string | null;
-  openapi_schema?: Record<string, unknown> | null;
-}
-
-interface ReplicateModel {
-  owner?: string;
-  name?: string;
-  description?: string | null;
-  visibility?: string;
-  is_official?: boolean;
-  run_count?: number;
-  url?: string | null;
-  github_url?: string | null;
-  paper_url?: string | null;
-  license_url?: string | null;
-  cover_image_url?: string | null;
-  latest_version?: ReplicateVersion | null;
-}
-
-/** `GET /v1/collections` items are slim; the detail response adds `models`. */
-interface ReplicateCollectionListItem {
-  name?: string;
-  slug?: string;
-  description?: string | null;
-}
-
-interface ReplicateCollection extends ReplicateCollectionListItem {
-  full_description?: string | null;
-  models?: ReplicateModel[];
-}
-
-interface ReplicateTraining {
-  id?: string;
-  model?: string;
-  version?: string;
-  input?: Record<string, unknown> | null;
-  /** Trainings return a structured output, unlike predictions. */
-  output?: { version?: string; weights?: string } | null;
-  logs?: string | null;
-  error?: string | null;
-  status?: string;
-  source?: string | null;
-  created_at?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  metrics?: { predict_time?: number; total_time?: number } | null;
-  urls?: { get?: string; cancel?: string; web?: string } | null;
-}
-
-interface ReplicateDeployment {
-  owner?: string;
-  name?: string;
-  current_release?: {
-    number?: number;
-    model?: string;
-    version?: string;
-    created_at?: string | null;
-    created_by?: { type?: string; username?: string; name?: string | null } | null;
-    configuration?: {
-      hardware?: string;
-      min_instances?: number;
-      max_instances?: number;
-    } | null;
-  } | null;
-}
-
-interface ReplicateHardware {
-  name?: string;
-  sku?: string;
-}
-
-interface ReplicateFile {
-  id?: string;
-  name?: string;
-  content_type?: string;
-  size?: number;
-  checksums?: Record<string, string> | null;
-  metadata?: Record<string, unknown> | null;
-  created_at?: string | null;
-  expires_at?: string | null;
-  urls?: { get?: string } | null;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -242,15 +130,13 @@ function mapRunStatus(status: string | undefined): { status: ResourceStatus; lab
 function extraMetrics(metrics: Record<string, unknown> | null | undefined): string {
   if (!metrics) return "";
   return Object.entries(metrics)
-    .filter(
-      ([key, value]) =>
-        key !== "predict_time" &&
-        key !== "total_time" &&
-        typeof value === "number" &&
-        Number.isFinite(value),
-    )
-    .map(
-      ([key, value]) => `${key}=${Number.isInteger(value) ? value : (value as number).toFixed(3)}`,
+    .flatMap(([key, value]) =>
+      key !== "predict_time" &&
+      key !== "total_time" &&
+      typeof value === "number" &&
+      Number.isFinite(value)
+        ? [`${key}=${Number.isInteger(value) ? value : value.toFixed(3)}`]
+        : [],
     )
     .join(" · ");
 }
@@ -264,6 +150,12 @@ function firstOutputUrl(output: unknown): string {
     }
   }
   return "";
+}
+
+/** Where a training pushes its weights, which is a *different* model from the trainer. */
+function destinationOf(training: ReplicateTraining): string {
+  const destination = training.input?.["destination"];
+  return typeof destination === "string" ? destination : "";
 }
 
 function shortId(value: string): string {
@@ -293,87 +185,31 @@ function previewInput(input: Record<string, unknown> | null | undefined): string
  * https://replicate.com/docs/reference/http#account.get
  */
 export class ReplicateClient implements PluginClient {
-  private readonly apiToken: string;
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
+  private readonly connection: ReplicateConnection;
+  private readonly api: ApiClient<paths>;
+  private readonly textApi: ApiClient<paths>;
   private accountCache: ReplicateAccount | null = null;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiToken = credentials["apiToken"];
     if (!apiToken) throw new Error("Replicate plugin: missing apiToken credential");
-    this.apiToken = apiToken;
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
+    this.connection = { apiToken, caCert: credentials["caCert"] ?? "", http: services?.http };
+    this.api = createReplicateApi(this.connection);
+    this.textApi = createReplicateTextApi(this.connection);
   }
 
-  /**
-   * Auth is `Authorization: Bearer r8_…`. The older `Token` scheme still
-   * appears in some of Replicate's own examples but `bearerAuth` is the only
-   * security scheme in the current OpenAPI document.
-   * https://replicate.com/docs/reference/http#authentication
-   */
-  private async request<T>(url: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Replicate",
-      url,
-      errorPath: url.startsWith(API_BASE) ? url.slice(API_BASE.length) || "/" : url,
-      headers: { Authorization: `Bearer ${this.apiToken}`, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-    });
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return this.request<T>(`${API_BASE}${path}`, options);
-  }
-
-  /**
-   * Walk a paginated collection. `next` is an absolute, opaque URL: it is
-   * passed straight back to `fetch` rather than decomposed, because the cursor
-   * inside it is base64 of a provider-private ordering key.
-   */
-  private async paginate<T>(path: string, maxPages: number): Promise<T[]> {
-    const items: T[] = [];
-    let url: string | undefined = `${API_BASE}${path}`;
-    for (let page = 0; page < maxPages && url; page += 1) {
-      const data: Page<T> = await this.request<Page<T>>(url);
-      items.push(...(data.results ?? []));
-      url = data.next ?? undefined;
-    }
-    return items;
-  }
-
-  /**
-   * Raw request for the endpoints that do not answer JSON: the model README
-   * is `text/plain` markdown, and a version delete is an empty `202`.
-   */
-  private async requestText(path: string, method = "GET"): Promise<string> {
-    const url = `${API_BASE}${path}`;
-    const headers = { Authorization: `Bearer ${this.apiToken}`, Accept: "text/plain, */*" };
-    if (this.services?.http) {
-      const result = await this.services.http.request({
-        url,
-        method,
-        headers,
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Replicate API error ${result.status} for ${path}: ${result.body}`);
-      }
-      return result.body ?? "";
-    }
-    const res = await fetch(url, { method, headers });
-    if (!res.ok) {
-      throw new Error(`Replicate API error ${res.status} for ${path}: ${await res.text()}`);
-    }
-    return res.status === 204 ? "" : await res.text();
+  /** Every item of a paginated collection, up to `maxPages`. */
+  private async paginate<Item>(
+    first: () => Promise<ListPage<Item>>,
+    maxPages: number,
+  ): Promise<Item[]> {
+    return (await walkList(this.connection, first, maxPages)).items;
   }
 
   /** `GET /v1/account`: identity only. No billing fields exist on it. */
   private async fetchAccount(): Promise<ReplicateAccount> {
     if (this.accountCache) return this.accountCache;
-    const account = await this.fetch<ReplicateAccount>("/account");
+    const account = await this.api.get("/account");
     this.accountCache = account;
     return account;
   }
@@ -387,29 +223,29 @@ export class ReplicateClient implements PluginClient {
       switch (typeId) {
         case "prediction": {
           // https://replicate.com/docs/reference/http#predictions.list
-          const predictions = await this.paginate<ReplicatePrediction>(
-            "/predictions",
+          const predictions = await this.paginate(
+            () => this.api.get("/predictions"),
             MAX_PAGES_HOT,
           );
           return predictions.map((prediction) => this.mapPrediction(prediction, accountId));
         }
         case "training": {
           // https://replicate.com/docs/reference/http#trainings.list
-          const trainings = await this.paginate<ReplicateTraining>("/trainings", MAX_PAGES_HOT);
+          const trainings = await this.paginate(() => this.api.get("/trainings"), MAX_PAGES_HOT);
           return trainings.map((training) => this.mapTraining(training, accountId));
         }
         case "deployment": {
           // https://replicate.com/docs/reference/http#deployments.list
-          const deployments = await this.paginate<ReplicateDeployment>(
-            "/deployments",
+          const deployments = await this.paginate(
+            () => this.api.get("/deployments"),
             MAX_PAGES_COLD,
           );
           return deployments.map((deployment) => this.mapDeployment(deployment, accountId));
         }
         case "collection": {
           // https://replicate.com/docs/reference/http#collections.list
-          const collections = await this.paginate<ReplicateCollectionListItem>(
-            "/collections",
+          const collections = await this.paginate(
+            () => this.api.get("/collections"),
             MAX_PAGES_COLD,
           );
           return collections.map((collection) => this.mapCollection(collection, accountId));
@@ -417,13 +253,13 @@ export class ReplicateClient implements PluginClient {
         case "hardware": {
           // https://replicate.com/docs/reference/http#hardware.list: a bare
           // array, not a paginated envelope.
-          const hardware = await this.fetch<ReplicateHardware[]>("/hardware");
+          const hardware = await this.api.get("/hardware");
           return (Array.isArray(hardware) ? hardware : []).map((entry) =>
             this.mapHardware(entry, accountId),
           );
         }
         case "file": {
-          const files = await this.paginate<ReplicateFile>("/files", MAX_PAGES_COLD);
+          const files = await this.paginate(() => this.api.get("/files"), MAX_PAGES_COLD);
           return files.map((file) => this.mapFile(file, accountId));
         }
         case "model":
@@ -447,13 +283,13 @@ export class ReplicateClient implements PluginClient {
   private async listAccountModels(accountId: string): Promise<ResourceInstance[]> {
     const [account, deployments, trainings, predictions] = await Promise.all([
       this.fetchAccount().catch((): ReplicateAccount => ({})),
-      this.paginate<ReplicateDeployment>("/deployments", MAX_PAGES_COLD).catch(
+      this.paginate(() => this.api.get("/deployments"), MAX_PAGES_COLD).catch(
         (): ReplicateDeployment[] => [],
       ),
-      this.paginate<ReplicateTraining>("/trainings", MAX_PAGES_HOT).catch(
+      this.paginate(() => this.api.get("/trainings"), MAX_PAGES_HOT).catch(
         (): ReplicateTraining[] => [],
       ),
-      this.paginate<ReplicatePrediction>("/predictions", MAX_PAGES_HOT).catch(
+      this.paginate(() => this.api.get("/predictions"), MAX_PAGES_HOT).catch(
         (): ReplicatePrediction[] => [],
       ),
     ]);
@@ -474,11 +310,7 @@ export class ReplicateClient implements PluginClient {
     for (const training of trainings) {
       remember(training.model, training.version);
       // The trained weights land in a *different* model: the destination.
-      const destination =
-        typeof training.input?.["destination"] === "string"
-          ? (training.input["destination"] as string)
-          : "";
-      remember(destination, training.output?.version);
+      remember(destinationOf(training), training.output?.version);
     }
     for (const prediction of predictions) remember(prediction.model, prediction.version);
 
@@ -516,8 +348,8 @@ export class ReplicateClient implements PluginClient {
     const perModel = await Promise.all(
       owned.map(async (model) => {
         const ref = model.externalId ?? "";
-        const versions = await this.paginate<ReplicateVersion>(
-          `/models/${encodePath(ref)}/versions`,
+        const versions = await this.paginate(
+          () => this.api.get(`/models/${encodePath(ref)}/versions`),
           MAX_PAGES_HOT,
         ).catch((): ReplicateVersion[] => []);
         // The list is newest first, so the first entry is the latest version.
@@ -614,10 +446,7 @@ export class ReplicateClient implements PluginClient {
   private mapTraining(training: ReplicateTraining, accountId: string): ResourceInstance {
     const id = training.id ?? "";
     const createdAt = training.created_at ?? nowIso();
-    const destination =
-      typeof training.input?.["destination"] === "string"
-        ? (training.input["destination"] as string)
-        : "";
+    const destination = destinationOf(training);
     return {
       id: `${accountId}:training:${id}`,
       pluginId: "replicate",
@@ -732,13 +561,9 @@ export class ReplicateClient implements PluginClient {
     };
   }
 
-  private mapCollection(
-    collection: ReplicateCollectionListItem,
-    accountId: string,
-  ): ResourceInstance {
+  private mapCollection(collection: ReplicateCollection, accountId: string): ResourceInstance {
     const slug = collection.slug ?? "";
-    const full = collection as ReplicateCollection;
-    const models = full.models ?? [];
+    const models = collection.models ?? [];
     const createdAt = nowIso();
     return {
       id: `${accountId}:collection:${slug}`,
@@ -827,44 +652,36 @@ export class ReplicateClient implements PluginClient {
       switch (typeId) {
         case "prediction": {
           // https://replicate.com/docs/reference/http#predictions.get
-          const prediction = await this.fetch<ReplicatePrediction>(
-            `/predictions/${encodeURIComponent(externalId)}`,
-          );
+          const prediction = await this.api.get(`/predictions/${pathEncode(externalId)}`);
           return this.mapPrediction(prediction, accountId);
         }
         case "training": {
-          const training = await this.fetch<ReplicateTraining>(
-            `/trainings/${encodeURIComponent(externalId)}`,
-          );
+          const training = await this.api.get(`/trainings/${pathEncode(externalId)}`);
           return this.mapTraining(training, accountId);
         }
         case "deployment": {
-          const deployment = await this.fetch<ReplicateDeployment>(
-            `/deployments/${encodePath(externalId)}`,
-          );
+          const deployment = await this.api.get(`/deployments/${encodePath(externalId)}`);
           return this.mapDeployment(deployment, accountId);
         }
         case "model": {
           // https://replicate.com/docs/reference/http#models.get
-          const model = await this.fetch<ReplicateModel>(`/models/${encodePath(externalId)}`);
+          const model = await this.api.get(`/models/${encodePath(externalId)}`);
           return this.mapModel(model, accountId);
         }
         case "collection": {
           // The detail response carries the model list the slim list item lacks.
-          const collection = await this.fetch<ReplicateCollection>(
-            `/collections/${encodeURIComponent(externalId)}`,
-          );
+          const collection = await this.api.get(`/collections/${pathEncode(externalId)}`);
           return this.mapCollection(collection, accountId);
         }
         case "file": {
-          const file = await this.fetch<ReplicateFile>(`/files/${encodeURIComponent(externalId)}`);
+          const file = await this.api.get(`/files/${pathEncode(externalId)}`);
           return this.mapFile(file, accountId);
         }
         case "model-version": {
           // https://replicate.com/docs/reference/http#models.versions.get
           const { modelRef, versionId } = splitVersionRef(externalId);
-          const version = await this.fetch<ReplicateVersion>(
-            `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
+          const version = await this.api.get(
+            `/models/${encodePath(modelRef)}/versions/${pathEncode(versionId)}`,
           );
           return this.mapVersion(modelRef, version, accountId);
         }
@@ -901,9 +718,7 @@ export class ReplicateClient implements PluginClient {
 
   /** `GET /v1/hardware` as select options, so no form asks for a raw SKU. */
   private async hardwareOptions(): Promise<{ id: string; label: string }[]> {
-    const hardware = await this.fetch<ReplicateHardware[]>("/hardware").catch(
-      (): ReplicateHardware[] => [],
-    );
+    const hardware = await this.api.get("/hardware").catch((): ReplicateHardware[] => []);
     return (Array.isArray(hardware) ? hardware : [])
       .filter((entry) => Boolean(entry.sku))
       .map((entry) => ({ id: entry.sku ?? "", label: entry.name ?? entry.sku ?? "" }));
@@ -1163,7 +978,7 @@ export class ReplicateClient implements PluginClient {
 
   /** Resolve a model's latest version id for forms that leave it blank. */
   private async latestVersionOf(modelRef: string): Promise<string> {
-    const model = await this.fetch<ReplicateModel>(`/models/${encodePath(modelRef)}`);
+    const model = await this.api.get(`/models/${encodePath(modelRef)}`);
     const version = model.latest_version?.id ?? "";
     if (!version) {
       throw new Error(
@@ -1210,17 +1025,15 @@ export class ReplicateClient implements PluginClient {
     let version = (fields["version"] ?? "").trim();
     if (!version || version === "latest") version = await this.latestVersionOf(modelRef);
 
-    const body = {
-      name: fields["name"] ?? "",
-      model: modelRef,
-      version,
-      hardware: fields["hardware"] ?? "",
-      min_instances: clampInt(fields["min_instances"], 0, 5, 0),
-      max_instances: clampInt(fields["max_instances"], 0, 20, 1),
-    };
-    const created = await this.fetch<ReplicateDeployment>("/deployments", {
-      method: "POST",
-      body: JSON.stringify(body),
+    const created = await this.api.post("/deployments", {
+      body: {
+        name: fields["name"] ?? "",
+        model: modelRef,
+        version,
+        hardware: fields["hardware"] ?? "",
+        min_instances: clampInt(fields["min_instances"], 0, 5, 0),
+        max_instances: clampInt(fields["max_instances"], 0, 20, 1),
+      },
     });
     return this.mapDeployment(created, accountId);
   }
@@ -1233,25 +1046,20 @@ export class ReplicateClient implements PluginClient {
     if (!owner) owner = (await this.fetchAccount()).username ?? "";
     const name = (fields["name"] ?? "").trim();
     if (!owner || !name) throw new Error("Replicate plugin: a model needs an owner and a name");
-    const body: Record<string, string> = {
-      owner,
-      name,
-      visibility: fields["visibility"] === "public" ? "public" : "private",
-      hardware: fields["hardware"] || "cpu",
-    };
-    for (const key of [
-      "description",
-      "github_url",
-      "paper_url",
-      "license_url",
-      "cover_image_url",
-    ] as const) {
-      const value = (fields[key] ?? "").trim();
-      if (value) body[key] = value;
-    }
-    const created = await this.fetch<ReplicateModel>("/models", {
-      method: "POST",
-      body: JSON.stringify(body),
+    /** A blank optional field is left out: `JSON.stringify` drops the `undefined`. */
+    const filled = (key: string) => (fields[key] ?? "").trim() || undefined;
+    const created = await this.api.post("/models", {
+      body: {
+        owner,
+        name,
+        visibility: fields["visibility"] === "public" ? "public" : "private",
+        hardware: fields["hardware"] || "cpu",
+        description: filled("description"),
+        github_url: filled("github_url"),
+        paper_url: filled("paper_url"),
+        license_url: filled("license_url"),
+        cover_image_url: filled("cover_image_url"),
+      },
     });
     return this.mapModel(created, accountId);
   }
@@ -1271,22 +1079,24 @@ export class ReplicateClient implements PluginClient {
     } catch {
       throw new Error("Replicate plugin: training input must be a JSON object");
     }
-    if (!input || typeof input !== "object" || Array.isArray(input)) {
+    if (!isJsonObject(input)) {
       throw new Error("Replicate plugin: training input must be a JSON object");
     }
     let version = (fields["version"] ?? "").trim();
     if (!version || version === "latest") version = await this.latestVersionOf(modelRef);
 
-    const body: Record<string, unknown> = { destination, input };
     const webhook = (fields["webhook"] ?? "").trim();
-    if (webhook) {
-      body["webhook"] = webhook;
-      const events = parseJsonStringArray(fields["webhook_events_filter"]);
-      if (events.length) body["webhook_events_filter"] = events;
-    }
-    const created = await this.fetch<ReplicateTraining>(
-      `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(version)}/trainings`,
-      { method: "POST", body: JSON.stringify(body) },
+    const events = webhook ? parseJsonStringArray(fields["webhook_events_filter"]) : [];
+    const created = await this.api.post(
+      `/models/${encodePath(modelRef)}/versions/${pathEncode(version)}/trainings`,
+      {
+        body: {
+          destination,
+          input,
+          webhook: webhook || undefined,
+          webhook_events_filter: events.length ? events : undefined,
+        },
+      },
     );
     return this.mapTraining(created, accountId);
   }
@@ -1312,43 +1122,37 @@ export class ReplicateClient implements PluginClient {
     return attempt(async () => {
       const ref = externalIdOf(resourceId);
       if (typeId === "model") {
-        const body: Record<string, string> = {};
-        for (const [fieldKey, apiKey] of [
-          ["description", "description"],
-          ["githubUrl", "github_url"],
-          ["paperUrl", "paper_url"],
-          ["licenseUrl", "license_url"],
-          ["weightsUrl", "weights_url"],
-        ] as const) {
-          if (fields[fieldKey] !== undefined) body[apiKey] = fields[fieldKey].trim();
-        }
-        if (Object.keys(body).length === 0)
+        const body: ApiBody<operations["models.update"]> = {
+          description: fields["description"]?.trim(),
+          github_url: fields["githubUrl"]?.trim(),
+          paper_url: fields["paperUrl"]?.trim(),
+          license_url: fields["licenseUrl"]?.trim(),
+          weights_url: fields["weightsUrl"]?.trim(),
+        };
+        if (nothingToSend(body))
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        const updated = await this.fetch<ReplicateModel>(`/models/${encodePath(ref)}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        });
+        const updated = await this.api.patch(`/models/${encodePath(ref)}`, { body });
         return this.mapModel(updated, accountId);
       }
       if (typeId !== "deployment") {
         throw new Error(`Replicate plugin: updateResource not supported for type "${typeId}"`);
       }
-      const body: Record<string, string | number> = {};
-      if (fields["version"]) body["version"] = fields["version"];
-      if (fields["hardware"]) body["hardware"] = fields["hardware"];
-      if (fields["minInstances"] !== undefined) {
-        body["min_instances"] = clampInt(fields["minInstances"], 0, 5, 0);
-      }
-      if (fields["maxInstances"] !== undefined) {
-        body["max_instances"] = clampInt(fields["maxInstances"], 0, 20, 1);
-      }
-      if (Object.keys(body).length === 0) {
+      const body: ApiBody<operations["deployments.update"]> = {
+        version: fields["version"] || undefined,
+        hardware: fields["hardware"] || undefined,
+        min_instances:
+          fields["minInstances"] !== undefined
+            ? clampInt(fields["minInstances"], 0, 5, 0)
+            : undefined,
+        max_instances:
+          fields["maxInstances"] !== undefined
+            ? clampInt(fields["maxInstances"], 0, 20, 1)
+            : undefined,
+      };
+      if (nothingToSend(body)) {
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
-      const updated = await this.fetch<ReplicateDeployment>(`/deployments/${encodePath(ref)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
+      const updated = await this.api.patch(`/deployments/${encodePath(ref)}`, { body });
       return this.mapDeployment(updated, accountId);
     });
   }
@@ -1372,21 +1176,19 @@ export class ReplicateClient implements PluginClient {
         throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
       switch (typeId) {
         case "deployment":
-          await this.fetch<unknown>(`/deployments/${encodePath(externalId)}`, { method: "DELETE" });
+          await this.api.delete(`/deployments/${encodePath(externalId)}`);
           return;
         case "file":
-          await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/files/${pathEncode(externalId)}`);
           return;
         case "model":
-          await this.fetch<unknown>(`/models/${encodePath(externalId)}`, { method: "DELETE" });
+          await this.api.delete(`/models/${encodePath(externalId)}`);
           return;
         case "model-version": {
           const { modelRef, versionId } = splitVersionRef(externalId);
-          await this.requestText(
-            `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
-            "DELETE",
+          await deleteVersionRequest(
+            this.connection,
+            `/models/${encodePath(modelRef)}/versions/${pathEncode(versionId)}`,
           );
           return;
         }
@@ -1408,12 +1210,12 @@ export class ReplicateClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
-      const externalId = encodeURIComponent(externalIdOf(resourceId));
+      const externalId = pathEncode(externalIdOf(resourceId));
       let logs: string | null | undefined;
       if (typeId === "prediction") {
-        logs = (await this.fetch<ReplicatePrediction>(`/predictions/${externalId}`)).logs;
+        logs = (await this.api.get(`/predictions/${externalId}`)).logs;
       } else if (typeId === "training") {
-        logs = (await this.fetch<ReplicateTraining>(`/trainings/${externalId}`)).logs;
+        logs = (await this.api.get(`/trainings/${externalId}`)).logs;
       } else {
         throw new Error(`Replicate plugin: logs not supported for type "${typeId}"`);
       }
@@ -1438,8 +1240,8 @@ export class ReplicateClient implements PluginClient {
         throw new Error(`Replicate plugin: describe not supported for type "${typeId}"`);
       }
       const ref = externalIdOf(resourceId);
-      const readme = await this.requestText(`/models/${encodePath(ref)}/readme`);
-      return readme.trim() || "This model has no README.";
+      const { body: readme } = await this.textApi.getText(`/models/${encodePath(ref)}/readme`);
+      return (readme ?? "").trim() || "This model has no README.";
     });
   }
 
@@ -1459,15 +1261,11 @@ export class ReplicateClient implements PluginClient {
       }
       const externalId = externalIdOf(resourceId);
       if (typeId === "prediction") {
-        await this.fetch<unknown>(`/predictions/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/predictions/${pathEncode(externalId)}/cancel`);
         return;
       }
       if (typeId === "training") {
-        await this.fetch<unknown>(`/trainings/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/trainings/${pathEncode(externalId)}/cancel`);
         return;
       }
       throw new Error(`Replicate plugin: cancel not supported for type "${typeId}"`);
@@ -1599,22 +1397,15 @@ export class ReplicateClient implements PluginClient {
       const endMs = timeRange?.endMs ?? Date.now();
       let startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
 
-      const qs = new URLSearchParams({
+      const query = {
         created_after: new Date(startMs).toISOString(),
         created_before: new Date(endMs).toISOString(),
-      });
-      const predictions: ReplicatePrediction[] = [];
-      let url: string | undefined = `${API_BASE}/predictions?${qs.toString()}`;
-      let truncated = false;
-      for (let page = 0; url; page += 1) {
-        if (page >= MAX_PAGES_METRICS) {
-          truncated = true;
-          break;
-        }
-        const data: Page<ReplicatePrediction> = await this.request<Page<ReplicatePrediction>>(url);
-        predictions.push(...(data.results ?? []));
-        url = data.next ?? undefined;
-      }
+      };
+      const { items: predictions, truncated } = await walkList(
+        this.connection,
+        () => this.api.get("/predictions", { query }),
+        MAX_PAGES_METRICS,
+      );
       if (truncated) {
         // Newest first, so the last one read is the oldest the chart can vouch for.
         const oldest = Date.parse(predictions[predictions.length - 1]?.created_at ?? "");
@@ -2414,12 +2205,14 @@ export class ReplicateClient implements PluginClient {
   }
 }
 
-/** Encode an `owner/name` pair without escaping the separating slash. */
-function encodePath(ref: string): string {
-  return ref
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+/** An update whose every field was left out, so there is nothing to `PATCH`. */
+function nothingToSend(body: object): boolean {
+  return Object.values(body).every((value) => value === undefined);
+}
+
+/** What a training's `input` has to parse to. */
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Split a model-version external id, `owner/name/versionId`. */
