@@ -91,6 +91,85 @@ describe("secret detection", () => {
     ).rejects.toThrow(/could not be read/);
   });
 
+  describe("a read that loses part of the walk", () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => ({
+      id: i + 1,
+      path_with_namespace: `acme/p${i + 1}`,
+    }));
+    const firstBatch = {
+      data: {
+        projects: {
+          nodes: [
+            {
+              fullPath: "acme/p1",
+              vulnerabilities: { nodes: [vuln(1)], pageInfo: { hasNextPage: false } },
+            },
+          ],
+        },
+      },
+    };
+    const read = (http: ReturnType<typeof makeHttp>["http"]) =>
+      listSecretDetectionFindings(ctx(http), eleven, { limit: 100, includeResolved: true });
+
+    it("marks the page truncated when a later batch answers 500, keeping what it read", async () => {
+      const replies = [firstBatch, { status: 500, body: { message: "boom" } }];
+      const { http, calls } = makeHttp(() => replies.shift());
+      const page = await read(http);
+      expect(calls).toHaveLength(2);
+      expect(page.findings.map((f) => f.ref)).toEqual(["gid://gitlab/Vulnerability/1"]);
+      expect(page.truncated).toBe(true);
+    });
+
+    it("marks the page truncated when a batch answers errors and no data", async () => {
+      const replies = [firstBatch, { errors: [{ message: "Request timed out" }] }];
+      const { http } = makeHttp(() => replies.shift());
+      const page = await read(http);
+      expect(page.findings).toHaveLength(1);
+      expect(page.truncated).toBe(true);
+    });
+
+    it("marks the page truncated when a field error nulls one project's findings", async () => {
+      const { http } = makeHttp(() => ({
+        data: {
+          projects: {
+            nodes: [
+              {
+                fullPath: "acme/p1",
+                vulnerabilities: { nodes: [vuln(1)], pageInfo: { hasNextPage: false } },
+              },
+              { fullPath: "acme/p2", vulnerabilities: null },
+            ],
+          },
+        },
+        errors: [{ message: "Internal server error", path: ["projects", "nodes", 1] }],
+      }));
+      const page = await listSecretDetectionFindings(
+        ctx(http),
+        [
+          { id: 1, path_with_namespace: "acme/p1" },
+          { id: 2, path_with_namespace: "acme/p2" },
+        ],
+        { limit: 100, includeResolved: true },
+      );
+      expect(page.findings).toHaveLength(1);
+      expect(page.truncated).toBe(true);
+    });
+
+    it("stays complete when nothing failed and a project simply has no report", async () => {
+      const { http } = makeHttp(() => ({
+        data: {
+          projects: { nodes: [{ fullPath: "acme/free", vulnerabilities: null }] },
+        },
+      }));
+      const page = await listSecretDetectionFindings(
+        ctx(http),
+        [{ id: 1, path_with_namespace: "acme/free" }],
+        { limit: 100, includeResolved: true },
+      );
+      expect(page).toEqual({ findings: [], truncated: false });
+    });
+  });
+
   it("falls back to the identifier name or title for the token type", () => {
     expect(
       vulnerabilityTokenType({ id: "x", state: "DETECTED", identifiers: [{ name: "AWS" }] }),

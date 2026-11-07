@@ -10,8 +10,10 @@
  *   [SECRET_DETECTION])` is read here through `projects(ids:)`, ten projects a
  *   request, over the same project fan-out every other child type uses.
  * - The vulnerability report is an **Ultimate** feature. On other tiers the
- *   field resolves to null or a field error; such projects are skipped, and a
- *   scan where every project failed throws so the host shows why.
+ *   field resolves to null or a field error; such projects are skipped. A
+ *   batch or field that failed marks the page truncated, because its findings
+ *   were not read, and a scan where every batch failed throws so the host
+ *   shows why.
  * - Viewing needs Developer or above and `read_api`; changing state needs
  *   Maintainer (or Security Manager) and the `api` scope.
  * - No field carries the raw secret (it only exists in the job artifact), so
@@ -135,9 +137,12 @@ export async function listSecretDetectionFindings(
       const nodes = res.data?.projects?.nodes;
       if (!nodes) {
         failures += 1;
+        truncated = true;
         lastError = res.errors?.[0]?.message ?? "no data";
         continue;
       }
+      // Errors beside data null a field, so some project's findings went unread.
+      if (res.errors?.length) truncated = true;
       for (const project of nodes) {
         if (!project?.vulnerabilities?.nodes) continue;
         if (project.vulnerabilities.pageInfo?.hasNextPage) truncated = true;
@@ -149,6 +154,7 @@ export async function listSecretDetectionFindings(
       }
     } catch (err) {
       failures += 1;
+      truncated = true;
       lastError = err instanceof Error ? err.message : String(err);
     }
   }
