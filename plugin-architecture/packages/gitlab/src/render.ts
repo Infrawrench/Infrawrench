@@ -12,7 +12,7 @@ import type {
 import { formatBytes, joinSubtitle, withMetricsCapability } from "@infrawrench/plugin-base";
 import { DEFAULT_METRICS_WINDOW_MS } from "./metrics.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
-import type { GlDeployment, GlPackageFile, GlPipeline } from "./types.js";
+import type { GlDeployment, GlPackageFile, GlPipeline } from "./api.js";
 
 /** Keys under which `getResource` stashes detail-only data in `resolvedOutputs`. */
 export const DETAIL_KEYS = {
@@ -47,7 +47,7 @@ const str = (v: unknown): string => (v === undefined || v === null ? "" : String
 function parseJson<T>(raw: string | undefined): T | undefined {
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw);
   } catch {
     return undefined;
   }
@@ -295,9 +295,9 @@ function renderGroup(r: ResourceInstance): DetailViewSchema {
         kv([
           ["Total", bytes(stats["storageSize"])],
           ...(storage?.storageSizeLimit
-            ? [["Limit", bytes(storage.storageSizeLimit)] as [string, string]]
+            ? [["Limit", bytes(storage.storageSizeLimit)] satisfies [string, string]]
             : []),
-          ...rows.map(([label, key]) => [label, bytes(stats[key])] as [string, string]),
+          ...rows.map(([label, key]): [string, string] => [label, bytes(stats[key])]),
         ]),
       ]),
     );

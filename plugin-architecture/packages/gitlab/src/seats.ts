@@ -1,7 +1,13 @@
-import type { SeatPrice, SeatRecord, SeatRemovalResult } from "@infrawrench/plugin-base";
-import type { GitLabContext } from "./api.js";
-import { GITLAB_COM, enc, glFetch, glRequest, statusOf } from "./api.js";
-import type { GlGroup, GlNamespace } from "./types.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type {
+  ApiListItem,
+  SeatPrice,
+  SeatRecord,
+  SeatRemovalResult,
+} from "@infrawrench/plugin-base";
+import type { GitLabContext, GlGroup } from "./api.js";
+import { GITLAB_COM, gitlabApi, gitlabCompleteLists, statusOf } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 /**
  * GitLab.com subscription seats for the Seats findings: the billable members
@@ -14,20 +20,15 @@ import type { GlGroup, GlNamespace } from "./types.js";
 
 export const GITLAB_PRODUCT = "GitLab";
 
-/** A member of the billable members list. */
-export interface GlBillableMember {
-  id: number;
-  username?: string;
-  name?: string | null;
-  state?: string;
+/** A row of the billable members list. It documents a member, and carries more than one. */
+export type GlBillableMember = ApiListItem<operations["getApiV4GroupsIdBillableMembers"], null> & {
   email?: string | null;
   public_email?: string | null;
   last_activity_on?: string | null;
   last_login_at?: string | null;
   membership_type?: string;
   removable?: boolean;
-  created_at?: string | null;
-}
+};
 
 /**
  * Plans that are paid GitLab.com subscriptions, with the seat type shown and
@@ -52,7 +53,7 @@ const PAID_PLANS: Record<string, { seatType: string; monthly: number | null }> =
 };
 const LIST_PRICE_NOTE = "about.gitlab.com/pricing, 2026-10 (billed annually)";
 
-/** Pages of 100 read per group; reaching it fails the read rather than truncating it. */
+/** Pages of 100 read per group; running past it fails the read rather than truncating it. */
 const MAX_PAGES = 500;
 
 export function isGitLabCom(ctx: GitLabContext): boolean {
@@ -69,48 +70,17 @@ export function isGitLabCom(ctx: GitLabContext): boolean {
  */
 export async function topLevelGroups(ctx: GitLabContext, groupValue: string): Promise<GlGroup[]> {
   if (groupValue) {
-    const group = await glFetch<GlGroup>(ctx, `/groups/${enc(groupValue)}`, {
+    const api = gitlabApi(ctx);
+    const group = await api.get(`/groups/${pathEncode(groupValue)}`, {
       query: { with_projects: false },
     });
     if (!group.parent_id) return [group];
     const rootPath = group.full_path.split("/")[0]!;
-    return [
-      await glFetch<GlGroup>(ctx, `/groups/${enc(rootPath)}`, { query: { with_projects: false } }),
-    ];
+    return [await api.get(`/groups/${pathEncode(rootPath)}`, { query: { with_projects: false } })];
   }
-  return pagedAll<GlGroup>(ctx, "/groups", {
-    top_level_only: true,
-    min_access_level: 50,
-    order_by: "id",
+  return gitlabCompleteLists(ctx, MAX_PAGES).getAll("/groups", null, {
+    query: { top_level_only: true, min_access_level: 50, order_by: "id" },
   });
-}
-
-/** Every page of a list; throws past {@link MAX_PAGES} instead of returning part of it. */
-async function pagedAll<T>(
-  ctx: GitLabContext,
-  path: string,
-  query: Record<string, string | number | boolean>,
-): Promise<T[]> {
-  const out: T[] = [];
-  let page = 1;
-  for (let i = 0; i < MAX_PAGES; i++) {
-    const res = await glRequest(ctx, path, { query: { ...query, per_page: 100, page } });
-    const batch = res.text ? (JSON.parse(res.text) as T[]) : [];
-    if (!Array.isArray(batch)) return out;
-    out.push(...batch);
-    const next = res.headers["x-next-page"];
-    if (next !== undefined) {
-      if (!next) return out;
-      page = Number(next);
-      if (!Number.isFinite(page)) return out;
-    } else {
-      if (batch.length < 100) return out;
-      page++;
-    }
-  }
-  throw new Error(
-    `GitLab plugin: ${path} has more than ${MAX_PAGES * 100} rows; refusing to report a partial list.`,
-  );
 }
 
 function priceFor(plan: string): SeatPrice | null {
@@ -174,14 +144,13 @@ export async function fetchGitLabSeats(
   if (!isGitLabCom(ctx)) return [];
   const out: SeatRecord[] = [];
   for (const group of await topLevelGroups(ctx, groupValue)) {
-    const ns = await glFetch<GlNamespace>(ctx, `/namespaces/${group.id}`);
+    const ns = await gitlabApi(ctx).get(`/namespaces/${pathEncode(group.id)}`);
     const plan = (ns.plan ?? "").toLowerCase();
     if (!PAID_PLANS[plan]) continue;
     if (ns.trial && plan !== "ultimate_trial_paid_customer") continue;
-    const members = await pagedAll<GlBillableMember>(
-      ctx,
-      `/groups/${group.id}/billable_members`,
-      {},
+    const members = await gitlabCompleteLists(ctx, MAX_PAGES).getAll(
+      `/groups/${pathEncode(group.id)}/billable_members`,
+      null,
     );
     for (const m of members) {
       // Awaiting members are over a limit and take no seat until approved.
@@ -207,9 +176,9 @@ export async function removeGitLabSeat(
     throw new Error("GitLab plugin: this seat has no group or user id to remove.");
   }
   try {
-    await glFetch<unknown>(ctx, `/groups/${groupId}/billable_members/${userId}`, {
-      method: "DELETE",
-    });
+    await gitlabApi(ctx).delete(
+      `/groups/${pathEncode(groupId)}/billable_members/${pathEncode(userId)}`,
+    );
   } catch (err) {
     const status = statusOf(err);
     if (status === 403) {

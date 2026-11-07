@@ -141,7 +141,7 @@ function fromIncident(raw: StatusIoIncident, maintenance: boolean): StatusIncide
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  const parsed = JSON.parse(body) as StatusIoResponse;
+  const parsed: StatusIoResponse = JSON.parse(body);
   const result = parsed.result;
   if (!result || !Array.isArray(result.status)) {
     throw new Error("GitLab status feed: missing result.status components");

@@ -1,20 +1,58 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  withCursorPagination,
+  type ApiResponse,
+  type HttpHostServices,
+  type NextPage,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
 
 /**
  * GitLab REST API v4 (https://docs.gitlab.com/api/rest/, verified against
- * `doc/api/*.md` on gitlab-org/gitlab master, 2026-10).
+ * `doc/api/*.md` on gitlab-org/gitlab master, 2026-10), typed from
+ * `doc/api/openapi/openapi_v3.yaml`.
  *
  * - Auth: `PRIVATE-TOKEN: <token>` works for personal, group and project
  *   access tokens alike.
  * - Offset pagination: `page` / `per_page` (max 100), with `X-Next-Page`
  *   naming the next page (empty on the last one). `X-Total` is omitted above
  *   10,000 rows, so it is only ever read as a hint.
- * - Paths that take a project or group accept the numeric id; everything here
- *   uses ids so nothing needs URL-encoding except branch, tag and variable
- *   names.
+ * - Paths that take a project or group accept the numeric id or an encoded
+ *   full path.
  * - GraphQL lives at `/api/graphql` on the same host and takes the same token
  *   as a Bearer token.
  */
+
+/** An operation's response, by its `operationId`. */
+type GitLabResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
+/** One row of a list operation, by its `operationId`. */
+type GitLabRow<Op extends keyof operations> =
+  GitLabResponse<Op> extends ReadonlyArray<infer Row> ? Row : never;
+
+export type GlGroup = GitLabResponse<"getApiV4GroupsId">;
+export type GlNamespace = GitLabResponse<"getApiV4NamespacesId">;
+export type GlProject = GitLabResponse<"getApiV4ProjectsId">;
+export type GlPipeline = GitLabResponse<"getApiV4ProjectsIdPipelinesPipelineId">;
+export type GlJob =
+  GitLabRow<"getApiV4ProjectsIdPipelinesPipelineIdJobs"> | GitLabRow<"getApiV4RunnersIdJobs">;
+export type GlRunner = GitLabResponse<"getApiV4RunnersId">;
+export type GlDeployment = GitLabRow<"getApiV4ProjectsIdDeployments">;
+export type GlEnvironment = GitLabResponse<"getApiV4ProjectsIdEnvironmentsEnvironmentId">;
+export type GlProtectedBranch = GitLabResponse<"getApiV4ProjectsIdProtectedBranchesName">;
+export type GlVariable = GitLabResponse<"getApiV4ProjectsIdVariablesKey">;
+export type GlSchedule = GitLabResponse<"getApiV4ProjectsIdPipelineSchedulesPipelineScheduleId">;
+export type GlRegistryRepository = GitLabResponse<"getApiV4RegistryRepositoriesId">;
+export type GlRegistryTag =
+  GitLabResponse<"getApiV4ProjectsIdRegistryRepositoriesRepositoryIdTagsTagName">;
+export type GlPackage = GitLabResponse<"getApiV4ProjectsIdPackagesPackageId">;
+export type GlPackageFile = GitLabRow<"getApiV4ProjectsIdPackagesPackageIdPackageFiles">;
+export type GlDeployKey = GitLabResponse<"getApiV4ProjectsIdDeployKeysKeyId">;
+export type GlDeployToken = GitLabResponse<"postApiV4ProjectsIdDeployTokens">;
+export type GlHook =
+  GitLabResponse<"getApiV4ProjectsIdHooksHookId"> | GitLabResponse<"getApiV4GroupsIdHooksHookId">;
+export type GlRelease = GitLabResponse<"getApiV4ProjectsIdReleasesTagName">;
+export type GlMember = GitLabResponse<"getApiV4ProjectsIdMembersUserId">;
 
 export const GITLAB_COM = "https://gitlab.com";
 
@@ -82,32 +120,22 @@ export function resolveBaseUrl(raw: string | undefined): string {
   return `${url.protocol}//${url.host}${path}`;
 }
 
-export type Query = Record<string, string | number | boolean | undefined | Array<string | number>>;
-
-export function buildQuery(query: Query = {}): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, String(item));
-    else params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+/** What an error body can hold; GitLab uses all of these. */
+interface ErrorBody {
+  message?: string | Array<string | number> | Record<string, string | string[]> | null;
+  error?: string;
+  error_description?: string;
 }
 
 /** GitLab errors are `{"message": "..."}` (string, array or field map) or `{"error": "..."}`. */
 export function errorDetail(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      message?: unknown;
-      error?: unknown;
-      error_description?: unknown;
-    };
+    const parsed: ErrorBody = JSON.parse(body);
     const m = parsed.message;
     if (typeof m === "string") return m;
     if (Array.isArray(m)) return m.map(String).join("; ");
     if (m && typeof m === "object") {
-      return Object.entries(m as Record<string, unknown>)
+      return Object.entries(m)
         .map(([k, v]) => `${k} ${Array.isArray(v) ? v.join(", ") : String(v)}`)
         .join("; ");
     }
@@ -119,134 +147,95 @@ export function errorDetail(body: string): string {
   return body.slice(0, 500);
 }
 
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-  /** `"text"` returns the raw body (job logs). Defaults to JSON. */
-  as?: "json" | "text";
-}
+const PAGES = {
+  cursorParam: "page",
+  firstCursor: 1,
+  sizeParam: "per_page",
+  pageSize: 100,
+} as const;
 
-export interface RawResponse {
-  status: number;
-  headers: Record<string, string>;
-  text: string;
-}
+const followingPage = (cursor: string | undefined) => String(Number(cursor) + 1);
 
 /**
- * One request against the instance. Routed through the host HTTP service
- * whenever there is one: that is the only path that honours bastion egress
- * and a custom CA. The fallback `fetch` exists for tests and hosts with no
- * HTTP service.
+ * `X-Next-Page` where GitLab sends it. A proxy can strip the header, so without it
+ * a full page means there may be another. A body that is not a list ends the walk,
+ * and one that is empty defers to the header.
  */
-export async function glRaw(
-  ctx: GitLabContext,
-  url: string,
-  method: string,
-  headers: Record<string, string>,
-  body?: string,
-): Promise<RawResponse> {
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    const lower: Record<string, string> = {};
-    for (const [k, v] of Object.entries(res.headers ?? {})) lower[k.toLowerCase()] = v;
-    return { status: res.status, headers: lower, text: res.body };
+const nextPage: NextPage = ({ headers, body, items, cursor, pageSize }) => {
+  if (body !== undefined && !Array.isArray(body)) return null;
+  const next = headers["x-next-page"];
+  if (next === undefined) {
+    return items.length < (pageSize ?? PAGES.pageSize) ? null : followingPage(cursor);
   }
-  const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-  const lower: Record<string, string> = {};
-  res.headers.forEach((v, k) => {
-    lower[k.toLowerCase()] = v;
+  if (!next) return null;
+  const page = Number(next);
+  return Number.isFinite(page) ? String(page) : null;
+};
+
+function client(ctx: GitLabContext) {
+  return createApiClient<paths>({
+    vendor: "GitLab",
+    baseUrl: `${ctx.baseUrl}/api/v4`,
+    headers: { "PRIVATE-TOKEN": ctx.token, Accept: "application/json" },
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    httpError: ({ status, method, path, body }) =>
+      new GitLabApiError(
+        status,
+        `GitLab API error ${status} for ${method} ${path}: ${errorDetail(body)}`,
+      ),
+    // Bastion egress and a custom CA are only honoured through the host's service.
+    ...(ctx.http ? { http: ctx.http } : {}),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
   });
-  return { status: res.status, headers: lower, text: await res.text() };
 }
 
-function authHeaders(ctx: GitLabContext): Record<string, string> {
-  return { "PRIVATE-TOKEN": ctx.token, Accept: "application/json" };
+/** The REST API, with `getAll` for offset lists: up to `maxPages` pages of 100, so a huge instance cannot spin forever. */
+export function gitlabApi(ctx: GitLabContext) {
+  return withCursorPagination(client(ctx), {
+    ...PAGES,
+    next: nextPage,
+    maxPages: 10,
+    continueOnEmptyPage: true,
+  });
 }
 
-/** A REST call that also hands back the response headers (pagination, totals). */
-export async function glRequest(
-  ctx: GitLabContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<RawResponse> {
-  const url = `${ctx.baseUrl}/api/v4${path}${buildQuery(opts.query)}`;
-  const method = opts.method ?? "GET";
-  const headers = authHeaders(ctx);
-  const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await glRaw(ctx, url, method, headers, body);
-  if (res.status < 200 || res.status >= 300) {
-    throw new GitLabApiError(
-      res.status,
-      `GitLab API error ${res.status} for ${method} ${path}: ${errorDetail(res.text)}`,
-    );
-  }
-  return res;
+/** A walk for a reader that stops by itself: pages count up rather than follow the header, and an empty page ends it. */
+export function gitlabJobPages(ctx: GitLabContext, maxPages: number) {
+  return withCursorPagination(client(ctx), {
+    ...PAGES,
+    next: ({ headers, items, cursor }) =>
+      headers["x-next-page"] === "" || items.length < PAGES.pageSize ? null : followingPage(cursor),
+    maxPages,
+  });
 }
 
-/** A REST call returning parsed JSON (or the raw text with `as: "text"`). */
-export async function glFetch<T>(
-  ctx: GitLabContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const res = await glRequest(ctx, path, opts);
-  if (opts.as === "text") return res.text as T;
-  if (res.status === 204 || !res.text) return undefined as T;
-  return JSON.parse(res.text) as T;
+/** Like {@link gitlabApi}, but running past `maxPages` throws rather than return part of a list. */
+export function gitlabCompleteLists(ctx: GitLabContext, maxPages: number) {
+  return withCursorPagination(client(ctx), {
+    ...PAGES,
+    next: nextPage,
+    maxPages,
+    continueOnEmptyPage: true,
+    onTruncated: ({ path }) => {
+      throw new Error(
+        `GitLab plugin: ${path} has more than ${maxPages * PAGES.pageSize} rows; refusing to report a partial list.`,
+      );
+    },
+  });
 }
 
 /**
- * Every page of an offset-paginated list, up to `maxPages` pages of 100, so a
- * huge instance cannot spin forever. Follows `X-Next-Page`; a short page also
- * ends the walk for proxies that strip the header.
+ * Deployments of one environment. A blank name is not sent, so the filter goes
+ * away rather than match nothing.
  */
-export async function glPaged<T>(
-  ctx: GitLabContext,
-  path: string,
-  query: Query = {},
-  maxPages = 10,
-  perPage = 100,
-): Promise<T[]> {
-  const out: T[] = [];
-  let page = 1;
-  for (let i = 0; i < maxPages; i++) {
-    const res = await glRequest(ctx, path, { query: { ...query, per_page: perPage, page } });
-    const batch = res.text ? (JSON.parse(res.text) as T[]) : [];
-    if (!Array.isArray(batch)) break;
-    out.push(...batch);
-    const next = res.headers["x-next-page"];
-    if (next !== undefined) {
-      if (!next) break;
-      page = Number(next);
-      if (!Number.isFinite(page)) break;
-    } else {
-      if (batch.length < perPage) break;
-      page++;
-    }
-  }
-  return out;
+export function environmentFilter(name: string | undefined) {
+  return name === "" || name === undefined ? {} : { environment: String(name) };
 }
 
-/**
- * The row count of a list without reading it: one row per page, reading
- * `X-Total`. GitLab omits the header above 10,000 rows, which reads as
- * `undefined` (not a count) rather than as zero.
- */
-export async function glCount(
-  ctx: GitLabContext,
-  path: string,
-  query: Query = {},
-): Promise<number | undefined> {
-  const res = await glRequest(ctx, path, { query: { ...query, per_page: 1, page: 1 } });
-  const total = res.headers["x-total"];
+/** The row count a list's first page reports. GitLab omits it above 10,000 rows: not a count, not zero. */
+export function totalOf({ headers }: { headers: Record<string, string> }): number | undefined {
+  const total = headers["x-total"];
   if (total === undefined || total === "") return undefined;
   const n = Number(total);
   return Number.isFinite(n) ? n : undefined;
@@ -256,29 +245,29 @@ export async function glCount(
 export async function glGraphql<T>(
   ctx: GitLabContext,
   query: string,
-  variables: Record<string, unknown> = {},
+  variables: object = {},
 ): Promise<{ data?: T; errors?: Array<{ message?: string }> }> {
-  const res = await glRaw(
-    ctx,
-    `${ctx.baseUrl}/api/graphql`,
-    "POST",
-    {
+  const { body } = await restRequest<string>({
+    vendor: "GitLab",
+    url: `${ctx.baseUrl}/api/graphql`,
+    headers: {
       Authorization: `Bearer ${ctx.token}`,
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    JSON.stringify({ query, variables }),
-  );
-  if (res.status < 200 || res.status >= 300) {
-    throw new GitLabApiError(
-      res.status,
-      `GitLab API error ${res.status} for POST /api/graphql: ${errorDetail(res.text)}`,
-    );
-  }
-  return JSON.parse(res.text) as { data?: T; errors?: Array<{ message?: string }> };
+    contentType: "with-body",
+    responseAs: "text",
+    init: { method: "POST", body: JSON.stringify({ query, variables }) },
+    httpError: ({ status, body: text }) =>
+      new GitLabApiError(
+        status,
+        `GitLab API error ${status} for POST /api/graphql: ${errorDetail(text)}`,
+      ),
+    ...(ctx.http ? { http: ctx.http } : {}),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+  });
+  return JSON.parse(body);
 }
-
-export const enc = encodeURIComponent;
 
 /** Split `head/rest` at the first slash: composite external ids. */
 export function splitScoped(id: string): { scope: string; rest: string } {

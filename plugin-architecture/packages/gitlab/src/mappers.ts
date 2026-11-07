@@ -16,7 +16,7 @@ import type {
   GlRunner,
   GlSchedule,
   GlVariable,
-} from "./types.js";
+} from "./api.js";
 
 export const PLUGIN_ID = "gitlab";
 
@@ -524,8 +524,8 @@ export const HOOK_EVENTS = [
 export const GROUP_ONLY_HOOK_EVENTS = new Set(["subgroup", "member", "project"]);
 
 export function hookEvents(h: GlHook): string[] {
-  const rec = h as unknown as Record<string, unknown>;
-  return HOOK_EVENTS.filter((e) => rec[`${e}_events`] === true);
+  const flags = new Map(Object.entries(h));
+  return HOOK_EVENTS.filter((e) => flags.get(`${e}_events`) === true);
 }
 
 export function mapHook(accountId: string, owner: Scope, h: GlHook): ResourceInstance {
