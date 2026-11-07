@@ -19,9 +19,15 @@ export type PRegistry = ApiResponse<operations["containerRegistries-get"]>;
 
 /** What the mapper reads of a deployment's spec, across the document's spec versions. */
 export interface PDeploymentSpec {
+  apiVersion?: string;
   image?: string;
   enabled?: boolean;
   region?: string;
   port?: number;
-  resources?: { machineType?: string; instanceType?: string; replicas?: number };
+  resources?: {
+    machineType?: string;
+    instanceType?: string;
+    replicas?: number;
+    ports?: number[];
+  };
 }

@@ -375,6 +375,36 @@ describe("other resources", () => {
   });
 });
 
+describe("deployment port", () => {
+  const portOf = async (data: object) => {
+    route("GET", "/deployments/dep1", { id: "dep1", name: "api", latestSpec: { data } });
+    return (await client().getResource("deployment", "acct:deployment:dep1", "acct")).fields[
+      "port"
+    ];
+  };
+  const resources = { machineType: "A4000", replicas: 1 };
+
+  it.each(["v0alpha1", "v1", "latest"])("reads resources.ports on %s", async (apiVersion) => {
+    expect(
+      await portOf({ apiVersion, image: "i", resources: { ...resources, ports: [8080, 9000] } }),
+    ).toBe(8080);
+  });
+
+  it("reads the top-level port on v0alpha0", async () => {
+    expect(await portOf({ apiVersion: "v0alpha0", image: "i", port: 3000, resources })).toBe(3000);
+  });
+
+  it("uses the document's default on a v0alpha0 spec that names no port", async () => {
+    expect(await portOf({ apiVersion: "v0alpha0", image: "i", resources })).toBe(80);
+  });
+
+  it("stays 0 on a deployment with no spec", async () => {
+    route("GET", "/deployments/dep1", { id: "dep1", name: "api" });
+    const d = await client().getResource("deployment", "acct:deployment:dep1", "acct");
+    expect(d.fields["port"]).toBe(0);
+  });
+});
+
 describe("metrics", () => {
   it("picks the smallest timeframe that covers the range", () => {
     expect(timeframeFor(30 * 60_000)).toBe("hour");

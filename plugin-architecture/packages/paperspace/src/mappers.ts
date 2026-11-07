@@ -223,6 +223,15 @@ export function mapStartupScript(s: PStartupScript, accountId: string): Resource
   });
 }
 
+/**
+ * `v0alpha0` names one `port`, defaulting to 80 in the document; later spec versions
+ * name `resources.ports` and have no default. The field holds one number, the first.
+ */
+function deploymentPort(spec: PDeploymentSpec | undefined): number {
+  const named = spec?.resources?.ports?.[0] ?? spec?.port;
+  return named ?? (spec?.apiVersion === "v0alpha0" ? 80 : 0);
+}
+
 export function mapDeployment(d: PDeployment, accountId: string): ResourceInstance {
   const spec: PDeploymentSpec | undefined = d.latestSpec?.data ?? undefined;
   const endpoint = d.endpoint ?? "";
@@ -239,7 +248,7 @@ export function mapDeployment(d: PDeployment, accountId: string): ResourceInstan
       machineType: spec?.resources?.machineType ?? spec?.resources?.instanceType ?? "",
       replicas: spec?.resources?.replicas ?? 0,
       region: spec?.region ?? "",
-      port: spec?.port ?? 0,
+      port: deploymentPort(spec),
       createdAt: d.dtCreated ?? "",
     },
     outputs: {
