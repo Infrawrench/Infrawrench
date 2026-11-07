@@ -1275,3 +1275,73 @@ describe("egress hosts", () => {
     for (const host of hosts) expect(declared).toContain(host);
   });
 });
+
+describe("speech over the host's HTTP service", () => {
+  const resource = `${ACCOUNT}:project:${PROJECT}`;
+
+  it("sends /v1/speak through the host and hands back its raw bytes", async () => {
+    const spy = refuseFetch();
+    const audio = new Uint8Array([0xff, 0xfb, 0x90, 0x00, 0xfe]);
+    const request = hostHttp(() => ({
+      headers: { "dg-request-id": "req-1", "dg-char-count": "5" },
+      rawBody: audio,
+    }));
+    const hosted = hostClient(new DeepgramClient({ apiKey: "k" }, { http: { request } }));
+
+    const result = await hosted.synthesizeSpeech("project", resource, ACCOUNT, { text: "Hello" });
+
+    expect(spy).not.toHaveBeenCalled();
+    const [req] = request.mock.calls[0]!;
+    expect(new URL(req.url).pathname).toBe("/v1/speak");
+    expect(req.method).toBe("POST");
+    expect(req.body).toBe(JSON.stringify({ text: "Hello" }));
+    expect(req.headers["authorization"]).toBe("Token k");
+    expect(req.responseEncoding).toBe("binary");
+    expect(req).not.toHaveProperty("caCert");
+    expect(Buffer.from(result.audioBase64, "base64")).toEqual(Buffer.from(audio));
+    expect(result.requestId).toBe("req-1");
+    expect(result.characters).toBe(5);
+  });
+
+  it("sends /v1/listen through the host with the clip's bytes and type, and the CA", async () => {
+    const spy = refuseFetch();
+    const clip = new Uint8Array([1, 2, 3, 250]);
+    const request = hostHttp(() => ({
+      rawBody: new TextEncoder().encode(
+        JSON.stringify({
+          metadata: { duration: 1 },
+          results: { channels: [{ alternatives: [{ transcript: "hi", words: [] }] }] },
+        }),
+      ),
+    }));
+    const hosted = hostClient(
+      new DeepgramClient({ apiKey: "k", caCert: "PEM" }, { http: { request } }),
+    );
+
+    const result = await hosted.transcribeAudio("project", resource, ACCOUNT, {
+      audioBase64: Buffer.from(clip).toString("base64"),
+      mimeType: "audio/webm",
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    const [req] = request.mock.calls[0]!;
+    expect(new URL(req.url).pathname).toBe("/v1/listen");
+    expect(req.headers["content-type"]).toBe("audio/webm");
+    expect(req.body).toEqual(clip);
+    expect(req.caCert).toBe("PEM");
+    expect(result.text).toBe("hi");
+  });
+
+  it("keeps the over-limit message when the host answers 413", async () => {
+    refuseFetch();
+    const request = hostHttp(() => ({
+      status: 413,
+      rawBody: new TextEncoder().encode('{"err_msg":"payload too large"}'),
+    }));
+    const hosted = hostClient(new DeepgramClient({ apiKey: "k" }, { http: { request } }));
+
+    await expect(
+      hosted.synthesizeSpeech("project", resource, ACCOUNT, { text: "Hello" }),
+    ).rejects.toThrow(/too large \(413\).*payload too large/);
+  });
+});

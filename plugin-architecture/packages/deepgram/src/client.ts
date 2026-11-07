@@ -24,7 +24,13 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  externalIdOf,
+  hostFetch,
+  pathEncode,
+} from "@infrawrench/plugin-base";
 import {
   createDeepgramApis,
   type CreateKeyBody,
@@ -1139,16 +1145,15 @@ export class DeepgramClient implements PluginClient {
    * Neither call can go through `jsonRestFetch`: `/v1/speak` answers with
    * binary audio (the helper would try to `JSON.parse` it) and both endpoints
    * carry the `dg-request-id` / `dg-char-count` headers the Speech tab
-   * surfaces, which the helper discards. This path uses the global `fetch`
-   * directly and therefore **bypasses bastion egress routing and any custom
-   * CA**: an accepted trade for the interactive playground.
+   * surfaces, which the helper discards. `hostFetch` still goes through the
+   * host's service, so both calls get bastion routing and a custom CA.
    */
   private async speechFetch(
     url: string,
     contentType: string,
     body: Uint8Array | string,
   ): Promise<{ bytes: Uint8Array; headers: Headers }> {
-    const res = await fetch(url, {
+    const res = await hostFetch({ http: this.services?.http, caCert: this.caCert }, url, {
       method: "POST",
       headers: { ...this.authHeaders, "Content-Type": contentType },
       // A fresh copy keeps TypeScript's BodyInit happy across Node's
