@@ -8,7 +8,7 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, ListTruncatedError, pathEncode } from "@infrawrench/plugin-base";
 import type {
   AgentBlock,
   AgentConfiguration,
@@ -44,6 +44,12 @@ export const EXTRA_TYPES = new Set([
   PURCHASE_TYPE,
   DISTRIBUTION_CREDENTIAL_TYPE,
 ]);
+
+/**
+ * `GET /purchases` documents `limit` as "Range [1,1000]" and no page or cursor, so
+ * an answer this long cannot say it is every order.
+ */
+const MAX_PURCHASES = 1000;
 
 /** `GET /requests` caps `limit` at 1000. */
 const MAX_REQUEST_LINES = 1000;
@@ -189,10 +195,20 @@ export class DeepgramExtras {
         );
       }
       case PURCHASE_TYPE: {
-        const data = await this.api.get(`/v1/projects/${p}/purchases`, { query: { limit: 1000 } });
-        return listIn(data, "orders", "/v1/projects/{project_id}/purchases").map((o) =>
-          this.mapPurchase(accountId, projectId, o),
-        );
+        const path = "/v1/projects/{project_id}/purchases";
+        const data = await this.api.get(`/v1/projects/${p}/purchases`, {
+          query: { limit: MAX_PURCHASES },
+        });
+        const orders = listIn(data, "orders", path);
+        if (orders.length >= MAX_PURCHASES) {
+          throw new ListTruncatedError({
+            vendor: "Deepgram",
+            path,
+            items: orders.length,
+            maxItems: MAX_PURCHASES,
+          });
+        }
+        return orders.map((o) => this.mapPurchase(accountId, projectId, o));
       }
       case DISTRIBUTION_CREDENTIAL_TYPE: {
         const data = await this.api.get(`/v1/projects/${p}/self-hosted/distribution/credentials`);

@@ -1456,6 +1456,16 @@ describe("a read that cannot say it has every row", () => {
     expect(models).toHaveLength(MODEL_LIST.stt.length);
   });
 
+  it("refuses a purchase list as long as the only limit the document allows", async () => {
+    const orders = Array.from({ length: 1000 }, (_, i) => ({ order_id: `o${i}`, amount: 1 }));
+    installFetch((url) =>
+      url.endsWith("/v1/projects") ? jsonResponse(PROJECT_LIST) : jsonResponse({ orders }),
+    );
+    await expect(client().listResources("purchase", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
   it("does not replace a project's models with the public catalogue on a 500", async () => {
     installFetch((url) => {
       if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
