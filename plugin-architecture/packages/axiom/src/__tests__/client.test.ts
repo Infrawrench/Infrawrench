@@ -4,11 +4,12 @@ import type { HostServices } from "@infrawrench/plugin-base";
 import { AxiomApiError, statusOf } from "../api.js";
 import { firstRows, queryBase, rowsToSeries, tableRows } from "../apl.js";
 import { AxiomClient, logLine, monitorBody, notifierProperties } from "../client.js";
-import { mapDataset, mapNotifier, redactUrl } from "../mappers.js";
+import { mapDataset, mapNotifier, notifierChannel, redactUrl } from "../mappers.js";
 import { binFor } from "../metrics.js";
 import { plugin } from "../plugin.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { axiomTerraformExport } from "../terraform.js";
+import type { AxNotifierProperties } from "../types.js";
 import { makeHttp, memorySecrets } from "./helpers.js";
 
 const ACCOUNT = "acc";
@@ -473,5 +474,153 @@ describe("offset lists", () => {
       return { status: 403, body: { message: "forbidden" } };
     });
     expect(await c.listResources("dashboard", ACCOUNT)).toEqual([]);
+  });
+});
+
+describe("editing a notifier", () => {
+  const TEMPLATE = { title: "{{.Name}}", body: "{{.Value}}" };
+
+  it("keeps the message template of every channel that has one", () => {
+    const messageTemplate = TEMPLATE;
+    expect(
+      notifierProperties(
+        "slack",
+        { target: "https://new" },
+        {
+          slack: { slackUrl: "https://old", messageTemplate },
+        },
+      ),
+    ).toEqual({ slack: { slackUrl: "https://new", messageTemplate } });
+    expect(
+      notifierProperties(
+        "email",
+        { target: "a@b.c" },
+        { email: { emails: ["x@y.z"], messageTemplate } },
+      ),
+    ).toEqual({ email: { emails: ["a@b.c"], messageTemplate } });
+    expect(
+      notifierProperties(
+        "microsoftTeams",
+        { target: "https://new" },
+        { microsoftTeams: { microsoftTeamsUrl: "https://old", messageTemplate } },
+      ),
+    ).toEqual({ microsoftTeams: { microsoftTeamsUrl: "https://new", messageTemplate } });
+    expect(
+      notifierProperties(
+        "discordWebhook",
+        { target: "https://new" },
+        { discordWebhook: { discordWebhookUrl: "https://old", messageTemplate } },
+      ),
+    ).toEqual({ discordWebhook: { discordWebhookUrl: "https://new", messageTemplate } });
+    expect(
+      notifierProperties(
+        "discord",
+        { target: "2" },
+        { discord: { discordChannel: "1", discordToken: "t", messageTemplate } },
+      ),
+    ).toEqual({ discord: { discordChannel: "2", discordToken: "t", messageTemplate } });
+  });
+
+  it("keeps a PagerDuty API token when the routing key changes", () => {
+    expect(
+      notifierProperties(
+        "pagerduty",
+        { secret: "new" },
+        { pagerduty: { routingKey: "old", token: "api-token" } },
+      ),
+    ).toEqual({ pagerduty: { routingKey: "new", token: "api-token" } });
+  });
+
+  it("keeps an email notifier's addresses when the target is blanked", () => {
+    expect(notifierProperties("email", { target: " " }, { email: { emails: ["x@y.z"] } })).toEqual({
+      email: { emails: ["x@y.z"] },
+    });
+  });
+
+  it("edits the channels the form does not offer, keeping what was not edited", () => {
+    expect(
+      notifierProperties(
+        "jiraServiceManagement",
+        { secret: "new" },
+        { jiraServiceManagement: { apiKey: "old" } },
+      ),
+    ).toEqual({ jiraServiceManagement: { apiKey: "new" } });
+    expect(
+      notifierProperties("amp", { target: "https://new" }, { amp: { webhookUrl: "o" } }),
+    ).toEqual({ amp: { webhookUrl: "https://new" } });
+    expect(
+      notifierProperties(
+        "cursor",
+        { secret: "new" },
+        { cursor: { webhookUrl: "https://old", token: "old" } },
+      ),
+    ).toEqual({ cursor: { webhookUrl: "https://old", token: "new" } });
+    expect(
+      notifierProperties(
+        "claudeCode",
+        { target: "trig_2" },
+        { claudeCode: { routineId: "trig_1", token: "old" } },
+      ),
+    ).toEqual({ claudeCode: { routineId: "trig_2", token: "old" } });
+    expect(
+      notifierProperties(
+        "chatgptWorkspaceAgent",
+        { secret: "new" },
+        { chatgptWorkspaceAgent: { triggerId: "agtch_1", token: "old" } },
+      ),
+    ).toEqual({ chatgptWorkspaceAgent: { triggerId: "agtch_1", token: "new" } });
+  });
+
+  it("names every documented channel", () => {
+    const channel = (properties: AxNotifierProperties) => notifierChannel(properties).channel;
+    expect(channel({ jiraServiceManagement: { apiKey: "k" } })).toBe("jiraServiceManagement");
+    expect(channel({ amp: { webhookUrl: "u" } })).toBe("amp");
+    expect(channel({ cursor: { webhookUrl: "u", token: "t" } })).toBe("cursor");
+    expect(channel({ claudeCode: { routineId: "r", token: "t" } })).toBe("claudeCode");
+    expect(channel({ chatgptWorkspaceAgent: { triggerId: "a", token: "t" } })).toBe(
+      "chatgptWorkspaceAgent",
+    );
+  });
+
+  it("refuses to rewrite a channel it does not know, and renaming one keeps its properties", async () => {
+    const stored = { somethingNew: { key: "value" } };
+    const { c, calls } = client((url, method, body) => {
+      if (url.pathname !== "/v2/notifiers/n1") return { status: 404 };
+      return method === "GET"
+        ? { body: { id: "n1", name: "Old", properties: stored } }
+        : { body: { id: "n1", ...(body as object) } };
+    });
+    await expect(
+      c.updateResource("notifier", "acc:notifier:n1", ACCOUNT, { target: "x" }),
+    ).rejects.toThrow(/edit it in Axiom/);
+    expect(calls.some((x) => x.method === "PUT")).toBe(false);
+
+    await c.updateResource("notifier", "acc:notifier:n1", ACCOUNT, { name: "New" });
+    expect(calls.find((x) => x.method === "PUT")?.body).toEqual({
+      name: "New",
+      properties: stored,
+    });
+  });
+
+  it("sends the template back on a real edit of the target", async () => {
+    const { c, calls } = client((url, method, body) => {
+      if (url.pathname !== "/v2/notifiers/n1") return { status: 404 };
+      return method === "GET"
+        ? {
+            body: {
+              id: "n1",
+              name: "Slack",
+              disabledUntil: "2030-01-01T00:00:00Z",
+              properties: { slack: { slackUrl: "https://old", messageTemplate: TEMPLATE } },
+            },
+          }
+        : { body: { id: "n1", ...(body as object) } };
+    });
+    await c.updateResource("notifier", "acc:notifier:n1", ACCOUNT, { target: "https://new" });
+    expect(calls.find((x) => x.method === "PUT")?.body).toEqual({
+      name: "Slack",
+      disabledUntil: "2030-01-01T00:00:00Z",
+      properties: { slack: { slackUrl: "https://new", messageTemplate: TEMPLATE } },
+    });
   });
 });

@@ -125,7 +125,11 @@ const ORG_CAPABILITIES = [
   "views",
 ];
 
-/** Build notifier `properties` for a channel; blank secrets keep the current ones. */
+/**
+ * Build notifier `properties` for a channel. The update route replaces them whole, so each
+ * starts from the current channel to keep what the form cannot show, such as a message
+ * template, and a blank target or secret keeps the current one.
+ */
 export function notifierProperties(
   channel: string,
   fields: Record<string, string>,
@@ -134,34 +138,41 @@ export function notifierProperties(
   const target = trimmed(fields, "target");
   const secret = trimmed(fields, "secret");
   switch (channel) {
-    case "email":
-      return { email: { emails: csv(target) } };
+    case "email": {
+      const emails = target ? csv(target) : (current?.email?.emails ?? []);
+      return { email: { ...current?.email, emails } };
+    }
     case "slack":
-      return { slack: { slackUrl: target || current?.slack?.slackUrl || "" } };
+      return {
+        slack: { ...current?.slack, slackUrl: target || current?.slack?.slackUrl || "" },
+      };
     case "webhook":
-      return { webhook: { url: target || current?.webhook?.url || "" } };
+      return { webhook: { ...current?.webhook, url: target || current?.webhook?.url || "" } };
     case "microsoftTeams":
       return {
         microsoftTeams: {
+          ...current?.microsoftTeams,
           microsoftTeamsUrl: target || current?.microsoftTeams?.microsoftTeamsUrl || "",
         },
       };
     case "discordWebhook":
       return {
         discordWebhook: {
+          ...current?.discordWebhook,
           discordWebhookUrl: target || current?.discordWebhook?.discordWebhookUrl || "",
         },
       };
     case "pagerduty": {
       const routingKey = secret || current?.pagerduty?.routingKey || "";
       if (!routingKey) throw new Error("A PagerDuty notifier needs a routing key.");
-      return { pagerduty: { routingKey } };
+      return { pagerduty: { ...current?.pagerduty, routingKey } };
     }
     case "opsgenie": {
       const apiKey = secret || current?.opsgenie?.apiKey || "";
       if (!apiKey) throw new Error("An Opsgenie notifier needs an API key.");
       return {
         opsgenie: {
+          ...current?.opsgenie,
           apiKey,
           isEU: "isEU" in fields ? bool(fields["isEU"]) : (current?.opsgenie?.isEU ?? false),
         },
@@ -170,23 +181,56 @@ export function notifierProperties(
     case "customWebhook":
       return {
         customWebhook: {
+          ...current?.customWebhook,
           url: target || current?.customWebhook?.url || "",
           body: current?.customWebhook?.body ?? "{}",
-          ...(current?.customWebhook?.headers ? { headers: current.customWebhook.headers } : {}),
-          ...(current?.customWebhook?.secretHeaders
-            ? { secretHeaders: current.customWebhook.secretHeaders }
-            : {}),
         },
       };
     case "discord":
       return {
         discord: {
+          ...current?.discord,
           discordChannel: target || current?.discord?.discordChannel || "",
           discordToken: secret || current?.discord?.discordToken || "",
         },
       };
+    case "jiraServiceManagement": {
+      const apiKey = secret || current?.jiraServiceManagement?.apiKey || "";
+      if (!apiKey) throw new Error("A Jira Service Management notifier needs an API key.");
+      return { jiraServiceManagement: { ...current?.jiraServiceManagement, apiKey } };
+    }
+    case "amp":
+      return {
+        amp: { ...current?.amp, webhookUrl: target || current?.amp?.webhookUrl || "" },
+      };
+    case "cursor":
+      return {
+        cursor: {
+          ...current?.cursor,
+          webhookUrl: target || current?.cursor?.webhookUrl || "",
+          token: secret || current?.cursor?.token || "",
+        },
+      };
+    case "claudeCode":
+      return {
+        claudeCode: {
+          ...current?.claudeCode,
+          routineId: target || current?.claudeCode?.routineId || "",
+          token: secret || current?.claudeCode?.token || "",
+        },
+      };
+    case "chatgptWorkspaceAgent":
+      return {
+        chatgptWorkspaceAgent: {
+          ...current?.chatgptWorkspaceAgent,
+          triggerId: target || current?.chatgptWorkspaceAgent?.triggerId || "",
+          token: secret || current?.chatgptWorkspaceAgent?.token || "",
+        },
+      };
     default:
-      throw new Error(`Unsupported notifier channel "${channel}"`);
+      throw new Error(
+        `Infrawrench cannot change this notifier's channel${channel ? ` "${channel}"` : ""}, so edit it in Axiom. Renaming it still works.`,
+      );
   }
 }
 

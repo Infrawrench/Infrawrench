@@ -219,6 +219,16 @@ export function notifierChannel(p: AxNotifierProperties | undefined): {
   if (props.customWebhook)
     return { channel: "customWebhook", target: props.customWebhook.url ?? "" };
   if (props.webhook) return { channel: "webhook", target: props.webhook.url ?? "" };
+  if (props.jiraServiceManagement) return { channel: "jiraServiceManagement", target: "" };
+  if (props.amp) return { channel: "amp", target: props.amp.webhookUrl ?? "" };
+  if (props.cursor) return { channel: "cursor", target: props.cursor.webhookUrl ?? "" };
+  if (props.claudeCode) return { channel: "claudeCode", target: props.claudeCode.routineId ?? "" };
+  if (props.chatgptWorkspaceAgent) {
+    return {
+      channel: "chatgptWorkspaceAgent",
+      target: props.chatgptWorkspaceAgent.triggerId ?? "",
+    };
+  }
   return { channel: "", target: "" };
 }
 

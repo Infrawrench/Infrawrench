@@ -190,13 +190,13 @@ export const NotifierResourceType = rt({
     f("target", "Target", {
       required: false,
       description:
-        "Email: comma-separated addresses. Slack, Teams, Discord webhook, webhook: the URL. Leave PagerDuty and Opsgenie keys blank to keep them.",
+        "Email: comma-separated addresses. Slack, Teams, Discord webhook, webhook, Amp, Cursor: the URL. Discord: the channel ID. Claude Code: the routine ID. ChatGPT: the trigger ID. Leave blank to keep the current one.",
     }),
     f("secret", "Routing Key or API Key", {
       kind: "password",
       required: false,
       description:
-        "PagerDuty routing key or Opsgenie API key. Leave blank to keep the current one.",
+        "PagerDuty routing key, the API key of Opsgenie or Jira Service Management, or the token of Discord, Cursor, Claude Code or ChatGPT. Leave blank to keep the current one.",
     }),
     f("channel", "Channel", { required: false, editable: false }),
     f("disabledUntil", "Snoozed Until", { required: false, editable: false }),
