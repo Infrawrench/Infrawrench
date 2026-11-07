@@ -251,6 +251,161 @@ describe("InfluxClient", () => {
   });
 });
 
+const PAGED_LISTS = [
+  [T.bucket, "/api/v2/buckets", "buckets", 100, 100],
+  [T.task, "/api/v2/tasks", "tasks", 500, 20],
+  [T.check, "/api/v2/checks", "checks", 100, 100],
+  [T.rule, "/api/v2/notificationRules", "notificationRules", 100, 100],
+  [T.endpoint, "/api/v2/notificationEndpoints", "notificationEndpoints", 100, 100],
+  [T.dashboard, "/api/v2/dashboards", "dashboards", 100, 100],
+] as const;
+
+const WHOLE_LISTS = [
+  [T.token, "/api/v2/authorizations", "authorizations"],
+  [T.telegraf, "/api/v2/telegrafs", "configurations"],
+] as const;
+
+const dedicatedCreds = {
+  dedicatedAccountId: "a",
+  dedicatedClusterId: "c",
+  dedicatedManagementToken: "m",
+};
+const DEDICATED_LISTS = [
+  [T.dedicatedDatabase, "/databases"],
+  [T.dedicatedToken, "/tokens"],
+] as const;
+
+/** The usage CSV a bucket list also reads, so only the list itself is under test. */
+const NO_USAGE = { "GET /api/v2/orgs/org1/usage": "" };
+
+function rows(count: number, start = 0) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `r${start + i}`,
+    name: `row ${start + i}`,
+  }));
+}
+
+describe("list reads", () => {
+  it.each(PAGED_LISTS)(
+    "%s reads past the old 5,000 row cap, at the largest page the document allows",
+    async (typeId, path, key, pageSize) => {
+      const total = 6001;
+      const { calls } = mockFetch({
+        ...NO_USAGE,
+        [`GET ${path}`]: (url: URL) => {
+          const offset = Number(url.searchParams.get("offset"));
+          const limit = Number(url.searchParams.get("limit"));
+          return { [key]: rows(Math.min(limit, total - offset), offset) };
+        },
+      });
+      const listed = await hostClient(new InfluxClient(creds)).listResources(typeId, "acc");
+      expect(listed).toHaveLength(total);
+      expect(new Set(listed.map((r) => r.externalId)).size).toBe(total);
+      const pages = calls.filter((c) => c.url.pathname === path);
+      expect(pages).toHaveLength(Math.ceil(total / pageSize));
+      expect(pages[0]!.url.searchParams.get("limit")).toBe(String(pageSize));
+      expect(pages[0]!.url.searchParams.get("orgID")).toBe("org1");
+      expect(pages[1]!.url.searchParams.get("offset")).toBe(String(pageSize));
+    },
+  );
+
+  it.each(PAGED_LISTS)(
+    "%s throws at its cap rather than read a long list as complete",
+    async (typeId, path, key, pageSize, maxPages) => {
+      const { calls } = mockFetch({
+        ...NO_USAGE,
+        [`GET ${path}`]: (url: URL) => ({
+          [key]: rows(pageSize, Number(url.searchParams.get("offset"))),
+        }),
+      });
+      await expect(
+        hostClient(new InfluxClient(creds)).listResources(typeId, "acc"),
+      ).rejects.toThrow("has more than Infrawrench reads");
+      expect(calls.filter((c) => c.url.pathname === path)).toHaveLength(maxPages);
+    },
+  );
+
+  it.each(PAGED_LISTS)(
+    "%s rejects a first page with its key renamed",
+    async (typeId, path, key) => {
+      mockFetch({ ...NO_USAGE, [`GET ${path}`]: { [`${key}Renamed`]: rows(1) } });
+      await expect(
+        hostClient(new InfluxClient(creds)).listResources(typeId, "acc"),
+      ).rejects.toThrow("is not a list");
+    },
+  );
+
+  it.each(PAGED_LISTS)(
+    "%s rejects a later page with its key renamed",
+    async (typeId, path, key, pageSize) => {
+      mockFetch({
+        ...NO_USAGE,
+        [`GET ${path}`]: (url: URL) =>
+          url.searchParams.get("offset") === "0"
+            ? { [key]: rows(pageSize) }
+            : { [`${key}Renamed`]: rows(1) },
+      });
+      await expect(
+        hostClient(new InfluxClient(creds)).listResources(typeId, "acc"),
+      ).rejects.toThrow("is not a list");
+    },
+  );
+
+  it.each(WHOLE_LISTS)("%s rejects an answer with its key renamed", async (typeId, path, key) => {
+    mockFetch({ [`GET ${path}`]: { [`${key}Renamed`]: rows(1) } });
+    await expect(hostClient(new InfluxClient(creds)).listResources(typeId, "acc")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it.each(DEDICATED_LISTS)("%s rejects an answer that is not an array", async (typeId, path) => {
+    mockFetch({ [`GET console.influxdata.com/api/v0/accounts/a/clusters/c${path}`]: { rows: [] } });
+    await expect(
+      hostClient(new InfluxClient(dedicatedCreds)).listResources(typeId, "acc"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it.each(DEDICATED_LISTS)("%s rejects a 2xx with no body", async (typeId, path) => {
+    mockFetch({
+      [`GET console.influxdata.com/api/v0/accounts/a/clusters/c${path}`]: new Response(null, {
+        status: 204,
+      }),
+    });
+    await expect(
+      hostClient(new InfluxClient(dedicatedCreds)).listResources(typeId, "acc"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    [T.bucket, "/api/v2/buckets", "buckets"],
+    [T.check, "/api/v2/checks", "checks"],
+    [T.token, "/api/v2/authorizations", "authorizations"],
+    [T.telegraf, "/api/v2/telegrafs", "configurations"],
+  ] as const)("%s reads a null or empty list as none", async (typeId, path, key) => {
+    for (const value of [null, []]) {
+      mockFetch({ ...NO_USAGE, [`GET ${path}`]: { [key]: value } });
+      expect(await hostClient(new InfluxClient(creds)).listResources(typeId, "acc")).toEqual([]);
+    }
+  });
+
+  it("still reads a list the token may not see as empty", async () => {
+    mockFetch({
+      "GET /api/v2/checks": new Response('{"code":"forbidden","message":"no"}', { status: 403 }),
+    });
+    expect(await hostClient(new InfluxClient(creds)).listResources(T.check, "acc")).toEqual([]);
+  });
+
+  it("does not count a quota from a list it could not finish", async () => {
+    mockFetch({
+      "GET /api/v2/orgs/org1/limits": { limits: { task: { maxTasks: 5 } } },
+      "GET /api/v2/tasks": { tasksRenamed: [] },
+    });
+    await expect(hostClient(new InfluxClient(creds)).fetchQuotas("acc")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+});
+
 describe("helpers", () => {
   it("tells Flux from InfluxQL", () => {
     expect(isFlux('from(bucket:"x") |> range(start:-1h)')).toBe(true);

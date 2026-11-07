@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  withCursorPagination,
   type ApiListItem,
   type ApiResponse,
   type CredentialFieldRegion,
@@ -161,9 +162,21 @@ function jsonApi<P>(t: Transport, baseUrl: string, authorization: string) {
   });
 }
 
+/** `limit` is at most 100 on every paged v2 list but tasks, so 100 pages is 10,000 rows. */
+const PAGE_SIZE = 100;
+const MAX_PAGES = 100;
+
 /** The v2 API on one region's host. Calls go through {@link influxCall}. */
 export function cloudApi(t: Transport, host: string, token: string) {
-  return jsonApi<CloudPaths>(t, host, `Token ${token}`);
+  return withCursorPagination(jsonApi<CloudPaths>(t, host, `Token ${token}`), {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
+    next: ({ cursor, items }) => Number(cursor) + items.length,
+    stopOnShortPage: true,
+  });
 }
 
 /** The Management API of one Dedicated cluster. Calls go through {@link influxCall}. */

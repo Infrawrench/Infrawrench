@@ -21,6 +21,7 @@ import {
   decodePromptArgs,
   externalIdOf,
   pathEncode,
+  requireListPage,
   withMetricsCapability,
   type ApiBody,
 } from "@infrawrench/plugin-base";
@@ -238,82 +239,52 @@ export class InfluxClient implements PluginClient {
     });
   }
 
-  /**
-   * Walk an offset-paged list. By hand rather than `getAll`, which reads a list
-   * that is not an array as the end of it: this has always failed on one, and the
-   * host prunes what a sync stops seeing.
-   */
-  private async paged<V>(
-    page: (orgID: string, offset: number) => Promise<readonly V[] | undefined>,
-  ): Promise<V[]> {
-    const org = await this.orgId();
-    const out: V[] = [];
-    for (let at = 0; at < 50; at++) {
-      const batch = (await page(org, at * 100)) ?? [];
-      out.push(...batch);
-      if (batch.length < 100) break;
-    }
-    return out;
-  }
-
   buckets(): Promise<Bucket[]> {
-    return this.bucketCache.get(() =>
-      this.paged((orgID, offset) =>
-        this.v2(
-          async (api) =>
-            (await api.get("/api/v2/buckets", { query: { orgID, limit: 100, offset } }))?.buckets,
-        ),
-      ),
+    return this.bucketCache.get(async () => {
+      const orgID = await this.orgId();
+      return this.v2((api) => api.getAll("/api/v2/buckets", "buckets", { query: { orgID } }));
+    });
+  }
+
+  private async tasks() {
+    const orgID = await this.orgId();
+    return this.v2((api) =>
+      api.getAll("/api/v2/tasks", "tasks", {
+        query: { orgID, type: "basic" },
+        // The one list the document lets go past 100 a page: 20 pages is 10,000 rows.
+        pageSize: 500,
+        maxPages: 20,
+      }),
     );
   }
 
-  private tasks() {
-    return this.paged((orgID, offset) =>
-      this.v2(
-        async (api) =>
-          (await api.get("/api/v2/tasks", { query: { orgID, limit: 100, offset, type: "basic" } }))
-            ?.tasks,
-      ),
+  private async checks() {
+    const orgID = await this.orgId();
+    return this.v2((api) => api.getAll("/api/v2/checks", "checks", { query: { orgID } }));
+  }
+
+  private async notificationRules() {
+    const orgID = await this.orgId();
+    return this.v2((api) =>
+      api.getAll("/api/v2/notificationRules", "notificationRules", { query: { orgID } }),
     );
   }
 
-  private checks() {
-    return this.paged((orgID, offset) =>
-      this.v2(
-        async (api) =>
-          (await api.get("/api/v2/checks", { query: { orgID, limit: 100, offset } }))?.checks,
-      ),
+  private async notificationEndpoints() {
+    const orgID = await this.orgId();
+    return this.v2((api) =>
+      api.getAll("/api/v2/notificationEndpoints", "notificationEndpoints", { query: { orgID } }),
     );
   }
 
-  private notificationRules() {
-    return this.paged((orgID, offset) =>
-      this.v2(
-        async (api) =>
-          (await api.get("/api/v2/notificationRules", { query: { orgID, limit: 100, offset } }))
-            ?.notificationRules,
-      ),
-    );
+  private async dashboards() {
+    const orgID = await this.orgId();
+    return this.v2((api) => api.getAll("/api/v2/dashboards", "dashboards", { query: { orgID } }));
   }
 
-  private notificationEndpoints() {
-    return this.paged((orgID, offset) =>
-      this.v2(
-        async (api) =>
-          (await api.get("/api/v2/notificationEndpoints", { query: { orgID, limit: 100, offset } }))
-            ?.notificationEndpoints,
-      ),
-    );
-  }
-
-  private dashboards() {
-    return this.paged((orgID, offset) =>
-      this.v2(
-        async (api) =>
-          (await api.get("/api/v2/dashboards", { query: { orgID, limit: 100, offset } }))
-            ?.dashboards,
-      ),
-    );
+  private async dedicatedDatabases() {
+    const answer = await this.mgmt((api) => api.get("/databases"));
+    return requireListPage(answer, { vendor: "InfluxDB", path: "/databases", key: null });
   }
 
   private async optionalList<V>(load: () => Promise<V[]>): Promise<V[]> {
@@ -591,7 +562,11 @@ export class InfluxClient implements PluginClient {
           const res = await this.v2((api) =>
             api.get("/api/v2/authorizations", { query: { orgID: org } }),
           );
-          return (res?.authorizations ?? []).map((a) => this.mapAuth(accountId, a));
+          return requireListPage(res?.authorizations, {
+            vendor: "InfluxDB",
+            path: "/api/v2/authorizations",
+            key: "authorizations",
+          }).map((a) => this.mapAuth(accountId, a));
         }
         case T.task:
           return (await this.optionalList(() => this.tasks())).map((t) =>
@@ -631,7 +606,11 @@ export class InfluxClient implements PluginClient {
             const r = await this.v2((api) =>
               api.get("/api/v2/telegrafs", { query: { orgID: org } }),
             );
-            return r?.configurations ?? [];
+            return requireListPage(r?.configurations, {
+              vendor: "InfluxDB",
+              path: "/api/v2/telegrafs",
+              key: "configurations",
+            });
           });
           return res.map((t) =>
             this.inst(
@@ -649,13 +628,13 @@ export class InfluxClient implements PluginClient {
           );
         }
         case T.dedicatedDatabase:
-          return ((await this.mgmt((api) => api.get("/databases"))) ?? []).map((d) =>
-            this.mapDedicatedDb(accountId, d),
-          );
-        case T.dedicatedToken:
-          return ((await this.mgmt((api) => api.get("/tokens"))) ?? [])
+          return (await this.dedicatedDatabases()).map((d) => this.mapDedicatedDb(accountId, d));
+        case T.dedicatedToken: {
+          const tokens = await this.mgmt((api) => api.get("/tokens"));
+          return requireListPage(tokens, { vendor: "InfluxDB", path: "/tokens", key: null })
             .filter((t) => !t.revokedAt)
             .map((t) => this.mapDedicatedToken(accountId, t));
+        }
         default:
           throw new Error(`InfluxDB Cloud plugin: unknown resource type "${typeId}"`);
       }
@@ -856,10 +835,7 @@ export class InfluxClient implements PluginClient {
             ],
           };
         case T.dedicatedToken: {
-          const dbs = ((await this.mgmt((api) => api.get("/databases"))) ?? []).map((d) => ({
-            id: d.name,
-            label: d.name,
-          }));
+          const dbs = (await this.dedicatedDatabases()).map((d) => ({ id: d.name, label: d.name }));
           const all = [{ id: "*", label: "All databases" }, ...dbs];
           return {
             fields: [
