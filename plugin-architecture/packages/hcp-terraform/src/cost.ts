@@ -10,10 +10,12 @@
  * on the organization, never written as cost: it is not a charge yet.
  */
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { Doc, TfContext } from "./api.js";
-import { enc, statusOf, tfRaw } from "./api.js";
+import { VENDOR, enc, statusOf, tfRaw } from "./api.js";
 
-const MAX_PAGES = 12;
+/** 10,000 invoices: the document fixes the page at ten. */
+const MAX_PAGES = 1000;
 
 export async function fetchInvoiceCost(
   ctx: TfContext,
@@ -21,21 +23,23 @@ export async function fetchInvoiceCost(
   range: CostFetchRange,
 ): Promise<CostRow[]> {
   const rows: CostRow[] = [];
+  const path = `/organizations/${enc(org)}/invoices`;
   let cursor: string | undefined;
   for (let i = 0; i < MAX_PAGES; i++) {
     let res: { data?: Doc[]; meta?: { continuation?: string | null } };
     try {
       res = JSON.parse(
-        await tfRaw(ctx, `/organizations/${enc(org)}/invoices`, {
+        await tfRaw(ctx, path, {
           query: cursor ? { cursor } : {},
         }),
       ) as typeof res;
     } catch (err) {
-      if (statusOf(err) === 404) return [];
+      // No invoices is a 404 where the list starts. Later it would drop the pages already read.
+      if (statusOf(err) === 404 && !cursor) return [];
       throw err;
     }
     let older = false;
-    for (const inv of res.data ?? []) {
+    for (const inv of requireListPage(res.data, { vendor: VENDOR, path, key: "data" })) {
       const a = inv.attributes as Record<string, unknown>;
       const date = String(a["created-at"] ?? "").slice(0, 10);
       if (!date) continue;
@@ -58,7 +62,7 @@ export async function fetchInvoiceCost(
       });
     }
     cursor = res.meta?.continuation ?? undefined;
-    if (!cursor || older) break;
+    if (!cursor || older) return rows;
   }
-  return rows;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: rows.length, maxPages: MAX_PAGES });
 }

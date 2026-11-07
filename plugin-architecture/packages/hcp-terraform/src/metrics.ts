@@ -4,8 +4,9 @@
  * past the window start, and at {@link MAX_RUN_PAGES} pages of 100.
  */
 import type { MetricSeries } from "@infrawrench/plugin-base";
+import { requireListPage } from "@infrawrench/plugin-base";
 import type { Doc, TfContext } from "./api.js";
-import { tfRaw } from "./api.js";
+import { VENDOR, tfRaw } from "./api.js";
 import { RUN_FINAL, runDuration, s } from "./mappers.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -113,7 +114,7 @@ export async function runMetrics(
     for (const inc of res.included ?? [])
       if (inc.type === "plans") plans.set(inc.id, inc.attributes);
     let older = false;
-    for (const r of res.data ?? []) {
+    for (const r of requireListPage(res.data, { vendor: VENDOR, path, key: "data" })) {
       const t = Date.parse(s(r.attributes["created-at"]));
       if (t < range.startMs) {
         older = true;

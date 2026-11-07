@@ -20,7 +20,12 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  QuotaAccessError,
+  externalIdOf,
+  reportUnreadListPart,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { Doc, Page, TfContext } from "./api.js";
 import {
   DEFAULT_HOSTNAME,
@@ -78,9 +83,53 @@ type A = Record<string, unknown>;
 
 /** Runs listed: the most recent across the organization. */
 const RUN_LIMIT = 50;
+/**
+ * Workspaces read when an older Terraform Enterprise has no organization run list. These
+ * routes allow 30 requests a minute, which leaves no room to read more of them.
+ */
+const RUN_FALLBACK_WORKSPACES = 20;
+/** Parents one type reads children for in a poll: about 1,000 requests, what a poll can spend. */
+const MAX_FANOUT_PARENTS = 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const MAX_LOG_LINES = 5000;
 
 const bool = (v: string | undefined) => v === "true" || v === "1";
+
+/** The API answers 404 for missing access as well as for what does not exist. */
+function isRefusal(err: unknown): boolean {
+  const status = statusOf(err);
+  return status === 403 || status === 404;
+}
+
+/** For a catch on a read that only adds to a row: no value, unless its list cannot be trusted. */
+function noValue(err: unknown): undefined {
+  rethrowIncompleteList(err);
+  return undefined;
+}
+
+/**
+ * For a whole type the token is refused: its stored rows stay, with no error on every
+ * poll. A 404 is also how an organization without the feature is answered, which is why it
+ * reads as empty where a host keeps no track, while a 403 there still shows.
+ */
+function keepRowsIfRefused(err: unknown): never[] {
+  if (!isRefusal(err)) throw err;
+  if (!reportUnreadListPart({ idPrefixes: [""] }) && statusOf(err) === 403) throw err;
+  return [];
+}
+
+/**
+ * The parents to read this poll and the ones left for later. Past the budget the window
+ * moves on each hour, so a large organization is read whole over a few hours.
+ */
+function fanOutWindow<T extends { id: string }>(parents: T[]): { read: T[]; later: T[] } {
+  if (parents.length <= MAX_FANOUT_PARENTS) return { read: parents, later: [] };
+  const sorted = [...parents].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const windows = Math.floor(Date.now() / HOUR_MS);
+  const start = (windows * MAX_FANOUT_PARENTS) % sorted.length;
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { read: rotated.slice(0, MAX_FANOUT_PARENTS), later: rotated.slice(MAX_FANOUT_PARENTS) };
+}
 
 function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInstance {
   const extra: Record<string, string> = {};
@@ -230,40 +279,38 @@ export class HcpTerraformClient implements PluginClient {
       (p) => (this.healthCache = p),
       async () => {
         try {
-          const page = await tfList<A>(
-            this.ctx,
-            `${this.base}/explorer`,
-            { type: "workspaces" },
-            10,
-          );
+          const page = await tfList<A>(this.ctx, `${this.base}/explorer`, { type: "workspaces" });
           const out = new Map<string, WorkspaceHealth>();
           for (const row of page.data) {
             const id = s(row.attributes["external-id"]) || row.id;
             out.set(id, healthFromExplorer(row.attributes));
           }
           return out;
-        } catch {
+        } catch (err) {
           // Explorer is restricted to owners / read-all teams and to newer
           // Terraform Enterprise releases; the rest of the plugin works without it.
-          return undefined;
+          return noValue(err);
         }
       },
     );
   }
 
-  private pools(): Promise<Doc<A>[]> {
+  private listPools(): Promise<Doc<A>[]> {
     return this.memo(
       () => this.poolsCache,
       (p) => (this.poolsCache = p),
-      async () => {
-        try {
-          return (await tfList<A>(this.ctx, `${this.base}/agent-pools`)).data;
-        } catch (err) {
-          if (statusOf(err) === 404 || statusOf(err) === 403) return [];
-          throw err;
-        }
-      },
+      async () => (await tfList<A>(this.ctx, `${this.base}/agent-pools`)).data,
     );
+  }
+
+  /** For a form or a detail view, where a token that is refused pools has none to pick. */
+  private async pools(): Promise<Doc<A>[]> {
+    try {
+      return await this.listPools();
+    } catch (err) {
+      if (isRefusal(err)) return [];
+      throw err;
+    }
   }
 
   private varsets(): Promise<Doc<A>[]> {
@@ -288,18 +335,33 @@ export class HcpTerraformClient implements PluginClient {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  /** Every item of `fetch` for each workspace, skipping workspaces that refuse. */
-  private async perWorkspace(
-    fn: (w: Doc<A>) => Promise<ResourceInstance[]>,
+  /**
+   * The children of each parent, one parent at a time. A parent that refuses, or that
+   * `isUnread` says has nothing to read yet, and one past the budget, keep their stored
+   * rows: a sync must not read those as having no children.
+   */
+  private async perParent(
+    accountId: string,
+    parentTypeId: string,
+    parents: Doc<A>[],
+    fn: (parent: Doc<A>) => Promise<ResourceInstance[]>,
+    isUnread: (err: unknown) => boolean = isRefusal,
   ): Promise<ResourceInstance[]> {
+    const { read, later } = fanOutWindow(parents);
+    const unread = later.map((p) => p.id);
     const out: ResourceInstance[] = [];
-    for (const w of (await this.workspaces()).data) {
+    for (const parent of read) {
       try {
-        out.push(...(await fn(w)));
+        out.push(...(await fn(parent)));
       } catch (err) {
-        const st = statusOf(err);
-        if (st !== 403 && st !== 404) throw err;
+        if (!isUnread(err)) throw err;
+        unread.push(parent.id);
       }
+    }
+    if (unread.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: unread.map((id) => `${accountId}:${parentTypeId}:${id}`),
+      });
     }
     return out;
   }
@@ -336,7 +398,7 @@ export class HcpTerraformClient implements PluginClient {
           this.projectsCache = undefined;
           const [projects, ws] = await Promise.all([
             this.projects(),
-            this.workspaces().catch(() => undefined),
+            this.workspaces().catch(noValue),
           ]);
           return projects.map((p) =>
             mapProject(
@@ -357,67 +419,63 @@ export class HcpTerraformClient implements PluginClient {
         case "run":
           return this.recentRuns(accountId);
         case "variable":
-          return this.perWorkspace(async (w) =>
+          return this.perParent(accountId, "workspace", (await this.workspaces()).data, async (w) =>
             (await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/vars`)).data.map((v) =>
               mapVariable(accountId, w.id, s(w.attributes["name"]), v),
             ),
           );
         case "state-output":
-          return this.perWorkspace(async (w) =>
-            (
-              await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/current-state-version-outputs`)
-            ).data.map((o) => mapOutput(accountId, w.id, s(w.attributes["name"]), o)),
+          return this.perParent(
+            accountId,
+            "workspace",
+            (await this.workspaces()).data,
+            async (w) =>
+              (
+                await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/current-state-version-outputs`)
+              ).data.map((o) => mapOutput(accountId, w.id, s(w.attributes["name"]), o)),
+            // The document's answer while a new state's outputs are being processed.
+            (err) => isRefusal(err) || statusOf(err) === 503,
           );
         case "variable-set":
           this.varsetsCache = undefined;
-          return (await this.varsets()).map((v) => mapVarset(accountId, this.org, v));
-        case "varset-variable": {
-          const out: ResourceInstance[] = [];
-          for (const vs of await this.varsets()) {
-            const vars = await tfList<A>(
-              this.ctx,
-              `/varsets/${enc(vs.id)}/relationships/vars`,
-            ).catch(() => undefined);
-            out.push(
-              ...(vars?.data ?? []).map((v) =>
-                mapVarsetVariable(accountId, vs.id, s(vs.attributes["name"]), v),
+          return (await this.varsets().catch(keepRowsIfRefused)).map((v) =>
+            mapVarset(accountId, this.org, v),
+          );
+        case "varset-variable":
+          return this.perParent(
+            accountId,
+            "variable-set",
+            await this.varsets().catch(keepRowsIfRefused),
+            async (vs) =>
+              (await tfList<A>(this.ctx, `/varsets/${enc(vs.id)}/relationships/vars`)).data.map(
+                (v) => mapVarsetVariable(accountId, vs.id, s(vs.attributes["name"]), v),
               ),
-            );
-          }
-          return out;
-        }
+          );
         case "agent-pool":
           this.poolsCache = undefined;
-          return (await this.pools()).map((p) => mapAgentPool(accountId, this.org, p));
-        case "agent": {
-          const out: ResourceInstance[] = [];
-          for (const p of await this.pools()) {
-            const agents = await tfList<A>(this.ctx, `/agent-pools/${enc(p.id)}/agents`).catch(
-              () => undefined,
-            );
-            out.push(
-              ...(agents?.data ?? []).map((a) =>
+          return (await this.listPools().catch(keepRowsIfRefused)).map((p) =>
+            mapAgentPool(accountId, this.org, p),
+          );
+        case "agent":
+          return this.perParent(
+            accountId,
+            "agent-pool",
+            await this.listPools().catch(keepRowsIfRefused),
+            async (p) =>
+              (await tfList<A>(this.ctx, `/agent-pools/${enc(p.id)}/agents`)).data.map((a) =>
                 mapAgent(accountId, p.id, s(p.attributes["name"]), a),
               ),
-            );
-          }
-          return out;
-        }
-        case "agent-token": {
-          const out: ResourceInstance[] = [];
-          for (const p of await this.pools()) {
-            const tokens = await tfList<A>(
-              this.ctx,
-              `/agent-pools/${enc(p.id)}/authentication-tokens`,
-            ).catch(() => undefined);
-            out.push(
-              ...(tokens?.data ?? []).map((t) =>
-                mapAgentToken(accountId, p.id, s(p.attributes["name"]), t),
-              ),
-            );
-          }
-          return out;
-        }
+          );
+        case "agent-token":
+          return this.perParent(
+            accountId,
+            "agent-pool",
+            await this.listPools().catch(keepRowsIfRefused),
+            async (p) =>
+              (
+                await tfList<A>(this.ctx, `/agent-pools/${enc(p.id)}/authentication-tokens`)
+              ).data.map((t) => mapAgentToken(accountId, p.id, s(p.attributes["name"]), t)),
+          );
         case "policy-set":
           return this.orgList(`${this.base}/policy-sets`, (d) =>
             mapPolicySet(accountId, this.org, d),
@@ -448,8 +506,7 @@ export class HcpTerraformClient implements PluginClient {
     try {
       return (await tfList<A>(this.ctx, path)).data.map(map);
     } catch (err) {
-      if (statusOf(err) === 404 || statusOf(err) === 403) return [];
-      throw err;
+      return keepRowsIfRefused(err);
     }
   }
 
@@ -458,33 +515,37 @@ export class HcpTerraformClient implements PluginClient {
       (await this.workspaces()).data.map((w) => [w.id, s(w.attributes["name"])]),
     );
     try {
-      const res = JSON.parse(
-        await tfRaw(this.ctx, `${this.base}/runs`, {
-          query: { include: "plan", "page[size]": RUN_LIMIT },
-        }),
-      ) as { data?: Doc<A>[]; included?: Doc<A>[] };
-      const plans = new Map(
-        (res.included ?? []).filter((d) => d.type === "plans").map((d) => [d.id, d]),
+      // Rolling window: the newest 50. Older rows falling off is what this type means.
+      const res = await tfList<A>(
+        this.ctx,
+        `${this.base}/runs`,
+        { include: "plan", "page[size]": RUN_LIMIT },
+        { maxPages: 1, partial: true },
       );
-      return (res.data ?? []).map((r) => this.runDoc(accountId, r, names, plans));
+      const plans = new Map(res.included.filter((d) => d.type === "plans").map((d) => [d.id, d]));
+      return res.data.map((r) => this.runDoc(accountId, r, names, plans));
     } catch (err) {
       if (statusOf(err) !== 404) throw err;
     }
     // Older Terraform Enterprise releases have no organization run list:
     // read the latest runs of the most recently changed workspaces instead.
+    // Rolling window: the newest 50 of those. Older rows falling off is what this type means.
     const ws = [...(await this.workspaces()).data]
       .sort((a, b) =>
         s(b.attributes["latest-change-at"]).localeCompare(s(a.attributes["latest-change-at"])),
       )
-      .slice(0, 20);
+      .slice(0, RUN_FALLBACK_WORKSPACES);
     const out: ResourceInstance[] = [];
     for (const w of ws) {
       const res = await tfList<A>(
         this.ctx,
         `/workspaces/${enc(w.id)}/runs`,
         { include: "plan", "page[size]": 5 },
-        1,
-      ).catch(() => undefined);
+        { maxPages: 1, partial: true },
+      ).catch((err: unknown) => {
+        if (!isRefusal(err)) throw err;
+        return undefined;
+      });
       const plans = new Map(
         (res?.included ?? []).filter((d) => d.type === "plans").map((d) => [d.id, d as Doc<A>]),
       );
@@ -516,8 +577,8 @@ export class HcpTerraformClient implements PluginClient {
   private async organizationResource(accountId: string): Promise<ResourceInstance> {
     const [org, ws, projects, health, ent, members, next, active] = await Promise.all([
       this.organization(),
-      this.workspaces().catch(() => undefined),
-      this.projects().catch(() => undefined),
+      this.workspaces().catch(noValue),
+      this.projects().catch(noValue),
       this.health(),
       tfGet<A>(this.ctx, `${this.base}/entitlement-set`).catch(() => undefined),
       tfCount(this.ctx, `${this.base}/organization-memberships`).catch(() => undefined),
@@ -706,7 +767,7 @@ export class HcpTerraformClient implements PluginClient {
         this.ctx,
         `/workspaces/${enc(id)}/runs`,
         { include: "plan", "page[size]": 15 },
-        1,
+        { maxPages: 1, partial: true },
       ).catch(() => undefined),
       tfList<A>(
         this.ctx,
@@ -716,7 +777,7 @@ export class HcpTerraformClient implements PluginClient {
           "filter[organization][name]": this.org,
           "page[size]": 10,
         },
-        1,
+        { maxPages: 1, partial: true },
       ).catch(() => undefined),
       this.pools().catch(() => [] as Doc<A>[]),
       this.projectOptions(),

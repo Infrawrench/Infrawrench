@@ -1,4 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * HCP Terraform / Terraform Enterprise API v2
@@ -16,6 +17,11 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  * - Missing entitlements and missing access both answer 404.
  */
 export const DEFAULT_HOSTNAME = "app.terraform.io";
+
+export const VENDOR = "HCP Terraform";
+
+/** 100,000 rows at the documented page size, and all the requests one poll has to spend. */
+const MAX_LIST_PAGES = 1000;
 
 export interface TfContext {
   token: string;
@@ -260,12 +266,18 @@ export interface Page<A> {
   total?: number;
 }
 
-/** Every page of a list, up to `maxPages` × 100 items. */
+export interface ListOptions {
+  maxPages?: number;
+  /** Stop quietly at `maxPages`, for a read where part of the list is fine. */
+  partial?: boolean;
+}
+
+/** Every page of a list. Throws at `maxPages` with more to read, unless `partial`. */
 export async function tfList<A>(
   ctx: TfContext,
   path: string,
   query: Query = {},
-  maxPages = 20,
+  { maxPages = MAX_LIST_PAGES, partial = false }: ListOptions = {},
 ): Promise<Page<A>> {
   const data: Doc<A>[] = [];
   const included: Doc[] = [];
@@ -277,12 +289,15 @@ export async function tfList<A>(
         query: { ...query, "page[size]": query["page[size]"] ?? 100, "page[number]": page },
       }),
     ) as Envelope<Doc<A>[]>;
-    data.push(...(Array.isArray(res.data) ? res.data : []));
+    data.push(...requireListPage(res.data, { vendor: VENDOR, path, key: "data" }));
     included.push(...(res.included ?? []));
     total = res.meta?.pagination?.["total-count"] ?? total;
     const next = res.meta?.pagination?.["next-page"];
-    if (!next) break;
+    if (!next) return { data, included, ...(total !== undefined ? { total } : {}) };
     page = next;
+  }
+  if (!partial) {
+    throw new ListTruncatedError({ vendor: VENDOR, path, items: data.length, maxPages });
   }
   return { data, included, ...(total !== undefined ? { total } : {}) };
 }
