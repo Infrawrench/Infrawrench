@@ -19,6 +19,9 @@ import {
   jsonRestFetch,
   externalIdOf,
   buildMultipartBody,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import {
   baseUrlForRegion,
@@ -52,9 +55,20 @@ const ACCOUNT_ID = "self";
 const TRANSCRIPT_JSON_ACCEPT = "application/vnd.rev.transcript.v1.0+json";
 
 const PAGE_SIZE = 100;
-const MAX_LIST_PAGES = 5;
-/** `GET /jobs` caps `limit` at 1000; the metrics walk uses the full page. */
-const METRICS_PAGE_SIZE = 1000;
+/** `GET /jobs` caps `limit` at 1000. */
+const JOB_PAGE_SIZE = 1000;
+/**
+ * 100,000 jobs. The list only reaches back 30 days, so it is read whole and throws
+ * past this rather than let a sync read the older jobs as deleted.
+ */
+const MAX_JOB_PAGES = 100;
+/**
+ * The companion APIs document no `limit` maximum, so they keep pages of 100:
+ * 10,000 jobs from the last 30 days, and a throw past that.
+ */
+const MAX_INSIGHT_JOB_PAGES = 100;
+/** The metrics walk uses the full page. */
+const METRICS_PAGE_SIZE = JOB_PAGE_SIZE;
 /** Bounds the metrics walk at 5,000 jobs. */
 const MAX_METRICS_PAGES = 5;
 const DAY_MS = 86_400_000;
@@ -878,23 +892,52 @@ export class RevAiClient implements PluginClient {
    * envelope), newest first, covering only the last 30 days. Paging walks the
    * last id of each page through `starting_after`.
    */
-  private async fetchJobs(): Promise<RevAiJob[]> {
-    const out: RevAiJob[] = [];
-    let cursor: string | undefined;
+  private async fetchJobs(
+    options: { maxPages: number; partial?: boolean } = { maxPages: MAX_JOB_PAGES },
+  ): Promise<RevAiJob[]> {
+    return this.readJobPages<RevAiJob>("Rev AI", "/jobs", JOB_PAGE_SIZE, options, (path) =>
+      this.fetch<RevAiJob[] | null>(path),
+    );
+  }
 
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+  /**
+   * A bare-array list paged by passing the last id through `starting_after`, read
+   * until a short page. Past `maxPages` it throws, unless `partial` (a picker) asks
+   * for the newest pages alone.
+   */
+  private async readJobPages<T extends { id?: string | null }>(
+    vendor: string,
+    path: string,
+    pageSize: number,
+    options: { maxPages: number; partial?: boolean },
+    get: (pathAndQuery: string) => Promise<T[] | null | undefined>,
+  ): Promise<T[]> {
+    const out: T[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < options.maxPages; page++) {
+      const query = new URLSearchParams({ limit: String(pageSize) });
       if (cursor) query.set("starting_after", cursor);
-      const jobs = await this.fetch<RevAiJob[]>(`/jobs?${query.toString()}`);
-      if (!Array.isArray(jobs) || jobs.length === 0) break;
+      const jobs = requireListPage(await get(`${path}?${query.toString()}`), {
+        vendor,
+        path,
+        key: null,
+      });
       out.push(...jobs);
-      const last = jobs[jobs.length - 1];
-      const lastId = str(last?.id);
-      if (!lastId || jobs.length < PAGE_SIZE) break;
+      if (jobs.length < pageSize) return out;
+      const lastId = str(jobs[jobs.length - 1]?.id);
+      if (!lastId || lastId === cursor) {
+        throw new ListPageError({
+          vendor,
+          path,
+          key: null,
+          found: jobs,
+          saysMoreWith: "no cursor",
+        });
+      }
       cursor = lastId;
     }
-
-    return out;
+    if (options.partial) return out;
+    throw new ListTruncatedError({ vendor, path, items: out.length, maxPages: options.maxPages });
   }
 
   /**
@@ -1354,22 +1397,13 @@ export class RevAiClient implements PluginClient {
 
   /** `GET {prefix}/jobs`: a bare array, newest first, paged by `starting_after`. */
   private async fetchInsightJobs(api: InsightApi): Promise<RevAiInsightJob[]> {
-    const out: RevAiInsightJob[] = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (cursor) query.set("starting_after", cursor);
-      const jobs = await this.fetchFrom<RevAiInsightJob[]>(
-        this.hostUrl,
-        `${api.prefix}/jobs?${query.toString()}`,
-      );
-      if (!Array.isArray(jobs) || jobs.length === 0) break;
-      out.push(...jobs);
-      const lastId = str(jobs[jobs.length - 1]?.id);
-      if (!lastId || jobs.length < PAGE_SIZE) break;
-      cursor = lastId;
-    }
-    return out;
+    return this.readJobPages<RevAiInsightJob>(
+      "Rev AI",
+      `${api.prefix}/jobs`,
+      PAGE_SIZE,
+      { maxPages: MAX_INSIGHT_JOB_PAGES },
+      (path) => this.fetchFrom<RevAiInsightJob[] | null>(this.hostUrl, path),
+    );
   }
 
   private mapInsightJob(
@@ -1555,7 +1589,8 @@ export class RevAiClient implements PluginClient {
       };
     }
 
-    const jobs = await this.fetchJobs().catch(() => [] as RevAiJob[]);
+    // A picker: the newest 1,000 jobs are plenty to choose a source from.
+    const jobs = await this.fetchJobs({ maxPages: 1, partial: true }).catch(() => [] as RevAiJob[]);
     const options = jobs
       .filter((job) => str(job.status) === "transcribed" && str(job.id))
       .map((job) => ({

@@ -90,7 +90,7 @@ describe("auth and region", () => {
 describe("listResources", () => {
   it("reads the bare JSON array /jobs returns and tolerates omitted null fields", async () => {
     installFetch((url) => {
-      if (url === `${US}/jobs?limit=100`) {
+      if (url === `${US}/jobs?limit=1000`) {
         // Rev AI omits null properties entirely: `name`, `duration_seconds`
         // and `completed_on` are simply absent on an in-progress job.
         return jsonResponse([
@@ -107,6 +107,47 @@ describe("listResources", () => {
     expect(jobs[0]!.displayName).toBe("job-1");
     expect(jobs[0]!.fields["durationSeconds"]).toBe(0);
     expect(jobs[0]!.fields["completedOn"]).toBe("");
+  });
+
+  it("reads past five pages of jobs to the end of the 30-day list", async () => {
+    let n = 0;
+    installFetch(() => {
+      const start = n;
+      const size = start >= 6000 ? 10 : 1000;
+      n += size;
+      return jsonResponse(
+        Array.from({ length: size }, (_, i) => ({ id: `job-${start + i}`, status: "transcribed" })),
+      );
+    });
+    const jobs = await client().listResources("job", ACCOUNT);
+    expect(jobs).toHaveLength(6010);
+    expect(calls[1]!.url).toBe(`${US}/jobs?limit=1000&starting_after=job-999`);
+  });
+
+  it("throws past 100 pages of jobs instead of returning part", async () => {
+    let n = 0;
+    installFetch(() => {
+      const start = n;
+      n += 1000;
+      return jsonResponse(Array.from({ length: 1000 }, (_, i) => ({ id: `job-${start + i}` })));
+    });
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("refuses a jobs page that is not an array, first or later", async () => {
+    installFetch(() => jsonResponse({ jobs: [] }));
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow("is not a list");
+
+    vi.restoreAllMocks();
+    installFetch((url) =>
+      url.includes("starting_after=")
+        ? jsonResponse({ jobs: [] })
+        : jsonResponse(Array.from({ length: 1000 }, (_, i) => ({ id: `job-${i}` }))),
+    );
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
   it("wires the USD balances into the account resource", async () => {
@@ -350,6 +391,24 @@ describe("companion job APIs", () => {
     expect(calls[0]?.url).toBe("https://api.rev.ai/languageid/v1/jobs?limit=100");
     expect(job?.id).toBe(`${ACCOUNT}:language-id-job:lid1`);
     expect(job?.fields["status"]).toBe("completed");
+  });
+
+  it("throws past 10,000 companion jobs instead of returning the newest 500", async () => {
+    let n = 0;
+    installFetch(() => {
+      const start = n;
+      n += 100;
+      return jsonResponse(Array.from({ length: 100 }, (_, i) => ({ id: `t${start + i}` })));
+    });
+    await expect(client().listResources("topic-job", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("refuses a companion jobs page that is not an array", async () => {
+    installFetch(() => jsonResponse({ error: "nope" }));
+    await expect(client().listResources("sentiment-job", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
   it("serves language identification on EU but hides the US-only APIs", async () => {
