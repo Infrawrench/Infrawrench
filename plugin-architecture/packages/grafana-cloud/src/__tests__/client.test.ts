@@ -384,6 +384,188 @@ describe("reading a list to its end", () => {
     });
   });
 
+  describe("org members", () => {
+    const MEMBERS = "/api/orgs/acme/members";
+    const member = (id: number) => ({
+      userId: id,
+      userUsername: `user${id}`,
+      userName: `User ${id}`,
+      role: "Viewer",
+    });
+    const members = (ids: number[]) => ids.map(member);
+    const memberCalls = (calls: Array<{ url: URL }>) =>
+      calls.filter((c) => c.url.pathname === MEMBERS).map((c) => c.url.search);
+    const list = (client: ReturnType<typeof connected>["client"]) =>
+      client.listResources("member", "acct");
+
+    it("asks once when the answer says nothing about more", async () => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS ? { body: { items: members([1, 2]), links: [] } } : undefined,
+      );
+      expect(await list(client)).toHaveLength(2);
+      expect(memberCalls(calls)).toEqual([""]);
+    });
+
+    it.each([
+      { total: 2 },
+      { totalCount: 2 },
+      { total: 2, nextCursor: 99 },
+      { totalCount: 2, links: [{ rel: "next", href: "/orgs/acme/members?cursor=99" }] },
+      { total: 2, page: 1, pages: 3 },
+    ])("trusts a total the rows reach, over any next: %j", async (fields) => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS ? { body: { items: members([1, 2]), ...fields } } : undefined,
+      );
+      expect(await list(client)).toHaveLength(2);
+      expect(memberCalls(calls)).toEqual([""]);
+    });
+
+    it("sends nextCursor back as a cursor until the total is read", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        return url.searchParams.get("cursor") === "2"
+          ? { body: { items: members([3]), total: 3 } }
+          : { body: { items: members([1, 2]), total: 3, nextCursor: 2 } };
+      });
+      expect(await list(client)).toHaveLength(3);
+      expect(memberCalls(calls)).toEqual(["", "?cursor=2"]);
+    });
+
+    it("asks for the next page number while pages says there are more", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        const page = Number(url.searchParams.get("page") ?? 1);
+        return { body: { items: members([page]), page, pages: 3 } };
+      });
+      expect(await list(client)).toHaveLength(3);
+      expect(memberCalls(calls)).toEqual(["", "?page=2", "?page=3"]);
+    });
+
+    it("reads a cursor or page out of a next link, relative to the API", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        if (url.searchParams.get("cursor") === "c2") return { body: { items: members([3]) } };
+        return url.searchParams.get("page") === "2"
+          ? {
+              body: {
+                items: members([2]),
+                links: [{ rel: "next", href: "/orgs/acme/members?cursor=c2" }],
+              },
+            }
+          : {
+              body: {
+                items: members([1]),
+                links: [
+                  { rel: "self", href: "/orgs/acme/members" },
+                  { rel: "next", href: "/orgs/acme/members?page=2" },
+                ],
+              },
+            };
+      });
+      expect(await list(client)).toHaveLength(3);
+      expect(memberCalls(calls)).toEqual(["", "?page=2", "?cursor=c2"]);
+    });
+
+    it("ends on an empty page when a nextCursor is set with nothing left", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        return url.searchParams.get("cursor")
+          ? { body: { items: [] } }
+          : { body: { items: members([1]), nextCursor: 7 } };
+      });
+      expect(await list(client)).toHaveLength(1);
+    });
+
+    it("takes pages saying this is the last over a total it cannot reach", async () => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS
+          ? { body: { items: members([1]), total: 5, page: 1, pages: 1 } }
+          : undefined,
+      );
+      expect(await list(client)).toHaveLength(1);
+      expect(memberCalls(calls)).toEqual([""]);
+    });
+
+    it("does not count a row twice across overlapping pages", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        return url.searchParams.get("cursor")
+          ? { body: { items: members([2, 3]), total: 3 } }
+          : { body: { items: members([1, 2]), total: 3, nextCursor: 2 } };
+      });
+      expect(await list(client)).toHaveLength(3);
+    });
+
+    // The route documents no paging parameter, so it may ignore what is sent.
+    it.each([
+      { name: "a total", more: { total: 5, nextCursor: 2 } },
+      { name: "pages", more: { page: 1, pages: 2 } },
+      { name: "only a nextCursor", more: { nextCursor: 2 } },
+    ])("fails when the route ignores the ask and $name says more", async ({ more }) => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS ? { body: { items: members([1, 2]), ...more } } : undefined,
+      );
+      await expect(list(client)).rejects.toThrow("that says there is more, with no rows");
+      expect(memberCalls(calls)).toHaveLength(2);
+    });
+
+    it("fails when a total says more and nothing names how to ask", async () => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS ? { body: { items: members([1, 2]), total: 5 } } : undefined,
+      );
+      await expect(list(client)).rejects.toThrow("that says there is more, with no cursor");
+      expect(memberCalls(calls)).toEqual([""]);
+    });
+
+    it("fails when the route refuses the ask, and keeps the rows", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        return url.searchParams.get("cursor")
+          ? { status: 400, body: { message: "unknown parameter" } }
+          : { body: { items: members([1]), total: 2, nextCursor: 1 } };
+      });
+      await expect(list(client)).rejects.toThrow("400");
+    });
+
+    it("refuses a next link to another host, with no request reaching it", async () => {
+      const { client, calls } = connected((url) =>
+        url.pathname === MEMBERS
+          ? {
+              body: {
+                items: members([1]),
+                links: [{ rel: "next", href: "https://evil.example/orgs/acme/members?cursor=2" }],
+              },
+            }
+          : undefined,
+      );
+      await expect(list(client)).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls.some((c) => c.url.hostname === "evil.example")).toBe(false);
+      expect(memberCalls(calls)).toEqual([""]);
+    });
+
+    it("rejects a list that never ends, after exactly the cap", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        const at = Number(url.searchParams.get("cursor") ?? 1);
+        return { body: { items: members([at]), nextCursor: at + 1 } };
+      });
+      await expect(list(client)).rejects.toThrow("has more than Infrawrench reads");
+      expect(memberCalls(calls)).toHaveLength(1000);
+    });
+
+    it("rejects a later page that is not a list", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname !== MEMBERS) return undefined;
+        return url.searchParams.get("cursor")
+          ? { body: { members: [] } }
+          : { body: { items: members([1]), nextCursor: 1 } };
+      });
+      await expect(list(client)).rejects.toThrow("is not a list");
+    });
+  });
+
   describe("dashboards", () => {
     it("asks for the next page after a full one", async () => {
       const { client, calls } = connected((url) => {

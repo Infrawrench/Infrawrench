@@ -19,15 +19,17 @@ import {
   ListPageError,
   ListTruncatedError,
   externalIdOf,
+  followableLink,
   pathEncode,
   requireListPage,
   rethrowIncompleteList,
   unencodedSegment,
 } from "@infrawrench/plugin-base";
-import type { ApiBody } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiResponse } from "@infrawrench/plugin-base";
 import { invalidateStacks, listStacks, orgSlugOf, policyRegions, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
 import {
+  CLOUD_API_URL,
   cloudApi,
   cloudItems,
   isRouteRefusal,
@@ -67,6 +69,7 @@ import { BILL_SUMMARY_KEY, renderGrafanaDetail, renderGrafanaSidebar } from "./r
 import type {
   GcAccessPolicy,
   GcCursorPage,
+  GcMember,
   GcRegion,
   GcStack,
   GcToken,
@@ -84,6 +87,8 @@ const SERVICE_ACCOUNT_NAME = "infrawrench";
 /** 50,000 rows at the 500 a page the Cloud API documents as its maximum. */
 const MAX_CURSOR_PAGES = 100;
 const CURSOR_PAGE_SIZE = 500;
+/** The sync's ceiling on sequential requests. The document gives this list no page size. */
+const MAX_MEMBER_PAGES = 1000;
 const STACK_VENDOR = "Grafana stack";
 /** A folder past this shows its UID, as one the token may not read does. */
 const MAX_FOLDER_LOOKUPS = 100;
@@ -100,6 +105,29 @@ export function nextCursor(nextPage: string | null | undefined): string | undefi
   const match = /[?&]pageCursor=([^&]+)/.exec(nextPage);
   if (match?.[1]) return decodeURIComponent(match[1]);
   return nextPage.includes("/") ? undefined : nextPage;
+}
+
+type MemberPage = ApiResponse<CloudOperations["getOrgMembers"]>;
+type MemberPageQuery = NonNullable<CloudOperations["getOrgMembers"]["parameters"]["query"]>;
+
+/**
+ * How to ask for what follows, by whichever one this answer names. A `links` href is
+ * relative to the API root, so only its query is used: the path is ours.
+ */
+function nextMemberPage(page: MemberPage, path: string): MemberPageQuery | undefined {
+  const link = page.links?.find((l) => l.rel === "next")?.href;
+  if (link) {
+    const where = { vendor: "Grafana Cloud", path };
+    const { searchParams } = new URL(followableLink(link, `${CLOUD_API_URL}${path}`, where));
+    const cursor = searchParams.get("cursor");
+    const number = Number(searchParams.get("page"));
+    return { ...(cursor ? { cursor } : {}), ...(number ? { page: number } : {}) };
+  }
+  if (page.nextCursor) return { cursor: String(page.nextCursor) };
+  if (page.page !== undefined && page.pages !== undefined && page.page < page.pages) {
+    return { page: page.page + 1 };
+  }
+  return undefined;
 }
 
 interface StackAccess {
@@ -274,6 +302,48 @@ export class GrafanaCloudClient implements PluginClient {
     });
   }
 
+  /**
+   * The answer's type has both a cursor's fields and a page number's, and the route
+   * documents no parameter to ask for more. `cursor` and `page` are what `/instances`
+   * in the same API takes. What an answer says it holds decides when this ends, so an
+   * org that fits in one answer still takes one request. One that says there is more
+   * and cannot be read further fails, which keeps the stored rows.
+   */
+  private async orgMembers(slug: string): Promise<GcMember[]> {
+    const path = `/orgs/${pathEncode(slug)}/members` as const;
+    const members = new Map<string, GcMember>();
+    let query: MemberPageQuery = {};
+    for (let request = 0; request < MAX_MEMBER_PAGES; request++) {
+      const page = await this.cloud.get(path, { query });
+      const before = members.size;
+      const rows = cloudItems(page, path);
+      for (const m of rows) members.set(m.userUsername ?? String(m.userId), m);
+      const place = { vendor: "Grafana Cloud", path, key: "items", found: rows, page };
+      const total = Math.max(page.total ?? 0, page.totalCount ?? 0);
+      if (total > 0 && members.size >= total) return [...members.values()];
+      const next = nextMemberPage(page, path);
+      const saysMore =
+        page.page !== undefined && page.pages !== undefined
+          ? page.page < page.pages
+          : total > members.size;
+      if (!next) {
+        if (saysMore) throw new ListPageError({ ...place, saysMoreWith: "no cursor" });
+        return [...members.values()];
+      }
+      if (request > 0 && members.size === before) {
+        if (rows.length === 0 && !saysMore) return [...members.values()];
+        throw new ListPageError({ ...place, saysMoreWith: "no rows" });
+      }
+      query = next;
+    }
+    throw new ListTruncatedError({
+      vendor: "Grafana Cloud",
+      path,
+      items: members.size,
+      maxPages: MAX_MEMBER_PAGES,
+    });
+  }
+
   private async policiesByRegion(): Promise<Array<{ region: string; policy: GcAccessPolicy }>> {
     const seen = new Set<string>();
     const out: Array<{ region: string; policy: GcAccessPolicy }> = [];
@@ -378,9 +448,7 @@ export class GrafanaCloudClient implements PluginClient {
         case "member":
           return this.scoped(async () => {
             const slug = await this.slug();
-            const path = `/orgs/${pathEncode(slug)}/members` as const;
-            const res = await this.cloud.get(path);
-            return cloudItems(res, path).map((m) => mapMember(accountId, m));
+            return (await this.orgMembers(slug)).map((m) => mapMember(accountId, m));
           });
         case "dashboard":
           return this.perStack(accountId, "sa", async (a) => {

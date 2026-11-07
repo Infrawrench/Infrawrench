@@ -144,6 +144,34 @@
             }
           },
           "why": "The update sends back the realms the read returned, untouched. The body's item is narrower than the response's: it has no `system` type and requires what the response leaves optional."
+        },
+        {
+          "pointer": "/paths/~1orgs~1{slugOrId}~1members/get/parameters",
+          "value": [
+            {
+              "in": "path",
+              "name": "slugOrId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "cursor",
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "why": "The answer has `nextCursor`, `page` and `pages` and the route documents no parameter to ask for more. `/instances` in this document takes `cursor` and `page`, so those are what the plugin sends when an answer says there is more. The filters this replaces are not used."
         }
       ],
       "paths": {

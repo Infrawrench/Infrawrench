@@ -1311,11 +1311,8 @@ export interface operations {
     getOrgMembers: {
         parameters: {
             query?: {
-                billing?: string;
-                direction?: string;
-                orderBy?: string;
-                privacy?: string;
-                privacyIn?: string;
+                cursor?: string;
+                page?: number;
             };
             header?: never;
             path: {
