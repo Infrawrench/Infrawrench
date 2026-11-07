@@ -168,6 +168,64 @@ export const GROUP_WRITABLE = new Set([
   "useGlobalAlertSettings",
 ]);
 
+/**
+ * Every setting of `PublicStatusPageV3Mutation`. Checkly documents that PUT as "a full
+ * replacement: omitted optional fields are reset", so an edit sends them all back.
+ */
+const STATUS_PAGE_WRITABLE = [
+  "name",
+  "url",
+  "description",
+  "customDomain",
+  "themeColors",
+  "logo",
+  "logoDark",
+  "redirectTo",
+  "favicon",
+  "defaultTheme",
+  "privacyPolicyLink",
+  "termsOfServiceLink",
+  "supportLink",
+  "footerText",
+  "googleAnalyticsTag",
+  "allowIndexing",
+  "isPrivate",
+] as const;
+
+/**
+ * `DashboardUpdate` gives most of these a default and does not say whether an omitted
+ * one is left alone, so an edit sends them all back. Not `keys`: their `rawKey` is
+ * required in that schema and only comes back from a write, as Checkly's own Terraform
+ * provider notes, and it never sends them either.
+ */
+const DASHBOARD_WRITABLE = [
+  "customUrl",
+  "customDomain",
+  "logo",
+  "favicon",
+  "link",
+  "header",
+  "description",
+  "width",
+  "refreshRate",
+  "paginate",
+  "paginationRate",
+  "sortByStatus",
+  "checksPerPage",
+  "useTagsAndOperator",
+  "hideTags",
+  "enableIncidents",
+  "expandChecks",
+  "tags",
+  "showHeader",
+  "showCheckRunLinks",
+  "showGroupNames",
+  "customCSS",
+  "isPrivate",
+  "showP95",
+  "showP99",
+] as const;
+
 export function writable(obj: object, keys: Set<string>): RoundTrip {
   return Object.fromEntries(Object.entries(obj).filter(([k, v]) => keys.has(k) && v !== undefined));
 }
@@ -1153,12 +1211,7 @@ export class ChecklyClient implements PluginClient {
           if ("refreshRate" in fields) body.refreshRate = num(fields["refreshRate"]);
           const c = await this.api.get(`/v1/dashboards/${encoded}`);
           await this.api.put(`/v1/dashboards/${encoded}`, {
-            body: {
-              header: c.header,
-              customUrl: c.customUrl,
-              tags: c.tags,
-              ...body,
-            },
+            body: { ...present(c, DASHBOARD_WRITABLE), ...body },
           });
           break;
         }
@@ -1166,13 +1219,10 @@ export class ChecklyClient implements PluginClient {
           const c = await this.api.get(`/v3/status-pages/${encoded}`);
           await this.api.put(`/v3/status-pages/${encoded}`, {
             body: {
+              ...present(c, STATUS_PAGE_WRITABLE),
               name: "name" in fields ? fields["name"] : c.name,
               url: c.url,
-              ...("description" in fields
-                ? { description: fields["description"] }
-                : c.description
-                  ? { description: c.description }
-                  : {}),
+              ...("description" in fields ? { description: fields["description"] } : {}),
             },
           });
           break;

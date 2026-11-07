@@ -135,6 +135,140 @@ describe("actions", () => {
   });
 });
 
+describe("editing keeps what the user did not change", () => {
+  const putOf = (calls: ReturnType<typeof client>["calls"]) =>
+    calls.find((x) => x.method === "PUT");
+
+  it("sends a status page's other settings back, because the PUT resets what it omits", async () => {
+    const page = {
+      id: "sp1",
+      accountId: "acct-1",
+      version: 3,
+      created_at: "2026-01-01",
+      updated_at: null,
+      name: "Old",
+      url: "acme",
+      description: "Public status",
+      customDomain: "status.acme.com",
+      isPrivate: true,
+      allowIndexing: false,
+      logo: "https://x/logo.png",
+      logoDark: "https://x/dark.png",
+      favicon: "https://x/fav.ico",
+      themeColors: null,
+      defaultTheme: "DARK",
+      redirectTo: "https://acme.com",
+      supportLink: "https://acme.com/help",
+      privacyPolicyLink: "https://acme.com/privacy",
+      termsOfServiceLink: "https://acme.com/terms",
+      footerText: "Acme",
+      googleAnalyticsTag: "G-123",
+    };
+    const { c, calls } = client(() => ({ body: page }));
+    await c.updateResource("status-page", "acc:status-page:sp1", ACCOUNT, { name: "New" });
+    const put = putOf(calls);
+    expect(put?.url.pathname).toBe("/v3/status-pages/sp1");
+    expect(put?.body).toEqual({
+      name: "New",
+      url: "acme",
+      description: "Public status",
+      customDomain: "status.acme.com",
+      isPrivate: true,
+      allowIndexing: false,
+      logo: "https://x/logo.png",
+      logoDark: "https://x/dark.png",
+      favicon: "https://x/fav.ico",
+      defaultTheme: "DARK",
+      redirectTo: "https://acme.com",
+      supportLink: "https://acme.com/help",
+      privacyPolicyLink: "https://acme.com/privacy",
+      termsOfServiceLink: "https://acme.com/terms",
+      footerText: "Acme",
+      googleAnalyticsTag: "G-123",
+    });
+  });
+
+  it("sends a dashboard's other settings back, and never its keys", async () => {
+    const dashboard = {
+      id: 7,
+      dashboardId: "d1",
+      created_at: "2026-01-01T00:00:00Z",
+      header: "Old",
+      customUrl: "acme",
+      customDomain: null,
+      logo: "https://x/logo.png",
+      favicon: "https://x/fav.ico",
+      link: "https://acme.com",
+      description: "Ops",
+      width: "960PX",
+      refreshRate: 300,
+      paginate: false,
+      paginationRate: 30,
+      sortByStatus: true,
+      checksPerPage: 5,
+      useTagsAndOperator: true,
+      hideTags: true,
+      enableIncidents: true,
+      expandChecks: true,
+      tags: ["prod"],
+      showHeader: false,
+      showCheckRunLinks: true,
+      showGroupNames: false,
+      customCSS: "body{}",
+      isPrivate: true,
+      showP95: false,
+      showP99: false,
+      keys: [{ id: "k1", maskedKey: "da_…" }],
+    };
+    const { c, calls } = client(() => ({ body: dashboard }));
+    await c.updateResource("dashboard", "acc:dashboard:d1", ACCOUNT, { header: "New" });
+    const put = putOf(calls);
+    expect(put?.url.pathname).toBe("/v1/dashboards/d1");
+    expect(put?.body).toEqual({
+      header: "New",
+      customUrl: "acme",
+      logo: "https://x/logo.png",
+      favicon: "https://x/fav.ico",
+      link: "https://acme.com",
+      description: "Ops",
+      width: "960PX",
+      refreshRate: 300,
+      paginate: false,
+      paginationRate: 30,
+      sortByStatus: true,
+      checksPerPage: 5,
+      useTagsAndOperator: true,
+      hideTags: true,
+      enableIncidents: true,
+      expandChecks: true,
+      tags: ["prod"],
+      showHeader: false,
+      showCheckRunLinks: true,
+      showGroupNames: false,
+      customCSS: "body{}",
+      isPrivate: true,
+      showP95: false,
+      showP99: false,
+    });
+  });
+
+  it("lets an edit win over what was read on a dashboard", async () => {
+    const { c, calls } = client(() => ({
+      body: { dashboardId: "d1", header: "H", customUrl: "acme", refreshRate: 300, tags: ["a"] },
+    }));
+    await c.updateResource("dashboard", "acc:dashboard:d1", ACCOUNT, {
+      refreshRate: "60",
+      tags: "b, c",
+    });
+    expect(putOf(calls)?.body).toEqual({
+      header: "H",
+      customUrl: "acme",
+      refreshRate: 60,
+      tags: ["b", "c"],
+    });
+  });
+});
+
 describe("creating", () => {
   it("creates an API check with a status assertion", async () => {
     const { c, calls } = client(() => ({
