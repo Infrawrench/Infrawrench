@@ -297,4 +297,32 @@ describe("fetchCostData", () => {
       "/v3/organizations/org-1/consumption/daily",
     ]);
   });
+
+  it("throws when the sessions it attributes to have more than it reads", async () => {
+    const endless = () => ({
+      items: [],
+      has_next_page: true,
+      end_cursor: "again",
+    });
+    const { http, calls } = devinApi({ "/v3/organizations/org-1/sessions": endless() });
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
+    await expect(client.fetchCostData("acct", RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.path === "/v3/organizations/org-1/sessions")).toHaveLength(250);
+  });
+
+  it("throws on a sessions page that is not a list, rather than attributing to nobody", async () => {
+    const { http } = devinApi({ "/v3/organizations/org-1/sessions": { sessions: [] } });
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
+    await expect(client.fetchCostData("acct", RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a consumption answer with no list, rather than reading it as no spend", async () => {
+    const { http } = devinApi({
+      "/v3/organizations/org-1/consumption/daily": { total_acus: 3 },
+    });
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
+    await expect(client.fetchCostData("acct", RANGE)).rejects.toThrow("is not a list");
+  });
 });

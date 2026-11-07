@@ -1,6 +1,9 @@
 import {
+  ListPageError,
+  ListTruncatedError,
   createApiClient,
   pathEncode,
+  requireListPage,
   type ApiClient,
   type ApiResponse,
   type HttpHostServices,
@@ -28,6 +31,10 @@ import type { components, operations, paths } from "./api-types.gen.js";
 export const API_BASE = "https://api.devin.ai";
 export const APP_BASE = "https://app.devin.ai";
 const PAGE_SIZE = 200;
+/** 10,000 rows. */
+const MAX_PAGES = 50;
+/** 50,000 rows. The document states no order, so older sessions cannot be left to fall off. */
+const MAX_SESSION_PAGES = 250;
 
 export class DevinApiError extends Error {
   readonly status: number;
@@ -113,23 +120,29 @@ interface Page<T> {
 }
 
 /**
- * Follow `after` cursors until the last page or `maxItems`. A loop rather than
- * `getAll`, which cuts by pages where this cuts by items, and reads a page whose
- * `items` is not a list as empty where this fails.
+ * Follow `after` cursors to the last page, or throw: a sync prunes what a list stops
+ * returning. A loop rather than `getAll`, which reads a page that says there is more
+ * but gives no cursor as the end, and stops at an empty page where the pagination
+ * document says to go on until `has_next_page` is false.
  */
 async function paginate<T>(
+  path: string,
   load: (cursor: Cursor) => Promise<Page<T> | undefined>,
-  maxItems = 5000,
+  maxPages = MAX_PAGES,
 ): Promise<T[]> {
+  const place = { vendor: "Devin", path };
   const out: T[] = [];
   let after: string | undefined;
-  for (;;) {
+  for (let n = 0; n < maxPages; n++) {
     const page = await load({ first: PAGE_SIZE, ...(after !== undefined ? { after } : {}) });
-    out.push(...(page?.items ?? []));
-    if (out.length >= maxItems) return out.slice(0, maxItems);
-    if (!page?.has_next_page || !page.end_cursor) return out;
+    out.push(...requireListPage(page?.items, { ...place, key: "items", page }));
+    if (!page?.has_next_page) return out;
+    if (!page.end_cursor) {
+      throw new ListPageError({ ...place, key: "end_cursor", found: page.end_cursor, page });
+    }
     after = page.end_cursor;
   }
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages });
 }
 
 // ---------------------------------------------------------------------------
@@ -168,44 +181,43 @@ export function getSelf(api: DevinApi): Promise<DevinSelf> {
   return api.get("/v3/self");
 }
 
-export const listUsers = (api: DevinApi, orgId: string) =>
-  paginate((cursor) =>
-    api.get(`/v3beta1/organizations/${pathEncode(orgId)}/members/users`, { query: cursor }),
-  );
+export const listUsers = (api: DevinApi, orgId: string) => {
+  const path = `/v3beta1/organizations/${pathEncode(orgId)}/members/users` as const;
+  return paginate(path, (cursor) => api.get(path, { query: cursor }));
+};
 
-export const listPlaybooks = (api: DevinApi, orgId: string) =>
-  paginate((cursor) =>
-    api.get(`/v3/organizations/${pathEncode(orgId)}/playbooks`, { query: cursor }),
-  );
+export const listPlaybooks = (api: DevinApi, orgId: string) => {
+  const path = `/v3/organizations/${pathEncode(orgId)}/playbooks` as const;
+  return paginate(path, (cursor) => api.get(path, { query: cursor }));
+};
 
-export const listNotes = (api: DevinApi, orgId: string) =>
-  paginate((cursor) =>
-    api.get(`/v3/organizations/${pathEncode(orgId)}/knowledge/notes`, { query: cursor }),
-  );
+export const listNotes = (api: DevinApi, orgId: string) => {
+  const path = `/v3/organizations/${pathEncode(orgId)}/knowledge/notes` as const;
+  return paginate(path, (cursor) => api.get(path, { query: cursor }));
+};
 
-export const listSecrets = (api: DevinApi, orgId: string) =>
-  paginate((cursor) =>
-    api.get(`/v3/organizations/${pathEncode(orgId)}/secrets`, { query: cursor }),
-  );
+export const listSecrets = (api: DevinApi, orgId: string) => {
+  const path = `/v3/organizations/${pathEncode(orgId)}/secrets` as const;
+  return paginate(path, (cursor) => api.get(path, { query: cursor }));
+};
 
-export const listAutomations = (api: DevinApi, orgId: string) =>
-  paginate((cursor) =>
-    api.get(`/v3/organizations/${pathEncode(orgId)}/automations`, { query: cursor }),
-  );
+export const listAutomations = (api: DevinApi, orgId: string) => {
+  const path = `/v3/organizations/${pathEncode(orgId)}/automations` as const;
+  return paginate(path, (cursor) => api.get(path, { query: cursor }));
+};
 
 export const listSessions = (
   api: DevinApi,
   orgId: string,
   filter: { updated_after?: number } = {},
-  maxItems?: number,
-) =>
-  paginate(
-    (cursor) =>
-      api.get(`/v3/organizations/${pathEncode(orgId)}/sessions`, {
-        query: { ...filter, ...cursor },
-      }),
-    maxItems,
+) => {
+  const path = `/v3/organizations/${pathEncode(orgId)}/sessions` as const;
+  return paginate(
+    path,
+    (cursor) => api.get(path, { query: { ...filter, ...cursor } }),
+    MAX_SESSION_PAGES,
   );
+};
 
 /**
  * The organizations this key works in. An org-scoped service user names its
@@ -219,9 +231,8 @@ export async function resolveOrgs(api: DevinApi): Promise<{ self: DevinSelf; org
     return { self, orgs: [{ org_id: self.org_id, name: self.org_id }] };
   }
   try {
-    const orgs = await paginate((cursor) =>
-      api.get("/v3/enterprise/organizations", { query: cursor }),
-    );
+    const path = "/v3/enterprise/organizations";
+    const orgs = await paginate(path, (cursor) => api.get(path, { query: cursor }));
     if (orgs.length > 0) return { self, orgs };
   } catch (err) {
     if (!isPermissionError(err) && statusOf(err) !== 404) throw err;
@@ -292,7 +303,13 @@ export async function fetchConsumption(
     time_after: dayStartSeconds(fromDate),
     time_before: dayStartSeconds(addDays(toDate, 1)),
   });
-  return (res?.consumption_by_date ?? []).filter((d) => {
+  const rows = requireListPage(res?.consumption_by_date, {
+    vendor: "Devin",
+    path: "/v3/organizations/{org_id}/consumption/daily",
+    key: "consumption_by_date",
+    page: res,
+  });
+  return rows.filter((d) => {
     const day = billingDay(d.date);
     return day >= fromDate && day <= toDate;
   });

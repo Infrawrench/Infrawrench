@@ -13,7 +13,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, withAiCostTags } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+  withAiCostTags,
+} from "@infrawrench/plugin-base";
 import type { ConsumptionDay, DevinApi, DevinNote, DevinOrg, DevinSelf } from "./api.js";
 import {
   addDays,
@@ -50,8 +55,6 @@ import { PRODUCT_KEYS, PRODUCT_LABELS, parseAcuPrice, roundMoney } from "./prici
 import type { OrgSummary } from "./render.js";
 import { renderDevinDetail, renderDevinSidebar } from "./render.js";
 
-/** Sessions listed per organization: the most recent, newest first. */
-export const MAX_SESSIONS = 1000;
 const MACRO_PATTERN = /^![A-Za-z0-9_-]+$/;
 const SECRET_TYPES = ["key-value", "cookie", "totp"] as const;
 
@@ -157,8 +160,14 @@ export class DevinClient implements PluginClient {
 
   private async lookups(org: DevinOrg): Promise<SessionLookups> {
     const [users, playbooks] = await Promise.all([
-      listUsers(this.api, org.org_id).catch(() => []),
-      listPlaybooks(this.api, org.org_id).catch(() => []),
+      listUsers(this.api, org.org_id).catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
+      listPlaybooks(this.api, org.org_id).catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
     ]);
     return {
       users: new Map(users.map((u) => [u.user_id, u])),
@@ -178,7 +187,7 @@ export class DevinClient implements PluginClient {
         case "session":
           return this.perOrg(async (org) => {
             const [sessions, lookups] = await Promise.all([
-              listSessions(this.api, org.org_id, {}, MAX_SESSIONS),
+              listSessions(this.api, org.org_id),
               this.lookups(org),
             ]);
             return sessions.map((s) => mapSession(accountId, org, s, this.acuPrice, lookups));

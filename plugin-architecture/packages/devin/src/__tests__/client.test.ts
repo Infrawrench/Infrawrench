@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DevinClient } from "../client.js";
 import { mapComponent } from "../status-feed.js";
 import { day, makeHttp, page, reply } from "./helpers.js";
@@ -178,6 +178,160 @@ describe("writes", () => {
       folder_id: "f1",
       is_enabled: false,
     });
+  });
+});
+
+describe("lists that cannot say they are complete", () => {
+  const SELF = { principal_type: "service_user", org_id: "org-1" };
+  const isList = (path: string, c: { path: string; method: string }) =>
+    c.method === "GET" && c.path === `/v3/organizations/org-1${path}`;
+
+  /** Full pages, numbered by cursor, for as long as `more` says. */
+  const pages = (
+    path: string,
+    row: (n: number) => Record<string, unknown>,
+    more: (page: number) => boolean,
+  ) =>
+    makeHttp((c) => {
+      if (c.path === "/v3/self") return SELF;
+      if (c.path.endsWith("/members/users") && !path.endsWith("/members/users")) return page([]);
+      if (c.path.endsWith("/playbooks") && !path.endsWith("/playbooks")) return page([]);
+      const n = Number(c.query.get("after") ?? 0);
+      const first = Number(c.query.get("first"));
+      return {
+        items: Array.from({ length: first }, (_, i) => row(n * first + i)),
+        has_next_page: more(n),
+        end_cursor: more(n) ? String(n + 1) : null,
+      };
+    });
+
+  const playbook = (n: number) => ({ playbook_id: `pb${n}`, title: `P${n}`, body: "b" });
+  const session = (n: number) => ({ ...SESSION, session_id: `s${n}` });
+
+  it("throws at 10,000 rows of a list with more to read, after exactly 50 requests", async () => {
+    const { http, calls } = pages("/playbooks", playbook, () => true);
+    await expect(client(http).listResources("playbook", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => isList("/playbooks", c))).toHaveLength(50);
+  });
+
+  it("throws at 50,000 sessions, after exactly 250 requests", async () => {
+    const { http, calls } = pages("/sessions", session, () => true);
+    await expect(client(http).listResources("session", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => isList("/sessions", c))).toHaveLength(250);
+  });
+
+  it("reads every row past the old caps of 5,000 and 1,000 sessions", async () => {
+    const members = pages(
+      "/members/users",
+      (n) => ({ user_id: `u${n}`, name: `U${n}`, email: `${n}@x.io` }),
+      (n) => n < 25,
+    );
+    expect(await client(members.http).listResources("member", "acct")).toHaveLength(5200);
+
+    const sessions = pages("/sessions", session, (n) => n < 5);
+    expect(await client(sessions.http).listResources("session", "acct")).toHaveLength(1200);
+  });
+
+  it("rejects a page with its key renamed, first or later, on every list", async () => {
+    for (const [type, path] of [
+      ["playbook", "/playbooks"],
+      ["knowledge-note", "/knowledge/notes"],
+      ["secret", "/secrets"],
+      ["automation", "/automations"],
+      ["session", "/sessions"],
+    ]) {
+      const first = makeHttp((c) => {
+        if (c.path === "/v3/self") return SELF;
+        if (isList(path!, c)) return { results: [], has_next_page: false };
+        return page([]);
+      });
+      await expect(client(first.http).listResources(type!, "acct")).rejects.toThrow(
+        "is not a list",
+      );
+
+      const later = makeHttp((c) => {
+        if (c.path === "/v3/self") return SELF;
+        if (!isList(path!, c)) return page([]);
+        return c.query.get("after")
+          ? { results: [] }
+          : { items: [], has_next_page: true, end_cursor: "next" };
+      });
+      await expect(client(later.http).listResources(type!, "acct")).rejects.toThrow(
+        "is not a list",
+      );
+    }
+  });
+
+  it("rejects an enterprise listing that is not a list instead of naming no orgs", async () => {
+    const { http } = makeHttp((c) =>
+      c.path === "/v3/self" ? { principal_type: "service_user", org_id: null } : { orgs: [] },
+    );
+    await expect(client(http).listResources("organization", "acct")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("rejects a page that says there is more and gives no cursor", async () => {
+    const { http, calls } = makeHttp((c) => {
+      if (c.path === "/v3/self") return SELF;
+      return { items: [{ secret_id: "s1", key: "K" }], has_next_page: true, end_cursor: null };
+    });
+    await expect(client(http).listResources("secret", "acct")).rejects.toThrow("end_cursor");
+    expect(calls.filter((c) => isList("/secrets", c))).toHaveLength(1);
+  });
+
+  it("keeps reading past an empty page that says there is more", async () => {
+    const { http } = makeHttp((c) => {
+      if (c.path === "/v3/self") return SELF;
+      return c.query.get("after")
+        ? page([{ secret_id: "s1", key: "K" }])
+        : { items: [], has_next_page: true, end_cursor: "next" };
+    });
+    expect(await client(http).listResources("secret", "acct")).toHaveLength(1);
+  });
+
+  it("does not let the session labels' catch hide a list that is not one", async () => {
+    for (const lookup of ["/members/users", "/playbooks"]) {
+      const { http } = makeHttp((c) => {
+        if (c.path === "/v3/self") return SELF;
+        if (c.path.endsWith(lookup)) return { results: [] };
+        return page([]);
+      });
+      await expect(client(http).listResources("session", "acct")).rejects.toThrow("is not a list");
+    }
+  });
+
+  it("still lists sessions with no labels when a label read fails another way", async () => {
+    const { http } = makeHttp((c) => {
+      if (c.path === "/v3/self") return SELF;
+      if (c.path.endsWith("/members/users")) return reply(500, { detail: "boom" });
+      return c.path.endsWith("/sessions") ? page([SESSION]) : page([]);
+    });
+    expect(await client(http).listResources("session", "acct")).toHaveLength(1);
+  });
+
+  it("goes through the host's transport, with no CA and no fetch", async () => {
+    const fetchStub = vi.fn(() => {
+      throw new Error("unexpected fetch");
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      const request = vi.fn(async (req: { url: string }) => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify(req.url.endsWith("/v3/self") ? SELF : page([])),
+      }));
+      await client({ request }).listResources("secret", "acct");
+      expect(request).toHaveBeenCalled();
+      expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+      expect(fetchStub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
