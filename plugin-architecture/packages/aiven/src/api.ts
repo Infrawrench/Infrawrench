@@ -1,5 +1,12 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  type ApiBody,
+  type ApiClient,
+  type ApiFailure,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
 
 /**
  * Aiven REST API v1 (`https://api.aiven.io/v1`, OpenAPI document at
@@ -9,9 +16,15 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
  * Tokens come from the console's User profile, Tokens page (personal) or an
  * application user (organisation). Errors are
  * `{ "errors": [{ "message", "status" }], "message" }`. The API sends CORS
- * headers for any origin.
+ * headers for any origin. Nothing the plugin lists is paged. Types come from that
+ * document (`plugingen.json`).
  */
 export const AIVEN_API = "https://api.aiven.io/v1";
+
+export type AivenApi = ApiClient<paths>;
+
+/** The JSON body an operation takes, for one built up field by field. */
+export type AivenBody<Op extends keyof operations> = ApiBody<operations[Op]>;
 
 export interface AivenContext {
   token: string;
@@ -33,8 +46,6 @@ export function statusOf(err: unknown): number {
   return err instanceof AivenApiError ? err.status : 0;
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
 const STATUS_IN_MESSAGE = /Aiven API error (\d{3})/;
 
 export function friendlyError(status: number, raw: string): string {
@@ -42,10 +53,9 @@ export function friendlyError(status: number, raw: string): string {
   const jsonStart = detail.indexOf("{");
   if (jsonStart >= 0) {
     try {
-      const parsed = JSON.parse(detail.slice(jsonStart)) as {
-        message?: string;
-        errors?: Array<{ message?: string }>;
-      };
+      const parsed: { message?: string; errors?: Array<{ message?: string }> } = JSON.parse(
+        detail.slice(jsonStart),
+      );
       detail = parsed.message ?? parsed.errors?.[0]?.message ?? detail;
     } catch {
       /* keep text */
@@ -60,36 +70,22 @@ export function friendlyError(status: number, raw: string): string {
   return `Aiven API error ${status}: ${detail.trim() || "(empty)"}${hint}`;
 }
 
-export async function aivenFetch<T>(
-  ctx: AivenContext,
-  method: string,
-  path: string,
-  options: { body?: unknown; query?: Query } = {},
-): Promise<T> {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(options.query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Aiven",
-      url: `${ctx.baseUrl ?? AIVEN_API}${path}${qs ? `?${qs}` : ""}`,
-      errorPath: path,
-      headers: { Accept: "application/json", Authorization: `aivenv1 ${ctx.token}` },
-      init: {
-        method,
-        ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-      },
-      ...(ctx.http ? { http: ctx.http } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new AivenApiError(status, friendlyError(status, message));
-    throw err;
-  }
+/** What a non-2xx answer throws. The status comes out of the same text the message is built from. */
+function aivenError({ status, path, body }: ApiFailure): Error {
+  const raw = `Aiven API error ${status} for ${path}: ${body}`;
+  const parsed = Number(STATUS_IN_MESSAGE.exec(raw)?.[1] ?? 0);
+  return parsed ? new AivenApiError(parsed, friendlyError(parsed, raw)) : new Error(raw);
 }
 
-export const enc = encodeURIComponent;
+export function createAivenApi(ctx: AivenContext): AivenApi {
+  return createApiClient<paths>({
+    vendor: "Aiven",
+    baseUrl: ctx.baseUrl ?? AIVEN_API,
+    headers: { Accept: "application/json", Authorization: `aivenv1 ${ctx.token}` },
+    http: ctx.http,
+    caCert: ctx.caCert,
+    httpError: aivenError,
+  });
+}
+
+export const enc = pathEncode;

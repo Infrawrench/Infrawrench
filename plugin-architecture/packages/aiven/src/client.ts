@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostFetchResult,
@@ -22,8 +22,8 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
-import type { AivenContext, Query } from "./api.js";
-import { aivenFetch, enc, statusOf } from "./api.js";
+import type { AivenApi, AivenBody, AivenContext } from "./api.js";
+import { createAivenApi, enc, statusOf } from "./api.js";
 import { fetchAivenCostData, serviceLabel } from "./cost-data.js";
 import {
   chartsToSeries,
@@ -44,21 +44,19 @@ import {
   serviceConnectionString,
 } from "./mappers.js";
 import { ENRICH, renderAivenDetail, renderAivenSidebar } from "./render.js";
-import { DAYS, RESOURCE_TYPES, T } from "./resource-types.js";
+import { RESOURCE_TYPES, T, isMaintenanceDay } from "./resource-types.js";
 import type {
   AvBillingGroup,
   AvCloud,
-  AvConnector,
-  AvConnectorStatus,
   AvCredit,
-  AvIntegration,
-  AvInvoice,
-  AvMetric,
   AvPlan,
   AvProject,
   AvService,
-  AvTopic,
-  AvVpc,
+  AvServiceTypes,
+  AvTopicDetail,
+  AvVpcRow,
+  JsonValue,
+  Loose,
 } from "./types.js";
 
 const CACHE_MS = 30_000;
@@ -104,7 +102,7 @@ function stamp(raw: string | undefined): string {
 }
 
 /** The metrics `period` that covers a time range. */
-export function metricsPeriod(rangeMs: number): string {
+export function metricsPeriod(rangeMs: number): "hour" | "day" | "week" | "month" | "year" {
   const h = 3_600_000;
   if (rangeMs <= h) return "hour";
   if (rangeMs <= 24 * h) return "day";
@@ -113,9 +111,39 @@ export function metricsPeriod(rangeMs: number): string {
   return "year";
 }
 
+/** One kind of answer, kept for {@link CACHE_MS}. A failed load is not kept. */
+function ttlCache<V>() {
+  const entries = new Map<string, { at: number; value: Promise<V> }>();
+  return {
+    get(key: string, load: () => Promise<V>): Promise<V> {
+      const hit = entries.get(key);
+      if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+      const value = load();
+      entries.set(key, { at: Date.now(), value });
+      value.catch(() => entries.delete(key));
+      return value;
+    },
+    clear: () => entries.clear(),
+  };
+}
+
+type ServicePath = `/project/${NoSlashString}/service/${NoSlashString}`;
+
+const svcPath = (project: string, service: string): ServicePath =>
+  `/project/${enc(project)}/service/${enc(service)}`;
+
 export class AivenClient implements PluginClient {
   readonly ctx: AivenContext;
-  private cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  private readonly api: AivenApi;
+  private readonly cache = {
+    projects: ttlCache<AvProject[]>(),
+    services: ttlCache<Array<{ project: string; svc: AvService }>>(),
+    vpcs: ttlCache<Array<{ project: string; vpc: AvVpcRow }>>(),
+    billingGroups: ttlCache<AvBillingGroup[]>(),
+    clouds: ttlCache<AvCloud[]>(),
+    plans: ttlCache<AvPlan[]>(),
+    ca: ttlCache<string>(),
+  };
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
@@ -126,30 +154,11 @@ export class AivenClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
-  }
-
-  private cached<V>(key: string, load: () => Promise<V>): Promise<V> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<V>;
-    const value = load();
-    this.cache.set(key, { at: Date.now(), value });
-    value.catch(() => this.cache.delete(key));
-    return value;
+    this.api = createAivenApi(this.ctx);
   }
 
   private invalidate(): void {
-    this.cache.clear();
-  }
-
-  private api<V>(method: string, path: string, body?: unknown, query?: Query): Promise<V> {
-    return aivenFetch<V>(this.ctx, method, path, {
-      ...(body !== undefined ? { body } : {}),
-      ...(query ? { query } : {}),
-    });
-  }
-
-  private svcPath(project: string, service: string, rest = ""): string {
-    return `/project/${enc(project)}/service/${enc(service)}${rest}`;
+    for (const cache of Object.values(this.cache)) cache.clear();
   }
 
   // -------------------------------------------------------------------------
@@ -157,22 +166,19 @@ export class AivenClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   projects(): Promise<AvProject[]> {
-    return this.cached(
+    return this.cache.projects.get(
       "projects",
-      async () => (await this.api<{ projects?: AvProject[] }>("GET", "/project"))?.projects ?? [],
+      async () => (await this.api.get("/project"))?.projects ?? [],
     );
   }
 
   /** Every service in every project, with users, pools and ACLs embedded. */
   services(): Promise<Array<{ project: string; svc: AvService }>> {
-    return this.cached("services", async () => {
+    return this.cache.services.get("services", async () => {
       const out: Array<{ project: string; svc: AvService }> = [];
       for (const p of await this.projects()) {
         if (!p.project_name) continue;
-        const res = await this.api<{ services?: AvService[] }>(
-          "GET",
-          `/project/${enc(p.project_name)}/service`,
-        );
+        const res = await this.api.get(`/project/${enc(p.project_name)}/service`);
         for (const svc of res?.services ?? []) out.push({ project: p.project_name, svc });
       }
       return out;
@@ -185,15 +191,12 @@ export class AivenClient implements PluginClient {
     );
   }
 
-  private vpcs(): Promise<Array<{ project: string; vpc: AvVpc }>> {
-    return this.cached("vpcs", async () => {
-      const out: Array<{ project: string; vpc: AvVpc }> = [];
+  private vpcs(): Promise<Array<{ project: string; vpc: AvVpcRow }>> {
+    return this.cache.vpcs.get("vpcs", async () => {
+      const out: Array<{ project: string; vpc: AvVpcRow }> = [];
       for (const p of await this.projects()) {
         if (!p.project_name) continue;
-        const res = await this.api<{ vpcs?: AvVpc[] }>(
-          "GET",
-          `/project/${enc(p.project_name)}/vpcs`,
-        );
+        const res = await this.api.get(`/project/${enc(p.project_name)}/vpcs`);
         for (const vpc of res?.vpcs ?? [])
           if (vpc.state !== "DELETED") out.push({ project: p.project_name, vpc });
       }
@@ -202,18 +205,18 @@ export class AivenClient implements PluginClient {
   }
 
   private billingGroups(): Promise<AvBillingGroup[]> {
-    return this.cached(
+    return this.cache.billingGroups.get(
       "billing-groups",
-      async () =>
-        (await this.api<{ billing_groups?: AvBillingGroup[] }>("GET", "/billing-group"))
-          ?.billing_groups ?? [],
+      async () => (await this.api.get("/billing-group"))?.billing_groups ?? [],
     );
   }
 
   private clouds(project?: string): Promise<AvCloud[]> {
-    return this.cached(`clouds-${project ?? ""}`, async () => {
-      const path = project ? `/project/${enc(project)}/clouds` : "/clouds";
-      return (await this.api<{ clouds?: AvCloud[] }>("GET", path))?.clouds ?? [];
+    return this.cache.clouds.get(`clouds-${project ?? ""}`, async () => {
+      const res = project
+        ? await this.api.get(`/project/${enc(project)}/clouds`)
+        : await this.api.get("/clouds");
+      return res?.clouds ?? [];
     });
   }
 
@@ -226,15 +229,11 @@ export class AivenClient implements PluginClient {
   }
 
   private plans(project: string, type: string): Promise<AvPlan[]> {
-    return this.cached(
+    return this.cache.plans.get(
       `plans-${project}-${type}`,
       async () =>
-        (
-          await this.api<{ service_plans?: AvPlan[] }>(
-            "GET",
-            `/project/${enc(project)}/service-types/${enc(type)}/plans`,
-          )
-        )?.service_plans ?? [],
+        (await this.api.get(`/project/${enc(project)}/service-types/${enc(type)}/plans`))
+          ?.service_plans ?? [],
     );
   }
 
@@ -263,20 +262,16 @@ export class AivenClient implements PluginClient {
   }
 
   private projectCa(project: string): Promise<string> {
-    return this.cached(
+    return this.cache.ca.get(
       `ca-${project}`,
-      async () =>
-        (await this.api<{ certificate?: string }>("GET", `/project/${enc(project)}/kms/ca`))
-          ?.certificate ?? "",
+      async () => (await this.api.get(`/project/${enc(project)}/kms/ca`))?.certificate ?? "",
     );
   }
 
   private async service(project: string, name: string, secrets = false): Promise<AvService> {
-    const res = await this.api<{ service?: AvService }>(
-      "GET",
-      this.svcPath(project, name),
-      undefined,
-      secrets ? { include_secrets: true } : undefined,
+    const res = await this.api.get(
+      svcPath(project, name),
+      secrets ? { query: { include_secrets: true } } : {},
     );
     if (!res?.service)
       throw Object.assign(new Error(`Aiven plugin: service ${project}/${name} not found`), {
@@ -323,10 +318,9 @@ export class AivenClient implements PluginClient {
         case T.topic: {
           const out: ResourceInstance[] = [];
           for (const { project, svc } of await this.servicesOf(KAFKA_TYPES)) {
-            const res = await this.api<{ topics?: AvTopic[] }>(
-              "GET",
-              this.svcPath(project, svc.service_name ?? "", "/topic"),
-            ).catch(() => undefined);
+            const res = await this.api
+              .get(`${svcPath(project, svc.service_name ?? "")}/topic`)
+              .catch(() => undefined);
             for (const t of res?.topics ?? [])
               out.push(mapTopic(accountId, project, svc.service_name ?? "", t));
           }
@@ -337,10 +331,9 @@ export class AivenClient implements PluginClient {
           for (const { project, svc } of await this.servicesOf(CONNECT_TYPES)) {
             if (svc.service_type === "kafka" && !(svc.user_config?.["kafka_connect"] === true))
               continue;
-            const res = await this.api<{ connectors?: AvConnector[] }>(
-              "GET",
-              this.svcPath(project, svc.service_name ?? "", "/connectors"),
-            ).catch(() => undefined);
+            const res = await this.api
+              .get(`${svcPath(project, svc.service_name ?? "")}/connectors`)
+              .catch(() => undefined);
             for (const c of res?.connectors ?? [])
               out.push(mapConnector(accountId, project, svc.service_name ?? "", c));
           }
@@ -350,10 +343,9 @@ export class AivenClient implements PluginClient {
           const out: ResourceInstance[] = [];
           for (const { project, svc } of await this.servicesOf(KAFKA_TYPES)) {
             if (!(svc.user_config?.["schema_registry"] === true)) continue;
-            const res = await this.api<{ subjects?: string[] }>(
-              "GET",
-              this.svcPath(project, svc.service_name ?? "", "/kafka/schema/subjects"),
-            ).catch(() => undefined);
+            const res = await this.api
+              .get(`${svcPath(project, svc.service_name ?? "")}/kafka/schema/subjects`)
+              .catch(() => undefined);
             for (const s of res?.subjects ?? [])
               out.push(mapSubject(accountId, project, svc.service_name ?? "", s));
           }
@@ -374,10 +366,9 @@ export class AivenClient implements PluginClient {
         case T.peering: {
           const out: ResourceInstance[] = [];
           for (const { project, vpc } of await this.vpcs()) {
-            const full = await this.api<AvVpc>(
-              "GET",
-              `/project/${enc(project)}/vpcs/${enc(vpc.project_vpc_id ?? "")}`,
-            ).catch(() => undefined);
+            const full = await this.api
+              .get(`/project/${enc(project)}/vpcs/${enc(vpc.project_vpc_id ?? "")}`)
+              .catch(() => undefined);
             for (const p of full?.peering_connections ?? [])
               out.push(mapPeering(accountId, project, vpc.project_vpc_id ?? "", p));
           }
@@ -399,16 +390,14 @@ export class AivenClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === T.service) {
-        const [project, name] = parts(ext, 2) as [string, string];
+        const [project, name] = parts(ext, 2);
         return mapService(accountId, project, await this.service(project, name));
       }
       if (typeId === T.topic) {
-        const [project, service, topic] = parts(ext, 3) as [string, string, string];
-        const res = await this.api<{ topic?: AvTopic & { config?: unknown } }>(
-          "GET",
-          this.svcPath(project, service, `/topic/${enc(topic)}`),
-        );
-        return mapTopic(accountId, project, service, { topic_name: topic, ...(res?.topic ?? {}) });
+        const [project, service, topic] = parts(ext, 3);
+        const res = await this.api.get(`${svcPath(project, service)}/topic/${enc(topic)}`);
+        const named: Loose<AvTopicDetail> = { topic_name: topic };
+        return mapTopic(accountId, project, service, { ...named, ...(res?.topic ?? {}) });
       }
       const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
         (r) => r.id === resourceId,
@@ -430,7 +419,7 @@ export class AivenClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === T.service) {
-        const [project, name] = parts(ext, 2) as [string, string];
+        const [project, name] = parts(ext, 2);
         if (outputKey === "caCertificate") return this.projectCa(project);
         const svc = await this.service(project, name, true);
         const params = svc.service_uri_params ?? {};
@@ -464,7 +453,7 @@ export class AivenClient implements PluginClient {
         }
       }
       if (typeId === T.user) {
-        const [project, service, username] = parts(ext, 3) as [string, string, string];
+        const [project, service, username] = parts(ext, 3);
         const svc = await this.service(project, service, true);
         const u = (svc.users ?? []).find((x) => x.username === username);
         if (outputKey === "password") return u?.password ?? "";
@@ -472,7 +461,7 @@ export class AivenClient implements PluginClient {
         if (outputKey === "accessKey") return u?.access_key ?? "";
       }
       if (typeId === T.pool && outputKey === "connectionString") {
-        const [project, service, pool] = parts(ext, 3) as [string, string, string];
+        const [project, service, pool] = parts(ext, 3);
         const svc = await this.service(project, service, true);
         return (svc.connection_pools ?? []).find((p) => p.pool_name === pool)?.connection_uri ?? "";
       }
@@ -490,7 +479,7 @@ export class AivenClient implements PluginClient {
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs },
       };
-      const put = (key: string, value: unknown) => {
+      const put = (key: string, value: object | undefined) => {
         if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
       };
       const settle = async <V>(p: Promise<V>): Promise<V | undefined> => {
@@ -511,23 +500,18 @@ export class AivenClient implements PluginClient {
       switch (resource.resourceTypeId) {
         case T.project: {
           const [alerts, credits, groups, clouds] = await Promise.all([
-            settle(
-              this.api<{ alerts?: Array<Record<string, string>> }>(
-                "GET",
-                `/project/${enc(ext)}/alerts`,
-              ),
-            ),
-            settle(this.api<{ credits?: AvCredit[] }>("GET", `/project/${enc(ext)}/credits`)),
+            settle(this.api.get(`/project/${enc(ext)}/alerts`)),
+            settle(this.api.get(`/project/${enc(ext)}/credits`)),
             settle(this.billingGroups()),
             settle(this.cloudOptions(ext)),
           ]);
           put(
             ENRICH.alerts,
             alerts?.alerts?.map((a) => ({
-              time: stamp(a["create_time"]),
-              service: a["service_name"] ?? "",
-              severity: a["severity"] ?? "",
-              event: a["event"] ?? "",
+              time: stamp(a.create_time),
+              service: a.service_name ?? "",
+              severity: a.severity ?? "",
+              event: a.event ?? "",
             })),
           );
           put(ENRICH.credits, creditRows(credits?.credits));
@@ -542,29 +526,24 @@ export class AivenClient implements PluginClient {
           break;
         }
         case T.service: {
-          const [project, name] = parts(ext, 2) as [string, string];
+          const [project, name] = parts(ext, 2);
           const type = String(resource.fields["serviceType"] ?? "");
           const cloud = String(resource.fields["cloud"] ?? "");
           const [svc, plans, clouds, alerts] = await Promise.all([
             settle(this.service(project, name)),
             settle(this.planOptions(project, type, cloud)),
             settle(this.cloudOptions(project)),
-            settle(
-              this.api<{ alerts?: Array<Record<string, string>> }>(
-                "GET",
-                this.svcPath(project, name, "/alerts"),
-              ),
-            ),
+            settle(this.api.get(`${svcPath(project, name)}/alerts`)),
           ]);
           put(ENRICH.plans, plans);
           put(ENRICH.clouds, clouds);
           put(
             ENRICH.alerts,
             alerts?.alerts?.map((a) => ({
-              time: stamp(a["create_time"]),
-              severity: a["severity"] ?? "",
-              event: a["event"] ?? "",
-              node: a["node_name"] ?? "",
+              time: stamp(a.create_time),
+              severity: a.severity ?? "",
+              event: a.event ?? "",
+              node: a.node_name ?? "",
             })),
           );
           if (svc) {
@@ -598,33 +577,21 @@ export class AivenClient implements PluginClient {
           break;
         }
         case T.connector: {
-          const [project, service, name] = parts(ext, 3) as [string, string, string];
+          const [project, service, name] = parts(ext, 3);
           const st = await settle(
-            this.api<{ status?: AvConnectorStatus }>(
-              "GET",
-              this.svcPath(project, service, `/connectors/${enc(name)}/status`),
-            ),
+            this.api.get(`${svcPath(project, service)}/connectors/${enc(name)}/status`),
           );
           put(ENRICH.connectorStatus, st?.status);
           break;
         }
         case T.subject: {
-          const [project, service, subject] = parts(ext, 3) as [string, string, string];
-          const base = this.svcPath(
-            project,
-            service,
-            `/kafka/schema/subjects/${enc(subject)}/versions`,
-          );
-          const versions =
-            (await settle(this.api<{ versions?: number[] }>("GET", base)))?.versions ?? [];
+          const [project, service, subject] = parts(ext, 3);
+          const base =
+            `${svcPath(project, service)}/kafka/schema/subjects/${enc(subject)}/versions` as const;
+          const versions = (await settle(this.api.get(base)))?.versions ?? [];
           const latest = versions.length ? Math.max(...versions) : undefined;
           if (latest !== undefined) {
-            const v = await settle(
-              this.api<{ version?: { version?: number; schema?: string; schemaType?: string } }>(
-                "GET",
-                `${base}/${latest}`,
-              ),
-            );
+            const v = await settle(this.api.get(`${base}/${enc(latest)}`));
             put(ENRICH.schema, {
               version: latest,
               versions,
@@ -635,10 +602,8 @@ export class AivenClient implements PluginClient {
           break;
         }
         case T.vpc: {
-          const [project, vpcId] = parts(ext, 2) as [string, string];
-          const v = await settle(
-            this.api<AvVpc>("GET", `/project/${enc(project)}/vpcs/${enc(vpcId)}`),
-          );
+          const [project, vpcId] = parts(ext, 2);
+          const v = await settle(this.api.get(`/project/${enc(project)}/vpcs/${enc(vpcId)}`));
           put(
             ENRICH.peerings,
             v?.peering_connections?.map((p) => ({
@@ -651,10 +616,8 @@ export class AivenClient implements PluginClient {
         }
         case T.billingGroup: {
           const [invoices, credits] = await Promise.all([
-            settle(
-              this.api<{ invoices?: AvInvoice[] }>("GET", `/billing-group/${enc(ext)}/invoice`),
-            ),
-            settle(this.api<{ credits?: AvCredit[] }>("GET", `/billing-group/${enc(ext)}/credits`)),
+            settle(this.api.get(`/billing-group/${enc(ext)}/invoice`)),
+            settle(this.api.get(`/billing-group/${enc(ext)}/credits`)),
           ]);
           put(
             ENRICH.invoices,
@@ -734,7 +697,7 @@ export class AivenClient implements PluginClient {
   private serviceOf(fields: Record<string, string>, parentResourceId?: string): [string, string] {
     const raw = fields["service"] || (parentResourceId ? externalIdOf(parentResourceId) : "");
     if (!raw) throw new Error("Pick a service.");
-    return parts(raw, 2) as [string, string];
+    return parts(raw, 2);
   }
 
   private projectOf(fields: Record<string, string>, parentResourceId?: string): string {
@@ -788,22 +751,29 @@ export class AivenClient implements PluginClient {
             : ((await this.projects())[0]?.project_name ?? "");
           const projectField = await this.projectField(parentResourceId);
           if (!project) return { fields: [...projectField] };
-          const typesRes = await this.api<Record<string, { description?: string }>>(
-            "GET",
-            `/project/${enc(project)}/service-types`,
-          ).catch(() => ({}) as Record<string, { description?: string }>);
-          const types = Object.entries(typesRes)
-            .filter(([k, v]) => k !== "errors" && k !== "message" && v && typeof v === "object")
-            .map(([k, v]) => ({ id: k, label: serviceLabel(k), description: v.description ?? "" }));
+          const typesRes: AvServiceTypes = await this.api
+            .get(`/project/${enc(project)}/service-types`)
+            .catch(() => ({}));
+          const types = Object.entries(typesRes).flatMap(([k, v]) =>
+            k !== "errors" && k !== "message" && v && typeof v === "object"
+              ? [
+                  {
+                    id: k,
+                    label: serviceLabel(k),
+                    description: "description" in v ? (v.description ?? "") : "",
+                  },
+                ]
+              : [],
+          );
           const defaultCloud =
             (await this.projects()).find((p) => p.project_name === project)?.default_cloud ?? "";
           const [clouds, perType] = await Promise.all([
-            this.cloudOptions(project).catch(() => [] as SelectOption[]),
+            this.cloudOptions(project).catch((): SelectOption[] => []),
             Promise.all(
               types.map(async (t) => ({
                 type: t.id,
                 plans: await this.planOptions(project, t.id, defaultCloud).catch(
-                  () => [] as SelectOption[],
+                  (): SelectOption[] => [],
                 ),
               })),
             ),
@@ -886,7 +856,7 @@ export class AivenClient implements PluginClient {
           let dbOptions: SelectOption[] = [];
           let userOptions: SelectOption[] = [];
           if (parentResourceId) {
-            const [project, name] = parts(externalIdOf(parentResourceId), 2) as [string, string];
+            const [project, name] = parts(externalIdOf(parentResourceId), 2);
             const svc = await this.service(project, name).catch(() => undefined);
             dbOptions = (svc?.databases ?? []).map((d) => ({ id: d, label: d }));
             userOptions = (svc?.users ?? []).map((u) => ({
@@ -994,19 +964,15 @@ export class AivenClient implements PluginClient {
           let users: SelectOption[] = [];
           let topics: string[] = [];
           if (parentResourceId) {
-            const [project, name] = parts(externalIdOf(parentResourceId), 2) as [string, string];
+            const [project, name] = parts(externalIdOf(parentResourceId), 2);
             const svc = await this.service(project, name).catch(() => undefined);
             users = (svc?.users ?? []).map((u) => ({
               id: u.username ?? "",
               label: u.username ?? "",
             }));
             topics = (
-              (
-                await this.api<{ topics?: AvTopic[] }>(
-                  "GET",
-                  this.svcPath(project, name, "/topic"),
-                ).catch(() => undefined)
-              )?.topics ?? []
+              (await this.api.get(`${svcPath(project, name)}/topic`).catch(() => undefined))
+                ?.topics ?? []
             ).map((t) => t.topic_name ?? "");
           }
           return {
@@ -1044,10 +1010,10 @@ export class AivenClient implements PluginClient {
         case T.connector: {
           let available: SelectOption[] = [];
           if (parentResourceId) {
-            const [project, name] = parts(externalIdOf(parentResourceId), 2) as [string, string];
-            const res = await this.api<{
-              plugins?: Array<{ class?: string; title?: string; type?: string }>;
-            }>("GET", this.svcPath(project, name, "/available-connectors")).catch(() => undefined);
+            const [project, name] = parts(externalIdOf(parentResourceId), 2);
+            const res = await this.api
+              .get(`${svcPath(project, name)}/available-connectors`)
+              .catch(() => undefined);
             available = (res?.plugins ?? []).map((c) => ({
               id: c.class ?? "",
               label: c.title ?? c.class ?? "",
@@ -1263,10 +1229,12 @@ export class AivenClient implements PluginClient {
         case T.project: {
           const name = (fields["name"] ?? "").trim();
           if (!name) throw new Error("Give the project a name.");
-          const res = await this.api<{ project?: AvProject }>("POST", "/project", {
-            project: name,
-            ...(fields["cloud"] ? { cloud: fields["cloud"] } : {}),
-            ...(fields["billingGroupId"] ? { billing_group_id: fields["billingGroupId"] } : {}),
+          const res = await this.api.post("/project", {
+            body: {
+              project: name,
+              ...(fields["cloud"] ? { cloud: fields["cloud"] } : {}),
+              ...(fields["billingGroupId"] ? { billing_group_id: fields["billingGroupId"] } : {}),
+            },
           });
           return mapProject(accountId, res?.project ?? { project_name: name });
         }
@@ -1275,17 +1243,15 @@ export class AivenClient implements PluginClient {
           const type = fields["serviceType"] ?? "";
           const plan = fields[`plan__${type}`] || fields["plan"];
           if (!type || !plan) throw new Error("Pick a service type and plan.");
-          const res = await this.api<{ service?: AvService }>(
-            "POST",
-            `/project/${enc(project)}/service`,
-            {
+          const res = await this.api.post(`/project/${enc(project)}/service`, {
+            body: {
               service_name: fields["name"],
               service_type: type,
               plan,
               ...(fields["cloud"] ? { cloud: fields["cloud"] } : {}),
               ...(bool(fields["terminationProtection"]) ? { termination_protection: true } : {}),
             },
-          );
+          });
           return mapService(
             accountId,
             project,
@@ -1294,41 +1260,46 @@ export class AivenClient implements PluginClient {
         }
         case T.user: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          await this.api("POST", this.svcPath(project, service, "/user"), {
-            username: fields["username"],
+          await this.api.post(`${svcPath(project, service)}/user`, {
+            body: { username: fields["username"] },
           });
           return done(T.user, `${project}/${service}/${fields["username"]}`);
         }
         case T.database: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          await this.api("POST", this.svcPath(project, service, "/db"), {
-            database: fields["name"],
+          await this.api.post(`${svcPath(project, service)}/db`, {
+            body: { database: fields["name"] },
           });
           return done(T.database, `${project}/${service}/${fields["name"]}`);
         }
         case T.pool: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          await this.api("POST", this.svcPath(project, service, "/connection_pool"), {
-            pool_name: fields["name"],
-            database: fields["database"],
-            ...(fields["username"] ? { username: fields["username"] } : {}),
-            ...(fields["poolMode"] ? { pool_mode: fields["poolMode"] } : {}),
-            ...(num(fields["poolSize"]) !== undefined
-              ? { pool_size: num(fields["poolSize"]) }
-              : {}),
+          const poolSize = num(fields["poolSize"]);
+          await this.api.post(`${svcPath(project, service)}/connection_pool`, {
+            body: {
+              pool_name: fields["name"],
+              database: fields["database"],
+              ...(fields["username"] ? { username: fields["username"] } : {}),
+              ...(fields["poolMode"] ? { pool_mode: fields["poolMode"] } : {}),
+              ...(poolSize !== undefined ? { pool_size: poolSize } : {}),
+            },
           });
           return done(T.pool, `${project}/${service}/${fields["name"]}`);
         }
         case T.topic: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
           const hours = num(fields["retentionHours"]);
-          await this.api("POST", this.svcPath(project, service, "/topic"), {
-            topic_name: fields["name"],
-            partitions: num(fields["partitions"]) ?? 3,
-            replication: num(fields["replication"]) ?? 3,
-            config: {
-              ...(fields["cleanupPolicy"] ? { cleanup_policy: fields["cleanupPolicy"] } : {}),
-              ...(hours !== undefined ? { retention_ms: hours < 0 ? -1 : hours * 3_600_000 } : {}),
+          await this.api.post(`${svcPath(project, service)}/topic`, {
+            body: {
+              topic_name: fields["name"],
+              partitions: num(fields["partitions"]) ?? 3,
+              replication: num(fields["replication"]) ?? 3,
+              config: {
+                ...(fields["cleanupPolicy"] ? { cleanup_policy: fields["cleanupPolicy"] } : {}),
+                ...(hours !== undefined
+                  ? { retention_ms: hours < 0 ? -1 : hours * 3_600_000 }
+                  : {}),
+              },
             },
           });
           return mapTopic(accountId, project, service, {
@@ -1340,12 +1311,12 @@ export class AivenClient implements PluginClient {
         }
         case T.acl: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          const res = await this.api<{
-            acl?: Array<{ id?: string; permission?: string; topic?: string; username?: string }>;
-          }>("POST", this.svcPath(project, service, "/acl"), {
-            username: fields["username"],
-            topic: fields["topic"],
-            permission: fields["permission"] || "read",
+          const res = await this.api.post(`${svcPath(project, service)}/acl`, {
+            body: {
+              username: fields["username"],
+              topic: fields["topic"],
+              permission: fields["permission"] || "read",
+            },
           });
           const created = (res?.acl ?? []).find(
             (a) =>
@@ -1358,57 +1329,51 @@ export class AivenClient implements PluginClient {
         }
         case T.connector: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          let extra: Record<string, unknown> = {};
+          let extra: Record<string, JsonValue> = {};
           if (fields["config"]?.trim()) {
             try {
-              extra = JSON.parse(fields["config"]) as Record<string, unknown>;
+              extra = JSON.parse(fields["config"]);
             } catch {
               throw new Error("The configuration is not valid JSON.");
             }
           }
           const config = Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)]));
-          await this.api("POST", this.svcPath(project, service, "/connectors"), {
-            ...config,
-            name: fields["name"],
-            "connector.class": fields["connectorClass"],
+          await this.api.post(`${svcPath(project, service)}/connectors`, {
+            body: {
+              ...config,
+              name: fields["name"],
+              "connector.class": fields["connectorClass"],
+            },
           });
           return done(T.connector, `${project}/${service}/${fields["name"]}`);
         }
         case T.subject: {
           const [project, service] = this.serviceOf(fields, parentResourceId);
-          await this.api(
-            "POST",
-            this.svcPath(
-              project,
-              service,
-              `/kafka/schema/subjects/${enc(fields["name"] ?? "")}/versions`,
-            ),
-            {
-              schema: fields["schema"],
-              schemaType: fields["schemaType"] || "AVRO",
-            },
+          await this.api.post(
+            `${svcPath(project, service)}/kafka/schema/subjects/${enc(fields["name"] ?? "")}/versions`,
+            { body: { schema: fields["schema"], schemaType: fields["schemaType"] || "AVRO" } },
           );
           return mapSubject(accountId, project, service, fields["name"] ?? "");
         }
         case T.integration: {
           const project = this.projectOf(fields, parentResourceId);
-          const res = await this.api<{ service_integration?: AvIntegration }>(
-            "POST",
-            `/project/${enc(project)}/integration`,
-            {
+          const res = await this.api.post(`/project/${enc(project)}/integration`, {
+            body: {
               integration_type: fields["integrationType"],
               source_service: fields["source"],
               dest_service: fields["destination"],
             },
-          );
+          });
           return mapIntegration(accountId, project, res?.service_integration ?? {});
         }
         case T.vpc: {
           const project = this.projectOf(fields, parentResourceId);
-          const vpc = await this.api<AvVpc>("POST", `/project/${enc(project)}/vpcs`, {
-            cloud_name: fields["cloud"],
-            network_cidr: fields["networkCidr"],
-            peering_connections: [],
+          const vpc = await this.api.post(`/project/${enc(project)}/vpcs`, {
+            body: {
+              cloud_name: fields["cloud"],
+              network_cidr: fields["networkCidr"],
+              peering_connections: [],
+            },
           });
           return mapVpc(accountId, project, vpc);
         }
@@ -1416,20 +1381,21 @@ export class AivenClient implements PluginClient {
           const [project, vpcId] = parts(
             fields["vpc"] || (parentResourceId ? externalIdOf(parentResourceId) : ""),
             2,
-          ) as [string, string];
-          const p = await this.api<{ peer_cloud_account?: string }>(
-            "POST",
+          );
+          const p = await this.api.post(
             `/project/${enc(project)}/vpcs/${enc(vpcId)}/peering-connections`,
             {
-              peer_cloud_account: fields["peerCloudAccount"],
-              peer_vpc: fields["peerVpc"],
-              ...(fields["peerRegion"] ? { peer_region: fields["peerRegion"] } : {}),
-              ...(fields["peerResourceGroup"]
-                ? { peer_resource_group: fields["peerResourceGroup"] }
-                : {}),
-              ...(list(fields["cidrs"]).length
-                ? { user_peer_network_cidrs: list(fields["cidrs"]) }
-                : {}),
+              body: {
+                peer_cloud_account: fields["peerCloudAccount"],
+                peer_vpc: fields["peerVpc"],
+                ...(fields["peerRegion"] ? { peer_region: fields["peerRegion"] } : {}),
+                ...(fields["peerResourceGroup"]
+                  ? { peer_resource_group: fields["peerResourceGroup"] }
+                  : {}),
+                ...(list(fields["cidrs"]).length
+                  ? { user_peer_network_cidrs: list(fields["cidrs"]) }
+                  : {}),
+              },
             },
           );
           return mapPeering(accountId, project, vpcId, {
@@ -1460,65 +1426,62 @@ export class AivenClient implements PluginClient {
       switch (typeId) {
         case T.project:
           if (fields["techEmails"] !== undefined) {
-            await this.api("PUT", `/project/${enc(ext)}`, {
-              tech_emails: list(fields["techEmails"]).map((email) => ({ email })),
+            await this.api.put(`/project/${enc(ext)}`, {
+              body: { tech_emails: list(fields["techEmails"]).map((email) => ({ email })) },
             });
           }
           break;
         case T.service: {
-          const [project, name] = parts(ext, 2) as [string, string];
-          const body: Record<string, unknown> = {};
+          const [project, name] = parts(ext, 2);
+          const body: AivenBody<"ServiceUpdate"> = {};
           if (fields["terminationProtection"] !== undefined)
-            body["termination_protection"] = bool(fields["terminationProtection"]);
+            body.termination_protection = bool(fields["terminationProtection"]);
           if (num(fields["diskSpaceMb"]) !== undefined)
-            body["disk_space_mb"] = num(fields["diskSpaceMb"]);
+            body.disk_space_mb = num(fields["diskSpaceMb"]);
           if (fields["maintenanceDow"] || fields["maintenanceTime"]) {
             const dow = fields["maintenanceDow"];
-            if (dow && !DAYS.includes(dow)) throw new Error("Pick a weekday for maintenance.");
+            if (dow && !isMaintenanceDay(dow)) throw new Error("Pick a weekday for maintenance.");
             const time = fields["maintenanceTime"];
             if (time && !/^\d{2}:\d{2}(:\d{2})?$/.test(time))
               throw new Error("Maintenance time is HH:MM:SS in UTC.");
-            body["maintenance"] = {
-              ...(dow ? { dow } : {}),
+            body.maintenance = {
+              ...(dow && isMaintenanceDay(dow) ? { dow } : {}),
               ...(time ? { time: time.length === 5 ? `${time}:00` : time } : {}),
             };
           }
-          if (Object.keys(body).length) await this.api("PUT", this.svcPath(project, name), body);
+          if (Object.keys(body).length) await this.api.put(svcPath(project, name), { body });
           break;
         }
         case T.pool: {
-          const [project, service, pool] = parts(ext, 3) as [string, string, string];
-          const body: Record<string, unknown> = {};
-          if (fields["database"]) body["database"] = fields["database"];
-          if (fields["username"] !== undefined) body["username"] = fields["username"];
-          if (fields["poolMode"]) body["pool_mode"] = fields["poolMode"];
-          if (num(fields["poolSize"]) !== undefined) body["pool_size"] = num(fields["poolSize"]);
+          const [project, service, pool] = parts(ext, 3);
+          const body: AivenBody<"ServicePGBouncerUpdate"> = {};
+          if (fields["database"]) body.database = fields["database"];
+          if (fields["username"] !== undefined) body.username = fields["username"];
+          if (fields["poolMode"]) body.pool_mode = fields["poolMode"];
+          if (num(fields["poolSize"]) !== undefined) body.pool_size = num(fields["poolSize"]);
           if (Object.keys(body).length)
-            await this.api(
-              "PUT",
-              this.svcPath(project, service, `/connection_pool/${enc(pool)}`),
+            await this.api.put(`${svcPath(project, service)}/connection_pool/${enc(pool)}`, {
               body,
-            );
+            });
           break;
         }
         case T.topic: {
-          const [project, service, topic] = parts(ext, 3) as [string, string, string];
-          const body: Record<string, unknown> = {};
-          const config: Record<string, unknown> = {};
-          if (num(fields["partitions"]) !== undefined)
-            body["partitions"] = num(fields["partitions"]);
-          if (num(fields["replication"]) !== undefined)
-            body["replication"] = num(fields["replication"]);
-          if (fields["description"] !== undefined)
-            body["topic_description"] = fields["description"];
+          const [project, service, topic] = parts(ext, 3);
+          const body: AivenBody<"ServiceKafkaTopicUpdate"> = {};
+          const config: NonNullable<AivenBody<"ServiceKafkaTopicUpdate">["config"]> = {};
+          const partitions = num(fields["partitions"]);
+          if (partitions !== undefined) body.partitions = partitions;
+          const replication = num(fields["replication"]);
+          if (replication !== undefined) body.replication = replication;
+          if (fields["description"] !== undefined) body.topic_description = fields["description"];
           const hours = num(fields["retentionHours"]);
-          if (hours !== undefined) config["retention_ms"] = hours < 0 ? -1 : hours * 3_600_000;
-          if (num(fields["minInsyncReplicas"]) !== undefined)
-            config["min_insync_replicas"] = num(fields["minInsyncReplicas"]);
-          if (fields["cleanupPolicy"]) config["cleanup_policy"] = fields["cleanupPolicy"];
-          if (Object.keys(config).length) body["config"] = config;
+          if (hours !== undefined) config.retention_ms = hours < 0 ? -1 : hours * 3_600_000;
+          const minInsync = num(fields["minInsyncReplicas"]);
+          if (minInsync !== undefined) config.min_insync_replicas = minInsync;
+          if (fields["cleanupPolicy"]) config.cleanup_policy = fields["cleanupPolicy"];
+          if (Object.keys(config).length) body.config = config;
           if (Object.keys(body).length)
-            await this.api("PUT", this.svcPath(project, service, `/topic/${enc(topic)}`), body);
+            await this.api.put(`${svcPath(project, service)}/topic/${enc(topic)}`, { body });
           break;
         }
         default:
@@ -1533,62 +1496,65 @@ export class AivenClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       this.invalidate();
-      const three = () => parts(ext, 3) as [string, string, string];
+      const three = () => parts(ext, 3);
       switch (typeId) {
         case T.project:
-          return void (await this.api("DELETE", `/project/${enc(ext)}`));
+          return void (await this.api.delete(`/project/${enc(ext)}`));
         case T.service: {
-          const [project, name] = parts(ext, 2) as [string, string];
-          return void (await this.api("DELETE", this.svcPath(project, name)));
+          const [project, name] = parts(ext, 2);
+          return void (await this.api.delete(svcPath(project, name)));
         }
         case T.user: {
           const [p, s, u] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/user/${enc(u)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/user/${enc(u)}`));
         }
         case T.database: {
           const [p, s, d] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/db/${enc(d)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/db/${enc(d)}`));
         }
         case T.pool: {
           const [p, s, n] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/connection_pool/${enc(n)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/connection_pool/${enc(n)}`));
         }
         case T.topic: {
           const [p, s, n] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/topic/${enc(n)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/topic/${enc(n)}`));
         }
         case T.acl: {
           const [p, s, id] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/acl/${enc(id)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/acl/${enc(id)}`));
         }
         case T.connector: {
           const [p, s, n] = three();
-          return void (await this.api("DELETE", this.svcPath(p, s, `/connectors/${enc(n)}`)));
+          return void (await this.api.delete(`${svcPath(p, s)}/connectors/${enc(n)}`));
         }
         case T.subject: {
           const [p, s, n] = three();
-          return void (await this.api(
-            "DELETE",
-            this.svcPath(p, s, `/kafka/schema/subjects/${enc(n)}`),
-          ));
+          return void (await this.api.delete(`${svcPath(p, s)}/kafka/schema/subjects/${enc(n)}`));
         }
         case T.integration: {
-          const [p, id] = parts(ext, 2) as [string, string];
-          return void (await this.api("DELETE", `/project/${enc(p)}/integration/${enc(id)}`));
+          const [p, id] = parts(ext, 2);
+          return void (await this.api.delete(`/project/${enc(p)}/integration/${enc(id)}`));
         }
         case T.vpc: {
-          const [p, id] = parts(ext, 2) as [string, string];
-          return void (await this.api("DELETE", `/project/${enc(p)}/vpcs/${enc(id)}`));
+          const [p, id] = parts(ext, 2);
+          return void (await this.api.delete(`/project/${enc(p)}/vpcs/${enc(id)}`));
         }
         case T.peering: {
           const segs = ext.split("/");
           const [p, vpc, account, peerVpc, extra] = segs;
-          let path = `/project/${enc(p ?? "")}/vpcs/${enc(vpc ?? "")}/peering-connections/peer-accounts/${enc(account ?? "")}/peer-vpcs/${enc(peerVpc ?? "")}`;
-          if (extra?.startsWith("region:")) path += `/peer-regions/${enc(extra.slice(7))}`;
+          const peerAccount =
+            `/project/${enc(p ?? "")}/vpcs/${enc(vpc ?? "")}/peering-connections/peer-accounts/${enc(account ?? "")}` as const;
           if (extra?.startsWith("rg:")) {
-            path = `/project/${enc(p ?? "")}/vpcs/${enc(vpc ?? "")}/peering-connections/peer-accounts/${enc(account ?? "")}/peer-resource-groups/${enc(extra.slice(3))}/peer-vpcs/${enc(peerVpc ?? "")}`;
+            return void (await this.api.delete(
+              `${peerAccount}/peer-resource-groups/${enc(extra.slice(3))}/peer-vpcs/${enc(peerVpc ?? "")}`,
+            ));
           }
-          return void (await this.api("DELETE", path));
+          const peer = `${peerAccount}/peer-vpcs/${enc(peerVpc ?? "")}` as const;
+          if (extra?.startsWith("region:")) {
+            return void (await this.api.delete(`${peer}/peer-regions/${enc(extra.slice(7))}`));
+          }
+          return void (await this.api.delete(peer));
         }
         default:
           throw new Error(`Aiven plugin: deleting "${typeId}" is not supported`);
@@ -1610,44 +1576,47 @@ export class AivenClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       this.invalidate();
       if (typeId === T.service) {
-        const [project, name] = parts(ext, 2) as [string, string];
+        const [project, name] = parts(ext, 2);
         if (actionId === "power-on" || actionId === "power-off") {
-          await this.api("PUT", this.svcPath(project, name), { powered: actionId === "power-on" });
+          await this.api.put(svcPath(project, name), {
+            body: { powered: actionId === "power-on" },
+          });
           return;
         }
         if (actionId === "start-maintenance") {
-          await this.api("PUT", this.svcPath(project, name, "/maintenance/start"));
+          await this.api.put(`${svcPath(project, name)}/maintenance/start`);
           return;
         }
       }
       if (typeId === T.user) {
-        const [project, service, username] = parts(ext, 3) as [string, string, string];
+        const [project, service, username] = parts(ext, 3);
         if (actionId === "acknowledge-renewal") {
-          await this.api("PUT", this.svcPath(project, service, `/user/${enc(username)}`), {
-            operation: "acknowledge-renewal",
+          await this.api.put(`${svcPath(project, service)}/user/${enc(username)}`, {
+            body: { operation: "acknowledge-renewal" },
           });
           return;
         }
       }
       if (typeId === T.connector) {
-        const [project, service, name] = parts(ext, 3) as [string, string, string];
-        const base = this.svcPath(project, service, `/connectors/${enc(name)}`);
-        if (["pause", "resume", "restart"].includes(actionId)) {
-          await this.api("POST", `${base}/${actionId}`, {});
-          return;
+        const [project, service, name] = parts(ext, 3);
+        const base = `${svcPath(project, service)}/connectors/${enc(name)}` as const;
+        if (actionId === "pause") return void (await this.api.post(`${base}/pause`, { body: {} }));
+        if (actionId === "resume")
+          return void (await this.api.post(`${base}/resume`, { body: {} }));
+        if (actionId === "restart") {
+          return void (await this.api.post(`${base}/restart`, { body: {} }));
         }
         const m = /^restart-task:(\d+)$/.exec(actionId);
         if (m) {
-          await this.api("POST", `${base}/tasks/${m[1]}/restart`, {});
+          await this.api.post(`${base}/tasks/${enc(m[1] ?? "")}/restart`, { body: {} });
           return;
         }
       }
       if (typeId === T.peering && actionId === "refresh-peerings") {
         const [project, vpcId] = ext.split("/");
-        await this.api(
-          "POST",
+        await this.api.post(
           `/project/${enc(project ?? "")}/vpcs/${enc(vpcId ?? "")}/peering-connections/refresh`,
-          {},
+          { body: {} },
         );
         return;
       }
@@ -1668,72 +1637,72 @@ export class AivenClient implements PluginClient {
       this.invalidate();
       switch (`${typeId}:${command}`) {
         case `${T.project}:set-cloud`:
-          await this.api("PUT", `/project/${enc(ext)}`, { cloud: form["cloud"] });
+          await this.api.put(`/project/${enc(ext)}`, { body: { cloud: form["cloud"] } });
           return { ok: true, message: "Default cloud saved." };
         case `${T.project}:set-billing-group`:
           if (!form["billingGroupId"]) throw new Error("Pick a billing group.");
-          await this.api(
-            "POST",
+          await this.api.post(
             `/billing-group/${enc(form["billingGroupId"])}/project-assign/${enc(ext)}`,
-            {},
+            { body: {} },
           );
           return { ok: true, message: "Project moved." };
         case `${T.project}:claim-credit`:
-          await this.api("POST", `/project/${enc(ext)}/credits`, { code: form["code"] });
+          await this.api.post(`/project/${enc(ext)}/credits`, { body: { code: form["code"] } });
           return { ok: true, message: "Credit claimed." };
         case `${T.billingGroup}:claim-credit`:
-          await this.api("POST", `/billing-group/${enc(ext)}/credits`, { code: form["code"] });
+          await this.api.post(`/billing-group/${enc(ext)}/credits`, {
+            body: { code: form["code"] },
+          });
           return { ok: true, message: "Credit claimed." };
         case `${T.service}:change-plan`:
         case `${T.service}:move-cloud`:
         case `${T.service}:set-tags`: {
-          const [project, name] = parts(ext, 2) as [string, string];
+          const [project, name] = parts(ext, 2);
           if (command === "set-tags") {
-            await this.api("PUT", this.svcPath(project, name, "/tags"), {
-              tags: parseTags(form["tags"]),
+            await this.api.put(`${svcPath(project, name)}/tags`, {
+              body: { tags: parseTags(form["tags"]) },
             });
             return { ok: true, message: "Tags saved." };
           }
           const body =
             command === "change-plan" ? { plan: form["plan"] } : { cloud: form["cloud"] };
           if (!Object.values(body)[0]) throw new Error("Pick a value.");
-          await this.api("PUT", this.svcPath(project, name), body);
+          await this.api.put(svcPath(project, name), { body });
           return {
             ok: true,
             message: command === "change-plan" ? "Plan change started." : "Migration started.",
           };
         }
         case `${T.user}:set-password`: {
-          const [project, service, username] = parts(ext, 3) as [string, string, string];
-          await this.api(
-            "PUT",
-            this.svcPath(project, service, `/user/${enc(username)}`),
-            form["password"]
+          const [project, service, username] = parts(ext, 3);
+          await this.api.put(`${svcPath(project, service)}/user/${enc(username)}`, {
+            body: form["password"]
               ? { operation: "reset-credentials", new_password: form["password"] }
               : { operation: "reset-credentials" },
-          );
+          });
           return { ok: true, message: "Password changed." };
         }
         case `${T.connector}:set-config`: {
-          const [project, service, name] = parts(ext, 3) as [string, string, string];
-          let config: Record<string, unknown>;
+          const [project, service, name] = parts(ext, 3);
+          let config: Record<string, JsonValue>;
           try {
-            config = JSON.parse(form["config"] ?? "") as Record<string, unknown>;
+            config = JSON.parse(form["config"] ?? "");
           } catch {
             throw new Error("The configuration is not valid JSON.");
           }
-          await this.api("PUT", this.svcPath(project, service, `/connectors/${enc(name)}`), {
-            ...Object.fromEntries(Object.entries(config).map(([k, v]) => [k, String(v)])),
-            name,
+          await this.api.put(`${svcPath(project, service)}/connectors/${enc(name)}`, {
+            body: {
+              ...Object.fromEntries(Object.entries(config).map(([k, v]) => [k, String(v)])),
+              name,
+            },
           });
           return { ok: true, message: "Connector updated." };
         }
         case `${T.subject}:register`: {
-          const [project, service, subject] = parts(ext, 3) as [string, string, string];
-          const res = await this.api<{ id?: number }>(
-            "POST",
-            this.svcPath(project, service, `/kafka/schema/subjects/${enc(subject)}/versions`),
-            { schema: form["schema"], schemaType: form["schemaType"] || "AVRO" },
+          const [project, service, subject] = parts(ext, 3);
+          const res = await this.api.post(
+            `${svcPath(project, service)}/kafka/schema/subjects/${enc(subject)}/versions`,
+            { body: { schema: form["schema"], schemaType: form["schemaType"] || "AVRO" } },
           );
           return { ok: true, message: `Registered schema id ${res?.id ?? "?"}.` };
         }
@@ -1750,12 +1719,8 @@ export class AivenClient implements PluginClient {
   ): PluginEffect<PublishMessageResult> {
     return attempt(async () => {
       if (typeId !== T.topic) throw new Error("Aiven plugin: only Kafka topics accept messages.");
-      const [project, service, topic] = parts(externalIdOf(resourceId), 3) as [
-        string,
-        string,
-        string,
-      ];
-      let value: unknown;
+      const [project, service, topic] = parts(externalIdOf(resourceId), 3);
+      let value: JsonValue;
       try {
         value = JSON.parse(payload.body);
       } catch {
@@ -1766,14 +1731,17 @@ export class AivenClient implements PluginClient {
         typeof payload.extras["partition"] === "string"
           ? num(payload.extras["partition"])
           : undefined;
-      const res = await this.api<{
-        offsets?: Array<{ partition?: number; offset?: number; error?: string }>;
-      }>("POST", this.svcPath(project, service, `/kafka/rest/topics/${enc(topic)}/produce`), {
-        format: "json",
-        records: [
-          { value, ...(key ? { key } : {}), ...(partition !== undefined ? { partition } : {}) },
-        ],
-      });
+      const res = await this.api.post(
+        `${svcPath(project, service)}/kafka/rest/topics/${enc(topic)}/produce`,
+        {
+          body: {
+            format: "json",
+            records: [
+              { value, ...(key ? { key } : {}), ...(partition !== undefined ? { partition } : {}) },
+            ],
+          },
+        },
+      );
       const o = res?.offsets?.[0];
       if (o?.error) throw new Error(o.error);
       return {
@@ -1794,24 +1762,24 @@ export class AivenClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      let path: string;
-      let body: Record<string, unknown>;
       const period = metricsPeriod(
         timeRange ? timeRange.endMs - timeRange.startMs : METRICS_WINDOW_MS,
       );
       if (resourceTypeId === T.service) {
-        const [project, name] = parts(ext, 2) as [string, string];
-        path = this.svcPath(project, name, "/metrics");
-        body = { period };
-      } else if (resourceTypeId === T.topic) {
-        const [project, service, topic] = parts(ext, 3) as [string, string, string];
-        path = this.svcPath(project, service, "/metrics");
-        body = { period, kafka_topic_name: topic };
-      } else {
-        return [];
+        const [project, name] = parts(ext, 2);
+        const res = await this.api.post(`${svcPath(project, name)}/metrics`, {
+          body: { period },
+        });
+        return chartsToSeries(res?.metrics);
       }
-      const res = await this.api<{ metrics?: Record<string, AvMetric> }>("POST", path, body);
-      return chartsToSeries(res?.metrics);
+      if (resourceTypeId === T.topic) {
+        const [project, service, topic] = parts(ext, 3);
+        const res = await this.api.post(`${svcPath(project, service)}/metrics`, {
+          body: { period, kafka_topic_name: topic },
+        });
+        return chartsToSeries(res?.metrics);
+      }
+      return [];
     });
   }
 
@@ -1825,14 +1793,7 @@ export class AivenClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 500);
       if (typeId === T.project) {
-        const res = await this.api<{
-          events?: Array<{
-            time?: string;
-            actor?: string;
-            event_desc?: string;
-            service_name?: string;
-          }>;
-        }>("GET", `/project/${enc(ext)}/events`);
+        const res = await this.api.get(`/project/${enc(ext)}/events`);
         const text = (res?.events ?? [])
           .slice(0, limit)
           .reverse()
@@ -1848,18 +1809,18 @@ export class AivenClient implements PluginClient {
         };
       }
       if (typeId === T.service) {
-        const [project, name] = parts(ext, 2) as [string, string];
+        const [project, name] = parts(ext, 2);
         const severities = ["All", "Warnings and errors", "Errors"];
         const active =
           params.container && severities.includes(params.container) ? params.container : "All";
         const severity =
           active === "Errors" ? "err" : active === "Warnings and errors" ? "warning" : undefined;
-        const res = await this.api<{
-          logs?: Array<{ time?: string; msg?: string; unit?: string; severity?: string }>;
-        }>("POST", this.svcPath(project, name, "/logs"), {
-          limit,
-          sort_order: "desc",
-          ...(severity ? { severity } : {}),
+        const res = await this.api.post(`${svcPath(project, name)}/logs`, {
+          body: {
+            limit,
+            sort_order: "desc",
+            ...(severity ? { severity } : {}),
+          },
         });
         const text = (res?.logs ?? [])
           .slice()
@@ -1917,12 +1878,8 @@ export class AivenClient implements PluginClient {
         let credits: AvCredit[] = [];
         try {
           credits =
-            (
-              await this.api<{ credits?: AvCredit[] }>(
-                "GET",
-                `/billing-group/${enc(g.billing_group_id)}/credits`,
-              )
-            )?.credits ?? [];
+            (await this.api.get(`/billing-group/${enc(g.billing_group_id)}/credits`))?.credits ??
+            [];
         } catch (err) {
           if (statusOf(err) === 403) continue;
           throw err;
