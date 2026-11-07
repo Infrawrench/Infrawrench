@@ -283,7 +283,7 @@ export async function fetchFastlyCostData(
     }
     if (wantCurrent) {
       const mtd = await getMonthToDate(ctx);
-      const ccy = currency || (await latestCurrency(ctx).catch(() => "USD"));
+      const ccy = currency || (await latestCurrency(ctx));
       rows.push(...linesToRows(mtd.transaction_line_items ?? [], current, ccy));
     }
     return mergeRows(rows);

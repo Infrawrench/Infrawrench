@@ -178,6 +178,15 @@ describe("fetchFastlyCostData", () => {
     expect(rows).toEqual([]);
   });
 
+  it("does not guess USD when the currency read fails", async () => {
+    const { http } = makeHttp((url) =>
+      url.pathname === "/billing/v3/invoices" ? { status: 500, body: {} } : billingRoute(url),
+    );
+    await expect(
+      fetchFastlyCostData(ctxWith(http), { fromDate: "2026-10-01", toDate: "2026-10-04" }, NOW),
+    ).rejects.toThrow(/500/);
+  });
+
   it("turns a permission refusal into a setup error", async () => {
     const { http } = makeHttp(() => ({ status: 403, body: { msg: "Forbidden" } }));
     await expect(
