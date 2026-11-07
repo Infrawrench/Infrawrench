@@ -239,11 +239,44 @@ describe("RedisCloudClient", () => {
     expect(peerings[0]!.fields).toMatchObject({ vpcCidrs: "10.0.0.0/16", provider: "AWS" });
   });
 
-  it("lists a type empty on 403 and throws on 401", async () => {
+  it("keeps a type's stored rows on 403 and throws on 401 (#873)", async () => {
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    const note = vi.fn();
+    Reflect.set(globalThis, hook, note);
+    try {
+      mockFetch({ "GET /acl/users": new Response("{}", { status: 403 }) });
+      expect(await client().listResources("rc-acl-user", "acc")).toEqual([]);
+      expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+      mockFetch({ "GET /acl/users": new Response("{}", { status: 401 }) });
+      await expect(client().listResources("rc-acl-user", "acc")).rejects.toThrow(/401/);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
+  });
+
+  it("shows a 403 where the host keeps no track of unread rows (#873)", async () => {
     mockFetch({ "GET /acl/users": new Response("{}", { status: 403 }) });
-    expect(await client().listResources("rc-acl-user", "acc")).toEqual([]);
-    mockFetch({ "GET /acl/users": new Response("{}", { status: 401 }) });
-    await expect(client().listResources("rc-acl-user", "acc")).rejects.toThrow(/401/);
+    await expect(client().listResources("rc-acl-user", "acc")).rejects.toThrow(/403/);
+  });
+
+  it("keeps a networking type's rows when a subscription's task is refused (#873)", async () => {
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    const note = vi.fn();
+    Reflect.set(globalThis, hook, note);
+    try {
+      mockFetch({
+        ...baseRoutes(),
+        "GET /subscriptions/1206/peerings": {
+          taskId: "t-9",
+          status: "processing-error",
+          response: { error: { type: "X", status: "403 FORBIDDEN", description: "refused" } },
+        },
+      });
+      expect(await client().listResources("rc-vpc-peering", "acc")).toEqual([]);
+      expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
   });
 
   it("creates an ACL role from the picker values", async () => {

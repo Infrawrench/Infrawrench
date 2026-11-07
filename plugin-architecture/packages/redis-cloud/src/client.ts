@@ -20,6 +20,7 @@ import {
   ListTruncatedError,
   decodePromptArgs,
   externalIdOf,
+  reportUnreadListPart,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { RcTask, RedisCloudContext } from "./api.js";
@@ -117,21 +118,26 @@ function finishedMessage(finished: boolean, what: string): { ok: true; message: 
   };
 }
 
-/**
- * Whether a failed networking read is Redis Cloud saying this subscription has none
- * (a 400 or 404, or a task that finished with a client-side error), rather than a
- * failure that says nothing about it. Anything else fails the type, so stored rows stay.
- */
-function saysSubscriptionHasNone(err: unknown): boolean {
+/** The status a failure carries: the HTTP status, or the one a failed task's error names. */
+function failureStatus(err: unknown): number {
   if (err instanceof TaskFailedError) {
     const detail = err.task.response?.error;
-    const status = Number(
-      /^\s*(\d{3})/.exec(typeof detail === "object" ? (detail.status ?? "") : "")?.[1] ?? 0,
-    );
-    return status !== 429 && status < 500;
+    const named = typeof detail === "object" ? (detail.status ?? "") : "";
+    return Number(/^\s*(\d{3})/.exec(named)?.[1] ?? 0);
   }
-  const status = statusOf(err);
-  return status === 400 || status === 404;
+  return statusOf(err);
+}
+
+/**
+ * Whether a failed networking read is Redis Cloud saying this subscription has none
+ * (a 400 or 404, or a task that finished with any other client-side error), rather than
+ * a failure that says nothing about it. Anything else fails the type, so stored rows stay;
+ * a 403 goes on to {@link RedisCloudClient.scoped}.
+ */
+function saysSubscriptionHasNone(err: unknown): boolean {
+  const status = failureStatus(err);
+  if (!(err instanceof TaskFailedError)) return status === 400 || status === 404;
+  return status !== 401 && status !== 403 && status !== 429 && status < 500;
 }
 
 export class RedisCloudClient implements PluginClient {
@@ -429,13 +435,18 @@ export class RedisCloudClient implements PluginClient {
     });
   }
 
-  /** A 403 on one listing means the key's role cannot see that type; list it empty. */
+  /**
+   * A 403 on one listing means the user key's role cannot see that type, which says
+   * nothing about what exists, so the type's stored rows stay.
+   */
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
-      if (statusOf(err) === 403) return [];
-      throw err;
+      if (failureStatus(err) !== 403) throw err;
+      // A host that keeps no track (the desktop) answers false, and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 
