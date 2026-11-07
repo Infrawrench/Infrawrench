@@ -8,14 +8,13 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { axFetch } from "./api.js";
+import { managementApi } from "./api.js";
 import { AxiomClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { AXIOM_PREFLIGHT } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { axiomTerraformExport } from "./terraform.js";
-import type { AxOrg } from "./types.js";
 
 export const manifest = {
   id: "axiom",
@@ -75,20 +74,17 @@ export const plugin = definePlugin({
       if (fieldKey !== "orgId") return [];
       const token = (credentials["token"] ?? "").trim();
       if (!token) return [];
-      const orgs = await axFetch<AxOrg[]>(
-        {
-          token,
-          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-          ...(services?.http ? { http: services.http } : {}),
-        },
-        "/v2/orgs",
-      );
+      const orgs = await managementApi({
+        token,
+        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+        ...(services?.http ? { http: services.http } : {}),
+      }).get("/orgs");
       return (orgs ?? [])
         .filter((o) => o.id)
         .map((o) => ({
-          id: o.id as string,
-          label: o.name ?? (o.id as string),
-          description: o.id as string,
+          id: o.id,
+          label: o.name ?? o.id,
+          description: o.id,
         }));
     });
   },

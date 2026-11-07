@@ -11,23 +11,17 @@
 
 import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { AxiomContext } from "./api.js";
-import { axFetch, isPersonalToken } from "./api.js";
+import { edgeQueryApi, isPersonalToken, legacyQueryApi } from "./api.js";
 
+/** What is read of a tabular table. A cell is whatever the query produced. */
 export interface AplTable {
-  name?: string;
-  fields?: Array<{ name?: string; type?: string; agg?: { name?: string } }>;
-  columns?: unknown[][];
+  fields?: ReadonlyArray<{ name?: string }>;
+  columns?: ReadonlyArray<readonly unknown[]>;
 }
 
+/** What is read of a query's answer, on either route. */
 export interface AplResult {
-  format?: string;
-  status?: {
-    elapsedTime?: number;
-    rowsExamined?: number;
-    rowsMatched?: number;
-    isPartial?: boolean;
-  };
-  tables?: AplTable[];
+  tables?: readonly AplTable[];
 }
 
 /** Base URL a query should be sent to, from a dataset's edge deployment URL. */
@@ -49,25 +43,17 @@ export async function runApl(
   apl: string,
   opts: { startTime?: string; endTime?: string; edgeUrl?: string } = {},
 ): Promise<AplResult> {
-  const body = JSON.stringify({
+  const body = {
     apl,
     ...(opts.startTime ? { startTime: opts.startTime } : {}),
     ...(opts.endTime ? { endTime: opts.endTime } : {}),
-  });
+  };
+  const query = { format: "tabular" } as const;
   const base = queryBase(opts.edgeUrl);
   if (base && !isPersonalToken(ctx.token)) {
-    return axFetch<AplResult>(ctx, "/v1/query/_apl", {
-      method: "POST",
-      body,
-      baseUrl: base,
-      query: { format: "tabular" },
-    });
+    return edgeQueryApi(ctx, base).post("/query/_apl", { query, body });
   }
-  return axFetch<AplResult>(ctx, "/v1/datasets/_apl", {
-    method: "POST",
-    body,
-    query: { format: "tabular" },
-  });
+  return legacyQueryApi(ctx).post("/datasets/_apl", { query, body });
 }
 
 /** Rows of one tabular table, keyed by field name. */

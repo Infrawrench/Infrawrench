@@ -1,5 +1,14 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type ApiClientOptions,
+  type ApiFailure,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as EdgePaths } from "./api-types.edge.gen.js";
+import type { paths as V1Paths } from "./api-types.v1.gen.js";
+import type { paths as V2Paths } from "./api-types.v2.gen.js";
 
 /**
  * Everything an Axiom request needs. Management calls go to
@@ -39,62 +48,78 @@ export class AxiomApiError extends Error {
 
 const STATUS_IN_MESSAGE = /Axiom API error (\d{3})/;
 
-type Query = Record<string, string | number | boolean | undefined>;
-
 export function isPersonalToken(token: string): boolean {
   return token.startsWith("xapt-");
 }
 
-function axiomMessage(raw: string, path: string): string {
-  const prefix = `for ${path}: `;
-  const i = raw.indexOf(prefix);
-  const body = i >= 0 ? raw.slice(i + prefix.length) : raw;
+function axiomMessage(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { message?: string; error?: string; code?: number };
-    return parsed.message ?? parsed.error ?? body;
+    const parsed: { message?: string; error?: string } | null = JSON.parse(body);
+    return parsed?.message ?? parsed?.error ?? body;
   } catch {
     return body;
   }
 }
 
-/** JSON request against `api.axiom.co` (or another base, for edge queries). */
-export async function axFetch<T>(
-  ctx: AxiomContext,
-  path: string,
-  init?: RequestInit & { query?: Query; baseUrl?: string },
-): Promise<T> {
-  const { query, baseUrl, ...rest } = init ?? {};
+/** An empty or missing value is left out rather than sent as `key=`. */
+function serializeQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
+  for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== "") params.set(k, String(v));
   }
-  const qs = params.toString();
-  const sep = path.includes("?") ? "&" : "?";
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Axiom",
-      url: `${baseUrl ?? API_URL}${path}${qs ? `${sep}${qs}` : ""}`,
-      errorPath: path,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${ctx.token}`,
-        ...(ctx.orgId ? { "x-axiom-org-id": ctx.orgId } : {}),
-      },
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) {
-      throw new AxiomApiError(
+  return params.toString();
+}
+
+/** Whether an error names the path alone, or the path with the call's own query. */
+type ErrorPath = "path" | "target";
+
+/** What every client shares: `version` is in the client's base URL and in error text. */
+function clientOptions(
+  ctx: AxiomContext,
+  baseUrl: string,
+  version: string,
+  errorPath: ErrorPath = "path",
+): ApiClientOptions {
+  return {
+    vendor: "Axiom",
+    baseUrl: `${baseUrl}${version}`,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${ctx.token}`,
+      ...(ctx.orgId ? { "x-axiom-org-id": ctx.orgId } : {}),
+    },
+    caCert: ctx.caCert,
+    http: ctx.http,
+    serializeQuery,
+    httpError: (failure: ApiFailure) => {
+      const path = `${version}${failure[errorPath]}`;
+      const message = `Axiom API error ${failure.status} for ${path}: ${failure.body}`;
+      // Read back out of the text, so a status that is not three digits stays a plain Error.
+      const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
+      if (!status) return new Error(message);
+      return new AxiomApiError(
         status,
-        `Axiom API error ${status} for ${path}: ${axiomMessage(message, path)}`,
+        `Axiom API error ${status} for ${path}: ${axiomMessage(failure.body)}`,
       );
-    }
-    throw err;
-  }
+    },
+  };
+}
+
+export type AxiomApi = ApiClient<V2Paths>;
+
+/** The management API, `api.axiom.co/v2`. */
+export function managementApi(ctx: AxiomContext, errorPath?: ErrorPath): AxiomApi {
+  return createApiClient<V2Paths>(clientOptions(ctx, API_URL, "/v2", errorPath));
+}
+
+/** The older query route, `api.axiom.co/v1`, which personal access tokens can use. */
+export function legacyQueryApi(ctx: AxiomContext): ApiClient<V1Paths> {
+  return createApiClient<V1Paths>(clientOptions(ctx, API_URL, "/v1"));
+}
+
+/** The query API of one edge deployment, `https://<edge>/v1`. */
+export function edgeQueryApi(ctx: AxiomContext, edgeBase: string): ApiClient<EdgePaths> {
+  return createApiClient<EdgePaths>(clientOptions(ctx, edgeBase, "/v1"));
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */
@@ -113,7 +138,7 @@ export async function mapPooled<T, R>(
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i] as T);
+      out[i] = await fn(items[i]!);
     }
   });
   await Promise.all(workers);

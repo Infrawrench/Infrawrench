@@ -1,0 +1,232 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "v2",
+      "specUrl": "https://raw.githubusercontent.com/axiomhq/docs/main/content/docs/%28api-reference%29/restapi/versions/v2.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1datasets~1{dataset_id}~1vacuum/post/requestBody",
+          "value": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document lists no body. The plugin has always sent an empty JSON object."
+        },
+        {
+          "pointer": "/components/schemas/CreateDataset/properties/kind",
+          "value": {
+            "type": "string"
+          },
+          "why": "An enum in the document. The form's kind goes through as chosen, and Axiom's own validation answers anything it does not know."
+        },
+        {
+          "pointer": "/components/schemas/Monitor/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "An enum in the document. The form's type goes through as chosen, and Axiom's own validation answers anything it does not know."
+        },
+        {
+          "pointer": "/components/schemas/Monitor/properties/operator",
+          "value": {
+            "type": "string"
+          },
+          "why": "An enum in the document. The form's operator goes through as chosen, and Axiom's own validation answers anything it does not know."
+        },
+        {
+          "pointer": "/components/schemas/DashboardUpsertRequest/properties/version",
+          "value": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "why": "Not nullable here, though DashboardResource.version is. An edit sends back the version it read."
+        },
+        {
+          "pointer": "/components/schemas/UpdatedAnnotation/properties/endTime",
+          "value": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "why": "Not nullable here, though Annotation.endTime is. An edit sends back the fields it read."
+        }
+      ],
+      "paths": {
+        "/orgs": ["get"],
+        "/orgs/{id}": ["get", "put"],
+        "/datasets": ["get", "post"],
+        "/datasets/{dataset_id}": ["get", "put", "delete"],
+        "/datasets/{dataset_id}/fields": ["get"],
+        "/datasets/{dataset_id}/fields/{field_id}": ["get", "put", "delete"],
+        "/datasets/{dataset_id}/trim": ["post"],
+        "/datasets/{dataset_id}/vacuum": ["post"],
+        "/vfields": ["get", "post"],
+        "/vfields/{id}": ["get", "put", "delete"],
+        "/monitors": ["get", "post"],
+        "/monitors/{id}": ["get", "put", "delete"],
+        "/monitors/{id}/history": ["get"],
+        "/notifiers": ["get", "post"],
+        "/notifiers/{id}": ["get", "put", "delete"],
+        "/dashboards": ["get", "post"],
+        "/dashboards/uid/{uid}": ["get", "put", "delete"],
+        "/views": ["get", "post"],
+        "/views/{id}": ["get", "put", "delete"],
+        "/apl-starred-queries": ["get", "post"],
+        "/apl-starred-queries/{id}": ["get", "put", "delete"],
+        "/annotations": ["get", "post"],
+        "/annotations/{id}": ["get", "put", "delete"],
+        "/tokens": ["get", "post"],
+        "/tokens/{id}": ["get", "delete"],
+        "/tokens/{id}/regenerate": ["post"],
+        "/users": ["get"],
+        "/users/{id}": ["get", "delete"],
+        "/user": ["get"]
+      }
+    },
+    {
+      "name": "v1",
+      "specUrl": "https://raw.githubusercontent.com/axiomhq/docs/main/content/docs/%28api-reference%29/restapi/versions/v1.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1datasets~1_apl",
+          "value": {
+            "post": {
+              "operationId": "queryApl",
+              "parameters": [
+                {
+                  "name": "format",
+                  "in": "query",
+                  "required": true,
+                  "schema": {
+                    "type": "string",
+                    "enum": ["legacy", "tabular"]
+                  }
+                }
+              ],
+              "requestBody": {
+                "required": true,
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/APLRequestWithOptions"
+                    }
+                  }
+                }
+              },
+              "responses": {
+                "200": {
+                  "description": "Successful APL result",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/AplResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document writes the query into the path key (/datasets/_apl?format=tabular) and also declares `format` as a required parameter, so a call written from it would send the query twice. This is the same operation under the clean path."
+        }
+      ],
+      "paths": {
+        "/datasets/_apl": ["post"]
+      }
+    },
+    {
+      "name": "edge",
+      "specUrl": "https://raw.githubusercontent.com/axiomhq/docs/main/content/docs/%28api-reference%29/restapi/versions/v1-edge-query.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1query~1_apl",
+          "value": {
+            "post": {
+              "operationId": "queryApl",
+              "parameters": [
+                {
+                  "name": "format",
+                  "in": "query",
+                  "required": true,
+                  "schema": {
+                    "type": "string",
+                    "enum": ["legacy", "tabular", "tabular-rows"]
+                  }
+                }
+              ],
+              "requestBody": {
+                "required": true,
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/APLRequestWithOptions"
+                    }
+                  }
+                }
+              },
+              "responses": {
+                "200": {
+                  "description": "Query result in the requested format.",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/AplResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document writes the query into the path key (/query/_apl?format=tabular) and also declares `format` as a required parameter, so a call written from it would send the query twice. This is the same operation under the clean path."
+        },
+        {
+          "pointer": "/components/schemas/AplResult",
+          "value": {
+            "type": "object",
+            "properties": {
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "Documented as an empty object. With format=tabular it answers with tables of fields and column arrays, as the same query does on /v1/datasets/_apl."
+        }
+      ],
+      "paths": {
+        "/query/_apl": ["post"]
+      }
+    }
+  ]
+}
