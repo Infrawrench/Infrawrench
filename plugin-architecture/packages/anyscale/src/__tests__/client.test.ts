@@ -305,3 +305,22 @@ describe("creating a project", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("a write with a blank id", () => {
+  const blank = "acc:project:";
+
+  it.each([
+    ["delete", (c: Blanked) => c.deleteResource("project", blank, "acc")],
+    ["update", (c: Blanked) => c.updateResource("budget", blank, "acc", { budgetAmount: "1" })],
+    ["terminate", (c: Blanked) => c.invokeAction("job", blank, "terminate", "acc")],
+    ["rollback", (c: Blanked) => c.invokeAction("service", blank, "rollback", "acc")],
+    ["toggle", (c: Blanked) => c.invokeAction("budget", blank, "disable", "acc")],
+    ["workspace", (c: Blanked) => c.invokeAction("workspace", blank, "terminate", "acc")],
+  ])("%s is refused before any request", async (_name, write) => {
+    const { client, calls } = clientWith(() => ({ body: {} }));
+    await expect(write(client)).rejects.toThrow("has no id to act on");
+    expect(calls).toHaveLength(0);
+  });
+});
+
+type Blanked = ReturnType<typeof clientWith>["client"];

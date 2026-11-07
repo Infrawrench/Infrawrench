@@ -78,6 +78,13 @@ const LARGE_PAGES = { count: 1000, maxPages: 10 };
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
+/** The id a write acts on: a blank one must not reach the API. */
+function requireExternalId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`Anyscale plugin: ${resourceId} has no id to act on`);
+  return id;
+}
+
 /**
  * A read that only adds detail to rows listed elsewhere: if it simply fails the rows
  * go without it, but part of a list must not pass for all of it.
@@ -733,7 +740,7 @@ export class AnyscaleClient implements PluginClient {
       const evaluationPeriod = fields["evaluationPeriod"];
       const budgetUnit = fields["budgetUnit"];
       const res = await this.api.put(
-        `/api/v2/instance_usage_budgets/${pathEncode(externalIdOf(resourceId))}`,
+        `/api/v2/instance_usage_budgets/${pathEncode(requireExternalId(resourceId))}`,
         {
           query: {
             ...(budgetAmount ? { budget_amount: budgetAmount } : {}),
@@ -749,7 +756,7 @@ export class AnyscaleClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = pathEncode(requireExternalId(resourceId));
       switch (typeId) {
         case "project":
           await this.api.delete(`/api/v2/projects/${id}`);
@@ -779,7 +786,7 @@ export class AnyscaleClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(resourceId);
       const enc = pathEncode(id);
       if (typeId === "workspace" && (actionId === "start" || actionId === "terminate")) {
         const w = await runPluginEffect(this.getResource("workspace", resourceId, accountId));
