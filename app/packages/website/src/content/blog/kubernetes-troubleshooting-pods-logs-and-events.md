@@ -17,6 +17,7 @@ If you already know the status or error you are looking at, jump straight to its
 
 - Pending, FailedScheduling: [pod stuck in Pending](/blog/kubernetes-pod-pending)
 - ContainerCreating that never finishes: [pod stuck in ContainerCreating](/blog/kubernetes-pod-stuck-containercreating)
+- Init:0/1, Init:Error or Init:CrashLoopBackOff: [pod stuck in Init](/blog/kubernetes-pod-stuck-init)
 - ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
 - CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
 - PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
