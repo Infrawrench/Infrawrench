@@ -8,8 +8,13 @@
  * field, so a flaky call cannot flag a healthy resource.
  */
 
-import type { ResourceInstance } from "@infrawrench/plugin-base";
-import type { VultrApi } from "./api.js";
+import {
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+import { statusOf, type VultrApi } from "./api.js";
 import type {
   VultrAccount,
   VultrBackup,
@@ -80,6 +85,38 @@ export async function mapPooled<T, R>(
   });
   await Promise.all(workers);
   return out;
+}
+
+/**
+ * One parent's children, for a type that reads them per parent. A read that fails
+ * fails the type, so the sync keeps the rows it has, with two exceptions. A 404 is
+ * a parent deleted since the parent list, whose children went with it. Vultr
+ * refusing this one parent (a database mid-rebuild, a key without that ACL) leaves
+ * that parent's stored children as they are, where the host keeps track of them.
+ */
+async function childRows<R>(parentResourceId: string, read: () => Promise<R[]>): Promise<R[]> {
+  try {
+    return await read();
+  } catch (err) {
+    rethrowIncompleteList(err);
+    const status = statusOf(err);
+    if (status === 404) return [];
+    if (status === 400 || status === 403 || status === 409 || status === 422) {
+      if (!reportUnreadListPart({ parentResourceIds: [parentResourceId] })) throw err;
+      return [];
+    }
+    throw err;
+  }
+}
+
+/** A follow-up count, absent rather than wrong when its read fails. */
+async function countOrNull(read: () => Promise<unknown[]>): Promise<number | null> {
+  try {
+    return (await read()).length;
+  } catch (err) {
+    rethrowIncompleteList(err);
+    return null;
+  }
 }
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -406,14 +443,15 @@ export function mapLogicalDb(
 
 export async function listDatabaseUsers(api: VultrApi, accountId: string) {
   const dbs = await api.all<VultrDatabase>("/databases", "databases");
-  const rows = await mapPooled(dbs, 6, async (d) => {
-    try {
-      const res = await api.get<{ users?: VultrDatabaseUser[] }>(`/databases/${d.id}/users`);
-      return (res.users ?? []).map((u) => mapDatabaseUser(u, d.id, accountId));
-    } catch {
-      return [];
-    }
-  });
+  const rows = await mapPooled(dbs, 6, (d) =>
+    childRows(`${accountId}:database:${d.id}`, async () => {
+      // Not paginated: govultr's ListUsers takes no list options.
+      const path = `/databases/${d.id}/users`;
+      const res = await api.get<{ users?: VultrDatabaseUser[] | null }>(path);
+      const users = requireListPage(res.users, { vendor: "Vultr", path, key: "users" });
+      return users.map((u) => mapDatabaseUser(u, d.id, accountId));
+    }),
+  );
   return rows.flat();
 }
 
@@ -421,14 +459,15 @@ export async function listLogicalDbs(api: VultrApi, accountId: string) {
   const dbs = (await api.all<VultrDatabase>("/databases", "databases")).filter((d) =>
     ["mysql", "pg"].includes(str(d.database_engine)),
   );
-  const rows = await mapPooled(dbs, 6, async (d) => {
-    try {
-      const res = await api.get<{ dbs?: Array<{ name: string }> }>(`/databases/${d.id}/dbs`);
-      return (res.dbs ?? []).map((x) => mapLogicalDb(x.name, d.id, accountId));
-    } catch {
-      return [];
-    }
-  });
+  const rows = await mapPooled(dbs, 6, (d) =>
+    childRows(`${accountId}:database:${d.id}`, async () => {
+      // Not paginated: govultr's ListDBs takes no list options.
+      const path = `/databases/${d.id}/dbs`;
+      const res = await api.get<{ dbs?: Array<{ name: string }> | null }>(path);
+      const names = requireListPage(res.dbs, { vendor: "Vultr", path, key: "dbs" });
+      return names.map((x) => mapLogicalDb(x.name, d.id, accountId));
+    }),
+  );
   return rows.flat();
 }
 
@@ -528,7 +567,8 @@ export async function listFirewallGroups(api: VultrApi, accountId: string) {
     let rules: VultrFirewallRule[] | null = null;
     try {
       rules = await api.all<VultrFirewallRule>(`/firewalls/${g.id}/rules`, "firewall_rules");
-    } catch {
+    } catch (err) {
+      rethrowIncompleteList(err);
       rules = null;
     }
     return mapFirewallGroup(g, accountId, rules);
@@ -558,12 +598,9 @@ export function mapVpc(
 export async function listVpcs(api: VultrApi, accountId: string) {
   const vpcs = await api.all<VultrVpc>("/vpcs", "vpcs");
   return mapPooled(vpcs, 6, async (v) => {
-    let count: number | null = null;
-    try {
-      count = (await api.all<unknown>(`/vpcs/${v.id}/attachments`, "attachments")).length;
-    } catch {
-      count = null;
-    }
+    const count = await countOrNull(() =>
+      api.all<unknown>(`/vpcs/${v.id}/attachments`, "attachments"),
+    );
     return mapVpc(v, accountId, count);
   });
 }
@@ -637,31 +674,24 @@ export function mapDnsRecord(
 export async function listDomains(api: VultrApi, accountId: string) {
   const domains = await api.all<VultrDomain>("/domains", "domains");
   return mapPooled(domains, 6, async (d) => {
-    let count: number | null = null;
-    try {
-      count = (
-        await api.all<unknown>(`/domains/${encodeURIComponent(d.domain)}/records`, "records")
-      ).length;
-    } catch {
-      count = null;
-    }
+    const count = await countOrNull(() =>
+      api.all<unknown>(`/domains/${encodeURIComponent(d.domain)}/records`, "records"),
+    );
     return mapDomain(d, accountId, count);
   });
 }
 
 export async function listDnsRecords(api: VultrApi, accountId: string) {
   const domains = await api.all<VultrDomain>("/domains", "domains");
-  const rows = await mapPooled(domains, 6, async (d) => {
-    try {
+  const rows = await mapPooled(domains, 6, (d) =>
+    childRows(`${accountId}:domain:${d.domain}`, async () => {
       const records = await api.all<VultrDomainRecord>(
         `/domains/${encodeURIComponent(d.domain)}/records`,
         "records",
       );
       return records.map((r) => mapDnsRecord(r, d.domain, accountId));
-    } catch {
-      return [];
-    }
-  });
+    }),
+  );
   return rows.flat();
 }
 
@@ -723,19 +753,25 @@ export function mapBucket(
 }
 
 export async function listBuckets(api: VultrApi, accountId: string) {
-  const subs = (await api.all<VultrObjectStorage>("/object-storage", "object_storages")).filter(
-    (s) => s.status === "active",
+  const all = await api.all<VultrObjectStorage>("/object-storage", "object_storages");
+  const parentId = (s: VultrObjectStorage) => `${accountId}:object-storage:${s.id}`;
+  // A subscription that is not active has no S3 endpoint to list from, so its stored
+  // buckets stay as they are. Where nothing keeps them, try the read anyway.
+  const inactive = all.filter((s) => s.status !== "active");
+  const skipped =
+    inactive.length > 0 && reportUnreadListPart({ parentResourceIds: inactive.map(parentId) });
+  const subs = skipped ? all.filter((s) => s.status === "active") : all;
+  const rows = await mapPooled(subs, 6, (s) =>
+    childRows(parentId(s), async () => {
+      // Not paginated: govultr's ListBuckets takes no list options.
+      const path = `/object-storage/${s.id}/bucket`;
+      const res = await api.get<{
+        buckets?: Array<{ name: string; date_created?: string }> | null;
+      }>(path);
+      const buckets = requireListPage(res.buckets, { vendor: "Vultr", path, key: "buckets" });
+      return buckets.map((b) => mapBucket(b.name, s, accountId, b.date_created));
+    }),
   );
-  const rows = await mapPooled(subs, 6, async (s) => {
-    try {
-      const res = await api.get<{ buckets?: Array<{ name: string; date_created?: string }> }>(
-        `/object-storage/${s.id}/bucket`,
-      );
-      return (res.buckets ?? []).map((b) => mapBucket(b.name, s, accountId, b.date_created));
-    } catch {
-      return [];
-    }
-  });
   return rows.flat();
 }
 

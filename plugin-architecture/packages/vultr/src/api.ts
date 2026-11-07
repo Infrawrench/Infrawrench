@@ -17,7 +17,13 @@
  * which tracks the API reference.
  */
 
-import { hostFetch, type HostServices } from "@infrawrench/plugin-base";
+import {
+  hostFetch,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  type HostServices,
+} from "@infrawrench/plugin-base";
 
 export const VULTR_API_BASE = "https://api.vultr.com/v2";
 
@@ -70,9 +76,26 @@ export interface VultrApiConfig {
   services?: HostServices | undefined;
   caCert?: string;
   baseUrl?: string;
+  /** The first wait after a 429, doubled per retry. Tests pass 0. */
+  retryDelayMs?: number;
 }
 
 const PAGE_SIZE = 500;
+// 200 pages of 500 is the 100,000-row ceiling a sync can read in one poll.
+const MAX_PAGES = 200;
+// Vultr limits an API key to 30 requests a second, which the listers' fan-outs over
+// domains, databases and subscriptions can reach on a large account.
+const THROTTLE_RETRIES = 3;
+const MAX_RETRY_WAIT_MS = 10_000;
+
+function retryWait(headers: Record<string, string>, attempt: number, baseMs: number): number {
+  const header = Object.entries(headers).find(([k]) => k.toLowerCase() === "retry-after")?.[1];
+  const seconds = header === undefined ? Number.NaN : Number(header);
+  const wait = Number.isFinite(seconds) ? seconds * 1000 : baseMs * 2 ** attempt;
+  return Math.min(Math.max(0, wait), MAX_RETRY_WAIT_MS);
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function buildUrl(base: string, path: string, query?: Query): string {
   const url = `${base}${path}`;
@@ -99,26 +122,35 @@ export function createVultrApi(config: VultrApiConfig): VultrApi {
       ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
     };
     const payload = body !== undefined ? JSON.stringify(body) : undefined;
-    let status: number;
-    let text: string;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(payload !== undefined ? { body: payload } : {}),
-        ...(config.caCert ? { caCert: config.caCert } : {}),
-      });
-      status = res.status;
-      text = res.body;
-    } else {
-      const res = await fetch(url, {
-        method,
-        headers,
-        ...(payload !== undefined ? { body: payload } : {}),
-      });
-      status = res.status;
-      text = await res.text();
+    let status = 0;
+    let text = "";
+    // Only a read is retried: a throttled write may or may not have been applied.
+    const attempts = method === "GET" ? THROTTLE_RETRIES + 1 : 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      let resHeaders: Record<string, string>;
+      if (http) {
+        const res = await http.request({
+          url,
+          method,
+          headers,
+          ...(payload !== undefined ? { body: payload } : {}),
+          ...(config.caCert ? { caCert: config.caCert } : {}),
+        });
+        status = res.status;
+        text = res.body;
+        resHeaders = res.headers;
+      } else {
+        const res = await fetch(url, {
+          method,
+          headers,
+          ...(payload !== undefined ? { body: payload } : {}),
+        });
+        status = res.status;
+        text = await res.text();
+        resHeaders = Object.fromEntries(res.headers.entries());
+      }
+      if (status !== 429 || attempt === attempts - 1) break;
+      await sleep(retryWait(resHeaders, attempt, config.retryDelayMs ?? 1000));
     }
     if (status < 200 || status >= 300) throw new VultrApiError(status, path, text);
     if (status === 204 || !text) return {} as T;
@@ -136,20 +168,36 @@ export function createVultrApi(config: VultrApiConfig): VultrApi {
     async all<T>(path: string, key: string, query?: Query) {
       const out: T[] = [];
       let cursor: string | undefined;
-      // Bounded: 200 pages of 500 is far beyond any account.
-      for (let page = 0; page < 200; page++) {
+      for (let page = 0; page < MAX_PAGES; page++) {
         const res = await api.get<Record<string, unknown> & { meta?: VultrMeta }>(path, {
           ...(query ?? {}),
           per_page: PAGE_SIZE,
           ...(cursor ? { cursor } : {}),
         });
         const items = res[key];
-        if (Array.isArray(items)) out.push(...(items as T[]));
+        if (items !== null && !Array.isArray(items)) {
+          throw new ListPageError({ vendor: "Vultr", path, key, found: items, page: res });
+        }
+        out.push(...requireListPage<T>(items, { vendor: "Vultr", path, key }));
         const next = res.meta?.links?.next;
-        if (!next || next === cursor) break;
+        if (!next) return out;
+        if (next === cursor) {
+          throw new ListPageError({
+            vendor: "Vultr",
+            path,
+            key,
+            found: items,
+            saysMoreWith: "no cursor",
+          });
+        }
         cursor = next;
       }
-      return out;
+      throw new ListTruncatedError({
+        vendor: "Vultr",
+        path,
+        items: out.length,
+        maxPages: MAX_PAGES,
+      });
     },
   };
   return api;
