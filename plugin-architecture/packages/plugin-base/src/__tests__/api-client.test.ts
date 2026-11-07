@@ -1179,9 +1179,95 @@ describe("withCursorPagination", () => {
       await expect(lastItem().getAll("/last-item", "data")).resolves.toHaveLength(2);
     });
 
-    it("ends when has_more is true but the page is empty", async () => {
-      answer({ data: [], has_more: true, other: [] });
+    it("refuses a page that says there is more with no rows", async () => {
+      answer(
+        { data: [item(1), item(2)], has_more: true, other: [] },
+        { data: [], has_more: true, other: [] },
+      );
+      await expect(lastItem().getAll("/last-item", "data")).rejects.toMatchObject({
+        name: "ListPageError",
+        incompleteList: true,
+        message: expect.stringContaining("says there is more"),
+      });
+    });
+
+    it("refuses a page that says there is more with no cursor on its last row", async () => {
+      answer({ data: [item(1), {}], has_more: true, other: [] });
+      await expect(lastItem().getAll("/last-item", "data")).rejects.toMatchObject({
+        name: "ListPageError",
+        incompleteList: true,
+        message: expect.stringContaining("says there is more"),
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("still ends on an empty page that does not say there is more", async () => {
+      answer({ data: [], has_more: false, other: [] });
       await expect(lastItem().getAll("/last-item", "data")).resolves.toEqual([]);
+    });
+
+    it("still ends on a last row with no cursor when there is no more", async () => {
+      answer({ data: [{}], has_more: false, other: [] });
+      await expect(lastItem().getAll("/last-item", "data")).resolves.toEqual([{}]);
+    });
+
+    it("keeps what it has where a part of the list is fine", async () => {
+      answer(
+        { data: [item(1)], has_more: true, other: [] },
+        { data: [], has_more: true, other: [] },
+      );
+      await expect(
+        lastItem().getAll("/last-item", "data", { partial: true }),
+      ).resolves.toHaveLength(1);
+    });
+
+    it("follows an empty page's cursor where the provider documents that", async () => {
+      const api = withCursorPagination(client(), {
+        cursorParam: "after",
+        sizeParam: "limit",
+        pageSize: 2,
+        maxPages: 10,
+        next: ({ cursor }) => (cursor ? undefined : "a"),
+        hasMore: "has_more",
+        continueOnEmptyPage: true,
+      });
+      answer(
+        { data: [], has_more: true, other: [] },
+        { data: [item(1)], has_more: false, other: [] },
+      );
+      await expect(api.getAll("/last-item", "data")).resolves.toHaveLength(1);
+    });
+
+    it("refuses an empty page with no way on, even where it may continue", async () => {
+      const api = withCursorPagination(client(), {
+        cursorParam: "after",
+        sizeParam: "limit",
+        pageSize: 2,
+        maxPages: 10,
+        next: { lastItem: "id" },
+        hasMore: "has_more",
+        continueOnEmptyPage: true,
+      });
+      answer({ data: [], has_more: true, other: [] });
+      await expect(api.getAll("/last-item", "data")).rejects.toMatchObject({
+        name: "ListPageError",
+      });
+    });
+
+    it("does not read a read cursor that comes out empty as the end", async () => {
+      const api = withCursorPagination(client(), {
+        cursorParam: "after",
+        sizeParam: "limit",
+        pageSize: 2,
+        maxPages: 10,
+        next: { lastItem: "id" },
+        hasMore: "has_more",
+        readCursor: () => null,
+      });
+      answer({ data: [item(1)], has_more: true, other: [] });
+      await expect(api.getAll("/last-item", "data")).rejects.toMatchObject({
+        name: "ListPageError",
+      });
     });
   });
 

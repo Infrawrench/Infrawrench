@@ -53,6 +53,11 @@ export interface ListPageProblem extends ListPlace {
   found: unknown;
   /** The whole answer, which says more than a missing field does. */
   page?: unknown;
+  /**
+   * For a page whose list is fine, but which says there is more with nothing to ask
+   * for it by: it has no rows, or no cursor.
+   */
+  saysMoreWith?: "no rows" | "no cursor";
 }
 
 function whatWasThere({ key, found, page }: ListPageProblem): string {
@@ -62,7 +67,17 @@ function whatWasThere({ key, found, page }: ListPageProblem): string {
   return `it has no "${key}", only ${describe(page)}`;
 }
 
-/** A 2xx page whose list is not an array: a wrapped error, a renamed key, an empty body. */
+function pageProblem(problem: ListPageProblem): string {
+  return problem.saysMoreWith
+    ? `a page that says there is more, with ${problem.saysMoreWith} to read it by`
+    : `a page that is not a list: ${whatWasThere(problem)}`;
+}
+
+/**
+ * A 2xx page that cannot be read as part of a list: one whose list is not an array (a
+ * wrapped error, a renamed key, an empty body), or one that says there is more and
+ * gives no way to get it.
+ */
 export class ListPageError extends IncompleteListError {
   readonly _tag = "ListPageError";
   readonly key: string | null;
@@ -70,7 +85,7 @@ export class ListPageError extends IncompleteListError {
   constructor(problem: ListPageProblem) {
     super(
       problem,
-      `${problem.vendor} answered ${problem.path} with a page that is not a list: ${whatWasThere(problem)}. Refusing to read that as the end of the list.`,
+      `${problem.vendor} answered ${problem.path} with ${pageProblem(problem)}. Refusing to read that as the end of the list.`,
     );
     this.name = "ListPageError";
     this.key = problem.key;
@@ -84,7 +99,7 @@ export class ListPageError extends IncompleteListError {
  */
 export function requireListPage<T>(
   list: readonly T[] | null | undefined,
-  where: Omit<ListPageProblem, "found">,
+  where: Omit<ListPageProblem, "found" | "saysMoreWith">,
 ): T[] {
   // A named key set to null is how Go serialises a nil slice. A whole answer of null
   // can't be told from no answer, so it needs `emptyBodyEndsList` or a check of its own.

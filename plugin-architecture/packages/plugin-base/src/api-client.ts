@@ -627,7 +627,12 @@ export interface CursorPagination<
   pageSize?: number;
   /** Send the paging parameters before the caller's query, rather than after it. */
   pagingFirst?: boolean;
-  /** A field that must be truthy for another page to be asked for. */
+  /**
+   * A field that must be truthy for another page to be asked for. When it is truthy on
+   * a page with no rows or no cursor, that throws a `ListPageError` rather than ending
+   * the list. A provider documented to send an empty page with more to come sets
+   * `continueOnEmptyPage`, which follows the cursor; no cursor at all still throws.
+   */
   hasMore?: HasMore;
   /** Pull the cursor out of what `next` found, such as a `page[after]` in a link. */
   readCursor?: (value: string) => string | null | undefined;
@@ -755,8 +760,10 @@ function readField(from: unknown, path: string): unknown {
  *
  * A list ends on an empty batch, a falsy cursor, a falsy `hasMore`, on reaching
  * `total`, and a page with no list throws, as does reaching `maxPages` with more to
- * read unless the read is `partial`. A cursor is sent back after the caller's query
- * and the page size.
+ * read unless the read is `partial`. A truthy `hasMore` on an empty batch or with no
+ * cursor throws too, unless the read is `partial`; `continueOnEmptyPage` is for a
+ * provider documented to answer an empty page that still has a cursor. A cursor is
+ * sent back after the caller's query and the page size.
  */
 export function withCursorPagination<
   P,
@@ -848,11 +855,24 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
         throw new ListPageError({ vendor: client.vendor, path, key, found: batch, page: body });
       }
       const list: unknown[] = Array.isArray(batch) ? batch : [];
-      if (list.length === 0 && !config.continueOnEmptyPage) return items;
+      const saysMore = hasMore !== undefined && Boolean(readField(body, hasMore));
+      // The provider saying there is more, on a page with no way to ask for it, is not
+      // the end of the list, however the rest of the walk would read it.
+      const endOfPages = (lacking: "no rows" | "no cursor") => {
+        if (!saysMore || (request.partial ?? config.partial)) return items;
+        throw new ListPageError({
+          vendor: client.vendor,
+          path,
+          key,
+          found: batch,
+          saysMoreWith: lacking,
+        });
+      };
+      if (list.length === 0 && !config.continueOnEmptyPage) return endOfPages("no rows");
       items.push(...list);
 
       if (request.stopWhen?.(list)) return items;
-      if (hasMore !== undefined && !readField(body, hasMore)) return items;
+      if (hasMore !== undefined && !saysMore) return items;
       if (config.stopOnShortPage && pageSize !== undefined && list.length < pageSize) return items;
       const answer: PageAnswer = { headers, body, items: list, cursor, pageSize };
       const reported = reportedTotal(total, answer);
@@ -864,7 +884,7 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
           : typeof next === "string"
             ? readField(body, next)
             : readField(list[list.length - 1], next.lastItem);
-      if (!found) return items;
+      if (!found) return endOfPages("no cursor");
       const value = String(found);
       const following =
         cursorParam !== undefined
@@ -877,7 +897,7 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
             : isAbsoluteUrl(value)
               ? value
               : new URL(value, url).href;
-      if (!following) return items;
+      if (!following) return endOfPages("no cursor");
       if (config.stopOnRepeatedCursor && following === cursor) return items;
       if (cursorParam === undefined) {
         if (!isFollowable(following, origin, foreignLinks)) {
