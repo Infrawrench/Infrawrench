@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { fastlyCursorPaged, fastlyJsonApiPaged, fastlyPaged } from "../api.js";
 import { FastlyClient } from "../client.js";
 import { ctxWith, makeHttp } from "./helpers.js";
@@ -245,5 +245,146 @@ describe("catches around the service list", () => {
       return { body: {} };
     });
     await expect(c.listResources("api-token", ACCOUNT)).resolves.toHaveLength(1);
+  });
+});
+
+describe("a refused list keeps its stored rows", () => {
+  const HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, HOOK);
+  });
+
+  function trackUnread() {
+    const parts: Array<{ parentResourceIds?: readonly string[]; idPrefixes?: readonly string[] }> =
+      [];
+    Reflect.set(globalThis, HOOK, (part: (typeof parts)[number]) => {
+      parts.push(part);
+    });
+    return parts;
+  }
+
+  it("reports the whole type on a 403, where a host keeps track", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith(() => ({ status: 403, body: { msg: "Forbidden" } }));
+    await expect(c.listResources("kv-store", ACCOUNT)).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("shows the refusal where no host keeps track", async () => {
+    const { c } = clientWith(() => ({ status: 403, body: { msg: "Forbidden" } }));
+    await expect(c.listResources("kv-store", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("does not read a throttle or an outage as a refusal", async () => {
+    trackUnread();
+    for (const status of [429, 500, 401]) {
+      const { c } = clientWith(() => ({ status, body: {} }));
+      await expect(c.listResources("kv-store", ACCOUNT)).rejects.toThrow(String(status));
+    }
+  });
+
+  const refusedOne = (url: URL): Reply => {
+    if (url.pathname === "/service") {
+      return {
+        body:
+          pageOf(url) === 1
+            ? [SERVICE, { id: "SU2", name: "limited", type: "vcl", version: 1 }]
+            : [],
+      };
+    }
+    if (url.pathname === "/service/SU1/details") return { body: DETAIL };
+    if (url.pathname.startsWith("/service/SU2")) return { status: 403, body: {} };
+    return { body: [] };
+  };
+
+  it.each(["domain", "backend"])(
+    "keeps the %s rows of a service whose details were refused",
+    async (type) => {
+      const parts = trackUnread();
+      const { c } = clientWith(refusedOne);
+      await expect(c.listResources(type, ACCOUNT)).resolves.toEqual([]);
+      expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:service:SU2`] }]);
+    },
+  );
+
+  it("names no parent when every service's details were read", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith((url) => serviceRoute(url) ?? { body: [] });
+    await c.listResources("domain", ACCOUNT);
+    expect(parts).toEqual([]);
+  });
+
+  const oneServiceRefuses = (url: URL): Reply => {
+    if (url.pathname === "/service") {
+      return {
+        body:
+          pageOf(url) === 1
+            ? [SERVICE, { id: "SU2", type: "vcl", versions: [{ number: 1, active: true }] }]
+            : [],
+      };
+    }
+    if (url.pathname === "/service/SU1/details") return { body: DETAIL };
+    if (url.pathname.startsWith("/service/SU2")) return { status: 403, body: {} };
+    return { body: [] };
+  };
+
+  it("keeps the logging endpoints of the kinds a service refuses, and no others", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith((url) => {
+      if (url.pathname === "/service/SU1/version/2/logging/s3") {
+        return { status: 403, body: {} };
+      }
+      return oneServiceRefuses(url);
+    });
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toEqual([]);
+    const prefixes = parts.flatMap((p) => p.idPrefixes ?? []);
+    expect(prefixes).toContain(`${ACCOUNT}:logging-endpoint:SU1/s3/`);
+    expect(prefixes).not.toContain(`${ACCOUNT}:logging-endpoint:SU1/datadog/`);
+    expect(prefixes).toContain(`${ACCOUNT}:logging-endpoint:SU2/datadog/`);
+  });
+
+  it("reports the whole logging type when every read is refused", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith((url) => {
+      if (url.pathname.includes("/logging/")) return { status: 403, body: {} };
+      return serviceRoute(url) ?? { body: [] };
+    });
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("shows a logging refusal that covers everything where no host keeps track", async () => {
+    const { c } = clientWith((url) => {
+      if (url.pathname.includes("/logging/")) return { status: 403, body: {} };
+      return serviceRoute(url) ?? { body: [] };
+    });
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("does not keep the logging rows of a kind that answers 404", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith((url) => {
+      if (url.pathname.includes("/logging/")) return { status: 404, body: {} };
+      return serviceRoute(url) ?? { body: [] };
+    });
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toEqual([]);
+    expect(parts).toEqual([]);
+  });
+
+  it("keeps the dictionaries of a service that refuses them", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith(oneServiceRefuses);
+    await expect(c.listResources("dictionary", ACCOUNT)).resolves.toEqual([]);
+    expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:service:SU2`] }]);
+  });
+
+  it("reports the whole dictionary type when every service refuses", async () => {
+    const parts = trackUnread();
+    const { c } = clientWith((url) => {
+      if (url.pathname.endsWith("/dictionary")) return { status: 403, body: {} };
+      return serviceRoute(url) ?? { body: [] };
+    });
+    await expect(c.listResources("dictionary", ACCOUNT)).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
   });
 });

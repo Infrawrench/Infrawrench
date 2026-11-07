@@ -15,7 +15,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, requireListPage, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { FastlyContext } from "./api.js";
 import {
   fastlyCursorPaged,
@@ -52,6 +57,7 @@ import {
   mapTlsSubscription,
   mapToken,
   mapVersion,
+  serviceResourceId,
 } from "./mappers.js";
 import {
   DEFAULT_METRICS_WINDOW_MS,
@@ -155,14 +161,18 @@ export class FastlyClient implements PluginClient {
   /**
    * A 403 on one list means the token (or its owner's role, or a token limited
    * to some services) cannot read that kind of object; the rest of the account
-   * still works, so that type lists empty rather than failing the sync.
+   * still works, so it must not fail the sync, and what it can no longer read is
+   * not gone.
    */
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
-      if (statusOf(err) === 403) return [];
-      throw err;
+      if (statusOf(err) !== 403) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers
+      // false, and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 
@@ -228,14 +238,14 @@ export class FastlyClient implements PluginClient {
             ),
           );
         case "domain":
-          return this.scoped(async () =>
-            (await this.services()).flatMap((s) =>
+          return this.scoped(() =>
+            this.fromDetails(accountId, (s) =>
               (this.liveDetail(s)?.domains ?? []).map((d) => mapDomain(accountId, s, d)),
             ),
           );
         case "backend":
-          return this.scoped(async () =>
-            (await this.services()).flatMap((s) =>
+          return this.scoped(() =>
+            this.fromDetails(accountId, (s) =>
               (this.liveDetail(s)?.backends ?? []).map((b) => mapBackend(accountId, s, b)),
             ),
           );
@@ -301,6 +311,24 @@ export class FastlyClient implements PluginClient {
     return typeof s.version === "object" && s.version !== null ? s.version : undefined;
   }
 
+  /**
+   * A child type read from each service's details. A service answered with only its
+   * summary (its details were refused) says nothing about its children, so they stay.
+   */
+  private async fromDetails(
+    accountId: string,
+    children: (s: FastlyServiceDetail) => ResourceInstance[],
+  ): Promise<ResourceInstance[]> {
+    const services = await this.services();
+    const unread = services.flatMap((s) => (s.id && !this.liveDetail(s) ? [s.id] : []));
+    if (unread.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: unread.map((id) => serviceResourceId(accountId, id)),
+      });
+    }
+    return services.flatMap(children);
+  }
+
   private async listLogging(accountId: string): Promise<ResourceInstance[]> {
     const services = await this.services();
     const jobs: Array<{ svc: FastlyServiceDetail; version: number; type: string }> = [];
@@ -309,6 +337,7 @@ export class FastlyClient implements PluginClient {
       if (!svc.id || !version) continue;
       for (const t of LOGGING_TYPES) jobs.push({ svc, version, type: t.id });
     }
+    const refused: Array<{ serviceId: string; type: string; err: unknown }> = [];
     const results = await mapLimit(jobs, FAN_OUT * 2, async ({ svc, version, type }) => {
       try {
         const list = await fastlyList<FastlyLoggingEndpoint>(
@@ -318,22 +347,37 @@ export class FastlyClient implements PluginClient {
         return list.map((e) => mapLoggingEndpoint(accountId, svc, version, type, e));
       } catch (err) {
         const status = statusOf(err);
+        if (status === 403) refused.push({ serviceId: svc.id!, type, err });
         if (status === 403 || status === 404) return [];
         throw err;
       }
     });
+    // Nothing read at all is a token that cannot read this type, which `scoped` handles.
+    if (refused[0] && refused.length === jobs.length) throw refused[0].err;
+    if (refused.length > 0) {
+      // By id prefix rather than by service: one kind refused says nothing of the service's
+      // other kinds, and naming the service would keep their deleted rows forever.
+      reportUnreadListPart({
+        idPrefixes: refused.map((r) => `${accountId}:logging-endpoint:${r.serviceId}/${r.type}/`),
+      });
+    }
     return results.flat();
   }
 
   private async listDictionaries(accountId: string): Promise<ResourceInstance[]> {
     const services = (await this.services()).filter((s) => s.type !== "wasm");
+    const refused: Array<{ serviceId: string; err: unknown }> = [];
+    let asked = 0;
     const perService = await mapLimit(services, FAN_OUT, async (svc) => {
       const version = liveVersionOf(svc);
       if (!svc.id || !version) return [];
+      const serviceId = svc.id;
+      asked++;
       const dicts = await fastlyList<FastlyDictionary>(
         this.ctx,
-        `/service/${encodeURIComponent(svc.id)}/version/${version}/dictionary`,
+        `/service/${encodeURIComponent(serviceId)}/version/${version}/dictionary`,
       ).catch((err) => {
+        if (statusOf(err) === 403) refused.push({ serviceId, err });
         if (statusOf(err) === 403 || statusOf(err) === 404) return [] as FastlyDictionary[];
         throw err;
       });
@@ -345,6 +389,13 @@ export class FastlyClient implements PluginClient {
         return mapDictionary(accountId, svc, d, info?.item_count);
       });
     });
+    // Nothing read at all is a token that cannot read this type, which `scoped` handles.
+    if (refused[0] && refused.length === asked) throw refused[0].err;
+    if (refused.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: refused.map((r) => serviceResourceId(accountId, r.serviceId)),
+      });
+    }
     return perService.flat();
   }
 
