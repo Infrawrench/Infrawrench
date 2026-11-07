@@ -334,6 +334,30 @@ describe("library items", () => {
     await expect(list(vapiError(403, "UNAUTHORIZED"))).rejects.toThrow(/403/);
   });
 
+  it("leaves a library's item count out when its items cannot be read, rather than 0", async () => {
+    const { http } = mockHttp(libraryRoutes(vapiError(500, "ERROR")));
+    const libs = await hostClient(new VsphereClient(CREDS, { http })).listResources(
+      "vsphere-content-library",
+      "acct",
+    );
+    expect(libs[0]!.fields["itemCount"]).toBe(1);
+    expect(libs[1]!.fields).not.toHaveProperty("itemCount");
+  });
+
+  it("leaves host and cluster counts out when their reads fail, rather than 0", async () => {
+    const { http } = mockHttp({
+      "GET /api/vcenter/host": [{ host: "host-1", name: "esx1", connection_state: "CONNECTED" }],
+      "GET /api/vcenter/cluster": [{ cluster: "domain-c1", name: "Prod" }],
+      "GET /api/vcenter/vm?hosts=host-1": vapiError(503, "SERVICE_UNAVAILABLE"),
+      "GET /api/vcenter/host?clusters=domain-c1": vapiError(503, "SERVICE_UNAVAILABLE"),
+    });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
+    const [host] = await client.listResources("vsphere-host", "acct");
+    expect(host!.fields).not.toHaveProperty("vmCount");
+    const [cluster] = await client.listResources("vsphere-cluster", "acct");
+    expect(cluster!.fields).not.toHaveProperty("hostCount");
+  });
+
   it("reads a library deleted mid-sync as having no items", async () => {
     const items = await list(vapiError(404, "NOT_FOUND"));
     expect(items.map((i) => i.externalId)).toEqual(["item-1"]);

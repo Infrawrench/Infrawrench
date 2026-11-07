@@ -469,7 +469,7 @@ export class VsphereClient implements PluginClient {
         this.api
           .get<{ resource_pool?: string }>(`/vcenter/cluster/${seg(c.cluster)}`)
           .catch(() => undefined),
-        this.hosts({ clusters: c.cluster }).catch(() => []),
+        this.hosts({ clusters: c.cluster }).catch(() => undefined),
       ]);
       return this.instance(
         accountId,
@@ -480,7 +480,7 @@ export class VsphereClient implements PluginClient {
           name: c.name,
           haEnabled: !!c.ha_enabled,
           drsEnabled: !!c.drs_enabled,
-          hostCount: hosts.length,
+          ...(hosts ? { hostCount: hosts.length } : {}),
           datacenterId: dcOf.get(c.cluster) ?? "",
           resourcePoolId: detail?.resource_pool ?? "",
         },
@@ -506,7 +506,9 @@ export class VsphereClient implements PluginClient {
         dcOf.set(h.host, d.datacenter);
     });
     return mapLimit(hosts, 4, async (h) => {
-      const vms = await this.cached<VmSummary[]>("/vcenter/vm", { hosts: h.host }).catch(() => []);
+      const vms = await this.cached<VmSummary[]>("/vcenter/vm", { hosts: h.host }).catch(
+        () => undefined,
+      );
       return this.instance(
         accountId,
         HOST,
@@ -518,7 +520,7 @@ export class VsphereClient implements PluginClient {
           powerState: h.power_state ?? "",
           clusterId: clusterOf.get(h.host) ?? "",
           datacenterId: dcOf.get(h.host) ?? "",
-          vmCount: vms.length,
+          ...(vms ? { vmCount: vms.length } : {}),
         },
         { resolvedOutputs: { hostname: h.name, hostId: h.host } },
       );
@@ -689,10 +691,13 @@ export class VsphereClient implements PluginClient {
   private async listLibraries(accountId: string): Promise<ResourceInstance[]> {
     const libs = await this.libraries();
     return mapLimit(libs, 4, async (l) => {
-      const items =
-        (await this.cached<string[]>("/content/library/item", { library_id: l.id }).catch(
-          () => [],
-        )) ?? [];
+      // A count read that failed is left out: a 0 would show the library as empty.
+      const items = await this.cached<string[] | null>("/content/library/item", {
+        library_id: l.id,
+      }).then(
+        (ids) => ids ?? [],
+        () => undefined,
+      );
       const name = l.name ?? l.id;
       return this.instance(
         accountId,
@@ -709,7 +714,7 @@ export class VsphereClient implements PluginClient {
             .join(", "),
           published: !!l.publish_info?.published,
           subscriptionUrl: l.subscription_info?.subscription_url ?? "",
-          itemCount: items.length,
+          ...(items ? { itemCount: items.length } : {}),
         },
         { resolvedOutputs: { libraryId: l.id } },
       );
