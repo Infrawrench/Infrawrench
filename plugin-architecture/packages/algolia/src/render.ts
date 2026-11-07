@@ -27,7 +27,7 @@ const BYTE_FIELDS = new Set(["dataSize", "fileSize"]);
 function parseJson<T>(v: unknown, fallback: T): T {
   if (typeof v !== "string" || !v) return fallback;
   try {
-    return JSON.parse(v) as T;
+    return JSON.parse(v);
   } catch {
     return fallback;
   }

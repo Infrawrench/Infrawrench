@@ -1,0 +1,157 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "search",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/search.yml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/facetFilters",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/numericFilters",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/optionalFilters",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/reRankingApplyFilter",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/tagFilters",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/supportedLanguage",
+          "value": {
+            "type": "string"
+          },
+          "why": "Languages typed into the edit form go through as written and Algolia validates them, so the plugin does not hold its own copy of the list."
+        },
+        {
+          "pointer": "/components/schemas/queryType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Algolia validates it, so a value outside this enum stays Algolia's error."
+        },
+        {
+          "pointer": "/components/schemas/removeWordsIfNoResults",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Algolia validates it, so a value outside this enum stays Algolia's error."
+        },
+        {
+          "pointer": "/components/schemas/mode",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Algolia validates it, so a value outside this enum stays Algolia's error."
+        },
+        {
+          "pointer": "/components/schemas/typoToleranceEnum",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Algolia validates it, so a value outside this enum stays Algolia's error."
+        },
+        {
+          "pointer": "/components/schemas/scopeType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Algolia validates it, so a value outside this enum stays Algolia's error."
+        },
+        {
+          "pointer": "/components/schemas/baseIndexSettings/properties/attributeForDistinct/nullable",
+          "value": true,
+          "why": "Its description gives null as the default, and null is how the edit form clears it."
+        }
+      ],
+      "paths": {
+        "/1/indexes": ["get"],
+        "/1/indexes/{indexName}": ["delete"],
+        "/1/indexes/{indexName}/clear": ["post"],
+        "/1/indexes/{indexName}/operation": ["post"],
+        "/1/indexes/{indexName}/rules/search": ["post"],
+        "/1/indexes/{indexName}/settings": ["get", "put"],
+        "/1/indexes/{indexName}/synonyms/search": ["post"],
+        "/1/keys": ["get", "post"],
+        "/1/keys/{key}": ["put", "delete"],
+        "/1/logs": ["get"],
+        "/1/security/sources": ["get"]
+      }
+    },
+    {
+      "name": "abtesting",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/abtesting.yml",
+      "paths": {
+        "/2/abtests": ["get", "post"],
+        "/2/abtests/{id}": ["get", "delete"],
+        "/2/abtests/{id}/stop": ["post"]
+      }
+    },
+    {
+      "name": "analytics",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/analytics.yml",
+      "paths": {
+        "/2/clicks/clickThroughRate": ["get"],
+        "/2/searches": ["get"],
+        "/2/searches/count": ["get"],
+        "/2/searches/noResultRate": ["get"],
+        "/2/searches/noResults": ["get"],
+        "/2/users/count": ["get"]
+      }
+    },
+    {
+      "name": "monitoring",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/monitoring.yml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/Time/items/required",
+          "value": ["t", "v"],
+          "why": "A probe's point is its time and value. The document omits `required`, which would leave every point's timestamp optional."
+        }
+      ],
+      "paths": {
+        "/1/indexing/{clusters}": ["get"],
+        "/1/inventory/servers": ["get"],
+        "/1/latency/{clusters}": ["get"]
+      }
+    },
+    {
+      "name": "crawler",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/crawler.yml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/reRankingApplyFilter",
+          "value": {},
+          "why": "Refers to itself with no object around it, which is TS2502 once generated. Nothing here reads or writes it."
+        },
+        {
+          "pointer": "/components/schemas/crawlersResponse/allOf/1/properties/items/items/required",
+          "value": ["id"],
+          "why": "A listed crawler is addressed by its id, and the plugin fetches each one by it. The document omits `required`."
+        }
+      ],
+      "paths": {
+        "/1/crawlers": ["get"],
+        "/1/crawlers/{id}": ["get", "delete"],
+        "/1/crawlers/{id}/pause": ["post"],
+        "/1/crawlers/{id}/reindex": ["post"],
+        "/1/crawlers/{id}/run": ["post"],
+        "/1/crawlers/{id}/stats/urls": ["get"]
+      }
+    }
+  ]
+}

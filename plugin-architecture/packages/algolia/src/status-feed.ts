@@ -38,7 +38,7 @@ function impactOf(status: string): StatusIncidentImpact {
 }
 
 export function parseStatusFeed(body: string, now = Date.now()): StatusIncident[] {
-  const doc = JSON.parse(body) as { incidents?: Record<string, Entry[]> };
+  const doc: { incidents?: Record<string, Entry[]> } = JSON.parse(body);
   if (!doc || typeof doc.incidents !== "object" || doc.incidents === null) {
     throw new Error("Algolia status feed: no `incidents` object");
   }

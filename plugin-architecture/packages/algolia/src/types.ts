@@ -1,124 +1,54 @@
-/** Algolia wire shapes. Only the fields this plugin reads. */
+/** The shapes the plugin passes around, named from the generated types of each document. */
+import type { ApiListItem } from "@infrawrench/plugin-base";
+import type {
+  components as AbTesting,
+  operations as AbTestingOps,
+} from "./api-types.abtesting.gen.js";
+import type { components as Crawler } from "./api-types.crawler.gen.js";
+import type { components as Search, operations as SearchOps } from "./api-types.search.gen.js";
 
-export interface AlIndex {
-  name: string;
-  createdAt?: string;
-  updatedAt?: string;
-  entries?: number;
-  dataSize?: number;
-  fileSize?: number;
-  lastBuildTimeS?: number;
-  numberOfPendingTasks?: number;
-  pendingTask?: boolean;
-  primary?: string;
-  replicas?: string[];
-  virtual?: boolean;
-  abTest?: { abTestId?: number };
-  sourceABTest?: string;
-}
+/**
+ * Only `name` is certain: a created index is mapped before it has been listed.
+ * `abTestId` is what the mapper reads, where the document names the field `id`.
+ */
+type FetchedIndex = ApiListItem<SearchOps["listIndices"], "items">;
+export type AlIndex = Pick<FetchedIndex, "name"> &
+  Partial<Omit<FetchedIndex, "abTest">> & {
+    abTest?: FetchedIndex["abTest"] & { abTestId?: number };
+  };
 
 /** Index settings (`GET /1/indexes/{name}/settings`); open-ended, only some are mapped. */
-export interface AlSettings {
-  searchableAttributes?: string[] | null;
-  attributesForFaceting?: string[] | null;
-  attributesToRetrieve?: string[] | null;
-  unretrievableAttributes?: string[] | null;
-  customRanking?: string[] | null;
-  ranking?: string[] | null;
-  replicas?: string[] | null;
-  hitsPerPage?: number;
-  paginationLimitedTo?: number;
-  typoTolerance?: boolean | string;
-  distinct?: boolean | number;
-  ignorePlurals?: boolean | string[];
-  removeStopWords?: boolean | string[];
-  queryLanguages?: string[] | null;
-  indexLanguages?: string[] | null;
-  enableRules?: boolean;
-  enablePersonalization?: boolean;
-  queryType?: string;
-  removeWordsIfNoResults?: string;
-  mode?: string;
-  attributeForDistinct?: string | null;
-  [k: string]: unknown;
-}
+export type AlSettings = Search["schemas"]["settingsResponse"];
 
-export interface AlApiKey {
-  value: string;
-  /** Milliseconds since the epoch. */
-  createdAt?: number;
-  acl?: string[];
-  description?: string;
-  indexes?: string[];
-  maxHitsPerQuery?: number;
-  maxQueriesPerIPPerHour?: number;
-  queryParameters?: string;
-  referers?: string[];
-  validity?: number;
-}
+/** What `PUT /1/indexes/{name}/settings` takes. */
+export type AlSettingsPatch = Search["schemas"]["indexSettings"];
 
-export interface AlSource {
-  source: string;
-  description?: string;
-}
+/** `value` identifies a key; a key mapped from what was just sent has nothing else certain. */
+type FetchedApiKey = ApiListItem<SearchOps["listApiKeys"], "keys">;
+export type AlApiKey = Pick<FetchedApiKey, "value"> & Partial<FetchedApiKey>;
 
-export interface AlLogEntry {
-  timestamp?: string;
-  method?: string;
-  answer_code?: string;
-  url?: string;
-  ip?: string;
-  processing_time_ms?: string;
-  index?: string;
-  query_nb_hits?: string;
-  nb_api_calls?: string;
-}
+/** What `POST /1/keys` and `PUT /1/keys/{key}` take. */
+export type AlApiKeyBody = Search["schemas"]["apiKey"];
 
-export interface AlAbVariant {
-  index?: string;
-  trafficPercentage?: number;
-  description?: string;
-  searchCount?: number | null;
-  clickThroughRate?: number | null;
-  conversionRate?: number | null;
-  noResultCount?: number | null;
-  userCount?: number | null;
-}
+export type AlAcl = Search["schemas"]["acl"];
 
-export interface AlAbTest {
-  abTestID: number;
-  name?: string;
-  status?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  endAt?: string;
-  stoppedAt?: string | null;
-  clickSignificance?: number | null;
-  conversionSignificance?: number | null;
-  variants?: AlAbVariant[];
-}
-
-export interface AlCrawler {
-  id?: string;
-  name?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  running?: boolean;
-  reindexing?: boolean;
-  blocked?: boolean;
-  blockingError?: string;
-  blockingTaskId?: string;
-  lastReindexStartedAt?: string | null;
-  lastReindexEndedAt?: string | null;
-  config?: {
-    appId?: string;
-    indexPrefix?: string;
-    startUrls?: string[];
-    schedule?: string;
-    [k: string]: unknown;
+/** `abTestID` identifies a test; one just created has no statistics to report yet. */
+type FetchedAbTest = ApiListItem<AbTestingOps["listABTests"], "abtests">;
+export type AlAbTest = Pick<FetchedAbTest, "abTestID"> &
+  Partial<Omit<FetchedAbTest, "variants">> & {
+    variants?: Partial<AbTesting["schemas"]["variant"]>[];
   };
-}
 
+/**
+ * A crawler's detail, or as little as its row in the list when that fails.
+ * `lastReindexStartedAt` is what the mapper reads, where the document says `lastReindexStartAt`.
+ */
+export type AlCrawler = Partial<Crawler["schemas"]["BaseResponse"]> & {
+  config?: Crawler["schemas"]["Configuration"];
+  lastReindexStartedAt?: string | null;
+};
+
+/** One point of the Usage API, which has no published document. */
 export interface AlUsagePoint {
   t: number;
   v: number | Record<string, number>;

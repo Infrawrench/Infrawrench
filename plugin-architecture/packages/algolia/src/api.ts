@@ -1,5 +1,16 @@
-import type { HostServices } from "@infrawrench/plugin-base";
-import { utf8ToBase64 } from "@infrawrench/plugin-base";
+import type {
+  ApiClient,
+  HostServices,
+  HttpHostServices,
+  ParamValue,
+} from "@infrawrench/plugin-base";
+import { createApiClient, utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { paths as AbTestingPaths } from "./api-types.abtesting.gen.js";
+import type { paths as AnalyticsPaths } from "./api-types.analytics.gen.js";
+import type { paths as CrawlerPaths } from "./api-types.crawler.gen.js";
+import type { paths as MonitoringPaths } from "./api-types.monitoring.gen.js";
+import type { paths as SearchPaths } from "./api-types.search.gen.js";
+import type { AlUsagePoint } from "./types.js";
 
 /**
  * Transport for Algolia's REST APIs (verified against the bundled specs in
@@ -34,10 +45,10 @@ export class AlgoliaApiError extends Error {
 /** Algolia errors are `{message, status}`; the crawler uses `{error: {message}}`. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    const parsed: { message?: string; error?: string | { message?: string } } = JSON.parse(body);
     if (typeof parsed.message === "string" && parsed.message) return parsed.message;
     if (parsed.error && typeof parsed.error === "object") {
-      const m = (parsed.error as { message?: unknown }).message;
+      const m = parsed.error.message;
       if (typeof m === "string" && m) return m;
     }
     if (typeof parsed.error === "string") return parsed.error;
@@ -45,14 +56,6 @@ export function summarizeBody(body: string): string {
     /* not JSON */
   }
   return body.slice(0, 500);
-}
-
-export type QueryValue = string | number | boolean | undefined | null;
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
 }
 
 export interface AlgoliaCredentials {
@@ -66,128 +69,151 @@ export interface AlgoliaCredentials {
   caCert: string;
 }
 
+/** Algolia publishes no document for the Usage API, so its two routes are written out here. */
+interface UsageOperation {
+  parameters: { query: { startDate: string; endDate: string; granularity: string } };
+  responses: { 200: { content: { "application/json": Record<string, AlUsagePoint[]> } } };
+}
+
+interface UsagePaths {
+  "/1/usage/{statistics}": { get: UsageOperation };
+  "/1/usage/{statistics}/{indexName}": { get: UsageOperation };
+}
+
 /** Statuses worth retrying on the next search host (network-level trouble). */
 const RETRYABLE = new Set([0, 500, 502, 503, 504]);
 
+type HttpRequest = Parameters<HttpHostServices["request"]>[0];
+
+/**
+ * The transport under every client: sends a path to each of `hosts` in turn until
+ * one answers with something other than network-level trouble, which is also what
+ * the clients' empty `baseUrl` leaves it to do. Without a credential the API needs,
+ * `missing` is the answer, so the error names the path like any other 401.
+ */
+function hostsTransport(
+  services: HostServices | undefined,
+  hosts: (method: string) => string[],
+  missing: string | undefined,
+): HttpHostServices {
+  const send = async (req: HttpRequest, url: string) => {
+    const http = services?.http;
+    if (http) {
+      const res = await http.request({ ...req, url });
+      return { status: res.status, headers: {}, body: res.body ?? "" };
+    }
+    const { method, headers, body } = req;
+    // A body from these clients is always JSON text.
+    const res = await fetch(url, {
+      method,
+      headers,
+      ...(typeof body === "string" ? { body } : {}),
+    });
+    return { status: res.status, headers: {}, body: await res.text() };
+  };
+  return {
+    async request(req) {
+      if (missing !== undefined) return { status: 401, headers: {}, body: missing };
+      let last: { status: number; headers: Record<string, string>; body: string } | undefined;
+      let lastErr: unknown;
+      for (const host of hosts(req.method)) {
+        try {
+          last = await send(req, `${host}${req.url}`);
+        } catch (e) {
+          lastErr = e;
+          continue;
+        }
+        if (!RETRYABLE.has(last.status)) break;
+      }
+      if (!last) throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+      return last;
+    },
+  };
+}
+
+/** Today's query: an empty value is left out, where the client's default would send it. */
+function serializeQuery(query: Record<string, ParamValue>): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== null && v !== "") params.append(k, String(v));
+  }
+  return params.toString();
+}
+
+/** One typed client per document, and one more for the Usage API. */
 export class AlgoliaApi {
+  /** Search API with retry across Algolia's documented fallback hosts. */
+  readonly search: ApiClient<SearchPaths>;
+  readonly abTests: ApiClient<AbTestingPaths>;
+  readonly analytics: ApiClient<AnalyticsPaths>;
+  readonly usage: ApiClient<UsagePaths>;
+  readonly monitoring: ApiClient<MonitoringPaths>;
+  readonly crawler: ApiClient<CrawlerPaths>;
+
   constructor(
     readonly creds: AlgoliaCredentials,
-    private readonly services: HostServices | undefined,
-  ) {}
-
-  private async send(
-    url: string,
-    method: string,
-    headers: Record<string, string>,
-    body: string | undefined,
-  ): Promise<{ status: number; body: string }> {
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.creds.caCert ? { caCert: this.creds.caCert } : {}),
+    services: HostServices | undefined,
+  ) {
+    const clientFor = <P>(
+      hosts: (method: string) => string[],
+      auth: Record<string, string>,
+      missing?: string,
+    ) =>
+      createApiClient<P>({
+        vendor: "Algolia",
+        baseUrl: "",
+        headers: { Accept: "application/json", ...auth },
+        http: hostsTransport(services, hosts, missing),
+        caCert: creds.caCert,
+        contentType: "with-body",
+        serializeQuery,
+        httpError: ({ status, path, body }) => new AlgoliaApiError(status, path, body),
       });
-      return { status: res.status, body: res.body ?? "" };
-    }
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    return { status: res.status, body: await res.text() };
-  }
+    const keyHeaders = (key: string) => ({
+      "x-algolia-application-id": creds.appId,
+      "x-algolia-api-key": key,
+    });
 
-  private async call<T>(
-    hosts: string[],
-    path: string,
-    auth: Record<string, string>,
-    opts: RequestOptions,
-  ): Promise<T> {
-    const method = opts.method ?? "GET";
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(opts.query ?? {})) {
-      if (v !== undefined && v !== null && v !== "") params.append(k, String(v));
-    }
-    const qs = params.toString();
-    const headers: Record<string, string> = { Accept: "application/json", ...auth };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    let last: { status: number; body: string } | undefined;
-    let lastErr: unknown;
-    for (const host of hosts) {
-      try {
-        last = await this.send(`${host}${path}${qs ? `?${qs}` : ""}`, method, headers, body);
-      } catch (e) {
-        lastErr = e;
-        continue;
-      }
-      if (!RETRYABLE.has(last.status)) break;
-    }
-    if (!last) throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-    if (last.status < 200 || last.status >= 300)
-      throw new AlgoliaApiError(last.status, path, last.body);
-    if (!last.body) return undefined as unknown as T;
-    return JSON.parse(last.body) as T;
-  }
+    const id = creds.appId.toLowerCase();
+    this.search = clientFor<SearchPaths>(
+      (method) => [
+        method === "GET" ? `https://${id}-dsn.algolia.net` : `https://${id}.algolia.net`,
+        `https://${id}-1.algolianet.com`,
+        `https://${id}-2.algolianet.com`,
+        `https://${id}-3.algolianet.com`,
+      ],
+      keyHeaders(creds.apiKey),
+    );
 
-  private keyHeaders(key: string): Record<string, string> {
-    return { "x-algolia-application-id": this.creds.appId, "x-algolia-api-key": key };
-  }
-
-  /** Search API with retry across Algolia's documented fallback hosts. */
-  search<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const id = this.creds.appId.toLowerCase();
-    const read = (opts.method ?? "GET") === "GET";
-    const hosts = [
-      read ? `https://${id}-dsn.algolia.net` : `https://${id}.algolia.net`,
-      `https://${id}-1.algolianet.com`,
-      `https://${id}-2.algolianet.com`,
-      `https://${id}-3.algolianet.com`,
-    ];
-    return this.call<T>(hosts, path, this.keyHeaders(this.creds.apiKey), opts);
-  }
-
-  analytics<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const region = this.creds.analyticsRegion;
-    const host = region
+    const region = creds.analyticsRegion;
+    const analyticsHost = region
       ? `https://analytics.${region}.algolia.com`
       : "https://analytics.algolia.com";
-    return this.call<T>([host], path, this.keyHeaders(this.creds.apiKey), opts);
-  }
+    this.abTests = clientFor<AbTestingPaths>(() => [analyticsHost], keyHeaders(creds.apiKey));
+    this.analytics = clientFor<AnalyticsPaths>(() => [analyticsHost], keyHeaders(creds.apiKey));
 
-  usage<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    if (!this.creds.usageApiKey)
-      throw new AlgoliaApiError(401, path, "No Usage API key on this account.");
-    return this.call<T>(
-      ["https://usage.algolia.com"],
-      path,
-      this.keyHeaders(this.creds.usageApiKey),
-      opts,
+    this.usage = clientFor<UsagePaths>(
+      () => ["https://usage.algolia.com"],
+      keyHeaders(creds.usageApiKey),
+      creds.usageApiKey ? undefined : "No Usage API key on this account.",
     );
-  }
 
-  /** Monitoring API; public routes (status, incidents) work without a key. */
-  monitoring<T>(path: string, opts: RequestOptions = {}, needsKey = true): Promise<T> {
-    if (needsKey && !this.creds.monitoringApiKey) {
-      throw new AlgoliaApiError(401, path, "No Monitoring API key on this account.");
-    }
-    const auth = this.creds.monitoringApiKey ? this.keyHeaders(this.creds.monitoringApiKey) : {};
-    return this.call<T>(["https://status.algolia.com"], path, auth, opts);
+    this.monitoring = clientFor<MonitoringPaths>(
+      () => ["https://status.algolia.com"],
+      keyHeaders(creds.monitoringApiKey),
+      creds.monitoringApiKey ? undefined : "No Monitoring API key on this account.",
+    );
+
+    const basic = utf8ToBase64(`${creds.crawlerUserId}:${creds.crawlerApiKey}`);
+    this.crawler = clientFor<CrawlerPaths>(
+      () => ["https://crawler.algolia.com/api"],
+      { Authorization: `Basic ${basic}` },
+      this.hasCrawler ? undefined : "No crawler credentials on this account.",
+    );
   }
 
   get hasCrawler(): boolean {
     return this.creds.crawlerUserId !== "" && this.creds.crawlerApiKey !== "";
-  }
-
-  crawler<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    if (!this.hasCrawler)
-      throw new AlgoliaApiError(401, path, "No crawler credentials on this account.");
-    const basic = utf8ToBase64(`${this.creds.crawlerUserId}:${this.creds.crawlerApiKey}`);
-    return this.call<T>(
-      ["https://crawler.algolia.com/api"],
-      path,
-      { Authorization: `Basic ${basic}` },
-      opts,
-    );
   }
 }
 
