@@ -15,18 +15,23 @@ import type {
   SizeOption,
 } from "@infrawrench/plugin-base";
 import { dnsContentField, signedS3Fetch } from "@infrawrench/plugin-base";
+import type { ApiBody } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 import {
   DEFAULT_ZONE,
   type ExoscaleApi,
+  type Schemas,
+  type Sketch,
+  byId,
   intOr,
   labelsFromText,
   listValue,
+  rawId,
   trailingId,
   utf8ToBase64,
   zonal,
 } from "./api.js";
 import {
-  type Json,
   dbaasPath,
   instance,
   mapBucket,
@@ -90,9 +95,10 @@ const regionField = (regions: RegionOption[]): CreateFieldConfig => ({
 
 export async function instanceTypeOptions(api: ExoscaleApi): Promise<SizeOption[]> {
   const res = await api
-    .get<{ "instance-types"?: Json[] }>(DEFAULT_ZONE, "/instance-type")
-    .catch(() => ({}) as Json);
-  const types = ((res as Json)["instance-types"] as Json[] | undefined) ?? [];
+    .at(DEFAULT_ZONE)
+    .get("/instance-type")
+    .catch(() => ({ "instance-types": [] }));
+  const types = res["instance-types"] ?? [];
   return types
     .filter((t) => t["authorized"] !== false)
     .map((t) => {
@@ -103,9 +109,7 @@ export async function instanceTypeOptions(api: ExoscaleApi): Promise<SizeOption[
         vcpus: num(t["cpus"]),
         memoryMb: Math.round(num(t["memory"]) / 1048576),
         category: family.charAt(0).toUpperCase() + family.slice(1),
-        ...(Array.isArray(t["zones"])
-          ? { availableFor: (t["zones"] as string[]).map(String) }
-          : {}),
+        ...(Array.isArray(t["zones"]) ? { availableFor: t["zones"].map(String) } : {}),
       };
     })
     .sort((a, b) => a.vcpus - b.vcpus || a.memoryMb - b.memoryMb);
@@ -117,11 +121,13 @@ export async function templateOptions(
 ): Promise<ImageOption[]> {
   const [pub, priv] = await Promise.all([
     api
-      .get<{ templates?: Json[] }>(zone, "/template?visibility=public")
-      .catch(() => ({ templates: [] as Json[] })),
+      .at(zone)
+      .get("/template", { query: { visibility: "public" } })
+      .catch(() => ({ templates: [] })),
     api
-      .get<{ templates?: Json[] }>(zone, "/template?visibility=private")
-      .catch(() => ({ templates: [] as Json[] })),
+      .at(zone)
+      .get("/template", { query: { visibility: "private" } })
+      .catch(() => ({ templates: [] })),
   ]);
   const out: ImageOption[] = [];
   for (const t of priv.templates ?? []) {
@@ -142,9 +148,10 @@ export async function templateOptions(
 
 async function securityGroupPolicies(api: ExoscaleApi): Promise<PolicyOption[]> {
   const res = await api
-    .get<{ "security-groups"?: Json[] }>(DEFAULT_ZONE, "/security-group")
-    .catch(() => ({}) as Json);
-  return (((res as Json)["security-groups"] as Json[] | undefined) ?? []).map((g) => ({
+    .at(DEFAULT_ZONE)
+    .get("/security-group")
+    .catch(() => ({ "security-groups": [] }));
+  return (res["security-groups"] ?? []).map((g) => ({
     id: str(g["id"]),
     label: str(g["name"]),
     ...(g["description"] ? { description: str(g["description"]) } : {}),
@@ -451,10 +458,11 @@ export async function getCreateConfig(
       const [regions, versions] = await Promise.all([
         zoneOptions(api),
         api
-          .get<{ "sks-cluster-versions"?: string[] }>(DEFAULT_ZONE, "/sks-cluster-version")
-          .catch(() => ({}) as Json),
+          .at(DEFAULT_ZONE)
+          .get("/sks-cluster-version")
+          .catch(() => ({ "sks-cluster-versions": [] })),
       ]);
-      const list = ((versions as Json)["sks-cluster-versions"] as string[] | undefined) ?? [];
+      const list = versions["sks-cluster-versions"] ?? [];
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
@@ -564,15 +572,14 @@ export async function getCreateConfig(
       const [regions, types] = await Promise.all([
         zoneOptions(api),
         api
-          .get<{ "dbaas-service-types"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service-type")
-          .catch(() => ({}) as Json),
+          .at(DEFAULT_ZONE)
+          .get("/dbaas-service-type")
+          .catch(() => ({ "dbaas-service-types": [] })),
       ]);
-      const list = (((types as Json)["dbaas-service-types"] as Json[] | undefined) ?? []).filter(
-        (t) => DBAAS_LABELS[str(t["name"])],
-      );
+      const list = (types["dbaas-service-types"] ?? []).filter((t) => DBAAS_LABELS[str(t["name"])]);
       const sizes: SizeOption[] = [];
       for (const t of list) {
-        for (const p of (t["plans"] as Json[] | undefined) ?? []) {
+        for (const p of t["plans"] ?? []) {
           if (p["authorized"] === false) continue;
           sizes.push({
             id: `${str(t["name"])}:${str(p["name"])}`,
@@ -590,7 +597,7 @@ export async function getCreateConfig(
         label: `${DBAAS_LABELS[str(t["name"])]} Version`,
         kind: "select",
         required: false,
-        options: ((t["available-versions"] as string[] | undefined) ?? []).map((v) => ({
+        options: (t["available-versions"] ?? []).map((v) => ({
           id: v,
           label: v,
         })),
@@ -645,8 +652,9 @@ export async function getCreateConfig(
       const fields: CreateFieldConfig[] = [];
       if (!parentResourceId) {
         const res = await api
-          .get<{ "dbaas-services"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service")
-          .catch(() => ({}) as Json);
+          .at(DEFAULT_ZONE)
+          .get("/dbaas-service")
+          .catch(() => ({ "dbaas-services": [] }));
         const allowed =
           typeId === "dbaas-user"
             ? ["pg", "mysql", "valkey", "kafka", "opensearch"]
@@ -656,7 +664,7 @@ export async function getCreateConfig(
           label: "Service",
           kind: "select",
           required: true,
-          options: (((res as Json)["dbaas-services"] as Json[] | undefined) ?? [])
+          options: (res["dbaas-services"] ?? [])
             .filter((s) => allowed.includes(str(s["type"])))
             .map((s) => ({
               id: `${str(s["zone"])}/${str(s["name"])}`,
@@ -688,14 +696,15 @@ export async function getCreateConfig(
       const fields: CreateFieldConfig[] = [];
       if (!parentResourceId) {
         const res = await api
-          .get<{ "dns-domains"?: Json[] }>(DEFAULT_ZONE, "/dns-domain")
-          .catch(() => ({}) as Json);
+          .at(DEFAULT_ZONE)
+          .get("/dns-domain")
+          .catch(() => ({ "dns-domains": [] }));
         fields.push({
           key: "domainId",
           label: "Domain",
           kind: "select",
           required: true,
-          options: (((res as Json)["dns-domains"] as Json[] | undefined) ?? []).map((d) => ({
+          options: (res["dns-domains"] ?? []).map((d) => ({
             id: str(d["id"]),
             label: str(d["unicode-name"]),
           })),
@@ -798,18 +807,27 @@ export async function ensureSshKey(api: ExoscaleApi, publicKey: string): Promise
       0,
       100,
     );
-  const res = await api
-    .get<{ "ssh-keys"?: Json[] }>(DEFAULT_ZONE, "/ssh-key")
-    .catch(() => ({}) as Json);
-  if ((((res as Json)["ssh-keys"] as Json[] | undefined) ?? []).some((k) => k["name"] === name))
-    return name;
-  await api.mutate(DEFAULT_ZONE, "POST", "/ssh-key", { name, "public-key": key });
+  const z = api.at(DEFAULT_ZONE);
+  const res = await z.get("/ssh-key").catch(() => ({ "ssh-keys": [] }));
+  if ((res["ssh-keys"] ?? []).some((k) => k["name"] === name)) return name;
+  await z.settle(z.post("/ssh-key", { body: { name, "public-key": key } }));
   return name;
 }
 
-export function securityGroupPresetRules(fields: Record<string, string>): Json[] {
-  const rules: Json[] = [];
-  const both = (protocol: string, port: number, description: string) => {
+/** What the rules endpoint takes and what a mapper reads: the literals fit both. */
+interface PresetRule {
+  "flow-direction": "ingress";
+  protocol: "tcp" | "icmp";
+  network: string;
+  "start-port"?: number;
+  "end-port"?: number;
+  icmp?: { type: number; code: number };
+  description: string;
+}
+
+export function securityGroupPresetRules(fields: Record<string, string>): PresetRule[] {
+  const rules: PresetRule[] = [];
+  const both = (protocol: "tcp", port: number, description: string) => {
     for (const network of ["0.0.0.0/0", "::/0"]) {
       rules.push({
         "flow-direction": "ingress",
@@ -838,7 +856,17 @@ export function securityGroupPresetRules(fields: Record<string, string>): Json[]
   return rules;
 }
 
-export function recordBody(fields: Record<string, string>, includeType = true): Json {
+export function recordBody(
+  fields: Record<string, string>,
+): ApiBody<operations["create-dns-domain-record"]>;
+export function recordBody(
+  fields: Record<string, string>,
+  includeType: false,
+): ApiBody<operations["update-dns-domain-record"]>;
+export function recordBody(
+  fields: Record<string, string>,
+  includeType = true,
+): ApiBody<operations["update-dns-domain-record"]> & { type?: string | undefined } {
   const type = fields["type"] ?? "A";
   const name = (fields["name"] ?? "").trim();
   return {
@@ -865,11 +893,12 @@ export async function createBucket(api: ExoscaleApi, zone: string, name: string)
     url: `${sosEndpoint(zone)}/${encodeURIComponent(name)}`,
   });
   if (!res.ok) {
-    const err = new Error(
-      `SOS refused to create the bucket: ${res.status} ${(await res.text()).slice(0, 200)}`,
-    ) as Error & { status: number };
-    err.status = res.status;
-    throw err;
+    throw Object.assign(
+      new Error(
+        `SOS refused to create the bucket: ${res.status} ${(await res.text()).slice(0, 200)}`,
+      ),
+      { status: res.status },
+    );
   }
 }
 
@@ -882,44 +911,56 @@ export async function createResource(
 ): Promise<ResourceInstance> {
   const zone = fields["zone"] || DEFAULT_ZONE;
   const labels = labelsFromText(fields["labels"]);
+  const z = api.at(zone);
+  const global = api.at(DEFAULT_ZONE);
   switch (typeId) {
     case "instance": {
       const sshKey = fields["sshPublicKey"] ? await ensureSshKey(api, fields["sshPublicKey"]) : "";
       const groups = listValue(fields["securityGroups"]);
-      const op = await api.mutate(zone, "POST", "/instance", {
-        name: fields["name"],
-        "instance-type": { id: fields["instanceType"] },
-        template: { id: fields["template"] },
-        "disk-size": intOr(fields["diskGb"], 50),
-        "public-ip-assignment": fields["publicIp"] || "inet4",
-        ...(sshKey ? { "ssh-key": { name: sshKey } } : {}),
-        ...(groups.length ? { "security-groups": groups.map((id) => ({ id })) } : {}),
-        ...(fields["userData"] ? { "user-data": utf8ToBase64(fields["userData"]) } : {}),
-        ...(Object.keys(labels).length ? { labels } : {}),
-      });
+      const op = await z.settle(
+        z.post("/instance", {
+          body: {
+            name: fields["name"],
+            "instance-type": byId(fields["instanceType"]),
+            template: byId(fields["template"]),
+            "disk-size": intOr(fields["diskGb"], 50),
+            "public-ip-assignment": fields["publicIp"] || "inet4",
+            ...(sshKey ? { "ssh-key": { name: sshKey } } : {}),
+            ...(groups.length ? { "security-groups": groups.map((id) => ({ id })) } : {}),
+            ...(fields["userData"] ? { "user-data": utf8ToBase64(fields["userData"]) } : {}),
+            ...(Object.keys(labels).length ? { labels } : {}),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
       if (fields["privateNetworkId"] && id) {
-        await api.mutate(zone, "PUT", `/private-network/${fields["privateNetworkId"]}:attach`, {
-          instance: { id },
-        });
+        await z.settle(
+          z.put(`/private-network/${rawId(fields["privateNetworkId"])}:attach`, {
+            body: { instance: { id } },
+          }),
+        );
       }
-      const created = id
-        ? await api
-            .get<Json>(zone, `/instance/${id}`)
-            .catch(() => ({ id, name: fields["name"] }) as Json)
+      const created: Sketch<Schemas["instance"]> = id
+        ? await z.get(`/instance/${rawId(id)}`).catch(() => ({ id, name: fields["name"] }))
         : { id, name: fields["name"] };
       return mapInstance(created, zone, accountId);
     }
     case "block-storage": {
-      const op = await api.mutate(zone, "POST", "/block-storage", {
-        name: fields["name"],
-        size: intOr(fields["sizeGb"], 50),
-      });
+      const op = await z.settle(
+        z.post("/block-storage", {
+          body: {
+            name: fields["name"],
+            size: intOr(fields["sizeGb"], 50),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
       if (fields["instanceId"] && id) {
-        await api.mutate(zone, "PUT", `/block-storage/${id}:attach`, {
-          instance: { id: fields["instanceId"] },
-        });
+        await z.settle(
+          z.put(`/block-storage/${rawId(id)}:attach`, {
+            body: { instance: { id: fields["instanceId"] } },
+          }),
+        );
       }
       return mapVolume(
         {
@@ -935,9 +976,12 @@ export async function createResource(
     case "block-storage-snapshot": {
       const ref = splitRef(fields["volumeRef"]);
       if (!ref.id) throw new Error("Pick the volume to snapshot.");
-      const op = await api.mutate(ref.zone, "POST", `/block-storage/${ref.id}:create-snapshot`, {
-        name: fields["name"],
-      });
+      const at = api.at(ref.zone);
+      const op = await at.settle(
+        at.post(`/block-storage/${rawId(ref.id)}:create-snapshot`, {
+          body: { name: fields["name"] },
+        }),
+      );
       return mapVolumeSnapshot(
         {
           id: op.reference?.id ?? "",
@@ -951,7 +995,8 @@ export async function createResource(
     case "snapshot": {
       const ref = splitRef(fields["instanceRef"]);
       if (!ref.id) throw new Error("Pick the instance to snapshot.");
-      const op = await api.mutate(ref.zone, "POST", `/instance/${ref.id}:create-snapshot`);
+      const at = api.at(ref.zone);
+      const op = await at.settle(at.post(`/instance/${rawId(ref.id)}:create-snapshot`));
       return mapSnapshot(
         { id: op.reference?.id ?? "", name: "snapshot", instance: { id: ref.id } },
         ref.zone,
@@ -959,15 +1004,19 @@ export async function createResource(
       );
     }
     case "template": {
-      const op = await api.mutate(zone, "POST", "/template", {
-        name: fields["name"],
-        url: fields["url"],
-        checksum: fields["checksum"],
-        "default-user": fields["defaultUser"] || undefined,
-        description: fields["description"] || undefined,
-        "ssh-key-enabled": true,
-        "password-enabled": false,
-      });
+      const op = await z.settle(
+        z.post("/template", {
+          body: {
+            name: fields["name"],
+            url: fields["url"],
+            checksum: fields["checksum"],
+            "default-user": fields["defaultUser"] || undefined,
+            description: fields["description"] || undefined,
+            "ssh-key-enabled": true,
+            "password-enabled": false,
+          },
+        }),
+      );
       return instance(
         accountId,
         "template",
@@ -981,13 +1030,21 @@ export async function createResource(
     }
     case "private-network": {
       const managed = fields["managed"] !== "false";
-      const op = await api.mutate(zone, "POST", "/private-network", {
-        name: fields["name"],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-        ...(managed
-          ? { "start-ip": fields["startIp"], "end-ip": fields["endIp"], netmask: fields["netmask"] }
-          : {}),
-      });
+      const op = await z.settle(
+        z.post("/private-network", {
+          body: {
+            name: fields["name"],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(managed
+              ? {
+                  "start-ip": fields["startIp"],
+                  "end-ip": fields["endIp"],
+                  netmask: fields["netmask"],
+                }
+              : {}),
+          },
+        }),
+      );
       return mapPrivateNetwork(
         {
           id: op.reference?.id ?? "",
@@ -1001,14 +1058,18 @@ export async function createResource(
       );
     }
     case "security-group": {
-      const op = await api.mutate(DEFAULT_ZONE, "POST", "/security-group", {
-        name: fields["name"],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-      });
+      const op = await global.settle(
+        global.post("/security-group", {
+          body: {
+            name: fields["name"],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
       const rules = securityGroupPresetRules(fields);
       for (const rule of rules)
-        await api.mutate(DEFAULT_ZONE, "POST", `/security-group/${id}/rules`, rule);
+        await global.settle(global.post(`/security-group/${rawId(id)}/rules`, { body: rule }));
       return mapSecurityGroup(
         { id, name: fields["name"], description: fields["description"], rules },
         accountId,
@@ -1016,45 +1077,51 @@ export async function createResource(
     }
     case "elastic-ip": {
       const mode = fields["healthcheckMode"];
-      const op = await api.mutate(zone, "POST", "/elastic-ip", {
-        addressfamily: fields["family"] || "inet4",
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-        ...(mode
-          ? {
-              healthcheck: {
-                mode,
-                port: intOr(fields["healthcheckPort"], 80),
-                ...(mode !== "tcp" ? { uri: fields["healthcheckUri"] || "/" } : {}),
-              },
-            }
-          : {}),
-      });
+      const op = await z.settle(
+        z.post("/elastic-ip", {
+          body: {
+            addressfamily: fields["family"] || "inet4",
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(mode
+              ? {
+                  healthcheck: {
+                    mode,
+                    port: intOr(fields["healthcheckPort"], 80),
+                    ...(mode !== "tcp" ? { uri: fields["healthcheckUri"] || "/" } : {}),
+                  },
+                }
+              : {}),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
-      const eip = id
-        ? await api.get<Json>(zone, `/elastic-ip/${id}`).catch(() => ({ id }) as Json)
+      const eip: Sketch<Schemas["elastic-ip"]> = id
+        ? await z.get(`/elastic-ip/${rawId(id)}`).catch(() => ({ id }))
         : { id };
       return mapElasticIp(eip, zone, accountId, []);
     }
     case "sks-cluster": {
-      const op = await api.mutate(zone, "POST", "/sks-cluster", {
-        name: fields["name"],
-        version: fields["version"],
-        level: fields["level"] || "starter",
-        cni: fields["cni"] || "calico",
-        "auto-upgrade": fields["autoUpgrade"] !== "false",
-        "create-default-security-group": fields["defaultSecurityGroup"] !== "false",
-        addons: [
-          "exoscale-cloud-controller",
-          "exoscale-container-storage-interface",
-          "metrics-server",
-        ],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-      });
+      const op = await z.settle(
+        z.post("/sks-cluster", {
+          body: {
+            name: fields["name"],
+            version: fields["version"],
+            level: fields["level"] || "starter",
+            cni: fields["cni"] || "calico",
+            "auto-upgrade": fields["autoUpgrade"] !== "false",
+            "create-default-security-group": fields["defaultSecurityGroup"] !== "false",
+            addons: [
+              "exoscale-cloud-controller",
+              "exoscale-container-storage-interface",
+              "metrics-server",
+            ],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
-      const cluster = id
-        ? await api
-            .get<Json>(zone, `/sks-cluster/${id}`)
-            .catch(() => ({ id, name: fields["name"] }) as Json)
+      const cluster: Sketch<Schemas["sks-cluster"]> = id
+        ? await z.get(`/sks-cluster/${rawId(id)}`).catch(() => ({ id, name: fields["name"] }))
         : { id, name: fields["name"] };
       return mapCluster(cluster, zone, accountId);
     }
@@ -1066,31 +1133,38 @@ export async function createResource(
           : { zone: "", id: "" };
       if (!ref.id) throw new Error("Pick the cluster.");
       const groups = listValue(fields["securityGroups"]);
-      const op = await api.mutate(ref.zone, "POST", `/sks-cluster/${ref.id}/nodepool`, {
-        name: fields["name"],
-        "instance-type": { id: fields["instanceType"] },
-        size: intOr(fields["size"], 2),
-        "disk-size": intOr(fields["diskGb"], 50),
-        ...(groups.length ? { "security-groups": groups.map((id) => ({ id })) } : {}),
-      });
-      const cluster = await api
-        .get<Json>(ref.zone, `/sks-cluster/${ref.id}`)
-        .catch(() => ({ id: ref.id }) as Json);
-      const pool = ((cluster["nodepools"] as Json[] | undefined) ?? []).find(
+      const at = api.at(ref.zone);
+      const op = await at.settle(
+        at.post(`/sks-cluster/${rawId(ref.id)}/nodepool`, {
+          body: {
+            name: fields["name"],
+            "instance-type": byId(fields["instanceType"]),
+            size: intOr(fields["size"], 2),
+            "disk-size": intOr(fields["diskGb"], 50),
+            ...(groups.length ? { "security-groups": groups.map((id) => ({ id })) } : {}),
+          },
+        }),
+      );
+      const cluster: Sketch<Schemas["sks-cluster"]> = await at
+        .get(`/sks-cluster/${rawId(ref.id)}`)
+        .catch(() => ({ id: ref.id }));
+      const pool: Sketch<Schemas["sks-nodepool"]> = (cluster["nodepools"] ?? []).find(
         (p) => p["id"] === op.reference?.id,
       ) ?? { id: op.reference?.id ?? "", name: fields["name"], size: intOr(fields["size"], 2) };
       return mapNodepool(pool, cluster, ref.zone, accountId);
     }
     case "nlb": {
-      const op = await api.mutate(zone, "POST", "/load-balancer", {
-        name: fields["name"],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-      });
+      const op = await z.settle(
+        z.post("/load-balancer", {
+          body: {
+            name: fields["name"],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          },
+        }),
+      );
       const id = op.reference?.id ?? "";
-      const lb = id
-        ? await api
-            .get<Json>(zone, `/load-balancer/${id}`)
-            .catch(() => ({ id, name: fields["name"] }) as Json)
+      const lb: Sketch<Schemas["load-balancer"]> = id
+        ? await z.get(`/load-balancer/${rawId(id)}`).catch(() => ({ id, name: fields["name"] }))
         : { id };
       return mapNlb(lb, zone, accountId);
     }
@@ -1100,12 +1174,16 @@ export async function createResource(
         : [fields["type"] ?? "pg", fields["plan"] ?? ""];
       const name = fields["name"] ?? "";
       const version = fields[`version_${type}`];
-      await api.mutate(zone, "POST", `/dbaas-${dbaasPath(type ?? "pg")}/${name}`, {
-        plan,
-        ...(version ? { version } : {}),
-        "ip-filter": listValue(fields["ipFilter"]),
-        "termination-protection": fields["terminationProtection"] !== "false",
-      });
+      await z.settle(
+        z.post(`/dbaas-${rawId(dbaasPath(type ?? "pg"))}/${rawId(name)}`, {
+          body: {
+            plan,
+            ...(version ? { version } : {}),
+            "ip-filter": listValue(fields["ipFilter"]),
+            "termination-protection": fields["terminationProtection"] !== "false",
+          },
+        }),
+      );
       return mapDbaas({ name, type, zone, plan, state: "rebuilding" }, accountId);
     }
     case "dbaas-user":
@@ -1116,26 +1194,34 @@ export async function createResource(
           ? zonal(parentResourceId)
           : { zone: "", id: "" };
       if (!ref.id) throw new Error("Pick the database service.");
-      const svc = await api.get<{ "dbaas-services"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service");
+      const svc = await global.get("/dbaas-service");
       const found = (svc["dbaas-services"] ?? []).find((s) => s["name"] === ref.id);
       const type = str(found?.["type"]);
       if (!type) throw new Error("That database service no longer exists.");
-      const base = `/dbaas-${dbaasPath(type)}/${ref.id}`;
+      const family = rawId(dbaasPath(type));
+      const service = rawId(ref.id);
+      const at = api.at(ref.zone);
       if (typeId === "dbaas-user") {
-        await api.mutate(ref.zone, "POST", `${base}/user`, { username: fields["username"] });
+        await at.settle(
+          at.post(`/dbaas-${family}/${service}/user`, { body: { username: fields["username"] } }),
+        );
         return mapDbaasUser(
           { username: fields["username"], type: "normal" },
           { name: ref.id, zone: ref.zone },
           accountId,
         );
       }
-      await api.mutate(ref.zone, "POST", `${base}/database`, { "database-name": fields["name"] });
+      await at.settle(
+        at.post(`/dbaas-${family}/${service}/database`, {
+          body: { "database-name": fields["name"] },
+        }),
+      );
       return mapDbaasDatabase(fields["name"] ?? "", { name: ref.id, zone: ref.zone }, accountId);
     }
     case "dns-domain": {
-      const op = await api.mutate(DEFAULT_ZONE, "POST", "/dns-domain", {
-        "unicode-name": fields["name"],
-      });
+      const op = await global.settle(
+        global.post("/dns-domain", { body: { "unicode-name": fields["name"] } }),
+      );
       return mapDomain(
         { id: op.reference?.id ?? "", "unicode-name": fields["name"] },
         accountId,
@@ -1145,15 +1231,12 @@ export async function createResource(
     case "dns-record": {
       const domainId = fields["domainId"] || (parentResourceId ? trailingId(parentResourceId) : "");
       if (!domainId) throw new Error("Pick the domain.");
-      const op = await api.mutate(
-        DEFAULT_ZONE,
-        "POST",
-        `/dns-domain/${domainId}/record`,
-        recordBody(fields),
+      const op = await global.settle(
+        global.post(`/dns-domain/${rawId(domainId)}/record`, { body: recordBody(fields) }),
       );
-      const domain = await api
-        .get<Json>(DEFAULT_ZONE, `/dns-domain/${domainId}`)
-        .catch(() => ({ id: domainId }) as Json);
+      const domain: Sketch<Schemas["dns-domain"]> = await global
+        .get(`/dns-domain/${rawId(domainId)}`)
+        .catch(() => ({ id: domainId }));
       return instance(
         accountId,
         "dns-record",
@@ -1163,8 +1246,8 @@ export async function createResource(
           type: fields["type"] ?? "A",
           name: fields["name"] ?? "",
           content: fields["content"] ?? "",
-          ttl: intOr(fields["ttl"], 3600) ?? 3600,
-          priority: intOr(fields["priority"], 0) ?? 0,
+          ttl: intOr(fields["ttl"], 3600),
+          priority: intOr(fields["priority"], 0),
           domainName: str(domain["unicode-name"]),
         },
         { parentResourceId: `${accountId}:dns-domain:${domainId}` },
@@ -1175,20 +1258,28 @@ export async function createResource(
       return mapBucket({ name: fields["name"], "zone-name": zone, size: 0 }, accountId);
     }
     case "ssh-key": {
-      await api.mutate(DEFAULT_ZONE, "POST", "/ssh-key", {
-        name: fields["name"],
-        "public-key": (fields["publicKey"] ?? "").trim(),
-      });
+      await global.settle(
+        global.post("/ssh-key", {
+          body: {
+            name: fields["name"],
+            "public-key": (fields["publicKey"] ?? "").trim(),
+          },
+        }),
+      );
       return instance(accountId, "ssh-key", fields["name"] ?? "", fields["name"] ?? "", {
         name: fields["name"] ?? "",
         fingerprint: "",
       });
     }
     case "anti-affinity-group": {
-      const op = await api.mutate(DEFAULT_ZONE, "POST", "/anti-affinity-group", {
-        name: fields["name"],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-      });
+      const op = await global.settle(
+        global.post("/anti-affinity-group", {
+          body: {
+            name: fields["name"],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          },
+        }),
+      );
       return instance(
         accountId,
         "anti-affinity-group",

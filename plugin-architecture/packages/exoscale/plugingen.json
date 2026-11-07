@@ -1,0 +1,756 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://openapi-v2.exoscale.com/source.yaml",
+  "patches": [
+    {
+      "pointer": "/paths/~1focus-report~1{period}",
+      "value": {
+        "get": {
+          "operationId": "get-focus-report",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "period",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "presigned_url": {
+                        "type": "string"
+                      },
+                      "expires_in": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The published document does not list this [BETA] operation. Shape from exoscale/egoscale v3, GetFocusReport and FocusReport."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{name}",
+      "value": {
+        "get": {
+          "operationId": "get-dbaas-service-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-pg"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-mysql"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-valkey"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-kafka"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-opensearch"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-grafana"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-clickhouse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/dbaas-service-thanos"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "create-dbaas-service-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["plan"],
+                  "properties": {
+                    "plan": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "ip-filter": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "termination-protection": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "operationId": "update-dbaas-service-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "string"
+                    },
+                    "ip-filter": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "termination-protection": {
+                      "type": "boolean"
+                    },
+                    "maintenance": {
+                      "type": "object",
+                      "properties": {
+                        "dow": {
+                          "type": "string"
+                        },
+                        "time": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "delete-dbaas-service-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document lists one path per service type (/dbaas-postgres/{name}, /dbaas-mysql/{name}, ...) with the same shape, and the plugin picks the type from what /dbaas-service answers, including any added later. This is that family as one route."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{name}~1maintenance~1start",
+      "value": {
+        "put": {
+          "operationId": "start-dbaas-maintenance-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{service-name}~1user",
+      "value": {
+        "post": {
+          "operationId": "create-dbaas-user-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "service-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["username"],
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{service-name}~1database",
+      "value": {
+        "post": {
+          "operationId": "create-dbaas-database-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "service-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["database-name"],
+                  "properties": {
+                    "database-name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{service-name}~1user~1{username}",
+      "value": {
+        "delete": {
+          "operationId": "delete-dbaas-user-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "service-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "username",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{service-name}~1database~1{database-name}",
+      "value": {
+        "delete": {
+          "operationId": "delete-dbaas-database-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "service-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "database-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/operation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type."
+    },
+    {
+      "pointer": "/paths/~1dbaas-{service-type}~1{service-name}~1user~1{username}~1password~1reveal",
+      "value": {
+        "get": {
+          "operationId": "reveal-dbaas-user-password-any",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "service-type",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "service-name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "username",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "username": {
+                        "type": "string"
+                      },
+                      "password": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "One family, as with /dbaas-{service-type}/{name}: the document has one of these per service type, and each secret carries the password."
+    },
+    {
+      "pointer": "/components/schemas/zone-name",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin takes zones from /zone and from forms, and this enum is a snapshot: a zone Exoscale adds has to keep working (the plugin already labels es-mad-1, which it lacks)."
+    },
+    {
+      "pointer": "/components/schemas/sks-cluster/properties/allowed-networks",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "The document omits it, and exoscale/egoscale v3 has it on SKSCluster."
+    },
+    {
+      "pointer": "/paths/~1sks-cluster~1{id}/put/requestBody/content/application~1json/schema/properties/allowed-networks",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "The document omits it, and exoscale/egoscale v3 has it on UpdateSKSClusterRequest."
+    },
+    {
+      "pointer": "/paths/~1instance/post/requestBody/content/application~1json/schema/properties/public-ip-assignment",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1security-group~1{id}~1rules/post/requestBody/content/application~1json/schema/properties/flow-direction",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1security-group~1{id}~1rules/post/requestBody/content/application~1json/schema/properties/protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1load-balancer~1{id}~1service/post/requestBody/content/application~1json/schema/properties/protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1load-balancer~1{id}~1service/post/requestBody/content/application~1json/schema/properties/strategy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/components/schemas/load-balancer-service-healthcheck/properties/mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1elastic-ip/post/requestBody/content/application~1json/schema/properties/addressfamily",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/components/schemas/elastic-ip-healthcheck/properties/mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1sks-cluster/post/requestBody/content/application~1json/schema/properties/level",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1sks-cluster/post/requestBody/content/application~1json/schema/properties/cni",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    },
+    {
+      "pointer": "/paths/~1dns-domain~1{domain-id}~1record/post/requestBody/content/application~1json/schema/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Exoscale validates it, so a value outside this enum stays Exoscale's error."
+    }
+  ],
+  "paths": {
+    "/anti-affinity-group": ["get", "post"],
+    "/anti-affinity-group/{id}": ["delete"],
+    "/block-storage": ["get", "post"],
+    "/block-storage-snapshot": ["get"],
+    "/block-storage-snapshot/{id}": ["put", "delete"],
+    "/block-storage/{id}": ["get", "put", "delete"],
+    "/block-storage/{id}:attach": ["put"],
+    "/block-storage/{id}:create-snapshot": ["post"],
+    "/block-storage/{id}:detach": ["put"],
+    "/block-storage/{id}:resize-volume": ["put"],
+    "/dbaas-service": ["get"],
+    "/dbaas-service-logs/{service-name}": ["post"],
+    "/dbaas-service-metrics/{service-name}": ["post"],
+    "/dbaas-service-type": ["get"],
+    "/dbaas-{service-type}/{name}": ["get", "post", "put", "delete"],
+    "/dbaas-{service-type}/{name}/maintenance/start": ["put"],
+    "/dbaas-{service-type}/{service-name}/database": ["post"],
+    "/dbaas-{service-type}/{service-name}/database/{database-name}": ["delete"],
+    "/dbaas-{service-type}/{service-name}/user": ["post"],
+    "/dbaas-{service-type}/{service-name}/user/{username}": ["delete"],
+    "/dbaas-{service-type}/{service-name}/user/{username}/password/reveal": ["get"],
+    "/dns-domain": ["get", "post"],
+    "/dns-domain/{domain-id}/record": ["get", "post"],
+    "/dns-domain/{domain-id}/record/{record-id}": ["get", "put", "delete"],
+    "/dns-domain/{id}": ["get", "delete"],
+    "/elastic-ip": ["get", "post"],
+    "/elastic-ip/{id}": ["get", "put", "delete"],
+    "/elastic-ip/{id}:attach": ["put"],
+    "/elastic-ip/{id}:detach": ["put"],
+    "/focus-report/{period}": ["get"],
+    "/instance": ["get", "post"],
+    "/instance-pool": ["get"],
+    "/instance-pool/{id}": ["put", "delete"],
+    "/instance-pool/{id}:scale": ["put"],
+    "/instance-type": ["get"],
+    "/instance/{id}": ["get", "put", "delete"],
+    "/instance/{id}:add-protection": ["put"],
+    "/instance/{id}:create-snapshot": ["post"],
+    "/instance/{id}:reboot": ["put"],
+    "/instance/{id}:remove-protection": ["put"],
+    "/instance/{id}:reset": ["put"],
+    "/instance/{id}:resize-disk": ["put"],
+    "/instance/{id}:scale": ["put"],
+    "/instance/{id}:start": ["put"],
+    "/instance/{id}:stop": ["put"],
+    "/instance/{instance-id}:revert-snapshot": ["post"],
+    "/live-balance": ["get"],
+    "/load-balancer": ["get", "post"],
+    "/load-balancer/{id}": ["get", "put", "delete"],
+    "/load-balancer/{id}/service": ["post"],
+    "/load-balancer/{id}/service/{service-id}": ["delete"],
+    "/operation/{id}": ["get"],
+    "/organization": ["get"],
+    "/private-network": ["get", "post"],
+    "/private-network/{id}": ["get", "put", "delete"],
+    "/private-network/{id}:attach": ["put"],
+    "/private-network/{id}:detach": ["put"],
+    "/quota": ["get"],
+    "/security-group": ["get", "post"],
+    "/security-group/{id}": ["get", "delete"],
+    "/security-group/{id}/rules": ["post"],
+    "/security-group/{id}/rules/{rule-id}": ["delete"],
+    "/security-group/{id}:attach": ["put"],
+    "/security-group/{id}:detach": ["put"],
+    "/sks-cluster": ["get", "post"],
+    "/sks-cluster-kubeconfig/{id}": ["post"],
+    "/sks-cluster-version": ["get"],
+    "/sks-cluster/{id}": ["get", "put", "delete"],
+    "/sks-cluster/{id}/nodepool": ["post"],
+    "/sks-cluster/{id}/nodepool/{sks-nodepool-id}": ["put", "delete"],
+    "/sks-cluster/{id}/nodepool/{sks-nodepool-id}:scale": ["put"],
+    "/sks-cluster/{id}/upgrade": ["put"],
+    "/sks-cluster/{id}/upgrade-service-level": ["put"],
+    "/snapshot": ["get"],
+    "/snapshot/{id}": ["delete"],
+    "/sos-buckets-usage": ["get"],
+    "/ssh-key": ["get", "post"],
+    "/ssh-key/{name}": ["delete"],
+    "/template": ["get", "post"],
+    "/template/{id}": ["put", "delete"],
+    "/zone": ["get"]
+  }
+}

@@ -21,10 +21,19 @@ import type {
   CostRow,
   HostServices,
 } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
-import { DEFAULT_ZONE, type ExoscaleApi, statusOf } from "./api.js";
+import { type ApiResponse, CostSetupError } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+import { DEFAULT_ZONE, type ExoscaleApi, rawId, statusOf } from "./api.js";
 
 type FocusRow = Record<string, unknown>;
+
+/**
+ * The report as this plugin reads it, under a `focus-report` key. Exoscale's Go client
+ * reads `presigned_url` at the top level (#407).
+ */
+type WrappedFocusReport = ApiResponse<operations["get-focus-report"]> & {
+  "focus-report"?: ApiResponse<operations["get-focus-report"]>;
+};
 
 export function monthsBetween(from: string, to: string): string[] {
   const out: string[] = [];
@@ -79,13 +88,16 @@ export function parseFocusBody(text: string): FocusRow[] {
       "Exoscale sent the FOCUS report as Parquet, which Infrawrench cannot read yet.",
     );
   }
-  if (t.startsWith("[")) return JSON.parse(t) as FocusRow[];
+  if (t.startsWith("[")) {
+    const rows: FocusRow[] = JSON.parse(t);
+    return rows;
+  }
   if (t.startsWith("{")) {
     return t
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as FocusRow);
+      .map((l): FocusRow => JSON.parse(l));
   }
   return parseCsv(t);
 }
@@ -110,7 +122,7 @@ function parseTags(v: unknown): Record<string, string> | undefined {
   }
   if (!obj || typeof obj !== "object") return undefined;
   const out: Record<string, string> = {};
-  for (const [k, val] of Object.entries(obj as Record<string, unknown>)) out[k] = String(val ?? "");
+  for (const [k, val] of Object.entries(obj)) out[k] = String(val ?? "");
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -188,10 +200,9 @@ export async function fetchExoscaleCostData(
   for (const month of monthsBetween(range.fromDate, range.toDate)) {
     let url: string | undefined;
     try {
-      const res = await api.get<{ "focus-report"?: { presigned_url?: string } }>(
-        DEFAULT_ZONE,
-        `/focus-report/${month}`,
-      );
+      const res: WrappedFocusReport = await api
+        .at(DEFAULT_ZONE)
+        .get(`/focus-report/${rawId(month)}`);
       url = res["focus-report"]?.presigned_url;
     } catch (err) {
       const status = statusOf(err);

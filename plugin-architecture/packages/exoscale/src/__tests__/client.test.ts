@@ -2,7 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
-import { authorization, createExoscaleApi, statusOf } from "../api.js";
+import { authorization, createExoscaleApi, rawId, type Schemas, statusOf } from "../api.js";
 import { ExoscaleClient } from "../client.js";
 import { focusRows, monthsBetween, parseFocusBody } from "../cost-data.js";
 import { recordBody } from "../create.js";
@@ -78,7 +78,12 @@ describe("api", () => {
       };
     });
     const api = createExoscaleApi({ apiKey: "k", apiSecret: "s", services, pollMs: 0 });
-    const op = await api.mutate("de-fra-1", "POST", "/instance", {});
+    const zone = api.at("de-fra-1");
+    const op = await zone.settle(
+      zone.post("/instance", {
+        body: { "instance-type": {}, template: {}, "disk-size": 10 },
+      }),
+    );
     expect(op.reference?.id).toBe("new");
     expect(calls[0]!.url).toBe("https://api-de-fra-1.exoscale.com/v2/instance");
     expect(calls[1]!.url).toContain("/operation/op1");
@@ -91,7 +96,8 @@ describe("api", () => {
       })).services,
       pollMs: 0,
     });
-    await expect(failing.mutate("ch-gva-2", "DELETE", "/instance/x")).rejects.toMatchObject({
+    const gva = failing.at("ch-gva-2");
+    await expect(gva.settle(gva.delete(`/instance/${rawId("x")}`))).rejects.toMatchObject({
       status: 403,
     });
   });
@@ -102,7 +108,10 @@ describe("api", () => {
       apiSecret: "s",
       services: host(() => ({ status: 404, body: { message: "gone" } })).services,
     });
-    const err = await api.get("ch-gva-2", "/instance/x").catch((e: unknown) => e);
+    const err = await api
+      .at("ch-gva-2")
+      .get(`/instance/${rawId("x")}`)
+      .catch((e: unknown) => e);
     expect(statusOf(err)).toBe(404);
   });
 });
@@ -142,7 +151,7 @@ describe("mappers", () => {
   });
 
   it("flags ports open to the world except HTTP(S)", () => {
-    const rules = [
+    const rules: Schemas["security-group-rule"][] = [
       {
         "flow-direction": "ingress",
         protocol: "tcp",

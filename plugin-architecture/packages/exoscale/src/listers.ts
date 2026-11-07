@@ -8,24 +8,42 @@
  */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { DEFAULT_ZONE, type ExoscaleApi, labelsText, mapPooled } from "./api.js";
+import type { ApiResponse } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+import {
+  type AnyVariant,
+  DEFAULT_ZONE,
+  type ExoscaleApi,
+  labelsText,
+  mapPooled,
+  rawId,
+  type Schemas,
+  type Sketch,
+} from "./api.js";
 
 export const PLUGIN_ID = "exoscale";
 
 type Fields = Record<string, string | number | boolean>;
-export type Json = Record<string, unknown>;
+type Scalar = string | number | boolean | null | undefined;
 
-export const str = (v: unknown) => (v == null ? "" : String(v));
-export const num = (v: unknown) => {
+export const str = (v: Scalar) => (v == null ? "" : String(v));
+export const num = (v: Scalar) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
-const ids = (v: unknown) =>
+const arr = <T>(v: readonly T[] | null | undefined): T[] => (Array.isArray(v) ? [...v] : []);
+const ids = (v: readonly { id?: string }[] | undefined) =>
   arr(v)
     .map((x) => str(x["id"]))
     .filter(Boolean)
     .join(", ");
+
+/** The DBaaS service types as one shape: what `/dbaas-{type}/{name}` answers, plus the list row. */
+type ServiceDetail = ApiResponse<operations["get-dbaas-service-any"]>;
+type ServiceRow = NonNullable<
+  ApiResponse<operations["list-dbaas-services"]>["dbaas-services"]
+>[number];
+export type DbaasService = AnyVariant<ServiceDetail | ServiceRow>;
 
 export function instance(
   accountId: string,
@@ -74,10 +92,11 @@ export type TypeIndex = Map<string, { name: string; cpus: number; memory: number
 
 export async function loadTypeIndex(api: ExoscaleApi): Promise<TypeIndex> {
   const res = await api
-    .get<{ "instance-types"?: Json[] }>(DEFAULT_ZONE, "/instance-type")
-    .catch(() => ({}) as Json);
+    .at(DEFAULT_ZONE)
+    .get("/instance-type")
+    .catch(() => ({ "instance-types": [] }));
   const index: TypeIndex = new Map();
-  for (const t of arr((res as Json)["instance-types"])) {
+  for (const t of arr(res["instance-types"])) {
     index.set(str(t["id"]), {
       name: `${str(t["family"])}.${str(t["size"])}`,
       cpus: num(t["cpus"]),
@@ -90,17 +109,17 @@ export async function loadTypeIndex(api: ExoscaleApi): Promise<TypeIndex> {
 // --- Instances -----------------------------------------------------------------------
 
 export function mapInstance(
-  i: Json,
+  i: Sketch<Schemas["instance"]>,
   zone: string,
   accountId: string,
   types?: TypeIndex,
 ): ResourceInstance {
-  const type = (i["instance-type"] as Json | undefined) ?? {};
+  const type: Schemas["instance-type"] = i["instance-type"] ?? {};
   const known = types?.get(str(type["id"]));
   const family = str(type["family"]);
   const typeName = family ? `${family}.${str(type["size"])}` : (known?.name ?? str(type["id"]));
-  const template = (i["template"] as Json | undefined) ?? {};
-  const manager = (i["manager"] as Json | undefined) ?? {};
+  const template: Schemas["template"] = i["template"] ?? {};
+  const manager: Schemas["manager"] = i["manager"] ?? {};
   const id = str(i["id"]);
   return instance(
     accountId,
@@ -123,7 +142,7 @@ export function mapInstance(
       managedBy: manager["type"] ? `${str(manager["type"])} ${str(manager["id"])}` : "",
       snapshotCount: arr(i["snapshots"]).length,
       diskEncrypted: i["disk-encrypted"] === true,
-      labels: labelsText(i["labels"] as Record<string, string> | undefined),
+      labels: labelsText(i["labels"]),
       created: str(i["created-at"]),
     },
     {
@@ -140,14 +159,21 @@ export function mapInstance(
 
 export async function listInstances(api: ExoscaleApi, accountId: string, types?: TypeIndex) {
   const rows = await perZone(api, (zone) =>
-    api.get<{ instances?: Json[] }>(zone, "/instance").then((r) => arr(r.instances)),
+    api
+      .at(zone)
+      .get("/instance")
+      .then((r) => arr(r.instances)),
   );
   return rows.map(({ zone, item }) => mapInstance(item, zone, accountId, types));
 }
 
 // --- Block storage and snapshots ------------------------------------------------------
 
-export function mapVolume(v: Json, zone: string, accountId: string): ResourceInstance {
+export function mapVolume(
+  v: Sketch<Schemas["block-storage-volume"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
   const id = str(v["id"]);
   return instance(
     accountId,
@@ -159,10 +185,10 @@ export function mapVolume(v: Json, zone: string, accountId: string): ResourceIns
       region: zone,
       sizeGb: num(v["size"]),
       state: str(v["state"]),
-      instanceId: str((v["instance"] as Json | undefined)?.["id"]),
+      instanceId: str(v["instance"]?.["id"]),
       encrypted: v["encrypted"] === true,
       snapshotCount: arr(v["block-storage-snapshots"]).length,
-      labels: labelsText(v["labels"] as Record<string, string> | undefined),
+      labels: labelsText(v["labels"]),
       created: str(v["created-at"]),
     },
     {
@@ -175,14 +201,19 @@ export function mapVolume(v: Json, zone: string, accountId: string): ResourceIns
 export async function listVolumes(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ "block-storage-volumes"?: Json[] }>(zone, "/block-storage")
+      .at(zone)
+      .get("/block-storage")
       .then((r) => arr(r["block-storage-volumes"])),
   );
   return rows.map(({ zone, item }) => mapVolume(item, zone, accountId));
 }
 
-export function mapVolumeSnapshot(s: Json, zone: string, accountId: string): ResourceInstance {
-  const vol = str((s["block-storage-volume"] as Json | undefined)?.["id"]);
+export function mapVolumeSnapshot(
+  s: Sketch<Schemas["block-storage-snapshot"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
+  const vol = str(s["block-storage-volume"]?.["id"]);
   return instance(
     accountId,
     "block-storage-snapshot",
@@ -206,14 +237,19 @@ export function mapVolumeSnapshot(s: Json, zone: string, accountId: string): Res
 export async function listVolumeSnapshots(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ "block-storage-snapshots"?: Json[] }>(zone, "/block-storage-snapshot")
+      .at(zone)
+      .get("/block-storage-snapshot")
       .then((r) => arr(r["block-storage-snapshots"])),
   );
   return rows.map(({ zone, item }) => mapVolumeSnapshot(item, zone, accountId));
 }
 
-export function mapSnapshot(s: Json, zone: string, accountId: string): ResourceInstance {
-  const inst = str((s["instance"] as Json | undefined)?.["id"]);
+export function mapSnapshot(
+  s: Sketch<Schemas["snapshot"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
+  const inst = str(s["instance"]?.["id"]);
   return instance(
     accountId,
     "snapshot",
@@ -233,12 +269,19 @@ export function mapSnapshot(s: Json, zone: string, accountId: string): ResourceI
 
 export async function listSnapshots(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
-    api.get<{ snapshots?: Json[] }>(zone, "/snapshot").then((r) => arr(r.snapshots)),
+    api
+      .at(zone)
+      .get("/snapshot")
+      .then((r) => arr(r.snapshots)),
   );
   return rows.map(({ zone, item }) => mapSnapshot(item, zone, accountId));
 }
 
-export function mapTemplate(t: Json, zone: string, accountId: string): ResourceInstance {
+export function mapTemplate(
+  t: Sketch<Schemas["template"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
   return instance(
     accountId,
     "template",
@@ -261,7 +304,8 @@ export function mapTemplate(t: Json, zone: string, accountId: string): ResourceI
 export async function listTemplates(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ templates?: Json[] }>(zone, "/template?visibility=private")
+      .at(zone)
+      .get("/template", { query: { visibility: "private" } })
       .then((r) => arr(r.templates)),
   );
   return rows.map(({ zone, item }) => mapTemplate(item, zone, accountId));
@@ -269,7 +313,11 @@ export async function listTemplates(api: ExoscaleApi, accountId: string) {
 
 // --- Networking -------------------------------------------------------------------------
 
-export function mapPrivateNetwork(n: Json, zone: string, accountId: string): ResourceInstance {
+export function mapPrivateNetwork(
+  n: Sketch<Schemas["private-network"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
   const start = str(n["start-ip"]);
   return instance(
     accountId,
@@ -283,7 +331,7 @@ export function mapPrivateNetwork(n: Json, zone: string, accountId: string): Res
       managed: start !== "",
       range: start ? `${start} - ${str(n["end-ip"])} / ${str(n["netmask"])}` : "",
       leaseCount: arr(n["leases"]).length,
-      labels: labelsText(n["labels"] as Record<string, string> | undefined),
+      labels: labelsText(n["labels"]),
     },
     { outputs: { networkId: str(n["id"]) } },
   );
@@ -292,7 +340,8 @@ export function mapPrivateNetwork(n: Json, zone: string, accountId: string): Res
 export async function listPrivateNetworks(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ "private-networks"?: Json[] }>(zone, "/private-network")
+      .at(zone)
+      .get("/private-network")
       .then((r) => arr(r["private-networks"])),
   );
   return rows.map(({ zone, item }) => mapPrivateNetwork(item, zone, accountId));
@@ -301,7 +350,7 @@ export async function listPrivateNetworks(api: ExoscaleApi, accountId: string) {
 const WEB = new Set(["80", "443"]);
 
 /** Ingress ports a security group opens to the world, other than 80/443. */
-export function openToWorld(rules: Json[]): string {
+export function openToWorld(rules: readonly Schemas["security-group-rule"][]): string {
   const open = new Set<string>();
   for (const r of rules) {
     if (r["flow-direction"] !== "ingress") continue;
@@ -318,7 +367,10 @@ export function openToWorld(rules: Json[]): string {
   return [...open].sort().join(", ");
 }
 
-export function mapSecurityGroup(g: Json, accountId: string): ResourceInstance {
+export function mapSecurityGroup(
+  g: Sketch<Schemas["security-group"]>,
+  accountId: string,
+): ResourceInstance {
   const rules = arr(g["rules"]);
   return instance(
     accountId,
@@ -329,7 +381,7 @@ export function mapSecurityGroup(g: Json, accountId: string): ResourceInstance {
       name: str(g["name"]),
       description: str(g["description"]),
       ruleCount: rules.length,
-      externalSources: ((g["external-sources"] as string[] | undefined) ?? []).join(", "),
+      externalSources: (g["external-sources"] ?? []).join(", "),
       openToWorld: openToWorld(rules),
     },
     { outputs: { securityGroupId: str(g["id"]) } },
@@ -337,28 +389,29 @@ export function mapSecurityGroup(g: Json, accountId: string): ResourceInstance {
 }
 
 export async function listSecurityGroups(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "security-groups"?: Json[] }>(DEFAULT_ZONE, "/security-group");
+  const res = await api.at(DEFAULT_ZONE).get("/security-group");
   // The list carries no rules; read each group (six at a time).
   return mapPooled(arr(res["security-groups"]), 6, async (g) => {
     const full = await api
-      .get<Json>(DEFAULT_ZONE, `/security-group/${str(g["id"])}`)
+      .at(DEFAULT_ZONE)
+      .get(`/security-group/${rawId(str(g["id"]))}`)
       .catch(() => g);
     return mapSecurityGroup(full, accountId);
   });
 }
 
-export function healthcheckText(h: Json | undefined): string {
+export function healthcheckText(h: Schemas["elastic-ip-healthcheck"] | undefined): string {
   if (!h || !h["mode"]) return "";
   return `${str(h["mode"]).toUpperCase()}:${str(h["port"])}${h["uri"] ? str(h["uri"]) : ""} every ${str(h["interval"])}s`;
 }
 
 export function mapElasticIp(
-  e: Json,
+  e: Sketch<Schemas["elastic-ip"]>,
   zone: string,
   accountId: string,
   attached: string[],
 ): ResourceInstance {
-  const hc = e["healthcheck"] as Json | undefined;
+  const hc = e["healthcheck"];
   return instance(
     accountId,
     "elastic-ip",
@@ -372,20 +425,32 @@ export function mapElasticIp(
       managed: Boolean(hc?.["mode"]),
       healthcheck: healthcheckText(hc),
       instanceIds: attached.join(", "),
-      labels: labelsText(e["labels"] as Record<string, string> | undefined),
+      labels: labelsText(e["labels"]),
     },
     { outputs: { ip: str(e["ip"]) } },
   );
 }
 
+/**
+ * An instance as this plugin reads it from the list. The document and Exoscale's Go
+ * client only put `elastic-ips` on the single instance (#405).
+ */
+type InstanceRow = NonNullable<ApiResponse<operations["list-instances"]>["instances"]>[number] & {
+  "elastic-ips"?: Schemas["elastic-ip-ref"][];
+};
+
 export async function listElasticIps(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, async (zone) => {
     const [eips, instances] = await Promise.all([
-      api.get<{ "elastic-ips"?: Json[] }>(zone, "/elastic-ip").then((r) => arr(r["elastic-ips"])),
       api
-        .get<{ instances?: Json[] }>(zone, "/instance")
-        .then((r) => arr(r.instances))
-        .catch(() => [] as Json[]),
+        .at(zone)
+        .get("/elastic-ip")
+        .then((r) => arr(r["elastic-ips"])),
+      api
+        .at(zone)
+        .get("/instance")
+        .then((r): InstanceRow[] => arr(r.instances))
+        .catch((): InstanceRow[] => []),
     ]);
     // Elastic IPs do not list their instances; instances list their EIPs.
     return eips.map((e) => {
@@ -400,7 +465,11 @@ export async function listElasticIps(api: ExoscaleApi, accountId: string) {
 
 // --- SKS --------------------------------------------------------------------------------
 
-export function mapCluster(c: Json, zone: string, accountId: string): ResourceInstance {
+export function mapCluster(
+  c: Sketch<Schemas["sks-cluster"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
   const pools = arr(c["nodepools"]);
   const id = str(c["id"]);
   return instance(
@@ -417,12 +486,12 @@ export function mapCluster(c: Json, zone: string, accountId: string): ResourceIn
       state: str(c["state"]),
       cni: str(c["cni"]),
       autoUpgrade: c["auto-upgrade"] === true,
-      addons: ((c["addons"] as string[] | undefined) ?? []).join(", "),
+      addons: (c["addons"] ?? []).join(", "),
       endpoint: str(c["endpoint"]),
-      allowedNetworks: ((c["allowed-networks"] as string[] | undefined) ?? []).join(", "),
+      allowedNetworks: (c["allowed-networks"] ?? []).join(", "),
       nodepoolCount: pools.length,
       nodeCount: pools.reduce((s, p) => s + num(p["size"]), 0),
-      labels: labelsText(c["labels"] as Record<string, string> | undefined),
+      labels: labelsText(c["labels"]),
       created: str(c["created-at"]),
     },
     {
@@ -433,14 +502,14 @@ export function mapCluster(c: Json, zone: string, accountId: string): ResourceIn
 }
 
 export function mapNodepool(
-  p: Json,
-  cluster: Json,
+  p: Sketch<Schemas["sks-nodepool"]>,
+  cluster: Sketch<Schemas["sks-cluster"]>,
   zone: string,
   accountId: string,
   types?: TypeIndex,
 ): ResourceInstance {
   const clusterId = str(cluster["id"]);
-  const typeId = str((p["instance-type"] as Json | undefined)?.["id"]);
+  const typeId = str(p["instance-type"]?.["id"]);
   return instance(
     accountId,
     "sks-nodepool",
@@ -455,7 +524,7 @@ export function mapNodepool(
       state: str(p["state"]),
       clusterId,
       region: zone,
-      labels: labelsText(p["labels"] as Record<string, string> | undefined),
+      labels: labelsText(p["labels"]),
     },
     { parentResourceId: `${accountId}:sks-cluster:${zone}/${clusterId}` },
   );
@@ -463,7 +532,10 @@ export function mapNodepool(
 
 async function clusters(api: ExoscaleApi) {
   return perZone(api, (zone) =>
-    api.get<{ "sks-clusters"?: Json[] }>(zone, "/sks-cluster").then((r) => arr(r["sks-clusters"])),
+    api
+      .at(zone)
+      .get("/sks-cluster")
+      .then((r) => arr(r["sks-clusters"])),
   );
 }
 
@@ -479,7 +551,11 @@ export async function listNodepools(api: ExoscaleApi, accountId: string, types?:
 
 // --- NLB and instance pools ---------------------------------------------------------------
 
-export function mapNlb(lb: Json, zone: string, accountId: string): ResourceInstance {
+export function mapNlb(
+  lb: Sketch<Schemas["load-balancer"]>,
+  zone: string,
+  accountId: string,
+): ResourceInstance {
   return instance(
     accountId,
     "nlb",
@@ -492,7 +568,7 @@ export function mapNlb(lb: Json, zone: string, accountId: string): ResourceInsta
       ip: str(lb["ip"]),
       state: str(lb["state"]),
       serviceCount: arr(lb["services"]).length,
-      labels: labelsText(lb["labels"] as Record<string, string> | undefined),
+      labels: labelsText(lb["labels"]),
       created: str(lb["created-at"]),
     },
     {
@@ -505,20 +581,21 @@ export function mapNlb(lb: Json, zone: string, accountId: string): ResourceInsta
 export async function listNlbs(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ "load-balancers"?: Json[] }>(zone, "/load-balancer")
+      .at(zone)
+      .get("/load-balancer")
       .then((r) => arr(r["load-balancers"])),
   );
   return rows.map(({ zone, item }) => mapNlb(item, zone, accountId));
 }
 
 export function mapInstancePool(
-  p: Json,
+  p: Sketch<Schemas["instance-pool"]>,
   zone: string,
   accountId: string,
   types?: TypeIndex,
 ): ResourceInstance {
-  const manager = (p["manager"] as Json | undefined) ?? {};
-  const typeId = str((p["instance-type"] as Json | undefined)?.["id"]);
+  const manager: Schemas["manager"] = p["manager"] ?? {};
+  const typeId = str(p["instance-type"]?.["id"]);
   return instance(
     accountId,
     "instance-pool",
@@ -532,7 +609,7 @@ export function mapInstancePool(
       instanceType: types?.get(typeId)?.name ?? typeId,
       state: str(p["state"]),
       managedBy: manager["type"] ? str(manager["type"]) : "",
-      labels: labelsText(p["labels"] as Record<string, string> | undefined),
+      labels: labelsText(p["labels"]),
     },
     { outputs: { poolId: str(p["id"]) } },
   );
@@ -541,7 +618,8 @@ export function mapInstancePool(
 export async function listInstancePools(api: ExoscaleApi, accountId: string, types?: TypeIndex) {
   const rows = await perZone(api, (zone) =>
     api
-      .get<{ "instance-pools"?: Json[] }>(zone, "/instance-pool")
+      .at(zone)
+      .get("/instance-pool")
       .then((r) => arr(r["instance-pools"])),
   );
   return rows.map(({ zone, item }) => mapInstancePool(item, zone, accountId, types));
@@ -554,9 +632,10 @@ export function dbaasPath(type: string): string {
   return type === "pg" ? "postgres" : type;
 }
 
-export function mapDbaas(s: Json, accountId: string): ResourceInstance {
+export function mapDbaas(s: Sketch<DbaasService>, accountId: string): ResourceInstance {
   const zone = str(s["zone"]) || DEFAULT_ZONE;
-  const maintenance = (s["maintenance"] as Json | undefined) ?? {};
+  const maintenance: Schemas["dbaas-service-maintenance"] | Record<string, never> =
+    s["maintenance"] ?? {};
   return instance(
     accountId,
     "dbaas",
@@ -573,7 +652,7 @@ export function mapDbaas(s: Json, accountId: string): ResourceInstance {
       nodeCpus: num(s["node-cpu-count"]),
       nodeMemoryMb: Math.round(num(s["node-memory"]) / 1048576),
       diskGb: Math.round(num(s["disk-size"]) / 1073741824),
-      ipFilter: ((s["ip-filter"] as string[] | undefined) ?? []).join(", "),
+      ipFilter: (s["ip-filter"] ?? []).join(", "),
       terminationProtection: s["termination-protection"] === true,
       maintenanceDow: str(maintenance["dow"]),
       maintenanceTime: str(maintenance["time"]),
@@ -586,17 +665,25 @@ export function mapDbaas(s: Json, accountId: string): ResourceInstance {
 
 /** The list has no IP filter, maintenance or backups, so each service is read in full. */
 export async function listDbaas(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "dbaas-services"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service");
+  const res = await api.at(DEFAULT_ZONE).get("/dbaas-service");
   return mapPooled(arr(res["dbaas-services"]), 6, async (s) => {
     const zone = str(s["zone"]) || DEFAULT_ZONE;
     const full = await api
-      .get<Json>(zone, `/dbaas-${dbaasPath(str(s["type"]))}/${str(s["name"])}`)
+      .at(zone)
+      .get(`/dbaas-${rawId(dbaasPath(str(s["type"])))}/${rawId(str(s["name"]))}`)
       .catch(() => s);
     return mapDbaas({ ...s, ...full }, accountId);
   });
 }
 
-export function mapDbaasUser(u: Json, svc: Json, accountId: string): ResourceInstance {
+type ServiceOwner = { zone?: string | undefined; name?: string | undefined };
+export type ServiceUser = { username?: string | undefined; type?: string | undefined };
+
+export function mapDbaasUser(
+  u: ServiceUser,
+  svc: ServiceOwner,
+  accountId: string,
+): ResourceInstance {
   const zone = str(svc["zone"]) || DEFAULT_ZONE;
   const name = str(svc["name"]);
   return instance(
@@ -613,7 +700,11 @@ export function mapDbaasUser(u: Json, svc: Json, accountId: string): ResourceIns
   );
 }
 
-export function mapDbaasDatabase(db: string, svc: Json, accountId: string): ResourceInstance {
+export function mapDbaasDatabase(
+  db: string,
+  svc: ServiceOwner,
+  accountId: string,
+): ResourceInstance {
   const zone = str(svc["zone"]) || DEFAULT_ZONE;
   const name = str(svc["name"]);
   return instance(
@@ -628,36 +719,37 @@ export function mapDbaasDatabase(db: string, svc: Json, accountId: string): Reso
   );
 }
 
-async function dbaasDetails(api: ExoscaleApi, types: string[]): Promise<Json[]> {
-  const res = await api.get<{ "dbaas-services"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service");
+async function dbaasDetails(api: ExoscaleApi, types: string[]): Promise<DbaasService[]> {
+  const res = await api.at(DEFAULT_ZONE).get("/dbaas-service");
   const list = arr(res["dbaas-services"]).filter((s) => types.includes(str(s["type"])));
   return mapPooled(list, 6, async (s) => {
     const zone = str(s["zone"]) || DEFAULT_ZONE;
-    const full = await api
-      .get<Json>(zone, `/dbaas-${dbaasPath(str(s["type"]))}/${str(s["name"])}`)
-      .catch(() => ({}) as Json);
+    const full: DbaasService = await api
+      .at(zone)
+      .get(`/dbaas-${rawId(dbaasPath(str(s["type"])))}/${rawId(str(s["name"]))}`)
+      .catch(() => ({}));
     return { ...s, ...full };
   });
 }
 
 export async function listDbaasUsers(api: ExoscaleApi, accountId: string) {
   const svcs = await dbaasDetails(api, ["pg", "mysql", "valkey", "kafka", "opensearch"]);
-  return svcs.flatMap((s) => arr(s["users"]).map((u) => mapDbaasUser(u, s, accountId)));
+  return svcs.flatMap((s) =>
+    arr<ServiceUser>(s["users"]).map((u) => mapDbaasUser(u, s, accountId)),
+  );
 }
 
 export async function listDbaasDatabases(api: ExoscaleApi, accountId: string) {
   const svcs = await dbaasDetails(api, ["pg", "mysql"]);
   return svcs.flatMap((s) =>
-    ((s["databases"] as string[] | undefined) ?? []).map((d) =>
-      mapDbaasDatabase(str(d), s, accountId),
-    ),
+    (s["databases"] ?? []).map((d) => mapDbaasDatabase(str(d), s, accountId)),
   );
 }
 
 // --- DNS ------------------------------------------------------------------------------------
 
 export function mapDomain(
-  d: Json,
+  d: Sketch<Schemas["dns-domain"]>,
   accountId: string,
   recordCount: number | null,
 ): ResourceInstance {
@@ -666,7 +758,11 @@ export function mapDomain(
   return instance(accountId, "dns-domain", str(d["id"]), str(d["unicode-name"]), fields);
 }
 
-export function mapRecord(r: Json, domain: Json, accountId: string): ResourceInstance {
+export function mapRecord(
+  r: Sketch<Schemas["dns-domain-record"]>,
+  domain: Sketch<Schemas["dns-domain"]>,
+  accountId: string,
+): ResourceInstance {
   const domainId = str(domain["id"]);
   return instance(
     accountId,
@@ -685,16 +781,13 @@ export function mapRecord(r: Json, domain: Json, accountId: string): ResourceIns
   );
 }
 
-async function domainRecords(api: ExoscaleApi, id: string): Promise<Json[]> {
-  const res = await api.get<{ "dns-domain-records"?: Json[] }>(
-    DEFAULT_ZONE,
-    `/dns-domain/${id}/record`,
-  );
+async function domainRecords(api: ExoscaleApi, id: string) {
+  const res = await api.at(DEFAULT_ZONE).get(`/dns-domain/${rawId(id)}/record`);
   return arr(res["dns-domain-records"]).filter((r) => r["system-record"] !== true);
 }
 
 export async function listDomains(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "dns-domains"?: Json[] }>(DEFAULT_ZONE, "/dns-domain");
+  const res = await api.at(DEFAULT_ZONE).get("/dns-domain");
   return mapPooled(arr(res["dns-domains"]), 6, async (d) => {
     const count = await domainRecords(api, str(d["id"]))
       .then((r) => r.length)
@@ -704,7 +797,7 @@ export async function listDomains(api: ExoscaleApi, accountId: string) {
 }
 
 export async function listRecords(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "dns-domains"?: Json[] }>(DEFAULT_ZONE, "/dns-domain");
+  const res = await api.at(DEFAULT_ZONE).get("/dns-domain");
   const rows = await mapPooled(arr(res["dns-domains"]), 6, async (d) =>
     domainRecords(api, str(d["id"]))
       .then((records) => records.map((r) => mapRecord(r, d, accountId)))
@@ -717,7 +810,10 @@ export async function listRecords(api: ExoscaleApi, accountId: string) {
 
 export const sosEndpoint = (zone: string) => `https://sos-${zone}.exo.io`;
 
-export function mapBucket(b: Json, accountId: string): ResourceInstance {
+export function mapBucket(
+  b: Sketch<Schemas["sos-bucket-usage"]>,
+  accountId: string,
+): ResourceInstance {
   const zone = str(b["zone-name"]) || DEFAULT_ZONE;
   const name = str(b["name"]);
   return instance(
@@ -740,12 +836,12 @@ export function mapBucket(b: Json, accountId: string): ResourceInstance {
 }
 
 export async function listBuckets(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "sos-buckets-usage"?: Json[] }>(DEFAULT_ZONE, "/sos-buckets-usage");
+  const res = await api.at(DEFAULT_ZONE).get("/sos-buckets-usage");
   return arr(res["sos-buckets-usage"]).map((b) => mapBucket(b, accountId));
 }
 
 export async function listSshKeys(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "ssh-keys"?: Json[] }>(DEFAULT_ZONE, "/ssh-key");
+  const res = await api.at(DEFAULT_ZONE).get("/ssh-key");
   return arr(res["ssh-keys"]).map((k) =>
     instance(accountId, "ssh-key", str(k["name"]), str(k["name"]), {
       name: str(k["name"]),
@@ -755,10 +851,7 @@ export async function listSshKeys(api: ExoscaleApi, accountId: string) {
 }
 
 export async function listAntiAffinityGroups(api: ExoscaleApi, accountId: string) {
-  const res = await api.get<{ "anti-affinity-groups"?: Json[] }>(
-    DEFAULT_ZONE,
-    "/anti-affinity-group",
-  );
+  const res = await api.at(DEFAULT_ZONE).get("/anti-affinity-group");
   return arr(res["anti-affinity-groups"]).map((g) =>
     instance(
       accountId,
@@ -775,14 +868,22 @@ export async function listAntiAffinityGroups(api: ExoscaleApi, accountId: string
   );
 }
 
+/**
+ * The balance as this plugin reads it, under a `live-balance` key. The document and
+ * Exoscale's Go client both put `balance` and `currency` at the top level (#406).
+ */
+export type WrappedBalance = Schemas["live-balance"] & { "live-balance"?: Schemas["live-balance"] };
+
+export const wrappedBalance = (answer: WrappedBalance): Schemas["live-balance"] =>
+  answer["live-balance"] ?? {};
+
 export async function listOrganization(api: ExoscaleApi, accountId: string) {
+  const z = api.at(DEFAULT_ZONE);
   const [org, balance] = await Promise.all([
-    api.get<Json>(DEFAULT_ZONE, "/organization").catch(() => ({}) as Json),
-    api
-      .get<{ "live-balance"?: Json }>(DEFAULT_ZONE, "/live-balance")
-      .catch(() => ({}) as { "live-balance"?: Json }),
+    z.get("/organization").catch((): Schemas["organization"] => ({})),
+    z.get("/live-balance").catch((): WrappedBalance => ({})),
   ]);
-  const lb = balance["live-balance"] ?? {};
+  const lb = wrappedBalance(balance);
   const fields: Fields = {
     name: str(org["name"]),
     currency: str(lb["currency"] || org["currency"]),

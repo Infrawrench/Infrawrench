@@ -18,12 +18,31 @@
  *                  signature={base64(HMAC-SHA256(secret, message))}
  *
  * Mutations are asynchronous and return an `operation` (`state`
- * pending/success/failure, `reference.id` of the affected resource); `wait`
+ * pending/success/failure, `reference.id` of the affected resource); `settle`
  * polls `GET /operation/{id}` briefly so a create reports a real failure.
  * Errors carry the HTTP status on `ExoscaleApiError.status`.
  */
 
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  unencodedSegment,
+  type ApiClient,
+  type HostServices,
+  type HttpHostServices,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
+
+export type Schemas = components["schemas"];
+
+/** A provider object as a mapper reads it: what a create form synthesises has few of the fields. */
+export type Sketch<T> = { [K in keyof T]?: T[K] | undefined };
+
+type KeysOfUnion<T> = T extends T ? keyof T : never;
+type ValueIn<T, K extends PropertyKey> = T extends { [P in K]?: infer V } ? V : never;
+
+/** Every field of any variant of a union, optional, for reading what only some variants have. */
+export type AnyVariant<T> = { [K in KeysOfUnion<T>]?: ValueIn<T, K> };
 
 export const DEFAULT_ZONE = "ch-gva-2";
 export const endpointFor = (zone: string) => `https://api-${zone}.exoscale.com/v2`;
@@ -39,7 +58,7 @@ export class ExoscaleApiError extends Error {
 
 function summarise(body: string): string {
   try {
-    const p = JSON.parse(body) as { message?: string; errors?: unknown };
+    const p: { message?: string } = JSON.parse(body);
     if (p.message) return p.message;
   } catch {
     // not JSON
@@ -48,10 +67,8 @@ function summarise(body: string): string {
 }
 
 export function statusOf(err: unknown): number | undefined {
-  if (err && typeof err === "object" && "status" in err) {
-    const s = (err as { status?: unknown }).status;
-    if (typeof s === "number") return s;
-  }
+  if (err && typeof err === "object" && "status" in err && typeof err.status === "number")
+    return err.status;
   return undefined;
 }
 
@@ -104,31 +121,18 @@ export async function authorization(
   return parts.join(",");
 }
 
-export interface Operation {
-  id?: string;
-  state?: "pending" | "success" | "failure" | "timeout";
-  reason?: string;
-  message?: string;
-  reference?: { id?: string; link?: string };
-}
+export type Operation = Schemas["operation"];
+
+/** One zone's endpoint: every operation of the document, and a way to wait for a mutation. */
+export type ZoneApi = ApiClient<paths> & {
+  /** Wait (briefly) for the operation a mutation answered with to finish. */
+  settle(answer: Promise<Operation>): Promise<Operation>;
+};
 
 export interface ExoscaleApi {
   readonly apiKey: string;
   readonly apiSecret: string;
-  get<T>(zone: string, path: string): Promise<T>;
-  send<T>(
-    zone: string,
-    method: "POST" | "PUT" | "DELETE",
-    path: string,
-    body?: unknown,
-  ): Promise<T>;
-  /** Send a mutation and wait (briefly) for its operation to finish. */
-  mutate(
-    zone: string,
-    method: "POST" | "PUT" | "DELETE",
-    path: string,
-    body?: unknown,
-  ): Promise<Operation>;
+  at(zone: string): ZoneApi;
   /** Zones the account can use, from the public zone list (cached). */
   zones(): Promise<string[]>;
 }
@@ -144,87 +148,114 @@ export interface ExoscaleApiConfig {
   pollMs?: number;
 }
 
+/**
+ * A segment as the plugin has always sent it: ids reach the path unencoded, and one
+ * missing from a form or a composite id reads as `undefined`.
+ */
+export const rawId = (value: string | undefined): NoSlashString => unencodedSegment(String(value));
+
+/** `{ id }` for a body, where an id missing from a form has always just not been sent. */
+export const byId = (id: string | undefined): { id?: string } => (id === undefined ? {} : { id });
+
+/**
+ * Signs each request (the message covers its URL and body), and sends it over the
+ * host's HTTP service, or `fetch` where there is no host.
+ *
+ * Callers read every 2xx as an object, and an empty one has always been an empty
+ * object, so that is what comes back: `restRequest` would make it `undefined`.
+ */
+function signedTransport(config: ExoscaleApiConfig): HttpHostServices {
+  const host = config.services?.http;
+  return {
+    async request(req) {
+      const payload = typeof req.body === "string" ? req.body : "";
+      const expires = Math.floor(Date.now() / 1000) + 600;
+      const headers = {
+        Accept: "application/json",
+        Authorization: await authorization(
+          config.apiKey,
+          config.apiSecret,
+          req.method,
+          req.url,
+          payload,
+          expires,
+        ),
+        ...req.headers,
+      };
+      let status: number;
+      let body: string;
+      if (host) {
+        const res = await host.request({ ...req, headers });
+        status = res.status;
+        body = res.body;
+      } else {
+        const res = await fetch(req.url, {
+          method: req.method,
+          headers,
+          ...(typeof req.body === "string" ? { body: req.body } : {}),
+        });
+        status = res.status;
+        body = await res.text();
+      }
+      if (status >= 200 && status < 300 && (status === 204 || !body))
+        return { status: 200, headers: {}, body: body || "{}" };
+      return { status, headers: {}, body };
+    },
+  };
+}
+
 export function createExoscaleApi(config: ExoscaleApiConfig): ExoscaleApi {
   const endpoint = config.endpoint ?? endpointFor;
-  const http = config.services?.http;
   const pollMs = config.pollMs ?? 1500;
+  const http = signedTransport(config);
+  const clients = new Map<string, ZoneApi>();
   let zoneList: Promise<string[]> | null = null;
 
-  async function request<T>(
-    zone: string,
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
-    const url = `${endpoint(zone)}${path}`;
-    const payload = body !== undefined ? JSON.stringify(body) : "";
-    const expires = Math.floor(Date.now() / 1000) + 600;
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      Authorization: await authorization(
-        config.apiKey,
-        config.apiSecret,
-        method,
-        url,
-        payload,
-        expires,
-      ),
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+  function at(zone: string): ZoneApi {
+    const known = clients.get(zone);
+    if (known) return known;
+    const client = createApiClient<paths>({
+      vendor: "Exoscale",
+      baseUrl: endpoint(zone),
+      headers: {},
+      http,
+      ...(config.caCert ? { caCert: config.caCert } : {}),
+      contentType: "with-body",
+      httpError: ({ status, path, body }) =>
+        new ExoscaleApiError(status, path.split("?")[0] ?? path, body),
+    });
+    const zoned: ZoneApi = {
+      ...client,
+      async settle(answer) {
+        let op = await answer;
+        for (let i = 0; i < 20 && op.state === "pending" && op.id; i++) {
+          if (pollMs > 0) await new Promise((r) => setTimeout(r, pollMs));
+          op = await client.get(`/operation/${rawId(op.id)}`);
+        }
+        if (op.state === "failure" || op.state === "timeout") {
+          throw Object.assign(
+            new Error(
+              `Exoscale operation ${op.state}: ${op.message || op.reason || "unknown reason"}`,
+            ),
+            { status: op.reason === "not-found" ? 404 : op.reason === "forbidden" ? 403 : 400 },
+          );
+        }
+        return op;
+      },
     };
-    let status: number;
-    let text: string;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body: payload } : {}),
-        ...(config.caCert ? { caCert: config.caCert } : {}),
-      });
-      status = res.status;
-      text = res.body;
-    } else {
-      const res = await fetch(url, {
-        method,
-        headers,
-        ...(body !== undefined ? { body: payload } : {}),
-      });
-      status = res.status;
-      text = await res.text();
-    }
-    if (status < 200 || status >= 300)
-      throw new ExoscaleApiError(status, path.split("?")[0] ?? path, text);
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    clients.set(zone, zoned);
+    return zoned;
   }
 
-  const api: ExoscaleApi = {
+  return {
     apiKey: config.apiKey,
     apiSecret: config.apiSecret,
-    get: <T>(zone: string, path: string) => request<T>(zone, "GET", path),
-    send: <T>(zone: string, method: "POST" | "PUT" | "DELETE", path: string, body?: unknown) =>
-      request<T>(zone, method, path, body),
-    async mutate(zone, method, path, body) {
-      let op = await request<Operation>(zone, method, path, body);
-      for (let i = 0; i < 20 && op.state === "pending" && op.id; i++) {
-        if (pollMs > 0) await new Promise((r) => setTimeout(r, pollMs));
-        op = await request<Operation>(zone, "GET", `/operation/${op.id}`);
-      }
-      if (op.state === "failure" || op.state === "timeout") {
-        const err = new Error(
-          `Exoscale operation ${op.state}: ${op.message || op.reason || "unknown reason"}`,
-        ) as Error & {
-          status: number;
-        };
-        err.status = op.reason === "not-found" ? 404 : op.reason === "forbidden" ? 403 : 400;
-        throw err;
-      }
-      return op;
-    },
+    at,
     zones() {
       if (!zoneList) {
-        zoneList = request<{ zones?: Array<{ name?: string }> }>(DEFAULT_ZONE, "GET", "/zone")
-          .then((r) => (r.zones ?? []).map((z) => z.name ?? "").filter(Boolean))
+        zoneList = at(DEFAULT_ZONE)
+          .get("/zone")
+          .then((r) => (r.zones ?? []).map((z): string => z.name ?? "").filter(Boolean))
           .then((z) => (z.length ? z : [DEFAULT_ZONE]))
           .catch(() => {
             zoneList = null;
@@ -234,7 +265,6 @@ export function createExoscaleApi(config: ExoscaleApiConfig): ExoscaleApi {
       return zoneList;
     },
   };
-  return api;
 }
 
 export const KNOWN_ZONES = [
@@ -264,7 +294,7 @@ export function listValue(v: string | undefined): string[] {
   const t = v.trim();
   if (t.startsWith("[")) {
     try {
-      const parsed = JSON.parse(t) as unknown;
+      const parsed = JSON.parse(t);
       if (Array.isArray(parsed)) return [...new Set(parsed.map(String).filter(Boolean))];
     } catch {
       // fall through
@@ -280,6 +310,8 @@ export function listValue(v: string | undefined): string[] {
   ];
 }
 
+export function intOr(v: string | undefined, d: number): number;
+export function intOr(v: string | undefined): number | undefined;
 export function intOr(v: string | undefined, d?: number): number | undefined {
   if (v === undefined || v === "") return d;
   const n = Math.floor(Number(v));
