@@ -82,6 +82,8 @@ import {
 import { TIERS_BY_PROVIDER, TIER_SPECS, isDedicatedTier, tierLabel, tierSpec } from "./tiers.js";
 
 const CLUSTER_VERSION = "2024-08-05";
+/** The document sunsets 2024-08-05 for cluster writes on 2027-03-01, not for reads. */
+const CLUSTER_WRITE_VERSION = "2024-10-23";
 const FLEX_VERSION = "2024-11-13";
 const SEARCH_VERSION = "2024-05-30";
 const ALERT_ACK_VERSION = "2024-05-30";
@@ -1228,7 +1230,7 @@ export class MongoDBAtlasClient implements PluginClient {
     }
     if (Object.keys(body).length === 0) return;
     await this.api.patch(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
-      headers: atlasVersion(CLUSTER_VERSION),
+      headers: atlasVersion(CLUSTER_WRITE_VERSION),
       body,
     });
     this.clustersCache = undefined;
@@ -1316,7 +1318,7 @@ export class MongoDBAtlasClient implements PluginClient {
       if (typeId === "cluster" && (actionId === "pause" || actionId === "resume")) {
         const [groupId, name] = splitId(id, 1);
         await this.api.patch(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
-          headers: atlasVersion(CLUSTER_VERSION),
+          headers: atlasVersion(CLUSTER_WRITE_VERSION),
           body: { paused: actionId === "pause" },
         });
         this.clustersCache = undefined;

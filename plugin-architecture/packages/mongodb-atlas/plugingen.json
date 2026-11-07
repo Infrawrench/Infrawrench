@@ -28,24 +28,24 @@
     {
       "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}/patch/responses/200/content",
       "value": {
-        "application/vnd.atlas.2024-08-05+json": {
+        "application/vnd.atlas.2024-10-23+json": {
           "schema": {
             "$ref": "#/components/schemas/ClusterDescription20240805"
           }
         }
       },
-      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+      "why": "The plugin asks for version 2024-10-23; the document lists every version this operation has ever had, which would make the answer a union of all of them."
     },
     {
       "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}/patch/requestBody/content",
       "value": {
-        "application/vnd.atlas.2024-08-05+json": {
+        "application/vnd.atlas.2024-10-23+json": {
           "schema": {
             "$ref": "#/components/schemas/ClusterDescription20240805"
           }
         }
       },
-      "why": "The plugin sends version 2024-08-05; the document lists every version this operation has ever had, which would make the body a union of all of them."
+      "why": "The plugin sends version 2024-10-23; the document lists every version this operation has ever had, which would make the body a union of all of them."
     },
     {
       "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}~1backup~1schedule/get/responses/200/content",

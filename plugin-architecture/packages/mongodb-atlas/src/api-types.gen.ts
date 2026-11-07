@@ -5934,16 +5934,38 @@ export interface operations {
     getGroupCluster: {
         parameters: parameters_f3b25376;
         requestBody?: never;
-        responses: responses_1254cb71;
+        responses: {
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
+                };
+            };
+        };
     };
     updateGroupCluster: {
         parameters: parameters_f3b25376;
         requestBody: {
             content: {
-                "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
+                "application/vnd.atlas.2024-10-23+json": components["schemas"]["ClusterDescription20240805"];
             };
         };
-        responses: responses_1254cb71;
+        responses: {
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.atlas.2024-10-23+json": components["schemas"]["ClusterDescription20240805"];
+                };
+            };
+        };
     };
     getGroupClusterBackupSchedule: {
         parameters: {
@@ -6841,18 +6863,6 @@ type query_461117dd = {
     itemsPerPage?: components["parameters"]["itemsPerPage"];
     pageNum?: components["parameters"]["pageNum"];
     pretty?: components["parameters"]["pretty"];
-};
-type responses_1254cb71 = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
-        };
-    };
 };
 type responses_407fe7a6 = {
     200: Shared_bc71e261;

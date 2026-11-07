@@ -406,13 +406,31 @@ describe("cluster writes", () => {
     ]);
     const patch = calls.find((c) => c.method === "PATCH")!;
     expect(patch.path).toBe("/api/atlas/v2/groups/g1/clusters/main");
-    expect(patch.headers["Content-Type"]).toBe("application/vnd.atlas.2024-08-05+json");
+    expect(patch.headers["Content-Type"]).toBe("application/vnd.atlas.2024-10-23+json");
     const rc = (
       patch.body as { replicationSpecs: Array<{ regionConfigs: Array<Record<string, unknown>> }> }
     ).replicationSpecs[0]!.regionConfigs[0]!;
     expect(rc["electableSpecs"]).toMatchObject({ instanceSize: "M40", nodeCount: 3 });
     expect(rc["readOnlySpecs"]).toMatchObject({ instanceSize: "M40" });
     expect(rc["effectiveElectableSpecs"]).toBeUndefined();
+  });
+
+  it("writes on the current version and keeps reading on the one with no sunset", async () => {
+    const { http, calls } = atlas((call) => (call.method === "PATCH" ? {} : undefined));
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
+    const id = "acct:cluster:g1/main";
+    await client.invokeAction("cluster", id, "pause", ACCOUNT);
+    await client.invokeAction("cluster", id, "resume", ACCOUNT);
+    await client.updateResource("cluster", id, ACCOUNT, { diskSizeGB: "80" });
+    await client.updateResource("cluster", id, ACCOUNT, { terminationProtectionEnabled: "true" });
+    const writes = calls.filter((c) => c.method === "PATCH");
+    expect(writes).toHaveLength(4);
+    for (const write of writes) {
+      expect(write.headers["Accept"]).toBe("application/vnd.atlas.2024-10-23+json");
+      expect(write.headers["Content-Type"]).toBe("application/vnd.atlas.2024-10-23+json");
+    }
+    const read = calls.find((c) => c.method === "GET" && c.path.endsWith("/clusters/main"))!;
+    expect(read.headers["Accept"]).toBe("application/vnd.atlas.2024-08-05+json");
   });
 
   it("enables compute auto-scaling with bounds around the current tier", async () => {
