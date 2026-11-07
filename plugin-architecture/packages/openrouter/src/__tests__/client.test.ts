@@ -1163,6 +1163,34 @@ describe("BYOK credentials", () => {
   });
 });
 
+describe("guardrail assignments", () => {
+  const assignedText = (detail: ReturnType<OpenRouterClient["renderDetail"]>) =>
+    JSON.stringify(detail.sections.find((section) => section.title === "Assigned API keys"));
+
+  it("does not claim none are assigned when the read failed", async () => {
+    installFetch((url) =>
+      url.includes("/assignments/")
+        ? jsonResponse({ error: "busy" }, 503)
+        : jsonResponse({ data: { id: "gr_1", name: "Policy" } }),
+    );
+    const resource = await client().getResource("guardrail", `${ACCOUNT}:guardrail:gr_1`, ACCOUNT);
+    const detail = new OpenRouterClient({ managementKey: "m" }).renderDetail(resource);
+    expect(assignedText(detail)).not.toContain("No API keys are assigned");
+    expect(assignedText(detail)).toContain("Refresh");
+  });
+
+  it("says none are assigned when the read found none", async () => {
+    installFetch((url) =>
+      url.includes("/assignments/")
+        ? jsonResponse({ data: [], total_count: 0 })
+        : jsonResponse({ data: { id: "gr_1", name: "Policy" } }),
+    );
+    const resource = await client().getResource("guardrail", `${ACCOUNT}:guardrail:gr_1`, ACCOUNT);
+    const detail = new OpenRouterClient({ managementKey: "m" }).renderDetail(resource);
+    expect(assignedText(detail)).toContain("No API keys are assigned");
+  });
+});
+
 describe("expired API keys", () => {
   const past = "2020-01-01T00:00:00Z";
 

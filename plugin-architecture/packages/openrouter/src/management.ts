@@ -716,7 +716,11 @@ export function renderGuardrailDetail(resource: ResourceInstance): DetailViewSch
             {
               kind: "text",
               variant: "muted",
-              content: "No API keys are assigned to this guardrail.",
+              // Absent means the read failed or never ran, which says nothing about the keys.
+              content:
+                resource.resolvedOutputs["__keyAssignments__"] === undefined
+                  ? "The assigned keys did not load. Refresh to try again."
+                  : "No API keys are assigned to this guardrail.",
             },
           ],
   });
