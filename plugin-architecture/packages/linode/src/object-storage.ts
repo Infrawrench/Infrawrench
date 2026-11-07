@@ -6,8 +6,14 @@
  * The `bucket` argument is the resource's external id, `{region}/{name}`.
  */
 
-import { pathEncode, type ApiListItem, type StorageObject } from "@infrawrench/plugin-base";
-import { type LinodeApi, segment } from "./api.js";
+import {
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+  type ApiListItem,
+  type StorageObject,
+} from "@infrawrench/plugin-base";
+import { MAX_PAGES, PAGE_SIZE, type LinodeApi, segment } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 
 type ObjectRow = ApiListItem<operations["get-object-storage-bucket-content"], "data">;
@@ -31,23 +37,31 @@ async function listRaw(
   delimiter: boolean,
 ): Promise<ObjectRow[]> {
   const { region, name } = bucketSegments(bucket);
+  const place = {
+    vendor: "Linode",
+    path: "/object-storage/buckets/{regionId}/{bucket}/object-list",
+  };
   const out: ObjectRow[] = [];
   let marker: string | undefined;
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < MAX_PAGES; i++) {
     const res = await api.get(`/object-storage/buckets/${region}/${name}/object-list`, {
       query: {
         // An empty prefix is left off rather than sent empty.
         ...(prefix ? { prefix } : {}),
         ...(delimiter ? { delimiter: "/" } : {}),
-        page_size: 500,
+        page_size: PAGE_SIZE,
         ...(marker ? { marker } : {}),
       },
     });
-    out.push(...(res.data ?? []));
-    if (!res.is_truncated || !res.next_marker) break;
-    marker = res.next_marker;
+    const rows = requireListPage(res.data, { ...place, key: "data", page: res });
+    out.push(...rows);
+    if (!res.is_truncated) return out;
+    // S3's listing only sends a next marker alongside a delimiter, and says to carry
+    // on from the last name without one. A folder delete lists with no delimiter.
+    marker = res.next_marker || rows.at(-1)?.name;
+    if (!marker) throw new ListTruncatedError({ ...place, items: out.length });
   }
-  return out;
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_PAGES });
 }
 
 export async function listObjects(

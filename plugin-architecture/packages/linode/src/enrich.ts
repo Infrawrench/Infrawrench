@@ -5,7 +5,7 @@
  */
 
 import type { ImageOption, ResourceInstance } from "@infrawrench/plugin-base";
-import { type LinodeApi, allPages, segment, trailingId } from "./api.js";
+import { type LinodeApi, segment, trailingId } from "./api.js";
 import { linodeSizeOptions } from "./create.js";
 import type { PriceCatalogCache } from "./pricing.js";
 
@@ -32,7 +32,7 @@ export async function enrichDetail(
     case "linode": {
       const [prices, images, backups, transfer] = await Promise.all([
         tryGet(catalog.get()),
-        tryGet(allPages((query) => api.get("/images", { query }))),
+        tryGet(api.getAll("/images", "data", { partial: true })),
         resource.fields["backupsEnabled"] === true
           ? tryGet(api.get(`/linode/instances/${segment(id)}/backups`))
           : Promise.resolve(null),
@@ -77,19 +77,13 @@ export async function enrichDetail(
       break;
     }
     case "nodebalancer": {
-      const configs = await tryGet(
-        allPages((query) => api.get(`/nodebalancers/${segment(id)}/configs`, { query })),
-      );
+      const configs = await tryGet(api.getAll(`/nodebalancers/${segment(id)}/configs`, "data"));
       if (configs) {
         const withNodes = await Promise.all(
           configs.map(async (c) => {
             const nodes =
               (await tryGet(
-                allPages((query) =>
-                  api.get(`/nodebalancers/${segment(id)}/configs/${segment(c.id)}/nodes`, {
-                    query,
-                  }),
-                ),
+                api.getAll(`/nodebalancers/${segment(id)}/configs/${segment(c.id)}/nodes`, "data"),
               )) ?? [];
             return {
               id: c.id,
@@ -115,9 +109,7 @@ export async function enrichDetail(
     case "firewall": {
       const [fw, devices] = await Promise.all([
         tryGet(api.get(`/networking/firewalls/${segment(id)}`)),
-        tryGet(
-          allPages((query) => api.get(`/networking/firewalls/${segment(id)}/devices`, { query })),
-        ),
+        tryGet(api.getAll(`/networking/firewalls/${segment(id)}/devices`, "data")),
       ]);
       if (fw?.rules)
         put("rules", { inbound: fw.rules.inbound ?? [], outbound: fw.rules.outbound ?? [] });
@@ -159,12 +151,7 @@ export async function enrichDetail(
       break;
     }
     case "invoice": {
-      put(
-        "items",
-        await tryGet(
-          allPages((query) => api.get(`/account/invoices/${segment(id)}/items`, { query })),
-        ),
-      );
+      put("items", await tryGet(api.getAll(`/account/invoices/${segment(id)}/items`, "data")));
       break;
     }
     default:

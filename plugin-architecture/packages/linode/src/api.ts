@@ -16,12 +16,14 @@
 import {
   createApiClient,
   unencodedSegment,
+  withCursorPagination,
   type ApiClient,
   type ApiClientOptions,
   type ApiResponse,
   type HostServices,
   type HttpHostServices,
   type NoSlashString,
+  type PageAnswer,
 } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 
@@ -67,7 +69,7 @@ export function statusOf(err: unknown): number | undefined {
 /** An operation's response, by its `operationId`. */
 export type LinodeResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
-export type LinodeApi = ApiClient<paths> & {
+export type LinodeApi = ReturnType<typeof paged> & {
   /** The Cloud Pulse metrics host, with a service-scoped token rather than the account's. */
   monitor(token: string): ApiClient<paths>;
 };
@@ -80,30 +82,31 @@ export interface LinodeApiConfig {
   monitorBaseUrl?: string;
 }
 
-const PAGE_SIZE = 500;
+/** The largest page the document allows. */
+export const PAGE_SIZE = 500;
+/** 100,000 rows, far beyond any account. Reaching it with more to read throws. */
+export const MAX_PAGES = 200;
 
 /**
- * Every page of a collection. `fetchPage` is one typed `api.get` with the query it
- * is handed. `getAll` is not used because this loop goes by the `pages` a response
- * reports and nothing else: it runs on past an empty or short page.
+ * The `pages` a response reports is what ends a list, so it runs on past an empty or
+ * short page. A `pages` that is not a number ends nothing, and runs to the cap.
  */
-export async function allPages<Item>(
-  fetchPage: (query: { page: number; page_size: number }) => Promise<{
-    data?: Item[];
-    pages?: number;
-  }>,
-): Promise<Item[]> {
-  const out: Item[] = [];
-  let page = 1;
-  let pages = 1;
-  do {
-    const res = await fetchPage({ page, page_size: PAGE_SIZE });
-    out.push(...(res.data ?? []));
-    pages = Math.max(1, Number(res.pages ?? 1));
-    page += 1;
-    // Bounded: 200 pages of 500 is 100,000 objects, far beyond any account.
-  } while (page <= pages && page <= 200);
-  return out;
+function nextPage({ body, cursor }: PageAnswer): number | null {
+  const at = Number(cursor);
+  const pages = body && typeof body === "object" && "pages" in body ? Number(body.pages) : at;
+  return at >= pages ? null : at + 1;
+}
+
+function paged(client: ApiClient<paths>) {
+  return withCursorPagination(client, {
+    cursorParam: "page",
+    firstCursor: 1,
+    sizeParam: "page_size",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
+    continueOnEmptyPage: true,
+    next: nextPage,
+  });
 }
 
 /** The `X-Filter` header, which carries a JSON object. */
@@ -166,17 +169,19 @@ export function createLinodeApi(config: LinodeApiConfig): LinodeApi {
   };
   const monitorBase = config.monitorBaseUrl ?? LINODE_MONITOR_BASE;
   return {
-    ...createApiClient<paths>({
-      ...shared,
-      baseUrl: config.baseUrl ?? LINODE_API_BASE,
-      headers: {
-        Accept: "application/json",
-        // An empty token sends no Authorization header: the public price
-        // endpoints (`/linode/types` and friends) answer anonymously, which is what
-        // lets the price catalog work without a connected account.
-        ...(config.token ? { Authorization: `Bearer ${config.token}` } : {}),
-      },
-    }),
+    ...paged(
+      createApiClient<paths>({
+        ...shared,
+        baseUrl: config.baseUrl ?? LINODE_API_BASE,
+        headers: {
+          Accept: "application/json",
+          // An empty token sends no Authorization header: the public price
+          // endpoints (`/linode/types` and friends) answer anonymously, which is what
+          // lets the price catalog work without a connected account.
+          ...(config.token ? { Authorization: `Bearer ${config.token}` } : {}),
+        },
+      }),
+    ),
     monitor: (token) =>
       createApiClient<paths>({
         ...shared,

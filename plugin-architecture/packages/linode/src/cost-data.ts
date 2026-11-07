@@ -30,8 +30,13 @@
  * the 1st of the next, and must replace that month's estimate when it does.
  */
 
-import type { CostChargeType, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { allPages, segment, xFilter, type LinodeApi } from "./api.js";
+import {
+  requireListPage,
+  type CostChargeType,
+  type CostFetchRange,
+  type CostRow,
+} from "@infrawrench/plugin-base";
+import { segment, xFilter, type LinodeApi } from "./api.js";
 import { SERVICE, parseInvoiceItemLabel } from "./invoice-label.js";
 import {
   type PriceCatalog,
@@ -405,7 +410,7 @@ export function addUninvoicedPeriod(
 // --- orchestration -------------------------------------------------------------------
 
 async function itemsOf(api: LinodeApi, invoiceId: number): Promise<LinodeInvoiceItem[]> {
-  return allPages((query) => api.get(`/account/invoices/${segment(invoiceId)}/items`, { query }));
+  return api.getAll(`/account/invoices/${segment(invoiceId)}/items`, "data");
 }
 
 /** Day after the last day the newest invoice covers: where the open period starts. */
@@ -435,13 +440,13 @@ async function loadInventory(api: LinodeApi): Promise<UninvoicedInventory> {
   const safe = <T>(p: Promise<T[]>) => p.catch((): T[] => []);
   const [linodes, volumes, nodeBalancers, lkeClusters, databases, buckets, reservedIps] =
     await Promise.all([
-      allPages((query) => api.get("/linode/instances", { query })),
-      safe(allPages((query) => api.get("/volumes", { query }))),
-      safe(allPages((query) => api.get("/nodebalancers", { query }))),
-      safe(allPages((query) => api.get("/lke/clusters", { query }))),
-      safe(allPages((query) => api.get("/databases/instances", { query }))),
-      safe(allPages((query) => api.get("/object-storage/buckets", { query }))),
-      safe(allPages((query) => api.get("/networking/reserved/ips", { query }))),
+      api.getAll("/linode/instances", "data"),
+      safe(api.getAll("/volumes", "data")),
+      safe(api.getAll("/nodebalancers", "data")),
+      safe(api.getAll("/lke/clusters", "data")),
+      safe(api.getAll("/databases/instances", "data")),
+      safe(api.getAll("/object-storage/buckets", "data")),
+      safe(api.getAll("/networking/reserved/ips", "data")),
     ]);
   return { linodes, volumes, nodeBalancers, lkeClusters, databases, buckets, reservedIps };
 }
@@ -469,7 +474,7 @@ export async function fetchLinodeCostData(
       { date: { "+lte": new Date(toMs).toISOString().slice(0, 19) } },
     ],
   });
-  const invoices = await allPages((query) => api.get("/account/invoices", { ...filter, query }));
+  const invoices = await api.getAll("/account/invoices", "data", filter);
   const itemsById = new Map<number, LinodeInvoiceItem[]>();
   for (const inv of invoices) {
     const items = await itemsOf(api, inv.id);
@@ -482,7 +487,12 @@ export async function fetchLinodeCostData(
     ...xFilter({ "+order_by": "date", "+order": "desc" }),
     query: { page: 1, page_size: 25 },
   });
-  const newest = newestPage.data?.[0];
+  const newest = requireListPage(newestPage.data, {
+    vendor: "Linode",
+    path: "/account/invoices",
+    key: "data",
+    page: newestPage,
+  })[0];
   const newestItems = newest ? (itemsById.get(newest.id) ?? (await itemsOf(api, newest.id))) : [];
   const periodStart = openPeriodStart(newestItems, newest, now);
   if (range.toDate >= isoDay(periodStart) && range.fromDate <= isoDay(now)) {

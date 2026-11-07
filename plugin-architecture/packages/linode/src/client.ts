@@ -22,7 +22,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { withMetricsCapability } from "@infrawrench/plugin-base";
 import * as actions from "./actions.js";
-import { type LinodeApi, allPages, createLinodeApi, segment, trailingId } from "./api.js";
+import { type LinodeApi, createLinodeApi, segment, trailingId } from "./api.js";
 import { fetchLinodeCostData } from "./cost-data.js";
 import { createResource, getCreateConfig } from "./create.js";
 import { fetchCredits } from "./credits.js";
@@ -113,12 +113,12 @@ export class LinodeClient implements PluginClient {
       if (typeId === "linode") {
         const [linode, firewalls] = await Promise.all([
           this.api.get(`/linode/instances/${segment(id)}`),
-          this.api.get(`/linode/instances/${segment(id)}/firewalls`).catch(() => null),
+          this.api.getAll(`/linode/instances/${segment(id)}/firewalls`, "data").catch(() => null),
         ]);
         return listers.mapLinode(
           linode,
           accountId,
-          firewalls ? (firewalls.data ?? []).map((f) => String(f.id)) : null,
+          firewalls ? firewalls.map((f) => String(f.id)) : null,
         );
       }
       if (typeId === "database") {
@@ -151,9 +151,7 @@ export class LinodeClient implements PluginClient {
             return res.kubeconfig ? decodeBase64(res.kubeconfig) : "";
           }
           case "apiEndpoint": {
-            const res = await allPages((query) =>
-              this.api.get(`/lke/clusters/${segment(id)}/api-endpoints`, { query }),
-            );
+            const res = await this.api.getAll(`/lke/clusters/${segment(id)}/api-endpoints`, "data");
             return res[0]?.endpoint ?? "";
           }
           case "nodeHourlyRates":
@@ -207,7 +205,7 @@ export class LinodeClient implements PluginClient {
     try {
       const [cluster, pools, catalog] = await Promise.all([
         this.api.get(`/lke/clusters/${segment(clusterId)}`),
-        allPages((query) => this.api.get(`/lke/clusters/${segment(clusterId)}/pools`, { query })),
+        this.api.getAll(`/lke/clusters/${segment(clusterId)}/pools`, "data"),
         this.catalog.get(),
       ]);
       return buildLkeNodeRates(cluster, pools, catalog);

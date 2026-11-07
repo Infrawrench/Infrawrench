@@ -40,7 +40,7 @@ import {
   type PriceCatalogRequest,
   type PriceCatalogResult,
 } from "@infrawrench/plugin-base";
-import { allPages, createLinodeApi, type LinodeApi } from "./api.js";
+import { createLinodeApi, type LinodeApi } from "./api.js";
 import { planCategory, regionalPrice } from "./pricing.js";
 import { KNOWN_REGIONS } from "./regions.js";
 import type { LinodeType } from "./types.js";
@@ -154,11 +154,11 @@ export function linodeTypeToProduct(
 }
 
 export async function fetchLinodePriceCatalogWith(
-  api: Pick<LinodeApi, "get">,
+  api: Pick<LinodeApi, "getAll">,
   request: PriceCatalogRequest,
 ): Promise<PriceCatalogResult> {
   if (request.serviceId !== LINODE_PRICE_CATALOG_SERVICE) return { products: [] };
-  const types = await allPages((query) => api.get("/linode/types", { query }));
+  const types = await api.getAll("/linode/types", "data");
   const regions = linodePriceCatalog.regions.map((r) => r.id);
   const products = types
     .map((t) => linodeTypeToProduct(t, regions))

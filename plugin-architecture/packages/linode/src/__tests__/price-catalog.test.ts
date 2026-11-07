@@ -88,12 +88,17 @@ describe("fetchLinodePriceCatalog", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("prices every declared region from /linode/types", async () => {
-    const get = vi.fn().mockResolvedValue({ data: [NANODE, GPU], page: 1, pages: 1, results: 2 });
-    const result = await fetchLinodePriceCatalogWith(
-      { get: get as never },
-      { serviceId: "linodes" },
-    );
-    expect(get).toHaveBeenCalledWith("/linode/types", { query: { page: 1, page_size: 500 } });
+    const request = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ data: [NANODE, GPU], page: 1, pages: 1, results: 2 }),
+    });
+    const services = { http: { request } } as unknown as HostServices;
+    const result = await fetchLinodePriceCatalog({ serviceId: "linodes" }, services);
+    expect(request).toHaveBeenCalledOnce();
+    const asked = new URL((request.mock.calls[0]![0] as { url: string }).url);
+    expect(asked.pathname).toBe("/v4/linode/types");
+    expect(Object.fromEntries(asked.searchParams)).toEqual({ page: "1", page_size: "500" });
     expect(result.products.map((p) => p.sku)).toEqual(["g6-nanode-1", "g1-gpu-rtx6000-2"]);
     expect(result.products[0]!.prices).toHaveLength(linodePriceCatalog.regions.length);
   });
@@ -124,11 +129,12 @@ describe("fetchLinodePriceCatalog", () => {
   });
 
   it("returns nothing for an undeclared service", async () => {
-    const get = vi.fn();
-    expect((await fetchLinodePriceCatalogWith({ get }, { serviceId: "nope" })).products).toEqual(
-      [],
-    );
-    expect(get).not.toHaveBeenCalled();
+    const getAll = vi.fn();
+    expect(
+      (await fetchLinodePriceCatalogWith({ getAll: getAll as never }, { serviceId: "nope" }))
+        .products,
+    ).toEqual([]);
+    expect(getAll).not.toHaveBeenCalled();
   });
 });
 

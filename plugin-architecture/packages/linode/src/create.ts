@@ -13,7 +13,7 @@ import type {
   SizeOption,
 } from "@infrawrench/plugin-base";
 import { dnsContentField, type ApiBody } from "@infrawrench/plugin-base";
-import { type LinodeApi, allPages, segment, splitList, trailingId } from "./api.js";
+import { type LinodeApi, segment, splitList, trailingId } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import {
   mapBucket,
@@ -68,9 +68,9 @@ export function linodeSizeOptions(
 }
 
 async function imageOptions(api: LinodeApi): Promise<ImageOption[]> {
-  const images = await allPages((query) => api.get("/images", { query })).catch(
-    (): LinodeImage[] => [],
-  );
+  const images = await api
+    .getAll("/images", "data", { partial: true })
+    .catch((): LinodeImage[] => []);
   return images
     .filter((i) => i.status === "available" && !i.deprecated)
     .map((i) => ({
@@ -269,7 +269,7 @@ export async function getCreateConfig(
       const [regions, catalog, versions] = await Promise.all([
         regionOptions(api, "Kubernetes"),
         ctx.catalog.get(),
-        allPages((query) => api.get("/lke/versions", { query })).catch(() => []),
+        api.getAll("/lke/versions", "data", { partial: true }).catch(() => []),
       ]);
       const versionOptions: SelectOption[] = versions.map((v) => ({ id: v.id, label: v.id }));
       const sizes = linodeSizeOptions(catalog, { excludeGpu: true });
@@ -417,7 +417,7 @@ export async function getCreateConfig(
       const [regions, catalog, engines] = await Promise.all([
         regionOptions(api, "Managed Databases"),
         ctx.catalog.get(),
-        allPages((query) => api.get("/databases/engines", { query })).catch(() => []),
+        api.getAll("/databases/engines", "data", { partial: true }).catch(() => []),
       ]);
       const engineOptions: SelectOption[] = engines
         .map((e) => ({
@@ -565,9 +565,9 @@ export async function getCreateConfig(
     case "domain-record": {
       const fields: CreateFieldConfig[] = [];
       if (!parentResourceId) {
-        const domains = await allPages((query) => api.get("/domains", { query })).catch(
-          (): LinodeDomain[] => [],
-        );
+        const domains = await api
+          .getAll("/domains", "data", { partial: true })
+          .catch((): LinodeDomain[] => []);
         fields.push({
           key: "domainId",
           label: "Domain",
@@ -996,9 +996,7 @@ export async function createResource(
     case "image": {
       const linodeId = intOr(fields["linodeId"]);
       if (!linodeId) throw new Error("Pick the Linode to capture.");
-      const disks = await allPages((query) =>
-        api.get(`/linode/instances/${segment(linodeId)}/disks`, { query }),
-      );
+      const disks = await api.getAll(`/linode/instances/${segment(linodeId)}/disks`, "data");
       const disk = [...disks]
         .filter((d) => d.filesystem !== "swap")
         .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))[0];
