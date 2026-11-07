@@ -1,4 +1,10 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 
 /**
  * Resend REST API (https://resend.com/docs/api-reference, OpenAPI spec at
@@ -48,22 +54,15 @@ export class ResendApiError extends Error {
   }
 }
 
-export function statusOf(err: unknown): number {
-  const status = (err as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : 0;
-}
-
 /** The key is a sending-access key, or lacks scope for this call. */
-export function isRestrictedKey(err: unknown): boolean {
+export function isRestrictedKey(err: unknown): err is ResendApiError {
   return (
     err instanceof ResendApiError &&
     (err.errorName === "restricted_api_key" || err.errorName === "invalid_permission")
   );
 }
 
-export type Query = Record<string, string | number | boolean | undefined | string[]>;
-
-export function buildQuery(query: Query = {}): string {
+function buildQuery(query: Record<string, ParamValue> = {}): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === "") continue;
@@ -77,9 +76,15 @@ export function buildQuery(query: Query = {}): string {
 
 function parseError(text: string): { message: string; name: string } {
   try {
-    const parsed = JSON.parse(text) as { message?: unknown; name?: unknown };
-    if (typeof parsed.message === "string") {
-      return { message: parsed.message, name: typeof parsed.name === "string" ? parsed.name : "" };
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
+    ) {
+      const name = "name" in parsed && typeof parsed.name === "string" ? parsed.name : "";
+      return { message: parsed.message, name };
     }
   } catch {
     // Not JSON.
@@ -87,89 +92,102 @@ function parseError(text: string): { message: string; name: string } {
   return { message: text.slice(0, 500), name: "" };
 }
 
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-}
-
 const MAX_RETRIES = 3;
 
-export async function resendFetch<T>(
-  ctx: ResendContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const url = `${API_BASE}${path}${buildQuery(opts.query)}`;
-  const method = opts.method ?? "GET";
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${ctx.apiKey}`,
-    Accept: "application/json",
+/** The request as it goes out: the host's HTTP service where there is one, or `fetch`. */
+function send(ctx: ResendContext): HttpHostServices["request"] {
+  const { http } = ctx;
+  if (http) return (req) => http.request(req);
+  return async ({ url, method, headers, body }) => {
+    // Only ever JSON text: nothing here uploads bytes.
+    const res = await fetch(url, {
+      method,
+      headers,
+      ...(typeof body === "string" ? { body } : {}),
+    });
+    const retryAfter = res.headers.get("retry-after");
+    return {
+      status: res.status,
+      headers: retryAfter === null ? {} : { "retry-after": retryAfter },
+      body: await res.text(),
+    };
   };
-  const authorize = async () => {
-    if (ctx.getToken) headers["Authorization"] = `Bearer ${await ctx.getToken()}`;
-  };
-  const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-
-  for (let attempt = 0; ; attempt++) {
-    await authorize();
-    let status: number;
-    let text: string;
-    let retryAfter: string | undefined;
-    if (ctx.http) {
-      const res = await ctx.http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      });
-      status = res.status;
-      text = res.body;
-      retryAfter = res.headers["retry-after"] ?? res.headers["Retry-After"];
-    } else {
-      const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-      status = res.status;
-      text = await res.text();
-      retryAfter = res.headers.get("retry-after") ?? undefined;
-    }
-    if (status === 429 && attempt < MAX_RETRIES) {
-      const { name } = parseError(text);
-      // Quota errors do not clear by waiting a second.
-      if (name !== "daily_quota_exceeded" && name !== "monthly_quota_exceeded") {
-        const seconds = Number(retryAfter);
-        await sleep(Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 10) * 1000 : 1000);
-        continue;
-      }
-    }
-    if (status < 200 || status >= 300) {
-      const { message, name } = parseError(text);
-      throw new ResendApiError(status, `Resend API error ${status} for ${path}: ${message}`, name);
-    }
-    return (status === 204 || !text ? undefined : JSON.parse(text)) as T;
-  }
 }
 
-interface Page<T> {
-  data?: T[];
+/**
+ * Each attempt asks for a current token and backs off a 429, so both sit below
+ * the typed client, which only sees the answer that came of them.
+ */
+function transport(ctx: ResendContext): HttpHostServices {
+  const sendOnce = send(ctx);
+  const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  return {
+    async request(req) {
+      for (let attempt = 0; ; attempt++) {
+        const res = await sendOnce(
+          ctx.getToken
+            ? {
+                ...req,
+                headers: { ...req.headers, Authorization: `Bearer ${await ctx.getToken()}` },
+              }
+            : req,
+        );
+        if (res.status === 429 && attempt < MAX_RETRIES) {
+          const { name } = parseError(res.body);
+          // Quota errors do not clear by waiting a second.
+          if (name !== "daily_quota_exceeded" && name !== "monthly_quota_exceeded") {
+            const seconds = Number(res.headers["retry-after"] ?? res.headers["Retry-After"]);
+            await sleep(
+              Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 10) * 1000 : 1000,
+            );
+            continue;
+          }
+        }
+        return res;
+      }
+    },
+  };
+}
+
+export type ResendApi = ApiClient<paths>;
+
+export function createResendApi(ctx: ResendContext): ResendApi {
+  return createApiClient<paths>({
+    vendor: "Resend",
+    baseUrl: API_BASE,
+    headers: { Authorization: `Bearer ${ctx.apiKey}`, Accept: "application/json" },
+    http: transport(ctx),
+    caCert: ctx.caCert,
+    contentType: "with-body",
+    serializeQuery: (query) => buildQuery(query).slice(1),
+    httpError: ({ status, path, body }) => {
+      const { message, name } = parseError(body);
+      return new ResendApiError(status, `Resend API error ${status} for ${path}: ${message}`, name);
+    },
+  });
+}
+
+/** What every list in the document answers with. */
+interface Page<Item> {
+  data?: Item[];
   has_more?: boolean;
 }
 
-/** Every page of a cursor list, up to `maxPages` × 100 items. */
-export async function listAll<T extends { id?: string }>(
-  ctx: ResendContext,
-  path: string,
-  query: Query = {},
+/**
+ * Every page of a cursor list, up to `maxPages` × 100 items:
+ * `listAll((query) => api.get("/domains", { query }))`.
+ *
+ * Not `withCursorPagination`, which reads a `data` that is not an array as an empty
+ * list. Here it throws, and an empty list is what lets the host prune a resource.
+ */
+export async function listAll<Item extends { id?: string }>(
+  fetchPage: (query: { limit: number; after?: string }) => Promise<Page<Item>>,
   maxPages = 10,
-): Promise<T[]> {
-  const out: T[] = [];
+): Promise<Item[]> {
+  const out: Item[] = [];
   let after: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await resendFetch<Page<T>>(ctx, path, {
-      query: { limit: 100, ...query, ...(after ? { after } : {}) },
-    });
+    const res = await fetchPage({ limit: 100, ...(after ? { after } : {}) });
     const data = res?.data ?? [];
     out.push(...data);
     const last = data[data.length - 1]?.id;

@@ -1,0 +1,283 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/resend/resend-openapi/main/resend.yaml",
+  "patches": [
+    {
+      "pointer": "/paths/~1domains~1{domain_id}~1verify/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1webhooks~1{webhook_id}~1signing-secret~1rotate/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1webhooks~1{webhook_id}~1events~1{event_id}~1replay/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1emails~1{email_id}~1cancel/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1broadcasts~1{id}~1cancel/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1broadcasts~1{id}~1duplicate/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1templates~1{id}~1publish/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1templates~1{id}~1duplicate/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1automations~1{automation_id}~1stop/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1automations~1{automation_id}~1duplicate/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/components/schemas/CreateDomainRequest/properties/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/CreateDomainRequest/properties/tls",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateDomainOptions/properties/tls",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/CreateApiKeyRequest/properties/permission",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateWebhookRequest/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/CreateTopicOptions/properties/default_subscription",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/CreateTopicOptions/properties/visibility",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateTopicOptions/properties/visibility",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/CreateContactPropertyOptions/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/PatchAutomationRequest/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateContactPropertyOptions/properties/fallback_value",
+      "value": {
+        "type": ["string", "number", "null"]
+      },
+      "why": "The plugin clears a fallback by sending null, which the document's string-or-number does not say."
+    },
+    {
+      "pointer": "/components/schemas/DomainCapabilities/properties/sending",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/DomainCapabilities/properties/receiving",
+      "value": {
+        "type": "string"
+      },
+      "why": "A form field whose text goes through as the user chose it, so the provider's own validation error is the message."
+    }
+  ],
+  "paths": {
+    "/usage": ["get"],
+    "/domains": ["get", "post"],
+    "/domains/{domain_id}": ["get", "patch", "delete"],
+    "/domains/{domain_id}/verify": ["post"],
+    "/api-keys": ["get", "post"],
+    "/api-keys/{api_key_id}": ["patch", "delete"],
+    "/webhooks": ["get", "post"],
+    "/webhooks/{webhook_id}": ["get", "patch", "delete"],
+    "/webhooks/{webhook_id}/signing-secret/rotate": ["post"],
+    "/webhooks/{webhook_id}/events": ["get"],
+    "/webhooks/{webhook_id}/events/{event_id}/replay": ["post"],
+    "/emails": ["get"],
+    "/emails/{email_id}": ["get"],
+    "/emails/{email_id}/cancel": ["post"],
+    "/emails/receiving": ["get"],
+    "/emails/metrics": ["get"],
+    "/broadcasts": ["get", "post"],
+    "/broadcasts/{id}": ["get", "patch", "delete"],
+    "/broadcasts/{id}/send": ["post"],
+    "/broadcasts/{id}/cancel": ["post"],
+    "/broadcasts/{id}/duplicate": ["post"],
+    "/templates": ["get", "post"],
+    "/templates/{id}": ["get", "patch", "delete"],
+    "/templates/{id}/publish": ["post"],
+    "/templates/{id}/duplicate": ["post"],
+    "/segments": ["get", "post"],
+    "/segments/{id}": ["get", "patch", "delete"],
+    "/segments/{id}/contacts": ["get"],
+    "/topics": ["get", "post"],
+    "/topics/{id}": ["get", "patch", "delete"],
+    "/contacts": ["get", "post"],
+    "/contacts/{id}": ["get", "patch", "delete"],
+    "/contact-properties": ["get", "post"],
+    "/contact-properties/{id}": ["get", "patch", "delete"],
+    "/suppressions": ["get", "post"],
+    "/suppressions/{suppression}": ["get", "delete"],
+    "/automations": ["get"],
+    "/automations/{automation_id}": ["get", "patch", "delete"],
+    "/automations/{automation_id}/stop": ["post"],
+    "/automations/{automation_id}/duplicate": ["post"],
+    "/automations/{automation_id}/runs": ["get"],
+    "/oauth/grants": ["get"],
+    "/oauth/grants/{oauth_grant_id}": ["delete"],
+    "/logs": ["get"]
+  }
+}

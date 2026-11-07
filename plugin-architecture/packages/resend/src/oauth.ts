@@ -27,11 +27,13 @@
  * usual env variables. See `.git/provider-oauth/notes/resend.md`.
  */
 import type {
+  ApiResponse,
   OAuthCompletionContext,
   OAuthCompletionResult,
   OAuthDeclaration,
   OAuthTokenSet,
 } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 
 export const resendOAuth: OAuthDeclaration = {
   authorizeUrl: "https://api.resend.com/oauth/authorize",
@@ -60,7 +62,7 @@ export async function completeResendOAuth(
       headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" },
     });
     if (!res.ok) return {};
-    const body = (await res.json()) as { data?: Array<{ name?: string; status?: string }> };
+    const body: ApiResponse<operations["domains/list"]> = await res.json();
     const domains = body.data ?? [];
     const pick =
       domains.find((d) => d.status === "verified" && d.name) ?? domains.find((d) => d.name);

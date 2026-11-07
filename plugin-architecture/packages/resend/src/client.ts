@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import { pathEncode, type ApiBody, type PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -16,31 +16,10 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
-import type { ResendContext } from "./api.js";
-import {
-  API_BASE,
-  ResendApiError,
-  isRestrictedKey,
-  listAll,
-  resendFetch,
-  statusOf,
-} from "./api.js";
-import type {
-  ResendApiKey,
-  ResendAutomation,
-  ResendBroadcast,
-  ResendContact,
-  ResendContactProperty,
-  ResendDomain,
-  ResendEmail,
-  ResendOAuthGrant,
-  ResendSegment,
-  ResendSuppression,
-  ResendTemplate,
-  ResendTopic,
-  ResendUsage,
-  ResendWebhook,
-} from "./mappers.js";
+import type { ResendApi } from "./api.js";
+import { API_BASE, ResendApiError, createResendApi, isRestrictedKey, listAll } from "./api.js";
+import type { operations } from "./api-types.gen.js";
+import type { ResendDomain } from "./mappers.js";
 import {
   mapAccount,
   mapApiKey,
@@ -125,13 +104,10 @@ async function mapLimit<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const out: R[] = new Array(items.length);
-  let next = 0;
+  const queue = items.entries();
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i] as T);
-      }
+      for (const [i, item] of queue) out[i] = await fn(item);
     }),
   );
   return out;
@@ -142,7 +118,7 @@ export function parseList(raw: string | undefined): string[] {
   if (!text) return [];
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed))
         return parsed
           .map(String)
@@ -163,6 +139,16 @@ const opt = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
+/** What a line of the email logs reads, from a sent or a received email. */
+interface LoggedEmail {
+  id?: string;
+  to?: string[] | string;
+  from?: string;
+  subject?: string | null;
+  created_at?: string;
+  last_event?: string;
+}
+
 function eventOptions(): PolicyOption[] {
   return WEBHOOK_EVENTS.map((id) => ({ id, label: id, category: id.split(".")[0] ?? "email" }));
 }
@@ -172,7 +158,7 @@ function eventOptions(): PolicyOption[] {
  * account root and everything else is listed from it.
  */
 export class ResendClient implements PluginClient {
-  private readonly ctx: ResendContext;
+  private readonly api: ResendApi;
   private readonly services: HostServices | undefined;
   private domainCache: { at: number; domains: Promise<ResendDomain[]> } | undefined;
 
@@ -181,26 +167,21 @@ export class ResendClient implements PluginClient {
     if (!apiKey) throw new Error("Resend plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
     const oauth = services?.oauth;
-    this.ctx = {
+    this.api = createResendApi({
       apiKey,
       ...(oauth ? { getToken: () => oauth.getAccessToken() } : {}),
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
-    };
+    });
     this.services = services;
   }
 
-  private req<T>(
-    path: string,
-    method = "GET",
-    body?: unknown,
-    query?: Record<string, string | number | undefined>,
-  ) {
-    return resendFetch<T>(this.ctx, path, {
-      method,
-      ...(body !== undefined ? { body } : {}),
-      ...(query ? { query } : {}),
-    });
+  private listDomains() {
+    return listAll((query) => this.api.get("/domains", { query }));
+  }
+
+  private listSegments() {
+    return listAll((query) => this.api.get("/segments", { query }));
   }
 
   // ---------------------------------------------------------------- listing
@@ -211,14 +192,12 @@ export class ResendClient implements PluginClient {
     if (this.domainCache && now - this.domainCache.at < DOMAIN_CACHE_MS)
       return this.domainCache.domains;
     const domains = (async () => {
-      const list = await listAll<ResendDomain>(this.ctx, "/domains");
+      const list = await this.listDomains();
       return mapLimit(list, 3, async (d) =>
         d.id
           ? {
               ...d,
-              ...(await this.req<ResendDomain>(`/domains/${encodeURIComponent(d.id)}`).catch(
-                () => ({}),
-              )),
+              ...(await this.api.get(`/domains/${pathEncode(d.id)}`).catch(() => ({}))),
             }
           : d,
       );
@@ -232,8 +211,7 @@ export class ResendClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      const all = <T extends { id?: string }>(path: string, pages = 10) =>
-        listAll<T>(this.ctx, path, {}, pages);
+      const { api } = this;
       switch (typeId) {
         case ACCOUNT:
           return [await this.fetchAccount(accountId)];
@@ -242,35 +220,49 @@ export class ResendClient implements PluginClient {
         case DNS_RECORD:
           return (await this.detailedDomains()).flatMap((d) => mapDnsRecords(accountId, d));
         case API_KEY:
-          return (await all<ResendApiKey>("/api-keys")).map((k) => mapApiKey(accountId, k));
+          return (await listAll((query) => api.get("/api-keys", { query }))).map((k) =>
+            mapApiKey(accountId, k),
+          );
         case WEBHOOK:
-          return (await all<ResendWebhook>("/webhooks")).map((w) => mapWebhook(accountId, w));
+          return (await listAll((query) => api.get("/webhooks", { query }))).map((w) =>
+            mapWebhook(accountId, w),
+          );
         case EMAIL:
-          return (await all<ResendEmail>("/emails", 1)).map((e) => mapEmail(accountId, e));
+          return (await listAll((query) => api.get("/emails", { query }), 1)).map((e) =>
+            mapEmail(accountId, e),
+          );
         case BROADCAST:
-          return (await all<ResendBroadcast>("/broadcasts")).map((b) => mapBroadcast(accountId, b));
+          return (await listAll((query) => api.get("/broadcasts", { query }))).map((b) =>
+            mapBroadcast(accountId, b),
+          );
         case TEMPLATE:
-          return (await all<ResendTemplate>("/templates")).map((t) => mapTemplate(accountId, t));
+          return (await listAll((query) => api.get("/templates", { query }))).map((t) =>
+            mapTemplate(accountId, t),
+          );
         case SEGMENT:
-          return (await all<ResendSegment>("/segments")).map((s) => mapSegment(accountId, s));
+          return (await this.listSegments()).map((s) => mapSegment(accountId, s));
         case TOPIC:
-          return (await all<ResendTopic>("/topics")).map((t) => mapTopic(accountId, t));
+          return (await listAll((query) => api.get("/topics", { query }))).map((t) =>
+            mapTopic(accountId, t),
+          );
         case CONTACT:
-          return (await all<ResendContact>("/contacts")).map((c) => mapContact(accountId, c));
+          return (await listAll((query) => api.get("/contacts", { query }))).map((c) =>
+            mapContact(accountId, c),
+          );
         case CONTACT_PROPERTY:
-          return (await all<ResendContactProperty>("/contact-properties")).map((p) =>
+          return (await listAll((query) => api.get("/contact-properties", { query }))).map((p) =>
             mapContactProperty(accountId, p),
           );
         case SUPPRESSION:
-          return (await all<ResendSuppression>("/suppressions")).map((s) =>
+          return (await listAll((query) => api.get("/suppressions", { query }))).map((s) =>
             mapSuppression(accountId, s),
           );
         case AUTOMATION:
-          return (await all<ResendAutomation>("/automations")).map((a) =>
+          return (await listAll((query) => api.get("/automations", { query }))).map((a) =>
             mapAutomation(accountId, a),
           );
         case OAUTH_GRANT:
-          return (await all<ResendOAuthGrant>("/oauth/grants")).map((g) =>
+          return (await listAll((query) => api.get("/oauth/grants", { query }))).map((g) =>
             mapOAuthGrant(accountId, g),
           );
         default:
@@ -280,10 +272,10 @@ export class ResendClient implements PluginClient {
   }
 
   private async fetchAccount(accountId: string): Promise<ResourceInstance> {
-    const usage = await this.req<ResendUsage>("/usage").catch((err: unknown) => {
+    const usage = await this.api.get("/usage").catch((err: unknown) => {
       if (isRestrictedKey(err)) {
         throw new ResendApiError(
-          statusOf(err),
+          err.status,
           "This is a sending-only Resend API key. Infrawrench needs a Full access key to manage the account.",
           "restricted_api_key",
         );
@@ -302,15 +294,16 @@ export class ResendClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
+      const { api } = this;
       switch (typeId) {
         case ACCOUNT:
           return this.fetchAccount(accountId);
         case DOMAIN:
-          return mapDomain(accountId, await this.req<ResendDomain>(`/domains/${enc}`));
+          return mapDomain(accountId, await api.get(`/domains/${enc}`));
         case DNS_RECORD: {
           const domainId = id.split("/")[0] ?? "";
-          const domain = await this.req<ResendDomain>(`/domains/${encodeURIComponent(domainId)}`);
+          const domain = await api.get(`/domains/${pathEncode(domainId)}`);
           const found = mapDnsRecords(accountId, domain).find((r) => r.id === resourceId);
           if (!found) throw new ResendApiError(404, `Resend plugin: DNS record ${id} not found`);
           return found;
@@ -324,31 +317,25 @@ export class ResendClient implements PluginClient {
           return found;
         }
         case WEBHOOK:
-          return mapWebhook(accountId, await this.req<ResendWebhook>(`/webhooks/${enc}`));
+          return mapWebhook(accountId, await api.get(`/webhooks/${enc}`));
         case EMAIL:
-          return mapEmail(accountId, await this.req<ResendEmail>(`/emails/${enc}`));
+          return mapEmail(accountId, await api.get(`/emails/${enc}`));
         case BROADCAST:
-          return mapBroadcast(accountId, await this.req<ResendBroadcast>(`/broadcasts/${enc}`));
+          return mapBroadcast(accountId, await api.get(`/broadcasts/${enc}`));
         case TEMPLATE:
-          return mapTemplate(accountId, await this.req<ResendTemplate>(`/templates/${enc}`));
+          return mapTemplate(accountId, await api.get(`/templates/${enc}`));
         case SEGMENT:
-          return mapSegment(accountId, await this.req<ResendSegment>(`/segments/${enc}`));
+          return mapSegment(accountId, await api.get(`/segments/${enc}`));
         case TOPIC:
-          return mapTopic(accountId, await this.req<ResendTopic>(`/topics/${enc}`));
+          return mapTopic(accountId, await api.get(`/topics/${enc}`));
         case CONTACT:
-          return mapContact(accountId, await this.req<ResendContact>(`/contacts/${enc}`));
+          return mapContact(accountId, await api.get(`/contacts/${enc}`));
         case CONTACT_PROPERTY:
-          return mapContactProperty(
-            accountId,
-            await this.req<ResendContactProperty>(`/contact-properties/${enc}`),
-          );
+          return mapContactProperty(accountId, await api.get(`/contact-properties/${enc}`));
         case SUPPRESSION:
-          return mapSuppression(
-            accountId,
-            await this.req<ResendSuppression>(`/suppressions/${enc}`),
-          );
+          return mapSuppression(accountId, await api.get(`/suppressions/${enc}`));
         case AUTOMATION:
-          return mapAutomation(accountId, await this.req<ResendAutomation>(`/automations/${enc}`));
+          return mapAutomation(accountId, await api.get(`/automations/${enc}`));
         case OAUTH_GRANT: {
           const found = (await runPluginEffect(this.listResources(OAUTH_GRANT, accountId))).find(
             (r) => r.id === resourceId,
@@ -372,9 +359,7 @@ export class ResendClient implements PluginClient {
       if (outputKey === "apiBaseUrl") return API_BASE;
       if (typeId === WEBHOOK && outputKey === "signingSecret") {
         // Unlike most providers, Resend returns the secret on every GET.
-        const hook = await this.req<ResendWebhook>(
-          `/webhooks/${encodeURIComponent(externalIdOf(resourceId))}`,
-        );
+        const hook = await this.api.get(`/webhooks/${pathEncode(externalIdOf(resourceId))}`);
         return hook.signing_secret ?? "";
       }
       if (typeId === API_KEY && outputKey === "token") {
@@ -394,14 +379,15 @@ export class ResendClient implements PluginClient {
 
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(resource.externalId ?? "");
-      const stash = (key: string, value: unknown): ResourceInstance => ({
+      const id = pathEncode(resource.externalId ?? "");
+      const { api } = this;
+      const stash = <V>(key: string, value: V): ResourceInstance => ({
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs, [key]: JSON.stringify(value) },
       });
       switch (resource.resourceTypeId) {
         case DOMAIN: {
-          const d = await this.req<ResendDomain>(`/domains/${id}`);
+          const d = await api.get(`/domains/${id}`);
           const records: RecordStash[] = (d.records ?? []).map((r) => ({
             purpose: r.record ?? "",
             name: qualify(r.name, d.name ?? ""),
@@ -413,9 +399,7 @@ export class ResendClient implements PluginClient {
           return stash(STASH.records, records);
         }
         case WEBHOOK: {
-          const res = await this.req<{
-            data?: Array<{ id?: string; type?: string; status?: string; created_at?: string }>;
-          }>(`/webhooks/${id}/events`, "GET", undefined, { limit: 50 });
+          const res = await api.get(`/webhooks/${id}/events`, { query: { limit: 50 } });
           const deliveries: DeliveryStash[] = (res?.data ?? []).map((e) => ({
             id: e.id ?? "",
             type: e.type ?? "",
@@ -426,15 +410,10 @@ export class ResendClient implements PluginClient {
         }
         case AUTOMATION: {
           const [detail, runs] = await Promise.all([
-            this.req<{ steps?: Array<{ key?: string; type?: string; config?: unknown }> }>(
-              `/automations/${id}`,
-            ),
-            this.req<{ data?: Array<{ id?: string; status?: string; created_at?: string }> }>(
-              `/automations/${id}/runs`,
-              "GET",
-              undefined,
-              { limit: 20 },
-            ).catch(() => ({ data: [] })),
+            api.get(`/automations/${id}`),
+            api
+              .get(`/automations/${id}/runs`, { query: { limit: 20 } })
+              .catch(() => ({ data: [] })),
           ]);
           const withSteps = stash(
             STASH.steps,
@@ -459,12 +438,7 @@ export class ResendClient implements PluginClient {
           };
         }
         case SEGMENT: {
-          const res = await this.req<{ data?: ResendContact[] }>(
-            `/segments/${id}/contacts`,
-            "GET",
-            undefined,
-            { limit: 100 },
-          );
+          const res = await api.get(`/segments/${id}/contacts`, { query: { limit: 100 } });
           return stash(
             STASH.contacts,
             (res?.data ?? []).map((c) => ({
@@ -558,9 +532,7 @@ export class ResendClient implements PluginClient {
             ],
           };
         case API_KEY: {
-          const domains = await listAll<ResendDomain>(this.ctx, "/domains").catch(
-            () => [] as ResendDomain[],
-          );
+          const domains = await this.listDomains().catch(() => []);
           return {
             fields: [
               text("name", "Name", true, { placeholder: "production-api" }),
@@ -616,9 +588,9 @@ export class ResendClient implements PluginClient {
           };
         case BROADCAST: {
           const [segments, topics, domains] = await Promise.all([
-            listAll<ResendSegment>(this.ctx, "/segments").catch(() => [] as ResendSegment[]),
-            listAll<ResendTopic>(this.ctx, "/topics").catch(() => [] as ResendTopic[]),
-            listAll<ResendDomain>(this.ctx, "/domains").catch(() => [] as ResendDomain[]),
+            this.listSegments().catch(() => []),
+            listAll((query) => this.api.get("/topics", { query })).catch(() => []),
+            this.listDomains().catch(() => []),
           ]);
           const verified = domains
             .filter((d) => d.status === "verified")
@@ -728,9 +700,7 @@ export class ResendClient implements PluginClient {
             ],
           };
         case CONTACT: {
-          const segments = await listAll<ResendSegment>(this.ctx, "/segments").catch(
-            () => [] as ResendSegment[],
-          );
+          const segments = await this.listSegments().catch(() => []);
           return {
             fields: [
               text("email", "Email", true, { placeholder: "jane@example.com" }),
@@ -792,28 +762,25 @@ export class ResendClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const created = <T>(path: string, body: unknown) =>
-        this.req<T & { id?: string }>(path, "POST", body);
+      const { api } = this;
       const bool = (v: string | undefined) => v === "true";
       switch (typeId) {
         case DOMAIN: {
           const name = opt(fields["name"]);
           if (!name) throw new Error("Resend plugin: a domain name is required");
-          const d = await created<ResendDomain>("/domains", {
-            name,
-            region: fields["region"] || "us-east-1",
-            ...(opt(fields["customReturnPath"])
-              ? { custom_return_path: opt(fields["customReturnPath"]) }
-              : {}),
-            open_tracking: bool(fields["openTracking"]),
-            click_tracking: bool(fields["clickTracking"]),
-            ...(opt(fields["trackingSubdomain"])
-              ? { tracking_subdomain: opt(fields["trackingSubdomain"]) }
-              : {}),
-            tls: fields["tls"] || "opportunistic",
-            capabilities: {
-              sending: fields["sending"] || "enabled",
-              receiving: fields["receiving"] || "disabled",
+          const d = await api.post("/domains", {
+            body: {
+              name,
+              region: fields["region"] || "us-east-1",
+              custom_return_path: opt(fields["customReturnPath"]),
+              open_tracking: bool(fields["openTracking"]),
+              click_tracking: bool(fields["clickTracking"]),
+              tracking_subdomain: opt(fields["trackingSubdomain"]),
+              tls: fields["tls"] || "opportunistic",
+              capabilities: {
+                sending: fields["sending"] || "enabled",
+                receiving: fields["receiving"] || "disabled",
+              },
             },
           });
           this.domainCache = undefined;
@@ -823,12 +790,12 @@ export class ResendClient implements PluginClient {
           const name = opt(fields["name"]);
           if (!name) throw new Error("Resend plugin: a key name is required");
           const permission = fields["permission"] || "sending_access";
-          const res = await created<{ token?: string }>("/api-keys", {
-            name,
-            permission,
-            ...(permission === "sending_access" && opt(fields["domainId"])
-              ? { domain_id: opt(fields["domainId"]) }
-              : {}),
+          const res = await api.post("/api-keys", {
+            body: {
+              name,
+              permission,
+              domain_id: permission === "sending_access" ? opt(fields["domainId"]) : undefined,
+            },
           });
           const resource = mapApiKey(accountId, {
             id: res.id ?? "",
@@ -850,7 +817,7 @@ export class ResendClient implements PluginClient {
           const events = parseList(fields["events"]);
           if (!endpoint) throw new Error("Resend plugin: an endpoint URL is required");
           if (events.length === 0) throw new Error("Resend plugin: pick at least one event");
-          const res = await created<ResendWebhook>("/webhooks", { endpoint, events });
+          const res = await api.post("/webhooks", { body: { endpoint, events } });
           return mapWebhook(accountId, {
             id: res.id ?? "",
             endpoint,
@@ -863,26 +830,25 @@ export class ResendClient implements PluginClient {
           const segmentId = opt(fields["segmentId"]);
           if (!segmentId) throw new Error("Resend plugin: pick a segment");
           const mode = fields["sendMode"] || "draft";
-          const body: Record<string, unknown> = {
+          const replyTo = parseList(fields["replyTo"]);
+          const body: ApiBody<operations["broadcasts/create"]> = {
             segment_id: segmentId,
             from: opt(fields["from"]),
             subject: opt(fields["subject"]),
-            ...(opt(fields["name"]) ? { name: opt(fields["name"]) } : {}),
-            ...(opt(fields["topicId"]) ? { topic_id: opt(fields["topicId"]) } : {}),
-            ...(parseList(fields["replyTo"]).length
-              ? { reply_to: parseList(fields["replyTo"]) }
-              : {}),
-            ...(opt(fields["previewText"]) ? { preview_text: opt(fields["previewText"]) } : {}),
-            ...(opt(fields["html"]) ? { html: fields["html"] } : {}),
-            ...(opt(fields["text"]) ? { text: fields["text"] } : {}),
+            name: opt(fields["name"]),
+            topic_id: opt(fields["topicId"]),
+            reply_to: replyTo.length ? replyTo : undefined,
+            preview_text: opt(fields["previewText"]),
+            html: opt(fields["html"]) ? fields["html"] : undefined,
+            text: opt(fields["text"]) ? fields["text"] : undefined,
           };
-          if (mode !== "draft") body["send"] = true;
+          if (mode !== "draft") body.send = true;
           if (mode === "schedule") {
             const at = opt(fields["scheduledAt"]);
             if (!at) throw new Error("Resend plugin: pick when to send");
-            body["scheduled_at"] = new Date(Date.parse(at)).toISOString();
+            body.scheduled_at = new Date(Date.parse(at)).toISOString();
           }
-          const res = await created<ResendBroadcast>("/broadcasts", body);
+          const res = await api.post("/broadcasts", { body });
           return runPluginEffect(
             this.getResource(BROADCAST, `${accountId}:${BROADCAST}:${res.id ?? ""}`, accountId),
           );
@@ -890,13 +856,15 @@ export class ResendClient implements PluginClient {
         case TEMPLATE: {
           const name = opt(fields["name"]);
           if (!name) throw new Error("Resend plugin: a template name is required");
-          const res = await created<ResendTemplate>("/templates", {
-            name,
-            html: fields["html"] ?? "",
-            ...(opt(fields["alias"]) ? { alias: opt(fields["alias"]) } : {}),
-            ...(opt(fields["from"]) ? { from: opt(fields["from"]) } : {}),
-            ...(opt(fields["subject"]) ? { subject: opt(fields["subject"]) } : {}),
-            ...(opt(fields["text"]) ? { text: fields["text"] } : {}),
+          const res = await api.post("/templates", {
+            body: {
+              name,
+              html: fields["html"] ?? "",
+              alias: opt(fields["alias"]),
+              from: opt(fields["from"]),
+              subject: opt(fields["subject"]),
+              text: opt(fields["text"]) ? fields["text"] : undefined,
+            },
           });
           return runPluginEffect(
             this.getResource(TEMPLATE, `${accountId}:${TEMPLATE}:${res.id ?? ""}`, accountId),
@@ -905,7 +873,7 @@ export class ResendClient implements PluginClient {
         case SEGMENT: {
           const name = opt(fields["name"]);
           if (!name) throw new Error("Resend plugin: a segment name is required");
-          const res = await created<ResendSegment>("/segments", { name });
+          const res = await api.post("/segments", { body: { name } });
           return mapSegment(accountId, {
             id: res.id ?? "",
             name,
@@ -915,11 +883,13 @@ export class ResendClient implements PluginClient {
         case TOPIC: {
           const name = opt(fields["name"]);
           if (!name) throw new Error("Resend plugin: a topic name is required");
-          const res = await created<ResendTopic>("/topics", {
-            name,
-            default_subscription: fields["defaultSubscription"] || "opt_in",
-            ...(opt(fields["description"]) ? { description: opt(fields["description"]) } : {}),
-            ...(opt(fields["visibility"]) ? { visibility: opt(fields["visibility"]) } : {}),
+          const res = await api.post("/topics", {
+            body: {
+              name,
+              default_subscription: fields["defaultSubscription"] || "opt_in",
+              description: opt(fields["description"]),
+              visibility: opt(fields["visibility"]),
+            },
           });
           return runPluginEffect(
             this.getResource(TOPIC, `${accountId}:${TOPIC}:${res.id ?? ""}`, accountId),
@@ -929,12 +899,14 @@ export class ResendClient implements PluginClient {
           const email = opt(fields["email"]);
           if (!email) throw new Error("Resend plugin: an email address is required");
           const segments = parseList(fields["segments"]);
-          const res = await created<ResendContact>("/contacts", {
-            email,
-            ...(opt(fields["firstName"]) ? { first_name: opt(fields["firstName"]) } : {}),
-            ...(opt(fields["lastName"]) ? { last_name: opt(fields["lastName"]) } : {}),
-            unsubscribed: bool(fields["unsubscribed"]),
-            ...(segments.length ? { segments: segments.map((id) => ({ id })) } : {}),
+          const res = await api.post("/contacts", {
+            body: {
+              email,
+              first_name: opt(fields["firstName"]),
+              last_name: opt(fields["lastName"]),
+              unsubscribed: bool(fields["unsubscribed"]),
+              segments: segments.length ? segments.map((id) => ({ id })) : undefined,
+            },
           });
           return runPluginEffect(
             this.getResource(CONTACT, `${accountId}:${CONTACT}:${res.id ?? ""}`, accountId),
@@ -949,25 +921,30 @@ export class ResendClient implements PluginClient {
           }
           const type = fields["type"] || "string";
           const fallback = opt(fields["fallbackValue"]);
-          const res = await created<ResendContactProperty>("/contact-properties", {
-            key,
-            type,
-            ...(fallback !== undefined
-              ? { fallback_value: type === "number" ? Number(fallback) : fallback }
-              : {}),
+          const res = await api.post("/contact-properties", {
+            body: {
+              key,
+              type,
+              fallback_value:
+                fallback !== undefined
+                  ? type === "number"
+                    ? Number(fallback)
+                    : fallback
+                  : undefined,
+            },
           });
           return mapContactProperty(accountId, {
             id: res.id ?? "",
             key,
             type,
-            fallback_value: fallback ?? null,
+            ...(fallback !== undefined ? { fallback_value: fallback } : {}),
             created_at: new Date().toISOString(),
           });
         }
         case SUPPRESSION: {
           const email = opt(fields["email"]);
           if (!email) throw new Error("Resend plugin: an email address is required");
-          const res = await created<ResendSuppression>("/suppressions", { email });
+          const res = await api.post("/suppressions", { body: { email } });
           return mapSuppression(accountId, {
             id: res.id ?? "",
             email,
@@ -990,95 +967,104 @@ export class ResendClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const enc = pathEncode(externalIdOf(resourceId));
+      const { api } = this;
       const has = (k: string) => Object.prototype.hasOwnProperty.call(fields, k);
-      const patch = (path: string, body: Record<string, unknown>) =>
-        this.req<unknown>(path, "PATCH", body);
-      const pick = (map: Record<string, string>): Record<string, unknown> => {
-        const out: Record<string, unknown> = {};
-        for (const [field, param] of Object.entries(map))
-          if (has(field)) out[param] = fields[field] ?? "";
-        return out;
-      };
+      /** A field the form sent, as typed; `undefined` is not sent at all. */
+      const sent = (k: string) => (has(k) ? (fields[k] ?? "") : undefined);
+      const flag = (k: string) => (has(k) ? fields[k] === "true" : undefined);
       switch (typeId) {
         case DOMAIN: {
-          const body: Record<string, unknown> = pick({
-            trackingSubdomain: "tracking_subdomain",
-            tls: "tls",
-          });
-          if (has("openTracking")) body["open_tracking"] = fields["openTracking"] === "true";
-          if (has("clickTracking")) body["click_tracking"] = fields["clickTracking"] === "true";
+          const body: ApiBody<operations["domains/update"]> = {
+            tracking_subdomain: sent("trackingSubdomain"),
+            tls: sent("tls"),
+            open_tracking: flag("openTracking"),
+            click_tracking: flag("clickTracking"),
+          };
           if (has("sending") || has("receiving")) {
-            const current = await this.req<ResendDomain>(`/domains/${enc}`);
-            body["capabilities"] = {
+            const current = await api.get(`/domains/${enc}`);
+            body.capabilities = {
               sending: fields["sending"] || current.capabilities?.sending || "enabled",
               receiving: fields["receiving"] || current.capabilities?.receiving || "disabled",
             };
           }
-          await patch(`/domains/${enc}`, body);
+          await api.patch(`/domains/${enc}`, { body });
           this.domainCache = undefined;
           break;
         }
         case API_KEY:
-          if (has("name")) await patch(`/api-keys/${enc}`, { name: fields["name"] });
+          if (has("name")) await api.patch(`/api-keys/${enc}`, { body: { name: fields["name"] } });
           break;
         case WEBHOOK: {
-          const body: Record<string, unknown> = pick({ endpoint: "endpoint", status: "status" });
-          if (has("events")) {
-            const events = parseList(fields["events"]);
-            if (events.length === 0)
-              throw new Error("Resend plugin: a webhook needs at least one event");
-            body["events"] = events;
-          }
-          await patch(`/webhooks/${enc}`, body);
-          break;
-        }
-        case BROADCAST: {
-          const body = pick({
-            name: "name",
-            subject: "subject",
-            from: "from",
-            previewText: "preview_text",
-            segmentId: "segment_id",
-            topicId: "topic_id",
+          const events = has("events") ? parseList(fields["events"]) : undefined;
+          if (events?.length === 0)
+            throw new Error("Resend plugin: a webhook needs at least one event");
+          await api.patch(`/webhooks/${enc}`, {
+            body: { endpoint: sent("endpoint"), status: sent("status"), events },
           });
-          if (has("replyTo")) body["reply_to"] = parseList(fields["replyTo"]);
-          await patch(`/broadcasts/${enc}`, body);
           break;
         }
+        case BROADCAST:
+          await api.patch(`/broadcasts/${enc}`, {
+            body: {
+              name: sent("name"),
+              subject: sent("subject"),
+              from: sent("from"),
+              preview_text: sent("previewText"),
+              segment_id: sent("segmentId"),
+              topic_id: sent("topicId"),
+              reply_to: has("replyTo") ? parseList(fields["replyTo"]) : undefined,
+            },
+          });
+          break;
         case TEMPLATE:
-          await patch(
-            `/templates/${enc}`,
-            pick({ name: "name", alias: "alias", from: "from", subject: "subject" }),
-          );
+          await api.patch(`/templates/${enc}`, {
+            body: {
+              name: sent("name"),
+              alias: sent("alias"),
+              from: sent("from"),
+              subject: sent("subject"),
+            },
+          });
           break;
         case SEGMENT:
-          await patch(`/segments/${enc}`, pick({ name: "name" }));
+          await api.patch(`/segments/${enc}`, { body: { name: sent("name") } });
           break;
         case TOPIC:
-          await patch(
-            `/topics/${enc}`,
-            pick({ name: "name", description: "description", visibility: "visibility" }),
-          );
+          await api.patch(`/topics/${enc}`, {
+            body: {
+              name: sent("name"),
+              description: sent("description"),
+              visibility: sent("visibility"),
+            },
+          });
           break;
-        case CONTACT: {
-          const body = pick({ email: "email", firstName: "first_name", lastName: "last_name" });
-          if (has("unsubscribed")) body["unsubscribed"] = fields["unsubscribed"] === "true";
-          await patch(`/contacts/${enc}`, body);
+        case CONTACT:
+          await api.patch(`/contacts/${enc}`, {
+            body: {
+              email: sent("email"),
+              first_name: sent("firstName"),
+              last_name: sent("lastName"),
+              unsubscribed: flag("unsubscribed"),
+            },
+          });
           break;
-        }
         case CONTACT_PROPERTY: {
           if (has("fallbackValue")) {
-            const current = await this.req<ResendContactProperty>(`/contact-properties/${enc}`);
+            const current = await api.get(`/contact-properties/${enc}`);
             const raw = fields["fallbackValue"] ?? "";
-            await patch(`/contact-properties/${enc}`, {
-              fallback_value: raw === "" ? null : current.type === "number" ? Number(raw) : raw,
+            await api.patch(`/contact-properties/${enc}`, {
+              body: {
+                fallback_value: raw === "" ? null : current.type === "number" ? Number(raw) : raw,
+              },
             });
           }
           break;
         }
         case AUTOMATION:
-          await patch(`/automations/${enc}`, pick({ name: "name", status: "status" }));
+          await api.patch(`/automations/${enc}`, {
+            body: { name: sent("name"), status: sent("status") },
+          });
           break;
         default:
           throw new Error(`Resend plugin: ${typeId} cannot be edited`);
@@ -1091,24 +1077,48 @@ export class ResendClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const enc = encodeURIComponent(externalIdOf(resourceId));
-      const paths: Record<string, string> = {
-        [DOMAIN]: `/domains/${enc}`,
-        [API_KEY]: `/api-keys/${enc}`,
-        [WEBHOOK]: `/webhooks/${enc}`,
-        [BROADCAST]: `/broadcasts/${enc}`,
-        [TEMPLATE]: `/templates/${enc}`,
-        [SEGMENT]: `/segments/${enc}`,
-        [TOPIC]: `/topics/${enc}`,
-        [CONTACT]: `/contacts/${enc}`,
-        [CONTACT_PROPERTY]: `/contact-properties/${enc}`,
-        [SUPPRESSION]: `/suppressions/${enc}`,
-        [AUTOMATION]: `/automations/${enc}`,
-        [OAUTH_GRANT]: `/oauth/grants/${enc}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`Resend plugin: ${typeId} cannot be deleted`);
-      await this.req<unknown>(path, "DELETE");
+      const enc = pathEncode(externalIdOf(resourceId));
+      const { api } = this;
+      switch (typeId) {
+        case DOMAIN:
+          await api.delete(`/domains/${enc}`);
+          break;
+        case API_KEY:
+          await api.delete(`/api-keys/${enc}`);
+          break;
+        case WEBHOOK:
+          await api.delete(`/webhooks/${enc}`);
+          break;
+        case BROADCAST:
+          await api.delete(`/broadcasts/${enc}`);
+          break;
+        case TEMPLATE:
+          await api.delete(`/templates/${enc}`);
+          break;
+        case SEGMENT:
+          await api.delete(`/segments/${enc}`);
+          break;
+        case TOPIC:
+          await api.delete(`/topics/${enc}`);
+          break;
+        case CONTACT:
+          await api.delete(`/contacts/${enc}`);
+          break;
+        case CONTACT_PROPERTY:
+          await api.delete(`/contact-properties/${enc}`);
+          break;
+        case SUPPRESSION:
+          await api.delete(`/suppressions/${enc}`);
+          break;
+        case AUTOMATION:
+          await api.delete(`/automations/${enc}`);
+          break;
+        case OAUTH_GRANT:
+          await api.delete(`/oauth/grants/${enc}`);
+          break;
+        default:
+          throw new Error(`Resend plugin: ${typeId} cannot be deleted`);
+      }
       if (typeId === DOMAIN) this.domainCache = undefined;
     });
   }
@@ -1117,52 +1127,53 @@ export class ResendClient implements PluginClient {
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
-      const post = (path: string, body: unknown = {}) => this.req<unknown>(path, "POST", body);
+      const enc = pathEncode(externalIdOf(resourceId));
+      const { api } = this;
+      // Every action posts an empty object, whatever the document says it takes.
+      const body = {};
       if (typeId === WEBHOOK && actionId.startsWith("replay:")) {
-        const eventId = encodeURIComponent(actionId.slice("replay:".length));
-        await post(`/webhooks/${enc}/events/${eventId}/replay`);
+        const eventId = pathEncode(actionId.slice("replay:".length));
+        await api.post(`/webhooks/${enc}/events/${eventId}/replay`, { body });
         return;
       }
       switch (`${typeId}:${actionId}`) {
         case `${DOMAIN}:verify`:
-          await post(`/domains/${enc}/verify`);
+          await api.post(`/domains/${enc}/verify`, { body });
           return;
         case `${WEBHOOK}:enable`:
         case `${WEBHOOK}:disable`:
-          await this.req(`/webhooks/${enc}`, "PATCH", { status: `${actionId}d` });
+          await api.patch(`/webhooks/${enc}`, { body: { status: `${actionId}d` } });
           return;
         case `${WEBHOOK}:rotate-secret`:
-          await post(`/webhooks/${enc}/signing-secret/rotate`);
+          await api.post(`/webhooks/${enc}/signing-secret/rotate`, { body });
           return;
         case `${EMAIL}:cancel`:
-          await post(`/emails/${enc}/cancel`);
+          await api.post(`/emails/${enc}/cancel`, { body });
           return;
         case `${BROADCAST}:send`:
-          await post(`/broadcasts/${enc}/send`);
+          await api.post(`/broadcasts/${enc}/send`, { body });
           return;
         case `${BROADCAST}:cancel`:
-          await post(`/broadcasts/${enc}/cancel`);
+          await api.post(`/broadcasts/${enc}/cancel`, { body });
           return;
         case `${BROADCAST}:duplicate`:
-          await post(`/broadcasts/${enc}/duplicate`);
+          await api.post(`/broadcasts/${enc}/duplicate`, { body });
           return;
         case `${TEMPLATE}:publish`:
-          await post(`/templates/${enc}/publish`);
+          await api.post(`/templates/${enc}/publish`, { body });
           return;
         case `${TEMPLATE}:duplicate`:
-          await post(`/templates/${enc}/duplicate`);
+          await api.post(`/templates/${enc}/duplicate`, { body });
           return;
         case `${AUTOMATION}:enable`:
         case `${AUTOMATION}:disable`:
-          await this.req(`/automations/${enc}`, "PATCH", { status: `${actionId}d` });
+          await api.patch(`/automations/${enc}`, { body: { status: `${actionId}d` } });
           return;
         case `${AUTOMATION}:stop`:
-          await post(`/automations/${enc}/stop`);
+          await api.post(`/automations/${enc}/stop`, { body });
           return;
         case `${AUTOMATION}:duplicate`:
-          await post(`/automations/${enc}/duplicate`);
+          await api.post(`/automations/${enc}/duplicate`, { body });
           return;
         default:
           throw new Error(`Resend plugin: unknown action "${actionId}" for ${typeId}`);
@@ -1182,11 +1193,11 @@ export class ResendClient implements PluginClient {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - 7 * 86_400_000;
       const id = externalIdOf(resourceId);
-      if (resourceTypeId === ACCOUNT) return emailMetrics(this.ctx, startMs, endMs);
+      if (resourceTypeId === ACCOUNT) return emailMetrics(this.api, startMs, endMs);
       if (resourceTypeId === DOMAIN)
-        return emailMetrics(this.ctx, startMs, endMs, { domainId: id });
+        return emailMetrics(this.api, startMs, endMs, { domainId: id });
       if (resourceTypeId === BROADCAST)
-        return emailMetrics(this.ctx, startMs, endMs, { broadcastId: id });
+        return emailMetrics(this.api, startMs, endMs, { broadcastId: id });
       return [];
     });
   }
@@ -1197,7 +1208,7 @@ export class ResendClient implements PluginClient {
    */
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      const u = await this.req<ResendUsage>("/usage");
+      const u = await this.api.get("/usage");
       const out: QuotaUsage[] = [];
       const add = (
         id: string,
@@ -1254,6 +1265,7 @@ export class ResendClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
+      const { api } = this;
       const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 500);
       const pages = Math.ceil(limit / 100);
       let containers: string[];
@@ -1262,12 +1274,10 @@ export class ResendClient implements PluginClient {
       if (typeId === WEBHOOK) {
         containers = ["Deliveries"];
         active = "Deliveries";
-        const events = await listAll<{
-          id?: string;
-          type?: string;
-          status?: string;
-          created_at?: string;
-        }>(this.ctx, `/webhooks/${encodeURIComponent(externalIdOf(resourceId))}/events`, {}, pages);
+        const events = await listAll(
+          (query) => api.get(`/webhooks/${pathEncode(externalIdOf(resourceId))}/events`, { query }),
+          pages,
+        );
         lines = events
           .slice(0, limit)
           .map((e) => `${toIso(e.created_at)}  ${e.status ?? ""}  ${e.type ?? ""}  ${e.id ?? ""}`);
@@ -1278,22 +1288,17 @@ export class ResendClient implements PluginClient {
             ? params.container
             : "API requests";
         if (active === "API requests") {
-          const logs = await listAll<{
-            id?: string;
-            created_at?: string;
-            endpoint?: string;
-            method?: string;
-            response_status?: number;
-            user_agent?: string | null;
-          }>(this.ctx, "/logs", {}, pages);
+          const logs = await listAll((query) => api.get("/logs", { query }), pages);
           lines = logs
             .slice(0, limit)
             .map((l) =>
               `${toIso(l.created_at)}  ${l.response_status ?? ""}  ${l.method ?? ""} ${l.endpoint ?? ""}  ${l.user_agent ?? ""}`.trimEnd(),
             );
         } else {
-          const path = active === "Sent emails" ? "/emails" : "/emails/receiving";
-          const emails = await listAll<ResendEmail>(this.ctx, path, {}, pages);
+          const emails: LoggedEmail[] =
+            active === "Sent emails"
+              ? await listAll((query) => api.get("/emails", { query }), pages)
+              : await listAll((query) => api.get("/emails/receiving", { query }), pages);
           lines = emails.slice(0, limit).map((e) => {
             const to = Array.isArray(e.to) ? e.to.join(",") : (e.to ?? "");
             const ev = e.last_event ? `  ${e.last_event}` : "";

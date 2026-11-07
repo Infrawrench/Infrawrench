@@ -1,4 +1,5 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 import {
   ACCOUNT,
   API_KEY,
@@ -19,163 +20,28 @@ import {
 
 // ------------------------------------------------------------------ wire types
 
-export interface ResendDomainRecord {
-  record?: string;
-  name?: string;
-  type?: string;
-  ttl?: string;
-  status?: string;
-  value?: string;
-  priority?: number;
-}
+/**
+ * An entity is named by its widest response: every list row and create answer has
+ * fewer optional fields and is assignable to it.
+ */
+type Answer<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
-export interface ResendDomain {
-  id?: string;
-  name?: string;
-  status?: string;
-  region?: string;
-  created_at?: string;
-  open_tracking?: boolean;
-  click_tracking?: boolean;
-  tracking_subdomain?: string;
-  tls?: string;
-  capabilities?: { sending?: string; receiving?: string };
-  records?: ResendDomainRecord[];
-}
-
-export interface ResendApiKey {
-  id?: string;
-  name?: string;
-  created_at?: string;
-  last_used_at?: string | null;
-}
-
-export interface ResendWebhook {
-  id?: string;
-  endpoint?: string;
-  events?: string[] | null;
-  status?: string;
-  created_at?: string;
-  signing_secret?: string;
-}
-
-export interface ResendEmail {
-  id?: string;
-  message_id?: string;
-  to?: string[] | string;
-  cc?: string[] | null;
-  from?: string;
-  subject?: string;
-  created_at?: string;
-  scheduled_at?: string | null;
-  last_event?: string;
-}
-
-export interface ResendBroadcast {
-  id?: string;
-  name?: string;
-  segment_id?: string | null;
-  audience_id?: string | null;
-  topic_id?: string | null;
-  from?: string;
-  subject?: string;
-  reply_to?: string[] | null;
-  preview_text?: string;
-  status?: string;
-  created_at?: string;
-  scheduled_at?: string | null;
-  sent_at?: string | null;
-}
-
-export interface ResendTemplate {
-  id?: string;
-  name?: string;
-  alias?: string;
-  from?: string;
-  subject?: string;
-  status?: string;
-  published_at?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  has_unpublished_versions?: boolean;
-}
-
-export interface ResendSegment {
-  id?: string;
-  name?: string;
-  created_at?: string;
-}
-
-export interface ResendTopic {
-  id?: string;
-  name?: string;
-  description?: string;
-  default_subscription?: string;
-  visibility?: string;
-  created_at?: string;
-}
-
-export interface ResendContact {
-  id?: string;
-  email?: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  unsubscribed?: boolean;
-  created_at?: string;
-}
-
-export interface ResendContactProperty {
-  id?: string;
-  key?: string;
-  type?: string;
-  fallback_value?: string | number | null;
-  created_at?: string;
-}
-
-export interface ResendSuppression {
-  id?: string;
-  email?: string;
-  origin?: string;
-  source_id?: string;
-  created_at?: string;
-}
-
-export interface ResendAutomation {
-  id?: string;
-  name?: string;
-  status?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface ResendOAuthGrant {
-  id?: string;
-  client_id?: string;
-  scopes?: string[];
-  created_at?: string;
-  revoked_at?: string | null;
-  revoked_reason?: string | null;
-  client?: { name?: string };
-}
-
-interface UsageCounter {
-  used?: number;
-  limit?: number | null;
-  sent?: number;
-  received?: number;
-  resets_at?: string;
-}
-
-export interface ResendUsage {
-  emails?: { daily?: UsageCounter; monthly?: UsageCounter };
-  contacts?: UsageCounter;
-  segments?: UsageCounter;
-  broadcasts?: UsageCounter;
-  ai_credits?: UsageCounter;
-  automation_runs?: UsageCounter;
-  domains?: UsageCounter;
-  rate_limit?: { limit?: number; duration?: string };
-}
+/** `tls` is on a domain's requests and missing from every answer in the document. */
+export type ResendDomain = Answer<"domains/get"> & { tls?: string };
+export type ResendApiKey = ApiListItem<operations["api-keys/list"], "data">;
+export type ResendWebhook = Answer<"webhooks/get">;
+/** `scheduled_at` is on no email response in the document. */
+export type ResendEmail = Answer<"emails/get"> & { scheduled_at?: string | null };
+export type ResendBroadcast = Answer<"broadcasts/get">;
+export type ResendTemplate = Answer<"templates/get">;
+export type ResendSegment = Answer<"segments/get">;
+export type ResendTopic = Answer<"topics/get">;
+export type ResendContact = Answer<"contacts/get">;
+export type ResendContactProperty = Answer<"contact-properties/get">;
+export type ResendSuppression = Answer<"suppressions/get">;
+export type ResendAutomation = Answer<"automations/get">;
+export type ResendOAuthGrant = ApiListItem<operations["oauth/list-grants"], "data">;
+export type ResendUsage = Answer<"usage/get">;
 
 // ---------------------------------------------------------------------- helpers
 
