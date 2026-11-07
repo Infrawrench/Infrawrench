@@ -6,7 +6,7 @@ import {
   withinListCap,
 } from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
-import { statusOf, VENDOR } from "./api.js";
+import { isCapabilityRefusal, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
 
 /**
@@ -184,7 +184,7 @@ export class UsageReports {
         key: "buckets",
       });
     } catch (err) {
-      if (statusOf(err) === 401 || statusOf(err) === 403) {
+      if (isCapabilityRefusal(err)) {
         throw new CostSetupError(
           `This application key cannot list the usage reports bucket ${name}. Give it read access to that bucket (listBuckets, listFiles and readFiles), or use a key that covers all buckets.`,
           { label: "Manage application keys", url: "https://secure.backblaze.com/app_keys.htm" },

@@ -18,9 +18,22 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  externalIdOf,
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { B2Session } from "./api.js";
-import { B2Api, B2ApiError, coarseRegionOf, s3RegionOf, statusOf, VENDOR } from "./api.js";
+import {
+  B2Api,
+  B2ApiError,
+  coarseRegionOf,
+  isCapabilityRefusal,
+  s3RegionOf,
+  VENDOR,
+} from "./api.js";
 import {
   bucketInstance,
   corsInstance,
@@ -199,57 +212,71 @@ export class BackblazeB2Client implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "account":
-          return [await this.accountInstance(accountId)];
-        case "bucket": {
-          const s = await this.api.getSession();
-          const ctx = this.bucketCtx(s);
-          return (await this.listBuckets()).map((b) => bucketInstance(accountId, b, ctx));
-        }
-        case "lifecycle-rule":
-          return (await this.listBuckets()).flatMap((b) =>
-            (b.lifecycleRules ?? []).map((r) => lifecycleInstance(accountId, b, r)),
-          );
-        case "cors-rule":
-          return (await this.listBuckets()).flatMap((b) =>
-            (b.corsRules ?? []).map((r) => corsInstance(accountId, b, r)),
-          );
-        case "replication-rule": {
-          const buckets = await this.listBuckets();
-          const names = new Map(buckets.map((b) => [b.bucketId, b.bucketName]));
-          return buckets.flatMap((b) =>
-            (
-              unwrapReplication(b.replicationConfiguration).asReplicationSource?.replicationRules ??
-              []
-            ).map((r) => replicationInstance(accountId, b, r, names)),
-          );
-        }
-        case "notification-rule": {
-          const out: ResourceInstance[] = [];
-          for (const b of await this.listBuckets()) {
-            try {
-              const rules = await this.getNotificationRules(b.bucketId);
-              out.push(
-                ...rules.map((r) => notificationInstance(accountId, b.bucketId, b.bucketName, r)),
-              );
-            } catch (err) {
-              // A key without readBucketNotifications lists none rather than failing the pass.
-              if (statusOf(err) === 401 || statusOf(err) === 403) return out;
-              throw err;
-            }
-          }
-          return out;
-        }
-        case "application-key": {
-          const [keys, buckets] = await Promise.all([this.listKeys(), this.listBuckets()]);
-          const names = new Map(buckets.map((b) => [b.bucketId, b.bucketName]));
-          return keys.map((k) => keyInstance(accountId, k, names));
-        }
-        default:
-          return [];
+      try {
+        return await this.readType(typeId, accountId);
+      } catch (err) {
+        if (!isCapabilityRefusal(err)) throw err;
+        // This type's stored rows stay. A host that keeps no track (the desktop) answers false,
+        // and there the refusal should still show.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
+  }
+
+  private async readType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "account":
+        return [await this.accountInstance(accountId)];
+      case "bucket": {
+        const s = await this.api.getSession();
+        const ctx = this.bucketCtx(s);
+        return (await this.listBuckets()).map((b) => bucketInstance(accountId, b, ctx));
+      }
+      case "lifecycle-rule":
+        return (await this.listBuckets()).flatMap((b) =>
+          (b.lifecycleRules ?? []).map((r) => lifecycleInstance(accountId, b, r)),
+        );
+      case "cors-rule":
+        return (await this.listBuckets()).flatMap((b) =>
+          (b.corsRules ?? []).map((r) => corsInstance(accountId, b, r)),
+        );
+      case "replication-rule": {
+        const buckets = await this.listBuckets();
+        const names = new Map(buckets.map((b) => [b.bucketId, b.bucketName]));
+        return buckets.flatMap((b) =>
+          (
+            unwrapReplication(b.replicationConfiguration).asReplicationSource?.replicationRules ??
+            []
+          ).map((r) => replicationInstance(accountId, b, r, names)),
+        );
+      }
+      case "notification-rule": {
+        const out: ResourceInstance[] = [];
+        for (const b of await this.listBuckets()) {
+          try {
+            const rules = await this.getNotificationRules(b.bucketId);
+            out.push(
+              ...rules.map((r) => notificationInstance(accountId, b.bucketId, b.bucketName, r)),
+            );
+          } catch (err) {
+            if (!isCapabilityRefusal(err)) throw err;
+            // A key without readBucketNotifications: what it could not read stays stored.
+            // A host that keeps no track (the desktop) answers false, and there it shows.
+            const parent = `${accountId}:bucket:${b.bucketId}`;
+            if (!reportUnreadListPart({ parentResourceIds: [parent] })) throw err;
+          }
+        }
+        return out;
+      }
+      case "application-key": {
+        const [keys, buckets] = await Promise.all([this.listKeys(), this.listBuckets()]);
+        const names = new Map(buckets.map((b) => [b.bucketId, b.bucketName]));
+        return keys.map((k) => keyInstance(accountId, k, names));
+      }
+      default:
+        return [];
+    }
   }
 
   private async accountInstance(accountId: string): Promise<ResourceInstance> {
@@ -259,7 +286,7 @@ export class BackblazeB2Client implements PluginClient {
     try {
       buckets = await this.listBuckets();
     } catch (err) {
-      if (statusOf(err) !== 401 && statusOf(err) !== 403) throw err;
+      if (!isCapabilityRefusal(err)) throw err;
     }
     const reports = buckets.some((b) => b.bucketName === reportsBucketName(s.accountId));
     return instance(accountId, "account", s.accountId, `B2 account ${s.accountId}`, {
@@ -1409,9 +1436,10 @@ export class BackblazeB2Client implements PluginClient {
       let rows;
       try {
         rows = await this.reports.range(from, to);
-      } catch {
-        // No usage reports for this account: the tab shows its empty state.
-        return [];
+      } catch (err) {
+        // No usage reports for this account, or this key cannot read them: the empty state.
+        if (err instanceof CostSetupError || isCapabilityRefusal(err)) return [];
+        throw err;
       }
       return usageSeries(rows, resourceTypeId === "bucket" ? externalIdOf(resourceId) : undefined);
     });

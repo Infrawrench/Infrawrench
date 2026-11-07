@@ -36,6 +36,22 @@ export class B2ApiError extends Error {
   }
 }
 
+/**
+ * b2_authorize_account refused the key. It answers a wrong key as 401 `unauthorized`,
+ * the code every other call uses for a capability the key lacks, so this keeps them apart.
+ */
+export class B2AuthorizeError extends B2ApiError {}
+
+/**
+ * The key is valid but may not do this. Everything else, an expired token or a transaction
+ * cap (the only 403 B2 documents) among them, says nothing about what the key can see.
+ */
+export function isCapabilityRefusal(err: unknown): boolean {
+  if (!(err instanceof B2ApiError) || err instanceof B2AuthorizeError) return false;
+  if (err.status === 401) return err.code === "unauthorized";
+  return err.status === 403 && !err.code.endsWith("_cap_exceeded");
+}
+
 export function statusOf(err: unknown): number {
   if (err && typeof err === "object" && "status" in err) {
     const s = (err as { status: unknown }).status;
@@ -232,7 +248,8 @@ export class B2Api {
       },
     });
     if (res.status < 200 || res.status >= 300) {
-      throw b2Error(res.status, res.body, "b2_authorize_account");
+      const err = b2Error(res.status, res.body, "b2_authorize_account");
+      throw new B2AuthorizeError(err.status, err.code, err.message);
     }
     const session = sessionFrom(JSON.parse(res.body) as B2AuthorizeResponse);
     if (!session.apiUrl) {

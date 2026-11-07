@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { B2ApiError, coarseRegionOf, s3RegionOf } from "../api.js";
 import {
@@ -36,7 +36,7 @@ const AUTH = {
   },
 };
 
-function client(route: Route, secrets?: Map<string, string>) {
+function client(route: Route, secrets?: Map<string, string>, authorize?: () => Reply | undefined) {
   const calls: Call[] = [];
   const http = {
     async request(req: {
@@ -56,6 +56,14 @@ function client(route: Route, secrets?: Map<string, string>) {
       }
       calls.push({ url, method: req.method, headers: req.headers, body });
       if (url.pathname.endsWith("/b2_authorize_account")) {
+        const refused = authorize?.();
+        if (refused) {
+          return {
+            status: refused.status ?? 200,
+            headers: {},
+            body: JSON.stringify(refused.body),
+          };
+        }
         return { status: 200, headers: {}, body: JSON.stringify(AUTH) };
       }
       const reply = route(url, req.method, body);
@@ -475,5 +483,145 @@ describe("lists that cannot say they have every row", () => {
       return { body: { objects: [] } };
     });
     await expect(c.listStorageObjects("photos-bucket", "a/")).rejects.toThrow("is not a list");
+  });
+});
+
+describe("a refused or failed read", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const refused = { status: 401, body: { status: 401, code: "unauthorized", message: "no" } };
+  const expired = { status: 401, body: { status: 401, code: "expired_auth_token", message: "x" } };
+  const capped = {
+    status: 403,
+    body: { status: 403, code: "transaction_cap_exceeded", message: "cap" },
+  };
+  const server = { status: 500, body: { status: 500, code: "internal_error", message: "boom" } };
+  const RULE = { name: "r1", eventTypes: ["b2:ObjectCreated:*"], targetConfiguration: {} };
+  const B2 = { ...BUCKET, bucketId: "b2", bucketName: "two" };
+  const B3 = { ...BUCKET, bucketId: "b3", bucketName: "three" };
+  const COST_RANGE = { fromDate: "2026-09-01", toDate: "2026-09-30" };
+
+  function tracked() {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    return unread;
+  }
+
+  /** Notification rules per bucket, with the given answer for bucket b2. */
+  const rulesWith = (forB2: Reply): Route => {
+    return (url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) {
+        return { body: { buckets: [BUCKET, B2, B3] } };
+      }
+      if (url.searchParams.get("bucketId") === "b2") return forB2;
+      return { body: { eventNotificationRules: [RULE] } };
+    };
+  };
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  it("keeps a refused bucket's notification rules and still reads the others", async () => {
+    const unread = tracked();
+    const { c } = client(rulesWith(refused));
+    const rows = await c.listResources("notification-rule", "a1");
+    expect(rows.map((r) => r.parentResourceId).sort()).toEqual(["a1:bucket:b1", "a1:bucket:b3"]);
+    expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["a1:bucket:b2"] });
+  });
+
+  it("shows the refusal where no host keeps the rows", async () => {
+    const { c } = client(rulesWith(refused));
+    await expect(c.listResources("notification-rule", "a1")).rejects.toThrow("unauthorized");
+  });
+
+  it.each([
+    ["an expired token", expired],
+    ["a transaction cap", capped],
+    ["a server error", server],
+  ])("fails the notification rules on %s rather than reading none", async (_name, reply) => {
+    const unread = tracked();
+    const { c } = client(rulesWith(reply));
+    await expect(c.listResources("notification-rule", "a1")).rejects.toBeInstanceOf(B2ApiError);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("keeps a whole type's rows when the key lacks its capability", async () => {
+    const unread = tracked();
+    const keys = client((url) =>
+      url.pathname.endsWith("b2_list_keys") ? refused : { body: { buckets: [BUCKET] } },
+    );
+    await expect(keys.c.listResources("application-key", "a1")).resolves.toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+
+    unread.mockClear();
+    const buckets = client(() => refused);
+    await expect(buckets.c.listResources("bucket", "a1")).resolves.toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it("shows a whole type's refusal where no host keeps the rows", async () => {
+    const { c } = client(() => refused);
+    await expect(c.listResources("bucket", "a1")).rejects.toThrow("unauthorized");
+  });
+
+  it("fails a type on a wrong key, which authorize also answers as unauthorized", async () => {
+    const unread = tracked();
+    const { c } = client(
+      () => ({ body: { buckets: [] } }),
+      undefined,
+      () => refused,
+    );
+    await expect(c.listResources("bucket", "a1")).rejects.toMatchObject({ status: 401 });
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("fails a type when a key is revoked mid-session", async () => {
+    const unread = tracked();
+    let authorizations = 0;
+    const { c } = client(
+      () => expired,
+      undefined,
+      () => (authorizations++ === 0 ? undefined : refused),
+    );
+    await expect(c.listResources("bucket", "a1")).rejects.toMatchObject({ status: 401 });
+    expect(authorizations).toBe(2);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("shows the account row for a key that cannot list buckets, and fails on anything else", async () => {
+    const ok = client(() => refused);
+    const [row] = await ok.c.listResources("account", "a1");
+    expect(row!.fields["bucketCount"]).toBe(0);
+    const bad = client(() => capped);
+    await expect(bad.c.listResources("account", "a1")).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("reads only a refusal of the reports bucket as a cost setup problem", async () => {
+    const setup = client(() => refused);
+    await expect(setup.c.fetchCostData("a1", COST_RANGE)).rejects.toMatchObject({
+      name: "CostSetupError",
+    });
+    const cap = client(() => capped);
+    await expect(cap.c.fetchCostData("a1", COST_RANGE)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("charts nothing only when there are no usage reports to read", async () => {
+    const range = { startMs: Date.parse("2026-09-01"), endMs: Date.parse("2026-09-30") };
+    const none = client(() => ({ body: { buckets: [] } }));
+    await expect(
+      none.c.fetchMetricSeries!("account", "a1:account:x", "a1", range),
+    ).resolves.toEqual([]);
+    const noRead = client((url) =>
+      url.pathname.endsWith("b2_list_buckets")
+        ? { body: { buckets: [{ bucketId: "r1", bucketName: "b2-reports-acct1" }] } }
+        : refused,
+    );
+    await expect(
+      noRead.c.fetchMetricSeries!("account", "a1:account:x", "a1", range),
+    ).resolves.toEqual([]);
+    const down = client(() => server);
+    await expect(
+      down.c.fetchMetricSeries!("account", "a1:account:x", "a1", range),
+    ).rejects.toMatchObject({ status: 500 });
   });
 });
