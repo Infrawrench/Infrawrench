@@ -1226,3 +1226,190 @@ describe("model list failures", () => {
     await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
   });
 });
+
+describe("list limits (#384)", () => {
+  function teamRoutes(handler: (url: string) => Response) {
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      return handler(url);
+    });
+  }
+
+  const LISTS = [
+    { typeId: "file", key: "data", token: "pagination_token", pages: 500, mgmt: false },
+    { typeId: "batch", key: "batches", token: "pagination_token", pages: 500, mgmt: false },
+    { typeId: "api-key", key: "apiKeys", token: "paginationToken", pages: 500, mgmt: true },
+    { typeId: "collection", key: "collections", token: "pagination_token", pages: 500, mgmt: true },
+  ];
+
+  for (const { typeId, key, token, pages, mgmt } of LISTS) {
+    it(`${typeId}: rejects a list that never ends, after ${pages} pages`, async () => {
+      let reads = 0;
+      teamRoutes(() => {
+        reads++;
+        return jsonResponse({ [key]: [], [token]: `p${reads}` });
+      });
+      await expect(
+        client(mgmt ? "xai-mgmt" : undefined).listResources(typeId, ACCOUNT),
+      ).rejects.toThrow("has more than Infrawrench reads");
+      expect(reads).toBe(pages);
+    });
+
+    it(`${typeId}: rejects a first page with its key renamed`, async () => {
+      teamRoutes(() => jsonResponse({ items: [] }));
+      await expect(
+        client(mgmt ? "xai-mgmt" : undefined).listResources(typeId, ACCOUNT),
+      ).rejects.toThrow("is not a list");
+    });
+
+    it(`${typeId}: rejects a later page with its key renamed`, async () => {
+      let reads = 0;
+      teamRoutes(() => {
+        reads++;
+        return reads === 1
+          ? jsonResponse({ [key]: [], [token]: "next" })
+          : jsonResponse({ items: [] });
+      });
+      await expect(
+        client(mgmt ? "xai-mgmt" : undefined).listResources(typeId, ACCOUNT),
+      ).rejects.toThrow("is not a list");
+    });
+  }
+
+  it("custom voices: reads 50 pages of 1000 before giving up", async () => {
+    let reads = 0;
+    installFetch((url) => {
+      if (url.includes("/v1/tts/voices")) return jsonResponse({ voices: [] });
+      reads++;
+      expect(url).toContain("limit=1000");
+      return jsonResponse({ voices: [], pagination_token: `p${reads}` });
+    });
+    await expect(client().listResources("custom-voice", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(reads).toBe(50);
+  });
+
+  it("skills: rejects a list that never ends, after 500 pages", async () => {
+    let reads = 0;
+    installFetch(() => {
+      reads++;
+      return jsonResponse({ data: [], has_more: true, last_id: `s${reads}` });
+    });
+    await expect(client().listResources("skill", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(reads).toBe(500);
+  });
+
+  it("skills: rejects has_more with no cursor to continue from", async () => {
+    installFetch(() => jsonResponse({ data: [{ id: "s1" }], has_more: true, last_id: "" }));
+    await expect(client().listResources("skill", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("collection documents: rejects a collection that never ends, after 100 pages", async () => {
+    let reads = 0;
+    teamRoutes((url) => {
+      if (url.includes("/documents")) {
+        reads++;
+        return jsonResponse({ documents: [], pagination_token: `p${reads}` });
+      }
+      return jsonResponse({ collections: [{ collection_id: "c1", documents_count: 5 }] });
+    });
+    await expect(client("xai-mgmt").listResources("collection-document", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(reads).toBe(100);
+  });
+
+  it("rejects a full page whose cursor repeats", async () => {
+    const full = Array.from({ length: 100 }, (_, i) => ({ id: `f${i}`, filename: "x" }));
+    installFetch(() => jsonResponse({ data: full, pagination_token: "stuck" }));
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads an empty page that still hands back a token as more to come", async () => {
+    let reads = 0;
+    installFetch(() => {
+      reads++;
+      return reads === 1
+        ? jsonResponse({ batches: [], pagination_token: "next" })
+        : jsonResponse({ batches: [{ batch_id: "b1" }] });
+    });
+    const rows = await client().listResources("batch", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["b1"]);
+  });
+
+  it("reads a bare {} from the management host as an empty list", async () => {
+    teamRoutes(() => jsonResponse({}));
+    const c = client("xai-mgmt");
+    for (const typeId of ["api-key", "audit-event", "collection", "invoice"]) {
+      expect(await c.listResources(typeId, ACCOUNT)).toEqual([]);
+    }
+  });
+
+  it("reads a null list key as an empty list", async () => {
+    teamRoutes(() => jsonResponse({ collections: null, pagination_token: "" }));
+    expect(await client("xai-mgmt").listResources("collection", ACCOUNT)).toEqual([]);
+  });
+
+  it("does not read a management answer with its key renamed as empty", async () => {
+    teamRoutes(() => jsonResponse({ results: [] }));
+    const c = client("xai-mgmt");
+    for (const typeId of ["api-key", "audit-event", "collection", "invoice"]) {
+      await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    }
+  });
+
+  it("fetchCostData rejects a usage answer with its key renamed", async () => {
+    teamRoutes(() => jsonResponse({ series: [] }));
+    await expect(
+      client("xai-mgmt").fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-07" }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("fetchCostData reads an answer with no series as no cost", async () => {
+    teamRoutes(() => jsonResponse({ limitReached: false }));
+    expect(
+      await client("xai-mgmt").fetchCostData(ACCOUNT, {
+        fromDate: "2026-07-01",
+        toDate: "2026-07-07",
+      }),
+    ).toEqual([]);
+  });
+
+  it("the file picker still shows the newest files from a list longer than it reads", async () => {
+    let reads = 0;
+    teamRoutes((url) => {
+      if (url.includes("/v1/collections")) return jsonResponse({ collections: [] });
+      reads++;
+      return jsonResponse({
+        data: [{ id: `f${reads}`, filename: "x" }],
+        pagination_token: `p${reads}`,
+      });
+    });
+    const config = await client("xai-mgmt").getCreateConfig("collection-document");
+    const files = config.fields.find((f) => f.key === "fileId");
+    expect(files?.options).toHaveLength(20);
+    expect(reads).toBe(20);
+  });
+
+  it("the collection picker still shows the first collections of a longer list", async () => {
+    let reads = 0;
+    teamRoutes((url) => {
+      if (url.includes("/v1/files")) return jsonResponse({ data: [] });
+      reads++;
+      return jsonResponse({
+        collections: [{ collection_id: `c${reads}` }],
+        pagination_token: `p${reads}`,
+      });
+    });
+    const config = await client("xai-mgmt").getCreateConfig("collection-document");
+    const collections = config.fields.find((f) => f.key === "collectionId");
+    expect(collections?.options).toHaveLength(20);
+  });
+});

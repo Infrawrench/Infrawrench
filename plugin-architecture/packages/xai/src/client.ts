@@ -40,6 +40,7 @@ import {
   keyCannotRead,
   type InferenceApi,
 } from "./api.js";
+import { type PageCap, managementList, readTokenPages } from "./paging.js";
 import {
   type XaiInvoice,
   type XaiInvoicePreview,
@@ -76,12 +77,25 @@ const STT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 /**
  * The audit log is unbounded, so the walk needs a stop: 20 pages of 200 is the
- * 4,000 most recent events, in line with the 20-page cap the other list loops
- * use. Anything past that is reported as a truncation row rather than dropped.
+ * 4,000 most recent events. Anything past that is reported as a truncation row.
  */
 const AUDIT_PAGE_SIZE = 200;
 const AUDIT_MAX_PAGES = 20;
 const AUDIT_TRUNCATED_ID = "__truncated__";
+
+/**
+ * Reading past these throws, so a sync keeps what it has rather than pruning the rest:
+ * 50,000 rows is 500 pages of 100 or 50 of 1,000. A collection's documents are one
+ * parent's list, at 10,000 rows. The pickers on a create form stop early and show what
+ * they got.
+ */
+const LIST_PAGE_SIZE = 100;
+const LIST_MAX_PAGES = 500;
+const VOICE_PAGE_SIZE = 1000;
+const VOICE_MAX_PAGES = 50;
+const DOCUMENT_MAX_PAGES = 100;
+const PICKER_CAP: PageCap = { maxPages: 20, partial: true };
+const VOICE_PICKER_CAP: PageCap = { maxPages: 10, partial: true };
 
 /** Invoices are listed from this many months back. */
 const INVOICE_HISTORY_MONTHS = 24;
@@ -569,87 +583,83 @@ export class XaiClient implements PluginClient {
   }
 
   /** GET /v1/files: `limit` maxes out at 100; page with `pagination_token`. */
-  private async listFiles(accountId: string): Promise<ResourceInstance[]> {
+  private async listFiles(
+    accountId: string,
+    cap: PageCap = { maxPages: LIST_MAX_PAGES },
+  ): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
-    const out: ResourceInstance[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-
-    for (let page = 0; page < 20; page++) {
-      const data = await this.inference.get("/v1/files", {
-        query: {
-          limit: 100,
-          order: "desc",
-          sort_by: "created_at",
-          // As text, whatever the last page handed back.
-          ...(token ? { pagination_token: String(token) } : {}),
-        },
-      });
-      const batch = data.data ?? [];
-      for (const file of batch) {
-        out.push({
-          id: `${accountId}:file:${file.id}`,
-          pluginId: "xai",
-          resourceTypeId: "file",
-          accountId,
-          displayName: file.filename || file.id,
-          externalId: file.id,
-          fields: {
-            fileId: file.id,
-            filename: file.filename ?? "",
-            bytes: file.bytes ?? 0,
-            purpose: file.purpose ?? "",
-            createdAt: formatEpochSeconds(file.created_at),
-            expiresAt: formatEpochSeconds(file.expires_at ?? undefined),
-            publicUrl: file.public_url ?? "",
-            publicUrlExpiresAt: formatEpochSeconds(file.public_url_expires_at ?? undefined),
+    const path = "/v1/files";
+    const files = await readTokenPages({
+      ...cap,
+      vendor: "xAI",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      read: async (token) => {
+        const data = await this.inference.get(path, {
+          query: {
+            limit: LIST_PAGE_SIZE,
+            order: "desc",
+            sort_by: "created_at",
+            // As text, whatever the last page handed back.
+            ...(token ? { pagination_token: String(token) } : {}),
           },
-          resolvedOutputs: {},
-          secretStates: [],
-          createdAt: now,
-          updatedAt: now,
         });
-      }
-      token = data.pagination_token ?? undefined;
-      // `pagination_token` is the only end-of-list signal. A short page is not
-      // one: the server may return fewer than `limit` rows and still hand back a
-      // token, and stopping there silently drops every file behind it; they
-      // vanish from the listing and getResource/delete then 404 on them.
-      // A repeated cursor means the server is not advancing. Without this the
-      // loop re-fetches the same page until the iteration cap and emits
-      // duplicate resource ids, which is worse than the truncation the old
-      // short-page check caused.
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
+        return {
+          rows: requireListPage(data.data, { vendor: "xAI", path, key: "data" }),
+          next: data.pagination_token,
+        };
+      },
+    });
+    const out = files.map((file): ResourceInstance => ({
+      id: `${accountId}:file:${file.id}`,
+      pluginId: "xai",
+      resourceTypeId: "file",
+      accountId,
+      displayName: file.filename || file.id,
+      externalId: file.id,
+      fields: {
+        fileId: file.id,
+        filename: file.filename ?? "",
+        bytes: file.bytes ?? 0,
+        purpose: file.purpose ?? "",
+        createdAt: formatEpochSeconds(file.created_at),
+        expiresAt: formatEpochSeconds(file.expires_at ?? undefined),
+        publicUrl: file.public_url ?? "",
+        publicUrlExpiresAt: formatEpochSeconds(file.public_url_expires_at ?? undefined),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    }));
     return dedupeBy(out, (r) => r.id);
   }
 
   /** GET /v1/batches */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
-    const out: ResourceInstance[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-
-    for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (token) qs.set("pagination_token", token);
-      const data = await this.fetch<{ batches?: XaiBatch[]; pagination_token?: string | null }>(
-        `/v1/batches?${qs.toString()}`,
-      );
-      for (const b of data.batches ?? []) {
-        out.push(this.mapBatch(accountId, now, b));
-      }
-      token = data.pagination_token ?? undefined;
-      // A repeated cursor means the server is not advancing. Without this the
-      // loop re-fetches the same page until the iteration cap and emits
-      // duplicate resource ids, which is worse than the truncation the old
-      // short-page check caused.
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
-    return dedupeBy(out, (r) => r.id);
+    const path = "/v1/batches";
+    const batches = await readTokenPages({
+      vendor: "xAI",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      maxPages: LIST_MAX_PAGES,
+      read: async (token) => {
+        const qs = new URLSearchParams({ limit: String(LIST_PAGE_SIZE) });
+        if (token) qs.set("pagination_token", token);
+        const data = await this.fetch<{ batches?: XaiBatch[]; pagination_token?: string | null }>(
+          `${path}?${qs.toString()}`,
+        );
+        return {
+          rows: requireListPage(data.batches, { vendor: "xAI", path, key: "batches" }),
+          next: data.pagination_token,
+        };
+      },
+    });
+    return dedupeBy(
+      batches.map((b) => this.mapBatch(accountId, now, b)),
+      (r) => r.id,
+    );
   }
 
   private mapBatch(accountId: string, now: string, b: XaiBatch): ResourceInstance {
@@ -762,54 +772,58 @@ export class XaiClient implements PluginClient {
   }
 
   /** GET /v1/custom-voices: `limit` 1–1000, page with `pagination_token`. */
-  private async fetchCustomVoices(): Promise<XaiCustomVoice[]> {
-    const out: XaiCustomVoice[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-    for (let page = 0; page < 10; page++) {
-      const qs = new URLSearchParams({ limit: "1000" });
-      if (token) qs.set("pagination_token", token);
-      const data = await this.fetch<{
-        voices?: XaiCustomVoice[];
-        pagination_token?: string | null;
-      }>(`/v1/custom-voices?${qs.toString()}`);
-      out.push(...(data.voices ?? []));
-      token = data.pagination_token ?? undefined;
-      // A repeated cursor means the server is not advancing. Without this the
-      // loop re-fetches the same page until the iteration cap and emits
-      // duplicate resource ids, which is worse than the truncation the old
-      // short-page check caused.
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
-    return dedupeBy(out, (r) => r.voice_id);
+  private async fetchCustomVoices(
+    cap: PageCap = { maxPages: VOICE_MAX_PAGES },
+  ): Promise<XaiCustomVoice[]> {
+    const path = "/v1/custom-voices";
+    const voices = await readTokenPages({
+      ...cap,
+      vendor: "xAI",
+      path,
+      pageSize: VOICE_PAGE_SIZE,
+      read: async (token) => {
+        const qs = new URLSearchParams({ limit: String(VOICE_PAGE_SIZE) });
+        if (token) qs.set("pagination_token", token);
+        const data = await this.fetch<{
+          voices?: XaiCustomVoice[];
+          pagination_token?: string | null;
+        }>(`${path}?${qs.toString()}`);
+        return {
+          rows: requireListPage(data.voices, { vendor: "xAI", path, key: "voices" }),
+          next: data.pagination_token,
+        };
+      },
+    });
+    return dedupeBy(voices, (r) => r.voice_id);
   }
 
   /** GET /auth/teams/{teamId}/api-keys (management key) */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const teamId = await this.getTeamId();
     const now = new Date().toISOString();
-    const out: ResourceInstance[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-
-    for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ pageSize: "100" });
-      if (token) qs.set("paginationToken", token);
-      const data = await this.mgmtFetch<{
-        apiKeys?: XaiManagedApiKey[];
-        paginationToken?: string | null;
-      }>(`/auth/teams/${encodeURIComponent(teamId)}/api-keys?${qs.toString()}`);
-      for (const k of data.apiKeys ?? []) out.push(this.mapApiKey(accountId, now, k));
-      token = data.paginationToken ?? undefined;
-      // A repeated cursor means the server is not advancing. Without this the
-      // loop re-fetches the same page until the iteration cap and emits
-      // duplicate resource ids, which is worse than the truncation the old
-      // short-page check caused.
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
-    return dedupeBy(out, (r) => r.id);
+    const path = `/auth/teams/${encodeURIComponent(teamId)}/api-keys`;
+    const keys = await readTokenPages({
+      vendor: "xAI Management",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      maxPages: LIST_MAX_PAGES,
+      read: async (token) => {
+        const qs = new URLSearchParams({ pageSize: String(LIST_PAGE_SIZE) });
+        if (token) qs.set("paginationToken", token);
+        const data = await this.mgmtFetch<{
+          apiKeys?: XaiManagedApiKey[];
+          paginationToken?: string | null;
+        }>(`${path}?${qs.toString()}`);
+        return {
+          rows: managementList(data, "apiKeys", path, ["paginationToken"]),
+          next: data.paginationToken,
+        };
+      },
+    });
+    return dedupeBy(
+      keys.map((k) => this.mapApiKey(accountId, now, k)),
+      (r) => r.id,
+    );
   }
 
   private mapApiKey(accountId: string, now: string, k: XaiManagedApiKey): ResourceInstance {
@@ -852,10 +866,12 @@ export class XaiClient implements PluginClient {
   private async listAuditEvents(accountId: string): Promise<ResourceInstance[]> {
     const teamId = await this.getTeamId();
     const now = new Date().toISOString();
+    const path = `/audit/teams/${encodeURIComponent(teamId)}/events`;
     const out: ResourceInstance[] = [];
     let token: string | undefined;
     let seenToken: string | undefined;
 
+    // Rolling window: the newest N. Older rows falling off is what this type means.
     for (let page = 0; page < AUDIT_MAX_PAGES; page++) {
       const qs = new URLSearchParams({
         pageSize: String(AUDIT_PAGE_SIZE),
@@ -863,9 +879,11 @@ export class XaiClient implements PluginClient {
       });
       if (token) qs.set("pageToken", token);
       const data = await this.mgmtFetch<{ events?: XaiAuditEvent[]; nextPageToken?: string }>(
-        `/audit/teams/${encodeURIComponent(teamId)}/events?${qs.toString()}`,
+        `${path}?${qs.toString()}`,
       );
-      for (const e of data.events ?? []) out.push(this.mapAuditEvent(accountId, now, e));
+      for (const e of managementList(data, "events", path, ["nextPageToken"])) {
+        out.push(this.mapAuditEvent(accountId, now, e));
+      }
       token = data.nextPageToken || undefined;
       // A repeated cursor means the server is not advancing. Without this the
       // loop re-fetches the same page until the iteration cap and emits
@@ -939,40 +957,48 @@ export class XaiClient implements PluginClient {
    */
   private async listSkills(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
-    const out: ResourceInstance[] = [];
-    let after: string | undefined;
-
-    for (let page = 0; page < 20; page++) {
-      const data = await this.inference.get("/v1/skills", {
-        // As text, whatever the last page handed back.
-        query: { limit: 100, order: "desc", ...(after ? { after: String(after) } : {}) },
-      });
-      for (const skill of data.data ?? []) {
-        out.push({
-          id: `${accountId}:skill:${skill.id}`,
-          pluginId: "xai",
-          resourceTypeId: "skill",
-          accountId,
-          displayName: skill.name || skill.id,
-          externalId: skill.id,
-          fields: {
-            skillId: skill.id,
-            name: skill.name ?? "",
-            description: skill.description ?? "",
-            defaultVersion: skill.default_version ?? "",
-            latestVersion: skill.latest_version ?? "",
-            createdAt: formatEpochSeconds(skill.created_at),
+    const path = "/v1/skills";
+    const skills = await readTokenPages({
+      vendor: "xAI",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      maxPages: LIST_MAX_PAGES,
+      read: async (after) => {
+        const data = await this.inference.get(path, {
+          // As text, whatever the last page handed back.
+          query: {
+            limit: LIST_PAGE_SIZE,
+            order: "desc",
+            ...(after ? { after: String(after) } : {}),
           },
-          resolvedOutputs: {},
-          secretStates: [],
-          createdAt: formatEpochSeconds(skill.created_at) || now,
-          updatedAt: now,
         });
-      }
-      const next = data.last_id;
-      if (!data.has_more || !next || next === after) break;
-      after = next;
-    }
+        return {
+          rows: requireListPage(data.data, { vendor: "xAI", path, key: "data" }),
+          next: data.last_id,
+          hasMore: Boolean(data.has_more),
+        };
+      },
+    });
+    const out = skills.map((skill): ResourceInstance => ({
+      id: `${accountId}:skill:${skill.id}`,
+      pluginId: "xai",
+      resourceTypeId: "skill",
+      accountId,
+      displayName: skill.name || skill.id,
+      externalId: skill.id,
+      fields: {
+        skillId: skill.id,
+        name: skill.name ?? "",
+        description: skill.description ?? "",
+        defaultVersion: skill.default_version ?? "",
+        latestVersion: skill.latest_version ?? "",
+        createdAt: formatEpochSeconds(skill.created_at),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: formatEpochSeconds(skill.created_at) || now,
+      updatedAt: now,
+    }));
     return dedupeBy(out, (r) => r.id);
   }
 
@@ -981,23 +1007,32 @@ export class XaiClient implements PluginClient {
    * page with `pagination_token`. The team is derived from the management key.
    * Docs: https://docs.x.ai/developers/rest-api-reference/collections/collection
    */
-  private async fetchCollections(): Promise<XaiCollection[]> {
-    const out: XaiCollection[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (token) qs.set("pagination_token", token);
-      const data = await this.mgmtFetch<{
-        collections?: XaiCollection[];
-        pagination_token?: string | null;
-      }>(`/v1/collections?${qs.toString()}`);
-      out.push(...(data.collections ?? []).filter((c) => Boolean(c.collection_id)));
-      token = data.pagination_token || undefined;
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
-    return dedupeBy(out, (c) => c.collection_id);
+  private async fetchCollections(
+    cap: PageCap = { maxPages: LIST_MAX_PAGES },
+  ): Promise<XaiCollection[]> {
+    const path = "/v1/collections";
+    const collections = await readTokenPages({
+      ...cap,
+      vendor: "xAI Management",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      read: async (token) => {
+        const qs = new URLSearchParams({ limit: String(LIST_PAGE_SIZE) });
+        if (token) qs.set("pagination_token", token);
+        const data = await this.mgmtFetch<{
+          collections?: XaiCollection[];
+          pagination_token?: string | null;
+        }>(`${path}?${qs.toString()}`);
+        return {
+          rows: managementList(data, "collections", path, ["pagination_token"]),
+          next: data.pagination_token,
+        };
+      },
+    });
+    return dedupeBy(
+      collections.filter((c) => Boolean(c.collection_id)),
+      (c) => c.collection_id,
+    );
   }
 
   private async listCollections(accountId: string): Promise<ResourceInstance[]> {
@@ -1007,22 +1042,25 @@ export class XaiClient implements PluginClient {
 
   /** GET /v1/collections/{collection_id}/documents, paged like the collection list. */
   private async fetchCollectionDocuments(collectionId: string): Promise<XaiCollectionDocument[]> {
-    const out: XaiCollectionDocument[] = [];
-    let token: string | undefined;
-    let seenToken: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (token) qs.set("pagination_token", token);
-      const data = await this.mgmtFetch<{
-        documents?: XaiCollectionDocument[];
-        pagination_token?: string | null;
-      }>(`/v1/collections/${encodeURIComponent(collectionId)}/documents?${qs.toString()}`);
-      out.push(...(data.documents ?? []));
-      token = data.pagination_token || undefined;
-      if (!token || token === seenToken) break;
-      seenToken = token;
-    }
-    return out;
+    const path = `/v1/collections/${encodeURIComponent(collectionId)}/documents`;
+    return readTokenPages({
+      vendor: "xAI Management",
+      path,
+      pageSize: LIST_PAGE_SIZE,
+      maxPages: DOCUMENT_MAX_PAGES,
+      read: async (token) => {
+        const qs = new URLSearchParams({ limit: String(LIST_PAGE_SIZE) });
+        if (token) qs.set("pagination_token", token);
+        const data = await this.mgmtFetch<{
+          documents?: XaiCollectionDocument[];
+          pagination_token?: string | null;
+        }>(`${path}?${qs.toString()}`);
+        return {
+          rows: managementList(data, "documents", path, ["pagination_token"]),
+          next: data.pagination_token,
+        };
+      },
+    });
   }
 
   /**
@@ -1059,11 +1097,10 @@ export class XaiClient implements PluginClient {
       "since.year": String(since.getUTCFullYear()),
       "since.month": String(since.getUTCMonth() + 1),
     });
-    const data = await this.mgmtFetch<{ invoices?: XaiInvoice[] }>(
-      `/v1/billing/teams/${encodeURIComponent(teamId)}/invoices?${qs.toString()}`,
-    );
+    const path = `/v1/billing/teams/${encodeURIComponent(teamId)}/invoices`;
+    const data = await this.mgmtFetch<{ invoices?: XaiInvoice[] }>(`${path}?${qs.toString()}`);
     const now = new Date().toISOString();
-    return (data.invoices ?? [])
+    return managementList(data, "invoices", path)
       .filter((inv) => Boolean(inv.invoiceId))
       .map((inv) => mapInvoice(accountId, now, inv))
       .sort((a, b) => String(b.fields["createTime"]).localeCompare(String(a.fields["createTime"])));
@@ -1159,7 +1196,7 @@ export class XaiClient implements PluginClient {
   private async speechVoiceOptions(): Promise<SpeechPanelOption[]> {
     const [builtIn, custom] = await Promise.all([
       this.fetchBuiltInVoices().catch((): XaiVoice[] => FALLBACK_BUILTIN_VOICES),
-      this.fetchCustomVoices().catch((): XaiCustomVoice[] => []),
+      this.fetchCustomVoices(VOICE_PICKER_CAP).catch((): XaiCustomVoice[] => []),
     ]);
     const options: SpeechPanelOption[] = builtIn.map((v) => ({
       id: v.voice_id,
@@ -1335,7 +1372,9 @@ export class XaiClient implements PluginClient {
     }
     const series = await this.queryUsage(range.fromDate, range.toDate, "TIME_UNIT_DAY");
     const rows: CostRow[] = [];
-    for (const s of series.timeSeries ?? []) {
+    // `limitReached` can stand beside a series left out of an empty answer.
+    const usagePath = "/v1/billing/teams/{team_id}/usage";
+    for (const s of managementList(series, "timeSeries", usagePath, ["limitReached"])) {
       const service = s.groupLabels?.[0] ?? s.group?.[0] ?? "xAI API";
       for (const point of s.dataPoints ?? []) {
         const amount = point.values?.[0];
@@ -1548,8 +1587,8 @@ export class XaiClient implements PluginClient {
       }
       if (typeId === "collection-document") {
         const [collections, files] = await Promise.all([
-          this.fetchCollections().catch((): XaiCollection[] => []),
-          this.listFiles("picker").catch((): ResourceInstance[] => []),
+          this.fetchCollections(PICKER_CAP).catch((): XaiCollection[] => []),
+          this.listFiles("picker", PICKER_CAP).catch((): ResourceInstance[] => []),
         ]);
         return {
           fields: [
