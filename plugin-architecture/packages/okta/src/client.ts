@@ -22,7 +22,7 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import { OktaApi, readCredentials, type Schemas } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import { mapOktaSeat, oktaSeatPrice } from "./seats.js";
@@ -32,6 +32,12 @@ export const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 const METRIC_BUCKETS = 48;
 /** System Log pages (1000 events each) read for one metrics window. */
 const MAX_LOG_PAGES = 5;
+/** The host cannot prune past about this many live rows of one account (#572). */
+const MAX_LIST_ROWS = 50_000;
+
+function pagesFor(pageSize: number): number {
+  return Math.ceil(MAX_LIST_ROWS / pageSize);
+}
 
 /** Every policy type `GET /api/v1/policies?type=` accepts (the parameter is required). */
 export const POLICY_TYPES: Schemas["PolicyType"][] = [
@@ -95,6 +101,26 @@ function statusOf(error: unknown): number | undefined {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** For a list a picker or detail view can do without: only a refused list still says so. */
+function noRows(error: unknown): never[] {
+  rethrowIncompleteList(error);
+  return [];
+}
+
+/** A count from a capped read. One that failed shows nothing, because 0 reads as an answer. */
+async function countStat(
+  label: string,
+  rows: Promise<readonly object[]>,
+  cap: number,
+): Promise<DashboardStat[]> {
+  try {
+    const { length } = await rows;
+    return [{ label, value: length >= cap ? `${cap}+` : String(length) }];
+  } catch (error) {
+    return noRows(error);
+  }
 }
 
 /**
@@ -183,73 +209,73 @@ export class OktaClient implements PluginClient {
           return [this.mapOrg(accountId, await this.org())];
         case "user":
           return (
-            await this.api.paginate(
-              this.api.rest.getResponse("/api/v1/users", { query: { limit: 200 } }),
-            )
+            await this.api.list.getAll("/api/v1/users", null, {
+              query: { limit: 200 },
+              maxPages: pagesFor(200),
+            })
           ).map((u) => this.mapUser(accountId, u));
         case "group":
+          // The document allows 10,000 a page, and advises against the maximum.
           return (
-            await this.api.paginate(
-              this.api.rest.getResponse("/api/v1/groups", {
-                query: { limit: 1000, expand: "stats" },
-              }),
-            )
+            await this.api.list.getAll("/api/v1/groups", null, {
+              query: { limit: 1000, expand: "stats" },
+              maxPages: pagesFor(1000),
+            })
           ).map((g) => this.mapGroup(accountId, g));
         case "app":
           return (
-            await this.api.paginate(
-              this.api.rest.getResponse("/api/v1/apps", { query: { limit: 200 } }),
-            )
+            await this.api.list.getAll("/api/v1/apps", null, {
+              query: { limit: 200 },
+              maxPages: pagesFor(200),
+            })
           ).map((a) => this.mapApp(accountId, a));
         case "authorization-server":
           return (
-            await this.api.paginate(
-              this.api.rest.getResponse("/api/v1/authorizationServers", { query: { limit: 200 } }),
-            )
+            await this.api.list.getAll("/api/v1/authorizationServers", null, {
+              query: { limit: 200 },
+              maxPages: pagesFor(200),
+            })
           ).map((s) => this.mapAuthServer(accountId, s));
         case "policy": {
           const settled = await Promise.allSettled(
             POLICY_TYPES.map((type) =>
-              this.api.paginate(
-                this.api.rest.getResponse("/api/v1/policies", { query: { type } }),
-                5,
-              ),
+              this.api.list.getAll("/api/v1/policies", null, { query: { type } }),
             ),
           );
-          return settled.flatMap((result, i) => {
+          const answered = settled.some((result) => result.status === "fulfilled");
+          return settled.flatMap((result) => {
             if (result.status === "fulfilled")
               return result.value.map((p) => this.mapPolicy(accountId, p));
-            // Feature-gated policy types answer 400/404 on orgs without the feature.
+            // A type the org has no feature for refuses, and has no policies. Anything
+            // else, or every type refusing, says nothing about what the org has, and an
+            // empty answer would prune them.
             const status = statusOf(result.reason);
-            if (status !== 400 && status !== 404) {
-              console.warn(
-                `Okta plugin: skipping ${POLICY_TYPES[i]} policies: ${String(result.reason)}`,
-              );
-            }
-            return [];
+            if (answered && (status === 400 || status === 403 || status === 404)) return [];
+            throw result.reason;
           });
         }
         case "network-zone":
-          return (await this.api.paginate(this.api.rest.getResponse("/api/v1/zones"))).map((z) =>
+          return (await this.api.list.getAll("/api/v1/zones", null)).map((z) =>
             this.mapZone(accountId, z),
           );
         case "api-token":
-          return (await this.api.paginate(this.api.rest.getResponse("/api/v1/api-tokens"))).map(
-            (t) => this.mapApiToken(accountId, t),
+          return (await this.api.list.getAll("/api/v1/api-tokens", null)).map((t) =>
+            this.mapApiToken(accountId, t),
           );
         case "event-hook":
-          return (await this.api.rest.get("/api/v1/eventHooks")).map((h) =>
+          return (await this.api.list.getAll("/api/v1/eventHooks", null)).map((h) =>
             this.mapEventHook(accountId, h),
           );
-        case "domain": {
-          const body = await this.api.rest.get("/api/v1/domains");
-          return (body.domains ?? []).map((d) => this.mapDomain(accountId, d));
-        }
+        case "domain":
+          return (await this.api.list.getAll("/api/v1/domains", "domains")).map((d) =>
+            this.mapDomain(accountId, d),
+          );
         case "trusted-origin":
           return (
-            await this.api.paginate(
-              this.api.rest.getResponse("/api/v1/trustedOrigins", { query: { limit: 200 } }),
-            )
+            await this.api.list.getAll("/api/v1/trustedOrigins", null, {
+              query: { limit: 200 },
+              maxPages: pagesFor(200),
+            })
           ).map((t) => this.mapTrustedOrigin(accountId, t));
         default:
           throw new Error(`Okta plugin: unknown resource type "${typeId}"`);
@@ -691,18 +717,17 @@ export class OktaClient implements PluginClient {
         'eventType sw "system.client.rate_limit"',
         'eventType sw "system.operation.rate_limit"',
       ].join(" or ");
-      const events = await this.api.paginate(
-        this.api.rest.getResponse("/api/v1/logs", {
-          query: {
-            since: new Date(startMs).toISOString(),
-            until: new Date(endMs).toISOString(),
-            filter,
-            limit: 1000,
-            sortOrder: "DESCENDING",
-          },
-        }),
-        MAX_LOG_PAGES,
-      );
+      const events = await this.api.list.getAll("/api/v1/logs", null, {
+        query: {
+          since: new Date(startMs).toISOString(),
+          until: new Date(endMs).toISOString(),
+          filter,
+          limit: 1000,
+          sortOrder: "DESCENDING",
+        },
+        maxPages: MAX_LOG_PAGES,
+        partial: true,
+      });
       const bucketMs = Math.max(
         60_000,
         Math.ceil((endMs - startMs) / METRIC_BUCKETS / 60_000) * 60_000,
@@ -821,23 +846,26 @@ export class OktaClient implements PluginClient {
       }
       if (resourceTypeId === "app") {
         const [users, groups] = await Promise.all([
-          this.api
-            .paginate(
-              this.api.rest.getResponse(`/api/v1/apps/${id}/users`, { query: { limit: 500 } }),
-              4,
-            )
-            .catch(() => []),
-          this.api
-            .paginate(
-              this.api.rest.getResponse(`/api/v1/apps/${id}/groups`, { query: { limit: 200 } }),
-              4,
-            )
-            .catch(() => []),
+          countStat(
+            "Assigned users",
+            this.api.list.getAll(`/api/v1/apps/${id}/users`, null, {
+              query: { limit: 500 },
+              maxPages: 4,
+              partial: true,
+            }),
+            2000,
+          ),
+          countStat(
+            "Assigned groups",
+            this.api.list.getAll(`/api/v1/apps/${id}/groups`, null, {
+              query: { limit: 200 },
+              maxPages: 4,
+              partial: true,
+            }),
+            800,
+          ),
         ]);
-        return [
-          { label: "Assigned users", value: String(users.length) },
-          { label: "Assigned groups", value: String(groups.length) },
-        ];
+        return [...users, ...groups];
       }
       return [];
     });
@@ -910,9 +938,9 @@ export class OktaClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async groupOptions(oktaOnly = true): Promise<SelectOption[]> {
-    const groups = await this.api
-      .paginate(this.api.rest.getResponse("/api/v1/groups", { query: { limit: 1000 } }), 5)
-      .catch((): Schemas["Group"][] => []);
+    const groups = await this.api.list
+      .getAll("/api/v1/groups", null, { query: { limit: 1000 }, maxPages: 5, partial: true })
+      .catch(noRows);
     return groups
       .filter((g) => !oktaOnly || g.type === "OKTA_GROUP")
       .map((g) => ({
@@ -923,14 +951,13 @@ export class OktaClient implements PluginClient {
   }
 
   private async userOptions(): Promise<SelectOption[]> {
-    const users = await this.api
-      .paginate(
-        this.api.rest.getResponse("/api/v1/users", {
-          query: { limit: 200, filter: 'status eq "ACTIVE"' },
-        }),
-        5,
-      )
-      .catch((): Schemas["User"][] => []);
+    const users = await this.api.list
+      .getAll("/api/v1/users", null, {
+        query: { limit: 200, filter: 'status eq "ACTIVE"' },
+        maxPages: 5,
+        partial: true,
+      })
+      .catch(noRows);
     return users.map((u) => ({ id: str(u.id), label: str(u.profile?.login) }));
   }
 
@@ -1498,13 +1525,15 @@ export class OktaClient implements PluginClient {
    * Every licensed user, read with `GET /api/v1/users` (200 per page, `after`
    * cursor in the `Link` header; DEPROVISIONED users are omitted by default).
    * https://developer.okta.com/docs/api/openapi/okta-management/management/tag/User/#tag/User/operation/listUsers
-   * Every page or nothing: a failed page fails the read.
+   * Every page or nothing: a failed page fails the read. Seats are not resource rows,
+   * so the host's prune limit does not bound this one.
    */
   fetchSeats(_accountId: string, _options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
     return attempt(async () => {
-      const users = await this.api.paginateAll(
-        this.api.rest.getResponse("/api/v1/users", { query: { limit: 200 } }),
-      );
+      const users = await this.api.list.getAll("/api/v1/users", null, {
+        query: { limit: 200 },
+        maxPages: 1000,
+      });
       const price = oktaSeatPrice(this.seatPriceMonthly);
       const orgUrl = this.api.orgUrl;
       const seats: SeatRecord[] = [];
@@ -1766,7 +1795,7 @@ export class OktaClient implements PluginClient {
       switch (resource.resourceTypeId) {
         case "user": {
           const [groups, allGroups] = await Promise.all([
-            rest.get(`/api/v1/users/${id}/groups`).catch((): Schemas["Group"][] => []),
+            this.api.list.getAll(`/api/v1/users/${id}/groups`, null).catch(noRows),
             this.groupOptions(),
           ]);
           extra["__groups__"] = JSON.stringify(
@@ -1777,12 +1806,13 @@ export class OktaClient implements PluginClient {
         }
         case "group": {
           const [members, users] = await Promise.all([
-            this.api
-              .paginate(
-                rest.getResponse(`/api/v1/groups/${id}/users`, { query: { limit: 200 } }),
-                3,
-              )
-              .catch((): Schemas["User"][] => []),
+            this.api.list
+              .getAll(`/api/v1/groups/${id}/users`, null, {
+                query: { limit: 200 },
+                maxPages: 3,
+                partial: true,
+              })
+              .catch(noRows),
             this.userOptions(),
           ]);
           const memberIds = new Set(members.map((m) => str(m.id)));
@@ -1798,9 +1828,13 @@ export class OktaClient implements PluginClient {
         }
         case "app": {
           const [groups, allGroups] = await Promise.all([
-            this.api
-              .paginate(rest.getResponse(`/api/v1/apps/${id}/groups`, { query: { limit: 200 } }), 3)
-              .catch(() => []),
+            this.api.list
+              .getAll(`/api/v1/apps/${id}/groups`, null, {
+                query: { limit: 200 },
+                maxPages: 3,
+                partial: true,
+              })
+              .catch(noRows),
             this.groupOptions(false),
           ]);
           const names = new Map(allGroups.map((g) => [g.id, g.label]));
@@ -1814,9 +1848,9 @@ export class OktaClient implements PluginClient {
           const scopes = await rest
             .get(`/api/v1/authorizationServers/${id}/scopes`)
             .catch((): Schemas["OAuth2Scope"][] => []);
-          const policies = await rest
-            .get(`/api/v1/authorizationServers/${id}/policies`)
-            .catch((): Schemas["AuthorizationServerPolicy"][] => []);
+          const policies = await this.api.list
+            .getAll(`/api/v1/authorizationServers/${id}/policies`, null, { partial: true })
+            .catch(noRows);
           extra["__scopes__"] = JSON.stringify(scopes);
           extra["__policies__"] = JSON.stringify(
             policies.map((p) => ({

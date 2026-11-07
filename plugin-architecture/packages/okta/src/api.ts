@@ -1,11 +1,10 @@
 import {
   createApiClient,
-  restRequest,
-  type ApiAnswer,
+  nextLinkHeader,
+  withLinkPagination,
   type ApiClient,
   type HostServices,
   type HttpHostServices,
-  findNextLink,
 } from "@infrawrench/plugin-base";
 import type { components, paths } from "./api-types.gen.js";
 import { apiError, sendRaw } from "./http.js";
@@ -231,6 +230,16 @@ function parseTokenReply(text: string): TokenReply {
 
 const JSON_ACCEPT = { Accept: "application/json" };
 
+/**
+ * For a list read with no page size: the document gives most of them no maximum, so
+ * none is sent. 500 pages is 10,000 rows at the smallest default it names, 20.
+ */
+const UNSIZED_LIST_PAGES = 500;
+
+function listsOf(rest: ApiClient<paths>) {
+  return withLinkPagination(rest, { next: nextLinkHeader(), maxPages: UNSIZED_LIST_PAGES });
+}
+
 export class OktaApi {
   private signer: Promise<SigningKey> | null = null;
   private dpop: Promise<{ key: CryptoKeyPair; jwk: PublicJwk }> | null = null;
@@ -241,6 +250,8 @@ export class OktaApi {
   readonly rateLimits = new Map<string, RateLimitReading>();
   /** Every operation in `plugingen.json`. */
   readonly rest: ApiClient<paths>;
+  /** The same, with `getAll` following `Link: <…>; rel="next"` on the org's own host. */
+  readonly list: ReturnType<typeof listsOf>;
   /** Always there, since {@link transport} falls back to `fetch` where there is no host. */
   private readonly http: HttpHostServices = { request: (req) => this.transport(req) };
 
@@ -257,6 +268,7 @@ export class OktaApi {
       emptyBodyIsUndefined: true,
       httpError: ({ status, url, body }) => apiError(status, new URL(url).pathname, body),
     });
+    this.list = listsOf(this.rest);
   }
 
   get orgUrl(): string {
@@ -427,67 +439,6 @@ export class OktaApi {
     if (!res) throw apiError(500, new URL(url).pathname, "no response");
     return res;
   }
-
-  /**
-   * Read a list by following `Link: <…>; rel="next"` from its first page, which is what
-   * types the rest. This is by hand rather than `withLinkPagination` because `getAll`
-   * reads a body that is not an array as an empty page, and the host prunes whatever a
-   * sync stops seeing; spreading it throws. Links go wherever they say, token included
-   * (#386).
-   */
-  private async walk<Item>(
-    first: Promise<ApiAnswer<readonly Item[]>>,
-    maxPages: number,
-    atCap: (path: string, items: number) => void,
-  ): Promise<Item[]> {
-    const out: Item[] = [];
-    const firstPage = await first;
-    let page: Pick<ApiAnswer<readonly Item[]>, "body" | "headers"> = firstPage;
-    for (let pages = 1; ; pages++) {
-      out.push(...(page.body ?? []));
-      const next = nextLink(page.headers["link"]);
-      if (!next) return out;
-      if (pages >= maxPages) {
-        // The path as the call wrote it: the base URL has no path of its own.
-        atCap(firstPage.url.slice(this.creds.orgUrl.length).split("?")[0] ?? "", out.length);
-        return out;
-      }
-      const url = next.startsWith("http") ? next : `${this.creds.orgUrl}${next}`;
-      page = await restRequest<readonly Item[]>({
-        vendor: "Okta",
-        url,
-        headers: JSON_ACCEPT,
-        http: this.http,
-        contentType: "with-body",
-        emptyBodyIsUndefined: true,
-        httpError: ({ status, body }) => apiError(status, new URL(url).pathname, body),
-      });
-    }
-  }
-
-  /** Follow the list until exhausted or `maxPages`. A list cut short says so in the log. */
-  paginate<Item>(first: Promise<ApiAnswer<readonly Item[]>>, maxPages = 25): Promise<Item[]> {
-    return this.walk(first, maxPages, (path, items) => {
-      console.warn(`Okta plugin: ${path} truncated at ${maxPages} pages (${items} items)`);
-    });
-  }
-
-  /**
-   * Like {@link paginate}, but every page or nothing: a failed page throws, and
-   * so does running past `maxPages`, because a reader that stores the result
-   * as the complete set (the seat inventory) must never see a truncated list.
-   */
-  paginateAll<Item>(first: Promise<ApiAnswer<readonly Item[]>>, maxPages = 1000): Promise<Item[]> {
-    return this.walk(first, maxPages, (path) => {
-      throw new Error(
-        `Okta plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
-      );
-    });
-  }
-}
-
-export function nextLink(header: string | undefined): string | null {
-  return findNextLink(header) ?? null;
 }
 
 /** Okta rate limits are per endpoint family; collapse ids so readings group sensibly. */

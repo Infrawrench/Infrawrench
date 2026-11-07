@@ -1,8 +1,8 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { OktaClient } from "../client.js";
-import { nextLink, normalizeOrgUrl, rateLimitBucket } from "../api.js";
+import { normalizeOrgUrl, rateLimitBucket } from "../api.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { oktaTerraformExport } from "../terraform.js";
 
@@ -182,6 +182,212 @@ describe("SSWS transport", () => {
   });
 });
 
+describe("list reads", () => {
+  const next = (url: string) => ({ link: `<${url}>; rel="next"` });
+  const endless = (call: Call): Reply => ({
+    body: [{ id: `u${calls.length}` }],
+    headers: next(
+      `${ORG}/api/v1/whatever?after=${calls.length}&from=${new URL(call.url).pathname}`,
+    ),
+  });
+
+  it.each([
+    ["user", 250],
+    ["group", 50],
+    ["app", 250],
+    ["authorization-server", 250],
+    ["trusted-origin", 250],
+    ["network-zone", 500],
+    ["api-token", 500],
+    ["event-hook", 500],
+  ])("refuses a %s list past its cap, after %i requests", async (type, pages) => {
+    await expect(ssws(endless).listResources(type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(pages);
+  });
+
+  it("refuses the seat list only past its own cap", async () => {
+    await expect(ssws(endless).fetchSeats(ACCOUNT, { lookbackDays: 30 })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1000);
+  });
+
+  it("carries a list past its cap through the policy read", async () => {
+    await expect(ssws(endless).listResources("policy", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("keeps the newest pages of the sign-in chart window", async () => {
+    const series = await ssws(endless).fetchMetricSeries("org", "o", ACCOUNT);
+    expect(calls).toHaveLength(5);
+    expect(series.length).toBeGreaterThan(0);
+  });
+
+  it("reads a page with its key renamed as an error, first or later", async () => {
+    await expect(
+      ssws(() => ({ body: { users: [] } })).listResources("user", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+    calls = [];
+    await expect(
+      ssws((call) =>
+        call.url.includes("after=")
+          ? { body: { users: [] } }
+          : { body: [{ id: "u1" }], headers: next(`${ORG}/api/v1/users?after=u1`) },
+      ).listResources("user", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("reads a 2xx with no body as an error, not as no users", async () => {
+    await expect(ssws(() => ({})).listResources("user", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a domain answer with no domains key as an error, not as no domains", async () => {
+    await expect(
+      ssws(() => ({ body: { items: [] } })).listResources("domain", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a next link to another host and sends it nothing", async () => {
+    const client = ssws(() => ({
+      body: [{ id: "u1" }],
+      headers: next("https://evil.example/api/v1/users?after=u1"),
+    }));
+    await expect(client.listResources("user", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls.map((c) => new URL(c.url).host)).toEqual(["acme.okta.com"]);
+  });
+
+  it("carries the refusal through the policy read, the picker and the detail view", async () => {
+    const refuse = () => ({
+      body: [{ id: "x1", profile: { login: "a", name: "a" } }],
+      headers: next("https://evil.example/next"),
+    });
+    const refusal = "Refusing to send the account's credentials there";
+    await expect(ssws(refuse).listResources("policy", ACCOUNT)).rejects.toThrow(refusal);
+    await expect(ssws(refuse).getCreateConfig("user")).rejects.toThrow(refusal);
+    await expect(
+      ssws(refuse).enrichDetail({
+        id: `${ACCOUNT}:user:u1`,
+        pluginId: "okta",
+        resourceTypeId: "user",
+        accountId: ACCOUNT,
+        displayName: "a",
+        externalId: "u1",
+        fields: {},
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: "",
+        updatedAt: "",
+      }),
+    ).rejects.toThrow(refusal);
+    expect(calls.every((c) => new URL(c.url).host === "acme.okta.com")).toBe(true);
+  });
+
+  it("reads a next link whose URL holds a comma", async () => {
+    const client = ssws((call) =>
+      call.url.includes("after=")
+        ? { body: [{ id: "u2" }] }
+        : {
+            body: [{ id: "u1" }],
+            headers: {
+              link: `<${ORG}/api/v1/users?ids=1,2&after=3>; rel="next", <${ORG}/api/v1/users>; rel="self"`,
+            },
+          },
+    );
+    const users = await client.listResources("user", ACCOUNT);
+    expect(users.map((u) => u.externalId)).toEqual(["u1", "u2"]);
+    expect(calls[1]!.url).toBe(`${ORG}/api/v1/users?ids=1,2&after=3`);
+  });
+
+  it("fails the policy read on a rate limit rather than prune that type", async () => {
+    const client = ssws((call) => {
+      const type = new URL(call.url).searchParams.get("type");
+      if (type === "MFA_ENROLL") return { status: 429, body: { errorSummary: "slow down" } };
+      return { body: [{ id: `p-${type}`, type, name: "Default" }] };
+    });
+    const error = (await client.listResources("policy", ACCOUNT).catch((e) => e)) as {
+      status?: number;
+    };
+    expect(error.status).toBe(429);
+  });
+
+  it("fails the policy read when every type refuses, which is the token and not the org", async () => {
+    const client = ssws(() => ({ status: 403, body: { errorSummary: "no" } }));
+    const error = (await client.listResources("policy", ACCOUNT).catch((e) => e)) as {
+      status?: number;
+    };
+    expect(error.status).toBe(403);
+  });
+
+  it("tolerates a type the org's plan refuses with 403", async () => {
+    const client = ssws((call) => {
+      const type = new URL(call.url).searchParams.get("type");
+      if (type === "PASSWORD") return { body: [{ id: "p1", type, name: "Default" }] };
+      return { status: 403, body: { errorCode: "E0000015", errorSummary: "feature" } };
+    });
+    const policies = await client.listResources("policy", ACCOUNT);
+    expect(policies.map((p) => p.externalId)).toEqual(["p1"]);
+  });
+
+  describe("app dashboard counts", () => {
+    const stats = (handler: (call: Call) => Reply) =>
+      ssws(handler).fetchDashboardStats("app", `${ACCOUNT}:app:a1`);
+
+    it("counts what it read", async () => {
+      await expect(stats(() => ({ body: [{ id: "x" }, { id: "y" }] }))).resolves.toEqual([
+        { label: "Assigned users", value: "2" },
+        { label: "Assigned groups", value: "2" },
+      ]);
+    });
+
+    it("says a count at its cap is at least that many", async () => {
+      const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `x${i}` }));
+      await expect(
+        stats((call) => {
+          const users = call.url.includes("/users");
+          return {
+            body: rows(users ? 500 : 200),
+            headers: next(`${ORG}${new URL(call.url).pathname}?after=${calls.length}`),
+          };
+        }),
+      ).resolves.toEqual([
+        { label: "Assigned users", value: "2000+" },
+        { label: "Assigned groups", value: "800+" },
+      ]);
+    });
+
+    it("shows nothing for a count it could not read, rather than 0", async () => {
+      await expect(stats(() => ({ status: 403, body: { errorSummary: "no" } }))).resolves.toEqual(
+        [],
+      );
+    });
+  });
+
+  describe("transport", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("goes through the host's HTTP service, with no CA unless one is set", async () => {
+      const fetchStub = vi.fn(() => {
+        throw new Error("fetch must not be called");
+      });
+      vi.stubGlobal("fetch", fetchStub);
+      const request = vi.fn(async () => ({ status: 200, headers: {}, body: "[]" }));
+      const client = hostClient(
+        new OktaClient({ orgUrl: ORG, apiToken: "tok" }, { http: { request } }),
+      );
+      await client.listResources("user", ACCOUNT);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
+      expect(fetchStub).not.toHaveBeenCalled();
+    });
+  });
+});
+
 describe("OAuth service app with DPoP", () => {
   it("signs a client assertion, answers the DPoP nonce challenge and binds API calls", async () => {
     const pair = (await crypto.subtle.generateKey(
@@ -264,12 +470,7 @@ describe("OAuth service app with DPoP", () => {
 });
 
 describe("helpers", () => {
-  it("parses Link headers and groups rate-limit buckets", () => {
-    expect(nextLink('<https://a/x?after=1>; rel="next"')).toBe("https://a/x?after=1");
-    expect(nextLink('<https://a/x>; rel="self"')).toBeNull();
-    expect(nextLink('<https://a/x?ids=1,2&after=3>; rel="next", <https://a/x>; rel="self"')).toBe(
-      "https://a/x?ids=1,2&after=3",
-    );
+  it("groups rate-limit buckets", () => {
     expect(rateLimitBucket("/api/v1/users")).toBe("/api/v1/users");
     expect(rateLimitBucket("/api/v1/users/00u1")).toBe("/api/v1/users/{id}");
     expect(rateLimitBucket("/api/v1/users/00u1/groups")).toBe("/api/v1/users/{id}/*");
