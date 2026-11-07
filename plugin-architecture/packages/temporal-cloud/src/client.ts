@@ -14,9 +14,14 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { TemporalContext } from "./api.js";
-import { createTemporalContext, statusOf, tcPaged, waitForOperation } from "./api.js";
+import { createTemporalContext, statusOf, waitForOperation } from "./api.js";
 import type { NamespaceIndex } from "./cost-data.js";
 import { TemporalCostCollector } from "./cost-data.js";
 import {
@@ -164,10 +169,7 @@ export class TemporalCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private fetchNamespaces(): Promise<TcNamespace[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/namespaces", { query }),
-      (page) => page?.namespaces,
-    );
+    return this.ctx.api.getAll("/cloud/namespaces", "namespaces");
   }
 
   private async fetchNamespace(id: string): Promise<TcNamespace> {
@@ -181,45 +183,32 @@ export class TemporalCloudClient implements PluginClient {
   }
 
   private fetchUsers(): Promise<TcUser[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/users", { query }),
-      (page) => page?.users,
-    );
+    return this.ctx.api.getAll("/cloud/users", "users");
   }
 
   private fetchServiceAccounts(): Promise<TcServiceAccount[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/service-accounts", { query }),
-      (page) => page?.serviceAccount,
-    );
+    return this.ctx.api.getAll("/cloud/service-accounts", "serviceAccount");
   }
 
   private fetchApiKeys(): Promise<TcApiKey[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/api-keys", { query }),
-      (page) => page?.apiKeys,
-    );
+    return this.ctx.api.getAll("/cloud/api-keys", "apiKeys");
   }
 
   private fetchNexusEndpoints(): Promise<TcNexusEndpoint[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/nexus/endpoints", { query }),
-      (page) => page?.endpoints,
-    );
+    return this.ctx.api.getAll("/cloud/nexus/endpoints", "endpoints");
   }
 
   private fetchConnectivityRules(): Promise<TcConnectivityRule[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get("/cloud/connectivity-rules", { query }),
-      (page) => page?.connectivityRules,
-    );
+    // The one list whose document states no maximum page size, so it keeps the
+    // default and takes more pages to reach 10,000 rows.
+    return this.ctx.api.getAll("/cloud/connectivity-rules", "connectivityRules", {
+      pageSize: 100,
+      maxPages: 100,
+    });
   }
 
   private fetchExportSinks(namespaceId: string): Promise<TcExportSink[]> {
-    return tcPaged(
-      (query) => this.ctx.api.get(`/cloud/namespaces/${q(namespaceId)}/export-sinks`, { query }),
-      (page) => page?.sinks,
-    );
+    return this.ctx.api.getAll(`/cloud/namespaces/${q(namespaceId)}/export-sinks`, "sinks");
   }
 
   private async fetchUser(id: string): Promise<TcUser> {
@@ -265,7 +254,7 @@ export class TemporalCloudClient implements PluginClient {
 
   private async namespaceIndex(): Promise<NamespaceIndex> {
     const index: NamespaceIndex = new Map();
-    for (const ns of await this.fetchNamespaces().catch((): TcNamespace[] => [])) {
+    for (const ns of await this.fetchNamespaces().catch(noRowsIfDenied<TcNamespace>)) {
       const id = ns.namespace ?? "";
       if (!id) continue;
       const region = ns.activeRegion ?? ns.spec?.regions?.[0];
@@ -341,7 +330,7 @@ export class TemporalCloudClient implements PluginClient {
           return this.scoped(async () => {
             const [rules, namespaces] = await Promise.all([
               this.fetchConnectivityRules(),
-              this.fetchNamespaces().catch((): TcNamespace[] => []),
+              this.fetchNamespaces().catch(noRowsIfDenied<TcNamespace>),
             ]);
             return rules.map((r) => mapConnectivityRule(accountId, r, attachedRules(namespaces)));
           });
@@ -354,8 +343,8 @@ export class TemporalCloudClient implements PluginClient {
   private async ownerNames(): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     const [users, sas] = await Promise.all([
-      this.fetchUsers().catch((): TcUser[] => []),
-      this.fetchServiceAccounts().catch((): TcServiceAccount[] => []),
+      this.fetchUsers().catch(noRowsIfDenied<TcUser>),
+      this.fetchServiceAccounts().catch(noRowsIfDenied<TcServiceAccount>),
     ]);
     for (const u of users) if (u.id && u.spec?.email) out.set(u.id, u.spec.email);
     for (const s of sas) if (s.id && s.spec?.name) out.set(s.id, s.spec.name);
@@ -363,13 +352,18 @@ export class TemporalCloudClient implements PluginClient {
   }
 
   private async loadAccount(accountId: string, detailed: boolean): Promise<ResourceInstance> {
+    // These two decide the row's id. Reading a failure as "none" would list the
+    // account under a placeholder, and the sync would prune the real one.
     const [account, identity, namespaces, regions] = await Promise.all([
       this.ctx.api
         .get("/cloud/account")
         .then((r) => r.account)
-        .catch(() => undefined),
+        .catch((err: unknown) => {
+          if (statusOf(err) === 403) return undefined;
+          throw err;
+        }),
       this.ctx.api.get("/cloud/current-identity").catch(() => undefined),
-      this.fetchNamespaces().catch((): TcNamespace[] => []),
+      this.fetchNamespaces().catch(noRowsIfDenied<TcNamespace>),
       detailed ? this.fetchRegions().catch((): TcRegion[] => []) : Promise.resolve([]),
     ]);
     const accountIdFromNs = namespaces[0]?.namespace?.split(".").slice(1).join(".") ?? "";
@@ -429,7 +423,7 @@ export class TemporalCloudClient implements PluginClient {
             this.fetchRegions().catch((): TcRegion[] => []),
             this.fetchConnectivityRules()
               .then((list) => list.map((r) => mapConnectivityRule(accountId, r, new Map())))
-              .catch((): ResourceInstance[] => []),
+              .catch(noRows<ResourceInstance>),
           ]);
           const r = mapNamespace(accountId, ns);
           if (capacity) r.resolvedOutputs[CAPACITY_KEY] = JSON.stringify(capacity);
@@ -453,7 +447,7 @@ export class TemporalCloudClient implements PluginClient {
             typeId === "user"
               ? this.fetchUser(id).then((u) => mapUser(accountId, u))
               : this.fetchServiceAccount(id).then((s) => mapServiceAccount(accountId, s)),
-            this.fetchNamespaces().catch((): TcNamespace[] => []),
+            this.fetchNamespaces().catch(noRows<TcNamespace>),
           ]);
           mapped.resolvedOutputs[NAMESPACE_IDS_KEY] = JSON.stringify(
             namespaces.map((n) => n.namespace ?? "").filter(Boolean),
@@ -467,7 +461,7 @@ export class TemporalCloudClient implements PluginClient {
         case "connectivity-rule": {
           const [rule, namespaces] = await Promise.all([
             this.fetchConnectivityRule(id),
-            this.fetchNamespaces().catch((): TcNamespace[] => []),
+            this.fetchNamespaces().catch(noRows<TcNamespace>),
           ]);
           return mapConnectivityRule(accountId, rule, attachedRules(namespaces));
         }
@@ -586,7 +580,7 @@ export class TemporalCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async namespaceOptions(): Promise<Array<{ id: string; label: string }>> {
-    return (await this.fetchNamespaces().catch((): TcNamespace[] => []))
+    return (await this.fetchNamespaces().catch(noRows<TcNamespace>))
       .map((n) => ({ id: n.namespace ?? "", label: n.namespace ?? "" }))
       .filter((o) => o.id)
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -1528,6 +1522,22 @@ export class TemporalCloudClient implements PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderTemporalSidebar(resource);
   }
+}
+
+/** For a list that only fills in a detail view or a picker, where none is a usable answer. */
+function noRows<Row>(err: unknown): Row[] {
+  rethrowIncompleteList(err);
+  return [];
+}
+
+/**
+ * For a list that decorates rows the sync stores: a key whose role cannot read it
+ * gets plain rows, and any other failure, a bad key included, fails the read and
+ * leaves what is stored alone.
+ */
+function noRowsIfDenied<Row>(err: unknown): Row[] {
+  if (statusOf(err) === 403) return [];
+  throw err;
 }
 
 /** A delete's query: a version read as nothing is not sent. */

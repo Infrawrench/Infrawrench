@@ -342,3 +342,48 @@ describe("TemporalCostCollector", () => {
     });
   });
 });
+
+describe("the usage fallback", () => {
+  const FAST_PASS = { timeoutMs: 1, initialPollMs: 1, maxPollMs: 1 };
+  const TODAY = new Date("2026-10-03T12:00:00Z");
+  const RANGE = { fromDate: "2026-10-01", toDate: "2026-10-03" };
+
+  const collect = (usage: (url: URL) => { status?: number; body?: unknown }) => {
+    const { http, calls } = makeHttp((url) => {
+      if (url.pathname === "/cloud/billing-reports") return { status: 403, body: {} };
+      if (url.pathname === "/cloud/usage") return usage(url);
+      throw new Error(`Unexpected request to ${url.pathname}`);
+    });
+    const collector = new TemporalCostCollector(
+      ctxWith(http),
+      ratesFromCredentials({}),
+      async () => new Map(),
+      FAST_PASS,
+      () => TODAY,
+    );
+    return { fetch: () => collector.fetch(RANGE), calls };
+  };
+
+  it("throws past its cap rather than estimating from part of the usage", async () => {
+    const { fetch, calls } = collect(() => ({
+      body: { summaries: [], nextPageToken: "more" },
+    }));
+    await expect(fetch()).rejects.toThrow(/has more than Infrawrench reads/);
+    expect(calls.filter((x) => x.url.pathname === "/cloud/usage")).toHaveLength(100);
+  });
+
+  it("refuses usage that is not a list", async () => {
+    const { fetch } = collect(() => ({ body: { summaries: { nope: true } } }));
+    await expect(fetch()).rejects.toThrow(/is not a list/);
+  });
+
+  it("reads no usage as no rows: the key is left out of an empty answer", async () => {
+    const { fetch } = collect(() => ({ body: {} }));
+    await expect(fetch()).resolves.toEqual([]);
+  });
+
+  it("still fails with what went wrong on any other answer", async () => {
+    const { fetch } = collect(() => ({ status: 500, body: {} }));
+    await expect(fetch()).rejects.toThrow(/Temporal Cloud API error 500/);
+  });
+});

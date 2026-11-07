@@ -1,7 +1,7 @@
 import {
   createApiClient,
   pathEncode,
-  type ApiClient,
+  withCursorPagination,
   type ApiResponse,
   type HttpHostServices,
   type ParamValue,
@@ -33,16 +33,15 @@ export const CLOUD_API_VERSION = "v0.22.0";
 export const METRICS_API_BASE = "https://metrics.temporal.io";
 export const CLOUD_UI_BASE = "https://cloud.temporal.io";
 
-export type TemporalApi = ApiClient<paths>;
+/** The most the document lets a Cloud Ops list ask for ("Cannot exceed 1000"). */
+const PAGE_SIZE = 1000;
 
-export interface TemporalContext {
+export interface TemporalContextOptions {
   apiKey: string;
   /** OpenMetrics key; falls back to `apiKey` when the account has none. */
   metricsApiKey: string;
   caCert?: string;
   http?: HttpHostServices;
-  /** The Cloud Ops API. Requests go through the host whenever there is one. */
-  api: TemporalApi;
 }
 
 /** Thrown for any non-2xx answer, carrying the status the callers branch on. */
@@ -70,11 +69,9 @@ export function buildQuery(query: Record<string, ParamValue> | undefined): strin
  * Everything a request needs. An empty query value is left out rather than sent
  * empty, and an error names the path without its query.
  */
-export function createTemporalContext(options: Omit<TemporalContext, "api">): TemporalContext {
-  const { apiKey, caCert, http } = options;
-  return {
-    ...options,
-    api: createApiClient<paths>({
+function createTemporalApi({ apiKey, caCert, http }: TemporalContextOptions) {
+  return withCursorPagination(
+    createApiClient<paths>({
       vendor: "Temporal Cloud",
       baseUrl: CLOUD_API_BASE,
       headers: {
@@ -88,7 +85,32 @@ export function createTemporalContext(options: Omit<TemporalContext, "api">): Te
       httpError: ({ status, path, body }) =>
         new TemporalApiError(status, `Temporal Cloud API error ${status} for ${path}: ${body}`),
     }),
-  };
+    {
+      cursorParam: "pageToken",
+      sizeParam: "pageSize",
+      pageSize: PAGE_SIZE,
+      next: "nextPageToken",
+      // 50,000 rows, the most the host's resource sync can prune.
+      maxPages: 50,
+      // This is a gRPC gateway (the document's errors are `rpcStatus`). Proto3 JSON
+      // leaves an empty repeated field out, so an empty account answers `{}`...
+      missingListIsEmpty: true,
+      // ...and a token on an empty page still means there is more. Stopping there
+      // would read as the rest having gone, which a sync prunes.
+      continueOnEmptyPage: true,
+    },
+  );
+}
+
+export type TemporalApi = ReturnType<typeof createTemporalApi>;
+
+export interface TemporalContext extends TemporalContextOptions {
+  /** The Cloud Ops API. Requests go through the host whenever there is one. */
+  api: TemporalApi;
+}
+
+export function createTemporalContext(options: TemporalContextOptions): TemporalContext {
+  return { ...options, api: createTemporalApi(options) };
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */
@@ -100,40 +122,6 @@ export function statusOf(err: unknown): number {
 export function isPermissionError(err: unknown): boolean {
   const status = statusOf(err);
   return status === 401 || status === 403;
-}
-
-/** What each page of a Cloud Ops list is asked for. */
-export interface PageQuery {
-  pageSize: number;
-  pageToken?: string;
-}
-
-/**
- * Page through a Cloud Ops list (`pageSize` / `pageToken`, answered with a
- * `nextPageToken`), running on past an empty page while there is a token.
- * Hard-stops at `maxPages` so a misbehaving cursor cannot spin forever.
- *
- *   tcPaged((query) => ctx.api.get("/cloud/users", { query }), (page) => page?.users)
- *
- * `getAll` is not used: this loop only follows a token that is a non-empty
- * string, and a list that is not an array fails the walk rather than reading as
- * empty, because the host prunes what a sync stops seeing.
- */
-export async function tcPaged<Page extends { nextPageToken?: string }, Row>(
-  fetchPage: (query: PageQuery) => Promise<Page>,
-  rows: (page: Page) => Row[] | undefined,
-  maxPages = 50,
-): Promise<Row[]> {
-  const out: Row[] = [];
-  let pageToken: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage({ pageSize: 100, ...(pageToken ? { pageToken } : {}) });
-    out.push(...(rows(res) ?? []));
-    const next = res?.nextPageToken;
-    if (typeof next !== "string" || next === "") break;
-    pageToken = next;
-  }
-  return out;
 }
 
 /** Plain-text GET (OpenMetrics, CSV downloads), through the host when present. */

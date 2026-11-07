@@ -350,27 +350,18 @@ export async function generateBillingReport(
 // Usage fallback
 // ---------------------------------------------------------------------------
 
-export async function fetchUsageSummaries(
+export function fetchUsageSummaries(
   ctx: TemporalContext,
   startDay: string,
   endDayExclusive: string,
 ): Promise<TcUsageSummary[]> {
-  const out: TcUsageSummary[] = [];
-  let pageToken: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const res = await ctx.api.get("/cloud/usage", {
-      query: {
-        startTimeInclusive: `${startDay}T00:00:00Z`,
-        endTimeExclusive: `${endDayExclusive}T00:00:00Z`,
-        pageSize: 1000,
-        ...(pageToken ? { pageToken } : {}),
-      },
-    });
-    out.push(...(res.summaries ?? []));
-    if (!res.nextPageToken) break;
-    pageToken = res.nextPageToken;
-  }
-  return out;
+  return ctx.api.getAll("/cloud/usage", "summaries", {
+    query: {
+      startTimeInclusive: `${startDay}T00:00:00Z`,
+      endTimeExclusive: `${endDayExclusive}T00:00:00Z`,
+    },
+    maxPages: 100,
+  });
 }
 
 /** Usage × rates for the days in `range` that are inside the 90-day usage window. */
