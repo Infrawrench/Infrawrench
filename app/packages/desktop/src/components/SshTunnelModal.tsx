@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
-import { sshOpenTunnel } from "../lib/ssh-tunnel";
+import {
+  openPlainTunnel,
+  plainTunnelProblem,
+  sshCloseTunnel,
+  sshOpenTunnel,
+} from "../lib/ssh-tunnel";
 import { loadPlugins } from "../plugins/loader";
 import {
   useUIStore,
@@ -48,6 +53,18 @@ export function SshTunnelModal({
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  // A plain tunnel has no account to find it by later, so it lives as long as this modal.
+  const [plainTunnel, setPlainTunnel] = useState<{ tunnelId: string; localPort: number } | null>(
+    null,
+  );
+  const plainTunnelId = useRef<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (plainTunnelId.current) void sshCloseTunnel(plainTunnelId.current).catch(() => {});
+    },
+    [],
+  );
 
   const preset = presets.find((p) => p.key === service) ?? presets[0];
   const isCustom = preset?.pluginId === null;
@@ -62,11 +79,12 @@ export function SshTunnelModal({
               id: plugin.manifest.id,
               sshTunnel: plugin.manifest.sshTunnel,
             })),
+            { custom: true },
           ),
         ),
       )
       .catch((err) => {
-        setPresets(sshTunnelPresets([]));
+        setPresets(sshTunnelPresets([], { custom: true }));
         toast.error(gt("Failed to load services"), { description: formatErrorMessage(err) });
       });
   }, []);
@@ -81,19 +99,41 @@ export function SshTunnelModal({
       setError(gt("Select an SSH key first"));
       return;
     }
-    if (isCustom && !customPort) {
-      setError(gt("Remote port is required"));
+    const problem = isCustom ? plainTunnelProblem(customPort, keySource.type) : null;
+    if (problem === "port") {
+      setError(gt("Enter a remote port from 1 to 65535"));
       return;
     }
-    const pluginId = preset?.pluginId;
-    if (!preset || !pluginId) {
+    if (problem === "cloud-key") {
+      setError(
+        gt(
+          "A custom tunnel runs on this computer, and an organization key stays on the server. Pick a key stored here.",
+        ),
+      );
+      return;
+    }
+    if (!preset) {
       setError(gt("Select a service type"));
       return;
     }
+    const pluginId = preset.pluginId;
 
     setConnecting(true);
     setError(null);
     try {
+      if (pluginId === null) {
+        const opened = await openPlainTunnel({
+          sshHost,
+          sshPort,
+          sshUser,
+          privateKey: privateKey.trim(),
+          remotePort,
+        });
+        plainTunnelId.current = opened.tunnelId;
+        setPlainTunnel(opened);
+        return;
+      }
+
       if (activeCloudOrgId && isCloudKey) {
         const displayName = `${preset.label} on ${sshHost}`;
         const credentials = buildSshTunnelCredentials(preset, remotePort);
@@ -167,6 +207,55 @@ export function SshTunnelModal({
     } finally {
       setConnecting(false);
     }
+  }
+
+  if (plainTunnel) {
+    const address = `127.0.0.1:${plainTunnel.localPort}`;
+    return (
+      <Modal onClose={onClose} ariaLabel={gt("SSH tunnel open")}>
+        <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
+          <div className="p-6 border-b border-border">
+            <h2 className="text-base font-semibold text-on-surface">{gt("SSH tunnel open")}</h2>
+            <p className="text-xs text-on-surface-muted mt-1">
+              {gt(
+                "Forwarding to port {port} on {host}. Point a local tool at this address. The tunnel closes with this window.",
+                { port: String(remotePort), host: sshHost },
+              )}
+            </p>
+          </div>
+          <div className="p-6">
+            <input
+              readOnly
+              value={address}
+              aria-label={gt("Local tunnel address")}
+              onFocus={(e) => e.target.select()}
+              className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
+            />
+          </div>
+          <div className="p-6 border-t border-border flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(address)
+                  .then(() => toast.success(gt("Copied")))
+                  .catch((err: unknown) => toast.error(formatErrorMessage(err)))
+              }
+              className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
+            >
+              {gt("Copy address")}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
+            >
+              {gt("Close tunnel")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   return (

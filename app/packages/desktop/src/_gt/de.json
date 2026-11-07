@@ -22838,5 +22838,12 @@
   "54c718e7f5770611": "Bleibt über Neustarts hinweg erhalten; wird abgerechnet, solange der Pod gestoppt ist. Mindestens 10 GB. Kann nur wachsen",
   "180b01e1b5665c79": "Runpod speichert keine Verknüpfung für Pods, die über die aktuelle API erstellt wurden",
   "d4d54cda75e8b219": "Sekunden in der Warteschlange (QUEUE_DELAY, 0.5 oder mehr) oder Anfragen pro Worker (REQUEST_COUNT, 1 oder mehr)",
-  "ae214436dd2f33af": "Über die Job-Warteschlange von Runpod oder direkt zu den Pfaden, die Ihre Worker definieren"
+  "ae214436dd2f33af": "Über die Job-Warteschlange von Runpod oder direkt zu den Pfaden, die Ihre Worker definieren",
+  "dd41faef5e807f36": "Geben Sie einen Remote-Port zwischen 1 und 65535 ein",
+  "bd39316524592c1a": "Ein benutzerdefinierter Tunnel läuft auf diesem Computer, und ein Organisationsschlüssel bleibt auf dem Server. Wählen Sie einen hier gespeicherten Schlüssel aus.",
+  "47d522bd26cd3500": "SSH-Tunnel geöffnet",
+  "ed127ad9e0f8395d": "Weiterleitung an Port {port} auf {host}. Richten Sie ein lokales Tool auf diese Adresse. Der Tunnel wird mit diesem Fenster geschlossen.",
+  "a354abeeb73b2b7d": "Lokale Tunneladresse",
+  "4b8087450e97c995": "Adresse kopieren",
+  "42c3940a5656719c": "Tunnel schließen"
 }

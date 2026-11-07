@@ -111,6 +111,34 @@ describe("ssh-tunnel helpers", () => {
     expect(res).toEqual({ tunnelId: "t1", localPort: 5000 });
   });
 
+  it("sshCloseTunnel names the tunnel", async () => {
+    invoke.mockResolvedValue(undefined);
+    const { sshCloseTunnel } = await import("../ssh-tunnel");
+    await sshCloseTunnel("t1");
+    expect(invoke).toHaveBeenCalledWith("ssh_close_tunnel", { tunnelId: "t1" });
+  });
+
+  it("openPlainTunnel opens a tunnel to the host's loopback, and creates nothing else", async () => {
+    invoke.mockResolvedValue({ tunnelId: "t1", localPort: 5000 });
+    const { openPlainTunnel } = await import("../ssh-tunnel");
+    const config = { sshHost: "h", sshPort: 22, sshUser: "u", privateKey: "k", remotePort: 22222 };
+    await expect(openPlainTunnel(config)).resolves.toEqual({ tunnelId: "t1", localPort: 5000 });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ssh_open_tunnel", {
+      ...config,
+      remoteHost: "127.0.0.1",
+    });
+  });
+
+  it("plainTunnelProblem refuses a bad port, and a key this computer does not hold", async () => {
+    const { plainTunnelProblem } = await import("../ssh-tunnel");
+    expect(plainTunnelProblem(22222, "system")).toBeNull();
+    expect(plainTunnelProblem(22222, "1password")).toBeNull();
+    expect(plainTunnelProblem(22222, "cloud")).toBe("cloud-key");
+    for (const port of [0, -1, 65536, 1.5, Number.NaN]) {
+      expect(plainTunnelProblem(port, "system")).toBe("port");
+    }
+  });
+
   it("sshExecCommand wraps config and command", async () => {
     invoke.mockResolvedValue({ stdout: "ok", stderr: "", code: 0 });
     const { sshExecCommand } = await import("../ssh-tunnel");

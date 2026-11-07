@@ -11,6 +11,7 @@ import type { ConnectConfig } from "ssh2";
 import {
   openTunnel as coreOpenTunnel,
   closeAllTunnels as coreCloseAllTunnels,
+  closeTunnel as coreCloseTunnel,
   getTunnelEntries,
 } from "@infrawrench/ssh-tunnel-core";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
@@ -91,6 +92,10 @@ export async function openTunnel(
   return coreOpenTunnel<undefined>(config, undefined, {
     configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
   });
+}
+
+export function closeTunnel(tunnelId: string): void {
+  coreCloseTunnel(tunnelId);
 }
 
 export function closeAllTunnels(): void {

@@ -24,7 +24,7 @@ const postgres = {
 
 describe("sshTunnelPresets", () => {
   it("derives a preset from each plugin that declares a tunnel", () => {
-    const [preset] = sshTunnelPresets([{ id: "aws" }, docker]);
+    const [preset] = sshTunnelPresets([{ id: "aws" }, docker], { custom: false });
     expect(preset).toEqual({
       key: "docker",
       label: "Docker",
@@ -35,19 +35,25 @@ describe("sshTunnelPresets", () => {
   });
 
   it("orders by port whatever order the plugins came in", () => {
-    const keys = sshTunnelPresets([postgres, docker]).map((p) => p.key);
-    expect(keys).toEqual(["docker", "postgres", "custom"]);
+    const keys = sshTunnelPresets([postgres, docker], { custom: false }).map((p) => p.key);
+    expect(keys).toEqual(["docker", "postgres"]);
   });
 
-  it("always ends with the host's custom entry, which has no plugin", () => {
-    expect(sshTunnelPresets([])).toEqual([CUSTOM_SSH_TUNNEL_PRESET]);
+  it("ends with the host's custom entry, which has no plugin, where the host offers it", () => {
+    const keys = sshTunnelPresets([postgres, docker], { custom: true }).map((p) => p.key);
+    expect(keys).toEqual(["docker", "postgres", "custom"]);
+    expect(sshTunnelPresets([], { custom: true })).toEqual([CUSTOM_SSH_TUNNEL_PRESET]);
     expect(CUSTOM_SSH_TUNNEL_PRESET.pluginId).toBeNull();
+  });
+
+  it("leaves it out where a plain tunnel would be no use", () => {
+    expect(sshTunnelPresets([], { custom: false })).toEqual([]);
   });
 });
 
 describe("buildSshTunnelCredentials", () => {
   it("fills {port} in what the plugin declared", () => {
-    const [dockerPreset, postgresPreset] = sshTunnelPresets([docker, postgres]);
+    const [dockerPreset, postgresPreset] = sshTunnelPresets([docker, postgres], { custom: false });
     expect(buildSshTunnelCredentials(dockerPreset!, 2375)).toEqual({
       dockerHost: "tcp://localhost:2375",
     });

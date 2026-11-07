@@ -6,7 +6,7 @@ sidebar_order: 10
 
 Lots of production databases aren't reachable from the internet. They only listen on the loopback interface of a host you can SSH into. Infrawrench can connect to them through that host, so the [SQL editor](./sql-editor.md), [KV console](./kv-console.md) and the rest of the app work as if the service were local.
 
-You don't create a tunnel on its own. You connect a **service** through a host, and you get a normal account in the sidebar that reaches its database over SSH.
+Mostly, you don't create a tunnel on its own. You connect a **service** through a host, and you get a normal account in the sidebar that reaches its database over SSH. On desktop, you can also [open a plain tunnel](#open-a-plain-tunnel-desktop) to any port for your own tools.
 
 ![The Connect to service via SSH modal on a bastion's detail page, with the SSH key, username and SSH port fields above the target-service preset grid](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-tunnels/connect-service-via-ssh.png)
 
@@ -16,10 +16,18 @@ You don't create a tunnel on its own. You connect a **service** through a host, 
 2. Click **Connect service via SSH**.
 3. Pick an **SSH Key**. On web, these are the keys saved in [SSH keys](../team-and-billing/ssh-keys.md). On desktop, you can also pick keys from `~/.ssh`, the 1Password agent and Pageant.
 4. Check the **Username** (taken from the key, default `root`) and the **SSH Port** (`22`).
-5. Choose a **Target Service**: **Docker** `2375`, **PostgreSQL** `5432`, **MySQL** `3306`, **Redis** `6379`, **Memcached** `11211`, or **Custom…**. Only **Custom…** asks for a **Remote Port**.
+5. Choose a **Target Service**: **Docker** `2375`, **PostgreSQL** `5432`, **MySQL** `3306`, **Redis** `6379`, **Memcached** `11211`, or, on desktop, [**Custom…**](#open-a-plain-tunnel-desktop).
 6. Click **Connect**.
 
 Infrawrench tests the connection before saving anything. If it works, you get a new account named after what you connected (for example "PostgreSQL on 10.0.1.7") and land on its page. If the host key is new or has changed, you'll be asked to trust it first.
+
+## Open a plain tunnel (desktop)
+
+To reach a port with a tool on your own machine, with no account behind it, choose **Custom…** as the target service and enter the **Remote Port**. It needs a key stored on this computer, because an [organization key](../team-and-billing/ssh-keys.md) stays on the server.
+
+Infrawrench shows the local address, such as `127.0.0.1:53412`, once the tunnel is up. Point your tool at it. The tunnel closes when you close that window.
+
+Web has no such option, because a tunnel there would listen on Infrawrench's server, where nothing on your laptop can reach it.
 
 ## What the tunnel reaches
 
@@ -39,7 +47,7 @@ Desktop has two extra ways to start:
 
 ## Close a tunnel
 
-There's no stop button. The tunnel opens when something needs it. To remove it for good, delete the account it belongs to.
+A tunnel behind an account has no stop button. It opens when something needs it, and to remove it for good you delete the account it belongs to. A plain tunnel closes with its window.
 
 ## Troubleshooting
 

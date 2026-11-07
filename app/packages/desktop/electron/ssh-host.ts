@@ -7,6 +7,7 @@ import type { AgentSshKey as SharedAgentSshKey } from "@infrawrench/ui" with {
 };
 import {
   openTunnel,
+  closeTunnel,
   getActiveTunnels,
   sshExecCommand,
   workflowSshExec,
@@ -50,6 +51,10 @@ import {
 } from "./agent-setup";
 
 ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(config));
+
+ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) =>
+  closeTunnel(tunnelId),
+);
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
 

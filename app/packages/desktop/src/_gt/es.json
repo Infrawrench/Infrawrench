@@ -22840,5 +22840,12 @@
   "54c718e7f5770611": "Persiste tras los reinicios; se factura mientras el pod está detenido. Al menos 10 GB. Solo puede crecer",
   "180b01e1b5665c79": "Runpod no conserva ningún vínculo para los pods creados mediante su API actual",
   "d4d54cda75e8b219": "Segundos en cola (QUEUE_DELAY, 0.5 o más) o solicitudes por worker (REQUEST_COUNT, 1 o más)",
-  "ae214436dd2f33af": "A través de la cola de trabajos de Runpod, o directamente a las rutas que definen tus workers"
+  "ae214436dd2f33af": "A través de la cola de trabajos de Runpod, o directamente a las rutas que definen tus workers",
+  "dd41faef5e807f36": "Introduce un puerto remoto entre 1 y 65535",
+  "bd39316524592c1a": "Un túnel personalizado se ejecuta en este equipo, y una clave de organización permanece en el servidor. Elige una clave guardada aquí.",
+  "47d522bd26cd3500": "Túnel SSH abierto",
+  "ed127ad9e0f8395d": "Reenviando al puerto {port} en {host}. Apunta una herramienta local a esta dirección. El túnel se cierra con esta ventana.",
+  "a354abeeb73b2b7d": "Dirección local del túnel",
+  "4b8087450e97c995": "Copiar dirección",
+  "42c3940a5656719c": "Cerrar túnel"
 }

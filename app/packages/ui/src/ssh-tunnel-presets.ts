@@ -3,13 +3,13 @@ import type { PluginManifest } from "@infrawrench/plugin-base";
 /**
  * The service choices in the "Connect to service via SSH" modal, in both desktop
  * and web. Each plugin declares its own with `manifest.sshTunnel`; only the
- * "Custom..." entry belongs to the host.
+ * "Custom..." entry belongs to the host, and only the desktop offers it.
  */
 export interface SshTunnelPreset {
   /** The plugin id, or {@link CUSTOM_SSH_TUNNEL_PRESET}'s own key. */
   key: string;
   label: string;
-  /** The plugin the tunneled account is created with; null for "Custom...". */
+  /** The plugin the tunneled account is created with; null for "Custom...", which makes none. */
   pluginId: string | null;
   /** Default remote port to forward; 0 for "Custom...", which asks for one. */
   port: number;
@@ -31,11 +31,18 @@ export const CUSTOM_SSH_TUNNEL_PRESET: SshTunnelPreset = {
 };
 
 /**
- * Every plugin that declares a tunnel, then "Custom...". Ordered by port rather
- * than by the list it came from, because desktop and web list their plugins in
- * different orders and the two modals should agree.
+ * Every plugin that declares a tunnel. Ordered by port rather than by the list it
+ * came from, because desktop and web list their plugins in different orders and the
+ * two modals should agree.
+ *
+ * `custom` adds "Custom...", a plain tunnel to any port with no account behind it.
+ * That is only any use where the tunnel's local end is on the user's machine: on web
+ * it would listen on Infrawrench's server, where nothing could reach it.
  */
-export function sshTunnelPresets(plugins: readonly SshTunnelPlugin[]): SshTunnelPreset[] {
+export function sshTunnelPresets(
+  plugins: readonly SshTunnelPlugin[],
+  { custom }: { custom: boolean },
+): SshTunnelPreset[] {
   const declared = plugins.flatMap(({ id, sshTunnel }) =>
     sshTunnel
       ? [
@@ -50,7 +57,7 @@ export function sshTunnelPresets(plugins: readonly SshTunnelPlugin[]): SshTunnel
       : [],
   );
   declared.sort((a, b) => a.port - b.port || a.label.localeCompare(b.label));
-  return [...declared, CUSTOM_SSH_TUNNEL_PRESET];
+  return custom ? [...declared, CUSTOM_SSH_TUNNEL_PRESET] : declared;
 }
 
 /**

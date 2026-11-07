@@ -22839,5 +22839,12 @@
   "54c718e7f5770611": "Conservé après les redémarrages ; facturé tant que le pod est arrêté. Au moins 10 GB. Peut seulement augmenter",
   "180b01e1b5665c79": "Runpod ne conserve aucun lien pour les pods créés via son API actuelle",
   "d4d54cda75e8b219": "Secondes en file d'attente (QUEUE_DELAY, 0.5 ou plus) ou requêtes par worker (REQUEST_COUNT, 1 ou plus)",
-  "ae214436dd2f33af": "Via la file de tâches de Runpod, ou directement vers les chemins définis par vos workers"
+  "ae214436dd2f33af": "Via la file de tâches de Runpod, ou directement vers les chemins définis par vos workers",
+  "dd41faef5e807f36": "Saisissez un port distant entre 1 et 65535",
+  "bd39316524592c1a": "Un tunnel personnalisé s'exécute sur cet ordinateur, et une clé d'organisation reste sur le serveur. Choisissez une clé stockée ici.",
+  "47d522bd26cd3500": "Tunnel SSH ouvert",
+  "ed127ad9e0f8395d": "Redirection vers le port {port} sur {host}. Pointez un outil local vers cette adresse. Le tunnel se ferme avec cette fenêtre.",
+  "a354abeeb73b2b7d": "Adresse locale du tunnel",
+  "4b8087450e97c995": "Copier l'adresse",
+  "42c3940a5656719c": "Fermer le tunnel"
 }

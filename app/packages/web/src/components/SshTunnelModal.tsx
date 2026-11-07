@@ -45,19 +45,17 @@ export function SshTunnelModal({
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [presets, setPresets] = useState<SshTunnelPreset[]>([]);
   const [service, setService] = useState(defaultService);
-  const [customPort, setCustomPort] = useState(22222);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const preset = presets.find((p) => p.key === service) ?? presets[0];
-  const isCustom = preset?.pluginId === null;
-  const remotePort = isCustom ? customPort : (preset?.port ?? 0);
+  const remotePort = preset?.port ?? 0;
 
   useEffect(() => {
     fetchPluginCatalog(orgId)
-      .then((plugins) => setPresets(sshTunnelPresets(plugins)))
+      .then((plugins) => setPresets(sshTunnelPresets(plugins, { custom: false })))
       .catch((err) => {
-        setPresets(sshTunnelPresets([]));
+        setPresets(sshTunnelPresets([], { custom: false }));
         toast.error(gt("Failed to load services"), { description: formatErrorMessage(err) });
       });
   }, [orgId]);
@@ -87,10 +85,6 @@ export function SshTunnelModal({
     const pluginId = preset?.pluginId;
     if (!preset || !pluginId) {
       setError(gt("Select a service type"));
-      return;
-    }
-    if (isCustom && !customPort) {
-      setError(gt("Remote port is required"));
       return;
     }
 
@@ -234,36 +228,12 @@ export function SshTunnelModal({
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                     }`}
                   >
-                    <div className="font-medium">
-                      {p.pluginId === null ? gt("Custom…") : gtData(p.label)}
-                    </div>
-                    {p.pluginId !== null && (
-                      <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
-                    )}
+                    <div className="font-medium">{gtData(p.label)}</div>
+                    <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
                   </button>
                 ))}
               </div>
             </div>
-
-            {isCustom && (
-              <div className="flex items-center gap-3">
-                <label
-                  id="ssh-tunnel-remote-port-label"
-                  htmlFor="ssh-tunnel-remote-port"
-                  className="text-xs text-on-surface-muted w-20 shrink-0"
-                >
-                  {gt("Remote Port")}
-                </label>
-                <input
-                  id="ssh-tunnel-remote-port"
-                  aria-labelledby="ssh-tunnel-remote-port-label"
-                  type="number"
-                  value={customPort}
-                  onChange={(e) => setCustomPort(Number(e.target.value))}
-                  className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
-                />
-              </div>
-            )}
 
             {error && (
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">

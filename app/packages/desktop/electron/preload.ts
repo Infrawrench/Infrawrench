@@ -48,6 +48,7 @@ const INVOKE_CHANNELS = [
   "storage_download_batch",
   // ssh
   "ssh_open_tunnel",
+  "ssh_close_tunnel",
   "ssh_get_active_tunnels",
   "ssh_exec_command",
   "ssh_exec_script",
