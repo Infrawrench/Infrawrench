@@ -22,7 +22,9 @@ import {
   externalIdOf,
   ListTruncatedError,
   pathEncode,
+  reportUnreadListPart,
   requireListPage,
+  type UnreadListPart,
 } from "@infrawrench/plugin-base";
 import { InfisicalApi, readCredentials } from "./api.js";
 import { messageOf, statusOf } from "./http.js";
@@ -174,6 +176,25 @@ function meansNone(error: unknown): boolean {
   return status === 403 || status === 404;
 }
 
+interface EnvPair {
+  project: InfProject;
+  env: InfEnvironment;
+}
+
+/**
+ * How the id of every dynamic secret row in an environment begins, or in one folder of it:
+ * `mapDynamicSecret` encodes the path, so no other folder's rows share the prefix.
+ */
+function dynamicSecretRowPrefix(
+  accountId: string,
+  project: InfProject,
+  env: InfEnvironment,
+  path?: string,
+): string {
+  const at = `${accountId}:dynamic-secret:${str(project.id)}/${str(env.slug)}/`;
+  return path === undefined ? at : `${at}${encodeURIComponent(path)}/`;
+}
+
 function notFound(what: string, id: string): Error {
   return Object.assign(new Error(`Infisical plugin: ${what} "${id}" not found`), { status: 404 });
 }
@@ -255,28 +276,43 @@ export class InfisicalClient implements PluginClient {
   }
 
   /**
-   * Run `load` per item. One project the identity cannot read must not empty a listing, but
-   * any other failure must fail it: its rows would be read as deleted.
+   * Run `load` per item. An item the identity may not read must not fail a listing, and its
+   * stored rows stay, since a refusal says nothing about what is there. Any other failure fails
+   * the listing: its rows would be read as deleted. `unread` names what some items hold.
    */
   private async each<I, T>(
     items: I[],
     label: (item: I) => string,
+    unread: (items: I[]) => UnreadListPart,
     load: (item: I) => Promise<T[]>,
   ) {
     const settled = await Promise.allSettled(items.map((item) => load(item)));
     const out: T[] = [];
+    const refused: I[] = [];
+    let refusal: unknown;
     settled.forEach((result, index) => {
       if (result.status === "fulfilled") out.push(...result.value);
-      else if (meansNone(result.reason))
-        console.warn(
-          `Infisical plugin: skipping ${label(items[index]!)}: ${String(result.reason)}`,
-        );
-      else throw result.reason;
+      else if (meansNone(result.reason)) {
+        const item = items[index]!;
+        console.warn(`Infisical plugin: skipping ${label(item)}: ${String(result.reason)}`);
+        if (statusOf(result.reason) === 403) {
+          refused.push(item);
+          refusal = result.reason;
+        }
+      } else throw result.reason;
     });
+    // A host that keeps no track keeps nothing, so a refusal of everything shows there.
+    if (
+      refused.length > 0 &&
+      !reportUnreadListPart(unread(refused)) &&
+      refused.length === items.length
+    ) {
+      throw refusal;
+    }
     return out;
   }
 
-  private envPairs(projects: InfProject[]): Array<{ project: InfProject; env: InfEnvironment }> {
+  private envPairs(projects: InfProject[]): EnvPair[] {
     return projects.flatMap((project) =>
       (project.environments ?? []).map((env) => ({ project, env })),
     );
@@ -442,6 +478,14 @@ export class InfisicalClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
+      const underProjects = (projects: InfProject[]): UnreadListPart => ({
+        parentResourceIds: projects.map((p) => `${accountId}:project:${str(p.id)}`),
+      });
+      const underEnvironments = (pairs: EnvPair[]): UnreadListPart => ({
+        parentResourceIds: pairs.map(
+          ({ project, env }) => `${accountId}:environment:${str(project.id)}/${str(env.id)}`,
+        ),
+      });
       switch (typeId) {
         case "project":
           return (await this.projects()).map((p) => this.mapProject(accountId, p));
@@ -456,6 +500,7 @@ export class InfisicalClient implements PluginClient {
           return this.each(
             this.envPairs(await this.secretProjects()),
             ({ project, env }) => `${str(project.slug)}/${str(env.slug)}`,
+            underEnvironments,
             async ({ project, env }) =>
               (await this.foldersIn(str(project.id), str(env.slug))).map((folder) =>
                 this.mapFolder(accountId, str(project.id), env, folder),
@@ -465,44 +510,56 @@ export class InfisicalClient implements PluginClient {
           return this.each(
             this.envPairs(await this.secretProjects()),
             ({ project, env }) => `${str(project.slug)}/${str(env.slug)}`,
+            underEnvironments,
             async ({ project, env }) =>
               (await this.secretsIn(str(project.id), str(env.slug)))
                 .filter((secret) => !secret.type || secret.type === "shared")
                 .map((secret) => this.mapSecret(accountId, project, secret)),
           );
-        case "dynamic-secret":
-          return this.each(
+        case "dynamic-secret": {
+          // The route takes one folder and is not recursive, so each path is its own read.
+          const located = await this.each(
             this.envPairs(await this.secretProjects()),
             ({ project, env }) => `${str(project.slug)}/${str(env.slug)}`,
+            underEnvironments,
             async ({ project, env }) => {
               const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
                 (error: unknown): InfFolder[] => {
+                  // The root is still read below. Every other path is unknown, so its rows stay.
+                  if (statusOf(error) === 403) {
+                    reportUnreadListPart({
+                      idPrefixes: [dynamicSecretRowPrefix(accountId, project, env)],
+                    });
+                  }
                   if (meansNone(error)) return [];
                   throw error;
                 },
               );
-              const paths = ["/", ...folders.map(folderPath)].slice(0, MAX_DYNAMIC_SECRET_PATHS);
-              const found = await Promise.all(
-                paths.map(async (path) => {
-                  const here = await this.dynamicSecretsAt(
-                    str(project.slug),
-                    str(env.slug),
-                    path,
-                  ).catch((error: unknown): InfDynamicSecret[] => {
-                    if (meansNone(error)) return [];
-                    throw error;
-                  });
-                  return here.map((ds) => this.mapDynamicSecret(accountId, project, env, path, ds));
-                }),
-              );
-              return found.flat();
+              return ["/", ...folders.map(folderPath)]
+                .slice(0, MAX_DYNAMIC_SECRET_PATHS)
+                .map((path) => ({ project, env, path }));
             },
           );
+          return this.each(
+            located,
+            ({ project, env, path }) => `${str(project.slug)}/${str(env.slug)}:${path}`,
+            (refused) => ({
+              idPrefixes: refused.map(({ project, env, path }) =>
+                dynamicSecretRowPrefix(accountId, project, env, path),
+              ),
+            }),
+            async ({ project, env, path }) =>
+              (await this.dynamicSecretsAt(str(project.slug), str(env.slug), path)).map((ds) =>
+                this.mapDynamicSecret(accountId, project, env, path, ds),
+              ),
+          );
+        }
         case "secret-sync": {
           const options = await this.syncOptions();
           return this.each(
             await this.secretProjects(),
             (p) => str(p.slug),
+            underProjects,
             async (p) =>
               (await this.syncsIn(str(p.id))).map((sync) => this.mapSync(accountId, sync, options)),
           );
@@ -511,6 +568,7 @@ export class InfisicalClient implements PluginClient {
           return this.each(
             await this.secretProjects(),
             (p) => str(p.slug),
+            underProjects,
             async (p) => {
               const path = `/api/v1/projects/${pathEncode(str(p.id))}/integrations` as const;
               const body = await this.api.rest.get(path);
@@ -539,6 +597,7 @@ export class InfisicalClient implements PluginClient {
           return this.each(
             await this.certProjects(),
             (p) => str(p.slug),
+            underProjects,
             async (p) =>
               (await this.casIn(str(p.id))).map((ca) => this.mapCa(accountId, ca, str(p.id))),
           );
@@ -546,6 +605,7 @@ export class InfisicalClient implements PluginClient {
           return this.each(
             await this.certProjects(),
             (p) => str(p.slug),
+            underProjects,
             async (p) =>
               (await this.certificatesIn(str(p.id))).map((c) =>
                 this.mapCertificate(accountId, c, str(p.id)),

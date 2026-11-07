@@ -125,9 +125,9 @@ describe("auth", () => {
 
   it("attaches the HTTP status to API errors", async () => {
     const c = client(() => ({ status: 403, body: { message: "Permission denied" } }));
-    const error = (await c.listResources("secret-sync", ACCOUNT).catch((e) => e)) as unknown;
-    // A project the identity cannot read is skipped in listings; a direct read surfaces the error.
-    expect(error).toEqual([]);
+    // With no sync keeping rows, a listing every project refuses shows the refusal.
+    const listed = await c.listResources("secret-sync", ACCOUNT).catch((e: unknown) => e);
+    expect((listed as { status?: number }).status).toBe(403);
     const direct = await c
       .getResource("machine-identity", `${ACCOUNT}:machine-identity:id-1`, ACCOUNT)
       .catch((e: unknown) => e as Error & { status?: number });
@@ -883,5 +883,104 @@ describe("terraform export", () => {
       expr: "var.infisical_secret_prod_api_key",
     });
     expect(out?.variables?.[0]?.sensitive).toBe(true);
+  });
+});
+
+describe("what a list could not read", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const REFUSED = { status: 403, body: { message: "denied" } };
+
+  /** Records what a list names as unread, as a sync's host does. */
+  function trackUnread() {
+    const parts: Array<{ parentResourceIds?: string[]; idPrefixes?: string[] }> = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: (typeof parts)[number]) => parts.push(part));
+    return parts;
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  describe("a refused parent", () => {
+    it("keeps the rows of a refused environment and reads the others", async () => {
+      const parts = trackUnread();
+      const c = client((call) => {
+        if (new URL(call.url).searchParams.get("environment") === "prod") return REFUSED;
+        return { body: { folders: [{ id: "f1", name: "db", relativePath: "/" }] } };
+      });
+      const list = await c.listResources("folder", ACCOUNT);
+      expect(list.map((f) => f.externalId)).toEqual(["proj-1/dev/f1"]);
+      expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:environment:proj-1/env-prod`] }]);
+    });
+
+    it("keeps the rows of a refused project", async () => {
+      const parts = trackUnread();
+      const c = client(() => REFUSED);
+      await expect(c.listResources("secret-sync", ACCOUNT)).resolves.toEqual([]);
+      expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:project:proj-1`] }]);
+    });
+
+    it("shows a refusal of every parent where the host keeps no track", async () => {
+      const c = client(() => REFUSED);
+      await expect(c.listResources("secret", ACCOUNT)).rejects.toThrow(/403/);
+    });
+
+    it("reads as none on one refused parent where the host keeps no track", async () => {
+      const c = client((call) => {
+        if (new URL(call.url).searchParams.get("environment") === "prod") return REFUSED;
+        return { body: { secrets: [] } };
+      });
+      await expect(c.listResources("secret", ACCOUNT)).resolves.toEqual([]);
+    });
+
+    it("keeps the dynamic secrets of a refused folder, and only that folder's", async () => {
+      const parts = trackUnread();
+      const c = client((call) => {
+        if (call.url.includes("/api/v2/folders"))
+          return {
+            body: {
+              folders: [
+                { id: "f1", name: "db", relativePath: "/" },
+                { id: "f2", name: "db2", relativePath: "/" },
+              ],
+            },
+          };
+        const params = new URL(call.url).searchParams;
+        if (params.get("path") === "/db" && params.get("environmentSlug") === "prod")
+          return REFUSED;
+        return { body: { dynamicSecrets: [{ id: "ds1", name: "pg" }] } };
+      });
+      const list = await c.listResources("dynamic-secret", ACCOUNT);
+      expect(list).toHaveLength(5);
+      const prefixes = parts.flatMap((p) => p.idPrefixes ?? []);
+      expect(prefixes).toEqual([`${ACCOUNT}:dynamic-secret:proj-1/prod/%2Fdb/`]);
+      const kept = `${ACCOUNT}:dynamic-secret:proj-1/prod/%2Fdb/pg`;
+      expect(kept.startsWith(prefixes[0]!)).toBe(true);
+      const sibling = list.find(
+        (d) => d.fields["path"] === "/db2" && d.fields["environment"] === "prod",
+      );
+      expect(sibling!.id.startsWith(prefixes[0]!)).toBe(false);
+    });
+
+    it("keeps every folder's dynamic secrets when the folder list is refused", async () => {
+      const parts = trackUnread();
+      const c = client((call) => {
+        if (call.url.includes("/api/v2/folders")) return REFUSED;
+        return { body: { dynamicSecrets: [{ id: "ds1", name: "pg" }] } };
+      });
+      const list = await c.listResources("dynamic-secret", ACCOUNT);
+      expect(list.map((d) => d.fields["path"])).toEqual(["/", "/"]);
+      expect(parts.flatMap((p) => p.idPrefixes ?? [])).toEqual([
+        `${ACCOUNT}:dynamic-secret:proj-1/dev/`,
+        `${ACCOUNT}:dynamic-secret:proj-1/prod/`,
+      ]);
+    });
+
+    it("reads a parent that went away as none, and names nothing", async () => {
+      const parts = trackUnread();
+      const c = client(() => ({ status: 404, body: { message: "gone" } }));
+      await expect(c.listResources("secret", ACCOUNT)).resolves.toEqual([]);
+      expect(parts).toEqual([]);
+    });
   });
 });
