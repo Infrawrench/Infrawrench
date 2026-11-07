@@ -1,5 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ChatMessage,
@@ -232,20 +233,24 @@ export class SambaNovaClient implements PluginClient {
       resourceId.split(":").slice(2).join(":");
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+      res = await hostFetch(
+        { http: this.http, caCert: this.caCert, stream: true },
+        `${API_BASE}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            model,
+            messages: messages.map((m) => ({ role: m.role, content: m.content })),
+            stream: true,
+            stream_options: { include_usage: true },
+          }),
         },
-        body: JSON.stringify({
-          model,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          stream: true,
-          stream_options: { include_usage: true },
-        }),
-      });
+      );
     } catch (err) {
       yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
       return;
@@ -308,11 +313,15 @@ export class SambaNovaClient implements PluginClient {
       form.append("response_format", "json");
       if (payload.language) form.append("language", payload.language);
       const started = Date.now();
-      const res = await fetch(`${API_BASE}/audio/transcriptions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.apiKey}` },
-        body: form,
-      });
+      const res = await hostFetch(
+        { http: this.http, caCert: this.caCert },
+        `${API_BASE}/audio/transcriptions`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+          body: form,
+        },
+      );
       if (!res.ok) {
         throw Object.assign(
           new Error(
