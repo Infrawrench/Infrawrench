@@ -134,7 +134,14 @@ export function mapSharedDrive(d: PSharedDrive, accountId: string): ResourceInst
   });
 }
 
-export function mapSnapshot(s: PSnapshot, accountId: string): ResourceInstance {
+/**
+ * The document gives a snapshot no creation time, only the event that made it, so
+ * `eventDate` is all there is for one created here. With no date the field is left
+ * out rather than blank: a sync merges fields over the stored row, so a blank would
+ * wipe the date the create wrote.
+ */
+export function mapSnapshot(s: PSnapshot, accountId: string, eventDate?: string): ResourceInstance {
+  const when = s.dtCreated ?? eventDate;
   return makeInstance({
     accountId,
     typeId: "snapshot",
@@ -144,9 +151,9 @@ export function mapSnapshot(s: PSnapshot, accountId: string): ResourceInstance {
       name: s.name ?? "",
       machineId: s.machineId ?? "",
       automatic: s.isAutoSnapshot ?? false,
-      createdAt: s.dtCreated ?? "",
+      ...(when ? { createdAt: when } : {}),
     },
-    ...created(s.dtCreated),
+    ...created(when),
   });
 }
 

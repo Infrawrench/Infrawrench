@@ -375,6 +375,45 @@ describe("other resources", () => {
   });
 });
 
+describe("snapshot created date", () => {
+  const SNAPSHOT = { id: "s1", name: "nightly", machineId: "ps1", isAutoSnapshot: false };
+
+  it("reads dtCreated when the API sends one, though the document lists none", async () => {
+    route("GET", "/snapshots", {
+      items: [{ ...SNAPSHOT, dtCreated: "2026-09-01T00:00:00Z" }],
+      hasMore: false,
+    });
+    const [s] = await client().listResources("snapshot", "acct");
+    expect(s!.fields["createdAt"]).toBe("2026-09-01T00:00:00Z");
+    expect(s!.createdAt).toBe("2026-09-01T00:00:00Z");
+  });
+
+  it("takes the date from the create event, which the document does give", async () => {
+    route("POST", "/snapshots", {
+      data: SNAPSHOT,
+      event: { id: "e1", state: "done", dtCreated: "2026-10-01T00:00:00Z" },
+    });
+    const s = await client().createResource("snapshot", "acct", {
+      name: "nightly",
+      machineId: "ps1",
+    });
+    expect(s.fields["createdAt"]).toBe("2026-10-01T00:00:00Z");
+    expect(s.createdAt).toBe("2026-10-01T00:00:00Z");
+  });
+
+  it("leaves the field out when it has no date, so a sync keeps the stored one", async () => {
+    route("GET", "/snapshots", { items: [SNAPSHOT], hasMore: false });
+    const [listed] = await client().listResources("snapshot", "acct");
+    expect(listed!.fields).not.toHaveProperty("createdAt");
+
+    route("PUT", "/snapshots/s1", SNAPSHOT);
+    const renamed = await client().updateResource("snapshot", "acct:snapshot:s1", "acct", {
+      name: "nightly",
+    });
+    expect(renamed.fields).not.toHaveProperty("createdAt");
+  });
+});
+
 describe("deployment port", () => {
   const portOf = async (data: object) => {
     route("GET", "/deployments/dep1", { id: "dep1", name: "api", latestSpec: { data } });

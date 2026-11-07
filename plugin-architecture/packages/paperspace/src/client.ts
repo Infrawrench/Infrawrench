@@ -281,7 +281,7 @@ export class PaperspaceClient implements PluginClient {
           });
           await this.awaitEvent(res?.event);
           if (!res?.data) throw new Error(`Paperspace plugin: ${typeId} create returned nothing`);
-          return mapSnapshot(res.data, accountId);
+          return mapSnapshot(res.data, accountId, res.event?.dtCreated);
         }
         case "custom-template": {
           const res = await this.api.post("/custom-templates", {
