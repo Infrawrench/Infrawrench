@@ -327,3 +327,78 @@ describe("renderDetail", () => {
     });
   });
 });
+
+describe("getLogs", () => {
+  const resource = `${ACCOUNT}:xata-branch:org1/p1/b1`;
+  const line = (i: number) => ({
+    timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+    instanceID: "i1",
+    level: "info",
+    message: `line ${i}`,
+  });
+
+  function logRoute(pages: Array<{ count: number; next: string | null }>): {
+    route: Route;
+    bodies: Array<{ limit?: number; cursor?: string; filters?: unknown }>;
+  } {
+    const bodies: Array<{ limit?: number; cursor?: string; filters?: unknown }> = [];
+    let served = 0;
+    return {
+      bodies,
+      route: (call) => {
+        if (call.method !== "POST" || new URL(call.url).pathname.split("/").at(-1) !== "logs") {
+          return undefined;
+        }
+        const body: { limit?: number; cursor?: string; filters?: unknown } = JSON.parse(
+          String(call.body),
+        );
+        bodies.push(body);
+        const page = pages[bodies.length - 1]!;
+        const logs = Array.from({ length: page.count }, (_, i) => line(served + i));
+        served += page.count;
+        return { status: 200, body: { logs, nextCursor: page.next, start: "", end: "" } };
+      },
+    };
+  }
+
+  it("never asks for more than the document's 200 and follows nextCursor to the tail", async () => {
+    const { route, bodies } = logRoute([
+      { count: 200, next: "c1" },
+      { count: 200, next: "c2" },
+      { count: 100, next: "c3" },
+    ]);
+    const { client } = fake([route]);
+    const res = await client.getLogs("xata-branch", resource, ACCOUNT, { tailLines: 500 });
+    expect(bodies.map((b) => [b.limit, b.cursor])).toEqual([
+      [200, undefined],
+      [200, "c1"],
+      [100, "c2"],
+    ]);
+    expect(res.text.trim().split("\n")).toHaveLength(500);
+  });
+
+  it("stops when there is no next page, and keeps the filter on every page", async () => {
+    const { route, bodies } = logRoute([
+      { count: 200, next: "c1" },
+      { count: 3, next: null },
+    ]);
+    const { client } = fake([route]);
+    const res = await client.getLogs("xata-branch", resource, ACCOUNT, {
+      tailLines: 1000,
+      container: "warnings and errors",
+    });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]!.filters).toEqual(bodies[0]!.filters);
+    expect(bodies[0]!.filters).toBeDefined();
+    expect(res.text.trim().split("\n")).toHaveLength(203);
+  });
+
+  it("returns what it read when short pages keep promising more", async () => {
+    const pages = Array.from({ length: 50 }, (_, i) => ({ count: 1, next: `c${i}` }));
+    const { route, bodies } = logRoute(pages);
+    const { client } = fake([route]);
+    const res = await client.getLogs("xata-branch", resource, ACCOUNT, { tailLines: 1000 });
+    expect(bodies.length).toBeLessThan(50);
+    expect(res.text.trim().split("\n")).toHaveLength(bodies.length);
+  });
+});

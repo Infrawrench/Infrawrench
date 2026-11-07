@@ -179,3 +179,4 @@ export type XInvoice = Schemas["BillingInvoice"];
 export type XUpcomingInvoice = ApiResponse<operations["getBillingUpcomingInvoice"]>;
 export type XPgParameter = Schemas["PostgresConfigParameter"];
 export type XMetricName = Schemas["BranchMetricName"];
+export type XLogEntry = Schemas["LogEntry"];

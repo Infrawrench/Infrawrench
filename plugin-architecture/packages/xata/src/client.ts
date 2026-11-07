@@ -35,6 +35,7 @@ import type {
   XBranchSummary,
   XCredentials,
   XInvoice,
+  XLogEntry,
   XMetricName,
   XOrg,
   XPgParameter,
@@ -66,6 +67,12 @@ const METRICS: Array<[XMetricName, string]> = [
 ];
 
 export const DEFAULT_METRICS_WINDOW_MS = 3 * 3_600_000;
+
+/** `BranchLogsRequest.limit` has a maximum of 200 in Xata's document; the rest is paged. */
+const LOG_PAGE_SIZE = 200;
+const MAX_LOG_LINES = 1000;
+/** A log view, so a run of short pages ends at what was read rather than failing. */
+const MAX_LOG_PAGES = 10;
 
 type Fields = ResourceInstance["fields"];
 
@@ -897,17 +904,26 @@ export class XataClient implements PluginClient {
         params.container && containers.includes(params.container) ? params.container : "all";
       const end = new Date();
       const start = new Date(end.getTime() - 24 * 3_600_000);
-      const res = await this.api.post(`${this.branchPath(org, project, branch)}/logs`, {
-        body: {
-          start: start.toISOString(),
-          end: end.toISOString(),
-          limit: Math.min(Math.max(params.tailLines ?? 200, 1), 1000),
-          ...(active === "warnings and errors"
-            ? { filters: [{ field: "level", op: "in", values: ["warning", "error"] }] }
-            : {}),
-        },
-      });
-      const logs = [...(res?.logs ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const want = Math.min(Math.max(params.tailLines ?? 200, 1), MAX_LOG_LINES);
+      const logs: XLogEntry[] = [];
+      let cursor: string | null | undefined;
+      for (let page = 0; page < MAX_LOG_PAGES && logs.length < want; page++) {
+        const res = await this.api.post(`${this.branchPath(org, project, branch)}/logs`, {
+          body: {
+            start: start.toISOString(),
+            end: end.toISOString(),
+            limit: Math.min(want - logs.length, LOG_PAGE_SIZE),
+            ...(active === "warnings and errors"
+              ? { filters: [{ field: "level", op: "in", values: ["warning", "error"] }] }
+              : {}),
+            ...(cursor ? { cursor } : {}),
+          },
+        });
+        logs.push(...(res?.logs ?? []));
+        cursor = res?.nextCursor;
+        if (!cursor) break;
+      }
+      logs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
       const text = logs
         .map(
           (l) =>
