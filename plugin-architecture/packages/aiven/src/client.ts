@@ -23,7 +23,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
 import type { AivenApi, AivenBody, AivenContext } from "./api.js";
-import { createAivenApi, enc, statusOf } from "./api.js";
+import { createAivenApi, enc, listOf, statusOf } from "./api.js";
 import { fetchAivenCostData, serviceLabel } from "./cost-data.js";
 import {
   chartsToSeries,
@@ -149,6 +149,16 @@ function ttlCache<V>() {
   };
 }
 
+/**
+ * A service's children: a 404 means the service has gone, a 403 that the token cannot
+ * see them. Any other failure has to fail the list, or a sync prunes the stored rows.
+ */
+function noneWhenGone(err: unknown): never[] {
+  const status = statusOf(err);
+  if (status === 403 || status === 404) return [];
+  throw err;
+}
+
 type ServicePath = `/project/${NoSlashString}/service/${NoSlashString}`;
 
 const svcPath = (project: string, service: string): ServicePath =>
@@ -189,9 +199,8 @@ export class AivenClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   projects(): Promise<AvProject[]> {
-    return this.cache.projects.get(
-      "projects",
-      async () => (await this.api.get("/project"))?.projects ?? [],
+    return this.cache.projects.get("projects", async () =>
+      listOf((await this.api.get("/project"))?.projects, "/project", "projects"),
     );
   }
 
@@ -201,8 +210,10 @@ export class AivenClient implements PluginClient {
       const out: Array<{ project: string; svc: AvService }> = [];
       for (const p of await this.projects()) {
         if (!p.project_name) continue;
-        const res = await this.api.get(`/project/${enc(p.project_name)}/service`);
-        for (const svc of res?.services ?? []) out.push({ project: p.project_name, svc });
+        const path = `/project/${enc(p.project_name)}/service` as const;
+        const res = await this.api.get(path);
+        for (const svc of listOf(res?.services, path, "services"))
+          out.push({ project: p.project_name, svc });
       }
       return out;
     });
@@ -219,8 +230,9 @@ export class AivenClient implements PluginClient {
       const out: Array<{ project: string; vpc: AvVpcRow }> = [];
       for (const p of await this.projects()) {
         if (!p.project_name) continue;
-        const res = await this.api.get(`/project/${enc(p.project_name)}/vpcs`);
-        for (const vpc of res?.vpcs ?? [])
+        const path = `/project/${enc(p.project_name)}/vpcs` as const;
+        const res = await this.api.get(path);
+        for (const vpc of listOf(res?.vpcs, path, "vpcs"))
           if (vpc.state !== "DELETED") out.push({ project: p.project_name, vpc });
       }
       return out;
@@ -248,9 +260,12 @@ export class AivenClient implements PluginClient {
   }
 
   private billingGroups(): Promise<AvBillingGroup[]> {
-    return this.cache.billingGroups.get(
-      "billing-groups",
-      async () => (await this.api.get("/billing-group"))?.billing_groups ?? [],
+    return this.cache.billingGroups.get("billing-groups", async () =>
+      listOf(
+        (await this.api.get("/billing-group"))?.billing_groups,
+        "/billing-group",
+        "billing_groups",
+      ),
     );
   }
 
@@ -380,10 +395,12 @@ export class AivenClient implements PluginClient {
         case T.topic: {
           const out: ResourceInstance[] = [];
           for (const { project, svc } of await this.servicesOf(KAFKA_TYPES)) {
-            const res = await this.api
-              .get(`${svcPath(project, svc.service_name ?? "")}/topic`)
-              .catch(() => undefined);
-            for (const t of res?.topics ?? [])
+            const path = `${svcPath(project, svc.service_name ?? "")}/topic` as const;
+            const topics = await this.api
+              .get(path)
+              .then((res) => listOf(res?.topics, path, "topics"))
+              .catch(noneWhenGone);
+            for (const t of topics)
               out.push(mapTopic(accountId, project, svc.service_name ?? "", t));
           }
           return out;
@@ -393,10 +410,12 @@ export class AivenClient implements PluginClient {
           for (const { project, svc } of await this.servicesOf(CONNECT_TYPES)) {
             if (svc.service_type === "kafka" && !(svc.user_config?.["kafka_connect"] === true))
               continue;
-            const res = await this.api
-              .get(`${svcPath(project, svc.service_name ?? "")}/connectors`)
-              .catch(() => undefined);
-            for (const c of res?.connectors ?? [])
+            const path = `${svcPath(project, svc.service_name ?? "")}/connectors` as const;
+            const connectors = await this.api
+              .get(path)
+              .then((res) => listOf(res?.connectors, path, "connectors"))
+              .catch(noneWhenGone);
+            for (const c of connectors)
               out.push(mapConnector(accountId, project, svc.service_name ?? "", c));
           }
           return out;
@@ -405,10 +424,13 @@ export class AivenClient implements PluginClient {
           const out: ResourceInstance[] = [];
           for (const { project, svc } of await this.servicesOf(KAFKA_TYPES)) {
             if (!(svc.user_config?.["schema_registry"] === true)) continue;
-            const res = await this.api
-              .get(`${svcPath(project, svc.service_name ?? "")}/kafka/schema/subjects`)
-              .catch(() => undefined);
-            for (const s of res?.subjects ?? [])
+            const path =
+              `${svcPath(project, svc.service_name ?? "")}/kafka/schema/subjects` as const;
+            const subjects = await this.api
+              .get(path)
+              .then((res) => listOf(res?.subjects, path, "subjects"))
+              .catch(noneWhenGone);
+            for (const s of subjects)
               out.push(mapSubject(accountId, project, svc.service_name ?? "", s));
           }
           return out;

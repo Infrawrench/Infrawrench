@@ -1,3 +1,4 @@
+import { rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type {
   CostChargeType,
   CostFetchRange,
@@ -5,7 +6,7 @@ import type {
   CostRow,
 } from "@infrawrench/plugin-base";
 import type { AivenContext } from "./api.js";
-import { createAivenApi, enc } from "./api.js";
+import { createAivenApi, enc, listOf } from "./api.js";
 import type { AvInvoice, AvInvoiceLine, Loose } from "./types.js";
 
 /**
@@ -118,7 +119,11 @@ export async function fetchAivenCostData(
   range: CostFetchRange,
 ): Promise<CostRow[] | CostFetchResult> {
   const api = createAivenApi(ctx);
-  const groups = (await api.get("/billing-group"))?.billing_groups ?? [];
+  const groups = listOf(
+    (await api.get("/billing-group"))?.billing_groups,
+    "/billing-group",
+    "billing_groups",
+  );
   const rows: CostRow[] = [];
   let degraded = false;
   const from = Date.parse(`${range.fromDate}T00:00:00Z`);
@@ -127,9 +132,10 @@ export async function fetchAivenCostData(
     if (!g.billing_group_id) continue;
     let invoices: AvInvoice[] = [];
     try {
-      invoices =
-        (await api.get(`/billing-group/${enc(g.billing_group_id)}/invoice`))?.invoices ?? [];
-    } catch {
+      const path = `/billing-group/${enc(g.billing_group_id)}/invoice` as const;
+      invoices = listOf((await api.get(path))?.invoices, path, "invoices");
+    } catch (err) {
+      rethrowIncompleteList(err);
       degraded = true;
       continue;
     }

@@ -1,6 +1,7 @@
 import {
   createApiClient,
   pathEncode,
+  requireListPage,
   type ApiBody,
   type ApiClient,
   type ApiFailure,
@@ -89,3 +90,8 @@ export function createAivenApi(ctx: AivenContext): AivenApi {
 }
 
 export const enc = pathEncode;
+
+/** A list the document requires, so a 2xx without it is not an empty answer. */
+export function listOf<T>(list: readonly T[] | null | undefined, path: string, key: string): T[] {
+  return requireListPage(list, { vendor: "Aiven", path, key });
+}

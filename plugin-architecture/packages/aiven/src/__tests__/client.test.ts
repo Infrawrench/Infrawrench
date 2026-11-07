@@ -321,6 +321,75 @@ describe("integration type picker", () => {
   });
 });
 
+describe("reads that cannot say they have every row", () => {
+  const account = (state = "RUNNING") => ({
+    "GET /project": { projects: [{ project_name: "acme" }] },
+    "GET /project/acme/service": {
+      services: [
+        {
+          service_name: "k1",
+          service_type: "kafka",
+          state,
+          user_config: { kafka_connect: true, schema_registry: true },
+        },
+      ],
+    },
+  });
+  const status = (code: number) => () =>
+    new Response(JSON.stringify({ message: "no" }), { status: code });
+  const list = (type: string) =>
+    hostClient(new AivenClient({ apiToken: "x" })).listResources(type, ACC);
+
+  const children = [
+    ["aiven-kafka-topic", "GET /project/acme/service/k1/topic", "topics"],
+    ["aiven-kafka-connector", "GET /project/acme/service/k1/connectors", "connectors"],
+    ["aiven-schema-subject", "GET /project/acme/service/k1/kafka/schema/subjects", "subjects"],
+  ] as const;
+
+  it.each(children)("fails %s when the read fails", async (type, route) => {
+    mockFetch({ ...account(), [route]: status(500) });
+    await expect(list(type)).rejects.toThrow(/500/);
+  });
+
+  it.each(children)("reads a 404 on %s as no rows", async (type, route) => {
+    mockFetch({ ...account(), [route]: status(404) });
+    await expect(list(type)).resolves.toEqual([]);
+  });
+
+  it.each(children)("reads a 403 on %s as no rows", async (type, route) => {
+    mockFetch({ ...account(), [route]: status(403) });
+    await expect(list(type)).resolves.toEqual([]);
+  });
+
+  it.each(children)("refuses a %s answer without its key", async (type, route) => {
+    mockFetch({ ...account(), [route]: { renamed: [] } });
+    await expect(list(type)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a project, service, VPC or billing group answer without its key", async () => {
+    mockFetch({ "GET /project": { renamed: [] }, "GET /billing-group": { renamed: [] } });
+    await expect(list("aiven-project")).rejects.toThrow("is not a list");
+    await expect(list("aiven-billing-group")).rejects.toThrow("is not a list");
+    mockFetch({ ...account(), "GET /project/acme/service": { renamed: [] } });
+    await expect(list("aiven-service")).rejects.toThrow("is not a list");
+    mockFetch({ ...account(), "GET /project/acme/vpcs": { renamed: [] } });
+    await expect(list("aiven-vpc")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a cost answer without its key, through the catch around it", async () => {
+    mockFetch({
+      "GET /billing-group": { billing_groups: [{ billing_group_id: "g1" }] },
+      "GET /billing-group/g1/invoice": { renamed: [] },
+    });
+    await expect(
+      hostClient(new AivenClient({ apiToken: "x" })).fetchCostData(ACC, {
+        fromDate: "2026-01-01",
+        toDate: "2026-01-31",
+      }),
+    ).rejects.toThrow("is not a list");
+  });
+});
+
 describe("Kafka connection string", () => {
   it("uses the SASL endpoint and inlines the CA", () => {
     const uri = serviceConnectionString(
