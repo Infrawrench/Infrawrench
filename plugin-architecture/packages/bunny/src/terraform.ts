@@ -45,7 +45,7 @@ export const bunnyTerraformExport: TerraformExportCapability = {
           containerAppId?: string;
         } = {};
         try {
-          origin = JSON.parse(fieldString(r, "originJson") || "{}") as typeof origin;
+          origin = JSON.parse(fieldString(r, "originJson") || "{}");
         } catch {
           origin = {};
         }
@@ -99,7 +99,7 @@ export const bunnyTerraformExport: TerraformExportCapability = {
         const pz = fieldNumber(r, "pullZoneId");
         let rule: EdgeRule | undefined;
         try {
-          rule = JSON.parse(fieldString(r, "ruleJson") || "null") as EdgeRule | undefined;
+          rule = JSON.parse(fieldString(r, "ruleJson") || "null");
         } catch {
           rule = undefined;
         }
