@@ -183,3 +183,17 @@ describe("lists that stopped at their first page", () => {
   });
 });
 
+
+describe("Dataflow jobs", () => {
+  it("reads every region's, not just the us-central1 that jobs.list answers for", async () => {
+    const { client, reads } = clientFor(() => ({
+      jobs: [{ id: "j1", name: "job", location: "europe-west1" }],
+    }));
+    const [row] = await client.listResources("dataflow-job", ACCT);
+    expect(row!.fields.region).toBe("europe-west1");
+    const url = new URL(reads()[0]![0].url);
+    expect(url.pathname).toBe("/v1b3/projects/proj/jobs:aggregated");
+    expect(url.searchParams.get("filter")).toBe("ACTIVE");
+  });
+});
+

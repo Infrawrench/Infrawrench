@@ -230,8 +230,9 @@ export async function listDataflowJobs(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
+  // `jobs.list` only answers for us-central1. `jobs:aggregated` is every region's.
   const items = await ctx.paginate<Record<string, unknown>>(
-    `https://dataflow.googleapis.com/v1b3/projects/${p}/jobs`,
+    `https://dataflow.googleapis.com/v1b3/projects/${p}/jobs:aggregated`,
     "jobs",
     { filter: "ACTIVE" },
   );
