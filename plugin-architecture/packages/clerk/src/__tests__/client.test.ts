@@ -182,6 +182,19 @@ describe("mutations", () => {
     ]);
   });
 
+  it.each([`${ACCOUNT}:user:`, `${ACCOUNT}:user:   `, "user"])(
+    "refuses to revoke sessions for the blank user id in %j, sending nothing",
+    async (resourceId) => {
+      const c = client((call) =>
+        call.method === "GET" ? { body: [{ id: "sess_other_user" }] } : { body: {} },
+      );
+      await expect(c.invokeAction("user", resourceId, "revoke-sessions")).rejects.toThrow(
+        /needs a user id/,
+      );
+      expect(calls).toHaveLength(0);
+    },
+  );
+
   it("rejects JWT templates with invalid claims JSON before calling Clerk", async () => {
     const c = client(() => ({ body: {} }));
     await expect(
