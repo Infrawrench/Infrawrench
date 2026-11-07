@@ -12,6 +12,7 @@ export type EdgeRule = NonNullable<PullZone["EdgeRules"]>[number];
 /** An edge rule as written, which has no guid until bunny.net gives it one. */
 export type EdgeRuleBody = components["schemas"]["EdgeRuleV2Model"];
 export type StorageZone = ApiResponse<operations["StorageZonePublic_Index"]>;
+export type StorageRegion = components["schemas"]["StorageRegionModel"];
 export type DnsZone = ApiResponse<operations["DnsZonePublic_Index2"]>;
 export type DnsRecord = NonNullable<DnsZone["Records"]>[number];
 export type VideoLibrary = components["schemas"]["VideoLibraryModel"];

@@ -162,16 +162,9 @@
           "why": "The document marks nothing required. A billing record always has its amount and date, and cost rows are built from them."
         },
         {
-          "pointer": "/components/schemas/StorageRegionModel/properties/Id",
-          "value": {
-            "type": "string"
-          },
-          "why": "The plugin reads `Id` where the document says `Code` (#494). Remove this with the fix."
-        },
-        {
           "pointer": "/components/schemas/StorageRegionModel/required",
-          "value": ["Id", "Name"],
-          "why": "The plugin reads `Id` where the document says `Code` (#494). Remove this with the fix."
+          "value": ["Name"],
+          "why": "The document marks nothing required. A region always has its name, and it is what a picker shows."
         },
         {
           "pointer": "/components/schemas/StorageRegionModel/properties/Name",

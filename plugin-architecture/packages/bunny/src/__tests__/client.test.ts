@@ -374,6 +374,62 @@ describe("pull zone origins", () => {
   });
 });
 
+describe("storage region pickers", () => {
+  function regions(body: unknown) {
+    return client((u) => (u.pathname === "/storagezone/regions" ? { body } : { body: [] })).c;
+  }
+
+  it("uses the documented Code as the option id", async () => {
+    const c = regions([
+      { Code: "DE", Name: "Falkenstein" },
+      { Code: "NY", Name: "New York" },
+    ]);
+    const { fields } = await c.getCreateConfig("storage-zone");
+    const region = fields.find((f) => f.key === "region")!;
+    expect(region.defaultValue).toBe("DE");
+    expect(region.options).toEqual([
+      { id: "DE", label: "Falkenstein", description: "DE" },
+      { id: "NY", label: "New York", description: "NY" },
+    ]);
+    expect(fields.find((f) => f.key === "replicationRegions")!.policies).toEqual([
+      { id: "DE", label: "Falkenstein" },
+      { id: "NY", label: "New York" },
+    ]);
+  });
+
+  it("offers video libraries the same codes", async () => {
+    const { fields } = await regions([{ Code: "SG", Name: "Singapore" }]).getCreateConfig(
+      "video-library",
+    );
+    expect(fields.find((f) => f.key === "replicationRegions")!.policies).toEqual([
+      { id: "SG", label: "Singapore" },
+    ]);
+  });
+
+  it("falls back to Id for an answer without Code, and drops a row with neither", async () => {
+    const { fields } = await regions([
+      { Id: "LA", Name: "Los Angeles" },
+      { Code: null, Name: "Nowhere" },
+    ]).getCreateConfig("storage-zone");
+    expect(fields.find((f) => f.key === "region")!.options).toEqual([
+      { id: "LA", label: "Los Angeles", description: "LA" },
+    ]);
+  });
+
+  it("creates a storage zone with the picked code", async () => {
+    const { c, calls } = client(() => ({ status: 201, body: { Id: 1, Name: "z" } }));
+    await c.createResource("storage-zone", "a1", {
+      name: "z",
+      region: "NY",
+      replicationRegions: '["NY","DE"]',
+    });
+    expect(JSON.parse(String(calls[0]!.body))).toMatchObject({
+      Region: "NY",
+      ReplicationRegions: ["DE"],
+    });
+  });
+});
+
 describe("storage browser", () => {
   it("lists with the zone password on the zone's storage host", async () => {
     const { c, calls } = client((u) => {

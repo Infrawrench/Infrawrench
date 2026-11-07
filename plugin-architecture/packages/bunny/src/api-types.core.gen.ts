@@ -1562,7 +1562,6 @@ export interface components {
             Code?: string | null;
             Continent?: string | null;
             Endpoint?: string | null;
-            Id: string;
             IsMainRegionSupported?: boolean;
             IsS3Supported?: boolean;
             /** Format: double */

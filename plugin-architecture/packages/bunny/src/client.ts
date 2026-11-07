@@ -51,6 +51,7 @@ import type {
   EdgeRuleBody,
   PullZone,
   PullZoneUpdate,
+  StorageRegion,
   StorageZone,
 } from "./types.js";
 import { DNS_RECORD_TYPES, EDGE_ACTIONS, MATCH_TYPES, TRIGGER_TYPES, enumIndex } from "./types.js";
@@ -198,6 +199,12 @@ export function edgeRuleFromFields(
   };
   if (!rule.Guid) delete rule.Guid;
   return rule;
+}
+
+/** The document's `Code`, or the `Id` this plugin read before, should an answer still carry it. */
+function regionCode(r: StorageRegion): string {
+  if (r.Code) return r.Code;
+  return "Id" in r && typeof r.Id === "string" ? r.Id : "";
 }
 
 export class BunnyClient implements PluginClient {
@@ -495,7 +502,10 @@ export class BunnyClient implements PluginClient {
     Array<{ id: string; label: string; description?: string }>
   > {
     const regions = await this.api.core.get("/storagezone/regions").catch(() => []);
-    return (regions ?? []).map((r) => ({ id: r.Id, label: r.Name, description: r.Id }));
+    return (regions ?? []).flatMap((r) => {
+      const code = regionCode(r);
+      return code ? [{ id: code, label: r.Name, description: code }] : [];
+    });
   }
 
   getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
