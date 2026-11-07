@@ -274,9 +274,16 @@ describe("paging: incidents", () => {
       status: "acknowledged",
       urgency: "high",
       incident_key: "iw:o:probe:p",
-      service: { id: "S1", summary: "db" },
-      assignments: [{ assignee: { name: "Ada", email: "ada@x.io" } }],
-      acknowledgements: [{ acknowledger: { name: "Bo", email: "bo@x.io" } }],
+      service: { id: "S1", type: "service_reference", summary: "db" },
+      assignments: [
+        { at: "2026-10-06T00:00:00Z", assignee: { type: "user", name: "Ada", email: "ada@x.io" } },
+      ],
+      acknowledgements: [
+        {
+          at: "2026-10-06T00:00:00Z",
+          acknowledger: { type: "user", name: "Bo", email: "bo@x.io" },
+        },
+      ],
       created_at: "2026-10-06T00:00:00Z",
     });
     expect(incident).toMatchObject({
@@ -369,7 +376,7 @@ describe("terraform export", () => {
     const r = mapService("acc", {
       id: "S1",
       name: "api",
-      escalation_policy: { id: "P1" },
+      escalation_policy: { id: "P1", type: "escalation_policy_reference" },
       auto_resolve_timeout: 14400,
       acknowledgement_timeout: null,
     });

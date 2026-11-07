@@ -7,10 +7,9 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { pdList } from "./api.js";
+import { createPagerDutyApi } from "./api.js";
 import { PagerDutyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import type { PdUser } from "./mappers.js";
 import { verifyWebhook } from "./paging.js";
 import { PAGERDUTY_OAUTH, completePagerDutyOAuth, isPagerDutyOAuth } from "./oauth.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -93,17 +92,14 @@ export const plugin = definePlugin({
       if (fieldKey !== "fromEmail") return [];
       const apiKey = (credentials["apiKey"] ?? "").trim();
       if (!apiKey) return [];
-      const users = await pdList<PdUser>(
-        {
-          apiKey,
-          ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
-          region: (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us",
-          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-          ...(services?.http ? { http: services.http } : {}),
-        },
-        "/users",
-        "users",
-      );
+      const api = createPagerDutyApi({
+        apiKey,
+        ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
+        region: (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us",
+        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+        ...(services?.http ? { http: services.http } : {}),
+      });
+      const users = await api.getAll("/users", "users");
       return users
         .filter((u) => u.email)
         .map((u) => ({
