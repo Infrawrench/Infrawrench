@@ -26,6 +26,7 @@ import {
 import {
   basetenPages,
   createBasetenApi,
+  errorText,
   isStatus,
   listOf,
   MAX_LIST_PAGES,
@@ -181,10 +182,7 @@ export class BasetenClient implements PluginClient {
 
   teams(): Promise<BasetenTeam[]> {
     this.teamsCache = cached(this.teamsCache, CATALOG_TTL_MS, () =>
-      this.api
-        .get("/v1/teams")
-        .then((r) => r?.teams ?? [])
-        .catch(() => []),
+      this.api.get("/v1/teams").then((r) => listOf(r, "teams", "/v1/teams")),
     );
     return this.teamsCache.value;
   }
@@ -533,7 +531,12 @@ export class BasetenClient implements PluginClient {
         };
       }
       if (typeId === "secret") {
-        const teams = await this.teams();
+        // Only a key that cannot read teams goes without the picker: hiding it because the
+        // read failed would send the secret to the primary team without saying so.
+        const teams = await this.teams().catch((err): BasetenTeam[] => {
+          if (isStatus(err, 401, 403, 404)) return [];
+          throw err;
+        });
         return {
           fields: [
             {
@@ -664,7 +667,7 @@ export class BasetenClient implements PluginClient {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const value = fields["value"] ?? "";
           if (value) {
-            const teamId = await this.teamIdByName(String(current.fields["teamName"] ?? ""));
+            const teamId = await this.secretTeamId(String(current.fields["teamName"] ?? ""));
             const body = { name: String(current.fields["name"]), value };
             await (teamId
               ? this.api.post(`/v1/teams/${enc(teamId)}/secrets`, { body })
@@ -678,10 +681,30 @@ export class BasetenClient implements PluginClient {
     });
   }
 
-  private async teamIdByName(teamName: string): Promise<string> {
+  /**
+   * The team a secret was listed under. The routes with no team act on the default team
+   * whatever the secret's name, so anything short of one sure answer refuses rather than
+   * change a secret of the same name there. Only a secret that names no team goes to them.
+   */
+  private async secretTeamId(teamName: string): Promise<string> {
     if (!teamName) return "";
-    const teams = await this.teams();
-    return teams.find((t) => t.name === teamName)?.id ?? "";
+    const refuse = (why: string) =>
+      new Error(`Baseten plugin: left the secret in team "${teamName}" alone: ${why}.`);
+    let teams: BasetenTeam[];
+    try {
+      teams = await this.teams();
+    } catch (err) {
+      throw refuse(`the team list could not be read (${errorText(err)})`);
+    }
+    const [team, another] = teams.filter((t) => t.name === teamName);
+    if (team?.id && !another) return team.id;
+    // A team renamed since this client last looked should work on the next try.
+    this.teamsCache = undefined;
+    throw refuse(
+      another
+        ? "more than one team has that name"
+        : "the team list has no team with that name and id",
+    );
   }
 
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
@@ -711,7 +734,7 @@ export class BasetenClient implements PluginClient {
         case "secret": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const name = String(current.fields["name"]);
-          const teamId = await this.teamIdByName(String(current.fields["teamName"] ?? ""));
+          const teamId = await this.secretTeamId(String(current.fields["teamName"] ?? ""));
           await (teamId
             ? this.api.delete(`/v1/teams/${enc(teamId)}/secrets/${enc(name)}`)
             : this.api.delete(`/v1/secrets/${enc(name)}`));

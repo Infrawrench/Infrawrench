@@ -434,6 +434,96 @@ describe("instance type reads", () => {
   });
 });
 
+describe("a secret's team", () => {
+  const SECRET_ID = `${ACC}:secret:Core/hf`;
+  const writes = () => state.calls.filter((x) => x.method !== "GET");
+
+  beforeEach(() => {
+    route("GET", "/v1/secrets", { secrets: [{ id: "s1", name: "hf", team_name: "Core" }] });
+    route("POST", "/v1/secrets", { name: "hf" });
+    route("DELETE", "/v1/secrets/hf", { name: "hf" });
+    route("POST", "/v1/teams/t1/secrets", { name: "hf", team_name: "Core" });
+    route("DELETE", "/v1/teams/t1/secrets/hf", { name: "hf" });
+  });
+
+  it("deletes from the team the secret is in", async () => {
+    route("GET", "/v1/teams", { teams: [{ id: "t1", name: "Core" }] });
+    await client().deleteResource("secret", SECRET_ID, ACC);
+    expect(writes().map((x) => x.path)).toEqual(["/v1/teams/t1/secrets/hf"]);
+  });
+
+  it.each([
+    ["the team list fails", () => new Response("{}", { status: 500 })],
+    ["the key cannot read teams", () => new Response("{}", { status: 403 })],
+    ["no team has that name", () => ({ teams: [{ id: "t2", name: "Other", default: true }] })],
+    [
+      "two teams have that name",
+      () => ({
+        teams: [
+          { id: "t1", name: "Core" },
+          { id: "t2", name: "Core" },
+        ],
+      }),
+    ],
+    ["the matching team has no id", () => ({ teams: [{ id: "", name: "Core" }] })],
+    ["the team list is not a list", () => ({ message: "maintenance" })],
+  ])("changes nothing when %s", async (_why, teams) => {
+    route("GET", "/v1/teams", teams);
+    const c = client();
+    await expect(c.deleteResource("secret", SECRET_ID, ACC)).rejects.toThrow(/Core/);
+    await expect(c.updateResource("secret", SECRET_ID, ACC, { value: "new" })).rejects.toThrow(
+      /Core/,
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  it("does not keep a failed team list", async () => {
+    let up = false;
+    route("GET", "/v1/teams", () =>
+      up ? { teams: [{ id: "t1", name: "Core" }] } : new Response("{}", { status: 500 }),
+    );
+    const c = client();
+    await expect(c.deleteResource("secret", SECRET_ID, ACC)).rejects.toThrow(/Core/);
+    up = true;
+    await c.deleteResource("secret", SECRET_ID, ACC);
+    expect(writes().map((x) => x.path)).toEqual(["/v1/teams/t1/secrets/hf"]);
+  });
+
+  it("reads the team list again after a name stops matching", async () => {
+    let renamed = false;
+    route("GET", "/v1/teams", () => ({
+      teams: [{ id: "t1", name: renamed ? "Core" : "Old" }],
+    }));
+    const c = client();
+    await expect(c.deleteResource("secret", SECRET_ID, ACC)).rejects.toThrow(/Core/);
+    renamed = true;
+    await c.deleteResource("secret", SECRET_ID, ACC);
+    expect(writes().map((x) => x.path)).toEqual(["/v1/teams/t1/secrets/hf"]);
+  });
+
+  it("uses the default-team routes for a secret that names no team", async () => {
+    route("GET", "/v1/secrets", { secrets: [{ id: "s1", name: "hf" }] });
+    const c = client();
+    await c.updateResource("secret", `${ACC}:secret:default/hf`, ACC, { value: "new" });
+    await c.deleteResource("secret", `${ACC}:secret:default/hf`, ACC);
+    expect(writes().map((x) => `${x.method} ${x.path}`)).toEqual([
+      "POST /v1/secrets",
+      "DELETE /v1/secrets/hf",
+    ]);
+  });
+
+  it("opens the create form with no picker for a key that cannot read teams", async () => {
+    route("GET", "/v1/teams", () => new Response("{}", { status: 403 }));
+    const config = await client().getCreateConfig("secret");
+    expect(config.fields.map((x) => x.key)).toEqual(["name", "value"]);
+  });
+
+  it("will not hide the picker because the team list failed", async () => {
+    route("GET", "/v1/teams", () => new Response("{}", { status: 500 }));
+    await expect(client().getCreateConfig("secret")).rejects.toThrow(/500/);
+  });
+});
+
 describe("autoscaling validation", () => {
   it("enforces documented bounds", () => {
     expect(() => buildAutoscalingPatch({ targetUtilization: "120" }, {})).toThrow(/1 and 100/);
