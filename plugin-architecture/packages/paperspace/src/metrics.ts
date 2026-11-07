@@ -1,5 +1,6 @@
-import type { MetricSeries } from "@infrawrench/plugin-base";
+import { pathEncode, type ApiResponse, type MetricSeries } from "@infrawrench/plugin-base";
 import type { PaperspaceApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 /**
  * Deployment metrics from `GET /deployments/{id}/metrics?metric=&timeframe=`
@@ -13,17 +14,22 @@ import type { PaperspaceApi } from "./api.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 12 * 3_600_000;
 
-interface Point {
-  timestamp: string;
-  value: string;
-  instanceId?: string;
-  gpu?: string;
+type MetricsOperation = operations["deploymentMetrics-get"];
+type MetricsResponse = ApiResponse<MetricsOperation>;
+type MetricsQuery = NonNullable<MetricsOperation["parameters"]["query"]>;
+type Timeframe = NonNullable<MetricsQuery["timeframe"]>;
+type MetricRows = Extract<MetricsResponse, readonly object[]>;
+type ReplicaRows = Extract<MetricRows, ReadonlyArray<{ values: object }>>;
+type Point = { timestamp: string; value: string; instanceId?: string; gpu?: string };
+
+/** The document's third shape, told apart as the first row says. */
+function isPerReplica(rows: MetricRows): rows is ReplicaRows {
+  const [first] = rows;
+  return first !== undefined && "values" in first;
 }
 
-type MetricsResponse = Point | Point[] | Array<{ instanceId: string; values: Point[] }>;
-
 export const METRICS: Array<{
-  metric: string;
+  metric: MetricsQuery["metric"];
   label: string;
   unit: string;
   combine: "sum" | "avg";
@@ -40,7 +46,7 @@ export const METRICS: Array<{
   { metric: "gpu", label: "GPU Utilization", unit: "%", combine: "avg" },
 ];
 
-const TIMEFRAMES: Array<[string, number]> = [
+const TIMEFRAMES: Array<[Timeframe, number]> = [
   ["hour", 3_600_000],
   ["12_hours", 12 * 3_600_000],
   ["day", 24 * 3_600_000],
@@ -48,7 +54,7 @@ const TIMEFRAMES: Array<[string, number]> = [
   ["2_weeks", 14 * 24 * 3_600_000],
 ];
 
-export function timeframeFor(spanMs: number): string {
+export function timeframeFor(spanMs: number): Timeframe {
   return (TIMEFRAMES.find(([, ms]) => ms >= spanMs) ?? TIMEFRAMES[TIMEFRAMES.length - 1]!)[0];
 }
 
@@ -61,11 +67,11 @@ export function toSeries(
   const groups: Point[][] = [];
   if (!res) return null;
   if (Array.isArray(res)) {
-    if (res.length && "values" in (res[0] as object)) {
-      for (const r of res as Array<{ values: Point[] }>) groups.push(r.values ?? []);
+    if (isPerReplica(res)) {
+      for (const r of res) groups.push(r.values ?? []);
     } else {
       const byInstance = new Map<string, Point[]>();
-      for (const p of res as Point[]) {
+      for (const p of res) {
         const k = `${p.instanceId ?? ""}/${p.gpu ?? ""}`;
         byInstance.set(k, [...(byInstance.get(k) ?? []), p]);
       }
@@ -106,10 +112,9 @@ export async function fetchDeploymentMetrics(
   const series = await Promise.all(
     METRICS.map(async (def) => {
       try {
-        const res = await api.request<MetricsResponse>(
-          `/deployments/${encodeURIComponent(deploymentId)}/metrics`,
-          { query: { metric: def.metric, timeframe } },
-        );
+        const res = await api.get(`/deployments/${pathEncode(deploymentId)}/metrics`, {
+          query: { metric: def.metric, timeframe },
+        });
         return toSeries(res, def, startMs, endMs);
       } catch {
         return null;

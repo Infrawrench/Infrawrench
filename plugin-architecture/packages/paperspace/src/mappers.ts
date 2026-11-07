@@ -1,9 +1,10 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type {
+  PCustomTemplate,
   PDeployment,
+  PDeploymentSpec,
   PMachine,
   PNetwork,
-  POsTemplate,
   PProject,
   PPublicIp,
   PRegistry,
@@ -149,7 +150,7 @@ export function mapSnapshot(s: PSnapshot, accountId: string): ResourceInstance {
   });
 }
 
-export function mapCustomTemplate(t: POsTemplate, accountId: string): ResourceInstance {
+export function mapCustomTemplate(t: PCustomTemplate, accountId: string): ResourceInstance {
   return makeInstance({
     accountId,
     typeId: "custom-template",
@@ -223,7 +224,7 @@ export function mapStartupScript(s: PStartupScript, accountId: string): Resource
 }
 
 export function mapDeployment(d: PDeployment, accountId: string): ResourceInstance {
-  const spec = d.latestSpec?.data ?? undefined;
+  const spec: PDeploymentSpec | undefined = d.latestSpec?.data ?? undefined;
   const endpoint = d.endpoint ?? "";
   return makeInstance({
     accountId,
