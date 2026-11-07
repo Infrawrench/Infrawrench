@@ -9,7 +9,15 @@
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { reportUnreadListPart, rethrowIncompleteList } from "@infrawrench/plugin-base";
-import { type UpCloudApi, bareList, labelsText, mapPooled, statusOf, unwrap } from "./api.js";
+import {
+  type UpCloudApi,
+  bareList,
+  labelsText,
+  mapPooled,
+  statusOf,
+  unwrap,
+  unwrapList,
+} from "./api.js";
 
 export const PLUGIN_ID = "upcloud";
 
@@ -135,7 +143,7 @@ export function mapServer(s: Json, accountId: string): ResourceInstance {
 
 /** The list omits addresses, so each server is read in full (eight at a time). */
 export async function listServers(api: UpCloudApi, accountId: string) {
-  const list = unwrap<Json>(await api.get("/server"), "servers", "server");
+  const list = unwrapList<Json>(await api.get("/server"), "servers", "server", "/server");
   return mapPooled(list, 8, async (s) => {
     try {
       const full = await api.get<{ server?: Json }>(`/server/${str(s["uuid"])}`);
@@ -223,7 +231,8 @@ async function privateStorages(
   kind: "normal" | "backup" | "template",
 ): Promise<Json[]> {
   // `/storage/private` lists the account's own storages of every type.
-  const all = unwrap<Json>(await api.get("/storage/private"), "storages", "storage");
+  const path = "/storage/private";
+  const all = unwrapList<Json>(await api.get(path), "storages", "storage", path);
   return all.filter((s) => s["type"] === kind);
 }
 
@@ -272,7 +281,7 @@ export function mapNetwork(n: Json, accountId: string): ResourceInstance {
 }
 
 export async function listNetworks(api: UpCloudApi, accountId: string) {
-  const nets = unwrap<Json>(await api.get("/network"), "networks", "network");
+  const nets = unwrapList<Json>(await api.get("/network"), "networks", "network", "/network");
   return nets.filter((n) => n["type"] === "private").map((n) => mapNetwork(n, accountId));
 }
 
@@ -295,7 +304,7 @@ export function mapRouter(r: Json, accountId: string): ResourceInstance {
 }
 
 export async function listRouters(api: UpCloudApi, accountId: string) {
-  return unwrap<Json>(await api.get("/router"), "routers", "router").map((r) =>
+  return unwrapList<Json>(await api.get("/router"), "routers", "router", "/router").map((r) =>
     mapRouter(r, accountId),
   );
 }
@@ -318,7 +327,8 @@ export function mapFloatingIp(ip: Json, accountId: string): ResourceInstance {
 }
 
 export async function listFloatingIps(api: UpCloudApi, accountId: string) {
-  const ips = unwrap<Json>(await api.get("/ip_address"), "ip_addresses", "ip_address");
+  const path = "/ip_address";
+  const ips = unwrapList<Json>(await api.get(path), "ip_addresses", "ip_address", path);
   return ips.filter((ip) => yes(ip["floating"])).map((ip) => mapFloatingIp(ip, accountId));
 }
 
@@ -373,15 +383,20 @@ export function mapNodeGroup(g: Json, cluster: Json, accountId: string): Resourc
   );
 }
 
+export async function listKubernetes(api: UpCloudApi): Promise<Json[]> {
+  return bareList(await api.get<Json[] | null>("/kubernetes"), "/kubernetes");
+}
+
 export async function listClusters(api: UpCloudApi, accountId: string) {
-  return (await api.get<Json[]>("/kubernetes")).map((c) => mapCluster(c, accountId));
+  return (await listKubernetes(api)).map((c) => mapCluster(c, accountId));
 }
 
 export async function listNodeGroups(api: UpCloudApi, accountId: string) {
-  const clusters = await api.get<Json[]>("/kubernetes");
+  const clusters = await listKubernetes(api);
   const rows = await mapPooled(clusters, 6, async (c) => {
+    const path = `/kubernetes/${str(c["uuid"])}/node-groups`;
     try {
-      const groups = await api.get<Json[]>(`/kubernetes/${str(c["uuid"])}/node-groups`);
+      const groups = bareList(await api.get<Json[] | null>(path), path);
       return groups.map((g) => mapNodeGroup(g, c, accountId));
     } catch {
       return ((c["node_groups"] as Json[] | undefined) ?? []).map((g) =>

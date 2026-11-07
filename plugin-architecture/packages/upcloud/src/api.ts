@@ -22,7 +22,7 @@
  */
 
 import type { HostServices } from "@infrawrench/plugin-base";
-import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import { ListPageError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 export const UPCLOUD_API_BASE = "https://api.upcloud.com/1.3";
 
@@ -179,11 +179,35 @@ export function createUpCloudApi(config: UpCloudApiConfig): UpCloudApi {
   return api;
 }
 
-/** Unwrap the legacy double envelope: `{ servers: { server: [...] } }`. */
+/** Unwrap the legacy double envelope inside an object: `{ servers: { server: [...] } }`. */
 export function unwrap<T>(value: unknown, outer: string, inner: string): T[] {
   const o = (value as Record<string, unknown> | undefined)?.[outer];
   const i = (o as Record<string, unknown> | undefined)?.[inner];
   return Array.isArray(i) ? (i as T[]) : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A legacy list answer's rows. Unlike {@link unwrap}, a missing envelope is an error,
+ * not an empty list: a sync would read it as every row deleted. The official SDKs index
+ * both keys of every answer; `{ servers: {} }` is still read as none.
+ */
+export function unwrapList<T>(value: unknown, outer: string, inner: string, path: string): T[] {
+  const envelope = isRecord(value) ? value[outer] : undefined;
+  const where = { vendor: VENDOR, path, page: value };
+  if (!isRecord(envelope)) {
+    throw new ListPageError({ ...where, key: outer, found: envelope });
+  }
+  if (!(inner in envelope) && Object.keys(envelope).length === 0) return [];
+  const rows: unknown = envelope[inner];
+  if (rows === null) return [];
+  if (!Array.isArray(rows)) {
+    throw new ListPageError({ ...where, key: `${outer}.${inner}`, found: rows });
+  }
+  return rows;
 }
 
 /** A managed service's bare list answer. */

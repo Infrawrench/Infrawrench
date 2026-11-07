@@ -14,8 +14,8 @@
 
 import type { CreditBalance, QuotaUsage } from "@infrawrench/plugin-base";
 import { CreditAccessError, QuotaAccessError } from "@infrawrench/plugin-base";
-import { type UpCloudApi, statusOf, unwrap } from "./api.js";
-import { type Json, accountCurrency, num, str } from "./listers.js";
+import { type UpCloudApi, statusOf, unwrapList } from "./api.js";
+import { type Json, accountCurrency, listKubernetes, num, str } from "./listers.js";
 
 const HELP = { label: "Manage UpCloud users", url: "https://hub.upcloud.com/people" };
 
@@ -52,15 +52,18 @@ export async function fetchQuotas(api: UpCloudApi): Promise<QuotaUsage[]> {
     throw err;
   }
   const limits = (account["resource_limits"] as Json | undefined) ?? {};
-  const servers = unwrap<Json>(await api.get("/server"), "servers", "server");
-  const networks = unwrap<Json>(await api.get("/network"), "networks", "network").filter(
-    (n) => n["type"] === "private",
-  );
-  const routers = unwrap<Json>(await api.get("/router"), "routers", "router");
+  const servers = unwrapList<Json>(await api.get("/server"), "servers", "server", "/server");
+  const networks = unwrapList<Json>(
+    await api.get("/network"),
+    "networks",
+    "network",
+    "/network",
+  ).filter((n) => n["type"] === "private");
+  const routers = unwrapList<Json>(await api.get("/router"), "routers", "router", "/router");
   const [lbs, dbs, k8s, oss] = await Promise.all([
     api.paged<Json>("/load-balancer"),
     api.paged<Json>("/database"),
-    api.get<Json[]>("/kubernetes"),
+    listKubernetes(api),
     api.paged<Json>("/object-storage-2"),
   ]);
   const used: Record<string, [string, string, number, string?]> = {

@@ -94,6 +94,25 @@ describe("paged", () => {
   });
 });
 
+describe("legacy lists", () => {
+  it("refuses an answer without its envelope", async () => {
+    const { services } = host(() => ({ body: { error: { error_message: "x" } } }));
+    await expect(client(services).listResources("router", "a")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an envelope whose inner key was renamed", async () => {
+    const { services } = host(() => ({ body: { routers: { routerz: [{ uuid: "r1" }] } } }));
+    await expect(client(services).listResources("router", "a")).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty envelope as none", async () => {
+    const empty = host(() => ({ body: { routers: { router: [] } } }));
+    expect(await client(empty.services).listResources("router", "a")).toEqual([]);
+    const bare = host(() => ({ body: { routers: {} } }));
+    expect(await client(bare.services).listResources("router", "a")).toEqual([]);
+  });
+});
+
 const DBS = [
   { uuid: "db1", type: "pg" },
   { uuid: "db2", type: "mysql" },
@@ -177,6 +196,20 @@ describe.each(CHILD_TYPES)("$typeId", (t) => {
   it("refuses a child page that is not a list", async () => {
     const { services } = host(responder({ body: { error: "x" } }));
     await expect(client(services).listResources(t.typeId, "a")).rejects.toThrow("is not a list");
+  });
+});
+
+describe("node groups", () => {
+  const clusters = [
+    { uuid: "k1", zone: "fi-hel1", node_groups: [{ name: "embedded" }] },
+    { uuid: "k2", zone: "fi-hel1" },
+  ];
+
+  it("refuses a cluster list that is not a list", async () => {
+    const { services } = host(() => ({ body: { clusters: [] } }));
+    await expect(client(services).listResources("kubernetes-cluster", "a")).rejects.toThrow(
+      "is not a list",
+    );
   });
 });
 
