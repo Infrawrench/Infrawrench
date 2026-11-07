@@ -13,7 +13,11 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  reportUnreadListPart,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import { clusterKeyOf, errorText, isStatus, normalizeEndpoint, WeaviateApi } from "./api.js";
 import { WeaviateCloudApi } from "./cloud.js";
 import type { ClusterConnection, ClusterScope, ClusterView } from "./mappers.js";
@@ -57,7 +61,11 @@ import type {
 const NODES_TTL_MS = 30_000;
 const META_TTL_MS = 5 * 60_000;
 const FAN_OUT = 6;
-const MAX_TENANT_COLLECTIONS = 50;
+/**
+ * Multi-tenant collections whose tenants one poll reads per cluster, one request each.
+ * The rest are left for a later poll, which starts somewhere else.
+ */
+const TENANT_COLLECTIONS_PER_POLL = 200;
 
 export const USER_KEY_FIELD = "apiKey";
 
@@ -202,6 +210,23 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
     }),
   );
   return out;
+}
+
+/**
+ * The parents one poll reads when there are more than `budget`, and the rest. The start
+ * moves every minute, so every parent is read over a few polls.
+ */
+export function fanOutWindow<P>(
+  parents: readonly P[],
+  idOf: (p: P) => string,
+  budget: number,
+): { now: P[]; later: P[] } {
+  if (parents.length <= budget) return { now: [...parents], later: [] };
+  const sorted = [...parents].sort((a, b) => (idOf(a) < idOf(b) ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, budget), later: rotated.slice(budget) };
 }
 
 /** One `<endpoint> <api key>` per line; `#` starts a comment, the key may be omitted. */
@@ -494,9 +519,15 @@ export class WeaviateClient implements PluginClient {
           });
         case "tenant":
           return this.perCluster(accountId, async (conn, scope) => {
-            const classes = (await this.schema(conn))
-              .filter((c) => c.multiTenancyConfig?.enabled)
-              .slice(0, MAX_TENANT_COLLECTIONS);
+            const all = (await this.schema(conn)).filter((c) => c.multiTenancyConfig?.enabled);
+            const { now, later } = fanOutWindow(all, (c) => c.class, TENANT_COLLECTIONS_PER_POLL);
+            const collectionId = (c: WvClass) =>
+              `${scope.accountId}:collection:${scope.key}/${c.class}`;
+            // A host that keeps no track of unread rows gets every collection read.
+            const classes =
+              later.length && !reportUnreadListPart({ parentResourceIds: later.map(collectionId) })
+                ? all
+                : now;
             const lists = await mapLimit(classes, FAN_OUT, async (c) => {
               const tenants = await this.tenants(conn, c.class);
               return tenants.map((t) => mapTenant(c.class, t, scope));
@@ -557,12 +588,14 @@ export class WeaviateClient implements PluginClient {
     });
   }
 
+  /** The document answers an array; a map of tenants by name is read too. */
   private async tenants(conn: Conn, collection: string): Promise<WvTenant[]> {
-    const res = await conn.api.request<WvTenant[] | Record<string, WvTenant>>(
-      `/schema/${enc(collection)}/tenants`,
-    );
+    const path = `/schema/${enc(collection)}/tenants`;
+    const res = await conn.api.request<WvTenant[] | Record<string, WvTenant> | undefined>(path);
     if (Array.isArray(res)) return res;
-    return Object.values(res ?? {});
+    const values = res ? Object.values(res) : [];
+    if (values.length > 0 && values.every((t) => typeof t?.name === "string")) return values;
+    throw new ListPageError({ vendor: "Weaviate", path, key: null, found: res });
   }
 
   getResource(
