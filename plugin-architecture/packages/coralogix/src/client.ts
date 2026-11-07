@@ -16,6 +16,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
+  ListTruncatedError,
   QuotaAccessError,
   externalIdOf,
   pathEncode,
@@ -65,7 +66,7 @@ import type { UsageCell } from "./usage.js";
 import { PILLAR_LABELS, PRIORITY_LABELS, fetchUsageCells } from "./usage.js";
 
 const ALERT_PAGE = 100;
-const ALERT_MAX_PAGES = 50;
+const ALERT_MAX_PAGES = 100;
 const TEAM_EXTERNAL_ID = "team";
 
 type PolicyUpdate = ApiBody<operations["PoliciesService_UpdatePolicy"]>;
@@ -187,8 +188,8 @@ export class CoralogixClient implements PluginClient {
 
   /**
    * Coralogix's token pagination (`pagination.pageSize` / `pagination.pageToken`
-   * in, `pagination.nextPageToken` out). Hard-stops at the page cap so a
-   * misbehaving token cannot spin forever.
+   * in, `pagination.nextPageToken` out). Throws at the page cap, so a misbehaving
+   * token cannot spin forever and a longer list is not read as part of one.
    */
   private async fetchAlerts(): Promise<CxAlertDef[]> {
     const out: CxAlertDef[] = [];
@@ -199,9 +200,14 @@ export class CoralogixClient implements PluginClient {
       });
       out.push(...listIn(res, "alertDefs", "/alerts/alerts/v3"));
       token = res?.pagination?.nextPageToken || undefined;
-      if (!token) break;
+      if (!token) return out;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: "Coralogix",
+      path: "/alerts/alerts/v3",
+      items: out.length,
+      maxPages: ALERT_MAX_PAGES,
+    });
   }
 
   private async fetchPolicies(): Promise<CxPolicy[]> {

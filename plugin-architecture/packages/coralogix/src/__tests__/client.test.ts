@@ -89,6 +89,39 @@ describe("listing", () => {
     expect(calls[0]!.url.searchParams.get("pagination.pageSize")).toBe("100");
   });
 
+  it("throws at the page cap when an alert list never ends", async () => {
+    const { c, calls } = client((url) => {
+      if (!url.pathname.endsWith("/alerts/alerts/v3")) {
+        throw new Error(`Unexpected ${url.pathname}`);
+      }
+      const n = Number(url.searchParams.get("pagination.pageToken") ?? 0);
+      return {
+        body: { alertDefs: [{ id: `a${n}` }], pagination: { nextPageToken: String(n + 1) } },
+      };
+    });
+    await expect(c.listResources("alert", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("reads an alert list past the old cap of 50 pages", async () => {
+    const { c, calls } = client((url) => {
+      if (!url.pathname.endsWith("/alerts/alerts/v3")) {
+        throw new Error(`Unexpected ${url.pathname}`);
+      }
+      const n = Number(url.searchParams.get("pagination.pageToken") ?? 0);
+      return {
+        body: {
+          alertDefs: [{ id: `a${n}` }],
+          ...(n < 59 ? { pagination: { nextPageToken: String(n + 1) } } : {}),
+        },
+      };
+    });
+    await expect(c.listResources("alert", ACCOUNT)).resolves.toHaveLength(60);
+    expect(calls).toHaveLength(60);
+  });
+
   const ONE_PAGE_LISTS: Array<[string, string, string]> = [
     ["dashboard", "/dashboards/dashboards/v1/catalog/list", "items"],
     ["tco-policy", "/dataplans/policies/v1", "policies"],
