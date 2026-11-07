@@ -92,6 +92,8 @@ import {
 import { URGENCIES } from "./resource-types.js";
 
 const CACHE_MS = 60_000;
+/** A detail page's table stops here, showing what it has, rather than spend 100 requests. */
+const DETAIL_MAX_PAGES = 20;
 /** Resolved incidents older than this are not listed as resources. */
 const RESOLVED_WINDOW_MS = 7 * 24 * 3600_000;
 
@@ -176,6 +178,17 @@ export class PagerDutyClient implements PluginClient {
       query: { "include[]": ["services", "teams"], sort_by: "name" },
     }),
   );
+  // The pickers' reads are their own: part of a very long list is fine for them, and
+  // must never answer for the inventory, which has to fail instead.
+  private readonly userPickerRead = new CachedRead<PdUser[]>(() =>
+    this.api.getAll("/users", "users", { partial: true }),
+  );
+  private readonly policyPickerRead = new CachedRead<PdEscalationPolicy[]>(() =>
+    this.api.getAll("/escalation_policies", "escalation_policies", {
+      query: { sort_by: "name" },
+      partial: true,
+    }),
+  );
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -206,10 +219,12 @@ export class PagerDutyClient implements PluginClient {
   private invalidate(): void {
     this.userRead.clear();
     this.policyRead.clear();
+    this.userPickerRead.clear();
+    this.policyPickerRead.clear();
   }
 
   private async userOptions(): Promise<Option[]> {
-    return (await this.userRead.get()).map((u) => ({
+    return (await this.userPickerRead.get()).map((u) => ({
       id: u.id ?? "",
       name: u.name ?? u.email ?? u.id ?? "",
       ...(u.email ? { description: u.email } : {}),
@@ -217,7 +232,7 @@ export class PagerDutyClient implements PluginClient {
   }
 
   private async policyOptions(): Promise<Option[]> {
-    return (await this.policyRead.get()).map((p) => ({
+    return (await this.policyPickerRead.get()).map((p) => ({
       id: p.id ?? "",
       name: p.name ?? p.id ?? "",
     }));
@@ -362,6 +377,8 @@ export class PagerDutyClient implements PluginClient {
                   "statuses[]": ["triggered", "acknowledged"],
                   date_range: "all",
                 },
+                maxPages: DETAIL_MAX_PAGES,
+                partial: true,
               })
               .catch((): PdIncident[] => []),
             this.policyOptions().catch((): Option[] => []),
@@ -611,7 +628,7 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-escalation-policy": {
           const [users, schedules] = await Promise.all([
             this.userOptions(),
-            this.api.getAll("/schedules", "schedules"),
+            this.api.getAll("/schedules", "schedules", { partial: true }),
           ]);
           const targets: SelectOption[] = [
             ...schedules.map((s) => ({
@@ -666,6 +683,7 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-maintenance-window": {
           const services = await this.api.getAll("/services", "services", {
             query: { sort_by: "name" },
+            partial: true,
           });
           return {
             fields: [
@@ -689,7 +707,9 @@ export class PagerDutyClient implements PluginClient {
           };
         }
         case "pagerduty-business-service": {
-          const teams = await this.api.getAll("/teams", "teams").catch((): PdTeam[] => []);
+          const teams = await this.api
+            .getAll("/teams", "teams", { partial: true })
+            .catch((): PdTeam[] => []);
           const fields: CreateFieldConfig[] = [
             { key: "name", label: "Name", kind: "text", required: true, placeholder: "Checkout" },
             { key: "description", label: "Description", kind: "text", required: false },

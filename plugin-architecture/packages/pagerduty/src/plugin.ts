@@ -99,7 +99,7 @@ export const plugin = definePlugin({
         ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
         ...(services?.http ? { http: services.http } : {}),
       });
-      const users = await api.getAll("/users", "users");
+      const users = await api.getAll("/users", "users", { partial: true });
       return users
         .filter((u) => u.email)
         .map((u) => ({

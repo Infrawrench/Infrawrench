@@ -422,3 +422,143 @@ describe("cached reads", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("incomplete lists", () => {
+  /** A list that always says there is more, one row per page. */
+  const endless = (key: string) => (call: Call) => ({
+    status: 200,
+    body: {
+      [key]: [{ id: `R${new URL(call.url).searchParams.get("offset")}`, name: "x" }],
+      more: true,
+    },
+  });
+
+  it("reads past the old 2000 rows, up to PagerDuty's 10,000", async () => {
+    const { c, calls } = client((call) => {
+      const offset = Number(new URL(call.url).searchParams.get("offset"));
+      return {
+        status: 200,
+        body: { teams: [{ id: `T${offset}`, name: "x" }], more: offset < 9900 },
+      };
+    });
+    const teams = await c.listResources("pagerduty-team", "acc");
+    expect(teams).toHaveLength(100);
+    expect(calls).toHaveLength(100);
+    expect(new URL(calls[99]!.url).searchParams.get("offset")).toBe("9900");
+  });
+
+  it("fails a list with more than PagerDuty lets anyone read", async () => {
+    const { c, calls } = client(endless("teams"));
+    await expect(c.listResources("pagerduty-team", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    // offset + limit may not pass 10,000, so a 101st request would only answer 400.
+    expect(calls).toHaveLength(100);
+  });
+
+  it("fails rather than read a page with a renamed key as the end", async () => {
+    const first = client(() => ({ status: 200, body: { squads: [], more: false } }));
+    await expect(first.c.listResources("pagerduty-team", "acc")).rejects.toThrow("is not a list");
+
+    const later = client((call) =>
+      new URL(call.url).searchParams.get("offset") === "0"
+        ? { status: 200, body: { teams: [{ id: "T1", name: "x" }], more: true } }
+        : { status: 200, body: { squads: [], more: false } },
+    );
+    await expect(later.c.listResources("pagerduty-team", "acc")).rejects.toThrow("is not a list");
+    expect(later.calls).toHaveLength(2);
+  });
+
+  it("fails rather than read a 200 with no body as an empty list", async () => {
+    const { c } = client(() => ({ status: 200 }));
+    await expect(c.listResources("pagerduty-team", "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("moves the offset by the limit PagerDuty echoes, so a smaller page skips nothing", async () => {
+    const { c, calls } = client((call) => {
+      const offset = Number(new URL(call.url).searchParams.get("offset"));
+      return {
+        status: 200,
+        body: {
+          orchestrations: [{ id: `O${offset}`, name: "x" }],
+          limit: 25,
+          offset,
+          more: offset === 0,
+        },
+      };
+    });
+    await c.listResources("pagerduty-event-orchestration", "acc");
+    expect(calls.map((call) => new URL(call.url).searchParams.get("offset"))).toEqual(["0", "25"]);
+  });
+
+  it("does not stop the paging capability's incident list at 500 rows", async () => {
+    const { c, calls } = client((call) => {
+      const offset = Number(new URL(call.url).searchParams.get("offset"));
+      return {
+        status: 200,
+        body: { incidents: [{ id: `I${offset}` }], more: offset < 700 },
+      };
+    });
+    const incidents = await c.listPagingIncidents({ since: new Date(0), includeResolved: false });
+    expect(incidents).toHaveLength(8);
+    expect(calls).toHaveLength(8);
+  });
+
+  it("fails the paging capability's incident list past what PagerDuty lets anyone read", async () => {
+    const { c } = client(endless("incidents"));
+    await expect(
+      c.listPagingIncidents({ since: new Date(0), includeResolved: false }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("shows pickers a partial list rather than no form", async () => {
+    const { c } = client(endless("services"));
+    const config = await c.getCreateConfig("pagerduty-maintenance-window");
+    const picker = config.fields.find((f) => f.key === "services");
+    expect(picker?.options).toHaveLength(100);
+  });
+
+  it("shows paging targets and on-call sources past the cap", async () => {
+    const targets = client((call) =>
+      call.url.includes("/event_orchestrations")
+        ? { status: 200, body: { orchestrations: [], more: false } }
+        : endless("services")(call),
+    );
+    expect(await targets.c.listPagingTargets()).toHaveLength(100);
+    const sources = client((call) =>
+      call.url.includes("/schedules")
+        ? endless("schedules")(call)
+        : endless("escalation_policies")(call),
+    );
+    expect(await sources.c.listPagingOnCallSources()).toHaveLength(200);
+  });
+
+  it("offers users past the cap without trusting that read for the inventory", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/schedules")
+        ? { status: 200, body: { schedules: [], more: false } }
+        : endless("users")(call),
+    );
+    const config = await c.getCreateConfig("pagerduty-escalation-policy");
+    expect(config.fields.find((f) => f.key === "targets")?.options).toHaveLength(100);
+    await expect(c.listResources("pagerduty-user", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads the acting user picker past the cap", async () => {
+    const { http } = fakeHttp((call) => ({
+      status: 200,
+      body: {
+        users: [{ id: "U", name: "x", email: `${new URL(call.url).searchParams.get("offset")}@x` }],
+        more: true,
+      },
+    }));
+    const options = await hostPlugin(plugin).listCredentialOptions!(
+      "fromEmail",
+      { apiKey: "k1" },
+      { http },
+    );
+    expect(options).toHaveLength(100);
+  });
+});

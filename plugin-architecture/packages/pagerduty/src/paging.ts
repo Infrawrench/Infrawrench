@@ -80,10 +80,12 @@ export interface PagingContext {
 
 export async function listTargets(ctx: PagingContext): Promise<PagingTarget[]> {
   const [services, orchestrations] = await Promise.all([
+    // A picker: part of a very long list is better than no picker.
     ctx.api.getAll("/services", "services", {
       query: { "include[]": ["teams"], sort_by: "name" },
+      partial: true,
     }),
-    ctx.api.getAll("/event_orchestrations", "orchestrations").catch(
+    ctx.api.getAll("/event_orchestrations", "orchestrations", { partial: true }).catch(
       // Event orchestration needs AIOps or a newer plan on some accounts;
       // a 403 there must not hide the services.
       (): PdOrchestration[] => [],
@@ -231,9 +233,13 @@ export async function sendPagingEvent(
 }
 
 export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCallSource[]> {
+  // A picker: part of a very long list is better than no picker.
   const [schedules, policies] = await Promise.all([
-    ctx.api.getAll("/schedules", "schedules"),
-    ctx.api.getAll("/escalation_policies", "escalation_policies", { query: { sort_by: "name" } }),
+    ctx.api.getAll("/schedules", "schedules", { partial: true }),
+    ctx.api.getAll("/escalation_policies", "escalation_policies", {
+      query: { sort_by: "name" },
+      partial: true,
+    }),
   ]);
   return [
     ...schedules.map((s) => ({
@@ -301,9 +307,6 @@ const INCIDENT_INCLUDES: ("assignees" | "acknowledgers" | "services")[] = [
   "services",
 ];
 
-/** Incident lists here stop at 500 rows, not the 2000 of every other list. */
-const INCIDENT_MAX_PAGES = 5;
-
 export async function listIncidents(
   ctx: PagingContext,
   query: PagingIncidentQuery,
@@ -318,7 +321,6 @@ export async function listIncidents(
         date_range: "all",
         "include[]": INCIDENT_INCLUDES,
       },
-      maxPages: INCIDENT_MAX_PAGES,
     }),
     query.includeResolved === false
       ? Promise.resolve<PdIncident[]>([])
@@ -329,7 +331,6 @@ export async function listIncidents(
             "statuses[]": ["resolved"],
             "include[]": INCIDENT_INCLUDES,
           },
-          maxPages: INCIDENT_MAX_PAGES,
         }),
   ]);
   const byId = new Map<string, PdIncident>();

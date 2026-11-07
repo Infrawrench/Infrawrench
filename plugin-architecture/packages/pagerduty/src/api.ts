@@ -56,8 +56,12 @@ export const PAGERDUTY_HOSTNAMES = [
 /** Largest page the REST lists accept. */
 export const PAGE_LIMIT = 100;
 
-/** How many pages a list walks by default: 2000 rows. */
-const MAX_PAGES = 20;
+/**
+ * How many pages a list walks: 10,000 rows, all PagerDuty hands out. Its pagination
+ * page says `offset + limit` past 10,000 answers 400, so a longer list cannot be read
+ * by asking again; it fails here instead, and a sync keeps what it has.
+ */
+const MAX_PAGES = 100;
 
 export interface PagerDutyTransport {
   apiKey: string;
@@ -142,14 +146,14 @@ export function createPagerDutyApi(transport: PagerDutyTransport) {
     sizeParam: "limit",
     pageSize: PAGE_LIMIT,
     maxPages: MAX_PAGES,
-    // A body with no list ends the walk rather than failing it.
-    emptyBodyEndsList: true,
-    // Only a literal `more: true` asks for another page, and the offset moves by
-    // the page size whatever the page held.
-    next: ({ body, cursor }) =>
-      typeof body === "object" && body !== null && "more" in body && body.more === true
-        ? Number(cursor) + PAGE_LIMIT
-        : undefined,
+    // Only a literal `more: true` asks for another page. The offset moves by the limit
+    // the page echoes, so a route that serves fewer than we asked for skips nothing.
+    next: ({ body, cursor }) => {
+      if (typeof body !== "object" || body === null) return undefined;
+      if (!("more" in body) || body.more !== true) return undefined;
+      const limit = "limit" in body && typeof body.limit === "number" ? body.limit : 0;
+      return Number(cursor) + (limit > 0 ? limit : PAGE_LIMIT);
+    },
   });
 }
 
