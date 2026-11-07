@@ -1290,8 +1290,8 @@ export class CapellaClient implements PluginClient {
           if (fields["durabilityLevel"]) body["durabilityLevel"] = fields["durabilityLevel"];
           if (fields["timeToLiveInSeconds"])
             body["timeToLiveInSeconds"] = Number(fields["timeToLiveInSeconds"]);
-          const flush = boolish(fields["flushEnabled"]);
-          if (flush !== undefined) body["flush"] = flush;
+          const flushEnabled = boolish(fields["flushEnabled"]);
+          if (flushEnabled !== undefined) body["flushEnabled"] = flushEnabled;
           const res = await this.api.post(`${this.sub(p, c)}/buckets`, { body });
           return mapBucket(accountId, p, c, { id: res.id, name });
         }

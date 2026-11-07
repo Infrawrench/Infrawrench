@@ -249,6 +249,23 @@ describe("CapellaClient", () => {
     await expect(client.fetchCreditBalance("acc")).rejects.toThrow(/Organization Owner/);
   });
 
+  it("sets flush on a new bucket through flushEnabled, not the deprecated flush", async () => {
+    const { calls } = mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`POST ${P}/clusters/c1/buckets`]: { id: "YjE=" },
+    });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+    await client.createResource(T.bucket, "acc", {
+      cluster: joinId("p1", "c1"),
+      name: "b1",
+      flushEnabled: "true",
+    });
+    const body = calls.at(-1)!.body as Record<string, unknown>;
+    expect(body["flushEnabled"]).toBe(true);
+    expect(body).not.toHaveProperty("flush");
+  });
+
   it("maps 401 to a status-carrying error", async () => {
     mockFetch({ [`GET ${O}/projects`]: new Response('{"message":"bad key"}', { status: 401 }) });
     const err = await hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }))
