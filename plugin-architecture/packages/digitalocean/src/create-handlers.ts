@@ -11,11 +11,12 @@
  * `DoCreateContext`, `estimateDoDatabaseMonthlyPrice`, `doGetCreateConfig` and
  * `doCreateResource` from here exactly as they always have.
  */
-import type {
-  CreateResourceConfig,
-  ResourceCreateResult,
-  ResourceInstance,
-  ResourceWarning,
+import {
+  unencodedSegment,
+  type CreateResourceConfig,
+  type ResourceCreateResult,
+  type ResourceInstance,
+  type ResourceWarning,
 } from "@infrawrench/plugin-base";
 import type {
   CreateHandler,
@@ -113,9 +114,8 @@ export async function doCreateResource(
   const assignToProjectIfNeeded = async (urn: string): Promise<void> => {
     if (!parentExternalId) return;
     try {
-      await ctx.fetch(`/projects/${parentExternalId}/resources`, {
-        method: "POST",
-        body: JSON.stringify({ resources: [urn] }),
+      await ctx.api.post(`/projects/${unencodedSegment(parentExternalId)}/resources`, {
+        body: { resources: [urn] },
       });
     } catch (err) {
       warnings.push({

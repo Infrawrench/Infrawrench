@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fetchDoCostData } from "../cost-data.js";
+import { fakeApi } from "./fake-api.js";
 
 const RANGE = { fromDate: "2025-07-25", toDate: "2025-07-31" };
 const ACCOUNT = { account: { team: { uuid: "ca6b655d-079f-424f-a6c6-a4da02efa5cc" } } };
@@ -9,7 +10,7 @@ function ctxWith(insights: () => Promise<unknown>) {
   const fetch = vi.fn((path: string) =>
     path === "/account" ? Promise.resolve(ACCOUNT) : insights(),
   );
-  return { ctx: { fetch: fetch as never }, fetch };
+  return { ctx: { api: fakeApi(fetch) }, fetch };
 }
 
 describe("fetchDoCostData", () => {
@@ -84,7 +85,7 @@ describe("fetchDoCostData", () => {
 
   it("fails clearly when the token has no team context", async () => {
     const fetch = vi.fn(() => Promise.resolve({ account: {} }));
-    await expect(fetchDoCostData({ fetch: fetch as never }, RANGE)).rejects.toThrow(
+    await expect(fetchDoCostData({ api: fakeApi(fetch) }, RANGE)).rejects.toThrow(
       /no team context/,
     );
   });

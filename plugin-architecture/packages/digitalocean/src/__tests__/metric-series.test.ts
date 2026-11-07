@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { fetchDoMetricSeries, type DoMetricContext } from "../metric-series.js";
+import { fakeApi } from "./fake-api.js";
 
 /**
  * These two branches shipped with no coverage and no way to see their output:
@@ -17,7 +18,7 @@ function prom(values: Array<[number, string]>) {
 
 function makeCtx(routes: Record<string, unknown>, seen?: string[]): DoMetricContext {
   return {
-    async fetch<T>(path: string): Promise<T> {
+    api: fakeApi(async (path) => {
       seen?.push(path);
       // Match on the path prefix before the query string, then let a fuller
       // key win so per-metric routes can be distinguished.
@@ -26,8 +27,8 @@ function makeCtx(routes: Record<string, unknown>, seen?: string[]): DoMetricCont
         Object.entries(routes).find(([key]) => path.startsWith(key))?.[1] ??
         undefined;
       if (hit === undefined) throw new Error(`unrouted ${path}`);
-      return hit as T;
-    },
+      return hit;
+    }),
     async getResource(): Promise<ResourceInstance> {
       throw new Error("not used by these branches");
     },

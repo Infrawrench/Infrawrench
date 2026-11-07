@@ -57,34 +57,33 @@ export async function projectGetCreateConfig(
 export async function projectCreateResource(args: DoCreateArgs): Promise<ResourceInstance | null> {
   const { ctx, typeId, accountId, fields } = args;
   if (typeId === "project") {
-    const data = await ctx.fetch<{ project: Record<string, unknown> }>("/projects", {
-      method: "POST",
-      body: JSON.stringify({
+    const data = await ctx.api.post("/projects", {
+      body: {
         name: fields["name"] ?? "",
         purpose: fields["purpose"] ?? "Web Application",
         description: fields["description"] ?? "",
         environment: fields["environment"] ?? "Development",
-      }),
+      },
     });
     const p = data.project ?? {};
     const now = new Date().toISOString();
     return {
-      id: `${accountId}:project:${String(p["id"] ?? "")}`,
+      id: `${accountId}:project:${String(p.id ?? "")}`,
       pluginId: "digitalocean",
       resourceTypeId: "project",
       accountId,
-      displayName: String(p["name"] ?? fields["name"]),
+      displayName: String(p.name ?? fields["name"]),
       fields: {
-        name: String(p["name"] ?? fields["name"]),
-        purpose: String(p["purpose"] ?? fields["purpose"] ?? ""),
-        description: String(p["description"] ?? fields["description"] ?? ""),
-        environment: String(p["environment"] ?? fields["environment"] ?? ""),
+        name: String(p.name ?? fields["name"]),
+        purpose: String(p.purpose ?? fields["purpose"] ?? ""),
+        description: String(p.description ?? fields["description"] ?? ""),
+        environment: String(p.environment ?? fields["environment"] ?? ""),
       },
       resolvedOutputs: {},
       secretStates: [],
-      externalId: String(p["id"] ?? ""),
-      createdAt: String(p["created_at"] ?? now),
-      updatedAt: String(p["updated_at"] ?? now),
+      externalId: String(p.id ?? ""),
+      createdAt: String(p.created_at ?? now),
+      updatedAt: String(p.updated_at ?? now),
     };
   }
 

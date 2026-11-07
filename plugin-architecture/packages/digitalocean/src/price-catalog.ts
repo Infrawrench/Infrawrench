@@ -34,11 +34,14 @@
  */
 import {
   normalizePriceCatalogProducts,
+  type ApiListItem,
   type PriceCatalogDeclaration,
   type PriceCatalogProduct,
   type PriceCatalogRequest,
   type PriceCatalogResult,
 } from "@infrawrench/plugin-base";
+import type { DoApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 export const DO_PRICE_CATALOG_SERVICE_DROPLETS = "droplets";
 
@@ -72,33 +75,12 @@ export const doPriceCatalog: PriceCatalogDeclaration = {
   ],
 };
 
-/** The subset of a `/v2/sizes` element this module decodes. */
-export interface DoSizeWire {
-  slug: string;
-  memory: number;
-  vcpus: number;
-  disk: number;
-  transfer?: number;
-  price_monthly: number;
-  price_hourly?: number;
-  regions?: string[];
-  available: boolean;
-  description?: string;
-  gpu_info?: {
-    count?: number;
-    model?: string;
-    vram?: { amount?: number; unit?: string };
-  };
-}
+/** One `/v2/sizes` element. */
+export type DoSizeWire = ApiListItem<operations["sizes_list"], "sizes">;
 
-interface DoSizesPage {
-  sizes?: DoSizeWire[];
-  meta?: { total?: number };
-}
-
-/** The client's private `fetch`, bound and passed in (the `DoQuotaContext` shape). */
+/** The client's API, passed in (the `DoQuotaContext` shape). */
 export interface DoPriceCatalogContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
 }
 
 const PER_PAGE = 200;
@@ -170,7 +152,7 @@ export async function fetchDoSizes(
 ): Promise<{ sizes: DoSizeWire[]; truncated: boolean }> {
   const sizes: DoSizeWire[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const data = await ctx.fetch<DoSizesPage>(`/sizes?per_page=${PER_PAGE}&page=${page}`);
+    const data = await ctx.api.get("/sizes", { query: { per_page: PER_PAGE, page } });
     const batch = data.sizes ?? [];
     sizes.push(...batch);
     const total = data.meta?.total;

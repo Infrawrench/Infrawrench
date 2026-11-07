@@ -25,43 +25,10 @@ export async function computeGetCreateConfig(
     // `is_default`).
     const [regionsData, sizesData, publicImagesData, privateImagesData, projectField] =
       await Promise.all([
-        ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>(
-          "/regions",
-        ),
-        ctx.fetch<{
-          sizes: Array<{
-            slug: string;
-            memory: number;
-            vcpus: number;
-            disk: number;
-            price_monthly: number;
-            available: boolean;
-            description: string;
-            regions?: string[];
-          }>;
-        }>("/sizes?per_page=200"),
-        ctx.fetch<{
-          images: Array<{
-            id: number;
-            slug: string | null;
-            name: string;
-            distribution: string;
-            type: string;
-            public: boolean;
-            status: string;
-          }>;
-        }>("/images?type=distribution&per_page=200"),
-        ctx.fetch<{
-          images: Array<{
-            id: number;
-            slug: string | null;
-            name: string;
-            distribution: string;
-            type: string;
-            public: boolean;
-            status: string;
-          }>;
-        }>("/images?private=true&per_page=200"),
+        ctx.api.get("/regions"),
+        ctx.api.get("/sizes", { query: { per_page: 200 } }),
+        ctx.api.get("/images", { query: { type: "distribution", per_page: 200 } }),
+        ctx.api.get("/images", { query: { private: true, per_page: 200 } }),
         buildProjectField(ctx, parentResourceId),
       ]);
 
@@ -186,24 +153,8 @@ export async function computeGetCreateConfig(
 
   if (typeId === "doks-cluster") {
     const [optionsData, sizesData, projectField] = await Promise.all([
-      ctx.fetch<{
-        options?: {
-          regions?: Array<{ slug: string; name: string }>;
-          sizes?: Array<{ slug: string; name: string }>;
-          versions?: Array<{ slug: string; kubernetes_version: string }>;
-        };
-      }>("/kubernetes/options"),
-      ctx.fetch<{
-        sizes: Array<{
-          slug: string;
-          memory: number;
-          vcpus: number;
-          disk: number;
-          price_monthly: number;
-          available: boolean;
-          description: string;
-        }>;
-      }>("/sizes?per_page=200"),
+      ctx.api.get("/kubernetes/options"),
+      ctx.api.get("/sizes", { query: { per_page: 200 } }),
       buildProjectField(ctx, parentResourceId),
     ]);
 
@@ -303,9 +254,8 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
         const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
         let keyId: number | undefined;
         try {
-          const created = await ctx.fetch<{ ssh_key: { id: number } }>("/account/keys", {
-            method: "POST",
-            body: JSON.stringify({ name: comment, public_key: sshPub.trim() }),
+          const created = await ctx.api.post("/account/keys", {
+            body: { name: comment, public_key: sshPub.trim() },
           });
           keyId = created.ssh_key.id;
         } catch (e: unknown) {
@@ -315,9 +265,9 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
           // match or exhaust the list.
           const perPage = 200;
           for (let page = 1; keyId === undefined; page += 1) {
-            const data = await ctx.fetch<{
-              ssh_keys?: Array<{ id: number; public_key: string }>;
-            }>(`/account/keys?per_page=${perPage}&page=${page}`);
+            const data = await ctx.api.get("/account/keys", {
+              query: { per_page: perPage, page },
+            });
             const keys = data.ssh_keys ?? [];
             keyId = keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
             if (keys.length < perPage) break;
@@ -335,55 +285,51 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
       }
     }
 
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      region: fields["region"],
-      size: fields["size"],
-      image: fields["image"],
-      ...(sshKeyIds.length > 0 ? { ssh_keys: sshKeyIds } : {}),
-    };
-    const data = await ctx.fetch<{ droplet: Record<string, unknown> }>("/droplets", {
-      method: "POST",
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/droplets", {
+      body: {
+        name: fields["name"],
+        region: fields["region"],
+        size: fields["size"],
+        image: fields["image"],
+        ...(sshKeyIds.length > 0 ? { ssh_keys: sshKeyIds } : {}),
+      },
     });
     const d = data.droplet;
-    const networks = d["networks"] as
-      { v4?: Array<{ type: string; ip_address: string }> } | undefined;
+    const networks = d.networks;
     const publicIp = networks?.v4?.find((n) => n.type === "public")?.ip_address ?? "";
     const privateIp = networks?.v4?.find((n) => n.type === "private")?.ip_address ?? "";
 
     // Optionally create and attach an extra volume in the same flow
     if (fields["addExtraDisk"] === "true") {
-      await ctx.fetch("/volumes", {
-        method: "POST",
-        body: JSON.stringify({
+      await ctx.api.post("/volumes", {
+        body: {
           name: `${fields["name"]}-data`,
           region: fields["region"],
           size_gigabytes: Number(fields["extraDiskSizeGb"] ?? 100),
           filesystem_type: fields["extraDiskFormat"] ?? "ext4",
-          droplet_ids: [Number(d["id"])],
-        }),
+          droplet_ids: [Number(d.id)],
+        },
       });
     }
-    await assignToProjectIfNeeded(`do:droplet:${String(d["id"])}`);
+    await assignToProjectIfNeeded(`do:droplet:${String(d.id)}`);
     return {
-      id: `${accountId}:droplet:${String(d["id"])}`,
+      id: `${accountId}:droplet:${String(d.id)}`,
       pluginId: "digitalocean",
       resourceTypeId: "droplet",
       accountId,
-      displayName: String(d["name"]),
+      displayName: String(d.name),
       fields: {
-        name: String(d["name"]),
-        region: String((d["region"] as Record<string, unknown>)?.["slug"] ?? fields["region"]),
-        size: String((d["size"] as Record<string, unknown>)?.["slug"] ?? fields["size"]),
-        image: String((d["image"] as Record<string, unknown>)?.["slug"] ?? fields["image"]),
+        name: String(d.name),
+        region: String(d.region?.slug ?? fields["region"]),
+        size: String(d.size?.slug ?? fields["size"]),
+        image: String(d.image?.slug ?? fields["image"]),
       },
       resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
       secretStates: [],
-      externalId: String(d["id"]),
+      externalId: String(d.id),
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
-      createdAt: String(d["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(d["created_at"] ?? new Date().toISOString()),
+      createdAt: String(d.created_at ?? new Date().toISOString()),
+      updatedAt: String(d.created_at ?? new Date().toISOString()),
     };
   }
 
@@ -392,6 +338,7 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
     const nodeCount =
       Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
     const nodePoolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
+    const nodePoolSize = fields["nodePoolSize"];
     const body = {
       name: fields["name"],
       region: fields["region"],
@@ -399,42 +346,36 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
       node_pools: [
         {
           name: `${nodePoolNameBase}-default-pool`,
-          size: fields["nodePoolSize"],
+          ...(nodePoolSize !== undefined ? { size: nodePoolSize } : {}),
           count: nodeCount,
         },
       ],
     };
-    const data = await ctx.fetch<{ kubernetes_cluster: Record<string, unknown> }>(
-      "/kubernetes/clusters",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      },
-    );
+    const data = await ctx.api.post("/kubernetes/clusters", { body });
     const cluster = data.kubernetes_cluster;
-    const nodePool = (cluster["node_pools"] as Array<Record<string, unknown>> | undefined)?.[0];
-    await assignToProjectIfNeeded(`do:kubernetes:${String(cluster["id"])}`);
+    const nodePool = cluster.node_pools?.[0];
+    await assignToProjectIfNeeded(`do:kubernetes:${String(cluster.id)}`);
     return {
-      id: `${accountId}:doks-cluster:${String(cluster["id"])}`,
+      id: `${accountId}:doks-cluster:${String(cluster.id)}`,
       pluginId: "digitalocean",
       resourceTypeId: "doks-cluster",
       accountId,
-      displayName: String(cluster["name"] ?? fields["name"] ?? "DOKS Cluster"),
+      displayName: String(cluster.name ?? fields["name"] ?? "DOKS Cluster"),
       fields: {
-        name: String(cluster["name"] ?? fields["name"] ?? ""),
-        region: String(cluster["region"] ?? fields["region"] ?? ""),
-        version: String(cluster["version"] ?? fields["version"] ?? ""),
-        nodePoolSize: String(nodePool?.["size"] ?? fields["nodePoolSize"] ?? ""),
-        nodeCount: Number(nodePool?.["count"] ?? nodeCount),
+        name: String(cluster.name ?? fields["name"] ?? ""),
+        region: String(cluster.region ?? fields["region"] ?? ""),
+        version: String(cluster.version ?? fields["version"] ?? ""),
+        nodePoolSize: String(nodePool?.size ?? fields["nodePoolSize"] ?? ""),
+        nodeCount: Number(nodePool?.count ?? nodeCount),
       },
       resolvedOutputs: {
-        clusterEndpoint: String(cluster["endpoint"] ?? ""),
+        clusterEndpoint: String(cluster.endpoint ?? ""),
       },
       secretStates: [],
-      externalId: String(cluster["id"]),
+      externalId: String(cluster.id),
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
-      createdAt: String(cluster["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString()),
+      createdAt: String(cluster.created_at ?? new Date().toISOString()),
+      updatedAt: String(cluster.updated_at ?? cluster.created_at ?? new Date().toISOString()),
     };
   }
 

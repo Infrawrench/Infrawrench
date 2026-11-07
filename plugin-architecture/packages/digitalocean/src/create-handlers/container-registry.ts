@@ -74,16 +74,15 @@ export async function containerRegistryCreateResource(
   const { ctx, typeId, accountId, fields } = args;
   if (typeId === "container-registry") {
     const tier = fields["subscriptionTier"] || "starter";
-    const data = await ctx.fetch<{ registry?: Record<string, unknown> }>("/registry", {
-      method: "POST",
-      body: JSON.stringify({
+    const data = await ctx.api.post("/registry", {
+      body: {
         name: fields["name"] ?? "",
         subscription_tier_slug: tier,
         ...(fields["region"] ? { region: fields["region"] } : {}),
-      }),
+      },
     });
     const r = data.registry ?? {};
-    const name = String(r["name"] ?? fields["name"] ?? "");
+    const name = String(r.name ?? fields["name"] ?? "");
     const now = new Date().toISOString();
     return {
       id: `${accountId}:container-registry:${name}`,
@@ -94,9 +93,9 @@ export async function containerRegistryCreateResource(
       fields: {
         name,
         subscriptionTier: tier,
-        region: String(r["region"] ?? fields["region"] ?? ""),
-        storageUsageBytes: Number(r["storage_usage_bytes"] ?? 0),
-        createdAt: String(r["created_at"] ?? now),
+        region: String(r.region ?? fields["region"] ?? ""),
+        storageUsageBytes: Number(r.storage_usage_bytes ?? 0),
+        createdAt: String(r.created_at ?? now),
       },
       resolvedOutputs: {
         endpoint: `registry.digitalocean.com/${name}`,
@@ -104,7 +103,7 @@ export async function containerRegistryCreateResource(
       },
       secretStates: [],
       externalId: name,
-      createdAt: String(r["created_at"] ?? now),
+      createdAt: String(r.created_at ?? now),
       updatedAt: now,
     };
   }

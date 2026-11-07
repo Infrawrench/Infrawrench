@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import { decodePromptArgs, externalIdOf, unencodedSegment } from "@infrawrench/plugin-base";
+import type { DoApi, DoResponse } from "./api.js";
 
 /**
  * Action handlers for DigitalOcean's action endpoints:
@@ -19,7 +20,7 @@ import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
  */
 
 export interface ActionContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }
 
@@ -39,11 +40,10 @@ export interface ActionContext {
  */
 async function awaitAction(
   ctx: ActionContext,
-  postResponse: unknown,
+  postResponse: { action?: { id?: number; status?: string } } | undefined,
   opts: { maxAttempts?: number; intervalMs?: number } = {},
 ): Promise<void> {
-  const action = (postResponse as { action?: { id?: number; status?: string } } | undefined)
-    ?.action;
+  const action = postResponse?.action;
   if (!action?.id) return;
   if (action.status && action.status !== "in-progress") return;
   const maxAttempts = opts.maxAttempts ?? 12;
@@ -51,7 +51,7 @@ async function awaitAction(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     try {
-      const polled = await ctx.fetch<{ action: { status: string } }>(`/actions/${action.id}`);
+      const polled = await ctx.api.get(`/actions/${unencodedSegment(String(action.id))}`);
       const status = polled.action.status;
       if (status === "completed") return;
       if (status === "errored") throw new Error("DigitalOcean reported the action as errored");
@@ -79,7 +79,7 @@ async function awaitAction(
 async function awaitDropletState(
   ctx: ActionContext,
   dropletId: string,
-  predicate: (droplet: Record<string, unknown>) => boolean,
+  predicate: (droplet: DoResponse<"droplets_get">["droplet"]) => boolean,
   opts: { maxAttempts?: number; intervalMs?: number } = {},
 ): Promise<void> {
   const maxAttempts = opts.maxAttempts ?? 8;
@@ -87,12 +87,30 @@ async function awaitDropletState(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     try {
-      const data = await ctx.fetch<{ droplet: Record<string, unknown> }>(`/droplets/${dropletId}`);
+      const data = await ctx.api.get(`/droplets/${unencodedSegment(dropletId)}`);
       if (predicate(data.droplet)) return;
     } catch {
       // Tolerate transient errors: drop through to the next tick.
     }
   }
+}
+
+const SIMPLE_DROPLET_ACTIONS = [
+  "power_on",
+  "power_off",
+  "power_cycle",
+  "shutdown",
+  "reboot",
+  "enable_backups",
+  "disable_backups",
+  "enable_ipv6",
+  "password_reset",
+] as const;
+
+function isSimpleDropletAction(
+  actionId: string,
+): actionId is (typeof SIMPLE_DROPLET_ACTIONS)[number] {
+  return SIMPLE_DROPLET_ACTIONS.some((action) => action === actionId);
 }
 
 /**
@@ -113,30 +131,17 @@ export async function invokeDropletAction(
     const base = String(droplet.fields["name"] ?? `droplet-${id}`);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     // Snapshots are slow (minutes); don't block the UI on completion.
-    await ctx.fetch(`/droplets/${id}/actions`, {
-      method: "POST",
-      body: JSON.stringify({ type: "snapshot", name: `${base}-${stamp}` }),
+    await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+      body: { type: "snapshot", name: `${base}-${stamp}` },
     });
     return;
   }
 
-  const allowed = new Set([
-    "power_on",
-    "power_off",
-    "power_cycle",
-    "shutdown",
-    "reboot",
-    "enable_backups",
-    "disable_backups",
-    "enable_ipv6",
-    "password_reset",
-  ]);
-  if (!allowed.has(actionId)) {
+  if (!isSimpleDropletAction(actionId)) {
     throw new Error(`DigitalOcean plugin: unsupported droplet action "${actionId}"`);
   }
-  const resp = await ctx.fetch<unknown>(`/droplets/${id}/actions`, {
-    method: "POST",
-    body: JSON.stringify({ type: actionId }),
+  const resp = await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+    body: { type: actionId },
   });
   // Lifecycle actions that flip droplet `status` (power_on/off/cycle, shutdown,
   // reboot) need to settle before the post-action listResources reflects the
@@ -153,20 +158,18 @@ export async function invokeDropletAction(
   // covers the worst case.
   if (actionId === "enable_backups") {
     await awaitDropletState(ctx, id, (d) => {
-      const features = Array.isArray(d["features"]) ? (d["features"] as string[]) : [];
-      return features.includes("backups") || d["next_backup_window"] != null;
+      const features = Array.isArray(d.features) ? d.features : [];
+      return features.includes("backups") || d.next_backup_window != null;
     });
   } else if (actionId === "disable_backups") {
     await awaitDropletState(ctx, id, (d) => {
-      const features = Array.isArray(d["features"]) ? (d["features"] as string[]) : [];
-      return !features.includes("backups") && d["next_backup_window"] == null;
+      const features = Array.isArray(d.features) ? d.features : [];
+      return !features.includes("backups") && d.next_backup_window == null;
     });
   } else if (actionId === "enable_ipv6") {
     await awaitDropletState(ctx, id, (d) => {
-      const features = Array.isArray(d["features"]) ? (d["features"] as string[]) : [];
-      const v6 = ((d["networks"] as Record<string, unknown> | undefined)?.["v6"] ?? []) as Array<{
-        ip_address?: string;
-      }>;
+      const features = Array.isArray(d.features) ? d.features : [];
+      const v6 = d.networks?.v6 ?? [];
       return features.includes("ipv6") || v6.some((n) => !!n.ip_address);
     });
   }
@@ -191,9 +194,8 @@ export async function executeDropletCommand(
     case "rename": {
       const name = (values["name"] ?? "").trim();
       if (!name) throw new Error("New name is required");
-      const resp = await ctx.fetch<unknown>(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "rename", name }),
+      const resp = await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "rename", name },
       });
       await awaitAction(ctx, resp);
       return null;
@@ -204,9 +206,8 @@ export async function executeDropletCommand(
       // Snapshots can take minutes: fire and forget. The next periodic
       // refresh (or the user's manual refresh) will pick up the new
       // snapshot id once DO has finished imaging the disk.
-      await ctx.fetch(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "snapshot", name }),
+      await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "snapshot", name },
       });
       return null;
     }
@@ -214,9 +215,8 @@ export async function executeDropletCommand(
       const size = (values["size"] ?? "").trim();
       const disk = (values["disk"] ?? "false") === "true";
       if (!size) throw new Error("New size slug is required");
-      const resp = await ctx.fetch<unknown>(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "resize", size, disk }),
+      const resp = await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "resize", size, disk },
       });
       // CPU/RAM-only resize finishes within seconds; disk resizes can be
       // multi-minute. We block only briefly so the modal doesn't hang on
@@ -228,9 +228,8 @@ export async function executeDropletCommand(
       const image = (values["image"] ?? "").trim();
       if (!image) throw new Error("Image slug or id is required");
       const imagePayload = /^\d+$/.test(image) ? Number(image) : image;
-      const resp = await ctx.fetch<unknown>(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "rebuild", image: imagePayload }),
+      const resp = await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "rebuild", image: imagePayload },
       });
       // Rebuilds run multi-minute. Don't block: let background refresh handle it.
       void resp;
@@ -239,9 +238,8 @@ export async function executeDropletCommand(
     case "restore": {
       const imageId = Number(values["image"]);
       if (!Number.isFinite(imageId)) throw new Error("Backup or snapshot id is required");
-      await ctx.fetch(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "restore", image: imageId }),
+      await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "restore", image: imageId },
       });
       return null;
     }
@@ -249,11 +247,9 @@ export async function executeDropletCommand(
       const plan = String(values["plan"] ?? "daily");
       const hour = Number(values["hour"] ?? 4);
       const weekday = String(values["weekday"] ?? "SUN");
-      const policy: Record<string, unknown> = { plan, hour };
-      if (plan === "weekly") policy["weekday"] = weekday;
-      const resp = await ctx.fetch<unknown>(`/droplets/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "change_backup_policy", backup_policy: policy }),
+      const policy = { plan, hour, ...(plan === "weekly" ? { weekday } : {}) };
+      const resp = await ctx.api.post(`/droplets/${unencodedSegment(id)}/actions`, {
+        body: { type: "change_backup_policy", backup_policy: policy },
       });
       await awaitAction(ctx, resp);
       return null;
@@ -285,9 +281,8 @@ export async function invokeVolumeAction(
       throw new Error("Volume is not attached to any droplet");
     }
     for (const dropletId of dropletIds) {
-      const resp = await ctx.fetch<unknown>(`/volumes/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "detach", droplet_id: Number(dropletId), region }),
+      const resp = await ctx.api.post(`/volumes/${unencodedSegment(id)}/actions`, {
+        body: { type: "detach", droplet_id: Number(dropletId), region },
       });
       await awaitAction(ctx, resp);
     }
@@ -320,9 +315,8 @@ export async function invokeReservedIpAction(
   if (!String(reservedIp.fields["dropletId"] ?? "")) {
     throw new Error("Reserved IP is not assigned to any Droplet");
   }
-  const resp = await ctx.fetch<unknown>(`/reserved_ips/${ip}/actions`, {
-    method: "POST",
-    body: JSON.stringify({ type: "unassign" }),
+  const resp = await ctx.api.post(`/reserved_ips/${unencodedSegment(ip)}/actions`, {
+    body: { type: "unassign" },
   });
   await awaitAction(ctx, resp);
 }
@@ -350,9 +344,8 @@ export async function executeReservedIpCommand(
   if (!Number.isFinite(dropletId) || dropletId <= 0) {
     throw new Error("Pick a Droplet to assign this reserved IP to");
   }
-  const resp = await ctx.fetch<unknown>(`/reserved_ips/${ip}/actions`, {
-    method: "POST",
-    body: JSON.stringify({ type: "assign", droplet_id: dropletId }),
+  const resp = await ctx.api.post(`/reserved_ips/${unencodedSegment(ip)}/actions`, {
+    body: { type: "assign", droplet_id: dropletId },
   });
   await awaitAction(ctx, resp);
   return null;
@@ -375,9 +368,8 @@ export async function executeVolumeCommand(
       }
       const volume = await ctx.getResource("volume", resourceId, accountId);
       const region = String(volume.fields["region"] ?? "");
-      const resp = await ctx.fetch<unknown>(`/volumes/${id}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ type: "resize", size_gigabytes: newSize, region }),
+      const resp = await ctx.api.post(`/volumes/${unencodedSegment(id)}/actions`, {
+        body: { type: "resize", size_gigabytes: newSize, region },
       });
       await awaitAction(ctx, resp);
       return null;
@@ -385,9 +377,8 @@ export async function executeVolumeCommand(
     case "volume-snapshot": {
       const name = (values["name"] ?? "").trim();
       if (!name) throw new Error("Snapshot name is required");
-      await ctx.fetch(`/volumes/${id}/snapshots`, {
-        method: "POST",
-        body: JSON.stringify({ name }),
+      await ctx.api.post(`/volumes/${unencodedSegment(id)}/snapshots`, {
+        body: { name },
       });
       return null;
     }

@@ -1,5 +1,9 @@
 /** Create handlers for DigitalOcean managed database clusters and their users. */
-import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  unencodedSegment,
+  type CreateResourceConfig,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
 import { regionDisplay } from "../constants.js";
 import { kafkaAclFields } from "../resources/managed-database.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -51,19 +55,8 @@ export async function databaseGetCreateConfig(
     // above. DO will reject mismatched engine+size combos at create time
     // with a clear message.
     const [regionsData, optionsData, projectField] = await Promise.all([
-      ctx.fetch<{
-        regions: Array<{ slug: string; name: string; available: boolean }>;
-      }>("/regions"),
-      ctx.fetch<{
-        options?: Record<
-          string,
-          {
-            regions?: string[];
-            layouts?: Array<{ num_nodes?: number; sizes?: string[] }>;
-            versions?: string[];
-          }
-        > | null;
-      }>("/databases/options"),
+      ctx.api.get("/regions"),
+      ctx.api.get("/databases/options"),
       buildProjectField(ctx, parentResourceId),
     ]);
 
@@ -254,9 +247,7 @@ export async function databaseGetCreateConfig(
     if (parentResourceId) {
       const clusterId = parentResourceId.split(":").slice(2).join(":");
       try {
-        const cluster = await ctx.fetch<{ database?: { engine?: string } }>(
-          `/databases/${clusterId}`,
-        );
+        const cluster = await ctx.api.get(`/databases/${unencodedSegment(clusterId)}`);
         if (String(cluster.database?.engine ?? "") === "kafka") {
           kafkaFields = kafkaAclFields();
         }
@@ -302,38 +293,37 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
     assignToProjectIfNeeded,
   } = args;
   if (typeId === "managed-database") {
-    const data = await ctx.fetch<{ database: Record<string, unknown> }>("/databases", {
-      method: "POST",
-      body: JSON.stringify({
+    const data = await ctx.api.post("/databases", {
+      body: {
         name: fields["name"],
         engine: fields["engine"],
         region: fields["region"],
         size: fields["size"],
         num_nodes: Number(fields["nodeCount"] || 1),
-      }),
+      },
     });
     const db = data.database;
-    await assignToProjectIfNeeded(`do:dbaas:${String(db["id"])}`);
+    await assignToProjectIfNeeded(`do:dbaas:${String(db.id)}`);
     return {
-      id: `${accountId}:managed-database:${String(db["id"])}`,
+      id: `${accountId}:managed-database:${String(db.id)}`,
       pluginId: "digitalocean",
       resourceTypeId: "managed-database",
       accountId,
-      displayName: String(db["name"]),
+      displayName: String(db.name),
       fields: {
-        name: String(db["name"]),
-        engine: String(db["engine"] ?? ""),
-        version: String(db["version"] ?? ""),
-        region: String(db["region"] ?? ""),
-        size: String(db["size"] ?? ""),
-        nodeCount: Number(db["num_nodes"] ?? 1),
+        name: String(db.name),
+        engine: String(db.engine ?? ""),
+        version: String(db.version ?? ""),
+        region: String(db.region ?? ""),
+        size: String(db.size ?? ""),
+        nodeCount: Number(db.num_nodes ?? 1),
       },
       resolvedOutputs: {},
       secretStates: [],
-      externalId: String(db["id"]),
+      externalId: String(db.id),
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
-      createdAt: String(db["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(db["created_at"] ?? new Date().toISOString()),
+      createdAt: String(db.created_at ?? new Date().toISOString()),
+      updatedAt: String(db.created_at ?? new Date().toISOString()),
     };
   }
 
@@ -355,24 +345,21 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
     // "settings is required". Default to full access on every topic; the
     // engine is read off the cluster so other engines stay on the bare
     // `{ name }` body they expect.
-    const userBody: Record<string, unknown> = { name: username };
+    const clusterPath = `/databases/${unencodedSegment(clusterId)}` as const;
+    let kafkaSettings: { settings: { acl: Array<{ topic: string; permission: string }> } } | null =
+      null;
     try {
-      const cluster = await ctx.fetch<{ database?: { engine?: string } }>(
-        `/databases/${clusterId}`,
-      );
+      const cluster = await ctx.api.get(clusterPath);
       if (String(cluster.database?.engine ?? "") === "kafka") {
         const topic = String(fields["topic"] ?? "").trim() || "*";
         const permission = String(fields["permission"] ?? "").trim() || "admin";
-        userBody["settings"] = { acl: [{ topic, permission }] };
+        kafkaSettings = { settings: { acl: [{ topic, permission }] } };
       }
     } catch {
       /* non-Kafka engines don't need settings; ignore lookup failures */
     }
-    const resp = await ctx.fetch<{
-      user?: { name?: string; role?: string; password?: string };
-    }>(`/databases/${clusterId}/users`, {
-      method: "POST",
-      body: JSON.stringify(userBody),
+    const resp = await ctx.api.post(`${clusterPath}/users`, {
+      body: { name: username, ...kafkaSettings },
     });
     const user = resp.user ?? {};
     const password = String(user.password ?? "");
