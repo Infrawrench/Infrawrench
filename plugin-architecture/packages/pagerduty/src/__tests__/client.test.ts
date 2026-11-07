@@ -696,3 +696,62 @@ describe("accounts without teams", () => {
     await expect(c.listResources("pagerduty-team", "acc")).rejects.toThrow("500");
   });
 });
+
+describe("incident alerts", () => {
+  const incident = { status: 200, body: { incident: { id: "I1", title: "Down" } } };
+  /** Everything an incident's detail page reads besides its alerts. */
+  function others(call: Call) {
+    if (call.url.includes("/notes")) return { status: 200, body: { notes: [] } };
+    if (call.url.includes("/users")) return { status: 200, body: { users: [], more: false } };
+    if (call.url.includes("/priorities")) {
+      return { status: 200, body: { priorities: [], more: false } };
+    }
+    if (call.url.includes("/escalation_policies")) {
+      return { status: 200, body: { escalation_policies: [], more: false } };
+    }
+    return incident;
+  }
+  const shown = (fields: Record<string, unknown>): { summary: string }[] =>
+    JSON.parse(String(fields["__alerts__"]));
+
+  it("reads every page of an incident's alerts for its detail page", async () => {
+    const { c, calls } = client((call) => {
+      if (!call.url.includes("/alerts")) return others(call);
+      const offset = Number(new URL(call.url).searchParams.get("offset"));
+      return {
+        status: 200,
+        body: {
+          alerts: [{ id: `A${offset}`, summary: `alert ${offset}`, status: "triggered" }],
+          limit: 100,
+          more: offset < 200,
+        },
+      };
+    });
+    const r = await c.getResource("pagerduty-incident", "acc:pagerduty-incident:I1", "acc");
+    expect(shown(r.fields).map((a) => a.summary)).toEqual(["alert 0", "alert 100", "alert 200"]);
+    const first = new URL(calls.find((call) => call.url.includes("/alerts"))!.url);
+    expect(first.searchParams.get("limit")).toBe("100");
+    expect(first.searchParams.get("sort_by")).toBe("created_at:desc");
+  });
+
+  it("shows the newest alerts of an incident with too many, and no error", async () => {
+    const { c, calls } = client((call) =>
+      call.url.includes("/alerts")
+        ? { status: 200, body: { alerts: [{ id: "A", summary: "x" }], more: true } }
+        : others(call),
+    );
+    const r = await c.getResource("pagerduty-incident", "acc:pagerduty-incident:I1", "acc");
+    expect(shown(r.fields)).toHaveLength(20);
+    expect(calls.filter((call) => call.url.includes("/alerts"))).toHaveLength(20);
+  });
+
+  it("still opens the incident when its alerts cannot be read", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/alerts")
+        ? { status: 500, body: { error: { message: "boom" } } }
+        : others(call),
+    );
+    const r = await c.getResource("pagerduty-incident", "acc:pagerduty-incident:I1", "acc");
+    expect(shown(r.fields)).toEqual([]);
+  });
+});

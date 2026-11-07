@@ -28,6 +28,7 @@ import type { operations } from "./api-types.rest.gen.js";
 import { isPagerDutyOAuth } from "./oauth.js";
 import type {
   PdEscalationPolicy,
+  PdAlert,
   PdBusinessService,
   PdExpandable,
   PdIncident,
@@ -504,7 +505,13 @@ export class PagerDutyClient implements PluginClient {
           const r = mapIncident(accountId, res.incident);
           const [notes, alerts, users, policies, priorities] = await Promise.all([
             this.api.get(`/incidents/${id}/notes`).catch(() => ({ notes: [] })),
-            this.api.get(`/incidents/${id}/alerts`).catch(() => ({ alerts: [] })),
+            this.api
+              .getAll(`/incidents/${id}/alerts`, "alerts", {
+                query: { sort_by: "created_at:desc" },
+                maxPages: DETAIL_MAX_PAGES,
+                partial: true,
+              })
+              .catch((): PdAlert[] => []),
             this.userOptions().catch((): Option[] => []),
             this.policyOptions().catch((): Option[] => []),
             this.priorityOptions(),
@@ -514,7 +521,7 @@ export class PagerDutyClient implements PluginClient {
             who: n.user?.summary ?? "",
             content: n.content ?? "",
           }));
-          const alertRows: AlertRow[] = (alerts?.alerts ?? []).map((a) => ({
+          const alertRows: AlertRow[] = alerts.map((a) => ({
             key: a.alert_key ?? "",
             status: a.status ?? "",
             summary: a.summary ?? "",

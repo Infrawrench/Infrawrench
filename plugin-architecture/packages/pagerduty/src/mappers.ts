@@ -30,6 +30,7 @@ export type PdSchedule = Partial<Schemas["Schedule"]>;
 export type PdTeam = Partial<Schemas["Team"]>;
 export type PdIncident = Partial<Schemas["Incident"]>;
 export type PdMaintenanceWindow = Partial<Schemas["MaintenanceWindow"]>;
+export type PdAlert = Partial<Schemas["Alert"]>;
 
 /** A service's integration, reference or expanded; only the expanded one has the key. */
 export interface PdIntegration extends PdExpandable {
