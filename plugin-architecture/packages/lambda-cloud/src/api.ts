@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  requireListPage,
   withCursorPagination,
   type ApiClient,
   type HostServices,
@@ -80,6 +81,14 @@ export function createLambdaApi(
  */
 export function unwrap<T>(answer: { data: T }): T {
   return answer === undefined ? answer : answer.data;
+}
+
+/**
+ * The rows of a list route. The document requires `data`, so an answer without it
+ * throws instead of reading as none, which a sync would prune everything on.
+ */
+export function listOf<T>(answer: { data: T[] } | undefined, path: string): T[] {
+  return requireListPage(answer?.data, { vendor: "Lambda Cloud", path, key: "data" });
 }
 
 /** Every instance. `/instances` is the only list here that pages. */

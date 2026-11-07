@@ -12,7 +12,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { buildCostEstimate, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
-import { createLambdaApi, listInstances, unwrap, type LambdaApi } from "./api.js";
+import { createLambdaApi, listInstances, listOf, unwrap, type LambdaApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { buildCreateConfig, DEFAULT_IMAGE, NONE } from "./create-config.js";
 import { parseRules } from "./firewall.js";
@@ -68,10 +68,10 @@ export class LambdaCloudClient implements PluginClient {
 
   readonly raw = {
     instances: () => listInstances(this.api),
-    filesystems: async () => unwrap(await this.api.get("/filesystems")),
-    rulesets: async () => unwrap(await this.api.get("/firewall-rulesets")),
-    sshKeys: async () => unwrap(await this.api.get("/ssh-keys")),
-    images: async () => unwrap(await this.api.get("/images")),
+    filesystems: async () => listOf(await this.api.get("/filesystems"), "/filesystems"),
+    rulesets: async () => listOf(await this.api.get("/firewall-rulesets"), "/firewall-rulesets"),
+    sshKeys: async () => listOf(await this.api.get("/ssh-keys"), "/ssh-keys"),
+    images: async () => listOf(await this.api.get("/images"), "/images"),
   };
 
   /** Instance types with live capacity, cached for a minute (the API allows ~1 request/s). */
@@ -85,7 +85,7 @@ export class LambdaCloudClient implements PluginClient {
   }
 
   async regions(): Promise<LRegion[]> {
-    return unwrap(await this.api.get("/regions")) ?? [];
+    return listOf(await this.api.get("/regions"), "/regions");
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
@@ -96,15 +96,16 @@ export class LambdaCloudClient implements PluginClient {
         case "instance":
           return (await this.raw.instances()).map((i) => mapInstance(i, accountId));
         case "filesystem":
-          return ((await this.raw.filesystems()) ?? []).map((fs) => mapFilesystem(fs, accountId));
+          return (await this.raw.filesystems()).map((fs) => mapFilesystem(fs, accountId));
         case "firewall-ruleset":
-          return ((await this.raw.rulesets()) ?? []).map((r) => mapRuleset(r, accountId));
+          return (await this.raw.rulesets()).map((r) => mapRuleset(r, accountId));
         case "global-firewall": {
           const g = unwrap(await this.api.get("/firewall-rulesets/global"));
-          return g ? [mapRuleset(g, accountId, true)] : [];
+          if (!g) throw new Error("Lambda Cloud plugin: Lambda answered with no global firewall");
+          return [mapRuleset(g, accountId, true)];
         }
         case "ssh-key":
-          return ((await this.raw.sshKeys()) ?? []).map((k) => mapSshKey(k, accountId));
+          return (await this.raw.sshKeys()).map((k) => mapSshKey(k, accountId));
         default:
           throw new Error(`Lambda Cloud plugin: unknown resource type "${typeId}"`);
       }

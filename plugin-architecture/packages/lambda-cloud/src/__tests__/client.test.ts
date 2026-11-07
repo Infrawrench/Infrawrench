@@ -180,6 +180,46 @@ describe("api", () => {
   });
 });
 
+describe("lists with no answer", () => {
+  const LISTS = [
+    ["filesystem", "/filesystems"],
+    ["firewall-ruleset", "/firewall-rulesets"],
+    ["ssh-key", "/ssh-keys"],
+  ] as const;
+
+  it.each(LISTS)("throws on an empty 200 for %s rather than reading it as none", async (t, p) => {
+    route("GET", p, () => new Response("", { status: 200 }));
+    await expect(client().listResources(t, "acct")).rejects.toThrow("is not a list");
+  });
+
+  it.each(LISTS)("throws on a %s answer with no data key", async (t, p) => {
+    route("GET", p, { items: [] });
+    await expect(client().listResources(t, "acct")).rejects.toThrow("is not a list");
+  });
+
+  it.each(LISTS)("reads %s as empty when the list is empty", async (t, p) => {
+    route("GET", p, { data: [] });
+    await expect(client().listResources(t, "acct")).resolves.toEqual([]);
+  });
+
+  it("throws when the global firewall answers with nothing", async () => {
+    route("GET", "/firewall-rulesets/global", () => new Response("", { status: 200 }));
+    await expect(client().listResources("global-firewall", "acct")).rejects.toThrow(
+      "no global firewall",
+    );
+    route("GET", "/firewall-rulesets/global", {});
+    await expect(client().listResources("global-firewall", "acct")).rejects.toThrow(
+      "no global firewall",
+    );
+  });
+
+  it("still offers the create form when a picker's list has no answer", async () => {
+    route("GET", "/ssh-keys", () => new Response("", { status: 200 }));
+    const config = await client().getCreateConfig("instance");
+    expect(config.fields.some((f) => f.key === "sshKeyName")).toBe(true);
+  });
+});
+
 describe("instances", () => {
   it("maps specs, price and connection outputs without storing Jupyter credentials", async () => {
     route("GET", "/instances", { data: [INSTANCE], page_token: null });
