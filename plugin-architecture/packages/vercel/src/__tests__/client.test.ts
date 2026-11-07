@@ -553,6 +553,21 @@ describe("getResource", () => {
     expect(calls[0]!.url).toContain("/v9/projects/p1");
   });
 
+  it("dates a deployment fetched on its own from `createdAt`", async () => {
+    installFetch(() =>
+      jsonResponse({ id: "dpl_1", url: "x.vercel.app", createdAt: 1700000000000 }),
+    );
+    const r = await client().getResource(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      ACCOUNT,
+    );
+    const iso = new Date(1700000000000).toISOString();
+    expect(r.fields["createdAt"]).toBe(iso);
+    expect(r.createdAt).toBe(iso);
+    expect(r.updatedAt).toBe(iso);
+  });
+
   it("falls back to listing for non-project types", async () => {
     installFetch(() =>
       jsonResponse({ teams: [{ id: "t1", name: "T", slug: "t", createdAt: 1, updatedAt: 1 }] }),

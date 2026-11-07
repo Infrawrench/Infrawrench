@@ -126,6 +126,7 @@ type DeploymentFields = Partial<
     | "source"
     | "projectId"
     | "created"
+    | "createdAt"
     | "ready"
     | "inspectorUrl"
     | "errorMessage"
@@ -1311,6 +1312,8 @@ export class VercelClient implements PluginClient {
   private mapDeployment(d: DeploymentFields, accountId: string): ResourceInstance {
     const meta = d.meta ?? {};
     const state = d.readyState ?? d.state ?? "UNKNOWN";
+    // The single-deployment route documents only `createdAt`.
+    const created = d.created ?? d.createdAt;
 
     return {
       id: `${accountId}:vercel-deployment:${d.uid}`,
@@ -1330,7 +1333,7 @@ export class VercelClient implements PluginClient {
         gitCommitSha: meta["githubCommitSha"] ?? meta["gitlabCommitSha"],
         gitCommitMessage: meta["githubCommitMessage"] ?? meta["gitlabCommitMessage"],
         inspectorUrl: d.inspectorUrl,
-        createdAt: formatTimestamp(d.created),
+        createdAt: formatTimestamp(created),
         readyAt: formatTimestamp(d.ready),
         framework: d.projectSettings?.framework,
         errorMessage: d.errorMessage || null,
@@ -1339,8 +1342,8 @@ export class VercelClient implements PluginClient {
       resolvedOutputs: {},
       secretStates: [],
       externalId: d.uid,
-      createdAt: formatTimestamp(d.created),
-      updatedAt: formatTimestamp(d.ready ?? d.created),
+      createdAt: formatTimestamp(created),
+      updatedAt: formatTimestamp(d.ready ?? created),
     };
   }
 
