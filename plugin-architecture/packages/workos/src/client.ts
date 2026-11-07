@@ -24,16 +24,12 @@ import type {
 import type { operations } from "./api-types.gen.js";
 import {
   createWorkosApi,
-  cursorOf,
-  MAX_LIST_PAGES,
-  PAGE_SIZE,
   paginate,
   type WosApiKey,
   type WosConnection,
   type WosDirectory,
   type WosDirectoryGroup,
   type WosDirectoryUser,
-  type WosEvent,
   type WosFeatureFlag,
   type WosGroup,
   type WosInvitation,
@@ -48,6 +44,7 @@ import {
   type WosUser,
   type WosWebhookEndpoint,
 } from "./api.js";
+import { readEventTail, readEventWindow } from "./event-reads.js";
 import { ORGANIZATION_LOG_EVENTS, ORGANIZATION_METRIC_SERIES, WEBHOOK_EVENTS } from "./events.js";
 
 /** The Metrics tab's default window when the host passes no range. */
@@ -1096,43 +1093,36 @@ export class WorkosClient implements PluginClient {
         timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS,
         endMs - EVENTS_MAX_RANGE_MS,
       );
-      const query = {
-        organization_id: externalIdOf(resourceId),
-        range_start: new Date(startMs).toISOString(),
-        range_end: new Date(endMs).toISOString(),
-        order: "desc" as const,
-        limit: PAGE_SIZE,
-        events: ORGANIZATION_METRIC_SERIES.flatMap((series) => [...series.events]),
-      };
+      const events = ORGANIZATION_METRIC_SERIES.flatMap((series) => [...series.events]);
+      const organizationId = externalIdOf(resourceId);
+      const rangeEnd = new Date(endMs).toISOString();
+      const read = await readEventWindow(
+        (paging) =>
+          this.api.get("/events", {
+            query: {
+              organization_id: organizationId,
+              range_end: rangeEnd,
+              order: "desc",
+              events,
+              ...paging,
+            },
+          }),
+        startMs,
+        endMs,
+      );
 
-      // Newest first, so a busy organization that outruns the page cap loses
-      // its oldest buckets rather than its most recent ones.
-      const events: WosEvent[] = [];
-      let after = "";
-      for (let page = 0; page < MAX_LIST_PAGES; page++) {
-        const body = await this.api.get("/events", {
-          query: after ? { ...query, after } : query,
-        });
-        const items = body.data ?? [];
-        events.push(...items);
-        after = cursorOf(body);
-        if (!after || items.length === 0) break;
-      }
-
-      const timestamps = events
+      const timestamps = read.events
         .map((event) => ({ name: str(event.event), at: Date.parse(str(event.created_at)) }))
         .filter((event) => Number.isFinite(event.at));
-      // A cursor surviving the cap means everything before the oldest event
-      // fetched is unknown, not zero; start the chart where the data does.
-      const firstMs = after
-        ? Math.min(...timestamps.map((event) => event.at), endMs)
-        : Number.NEGATIVE_INFINITY;
       const bucketMs = Math.max(
         60_000,
         Math.ceil((endMs - startMs) / METRIC_BUCKETS / 60_000) * 60_000,
       );
       const buckets: number[] = [];
-      for (let at = startMs; at < endMs; at += bucketMs) if (at >= firstMs) buckets.push(at);
+      // What a read could not reach is unknown, not zero, so the chart leaves it out.
+      for (let at = startMs; at < endMs; at += bucketMs) {
+        if (at >= read.fromMs && at + bucketMs <= read.toMs) buckets.push(at);
+      }
 
       return ORGANIZATION_METRIC_SERIES.map((series) => {
         const counts = new Map<number, number>(buckets.map((at) => [at, 0]));
@@ -2108,17 +2098,22 @@ export class WorkosClient implements PluginClient {
     return attempt(async () => {
       if (typeId !== "organization") throw new Error("WorkOS plugin: only organizations have logs");
       const organizationId = externalIdOf(resourceId);
-      const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
-      const body = await this.api.get("/events", {
-        query: {
-          organization_id: organizationId,
-          limit,
-          order: "desc",
-          // `events` is required and repeats per value.
-          events: [...ORGANIZATION_LOG_EVENTS],
-        },
-      });
-      const lines = (body.data ?? []).reverse().map((event) => {
+      const wanted = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
+      const events = await readEventTail(
+        (paging) =>
+          this.api.get("/events", {
+            query: {
+              organization_id: organizationId,
+              order: "desc",
+              // `events` is required and repeats per value.
+              events: [...ORGANIZATION_LOG_EVENTS],
+              ...paging,
+            },
+          }),
+        wanted,
+        Date.now(),
+      );
+      const lines = events.map((event) => {
         const data = event.data ?? {};
         const subject =
           eventText(data["email"]) ||

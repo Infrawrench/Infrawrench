@@ -93,6 +93,103 @@ describe("organization metrics", () => {
     });
   });
 
+  it("drops range_start from later pages, which WorkOS calls exclusive with after", async () => {
+    const startMs = Date.parse("2026-09-01T00:00:00Z");
+    const { urls, client } = respond([
+      {
+        data: [event("session.created", "2026-09-01T00:50:00Z")],
+        list_metadata: { after: "event_next" },
+      },
+      { data: [event("session.created", "2026-09-01T00:40:00Z")], list_metadata: { after: null } },
+    ]);
+    await client.fetchMetricSeries("organization", RESOURCE, ACCOUNT, {
+      startMs,
+      endMs: startMs + 60 * 60_000,
+    });
+    expect(urls).toHaveLength(2);
+    expect(urls[0]!.searchParams.get("range_start")).toBe("2026-09-01T00:00:00.000Z");
+    expect(urls[1]!.searchParams.has("range_start")).toBe(false);
+    expect(urls[1]!.searchParams.get("after")).toBe("event_next");
+    expect(urls[1]!.searchParams.get("range_end")).toBe("2026-09-01T01:00:00.000Z");
+  });
+
+  it("stops at the start of the window when answered newest first", async () => {
+    const startMs = Date.parse("2026-09-01T00:00:00Z");
+    const { urls, client } = respond([
+      {
+        data: [
+          event("session.created", "2026-09-01T00:10:00Z"),
+          event("session.created", "2026-08-31T23:50:00Z"),
+        ],
+        list_metadata: { after: "event_next" },
+      },
+    ]);
+    const series = await client.fetchMetricSeries("organization", RESOURCE, ACCOUNT, {
+      startMs,
+      endMs: startMs + 60 * 60_000,
+    });
+    expect(urls).toHaveLength(1);
+    const sessions = series.find((s) => s.label === "Sessions created")!;
+    expect(sessions.points.reduce((sum, point) => sum + point.value, 0)).toBe(1);
+    expect(sessions.points[0]!.timestamp).toBe(startMs);
+  });
+
+  it("reads the newest stretch again when answered oldest first past the cap", async () => {
+    const startMs = Date.parse("2026-09-01T00:00:00Z");
+    const minute = (n: number) => new Date(startMs + n * 60_000).toISOString();
+    const cut = Array.from({ length: 20 }, (_, n) => ({
+      data: [event("session.created", minute(n))],
+      list_metadata: { after: "event_next" },
+    }));
+    const { urls, client } = respond([
+      ...cut,
+      { data: [event("session.created", minute(59))], list_metadata: { after: null } },
+    ]);
+    const series = await client.fetchMetricSeries("organization", RESOURCE, ACCOUNT, {
+      startMs,
+      endMs: startMs + 60 * 60_000,
+    });
+    expect(urls).toHaveLength(21);
+    // The first read covered 19 minutes, so the next asks for the last 19.
+    expect(urls[20]!.searchParams.get("range_start")).toBe(minute(41));
+    expect(urls[20]!.searchParams.has("after")).toBe(false);
+    const sessions = series.find((s) => s.label === "Sessions created")!;
+    expect(sessions.points[0]!.timestamp).toBeGreaterThanOrEqual(startMs + 41 * 60_000);
+    expect(sessions.points.reduce((sum, point) => sum + point.value, 0)).toBe(1);
+    expect(sessions.points.at(-1)!.value).toBe(1);
+  });
+
+  it("ends the chart at the newest event read when no read reaches the end", async () => {
+    const startMs = Date.parse("2026-09-01T00:00:00Z");
+    const minute = (n: number) => new Date(startMs + n * 60_000).toISOString();
+    const read = (from: number, step: number) =>
+      Array.from({ length: 20 }, (_, n) => ({
+        data: [event("session.created", minute(from + n * step))],
+        list_metadata: { after: "event_next" },
+      }));
+    const { urls, client } = respond([...read(0, 1), ...read(41, 0.5), ...read(51, 0.25)]);
+    const series = await client.fetchMetricSeries("organization", RESOURCE, ACCOUNT, {
+      startMs,
+      endMs: startMs + 60 * 60_000,
+    });
+    expect(urls).toHaveLength(60);
+    const points = series.find((s) => s.label === "Sessions created")!.points;
+    // Two-minute buckets, and the last read asked from 50.5 and stopped at 55.75.
+    expect(points[0]!.timestamp).toBeGreaterThanOrEqual(startMs + 50.5 * 60_000);
+    expect(points.at(-1)!.timestamp + 2 * 60_000).toBeLessThanOrEqual(startMs + 55.75 * 60_000);
+  });
+
+  it("refuses a page whose list is not a list", async () => {
+    const startMs = Date.parse("2026-09-01T00:00:00Z");
+    const { client } = respond([{ events: [], list_metadata: { after: null } }]);
+    await expect(
+      client.fetchMetricSeries("organization", RESOURCE, ACCOUNT, {
+        startMs,
+        endMs: startMs + 60 * 60_000,
+      }),
+    ).rejects.toThrow("is not a list");
+  });
+
   it("starts the chart at the oldest fetched event when the page cap truncates", async () => {
     const page = (at: string) => ({
       data: [event("session.created", at)],

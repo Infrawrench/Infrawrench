@@ -393,10 +393,92 @@ describe("organizations", () => {
     const url = new URL(`https://api.workos.com${calls[0]!.url}`);
     expect(url.searchParams.get("organization_id")).toBe(ORG);
     expect(url.searchParams.getAll("events")).toContain("invitation.created");
-    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("limit")).toBe("100");
     expect(logs.text.split("\n")[0]).toBe(
       "2026-09-01T00:00:00Z invitation.created amy@acme.com by Amy (dashboard)",
     );
+  });
+
+  describe("log tail in either order", () => {
+    const at = (n: number) => new Date(Date.parse("2026-09-01T00:00:00Z") + n * 60_000);
+    const row = (n: number) => ({
+      id: `event_${n}`,
+      event: "invitation.created",
+      data: { email: `user${n}@acme.com` },
+      created_at: at(n).toISOString(),
+    });
+    const page = (data: unknown[], after: string | null = null) => ({
+      data,
+      list_metadata: { after },
+    });
+    function paged(pages: unknown[]) {
+      const urls: URL[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation((async (input: string) => {
+        const url = new URL(String(input));
+        if (url.pathname !== "/events") throw new Error(`Unexpected request to ${url}`);
+        urls.push(url);
+        const answer = pages[urls.length - 1];
+        if (answer === undefined) throw new Error(`Unexpected request ${urls.length} to ${url}`);
+        const text = JSON.stringify(answer);
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => JSON.parse(text),
+          text: async () => text,
+        } as unknown as Response;
+      }) as unknown as typeof fetch);
+      return { urls, client: hostClient(new WorkosClient({ apiKey: "sk_test_key" })) };
+    }
+    const emails = (text: string) =>
+      text
+        .trim()
+        .split("\n")
+        .map((line) => line.split(" ")[2]);
+    const resource = `${ACCOUNT}:organization:${ORG}`;
+
+    it("takes the newest from the first page when answered newest first", async () => {
+      const { urls, client } = paged([page([row(3), row(2), row(1)], "event_1")]);
+      const logs = await client.getLogs("organization", resource, ACCOUNT, { tailLines: 2 });
+      expect(urls).toHaveLength(1);
+      expect(emails(logs.text)).toEqual(["user2@acme.com", "user3@acme.com"]);
+    });
+
+    it("pages to the end when answered oldest first, as the document says", async () => {
+      const { urls, client } = paged([page([row(1), row(2)], "event_2"), page([row(3), row(4)])]);
+      const logs = await client.getLogs("organization", resource, ACCOUNT, { tailLines: 2 });
+      expect(urls).toHaveLength(2);
+      expect(urls[1]!.searchParams.get("after")).toBe("event_2");
+      expect(emails(logs.text)).toEqual(["user3@acme.com", "user4@acme.com"]);
+    });
+
+    it("starts from a recent window when oldest first outruns the cap", async () => {
+      vi.setSystemTime(at(100));
+      try {
+        const cut = Array.from({ length: 20 }, (_, n) => page([row(n)], "more"));
+        const { urls, client } = paged([
+          ...cut,
+          // The last hour holds one event, too few, so the last day is asked for too.
+          page([row(99)]),
+          page([row(98), row(99)]),
+        ]);
+        const logs = await client.getLogs("organization", resource, ACCOUNT, { tailLines: 2 });
+        expect(urls).toHaveLength(22);
+        expect(urls[20]!.searchParams.get("range_start")).toBe(at(40).toISOString());
+        expect(urls[20]!.searchParams.has("after")).toBe(false);
+        expect(urls[21]!.searchParams.get("range_start")).toBe(at(100 - 24 * 60).toISOString());
+        expect(emails(logs.text)).toEqual(["user98@acme.com", "user99@acme.com"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("refuses a page whose list is not a list", async () => {
+      const { client } = paged([{ events: [], list_metadata: { after: null } }]);
+      await expect(
+        client.getLogs("organization", resource, ACCOUNT, { tailLines: 2 }),
+      ).rejects.toThrow("is not a list");
+    });
   });
 
   it("clears the external id with null", async () => {

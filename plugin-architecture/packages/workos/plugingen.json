@@ -13,7 +13,7 @@
           "enum": ["asc", "desc", "normal"]
         }
       },
-      "why": "Absent from this operation, whose description says events come oldest first. The plugin has always sent order=desc and read the answer as newest first; #479 is finding out whether that works."
+      "why": "Absent from this operation, whose description says events come oldest first. The plugin has always sent order=desc, and src/event-reads.ts reads the answer in whichever order it arrives, so a read is one page if WorkOS honours this and still right if it does not."
     },
     {
       "pointer": "/paths/~1user_management~1invitations~1{id}~1resend/post/requestBody/required",
