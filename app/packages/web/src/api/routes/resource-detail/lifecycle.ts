@@ -9,7 +9,10 @@ import {
   setLiteralSecretState,
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
-import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import {
+  supersedeResource,
+  upsertCreatedResource,
+} from "@infrawrench/server-core/created-resource";
 import { resourceIdBelongsToAccount } from "@infrawrench/server-core/resource-ids";
 import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import {
@@ -373,6 +376,20 @@ export function registerLifecycleRoutes(app: Hono): void {
       return c.json({ error: message }, 400);
     }
 
+    // A provider that makes each edit a new version answers with a new id, which every
+    // later edit has to be addressed to. The same scoping as the check above applies: an
+    // id outside this account is a plugin bug, and it must not move a row or reach a client.
+    const followsNewId = updated.id !== input.resourceId;
+    const nextId =
+      followsNewId && resourceIdBelongsToAccount(updated.id, input.accountId)
+        ? updated.id
+        : input.resourceId;
+    if (followsNewId && nextId === input.resourceId) {
+      console.error(
+        `[resource-detail] ${input.pluginId} answered an edit with a resource id outside the account`,
+      );
+    }
+
     // Every applied edit lands in the audit trail: resource updates carry
     // real provider mutations (a resize restarts the machine).
     void logAudit({
@@ -387,6 +404,7 @@ export function registerLifecycleRoutes(app: Hono): void {
         // Keys only: edited values can include write-only password fields,
         // which must never land in the audit table.
         fieldKeys: Object.keys(input.fields ?? {}),
+        ...(nextId !== input.resourceId ? { newResourceId: nextId } : {}),
       },
     });
 
@@ -395,21 +413,32 @@ export function registerLifecycleRoutes(app: Hono): void {
     // resources skip this: they aren't owned by the account's native plugin.
     if (ctx.account.pluginId === input.pluginId) {
       try {
-        await db
-          .update(resources)
-          .set({
-            displayName: updated.displayName,
-            fieldsJson: updated.fields ?? {},
-            outputsJson: updated.resolvedOutputs ?? {},
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(resources.id, input.resourceId),
-              eq(resources.organizationId, organizationId),
-              eq(resources.accountId, input.accountId),
-            ),
-          );
+        if (nextId !== input.resourceId) {
+          await supersedeResource({
+            organizationId,
+            pluginId: input.pluginId,
+            resourceTypeId: input.resourceTypeId,
+            accountId: input.accountId,
+            previousId: input.resourceId,
+            resource: updated,
+          });
+        } else {
+          await db
+            .update(resources)
+            .set({
+              displayName: updated.displayName,
+              fieldsJson: updated.fields ?? {},
+              outputsJson: updated.resolvedOutputs ?? {},
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(resources.id, input.resourceId),
+                eq(resources.organizationId, organizationId),
+                eq(resources.accountId, input.accountId),
+              ),
+            );
+        }
       } catch (err) {
         console.error("[resource-detail] Failed to persist updated resource:", err);
       }
@@ -442,7 +471,7 @@ export function registerLifecycleRoutes(app: Hono): void {
     }
 
     return c.json({
-      id: updated.id,
+      id: nextId,
       displayName: updated.displayName,
       fields: updated.fields ?? {},
     });

@@ -57,3 +57,17 @@ export async function upsertResourceRow(db: DbClient, row: ResourceRow): Promise
     [row.id, ...columns.map(([, value]) => value)],
   );
 }
+
+/**
+ * Where an edit answered with a different id, as a provider that makes each edit a new
+ * version does: the new id gets the row, and the old one is soft deleted. Mirrors
+ * `supersedeResource` in server-core, which says why stored secrets do not move.
+ */
+export async function supersedeResourceRow(
+  db: DbClient,
+  previousId: string,
+  row: ResourceRow,
+): Promise<void> {
+  await upsertResourceRow(db, row);
+  await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [previousId]);
+}

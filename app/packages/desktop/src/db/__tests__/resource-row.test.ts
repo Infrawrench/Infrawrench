@@ -5,7 +5,7 @@ import initSqlJs, { type Database } from "sql.js";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DbClient } from "../client";
 import { MIGRATIONS } from "../schema";
-import { upsertResourceRow } from "../rows";
+import { supersedeResourceRow, upsertResourceRow } from "../rows";
 import { secretAnchorStatement } from "../secret-anchor";
 
 /** The real schema on the real engine, foreign keys on as `electron/db.ts` has them. */
@@ -156,6 +156,20 @@ describe("a secret stored before anything wrote the resource's row", () => {
     await db.execute(elsewhere.sql, elsewhere.params);
     await expect(db.select<unknown[]>("SELECT id FROM resources")).resolves.toEqual([]);
     expect(secretAnchorStatement("just-an-id")).toBeNull();
+  });
+});
+
+describe("an edit that answers with a new id", () => {
+  it("moves to a new row and retires the old one", async () => {
+    await upsertResourceRow(db, row({ id: "a1:thing:v1" }));
+    await supersedeResourceRow(db, "a1:thing:v1", row({ id: "a1:thing:v2", displayName: "v2" }));
+    const rows = await db.select<Array<{ id: string; display_name: string; retired: number }>>(
+      "SELECT id, display_name, deleted_at IS NOT NULL AS retired FROM resources ORDER BY id",
+    );
+    expect(rows).toEqual([
+      { id: "a1:thing:v1", display_name: "Thing", retired: 1 },
+      { id: "a1:thing:v2", display_name: "v2", retired: 0 },
+    ]);
   });
 });
 

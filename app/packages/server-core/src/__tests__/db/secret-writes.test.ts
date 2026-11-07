@@ -167,4 +167,29 @@ describe.skipIf(!configured)("a stored secret and its resource's row", () => {
     expect(String(err)).not.toContain("insert into");
     consoleError.mockRestore();
   });
+
+  it("moves a resource an edit gave a new id, and retires the old row", async () => {
+    const { upsertCreatedResource, supersedeResource } = await import("../../created-resource");
+    const before = newId();
+    const after = newId();
+    await upsertCreatedResource({
+      organizationId: orgId,
+      pluginId: "fake",
+      resourceTypeId: "thing",
+      accountId,
+      resource: instance(before),
+    });
+
+    await supersedeResource({
+      organizationId: orgId,
+      pluginId: "fake",
+      resourceTypeId: "thing",
+      accountId,
+      previousId: before,
+      resource: { ...instance(after), displayName: "Second version" },
+    });
+
+    expect((await rowOf(before))?.deletedAt).toBeInstanceOf(Date);
+    expect(await rowOf(after)).toMatchObject({ displayName: "Second version", deletedAt: null });
+  });
 });

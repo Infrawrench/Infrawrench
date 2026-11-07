@@ -21,6 +21,11 @@ const mockUpdate = vi.fn(() => ({
     },
   }),
 }));
+const supersedeResource = vi.fn(async (_params: Record<string, unknown>) => {});
+vi.mock("@infrawrench/server-core/created-resource", () => ({
+  supersedeResource,
+  upsertCreatedResource: vi.fn(),
+}));
 const dbMock = { db: { update: mockUpdate } };
 vi.mock("../../../db/client", () => dbMock);
 vi.mock("@infrawrench/server-core/db/client", () => dbMock);
@@ -103,5 +108,51 @@ describe("POST /update org scoping", () => {
     expect(sql).toContain('"resources"."organization_id" = $2');
     expect(sql).toContain('"resources"."account_id" = $3');
     expect(params).toEqual(["acct-1:server:42", "org-1", "acct-1"]);
+  });
+});
+
+describe("POST /update when the plugin answers with a new id", () => {
+  const edit = (id: string) =>
+    updateResource.mockImplementationOnce(async (typeId, _resourceId, accountId) => ({
+      id,
+      pluginId: "hetzner",
+      resourceTypeId: typeId,
+      accountId,
+      displayName: "v2",
+      fields: { name: "v2" },
+      resolvedOutputs: { ip: "1.2.3.5" },
+    }));
+
+  it("moves the edit to the new id, rather than write it into the old row", async () => {
+    edit("acct-1:server:43");
+    const res = await post({ resourceId: "acct-1:server:42" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: "acct-1:server:43" });
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(supersedeResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        accountId: "acct-1",
+        previousId: "acct-1:server:42",
+        resource: expect.objectContaining({ id: "acct-1:server:43", displayName: "v2" }),
+      }),
+    );
+  });
+
+  it("does not follow an id outside the account, nor answer with it", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    edit("acct-of-another-org:server:43");
+    const res = await post({ resourceId: "acct-1:server:42" });
+    expect(await res.json()).toMatchObject({ id: "acct-1:server:42" });
+    expect(supersedeResource).not.toHaveBeenCalled();
+    expect(updateWheres).toHaveLength(1);
+    quiet.mockRestore();
+  });
+
+  it("leaves an ordinary edit to the row it was", async () => {
+    const res = await post({ resourceId: "acct-1:server:42" });
+    expect(res.status).toBe(200);
+    expect(supersedeResource).not.toHaveBeenCalled();
+    expect(updateWheres).toHaveLength(1);
   });
 });

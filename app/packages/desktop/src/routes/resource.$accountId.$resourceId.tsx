@@ -42,7 +42,7 @@ import {
   useStableGT,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import { upsertResourceRow, type AccountRow } from "../db/rows";
+import { supersedeResourceRow, upsertResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
@@ -970,7 +970,7 @@ export function ResourcePanel({
     const cloud = cloudCtxRef.current;
     if (cloud) {
       const { updateCloudResource } = await import("../lib/cloud-api");
-      await updateCloudResource(cloud.orgId, {
+      const updated = await updateCloudResource(cloud.orgId, {
         accountId,
         pluginId: cloud.pluginId,
         resourceTypeId: cloud.resourceTypeId,
@@ -979,7 +979,7 @@ export function ResourcePanel({
         ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
       });
       toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
-      dispatchRefreshResource();
+      followEditedResource(updated.id);
       return;
     }
     const client = clientRef.current;
@@ -991,9 +991,31 @@ export function ResourcePanel({
       changedFields,
     );
     const db = await getDb();
-    await upsertResourceRow(db, updated);
+    if (updated.id === resource.id) await upsertResourceRow(db, updated);
+    else await supersedeResourceRow(db, resource.id, updated);
     toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
-    dispatchRefreshResource();
+    followEditedResource(updated.id);
+  }
+
+  /** A provider's edit can answer with a new id, which every later edit has to go to. */
+  function followEditedResource(id: string): void {
+    if (id === decodedResourceId) {
+      dispatchRefreshResource();
+      return;
+    }
+    if (resource) {
+      dispatchResourcesChanged({ accountId, resourceTypeId: resource.resourceTypeId });
+    }
+    void navigate({
+      to: "/resource/$accountId/$resourceId",
+      params: { accountId, resourceId: encodeURIComponent(id) },
+      search: {
+        ...(peerPlugin ? { plugin: peerPlugin } : {}),
+        ...(peerType ? { type: peerType } : {}),
+        ...(peerParent ? { parent: peerParent } : {}),
+      },
+      replace: true,
+    });
   }
 
   async function handleDelete() {
@@ -1086,7 +1108,8 @@ export function ResourcePanel({
         changedFields,
       );
       const db = await getDb();
-      await upsertResourceRow(db, updated);
+      if (updated.id === child.id) await upsertResourceRow(db, updated);
+      else await supersedeResourceRow(db, child.id, updated);
     }
     dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
     setRefreshVersion((v) => v + 1);

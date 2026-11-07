@@ -11,6 +11,7 @@
  * merges JSON columns and bumps `sync_version` because a lister's view of a
  * resource is partial. A create response is authoritative, so it overwrites.
  */
+import { and, eq } from "drizzle-orm";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { resources } from "./db/schema";
@@ -59,4 +60,30 @@ export async function upsertCreatedResource({
       // Re-creating over a soft-deleted id revives the row.
       set: { ...row, deletedAt: null, updatedAt: new Date() },
     });
+}
+
+/**
+ * Where an edit answered with a different id, as a provider that makes each edit a new
+ * version does: the new id gets the row, and the old one is soft deleted. A sync revives
+ * it if the provider still lists it. Writing the new fields under the old id would have
+ * the next edit, sent to that id, build on the old version and drop this one.
+ *
+ * Stored secrets stay with the old id, because they are encrypted against it. A plugin
+ * whose edits change the id and which keeps a secret copies it with `setPlaintext`.
+ */
+export async function supersedeResource({
+  previousId,
+  ...created
+}: UpsertCreatedResourceParams & { previousId: string }): Promise<void> {
+  await upsertCreatedResource(created);
+  await db
+    .update(resources)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(resources.id, previousId),
+        eq(resources.organizationId, created.organizationId),
+        eq(resources.accountId, created.accountId),
+      ),
+    );
 }

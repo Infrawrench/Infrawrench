@@ -992,8 +992,9 @@ export function ResourceDetailClient({
     dispatchResourcesChanged({ accountId, resourceTypeId });
   }
 
-  async function handleUpdate(changedFields: Record<string, string>): Promise<void> {
-    await apiPost(`/api/org/${orgId}/resources/update`, {
+  /** Answers the id to keep editing by, which a provider's edit can change. */
+  async function handleUpdate(changedFields: Record<string, string>): Promise<string> {
+    const updated = await apiPost<{ id?: string }>(`/api/org/${orgId}/resources/update`, {
       accountId,
       pluginId,
       resourceTypeId,
@@ -1003,6 +1004,7 @@ export function ResourceDetailClient({
     });
     toast.success(gt("{type} updated.", { type: resourceTypeLabel }));
     dispatchResourcesChanged({ accountId, resourceTypeId });
+    return updated?.id ?? resourceId;
   }
 
   const childResourceGroups = useMemo(
@@ -1715,7 +1717,20 @@ export function ResourceDetailClient({
           loadCostEstimate={loadCostEstimate}
           loadCarbonEstimate={loadCarbonEstimate}
           onSubmit={async (changed) => {
-            await handleUpdate(changed);
+            const nextId = await handleUpdate(changed);
+            if (nextId !== resourceId) {
+              setShowEditModal(false);
+              void navigate({
+                to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                params: { orgId, pluginId, resourceTypeId, resourceId: nextId },
+                search: {
+                  accountId,
+                  ...(parentResourceId ? { parentResourceId } : {}),
+                },
+                replace: true,
+              });
+              return;
+            }
             // Server-rendered page: a full reload picks up the new fields.
             // Soft client refresh would need refetching detail; defer to nav.
             window.location.reload();
