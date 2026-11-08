@@ -5,7 +5,9 @@ import {
   type OrphanListResponse,
   type OrphansClient,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
+import { withoutNullRemediation } from "./cloud-remediation";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
@@ -31,7 +33,19 @@ export function createDesktopOrphansClient({
     listOrphans: () => {
       const orgId = useUIStore.getState().activeCloudOrgId;
       if (!orgId) return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalOrphansList()));
-      return invoke<OrphanListResponse>("cloud_orphans_list", { orgId });
+      return runRpc(
+        cloudClient("orphans")
+          .orphans.list({ params: { orgId } })
+          .pipe(
+            Effect.map((res): OrphanListResponse => ({
+              ...res,
+              accounts: res.accounts.map((account) => ({
+                ...account,
+                resources: account.resources.map(withoutNullRemediation),
+              })),
+            })),
+          ),
+      );
     },
   };
   // Idle rules are a cloud feature (the poller reads the metrics): the
@@ -41,14 +55,23 @@ export function createDesktopOrphansClient({
   return {
     ...client,
     idleFindings: {
-      overview: () =>
-        invoke<IdleFindingsOverview>("cloud_idle_findings_overview", { orgId: requireOrg() }),
-      save: (settings) =>
-        invoke<IdleFindingSettings>("cloud_idle_findings_save", { orgId: requireOrg(), settings }),
-      rescan: () => invoke<void>("cloud_idle_findings_rescan", { orgId: requireOrg() }),
+      overview: (): Promise<IdleFindingsOverview> =>
+        runRpc(idleFindings().overview({ params: { orgId: requireOrg() } })),
+      save: (settings): Promise<IdleFindingSettings> =>
+        runRpc(
+          idleFindings().updateSettings({ params: { orgId: requireOrg() }, payload: settings }),
+        ),
+      rescan: () =>
+        runRpc(
+          idleFindings()
+            .rescan({ params: { orgId: requireOrg() } })
+            .pipe(Effect.asVoid),
+        ),
     },
   };
 }
+
+const idleFindings = () => cloudClient("idleFindings").idleFindings;
 
 function requireOrg(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;

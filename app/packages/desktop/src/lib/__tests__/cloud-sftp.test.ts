@@ -9,8 +9,6 @@ import {
   cloudSftpList,
   cloudSftpMkdir,
   cloudSftpUpload,
-  cloudSshTunnelCreateAccount,
-  cloudSshTunnelExec,
 } from "../cloud-sftp";
 
 beforeEach(() => {
@@ -54,31 +52,5 @@ describe("cloud-sftp wrappers", () => {
     };
     await cloudSftpDownload(params);
     expect(invoke).toHaveBeenCalledWith("cloud_sftp_download", params);
-  });
-
-  it("cloudSshTunnelExec", async () => {
-    invoke.mockResolvedValue({ stdout: "ok", code: 0 });
-    const body = { sshHost: "h", sshPort: 22, sshUser: "u", sshKeyId: "k", command: "ls" };
-    const res = await cloudSshTunnelExec("org1", body);
-    expect(invoke).toHaveBeenCalledWith("cloud_ssh_tunnel_exec", { orgId: "org1", body });
-    expect(res).toEqual({ stdout: "ok", code: 0 });
-  });
-
-  it("cloudSshTunnelCreateAccount", async () => {
-    invoke.mockResolvedValue({ accountId: "new" });
-    const body = {
-      sshHost: "h",
-      sshPort: 22,
-      sshUser: "u",
-      sshKeyId: "k",
-      remoteHost: "rh",
-      remotePort: 5432,
-      pluginId: "p",
-      displayName: "n",
-      credentials: {},
-    };
-    const res = await cloudSshTunnelCreateAccount("org1", body);
-    expect(invoke).toHaveBeenCalledWith("cloud_ssh_tunnel_create_account", { orgId: "org1", body });
-    expect(res).toEqual({ accountId: "new" });
   });
 });

@@ -1,8 +1,13 @@
 /**
  * Cloud custom graphs. Cloud-mode only: the script runs in the web server's
- * sandbox against org data, so local mode never shows these. Typings come
- * from the server: the `graph.*` half is static but the appended read-only
- * `infra.*` half reflects the org's connected accounts.
+ * sandbox against org data, so local mode never shows these. Typed calls to
+ * the contract's `customGraphs` domain over the cloud transport
+ * (`./cloud-client.ts`), matching `cloud-probes.ts`.
+ *
+ * Typings come from the server: the `graph.*` half is static but the
+ * appended read-only `infra.*` half reflects the org's connected accounts.
+ * They are a text answer, which the transport does not read yet, so they
+ * still travel on their own IPC channel.
  */
 import type {
   CustomGraphCheckResult,
@@ -12,22 +17,43 @@ import type {
   CustomGraphRenderResult,
   CustomGraphSummary,
 } from "@infrawrench/ui";
+import { cloudClient } from "./cloud-client";
 import { invoke } from "./invoke";
+import { runRpc } from "./rpc/client";
+
+const customGraphs = () => cloudClient("customGraphs").customGraphs;
+
+/**
+ * The render request as the endpoint takes it: client-core allows each field
+ * to be explicitly `undefined`, which the schema refuses, so only the fields
+ * that are set are sent (what `JSON.stringify` sent before).
+ */
+function renderPayload(request: CustomGraphRenderRequest) {
+  return {
+    ...(request.controls !== undefined ? { controls: request.controls } : {}),
+    ...(request.button !== undefined ? { button: request.button } : {}),
+    ...(request.trigger !== undefined ? { trigger: request.trigger } : {}),
+  };
+}
 
 export function createCloudCustomGraphsClient(orgId: string): CustomGraphsClient {
   return {
-    list: () => invoke<CustomGraphSummary[]>("cloud_list_custom_graphs", { orgId }),
-    get: (graphId) => invoke<CustomGraphDetail>("cloud_get_custom_graph", { orgId, graphId }),
-    render: (graphId, request: CustomGraphRenderRequest) =>
-      invoke<CustomGraphRenderResult>("cloud_render_custom_graph", { orgId, graphId, request }),
-    create: (body) => invoke<CustomGraphDetail>("cloud_create_custom_graph", { orgId, body }),
-    update: (graphId, body) =>
-      invoke<CustomGraphDetail>("cloud_update_custom_graph", { orgId, graphId, body }),
+    list: (): Promise<CustomGraphSummary[]> => runRpc(customGraphs().list({ params: { orgId } })),
+    get: (graphId): Promise<CustomGraphDetail> =>
+      runRpc(customGraphs().get({ params: { orgId, id: graphId } })),
+    render: (graphId, request: CustomGraphRenderRequest): Promise<CustomGraphRenderResult> =>
+      runRpc(
+        customGraphs().render({ params: { orgId, id: graphId }, payload: renderPayload(request) }),
+      ),
+    create: (body): Promise<CustomGraphDetail> =>
+      runRpc(customGraphs().create({ params: { orgId }, payload: body })),
+    update: (graphId, body): Promise<CustomGraphDetail> =>
+      runRpc(customGraphs().update({ params: { orgId, id: graphId }, payload: body })),
     remove: async (graphId) => {
-      await invoke("cloud_delete_custom_graph", { orgId, graphId });
+      await runRpc(customGraphs().delete({ params: { orgId, id: graphId } }));
     },
-    check: (source) =>
-      invoke<CustomGraphCheckResult>("cloud_check_custom_graph", { orgId, source }),
+    check: (source): Promise<CustomGraphCheckResult> =>
+      runRpc(customGraphs().check({ params: { orgId }, payload: { source } })),
     typings: () => invoke<string>("cloud_custom_graph_typings", { orgId }),
   };
 }

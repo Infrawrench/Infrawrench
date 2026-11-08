@@ -3,9 +3,14 @@ import { cloudFetch } from "./shared";
 import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
 
-// Org-level AI chat: cloud-mode only. CRUD proxies through cloudFetch; the
-// turn stream is a Bearer-authenticated SSE fetch parsed here in main, with
-// each event forwarded to the renderer on `cloud_chat_stream_<streamId>`.
+// Org-level AI chat: cloud-mode only. Archiving, answering a question and the
+// secret handoff are typed calls over the cloud transport
+// (`src/lib/cloud-chat.ts`). What stays here waits on the contract: the
+// conversation reads and the spend declare `Schema.Unknown` as their success,
+// and create, model switch and pending decisions declare no payload although
+// the routes read one. The turn stream is a Bearer-authenticated SSE fetch
+// parsed here in main, with each event forwarded to the renderer on
+// `cloud_chat_stream_<streamId>`.
 
 ipcMain.handle("cloud_chat_list_conversations", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/chat/conversations");
@@ -41,15 +46,6 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(
-  "cloud_chat_archive_conversation",
-  async (_e, { orgId, conversationId }: { orgId: string; conversationId: string }) => {
-    return cloudFetch(orgId, `/chat/conversations/${encodeURIComponent(conversationId)}`, {
-      method: "DELETE",
-    });
-  },
-);
-
 ipcMain.handle("cloud_chat_spend", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/chat/spend");
 });
@@ -76,49 +72,6 @@ ipcMain.handle(
       orgId,
       `/chat/conversations/${encodeURIComponent(conversationId)}/pending/${encodeURIComponent(pendingId)}`,
       { method: "POST", body: JSON.stringify({ action, ...(reason ? { reason } : {}) }) },
-    );
-  },
-);
-
-ipcMain.handle(
-  "cloud_chat_submit_secret",
-  async (
-    _e,
-    {
-      orgId,
-      conversationId,
-      requestId,
-      value,
-    }: { orgId: string; conversationId: string; requestId: string; value: string },
-  ) => {
-    return cloudFetch(
-      orgId,
-      `/chat/conversations/${encodeURIComponent(conversationId)}/secret-requests/${encodeURIComponent(requestId)}`,
-      { method: "POST", body: JSON.stringify({ value }) },
-    );
-  },
-);
-
-ipcMain.handle(
-  "cloud_chat_answer_question",
-  async (
-    _e,
-    {
-      orgId,
-      conversationId,
-      pendingId,
-      answers,
-    }: {
-      orgId: string;
-      conversationId: string;
-      pendingId: string;
-      answers: Array<{ questionId: string; optionId?: string; text?: string }>;
-    },
-  ) => {
-    return cloudFetch(
-      orgId,
-      `/chat/conversations/${encodeURIComponent(conversationId)}/pending/${encodeURIComponent(pendingId)}/answer`,
-      { method: "POST", body: JSON.stringify({ answers }) },
     );
   },
 );

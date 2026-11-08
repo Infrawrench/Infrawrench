@@ -1,92 +1,129 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn();
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
+vi.mock("../rpc/desktop-client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
-import {
+const { answerCloudHttp, resetFakeRpc } = await import("./fake-rpc");
+const {
   createCloudAccount,
   deleteCloudAccount,
+  getCloudAccountCredentials,
   getCloudAccountDetail,
+  listCloudAccountPlugins,
   listCloudAccountResources,
   listCloudAccounts,
   renameCloudAccount,
   syncCloudAccountType,
   updateCloudAccountCredentials,
-} from "../cloud-accounts";
+} = await import("../cloud-accounts");
 
 beforeEach(() => {
-  invoke.mockReset();
-  invoke.mockResolvedValue(undefined);
+  resetFakeRpc();
 });
 
+const ok = () => answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
+
 describe("cloud-accounts wrappers", () => {
-  it("listCloudAccounts -> cloud_list_accounts", async () => {
-    invoke.mockResolvedValue([{ id: "a" }]);
+  it("listCloudAccounts reads the org's accounts", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [{ id: "a" }] }));
     const res = await listCloudAccounts("org1");
-    expect(invoke).toHaveBeenCalledWith("cloud_list_accounts", { orgId: "org1" });
+    expect(http).toHaveBeenCalledWith({ method: "GET", url: "/api/org/org1/accounts" });
     expect(res).toEqual([{ id: "a" }]);
   });
 
-  it("createCloudAccount -> cloud_create_account", async () => {
-    invoke.mockResolvedValue({ id: "acc" });
+  it("listCloudAccountPlugins reads the server's plugin catalog", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [{ id: "github", oauth: {} }] }));
+    await expect(listCloudAccountPlugins("org1")).resolves.toEqual([{ id: "github", oauth: {} }]);
+    expect(http).toHaveBeenCalledWith({ method: "GET", url: "/api/org/org1/accounts/plugins" });
+  });
+
+  it("createCloudAccount posts the plugin, name and credentials", async () => {
+    const http = answerCloudHttp(() => ({ status: 201, json: { id: "acc" } }));
     const res = await createCloudAccount("org1", "plugin", "Name", { k: "v" });
-    expect(invoke).toHaveBeenCalledWith("cloud_create_account", {
-      orgId: "org1",
-      pluginId: "plugin",
-      displayName: "Name",
-      credentials: { k: "v" },
+    expect(http).toHaveBeenCalledWith({
+      method: "POST",
+      url: "/api/org/org1/accounts",
+      body: JSON.stringify({ pluginId: "plugin", displayName: "Name", credentials: { k: "v" } }),
     });
     expect(res).toEqual({ id: "acc" });
   });
 
-  it("listCloudAccountResources -> cloud_list_account_resources", async () => {
+  it("listCloudAccountResources reads only top-level resources", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [] }));
     await listCloudAccountResources("org1", "acc1");
-    expect(invoke).toHaveBeenCalledWith("cloud_list_account_resources", {
-      orgId: "org1",
-      accountId: "acc1",
+    expect(http).toHaveBeenCalledWith({
+      method: "GET",
+      url: "/api/org/org1/accounts/acc1/resources?topLevelOnly=true",
     });
   });
 
-  it("getCloudAccountDetail -> cloud_get_account_detail", async () => {
-    await getCloudAccountDetail("org1", "acc1");
-    expect(invoke).toHaveBeenCalledWith("cloud_get_account_detail", {
-      orgId: "org1",
-      accountId: "acc1",
-    });
+  it("getCloudAccountDetail fills the plural name a type left out", async () => {
+    const http = answerCloudHttp(() => ({
+      status: 200,
+      json: {
+        account: { id: "acc1", pluginId: "aws", displayName: "Prod", oauthStatus: null },
+        resourceTypes: [
+          {
+            id: "ec2",
+            displayName: "Instance",
+            pluralDisplayName: "Instances",
+            supportsCreate: true,
+          },
+          { id: "vol", displayName: "Volume", parentTypeId: "ec2", supportsCreate: false },
+        ],
+        pluginDisplayName: "AWS",
+        pluginLogoSvg: "<svg/>",
+      },
+    }));
+    const detail = await getCloudAccountDetail("org1", "acc1");
+    expect(http).toHaveBeenCalledWith({ method: "GET", url: "/api/org/org1/accounts/acc1/detail" });
+    expect(detail?.resourceTypes.map((t) => [t.pluralDisplayName, t.parentTypeId])).toEqual([
+      ["Instances", undefined],
+      ["Volume", "ec2"],
+    ]);
   });
 
-  it("syncCloudAccountType -> cloud_sync_account_type", async () => {
+  it("syncCloudAccountType posts to the type's sync route", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [] }));
     await syncCloudAccountType("org1", "acc1", "type1");
-    expect(invoke).toHaveBeenCalledWith("cloud_sync_account_type", {
-      orgId: "org1",
-      accountId: "acc1",
-      typeId: "type1",
+    expect(http).toHaveBeenCalledWith({
+      method: "POST",
+      url: "/api/org/org1/accounts/acc1/sync-type/type1",
     });
   });
 
-  it("deleteCloudAccount -> cloud_delete_account", async () => {
-    await deleteCloudAccount("org1", "acc1");
-    expect(invoke).toHaveBeenCalledWith("cloud_delete_account", {
-      orgId: "org1",
-      accountId: "acc1",
-    });
+  it("deleteCloudAccount deletes the account", async () => {
+    const http = ok();
+    await expect(deleteCloudAccount("org1", "acc1")).resolves.toBeUndefined();
+    expect(http).toHaveBeenCalledWith({ method: "DELETE", url: "/api/org/org1/accounts/acc1" });
   });
 
-  it("renameCloudAccount -> cloud_rename_account", async () => {
+  it("renameCloudAccount patches the display name", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { id: "acc1", displayName: "New" } }));
     await renameCloudAccount("org1", "acc1", "New");
-    expect(invoke).toHaveBeenCalledWith("cloud_rename_account", {
-      orgId: "org1",
-      accountId: "acc1",
-      displayName: "New",
+    expect(http).toHaveBeenCalledWith({
+      method: "PATCH",
+      url: "/api/org/org1/accounts/acc1",
+      body: JSON.stringify({ displayName: "New" }),
     });
   });
 
-  it("updateCloudAccountCredentials -> cloud_update_account_credentials", async () => {
+  it("getCloudAccountCredentials reads the stored credentials", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { token: "t" } }));
+    await expect(getCloudAccountCredentials("org1", "acc1")).resolves.toEqual({ token: "t" });
+    expect(http).toHaveBeenCalledWith({
+      method: "GET",
+      url: "/api/org/org1/accounts/acc1/credentials",
+    });
+  });
+
+  it("updateCloudAccountCredentials puts the whole credentials map", async () => {
+    const http = ok();
     await updateCloudAccountCredentials("org1", "acc1", { token: "t" });
-    expect(invoke).toHaveBeenCalledWith("cloud_update_account_credentials", {
-      orgId: "org1",
-      accountId: "acc1",
-      credentials: { token: "t" },
+    expect(http).toHaveBeenCalledWith({
+      method: "PUT",
+      url: "/api/org/org1/accounts/acc1/credentials",
+      body: JSON.stringify({ credentials: { token: "t" } }),
     });
   });
 });

@@ -4,7 +4,10 @@ import {
   type RightsizingClient,
   type RightsizingListResponse,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
+import { withoutNullRemediation } from "./cloud-remediation";
+import { runRpc } from "./rpc/client";
 
 /**
  * Oversized-section data access; cloud-mode only (the caller leaves the
@@ -13,10 +16,10 @@ import { invoke } from "./invoke";
  * account credentials.
  *
  * The org is resolved at call time so switching org under a mounted Costs
- * tab reaches the right data. `applyResize` rides the existing
- * `cloud_update_resource` channel: the same resource-update path the edit
- * form uses, which is what enforces change freezes and writes the audit
- * trail server-side.
+ * tab reaches the right data. `applyResize` calls the resources domain's
+ * `POST /resources/update`: the same resource-update path the edit form
+ * uses, which is what enforces change freezes and writes the audit trail
+ * server-side.
  */
 export function createDesktopRightsizingClient(): RightsizingClient {
   const requireOrg = (): string => {
@@ -25,22 +28,36 @@ export function createDesktopRightsizingClient(): RightsizingClient {
     return orgId;
   };
   return {
-    listRightsizing: (refresh?: boolean) =>
-      invoke<RightsizingListResponse>("cloud_rightsizing_list", {
-        orgId: requireOrg(),
-        ...(refresh ? { refresh: true } : {}),
-      }),
+    listRightsizing: (refresh?: boolean): Promise<RightsizingListResponse> =>
+      runRpc(
+        cloudClient("rightsizing")
+          .rightsizing.list({
+            params: { orgId: requireOrg() },
+            query: refresh ? { refresh: "true" } : {},
+          })
+          .pipe(
+            Effect.map((res): RightsizingListResponse => ({
+              ...res,
+              accounts: res.accounts.map((account) => ({
+                ...account,
+                resources: account.resources.map(withoutNullRemediation),
+              })),
+            })),
+          ),
+      ),
     applyResize: async (resource: OversizedResource, accountId: string) => {
-      await invoke("cloud_update_resource", {
-        orgId: requireOrg(),
-        body: {
-          accountId,
-          pluginId: resource.pluginId,
-          resourceTypeId: resource.resourceTypeId,
-          resourceId: resource.id,
-          fields: { [resource.sizeFieldKey]: resource.recommendedSize.id },
-        },
-      });
+      await runRpc(
+        cloudClient("resources").resources.update({
+          params: { orgId: requireOrg() },
+          payload: {
+            accountId,
+            pluginId: resource.pluginId,
+            resourceTypeId: resource.resourceTypeId,
+            resourceId: resource.id,
+            fields: { [resource.sizeFieldKey]: resource.recommendedSize.id },
+          },
+        }),
+      );
     },
   };
 }

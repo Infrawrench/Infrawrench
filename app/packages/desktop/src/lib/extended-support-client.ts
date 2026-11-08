@@ -3,7 +3,7 @@ import {
   type ExtendedSupportClient,
   type ExtendedSupportListResponse,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
@@ -17,10 +17,13 @@ export function createDesktopExtendedSupportClient(): ExtendedSupportClient {
     listExtendedSupport: (refresh?: boolean) => {
       const orgId = useUIStore.getState().activeCloudOrgId;
       if (!orgId) return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalExtendedSupportList()));
-      return invoke<ExtendedSupportListResponse>("cloud_extended_support_list", {
-        orgId,
-        refresh: Boolean(refresh),
-      });
+      const list: Promise<ExtendedSupportListResponse> = runRpc(
+        cloudClient("extendedSupport").extendedSupport.list({
+          params: { orgId },
+          query: refresh ? { refresh: "true" } : {},
+        }),
+      );
+      return list;
     },
   };
 }

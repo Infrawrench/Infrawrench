@@ -1,4 +1,6 @@
+import { cloudClient } from "./cloud-client";
 import { invoke } from "./invoke";
+import { runRpc } from "./rpc/client";
 
 export async function cloudSftpList(
   orgId: string,
@@ -71,7 +73,7 @@ export async function cloudSftpDownload(params: {
   await invoke("cloud_sftp_download", params);
 }
 
-export async function cloudSshTunnelExec(
+export function cloudSshTunnelExec(
   orgId: string,
   body: {
     sshHost: string;
@@ -81,7 +83,7 @@ export async function cloudSshTunnelExec(
     command: string;
   },
 ): Promise<{ stdout: string; stderr?: string; code: number }> {
-  return invoke("cloud_ssh_tunnel_exec", { orgId, body });
+  return runRpc(cloudClient("sshTunnels").sshTunnels.exec({ params: { orgId }, payload: body }));
 }
 
 export async function cloudSshTunnelCreateAccount(
@@ -98,5 +100,7 @@ export async function cloudSshTunnelCreateAccount(
     credentials: Record<string, string>;
   },
 ): Promise<{ accountId: string }> {
-  return invoke("cloud_ssh_tunnel_create_account", { orgId, body });
+  return runRpc(
+    cloudClient("sshTunnels").sshTunnels.createAccount({ params: { orgId }, payload: body }),
+  );
 }

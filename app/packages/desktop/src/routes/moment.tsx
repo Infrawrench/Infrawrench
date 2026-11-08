@@ -23,8 +23,8 @@ export const Route = createFileRoute("/moment")({
 });
 
 /**
- * The moment view on desktop: the same panel web renders, over the
- * `cloud_moment` IPC. A plain route rather than a workspace tab, for the same
+ * The moment view on desktop: the same panel web renders, over the cloud
+ * transport (`lib/moment-client.ts`). A plain route rather than a workspace tab, for the same
  * reasons as Changes: no per-instance state worth keeping mounted, and the
  * page is cloud-only so a restored tab could outlive its org. The guard below
  * covers signing out with the page open.

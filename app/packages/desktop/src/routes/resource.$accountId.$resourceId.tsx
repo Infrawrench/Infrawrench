@@ -85,6 +85,7 @@ import {
 import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/-types";
 import { useResourceOperations } from "./_resource-detail/-useResourceOperations";
 import { ensureAgentSshKey } from "../lib/local-secrets";
+import { openCloudAgentSession } from "../lib/cloud-agent-client";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -426,6 +427,7 @@ export function ResourcePanel({
 
     let cancelled = false;
     setAgentLaunchError(null);
+    const cloudSessionId = agentSessionId;
 
     async function resolveAgentLaunchDefaults() {
       // Cloud sessions live in the org, not this machine's SQLite, and the
@@ -434,12 +436,7 @@ export function ResourcePanel({
       // local table here would report "session no longer exists" for every
       // agent tab opened against an org.
       if (activeCloudOrgId) {
-        const result = await invoke<{
-          command: string;
-          cwd: string;
-          sshKeyId?: string;
-          sshKeyName?: string;
-        }>("cloud_agents_open_session", { orgId: activeCloudOrgId, sessionId: agentSessionId });
+        const result = await openCloudAgentSession(activeCloudOrgId, cloudSessionId);
         if (cancelled) return;
         const cloudNext: AgentLaunchDefaults = {};
         if (!sshKeyId && result.sshKeyId) cloudNext.sshKeyId = result.sshKeyId;

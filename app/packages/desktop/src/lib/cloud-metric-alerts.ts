@@ -1,7 +1,8 @@
 /**
  * Metric threshold alert rules: cloud-mode only (rules are evaluated by the
- * cloud poller against the cloud metric store). One wrapper per allowlisted
- * IPC channel, matching `cloud-costs.ts`.
+ * cloud poller against the cloud metric store). Typed calls to the
+ * contract's `metricAlerts` domain over the cloud transport
+ * (`./cloud-client.ts`), matching `cloud-probes.ts`.
  */
 import type {
   MetricAlertEvent,
@@ -13,50 +14,64 @@ import type {
   MetricAlertSelectorPreview,
   MetricSeriesKeyOption,
 } from "@infrawrench/ui/metric-alerts";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const metricAlerts = () => cloudClient("metricAlerts").metricAlerts;
 
 export async function listCloudMetricAlertRules(
   orgId: string,
 ): Promise<MetricAlertRuleWithStatus[]> {
-  return invoke("cloud_metric_alerts_list", { orgId });
+  return runRpc(metricAlerts().list({ params: { orgId } }));
 }
 
 export async function listCloudMetricAlertEvents(
   orgId: string,
   options?: { ruleId?: string; limit?: number },
 ): Promise<MetricAlertEvent[]> {
-  return invoke("cloud_metric_alerts_events", { orgId, ...options });
+  const query = {
+    ...(options?.ruleId ? { ruleId: options.ruleId } : {}),
+    ...(options?.limit ? { limit: String(options.limit) } : {}),
+  };
+  return runRpc(metricAlerts().events({ params: { orgId }, query }));
 }
 
 export async function listCloudMetricSeriesKeys(
   orgId: string,
   filter?: { pluginId?: string | null; resourceTypeId?: string | null },
 ): Promise<MetricSeriesKeyOption[]> {
-  return invoke("cloud_metric_alerts_metric_keys", {
-    orgId,
+  const query = {
     ...(filter?.pluginId ? { pluginId: filter.pluginId } : {}),
     ...(filter?.resourceTypeId ? { resourceTypeId: filter.resourceTypeId } : {}),
-  });
+  };
+  return runRpc(metricAlerts().metricKeys({ params: { orgId }, query }));
 }
 
 export async function loadCloudMetricAlertSelectorOptions(
   orgId: string,
 ): Promise<MetricAlertSelectorOptions> {
-  return invoke("cloud_metric_alerts_selector_options", { orgId });
+  return runRpc(metricAlerts().selectorOptions({ params: { orgId } }));
 }
 
 export async function previewCloudMetricAlertSelector(
   orgId: string,
   selector: MetricAlertSelector,
 ): Promise<MetricAlertSelectorPreview> {
-  return invoke("cloud_metric_alerts_selector_preview", { orgId, selector });
+  // Empty parts are left out, as the handler reads an absent one as null.
+  const query = {
+    ...(selector.pluginId ? { pluginId: selector.pluginId } : {}),
+    ...(selector.resourceTypeId ? { resourceTypeId: selector.resourceTypeId } : {}),
+    ...(selector.tagKey ? { tagKey: selector.tagKey } : {}),
+    ...(selector.tagValue ? { tagValue: selector.tagValue } : {}),
+  };
+  return runRpc(metricAlerts().selectorPreview({ params: { orgId }, query }));
 }
 
 export async function createCloudMetricAlertRule(
   orgId: string,
   input: MetricAlertRuleInput,
 ): Promise<MetricAlertRule> {
-  return invoke("cloud_metric_alerts_create", { orgId, input });
+  return runRpc(metricAlerts().create({ params: { orgId }, payload: input }));
 }
 
 export async function updateCloudMetricAlertRule(
@@ -64,9 +79,9 @@ export async function updateCloudMetricAlertRule(
   ruleId: string,
   input: MetricAlertRuleInput,
 ): Promise<MetricAlertRule> {
-  return invoke("cloud_metric_alerts_update", { orgId, ruleId, input });
+  return runRpc(metricAlerts().update({ params: { orgId, id: ruleId }, payload: input }));
 }
 
 export async function deleteCloudMetricAlertRule(orgId: string, ruleId: string): Promise<void> {
-  await invoke("cloud_metric_alerts_delete", { orgId, ruleId });
+  await runRpc(metricAlerts().delete({ params: { orgId, id: ruleId } }));
 }

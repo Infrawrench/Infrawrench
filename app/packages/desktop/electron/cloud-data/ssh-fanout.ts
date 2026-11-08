@@ -3,10 +3,6 @@ import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
 import { cloudFetch } from "./shared";
 
-ipcMain.handle("cloud_ssh_fanout_targets", async (_e, { orgId }: { orgId: string }) => {
-  return cloudFetch(orgId, `/ssh-fanout/targets`);
-});
-
 /**
  * Run a fan-out. Unlike the generic `cloudFetch`, a 423 (change freeze) is not
  * an error here (the renderer surfaces it with an override affordance) so

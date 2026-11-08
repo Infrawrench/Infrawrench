@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
+import { getCloudAccountCredentials } from "../lib/cloud-accounts";
 import {
   showcaseFields,
   type ResourceInstance,
@@ -755,10 +755,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       // No refresh for the editor: it must open even when the grant was
       // revoked and a refresh could only fail.
       const current = activeCloudOrgId
-        ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
-            orgId: activeCloudOrgId,
-            accountId,
-          })
+        ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
         : await getLocalAccountCredentials(accountId, { refresh: false });
       const oauthInfo = (await resolveOAuthInfo(activeCloudOrgId ?? null, [manifest])).get(
         manifest.id,
@@ -814,10 +811,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   async function runPreflightForAccount() {
     const { runAccountPreflight } = await import("@infrawrench/client-core");
     const credentials = activeCloudOrgId
-      ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
-          orgId: activeCloudOrgId,
-          accountId,
-        })
+      ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
       : await getLocalAccountCredentials(accountId);
     const loaded = await getPlugin(account!.plugin_id);
     if (!loaded)

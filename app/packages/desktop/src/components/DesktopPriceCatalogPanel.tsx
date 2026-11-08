@@ -11,7 +11,7 @@ import {
   type PriceCatalogEstimateTarget,
 } from "@infrawrench/ui";
 import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { invoke } from "@/lib/invoke";
+import { compareCloudPriceCatalog, searchCloudPriceCatalog } from "@/lib/cloud-price-catalog";
 import { listCloudAccounts } from "@/lib/cloud-accounts";
 import { getPlugin } from "@/plugins/loader";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "@/lib/workspace-tabs";
@@ -50,8 +50,8 @@ export function DesktopPriceCatalogPanel() {
     if (!activeCloudOrgId) return null;
     const orgId = activeCloudOrgId;
     return {
-      search: (query) => invoke("cloud_price_catalog_search", { orgId, query }),
-      compare: (query) => invoke("cloud_price_catalog_compare", { orgId, query }),
+      search: (query) => searchCloudPriceCatalog(orgId, query),
+      compare: (query) => compareCloudPriceCatalog(orgId, query),
     };
   }, [activeCloudOrgId]);
 

@@ -1,6 +1,10 @@
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
+    // An app: nothing reads its declarations, and emitting them makes the
+    // compiler serialize the contract-derived registry types (TS7056).
+    "declaration": false,
+    "declarationMap": false,
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],

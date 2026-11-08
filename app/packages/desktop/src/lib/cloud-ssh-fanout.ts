@@ -5,13 +5,17 @@
  */
 import type { FanoutHostResult } from "@infrawrench/client-core";
 import type { SshFanoutSnippetInfo, SshFanoutTargetInfo } from "@infrawrench/ui";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
 import { invoke } from "./invoke";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudFanoutTargets(orgId: string): Promise<SshFanoutTargetInfo[]> {
-  const res = await invoke<{ targets: SshFanoutTargetInfo[] }>("cloud_ssh_fanout_targets", {
-    orgId,
-  });
-  return res?.targets ?? [];
+export function listCloudFanoutTargets(orgId: string): Promise<SshFanoutTargetInfo[]> {
+  return runRpc(
+    cloudClient("sshFanout")
+      .sshFanout.targets({ params: { orgId } })
+      .pipe(Effect.map((res) => res.targets)),
+  );
 }
 
 export async function listCloudFanoutSnippets(orgId: string): Promise<SshFanoutSnippetInfo[]> {

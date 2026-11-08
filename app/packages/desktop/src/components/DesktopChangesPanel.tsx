@@ -9,7 +9,7 @@ import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The org change timeline on desktop: the same panel web renders, over the
- * `cloud_changes_list` IPC. Rendered as a workspace tab (the "changes" kind).
+ * cloud transport (`lib/changes-client.ts`). Rendered as a workspace tab (the "changes" kind).
  *
  * Cloud-only: the feed is recorded by the cloud poller. The guard below keeps
  * a restored tab (or signing out with the tab open) from rendering without an

@@ -1,6 +1,7 @@
 /**
- * Incident mode: cloud-mode only. One wrapper per allowlisted IPC channel,
- * matching `cloud-probes.ts`.
+ * Incident mode: cloud-mode only. Typed calls to the contract's `incidents`
+ * domain and the paging providers' `pagingIncidents` group over the cloud
+ * transport (`./cloud-client.ts`), matching `cloud-probes.ts`.
  *
  * The declared kind of incident, not a provider status incident.
  */
@@ -16,41 +17,50 @@ import type {
   PagerIncidentRecord,
   PagerIncidentsResponse,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const incidents = () => cloudClient("incidents").incidents;
+const pagingIncidents = () => cloudClient("pagingProviders").pagingIncidents;
 
 export async function listCloudIncidents(
   orgId: string,
   status?: IncidentStatus | "all",
 ): Promise<IncidentListResponse> {
-  return invoke("cloud_incidents_list", { orgId, ...(status ? { status } : {}) });
+  return runRpc(
+    incidents().list({
+      params: { orgId },
+      query: status && status !== "all" ? { status } : {},
+    }),
+  );
 }
 
 export async function getCloudIncident(
   orgId: string,
   incidentId: string,
 ): Promise<IncidentDetailResponse> {
-  return invoke("cloud_incidents_get", { orgId, incidentId });
+  return runRpc(incidents().get({ params: { orgId, incidentId } }));
 }
 
 export async function getCloudIncidentTimeline(
   orgId: string,
   incidentId: string,
 ): Promise<IncidentTimelineResponse> {
-  return invoke("cloud_incidents_timeline", { orgId, incidentId });
+  return runRpc(incidents().timeline({ params: { orgId, incidentId } }));
 }
 
 export async function getCloudIncidentPostmortem(
   orgId: string,
   incidentId: string,
 ): Promise<{ markdown: string; filename: string }> {
-  return invoke("cloud_incidents_postmortem", { orgId, incidentId });
+  return runRpc(incidents().postmortem({ params: { orgId, incidentId } }));
 }
 
 export async function declareCloudIncident(
   orgId: string,
   input: IncidentDeclare,
 ): Promise<Incident> {
-  return invoke("cloud_incidents_declare", { orgId, input });
+  return runRpc(incidents().declare({ params: { orgId }, payload: input }));
 }
 
 export async function updateCloudIncident(
@@ -58,14 +68,14 @@ export async function updateCloudIncident(
   incidentId: string,
   patch: IncidentPatch,
 ): Promise<Incident> {
-  return invoke("cloud_incidents_update", { orgId, incidentId, patch });
+  return runRpc(incidents().update({ params: { orgId, incidentId }, payload: patch }));
 }
 
 export async function retryCloudIncidentArtifacts(
   orgId: string,
   incidentId: string,
 ): Promise<Incident> {
-  return invoke("cloud_incidents_retry_artifacts", { orgId, incidentId });
+  return runRpc(incidents().retryArtifacts({ params: { orgId, incidentId } }));
 }
 
 export async function addCloudIncidentNote(
@@ -73,7 +83,7 @@ export async function addCloudIncidentNote(
   incidentId: string,
   body: { body: string; occurredAt?: string },
 ): Promise<IncidentNote> {
-  return invoke("cloud_incidents_add_note", { orgId, incidentId, body });
+  return runRpc(incidents().addNote({ params: { orgId, incidentId }, payload: body }));
 }
 
 export async function deleteCloudIncidentNote(
@@ -81,11 +91,11 @@ export async function deleteCloudIncidentNote(
   incidentId: string,
   noteId: string,
 ): Promise<void> {
-  await invoke("cloud_incidents_delete_note", { orgId, incidentId, noteId });
+  await runRpc(incidents().deleteNote({ params: { orgId, incidentId, noteId } }));
 }
 
 export async function deleteCloudIncident(orgId: string, incidentId: string): Promise<void> {
-  await invoke("cloud_incidents_delete", { orgId, incidentId });
+  await runRpc(incidents().delete({ params: { orgId, incidentId } }));
 }
 
 /** Incidents mirrored from paging providers (PagerDuty, incident.io). */
@@ -93,14 +103,26 @@ export async function listCloudPagerIncidents(
   orgId: string,
   status: "open" | "all",
 ): Promise<PagerIncidentsResponse> {
-  return invoke("cloud_paging_incidents_list", { orgId, status });
+  return runRpc(
+    pagingIncidents().list({
+      params: { orgId },
+      query: status === "all" ? { status: "all" } : {},
+    }),
+  );
 }
 
-/** Acknowledge or resolve a provider incident upstream. */
+/**
+ * Acknowledge or resolve a provider incident upstream. The action is checked
+ * before anything is sent: it picks the endpoint, and a value from outside
+ * the type (a stale caller) must not reach the network as some other route.
+ */
 export async function actOnCloudPagerIncident(
   orgId: string,
   incidentId: string,
   action: "acknowledge" | "resolve",
 ): Promise<PagerIncidentRecord> {
-  return invoke("cloud_paging_incidents_act", { orgId, incidentId, action });
+  const params = { orgId, id: incidentId };
+  if (action === "acknowledge") return runRpc(pagingIncidents().acknowledge({ params }));
+  if (action === "resolve") return runRpc(pagingIncidents().resolve({ params }));
+  throw new Error(`Unknown paging incident action "${String(action)}"`);
 }

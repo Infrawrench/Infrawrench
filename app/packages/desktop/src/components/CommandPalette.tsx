@@ -24,8 +24,8 @@ const canStar = (ref: StarRef) => isSearchObjectKind(ref.kind);
  * The desktop's Cmd/Ctrl+K. Local mode keeps the spotlight's behaviour
  * (local resources and workflows) and gains recents and local actions; with
  * a cloud org selected it also searches the org's saved objects and shows
- * the member's stars, through the `cloud_palette_*` IPC channels the shared
- * host in `__root.tsx` provides.
+ * the member's stars, through the cloud transport client
+ * (`lib/cloud-palette.ts`) the shared host in `__root.tsx` provides.
  */
 export function DesktopCommandPalette({
   cloudOrgId,

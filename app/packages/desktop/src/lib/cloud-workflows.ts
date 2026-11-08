@@ -4,8 +4,12 @@
  * With an org selected, workflows come from the org rather than local SQLite:
  * the same swap accounts, dashboards, and costs already make. The isolate runs
  * server-side, so unlike `./workflow-client` there is no host to build here:
- * CRUD, typings, runs, and metrics are plain proxied HTTP (via the
- * `cloud_*_workflow*` IPC), and a manual run opens the cloud websocket so the
+ * CRUD, typings, runs, and metrics are plain HTTP (typed calls to the
+ * contract's `workflows`, `workflowSecrets` and `workflowApprovals` domains
+ * over the cloud transport; the calls whose answer the contract leaves
+ * undocumented, and the GitHub reads, still go through the
+ * `cloud_*_workflow*` / `cloud_github_*` IPC), and a manual run opens the
+ * cloud websocket so the
  * editor keeps its breakpoints, stepping, live logs, and `infra.prompt`: the
  * browser's `lib/workflow-client.ts` drives the identical `workflow:*` frames.
  *
@@ -28,10 +32,17 @@ import type {
   WorkflowSummary,
 } from "@infrawrench/ui/workflows";
 
+import { Effect, Schema } from "effect";
+import { cloudClient } from "./cloud-client";
 import { invoke } from "./invoke";
+import { runRpc } from "./rpc/client";
 import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
 import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
+
+const workflows = () => cloudClient("workflows").workflows;
+const workflowSecrets = () => cloudClient("workflowSecrets").workflowSecrets;
+const workflowApprovals = () => cloudClient("workflowApprovals").workflowApprovals;
 
 export async function listCloudWorkflows(orgId: string): Promise<WorkflowSummary[]> {
   return invoke("cloud_list_workflows", { orgId });
@@ -42,7 +53,12 @@ export async function pinCloudWorkflow(
   dashboardId: string,
   workflowId: string,
 ): Promise<void> {
-  await invoke("cloud_pin_workflow", { orgId, dashboardId, workflowId });
+  await runRpc(
+    cloudClient("dashboards").dashboardPins.pinWorkflow({
+      params: { orgId },
+      payload: { dashboardId, workflowId },
+    }),
+  );
 }
 
 export async function unpinCloudWorkflow(
@@ -50,7 +66,72 @@ export async function unpinCloudWorkflow(
   dashboardId: string,
   workflowId: string,
 ): Promise<void> {
-  await invoke("cloud_unpin_workflow", { orgId, dashboardId, workflowId });
+  await runRpc(
+    cloudClient("dashboards").dashboardPins.unpinWorkflow({
+      params: { orgId },
+      payload: { dashboardId, workflowId },
+    }),
+  );
+}
+
+/** The approval requests, newest first; `workflowId` narrows them to one workflow's runs. */
+function listCloudWorkflowApprovals(
+  orgId: string,
+  query: { status?: WorkflowApprovalStatus; workflowId?: string },
+): Promise<WorkflowApprovalRow[]> {
+  return runRpc(
+    workflowApprovals().list({
+      params: { orgId },
+      query: {
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.workflowId ? { workflowId: query.workflowId } : {}),
+      },
+    }),
+  );
+}
+
+function decideCloudWorkflowApproval(
+  orgId: string,
+  approvalId: string,
+  decision: "approve" | "deny",
+): Promise<WorkflowApprovalRow> {
+  const request = { params: { orgId, id: approvalId } };
+  return runRpc(
+    decision === "deny" ? workflowApprovals().deny(request) : workflowApprovals().approve(request),
+  );
+}
+
+/** The secret was saved but its answer named no id, so its value cannot be written. */
+class WorkflowSecretSaveError extends Schema.TaggedError<WorkflowSecretSaveError>()(
+  "WorkflowSecretSaveError",
+  { message: Schema.String },
+) {}
+
+/**
+ * Create the secret (or rename it, with `id`), then write its value: two
+ * calls, since the value has its own write-only endpoint.
+ */
+function upsertCloudWorkflowSecret(
+  orgId: string,
+  input: { id?: string; name: string; value: string },
+): Promise<WorkflowSecretSummary> {
+  return runRpc(
+    Effect.gen(function* () {
+      const { id, name, value } = input;
+      const secret = id
+        ? yield* workflowSecrets().update({ params: { orgId, id }, payload: { name } })
+        : yield* workflowSecrets().create({ params: { orgId }, payload: { name } });
+      if (!secret.id) {
+        return yield* new WorkflowSecretSaveError({
+          message: "Workflow secret save returned no id",
+        });
+      }
+      return yield* workflowSecrets().writeValue({
+        params: { orgId, id: secret.id },
+        payload: { value },
+      });
+    }),
+  );
 }
 
 /** GitHub App connection state for the git-trigger picker. */
@@ -168,24 +249,17 @@ async function runDebug(
 }
 
 /**
- * Org-wide approvals inbox transport. Same routes the browser hits, proxied
- * over IPC: see `electron/cloud-data/workflows.ts`. Cloud-only: a local
+ * Org-wide approvals inbox transport. Same routes the browser hits, over the
+ * cloud transport. Cloud-only: a local
  * workflow runs in this renderer and has no suspended server-side run to
  * approve, so local mode never constructs one.
  */
 export function createCloudApprovalsClient(orgId: string): ApprovalsClient {
   return {
     list: (status?: WorkflowApprovalStatus) =>
-      invoke<WorkflowApprovalRow[]>("cloud_list_workflow_approvals", {
-        orgId,
-        ...(status ? { status } : {}),
-      }),
+      listCloudWorkflowApprovals(orgId, status ? { status } : {}),
     decide: (approvalId: string, decision: "approve" | "deny") =>
-      invoke<WorkflowApprovalRow>("cloud_decide_workflow_approval", {
-        orgId,
-        approvalId,
-        decision,
-      }),
+      decideCloudWorkflowApproval(orgId, approvalId, decision),
   };
 }
 
@@ -201,44 +275,39 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
     update: (id: string, body: WorkflowSaveBody) =>
       invoke<WorkflowSummary>("cloud_update_workflow", { orgId, id, body: workflowBody(body) }),
     remove: async (id: string) => {
-      await invoke("cloud_delete_workflow", { orgId, id });
+      await runRpc(workflows().delete({ params: { orgId, id } }));
     },
-    getTypings: (id: string, opts?: { enrich?: boolean }) =>
-      invoke<string>("cloud_workflow_typings", { orgId, id, enrich: opts?.enrich === true }),
+    getTypings: async (id: string, opts?: { enrich?: boolean }) => {
+      const res = await runRpc(
+        workflows().typings({
+          params: { orgId, id },
+          query: opts?.enrich === true ? { enrich: "1" } : {},
+        }),
+      );
+      return res.dts;
+    },
     listRuns: (id: string) => invoke<WorkflowRunRow[]>("cloud_workflow_runs", { orgId, id }),
     listMetrics: (id: string) =>
       invoke<WorkflowMetricRow[]>("cloud_workflow_metrics", { orgId, id }),
-    getAssignedSecrets: (id: string) =>
-      invoke<{ secretIds: string[]; secrets: WorkflowSecretSummary[] }>(
-        "cloud_get_workflow_secrets",
-        { orgId, id },
-      ).then(({ secretIds, secrets }) => ({ assignedSecretIds: secretIds, secrets })),
-    listSecrets: () => invoke<WorkflowSecretSummary[]>("cloud_list_workflow_secrets", { orgId }),
+    getAssignedSecrets: async (id: string) => {
+      const { secretIds, secrets }: { secretIds: string[]; secrets: WorkflowSecretSummary[] } =
+        await runRpc(workflows().getSecrets({ params: { orgId, id } }));
+      return { assignedSecretIds: secretIds, secrets };
+    },
+    listSecrets: (): Promise<WorkflowSecretSummary[]> =>
+      runRpc(workflowSecrets().list({ params: { orgId } })),
     upsertSecret: ({ id, name, value }) =>
-      invoke<WorkflowSecretSummary>("cloud_upsert_workflow_secret", {
-        orgId,
-        ...(id ? { id } : {}),
-        name,
-        value,
-      }),
+      upsertCloudWorkflowSecret(orgId, { ...(id ? { id } : {}), name, value }),
     deleteSecret: async (id: string) => {
-      await invoke("cloud_delete_workflow_secret", { orgId, id });
+      await runRpc(workflowSecrets().delete({ params: { orgId, id } }));
     },
     run: (id: string, debug?: DebugSession) =>
       debug
         ? runDebug(orgId, id, debug)
         : invoke<{ runId: string; result: WorkflowRunResult }>("cloud_run_workflow", { orgId, id }),
     listPendingApprovals: (workflowId: string) =>
-      invoke<WorkflowApprovalRow[]>("cloud_list_workflow_approvals", {
-        orgId,
-        status: "pending",
-        workflowId,
-      }),
+      listCloudWorkflowApprovals(orgId, { status: "pending", workflowId }),
     decideApproval: (approvalId: string, decision: "approve" | "deny") =>
-      invoke<WorkflowApprovalRow>("cloud_decide_workflow_approval", {
-        orgId,
-        approvalId,
-        decision,
-      }),
+      decideCloudWorkflowApproval(orgId, approvalId, decision),
   };
 }

@@ -1,7 +1,14 @@
+/**
+ * Versioned secrets on a cloud account's resource: typed calls to the
+ * contract's `resources` domain over the cloud transport (`./cloud-client.ts`).
+ */
 import type { SecretVersion } from "@infrawrench/plugin-base";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudSecretVersions(
+const resources = () => cloudClient("resources").resources;
+
+export function listCloudSecretVersions(
   orgId: string,
   pluginId: string,
   resourceTypeId: string,
@@ -9,17 +16,15 @@ export async function listCloudSecretVersions(
   accountId: string,
   parentResourceId?: string,
 ): Promise<{ versions: SecretVersion[] }> {
-  return invoke("cloud_list_secret_versions", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().listSecretVersions({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      query: { resourceId, accountId, ...(parentResourceId ? { parentResourceId } : {}) },
+    }),
+  );
 }
 
-export async function accessCloudSecretVersion(
+export function accessCloudSecretVersion(
   orgId: string,
   pluginId: string,
   resourceTypeId: string,
@@ -30,10 +35,15 @@ export async function accessCloudSecretVersion(
     parentResourceId?: string;
   },
 ): Promise<{ value: string }> {
-  return invoke("cloud_access_secret_version", { orgId, pluginId, resourceTypeId, body });
+  return runRpc(
+    resources().accessSecretVersion({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: body,
+    }),
+  );
 }
 
-export async function addCloudSecretVersion(
+export function addCloudSecretVersion(
   orgId: string,
   pluginId: string,
   resourceTypeId: string,
@@ -44,10 +54,15 @@ export async function addCloudSecretVersion(
     parentResourceId?: string;
   },
 ): Promise<{ version: SecretVersion }> {
-  return invoke("cloud_add_secret_version", { orgId, pluginId, resourceTypeId, body });
+  return runRpc(
+    resources().addSecretVersion({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: body,
+    }),
+  );
 }
 
-export async function modifyCloudSecretVersion(
+export function modifyCloudSecretVersion(
   orgId: string,
   pluginId: string,
   resourceTypeId: string,
@@ -59,5 +74,10 @@ export async function modifyCloudSecretVersion(
     parentResourceId?: string;
   },
 ): Promise<{ version: SecretVersion }> {
-  return invoke("cloud_modify_secret_version", { orgId, pluginId, resourceTypeId, body });
+  return runRpc(
+    resources().modifySecretVersion({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: body,
+    }),
+  );
 }

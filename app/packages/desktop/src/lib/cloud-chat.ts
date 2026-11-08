@@ -1,9 +1,16 @@
 /**
- * Desktop implementation of the shared ChatClient. Every call goes over IPC to
- * the Electron main process, which proxies to the cloud web API with a Bearer
- * token (see electron/cloud-data/chat.ts). The turn stream arrives as events
- * on a per-stream channel (`cloud_chat_stream_<id>`) that this client adapts
- * into the AsyncIterable the shared chat UI consumes.
+ * Desktop implementation of the shared ChatClient.
+ *
+ * Archiving, answering a question and handing over a secret are typed calls
+ * to the contract's `chat` domain over the cloud transport
+ * (`./cloud-client.ts`). The rest still goes over per-channel IPC to the main
+ * process (electron/cloud-data/chat.ts), because the contract cannot carry
+ * them yet: the conversation reads and the spend declare their success as
+ * `Schema.Unknown`, and creating a conversation, switching its model and
+ * deciding a pending action declare no payload although the routes read one.
+ * The turn stream arrives as events on a per-stream channel
+ * (`cloud_chat_stream_<id>`) that this client adapts into the AsyncIterable
+ * the shared chat UI consumes.
  */
 import type {
   ChatClient,
@@ -12,7 +19,11 @@ import type {
   ConversationSummary,
   SpendStatus,
 } from "@infrawrench/ui";
+import { cloudClient } from "./cloud-client";
 import { invoke } from "./invoke";
+import { runRpc } from "./rpc/client";
+
+const chat = () => cloudClient("chat").chat;
 
 export function createDesktopChatClient(orgId: string): ChatClient {
   return {
@@ -33,7 +44,7 @@ export function createDesktopChatClient(orgId: string): ChatClient {
       await invoke("cloud_chat_update_conversation", { orgId, conversationId, model });
     },
     async archiveConversation(conversationId) {
-      await invoke("cloud_chat_archive_conversation", { orgId, conversationId });
+      await runRpc(chat().archiveConversation({ params: { orgId, conversationId } }));
     },
     getConversation(conversationId) {
       return invoke<ChatConversationDetail>("cloud_chat_get_conversation", {
@@ -54,20 +65,20 @@ export function createDesktopChatClient(orgId: string): ChatClient {
       });
     },
     async submitSecretRequest(conversationId, requestId, value) {
-      await invoke("cloud_chat_submit_secret", {
-        orgId,
-        conversationId,
-        requestId,
-        value,
-      });
+      await runRpc(
+        chat().submitSecretRequest({
+          params: { orgId, conversationId, requestId },
+          payload: { value },
+        }),
+      );
     },
     async answerQuestion(conversationId, pendingId, answers) {
-      await invoke("cloud_chat_answer_question", {
-        orgId,
-        conversationId,
-        pendingId,
-        answers,
-      });
+      await runRpc(
+        chat().answerQuestion({
+          params: { orgId, conversationId, pendingId },
+          payload: { answers },
+        }),
+      );
     },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const streamId = crypto.randomUUID();

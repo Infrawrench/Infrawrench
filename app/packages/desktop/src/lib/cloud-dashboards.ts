@@ -7,7 +7,8 @@ import type {
 import type { DefaultDashboardResolution } from "@infrawrench/client-core";
 import type { DashboardWidget } from "@infrawrench/ui/cost";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
 
 interface CloudDashboardPin {
   pinId: string;
@@ -20,7 +21,7 @@ interface CloudDashboardPin {
 
 /**
  * A workflow pinned onto a cloud dashboard. Unlike resource pins (which need a
- * live provider probe, hence the separate `cloud_get_pin` enrich call), the
+ * live provider probe, hence the separate `getCloudEnrichedPin` call), the
  * card's whole contents are DB-only server-side, so they arrive inline with the
  * dashboard.
  */
@@ -31,7 +32,8 @@ interface CloudDashboardWorkflowPin {
   name: string;
   lastRunAt: string | null;
   lastStatus: string | null;
-  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+  /** `value` is absent for a metric the workflow has not reported yet. */
+  metrics: Array<{ key: string; label: string; unit: string | null; value?: unknown }>;
 }
 
 interface CloudDashboardFull {
@@ -66,48 +68,47 @@ interface CloudEnrichedPin extends CloudDashboardPin {
   status: ProbeStatus;
 }
 
-export async function listCloudDashboards(orgId: string): Promise<Dashboard[]> {
-  return invoke("cloud_list_dashboards", { orgId });
+const dashboards = () => cloudClient("dashboards");
+
+export function listCloudDashboards(orgId: string): Promise<Dashboard[]> {
+  return runRpc(dashboards().dashboards.list({ params: { orgId } }));
 }
 
-export async function getCloudDashboard(
-  orgId: string,
-  dashboardId: string,
-): Promise<CloudDashboardFull> {
-  return invoke("cloud_get_dashboard", { orgId, dashboardId });
+export function getCloudDashboard(orgId: string, dashboardId: string): Promise<CloudDashboardFull> {
+  return runRpc(dashboards().dashboards.get({ params: { orgId, id: dashboardId } }));
 }
 
-export async function createCloudDashboard(orgId: string, name: string): Promise<Dashboard | null> {
-  return invoke("cloud_create_dashboard", { orgId, name });
+export function createCloudDashboard(orgId: string, name: string): Promise<Dashboard | null> {
+  return runRpc(dashboards().dashboards.create({ params: { orgId }, payload: { name } }));
 }
 
 export async function deleteCloudDashboard(orgId: string, id: string): Promise<void> {
-  await invoke("cloud_delete_dashboard", { orgId, id });
+  await runRpc(dashboards().dashboards.delete({ params: { orgId, id } }));
 }
 
 export async function renameCloudDashboard(orgId: string, id: string, name: string): Promise<void> {
-  await invoke("cloud_rename_dashboard", { orgId, id, name });
+  await runRpc(dashboards().dashboards.rename({ params: { orgId, id }, payload: { name } }));
 }
 
 /** Which dashboard this member lands on: their own, else their role's, else the org's. */
-export async function getCloudDefaultDashboard(orgId: string): Promise<DefaultDashboardResolution> {
-  return invoke("cloud_get_default_dashboard", { orgId });
+export function getCloudDefaultDashboard(orgId: string): Promise<DefaultDashboardResolution> {
+  return runRpc(dashboards().dashboardDefaults.resolve({ params: { orgId } }));
 }
 
-export async function setMyCloudDefaultDashboard(
+export function setMyCloudDefaultDashboard(
   orgId: string,
   dashboardId: string,
 ): Promise<DefaultDashboardResolution> {
-  return invoke("cloud_set_my_default_dashboard", { orgId, dashboardId });
+  return runRpc(
+    dashboards().dashboardDefaults.setMine({ params: { orgId }, payload: { dashboardId } }),
+  );
 }
 
-export async function clearMyCloudDefaultDashboard(
-  orgId: string,
-): Promise<DefaultDashboardResolution> {
-  return invoke("cloud_clear_my_default_dashboard", { orgId });
+export function clearMyCloudDefaultDashboard(orgId: string): Promise<DefaultDashboardResolution> {
+  return runRpc(dashboards().dashboardDefaults.clearMine({ params: { orgId } }));
 }
 
-/** The shared header menu's transport, over the three channels above. */
+/** The shared header menu's transport, over the three calls above. */
 export function createCloudDashboardDefaultClient(orgId: string): DashboardDefaultClient {
   return {
     getDefault: () => getCloudDefaultDashboard(orgId),
@@ -124,7 +125,10 @@ export async function validateCloudWorkspaceTabs(
   orgId: string,
   tabs: Array<{ id: string; target: WorkspaceTabTarget }>,
 ): Promise<string[]> {
-  const result = await invoke<{ validTabIds: string[] }>("cloud_validate_tabs", { orgId, tabs });
+  const result = await runRpc(
+    dashboards().dashboards.validateTabs({ params: { orgId }, payload: { tabs } }),
+  );
+  // An empty answer keeps the old reading: no ids came back.
   return result?.validTabIds ?? [];
 }
 
@@ -133,7 +137,9 @@ export async function pinCloudResource(
   dashboardId: string,
   resourceId: string,
 ): Promise<void> {
-  await invoke("cloud_pin_resource", { orgId, dashboardId, resourceId });
+  await runRpc(
+    dashboards().dashboardPins.pin({ params: { orgId }, payload: { dashboardId, resourceId } }),
+  );
 }
 
 export async function unpinCloudResource(
@@ -141,24 +147,33 @@ export async function unpinCloudResource(
   dashboardId: string,
   resourceId: string,
 ): Promise<void> {
-  await invoke("cloud_unpin_resource", { orgId, dashboardId, resourceId });
+  await runRpc(
+    dashboards().dashboardPins.unpin({ params: { orgId }, payload: { dashboardId, resourceId } }),
+  );
 }
 
+/**
+ * `cards` is the whole grid in its new order: resource pins, workflow pins
+ * and widgets share one drag sequence, so the reorder can't be expressed as
+ * resource ids alone.
+ */
 export async function reorderCloudCards(
   orgId: string,
   dashboardId: string,
   cards: DashboardCardRef[],
 ): Promise<void> {
-  await invoke("cloud_reorder_pins", { orgId, dashboardId, cards });
+  await runRpc(
+    dashboards().dashboards.reorder({ params: { orgId, id: dashboardId }, payload: { cards } }),
+  );
 }
 
-export async function probeCloudPins(
+export function probeCloudPins(
   orgId: string,
   items: CloudProbeItem[],
 ): Promise<Record<string, ProbeStatus>> {
-  return invoke("cloud_probe_pins", { orgId, items });
+  return runRpc(dashboards().dashboardPins.probe({ params: { orgId }, payload: { items } }));
 }
 
-export async function getCloudEnrichedPin(orgId: string, pinId: string): Promise<CloudEnrichedPin> {
-  return invoke("cloud_get_pin", { orgId, pinId });
+export function getCloudEnrichedPin(orgId: string, pinId: string): Promise<CloudEnrichedPin> {
+  return runRpc(dashboards().dashboardPins.pinFull({ params: { orgId, pinId } }));
 }

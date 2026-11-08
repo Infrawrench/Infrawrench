@@ -40,6 +40,7 @@ import type {
   Runbook,
   RunbookInput,
   RunbookRun,
+  RunbookStepInput,
   RunbookStepStatus,
   QueryMonitor,
   QueryMonitorInput,
@@ -48,8 +49,18 @@ import type {
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
-import type { LeakedSecret, LeakedSecretListResponse } from "@infrawrench/client-core";
+import type {
+  AccessReviewRuleId,
+  LeakedSecret,
+  LeakedSecretListResponse,
+} from "@infrawrench/client-core";
 import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { definedFields } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
+
+/** The contract's `resources` group: detail, create/update/delete, manifests, logs, pickers. */
+const resources = () => cloudClient("resources").resources;
 
 /**
  * The org dependency graph. Pass `resourceId` to get only that resource's
@@ -60,7 +71,12 @@ export async function fetchCloudDependencyGraph(
   orgId: string,
   resourceId?: string,
 ): Promise<DependencyGraphData> {
-  return invoke("cloud_dependency_graph", resourceId ? { orgId, resourceId } : { orgId });
+  return runRpc(
+    cloudClient("dependencyGraph").dependencyGraph.get({
+      params: { orgId },
+      query: resourceId ? { resourceId } : {},
+    }),
+  );
 }
 
 /**
@@ -77,7 +93,9 @@ export async function fetchCloudBlastRadius(
   orgId: string,
   resourceId: string,
 ): Promise<BlastRadiusReport> {
-  return invoke("cloud_blast_radius", { orgId, resourceId });
+  return runRpc(
+    cloudClient("blastRadius").blastRadius.get({ params: { orgId }, query: { resourceId } }),
+  );
 }
 
 /**
@@ -85,7 +103,7 @@ export async function fetchCloudBlastRadius(
  * counterpart is `loadLocalExpiring` in lib/local-expiring.ts.
  */
 export async function fetchCloudExpiring(orgId: string): Promise<ExpiryListResponse> {
-  return invoke("cloud_expiring", { orgId });
+  return runRpc(cloudClient("expiring").expiring.list({ params: { orgId } }));
 }
 
 /**
@@ -93,7 +111,7 @@ export async function fetchCloudExpiring(orgId: string): Promise<ExpiryListRespo
  * local-mode counterpart is `loadLocalPosture` in lib/local-posture.ts.
  */
 export async function fetchCloudPosture(orgId: string): Promise<PostureListResponse> {
-  return invoke("cloud_posture", { orgId });
+  return runRpc(cloudClient("posture").posture.list({ params: { orgId } }));
 }
 
 /**
@@ -108,7 +126,12 @@ export async function dismissCloudPostureFinding(
   ruleId: string,
   reason: string,
 ): Promise<void> {
-  await invoke("cloud_posture_dismiss", { orgId, resourceId, ruleId, reason });
+  await runRpc(
+    cloudClient("posture").posture.dismiss({
+      params: { orgId },
+      payload: { resourceId, ruleId, reason },
+    }),
+  );
 }
 
 /**
@@ -121,21 +144,22 @@ export function cloudLeakedCredentialsClient(
   orgId: string,
   canWrite: boolean,
 ): LeakedCredentialsClient {
-  const act = async (id: string, action: string, body: unknown): Promise<LeakedSecret> =>
-    (
-      (await invoke("cloud_leaked_secret_action", { orgId, id, action, body })) as {
-        leak: LeakedSecret;
-      }
-    ).leak;
+  const leaks = () => cloudClient("leakedSecrets").leakedSecrets;
+  const leakOf = async (call: Promise<{ leak: LeakedSecret }>): Promise<LeakedSecret> =>
+    (await call).leak;
   return {
-    list: () => invoke("cloud_leaked_secrets", { orgId }),
+    list: (): Promise<LeakedSecretListResponse> =>
+      runRpc(leaks().list({ params: { orgId }, query: {} })),
     ...(canWrite
       ? {
-          rotate: (id, input) => act(id, "rotate", input),
-          markRotated: (id, input) => act(id, "mark-rotated", input),
-          dismiss: (id, input) => act(id, "dismiss", input),
-          reopen: (id) => act(id, "reopen", {}),
-          scan: () => invoke("cloud_leaked_secrets_scan", { orgId }),
+          rotate: (id, input) =>
+            leakOf(runRpc(leaks().rotate({ params: { orgId, id }, payload: input }))),
+          markRotated: (id, input) =>
+            leakOf(runRpc(leaks().markRotated({ params: { orgId, id }, payload: input }))),
+          dismiss: (id, input) =>
+            leakOf(runRpc(leaks().dismiss({ params: { orgId, id }, payload: input }))),
+          reopen: (id) => leakOf(runRpc(leaks().reopen({ params: { orgId, id } }))),
+          scan: () => runRpc(leaks().scan({ params: { orgId } })),
         }
       : {}),
   };
@@ -146,7 +170,12 @@ export async function fetchCloudAccountLeaks(
   orgId: string,
   accountId: string,
 ): Promise<LeakedSecretListResponse> {
-  return invoke("cloud_leaked_secrets", { orgId, status: "open", accountId });
+  return runRpc(
+    cloudClient("leakedSecrets").leakedSecrets.list({
+      params: { orgId },
+      query: { status: "open", accountId },
+    }),
+  );
 }
 
 /** Undo a dismissal, putting the finding back on the list and in the alerts. */
@@ -155,7 +184,9 @@ export async function restoreCloudPostureFinding(
   resourceId: string,
   ruleId: string,
 ): Promise<void> {
-  await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+  await runRpc(
+    cloudClient("posture").posture.restore({ params: { orgId }, query: { resourceId, ruleId } }),
+  );
 }
 
 /**
@@ -163,7 +194,9 @@ export async function restoreCloudPostureFinding(
  * resources running them. Cloud only; collection needs the poller.
  */
 export async function fetchCloudVulnerabilities(orgId: string): Promise<VulnerabilityListResponse> {
-  return invoke("cloud_vulnerabilities", { orgId });
+  return runRpc(
+    cloudClient("vulnerabilities").vulnerabilities.list({ params: { orgId }, query: {} }),
+  );
 }
 
 /** Accept an advisory for one artifact (`artifactKey`) or everywhere (`"*"`). */
@@ -173,7 +206,13 @@ export async function dismissCloudVulnerability(
   artifactKey: string,
   reason: string,
 ): Promise<void> {
-  await invoke("cloud_vulnerabilities_dismiss", { orgId, advisoryId, artifactKey, reason });
+  const trimmed = reason.trim();
+  await runRpc(
+    cloudClient("vulnerabilities").vulnerabilities.dismiss({
+      params: { orgId },
+      payload: { advisoryId, artifactKey, ...(trimmed ? { reason: trimmed } : {}) },
+    }),
+  );
 }
 
 /** Undo a vulnerability dismissal. */
@@ -182,33 +221,68 @@ export async function restoreCloudVulnerability(
   advisoryId: string,
   artifactKey: string,
 ): Promise<void> {
-  await invoke("cloud_vulnerabilities_restore", { orgId, advisoryId, artifactKey });
+  // The key travels in the query: artifact keys carry slashes.
+  await runRpc(
+    cloudClient("vulnerabilities").vulnerabilities.restore({
+      params: { orgId },
+      query: { advisoryId, artifactKey },
+    }),
+  );
 }
 
 /** The org's vulnerability alert settings (server requires `org:settings:write`). */
 export async function fetchCloudVulnerabilitySettings(
   orgId: string,
 ): Promise<VulnerabilitySettings> {
-  return invoke("cloud_vulnerability_settings_get", { orgId });
+  return runRpc(cloudClient("vulnerabilities").vulnerabilities.getSettings({ params: { orgId } }));
 }
 
 export async function updateCloudVulnerabilitySettings(
   orgId: string,
   patch: VulnerabilitySettingsPatch,
 ): Promise<VulnerabilitySettings> {
-  return invoke("cloud_vulnerability_settings_update", { orgId, patch });
+  return runRpc(
+    cloudClient("vulnerabilities").vulnerabilities.updateSettings({
+      params: { orgId },
+      payload: patch,
+    }),
+  );
 }
 
 /* Compliance: cloud only, like Vulnerabilities. Reads are `audit:read`;
  * control decisions and pack schedules `org:settings:write` server-side. */
 
+const compliance = () => cloudClient("compliance").compliance;
+
+/** The bodies the endpoints take: optional keys the editors leave `undefined` are dropped. */
+function complianceControlPayload(input: ComplianceControlSettingInput) {
+  return {
+    applicable: input.applicable,
+    ...(input.justification !== undefined ? { justification: input.justification } : {}),
+    ...(input.ownerUserId !== undefined ? { ownerUserId: input.ownerUserId } : {}),
+    ...(input.ownerLabel !== undefined ? { ownerLabel: input.ownerLabel } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+  };
+}
+
+function compliancePackSchedulePayload(input: CompliancePackScheduleInput) {
+  return {
+    frameworkId: input.frameworkId,
+    cadence: input.cadence,
+    ...(input.sendDayOfMonth !== undefined ? { sendDayOfMonth: input.sendDayOfMonth } : {}),
+    hour: input.hour,
+    timezone: input.timezone,
+    emailRecipients: input.emailRecipients,
+    ...(input.slackChannelIds !== undefined ? { slackChannelIds: input.slackChannelIds } : {}),
+    ...(input.teamsWebhookIds !== undefined ? { teamsWebhookIds: input.teamsWebhookIds } : {}),
+    enabled: input.enabled,
+  };
+}
+
 export async function fetchCloudComplianceFrameworks(
   orgId: string,
 ): Promise<ComplianceFrameworkSummary[]> {
-  const res = await invoke<{ frameworks: ComplianceFrameworkSummary[] }>(
-    "cloud_compliance_frameworks",
-    { orgId },
-  );
+  const res = await runRpc(compliance().frameworks({ params: { orgId } }));
   return res.frameworks;
 }
 
@@ -217,7 +291,16 @@ export async function fetchCloudComplianceStatus(
   framework: string,
   period: CompliancePeriod,
 ): Promise<ComplianceStatusResponse> {
-  return invoke("cloud_compliance_status", { orgId, framework, period });
+  return runRpc(
+    compliance().status({
+      params: { orgId },
+      query: {
+        framework,
+        ...(period.from ? { from: period.from } : {}),
+        ...(period.to ? { to: period.to } : {}),
+      },
+    }),
+  );
 }
 
 /** The evidence pack ZIP as bytes; the caller saves it. */
@@ -235,7 +318,12 @@ export async function putCloudComplianceControl(
   controlId: string,
   input: ComplianceControlSettingInput,
 ): Promise<ComplianceControlSetting> {
-  return invoke("cloud_compliance_control_put", { orgId, frameworkId, controlId, input });
+  return runRpc(
+    compliance().putControl({
+      params: { orgId, frameworkId, controlId },
+      payload: complianceControlPayload(input),
+    }),
+  );
 }
 
 export async function deleteCloudComplianceControl(
@@ -243,27 +331,34 @@ export async function deleteCloudComplianceControl(
   frameworkId: string,
   controlId: string,
 ): Promise<void> {
-  await invoke("cloud_compliance_control_delete", { orgId, frameworkId, controlId });
+  await runRpc(compliance().deleteControl({ params: { orgId, frameworkId, controlId } }));
 }
 
 export async function listCloudCompliancePackSchedules(
   orgId: string,
   framework: string,
 ): Promise<CompliancePackSchedule[]> {
-  return invoke("cloud_compliance_schedules", { orgId, framework });
+  return runRpc(
+    compliance().listSchedules({ params: { orgId }, query: framework ? { framework } : {} }),
+  );
 }
 
 export async function fetchCloudCompliancePackTargets(
   orgId: string,
 ): Promise<ReportDeliveryTargets> {
-  return invoke("cloud_compliance_schedule_targets", { orgId });
+  return runRpc(compliance().scheduleTargets({ params: { orgId } }));
 }
 
 export async function createCloudCompliancePackSchedule(
   orgId: string,
   input: CompliancePackScheduleInput,
 ): Promise<CompliancePackSchedule> {
-  return invoke("cloud_compliance_schedule_create", { orgId, input });
+  return runRpc(
+    compliance().createSchedule({
+      params: { orgId },
+      payload: compliancePackSchedulePayload(input),
+    }),
+  );
 }
 
 export async function updateCloudCompliancePackSchedule(
@@ -271,21 +366,26 @@ export async function updateCloudCompliancePackSchedule(
   scheduleId: string,
   input: CompliancePackScheduleInput,
 ): Promise<CompliancePackSchedule> {
-  return invoke("cloud_compliance_schedule_update", { orgId, scheduleId, input });
+  return runRpc(
+    compliance().updateSchedule({
+      params: { orgId, id: scheduleId },
+      payload: compliancePackSchedulePayload(input),
+    }),
+  );
 }
 
 export async function deleteCloudCompliancePackSchedule(
   orgId: string,
   scheduleId: string,
 ): Promise<void> {
-  await invoke("cloud_compliance_schedule_delete", { orgId, scheduleId });
+  await runRpc(compliance().deleteSchedule({ params: { orgId, id: scheduleId } }));
 }
 
 export async function sendCloudCompliancePackScheduleNow(
   orgId: string,
   scheduleId: string,
 ): Promise<ReportNotificationSendResult> {
-  return invoke("cloud_compliance_schedule_send", { orgId, scheduleId });
+  return runRpc(compliance().sendSchedule({ params: { orgId, id: scheduleId } }));
 }
 
 /**
@@ -298,17 +398,27 @@ export async function fetchCloudAccessReview(
   orgId: string,
   staleDays: number,
 ): Promise<AccessReviewResponse> {
-  return invoke("cloud_access_review", { orgId, staleDays });
+  return runRpc(
+    cloudClient("accessReview").accessReview.review({
+      params: { orgId },
+      query: { staleDays: String(staleDays) },
+    }),
+  );
 }
 
 /** Accept an access-review finding for the org. Recorded server-side. */
 export async function dismissCloudAccessFinding(
   orgId: string,
   resourceId: string,
-  ruleId: string,
+  ruleId: AccessReviewRuleId,
   reason: string,
 ): Promise<void> {
-  await invoke("cloud_access_review_dismiss", { orgId, resourceId, ruleId, reason });
+  await runRpc(
+    cloudClient("accessReview").accessReview.dismiss({
+      params: { orgId },
+      payload: { resourceId, ruleId, reason },
+    }),
+  );
 }
 
 /** Undo a dismissal, putting the finding back on the list and in the alerts. */
@@ -317,7 +427,12 @@ export async function restoreCloudAccessFinding(
   resourceId: string,
   ruleId: string,
 ): Promise<void> {
-  await invoke("cloud_access_review_restore", { orgId, resourceId, ruleId });
+  await runRpc(
+    cloudClient("accessReview").accessReview.restore({
+      params: { orgId },
+      query: { resourceId, ruleId },
+    }),
+  );
 }
 
 /** The review as a CSV or JSON evidence document, returned as text to save. */
@@ -335,11 +450,11 @@ export async function exportCloudAccessReview(
  * org state, and a local workspace has nowhere to store them.
  */
 export async function fetchCloudBackups(orgId: string): Promise<BackupCoverageResponse> {
-  return invoke("cloud_backups", { orgId });
+  return runRpc(cloudClient("backups").backups.coverage({ params: { orgId } }));
 }
 
 export async function fetchCloudBackupPolicies(orgId: string): Promise<BackupPolicy[]> {
-  const res = await invoke<{ policies: BackupPolicy[] }>("cloud_backup_policies", { orgId });
+  const res = await runRpc(cloudClient("backups").backups.listPolicies({ params: { orgId } }));
   return res.policies ?? [];
 }
 
@@ -347,7 +462,7 @@ export async function createCloudBackupPolicy(
   orgId: string,
   input: BackupPolicyInput,
 ): Promise<void> {
-  await invoke("cloud_backup_policy_create", { orgId, input });
+  await runRpc(cloudClient("backups").backups.createPolicy({ params: { orgId }, payload: input }));
 }
 
 export async function updateCloudBackupPolicy(
@@ -355,11 +470,13 @@ export async function updateCloudBackupPolicy(
   policyId: string,
   patch: Partial<BackupPolicyInput>,
 ): Promise<void> {
-  await invoke("cloud_backup_policy_update", { orgId, policyId, patch });
+  await runRpc(
+    cloudClient("backups").backups.updatePolicy({ params: { orgId, policyId }, payload: patch }),
+  );
 }
 
 export async function deleteCloudBackupPolicy(orgId: string, policyId: string): Promise<void> {
-  await invoke("cloud_backup_policy_delete", { orgId, policyId });
+  await runRpc(cloudClient("backups").backups.deletePolicy({ params: { orgId, policyId } }));
 }
 
 /**
@@ -367,7 +484,7 @@ export async function deleteCloudBackupPolicy(orgId: string, policyId: string): 
  * query monitors, sync paging) are org state.
  */
 export async function fetchCloudWallboard(orgId: string): Promise<WallboardResponse> {
-  return invoke("cloud_wallboard", { orgId });
+  return runRpc(cloudClient("wallboard").wallboard.get({ params: { orgId } }));
 }
 
 /**
@@ -379,26 +496,29 @@ export async function fetchCloudCalendar(
   orgId: string,
   range: { from: string; to: string; kinds: CalendarEventKind[] },
 ): Promise<CalendarResponse> {
-  return invoke("cloud_calendar", {
-    orgId,
-    from: range.from,
-    to: range.to,
-    // Omitted rather than sent empty: empty means "every kind" server-side,
-    // and enumerating them here would break the day one is added.
-    ...(range.kinds.length > 0 && range.kinds.length < CALENDAR_EVENT_KINDS.length
-      ? { kinds: range.kinds.join(",") }
-      : {}),
-  });
+  return runRpc(
+    cloudClient("calendar").calendar.list({
+      params: { orgId },
+      query: {
+        from: range.from,
+        to: range.to,
+        // Omitted rather than sent empty: empty means "every kind" server-side,
+        // and enumerating them here would break the day one is added.
+        ...(range.kinds.length > 0 && range.kinds.length < CALENDAR_EVENT_KINDS.length
+          ? { kinds: range.kinds.join(",") }
+          : {}),
+      },
+    }),
+  );
 }
 
 export async function fetchCloudCalendarSubscriptions(
   orgId: string,
 ): Promise<CalendarSubscription[]> {
-  const res = await invoke<{ subscriptions: CalendarSubscription[] }>(
-    "cloud_calendar_subscriptions",
-    { orgId },
+  const res = await runRpc(
+    cloudClient("calendar").calendar.listSubscriptions({ params: { orgId } }),
   );
-  return res.subscriptions ?? [];
+  return res.subscriptions;
 }
 
 /** Returns the one-time subscription URL; there is no second chance to read it. */
@@ -406,10 +526,9 @@ export async function createCloudCalendarSubscription(
   orgId: string,
   input: { name: string; kinds: CalendarEventKind[] },
 ): Promise<string> {
-  const created = await invoke<CalendarSubscription>("cloud_calendar_subscription_create", {
-    orgId,
-    input,
-  });
+  const created: CalendarSubscription = await runRpc(
+    cloudClient("calendar").calendar.createSubscription({ params: { orgId }, payload: input }),
+  );
   if (!created.url) throw new Error("The server did not return a subscription URL");
   return created.url;
 }
@@ -418,7 +537,9 @@ export async function revokeCloudCalendarSubscription(
   orgId: string,
   subscriptionId: string,
 ): Promise<void> {
-  await invoke("cloud_calendar_subscription_revoke", { orgId, subscriptionId });
+  await runRpc(
+    cloudClient("calendar").calendar.revokeSubscription({ params: { orgId, subscriptionId } }),
+  );
 }
 
 /**
@@ -426,17 +547,37 @@ export async function revokeCloudCalendarSubscription(
  * a single-machine workspace has nowhere to keep.
  */
 export async function fetchCloudRunbooks(orgId: string): Promise<Runbook[]> {
-  const res = await invoke<{ runbooks: Runbook[] }>("cloud_runbooks", { orgId });
+  const res = await runRpc(cloudClient("runbooks").runbooks.list({ params: { orgId } }));
   return res.runbooks ?? [];
 }
 
 export async function fetchCloudRunbookRuns(orgId: string): Promise<RunbookRun[]> {
-  const res = await invoke<{ runs: RunbookRun[] }>("cloud_runbook_runs", { orgId });
+  const res = await runRpc(
+    cloudClient("runbooks").runbooks.listRuns({ params: { orgId }, query: { limit: 50 } }),
+  );
   return res.runs ?? [];
 }
 
+/**
+ * A step as the endpoint takes it: client-core lets a form leave an optional
+ * field explicitly `undefined`, which the endpoint's schema refuses, so only
+ * the fields that are set are sent (what `JSON.stringify` sent before).
+ */
+function runbookStepPayload(step: RunbookStepInput) {
+  return {
+    kind: step.kind,
+    title: step.title,
+    ...(step.id !== undefined ? { id: step.id } : {}),
+    ...(step.body !== undefined ? { body: step.body } : {}),
+    ...(step.workflowId !== undefined ? { workflowId: step.workflowId } : {}),
+    ...(step.url !== undefined ? { url: step.url } : {}),
+  };
+}
+
 export async function createCloudRunbook(orgId: string, input: RunbookInput): Promise<void> {
-  await invoke("cloud_runbook_create", { orgId, input });
+  const { steps, ...rest } = input;
+  const payload = { ...rest, ...(steps ? { steps: steps.map(runbookStepPayload) } : {}) };
+  await runRpc(cloudClient("runbooks").runbooks.create({ params: { orgId }, payload }));
 }
 
 export async function updateCloudRunbook(
@@ -444,15 +585,19 @@ export async function updateCloudRunbook(
   runbookId: string,
   patch: Partial<RunbookInput>,
 ): Promise<void> {
-  await invoke("cloud_runbook_update", { orgId, runbookId, patch });
+  const { steps, ...rest } = patch;
+  const payload = { ...rest, ...(steps ? { steps: steps.map(runbookStepPayload) } : {}) };
+  await runRpc(cloudClient("runbooks").runbooks.update({ params: { orgId, runbookId }, payload }));
 }
 
 export async function deleteCloudRunbook(orgId: string, runbookId: string): Promise<void> {
-  await invoke("cloud_runbook_delete", { orgId, runbookId });
+  await runRpc(cloudClient("runbooks").runbooks.delete({ params: { orgId, runbookId } }));
 }
 
 export async function startCloudRunbookRun(orgId: string, runbookId: string): Promise<void> {
-  await invoke("cloud_runbook_run_start", { orgId, runbookId });
+  await runRpc(
+    cloudClient("runbooks").runbooks.startRun({ params: { orgId, runbookId }, payload: {} }),
+  );
 }
 
 export async function updateCloudRunbookStep(
@@ -461,7 +606,9 @@ export async function updateCloudRunbookStep(
   stepId: string,
   patch: { status: RunbookStepStatus; note?: string | null },
 ): Promise<void> {
-  await invoke("cloud_runbook_step_update", { orgId, runId, stepId, patch });
+  await runRpc(
+    cloudClient("runbooks").runbooks.tickStep({ params: { orgId, runId, stepId }, payload: patch }),
+  );
 }
 
 export async function closeCloudRunbookRun(
@@ -470,7 +617,12 @@ export async function closeCloudRunbookRun(
   status: "completed" | "abandoned",
   summary: string | null,
 ): Promise<void> {
-  await invoke("cloud_runbook_run_close", { orgId, runId, body: { status, summary } });
+  await runRpc(
+    cloudClient("runbooks").runbooks.closeRun({
+      params: { orgId, runId },
+      payload: { status, summary },
+    }),
+  );
 }
 
 /**
@@ -480,14 +632,14 @@ export async function closeCloudRunbookRun(
  * them on every surface that only wants gaps.
  */
 export async function fetchCloudRestoreDrills(orgId: string): Promise<DrillCoverage> {
-  return invoke("cloud_restore_drills", { orgId });
+  return runRpc(cloudClient("backups").backups.drillCoverage({ params: { orgId }, query: {} }));
 }
 
 export async function recordCloudRestoreDrill(
   orgId: string,
   input: RestoreDrillInput,
 ): Promise<void> {
-  await invoke("cloud_restore_drill_record", { orgId, input });
+  await runRpc(cloudClient("backups").backups.recordDrill({ params: { orgId }, payload: input }));
 }
 
 /**
@@ -495,16 +647,15 @@ export async function recordCloudRestoreDrill(
  * monitor stored locally would only run while the app was open.
  */
 export async function fetchCloudQueryMonitors(orgId: string): Promise<QueryMonitor[]> {
-  const res = await invoke<{ monitors: QueryMonitor[] }>("cloud_query_monitors", { orgId });
+  const res = await runRpc(cloudClient("queryMonitors").queryMonitors.list({ params: { orgId } }));
   return res.monitors ?? [];
 }
 
 export async function fetchCloudQueryMonitorTargets(
   orgId: string,
 ): Promise<QueryMonitorTargetAccount[]> {
-  const res = await invoke<{ accounts: QueryMonitorTargetAccount[] }>(
-    "cloud_query_monitor_targets",
-    { orgId },
+  const res = await runRpc(
+    cloudClient("queryMonitors").queryMonitors.targets({ params: { orgId } }),
   );
   return res.accounts ?? [];
 }
@@ -513,7 +664,9 @@ export async function createCloudQueryMonitor(
   orgId: string,
   input: QueryMonitorInput,
 ): Promise<void> {
-  await invoke("cloud_query_monitor_create", { orgId, input });
+  await runRpc(
+    cloudClient("queryMonitors").queryMonitors.create({ params: { orgId }, payload: input }),
+  );
 }
 
 export async function updateCloudQueryMonitor(
@@ -521,22 +674,29 @@ export async function updateCloudQueryMonitor(
   monitorId: string,
   patch: Partial<QueryMonitorInput>,
 ): Promise<void> {
-  await invoke("cloud_query_monitor_update", { orgId, monitorId, patch });
+  await runRpc(
+    cloudClient("queryMonitors").queryMonitors.update({
+      params: { orgId, monitorId },
+      payload: patch,
+    }),
+  );
 }
 
 export async function deleteCloudQueryMonitor(orgId: string, monitorId: string): Promise<void> {
-  await invoke("cloud_query_monitor_delete", { orgId, monitorId });
+  await runRpc(cloudClient("queryMonitors").queryMonitors.delete({ params: { orgId, monitorId } }));
 }
 
 export async function testCloudQueryMonitor(
   orgId: string,
   input: Partial<QueryMonitorInput>,
 ): Promise<QueryMonitorTestResult> {
-  return invoke("cloud_query_monitor_test", { orgId, input });
+  return runRpc(
+    cloudClient("queryMonitors").queryMonitors.test({ params: { orgId }, payload: input }),
+  );
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {
-  return invoke("cloud_dns", { orgId });
+  return runRpc(cloudClient("dns").dns.list({ params: { orgId } }));
 }
 
 /**
@@ -548,12 +708,25 @@ export async function fetchCloudEnvironmentDiff(
   orgId: string,
   query: { a: string; b: string; includeIdentityFields?: boolean },
 ): Promise<EnvironmentDiffResponse> {
-  return invoke("cloud_environment_diff", {
-    orgId,
-    a: query.a,
-    b: query.b,
-    includeIdentityFields: query.includeIdentityFields === true,
-  });
+  const diff = await runRpc(
+    cloudClient("environmentDiff").environmentDiff.get({
+      params: { orgId },
+      query: {
+        a: query.a,
+        b: query.b,
+        ...(query.includeIdentityFields === true ? { includeIdentityFields: "true" } : {}),
+      },
+    }),
+  );
+  // A side whose key is absent arrives without `a`/`b` (JSON drops an
+  // undefined value); client-core's change names both sides.
+  return {
+    ...diff,
+    entries: diff.entries.map((entry) => ({
+      ...entry,
+      changes: entry.changes.map((change) => ({ field: change.field, a: change.a, b: change.b })),
+    })),
+  };
 }
 
 export async function getCloudResourceDetail(
@@ -565,17 +738,18 @@ export async function getCloudResourceDetail(
   parentResourceId?: string,
   options?: { includePeerPanes?: boolean },
 ): Promise<unknown> {
-  return invoke("cloud_get_resource_detail", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    parentResourceId,
-    ...(options?.includePeerPanes !== undefined
-      ? { includePeerPanes: options.includePeerPanes }
-      : {}),
-  });
+  return runRpc(
+    resources().detail({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      query: {
+        resourceId,
+        accountId,
+        ...(parentResourceId ? { parentResourceId } : {}),
+        // Only `false` is sent: the server's default is true.
+        ...(options?.includePeerPanes === false ? { includePeerPanes: "false" } : {}),
+      },
+    }),
+  );
 }
 
 export async function createCloudResource(
@@ -584,11 +758,12 @@ export async function createCloudResource(
     accountId: string;
     pluginId: string;
     resourceTypeId: string;
-    fields: Record<string, unknown>;
+    /** Create-form values: the endpoint takes strings only, as the form produces. */
+    fields: Record<string, string>;
     parentResourceId?: string;
   },
 ): Promise<{ id: string; displayName: string }> {
-  return invoke("cloud_create_resource", { orgId, body });
+  return runRpc(resources().create({ params: { orgId }, payload: definedFields(body) }));
 }
 
 export async function updateCloudResource(
@@ -602,7 +777,7 @@ export async function updateCloudResource(
     parentResourceId?: string;
   },
 ): Promise<{ id: string; displayName: string; fields: Record<string, string> }> {
-  return invoke("cloud_update_resource", { orgId, body });
+  return runRpc(resources().update({ params: { orgId }, payload: definedFields(body) }));
 }
 
 export async function cloudTunnelSshAttach(
@@ -626,8 +801,8 @@ export async function cloudTunnelSshAttach(
 
 export async function cloudListSshKeys(
   orgId: string,
-): Promise<Array<{ id: string; name: string }>> {
-  return invoke("cloud_list_ssh_keys", { orgId });
+): Promise<Array<{ id: string; name: string; ownerName: string }>> {
+  return runRpc(cloudClient("sshKeys").sshKeys.list({ params: { orgId } }));
 }
 
 export async function getCloudCreateConfig(
@@ -637,13 +812,17 @@ export async function getCloudCreateConfig(
   pluginId?: string,
   parentResourceId?: string,
 ): Promise<unknown> {
-  return invoke("cloud_get_create_config", {
-    orgId,
-    accountId,
-    resourceTypeId,
-    pluginId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().createConfig({
+      params: { orgId },
+      payload: {
+        accountId,
+        resourceTypeId,
+        ...(pluginId ? { pluginId } : {}),
+        ...(parentResourceId ? { parentResourceId } : {}),
+      },
+    }),
+  );
 }
 
 export async function getCloudCreatePricing(
@@ -657,15 +836,19 @@ export async function getCloudCreatePricing(
   pluginId?: string,
   parentResourceId?: string,
 ): Promise<Record<string, unknown>> {
-  return invoke("cloud_get_create_pricing", {
-    orgId,
-    accountId,
-    resourceTypeId,
-    ...(request.regionId ? { regionId: request.regionId } : {}),
-    sizes: request.sizes,
-    pluginId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().createPricing({
+      params: { orgId },
+      payload: {
+        accountId,
+        resourceTypeId,
+        ...(request.regionId ? { regionId: request.regionId } : {}),
+        sizes: request.sizes,
+        ...(pluginId ? { pluginId } : {}),
+        ...(parentResourceId ? { parentResourceId } : {}),
+      },
+    }),
+  );
 }
 
 /**
@@ -679,17 +862,38 @@ type CostEstimateResponse = {
   carbon?: ResourceCarbonEstimate | null;
 };
 
+type CostEstimateOptions = {
+  fields?: Record<string, string>;
+  resourceId?: string;
+  pluginId?: string;
+  parentResourceId?: string;
+};
+
 /**
  * One `cost-estimate` round trip shared by the price and carbon readers: a
  * detail page and an edit modal ask for both halves of the same response at
  * the same moment, and that should be one request, not two.
  */
 const inflightEstimates = new Map<string, Promise<CostEstimateResponse>>();
-function costEstimateResponse(args: Record<string, unknown>): Promise<CostEstimateResponse> {
-  const key = JSON.stringify(args);
+function costEstimateResponse(
+  orgId: string,
+  accountId: string,
+  resourceTypeId: string,
+  options: CostEstimateOptions,
+): Promise<CostEstimateResponse> {
+  const { fields, resourceId, pluginId, parentResourceId } = options;
+  const payload = {
+    accountId,
+    resourceTypeId,
+    ...(fields ? { fields } : {}),
+    ...(resourceId ? { resourceId } : {}),
+    ...(pluginId ? { pluginId } : {}),
+    ...(parentResourceId ? { parentResourceId } : {}),
+  };
+  const key = JSON.stringify({ orgId, ...payload });
   let p = inflightEstimates.get(key);
   if (!p) {
-    p = invoke<CostEstimateResponse>("cloud_get_cost_estimate", args);
+    p = runRpc(resources().costEstimate({ params: { orgId }, payload }));
     inflightEstimates.set(key, p);
     void p.finally(() => setTimeout(() => inflightEstimates.delete(key), 1000)).catch(() => {});
   }
@@ -701,14 +905,9 @@ export async function getCloudCarbonEstimate(
   orgId: string,
   accountId: string,
   resourceTypeId: string,
-  options: {
-    fields?: Record<string, string>;
-    resourceId?: string;
-    pluginId?: string;
-    parentResourceId?: string;
-  } = {},
+  options: CostEstimateOptions = {},
 ): Promise<ResourceCarbonEstimate | null> {
-  const res = await costEstimateResponse({ orgId, accountId, resourceTypeId, ...options });
+  const res = await costEstimateResponse(orgId, accountId, resourceTypeId, options);
   return res?.carbon ?? null;
 }
 
@@ -716,14 +915,9 @@ export async function getCloudCostEstimate(
   orgId: string,
   accountId: string,
   resourceTypeId: string,
-  options: {
-    fields?: Record<string, string>;
-    resourceId?: string;
-    pluginId?: string;
-    parentResourceId?: string;
-  } = {},
+  options: CostEstimateOptions = {},
 ): Promise<CostEstimate | null> {
-  const res = await costEstimateResponse({ orgId, accountId, resourceTypeId, ...options });
+  const res = await costEstimateResponse(orgId, accountId, resourceTypeId, options);
   return res?.estimate ?? null;
 }
 
@@ -735,14 +929,12 @@ export async function deleteCloudResource(
   accountId: string,
   parentResourceId?: string,
 ): Promise<void> {
-  await invoke("cloud_delete_resource", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    parentResourceId,
-  });
+  await runRpc(
+    resources().delete({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      query: { resourceId, accountId, ...(parentResourceId ? { parentResourceId } : {}) },
+    }),
+  );
 }
 
 export async function exportCloudCredential(
@@ -754,15 +946,17 @@ export async function exportCloudCredential(
   formatId: string,
   parentResourceId?: string,
 ): Promise<unknown> {
-  return invoke("cloud_export_credential", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    formatId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().exportCredential({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: {
+        resourceId,
+        accountId,
+        formatId,
+        ...(parentResourceId ? { parentResourceId } : {}),
+      },
+    }),
+  );
 }
 
 export async function getCloudManifest(
@@ -773,14 +967,12 @@ export async function getCloudManifest(
   accountId: string,
   parentResourceId?: string,
 ): Promise<{ manifest: string }> {
-  return invoke("cloud_get_manifest", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().getManifest({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      query: { resourceId, accountId, ...(parentResourceId ? { parentResourceId } : {}) },
+    }),
+  );
 }
 
 export async function applyCloudManifest(
@@ -794,7 +986,12 @@ export async function applyCloudManifest(
     parentResourceId?: string;
   },
 ): Promise<void> {
-  await invoke("cloud_apply_manifest", { orgId, pluginId, resourceTypeId, body });
+  await runRpc(
+    resources().applyManifest({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: definedFields(body),
+    }),
+  );
 }
 
 export async function invokeCloudAction(
@@ -808,7 +1005,7 @@ export async function invokeCloudAction(
     parentResourceId?: string;
   },
 ): Promise<void> {
-  await invoke("cloud_invoke_action", { orgId, body });
+  await runRpc(resources().invokeAction({ params: { orgId }, payload: definedFields(body) }));
 }
 
 export async function runCloudNoSqlCommand(
@@ -823,7 +1020,9 @@ export async function runCloudNoSqlCommand(
     parentResourceId?: string;
   },
 ): Promise<unknown> {
-  const res = (await invoke("cloud_nosql_command", { orgId, body })) as { result?: unknown };
+  const res = await runRpc(
+    resources().nosqlCommand({ params: { orgId }, payload: definedFields(body) }),
+  );
   return res.result;
 }
 
@@ -832,7 +1031,9 @@ export async function importCloudYaml(
   pluginId: string,
   body: { accountId: string; yaml: string; parentResourceId?: string },
 ): Promise<{ applied: number }> {
-  return invoke("cloud_import_yaml", { orgId, pluginId, body });
+  return runRpc(
+    resources().importYaml({ params: { orgId, pluginId }, payload: definedFields(body) }),
+  );
 }
 
 export async function getCloudDescribe(
@@ -843,14 +1044,12 @@ export async function getCloudDescribe(
   accountId: string,
   parentResourceId?: string,
 ): Promise<{ text: string }> {
-  return invoke("cloud_describe_resource", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    parentResourceId,
-  });
+  return runRpc(
+    resources().describe({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: { accountId, resourceId, ...(parentResourceId ? { parentResourceId } : {}) },
+    }),
+  );
 }
 
 export async function getCloudLogs(
@@ -861,14 +1060,20 @@ export async function getCloudLogs(
   accountId: string,
   params: { tailLines?: number; container?: string; previous?: boolean; parentResourceId?: string },
 ): Promise<{ text: string; containers: string[]; activeContainer: string }> {
-  return invoke("cloud_get_logs", {
-    orgId,
-    pluginId,
-    resourceTypeId,
-    resourceId,
-    accountId,
-    ...params,
-  });
+  const { tailLines, container, previous, parentResourceId } = params;
+  return runRpc(
+    resources().logs({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: {
+        accountId,
+        resourceId,
+        ...(parentResourceId ? { parentResourceId } : {}),
+        ...(tailLines !== undefined ? { tailLines } : {}),
+        ...(container !== undefined ? { container } : {}),
+        ...(previous !== undefined ? { previous } : {}),
+      },
+    }),
+  );
 }
 
 /**
@@ -888,7 +1093,12 @@ export async function fetchCloudMetrics(
     parentResourceId?: string;
   },
 ): Promise<{ series: unknown }> {
-  return invoke("cloud_fetch_metrics", { orgId, pluginId, resourceTypeId, body });
+  return runRpc(
+    cloudClient("resources").resources.metrics({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: body,
+    }),
+  );
 }
 
 export async function fetchCloudPeerPanes(
@@ -897,7 +1107,12 @@ export async function fetchCloudPeerPanes(
   resourceTypeId: string,
   body: { accountId: string; resourceId: string; parentResourceId?: string },
 ): Promise<unknown> {
-  return invoke("cloud_fetch_peer_panes", { orgId, pluginId, resourceTypeId, body });
+  return runRpc(
+    cloudClient("resources").resources.peerPanes({
+      params: { orgId, pluginId, typeId: resourceTypeId },
+      payload: body,
+    }),
+  );
 }
 
 export async function loadCloudPickerResources(
@@ -906,11 +1121,19 @@ export async function loadCloudPickerResources(
   accountId: string,
   opts?: { regionHint?: string; crossAccount?: boolean },
 ): Promise<ResourcePickerOption[]> {
-  return invoke("cloud_load_picker_resources", {
-    orgId,
-    sources,
-    accountId,
-    ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
-    ...(opts?.crossAccount ? { crossAccount: true } : {}),
-  });
+  return runRpc(
+    resources().pickerResources({
+      params: { orgId },
+      payload: {
+        sources: sources.map(({ pluginId, resourceTypeId, outputKey }) => ({
+          pluginId,
+          resourceTypeId,
+          outputKey,
+        })),
+        accountId,
+        ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
+        ...(opts?.crossAccount ? { crossAccount: true } : {}),
+      },
+    }),
+  );
 }

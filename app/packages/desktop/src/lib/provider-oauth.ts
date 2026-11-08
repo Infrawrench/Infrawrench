@@ -1,7 +1,11 @@
 import type { PluginManifest } from "@infrawrench/plugin-base";
 import type { ProviderOAuthInfo, ProviderOAuthResult } from "@infrawrench/ui";
 import { Effect } from "effect";
-import { invoke } from "./invoke";
+import {
+  getCloudAccountCredentials,
+  listCloudAccountPlugins,
+  updateCloudAccountCredentials,
+} from "./cloud-accounts";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { getLocalAccountCredentials, saveLocalAccountCredentials } from "./local-credentials";
 
@@ -77,10 +81,7 @@ export function getLocalOAuthClients(): Promise<Set<string>> {
  * configuration can change while the app is open.
  */
 export async function getCloudOAuthInfo(orgId: string): Promise<Map<string, ProviderOAuthInfo>> {
-  const plugins = await invoke<Array<{ id: string; oauth?: ProviderOAuthInfo | null }>>(
-    "cloud_list_account_plugins",
-    { orgId },
-  );
+  const plugins = await listCloudAccountPlugins(orgId);
   const map = new Map<string, ProviderOAuthInfo>();
   for (const p of plugins) if (p.oauth) map.set(p.id, p.oauth);
   return map;
@@ -135,15 +136,8 @@ export async function reconnectProviderAccount(
 ): Promise<void> {
   const result = await connectProviderOAuth(orgId, pluginId, { accountId });
   if (orgId) {
-    const current = await invoke<Record<string, string>>("cloud_get_account_credentials", {
-      orgId,
-      accountId,
-    });
-    await invoke("cloud_update_account_credentials", {
-      orgId,
-      accountId,
-      credentials: { ...current, ...result.credentials },
-    });
+    const current = await getCloudAccountCredentials(orgId, accountId);
+    await updateCloudAccountCredentials(orgId, accountId, { ...current, ...result.credentials });
     return;
   }
   const current = await getLocalAccountCredentials(accountId, { refresh: false });

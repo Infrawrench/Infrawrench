@@ -1,20 +1,44 @@
+/**
+ * The cloud WorkflowClient: the calls the contract types go over the cloud
+ * transport (`CloudHttp`); list/create/update/run, whose answers the
+ * contract leaves undocumented, still go over their IPC channels.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
+vi.mock("../rpc/desktop-client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
 const invoke = vi.fn();
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 vi.mock("../cloud-ws", () => ({ getCloudWsUrl: async () => "ws://localhost:3000" }));
 
-import {
+const { answerCloudHttp, resetFakeRpc } = await import("./fake-rpc");
+const {
+  createCloudApprovalsClient,
   createCloudWorkflowClient,
   listCloudWorkflows,
   pinCloudWorkflow,
   unpinCloudWorkflow,
-} from "../cloud-workflows";
+} = await import("../cloud-workflows");
+
+const ORG = "/api/org/org1";
 
 beforeEach(() => {
+  resetFakeRpc();
   invoke.mockReset();
   invoke.mockResolvedValue(undefined);
 });
+
+/** Every request the transport received, bodies parsed. */
+function requests(http: ReturnType<typeof answerCloudHttp>) {
+  return http.mock.calls.map(([request]) => ({
+    method: request.method,
+    url: request.url,
+    ...(request.body === undefined ? {} : { body: JSON.parse(request.body) }),
+  }));
+}
+
+const secret = { id: "s1", name: "TOKEN", hasValue: true };
 
 describe("cloud-workflows wrappers", () => {
   it("listCloudWorkflows -> cloud_list_workflows", async () => {
@@ -24,24 +48,32 @@ describe("cloud-workflows wrappers", () => {
     expect(res).toEqual([{ id: "w1" }]);
   });
 
-  it("pin/unpin -> cloud_pin_workflow / cloud_unpin_workflow", async () => {
+  it("pin/unpin a workflow card on a dashboard", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
     await pinCloudWorkflow("org1", "dash1", "w1");
-    expect(invoke).toHaveBeenCalledWith("cloud_pin_workflow", {
-      orgId: "org1",
-      dashboardId: "dash1",
-      workflowId: "w1",
-    });
     await unpinCloudWorkflow("org1", "dash1", "w1");
-    expect(invoke).toHaveBeenCalledWith("cloud_unpin_workflow", {
-      orgId: "org1",
-      dashboardId: "dash1",
-      workflowId: "w1",
-    });
+    expect(requests(http)).toEqual([
+      {
+        method: "POST",
+        url: `${ORG}/dashboards/workflow-pin`,
+        body: { dashboardId: "dash1", workflowId: "w1" },
+      },
+      {
+        method: "POST",
+        url: `${ORG}/dashboards/workflow-unpin`,
+        body: { dashboardId: "dash1", workflowId: "w1" },
+      },
+    ]);
   });
 });
 
 describe("createCloudWorkflowClient", () => {
-  it("routes CRUD through the org-scoped IPC", async () => {
+  it("routes CRUD through the org-scoped calls", async () => {
+    const http = answerCloudHttp((request) =>
+      request.method === "DELETE"
+        ? { status: 200, json: { ok: true } }
+        : { status: 200, json: { dts: "declare const infra: any;" } },
+    );
     const client = createCloudWorkflowClient("org1");
 
     invoke.mockResolvedValue([{ id: "w1" }]);
@@ -63,15 +95,13 @@ describe("createCloudWorkflowClient", () => {
     });
 
     await client.remove("w1");
-    expect(invoke).toHaveBeenCalledWith("cloud_delete_workflow", { orgId: "org1", id: "w1" });
-
-    invoke.mockResolvedValue("declare const infra: any;");
-    await client.getTypings("w1");
-    expect(invoke).toHaveBeenCalledWith("cloud_workflow_typings", {
-      orgId: "org1",
-      id: "w1",
-      enrich: false,
-    });
+    await expect(client.getTypings("w1")).resolves.toBe("declare const infra: any;");
+    await client.getTypings("w1", { enrich: true });
+    expect(requests(http)).toEqual([
+      { method: "DELETE", url: `${ORG}/workflows/w1` },
+      { method: "GET", url: `${ORG}/workflows/w1/typings` },
+      { method: "GET", url: `${ORG}/workflows/w1/typings?enrich=1` },
+    ]);
   });
 
   it("maps secret assignments and reusable secret operations", async () => {
@@ -84,35 +114,57 @@ describe("createCloudWorkflowClient", () => {
       body: { secretIds: ["s1", "s2"] },
     });
 
-    invoke.mockResolvedValue([{ id: "s1", name: "TOKEN", hasValue: true }]);
-    await client.listSecrets();
-    expect(invoke).toHaveBeenCalledWith("cloud_list_workflow_secrets", { orgId: "org1" });
-
-    invoke.mockResolvedValue({
-      secretIds: ["s1"],
-      secrets: [{ id: "s1", name: "TOKEN", hasValue: true }],
+    const http = answerCloudHttp((request) => {
+      if (request.url === `${ORG}/workflow-secrets` && request.method === "GET") {
+        return { status: 200, json: [secret] };
+      }
+      if (request.url === `${ORG}/workflows/w1/secrets`) {
+        return { status: 200, json: { secretIds: ["s1"], secrets: [secret] } };
+      }
+      if (request.method === "DELETE") return { status: 200, json: { ok: true } };
+      return { status: 200, json: secret };
     });
+
+    await expect(client.listSecrets()).resolves.toEqual([secret]);
     await expect(client.getAssignedSecrets("w1")).resolves.toEqual({
       assignedSecretIds: ["s1"],
-      secrets: [{ id: "s1", name: "TOKEN", hasValue: true }],
+      secrets: [secret],
     });
-    expect(invoke).toHaveBeenCalledWith("cloud_get_workflow_secrets", {
-      orgId: "org1",
-      id: "w1",
-    });
-
-    await client.upsertSecret({ name: "TOKEN", value: "write-only" });
-    expect(invoke).toHaveBeenCalledWith("cloud_upsert_workflow_secret", {
-      orgId: "org1",
-      name: "TOKEN",
-      value: "write-only",
-    });
-
+    await expect(client.upsertSecret({ name: "TOKEN", value: "write-only" })).resolves.toEqual(
+      secret,
+    );
+    await client.upsertSecret({ id: "s1", name: "RENAMED", value: "v2" });
     await client.deleteSecret("s1");
-    expect(invoke).toHaveBeenCalledWith("cloud_delete_workflow_secret", {
-      orgId: "org1",
-      id: "s1",
-    });
+
+    expect(requests(http)).toEqual([
+      { method: "GET", url: `${ORG}/workflow-secrets` },
+      { method: "GET", url: `${ORG}/workflows/w1/secrets` },
+      // Create, then the value under the id the create answered with.
+      { method: "POST", url: `${ORG}/workflow-secrets`, body: { name: "TOKEN" } },
+      { method: "PUT", url: `${ORG}/workflow-secrets/s1/value`, body: { value: "write-only" } },
+      // A rename, then the value.
+      { method: "PATCH", url: `${ORG}/workflow-secrets/s1`, body: { name: "RENAMED" } },
+      { method: "PUT", url: `${ORG}/workflow-secrets/s1/value`, body: { value: "v2" } },
+      { method: "DELETE", url: `${ORG}/workflow-secrets/s1` },
+    ]);
+  });
+
+  it("stops before writing a value when the save names no id", async () => {
+    const http = answerCloudHttp(() => ({ status: 201, json: { ...secret, id: "" } }));
+    const client = createCloudWorkflowClient("org1");
+    await expect(client.upsertSecret({ name: "TOKEN", value: "v" })).rejects.toThrow(
+      "Workflow secret save returned no id",
+    );
+    expect(http).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not write the value when the create is refused", async () => {
+    const http = answerCloudHttp(() => ({ status: 409, json: { error: "Name taken" } }));
+    const client = createCloudWorkflowClient("org1");
+    await expect(client.upsertSecret({ name: "TOKEN", value: "v" })).rejects.toThrow(
+      'Cloud request failed: 409 /workflow-secrets {"error":"Name taken"}',
+    );
+    expect(http).toHaveBeenCalledTimes(1);
   });
 
   it("runs non-debug over HTTP rather than the websocket", async () => {
@@ -121,5 +173,31 @@ describe("createCloudWorkflowClient", () => {
     const res = await client.run("w1");
     expect(invoke).toHaveBeenCalledWith("cloud_run_workflow", { orgId: "org1", id: "w1" });
     expect(res.runId).toBe("r1");
+  });
+
+  it("lists and decides a workflow's pending approvals", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [] }));
+    const client = createCloudWorkflowClient("org1");
+    await client.listPendingApprovals?.("w1");
+    await client.decideApproval?.("a1", "deny");
+    await client.decideApproval?.("a1", "approve");
+    expect(requests(http)).toEqual([
+      { method: "GET", url: `${ORG}/workflow-approvals?status=pending&workflowId=w1` },
+      { method: "POST", url: `${ORG}/workflow-approvals/a1/deny` },
+      { method: "POST", url: `${ORG}/workflow-approvals/a1/approve` },
+    ]);
+  });
+});
+
+describe("createCloudApprovalsClient", () => {
+  it("lists the inbox, filtered by status only when given", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [] }));
+    const client = createCloudApprovalsClient("org1");
+    await client.list();
+    await client.list("pending");
+    expect(requests(http)).toEqual([
+      { method: "GET", url: `${ORG}/workflow-approvals` },
+      { method: "GET", url: `${ORG}/workflow-approvals?status=pending` },
+    ]);
   });
 });
