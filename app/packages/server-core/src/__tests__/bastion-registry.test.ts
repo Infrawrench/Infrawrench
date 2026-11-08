@@ -197,6 +197,24 @@ describe("refreshAllowlistFromDb / refreshAllowlistById", () => {
       quiet.mockRestore();
     });
 
+    it("allows one label under an S3-compatible endpoint, for virtual-hosted buckets", async () => {
+      whereResult.rows = [
+        {
+          id: "a1",
+          pluginId: "s3-compatible",
+          encryptedCredentials: JSON.stringify({
+            endpoint: "https://s3.acme.example:9000",
+            secretKey: "not-a-host.example",
+          }),
+          credentialsIv: "iv",
+        },
+      ];
+      expect(await registry.computeAllowlist("b6")).toEqual([
+        "public:s3.acme.example",
+        "public:*.s3.acme.example",
+      ]);
+    });
+
     it("does not decrypt anything for a plugin that marks no field", async () => {
       whereResult.rows = [
         { id: "a1", pluginId: "aws", encryptedCredentials: "{}", credentialsIv: "iv" },

@@ -21,6 +21,7 @@ The bastion only carries **cloud API traffic** (AWS API, GCP API, DigitalOcean A
 - The bastion only connects to the API hostnames your bound accounts need (for example `*.amazonaws.com` for AWS or `*.googleapis.com` for GCP), and to the host an account was configured with, such as a self-hosted Vault's address or a self-managed GitLab's URL. It refuses any other destination.
 - A configured host has to be public. The bastion looks up the name each time it connects and refuses if any address is loopback, link-local, private or otherwise not routable, so it can't be pointed at its own cloud metadata endpoint or at your internal network. A bastion is not a way into a private network: to reach a private host, use the desktop app from inside that network, or an [SSH tunnel](./ssh-tunnels.md) where the plugin supports one.
 - One account's calls can only reach its own configured host, even if another account on the same bastion has a different one.
+- An [S3-compatible](../plugins/s3-compatible.md) account with virtual-hosted addressing can also reach the names one level under its endpoint, which is where its buckets live: `my-bucket.s3.example.com` for the endpoint `s3.example.com`, but not `a.b.s3.example.com`. Each of those names has to be public too. This only applies to an endpoint name with at least three parts, never to an IP address or a name like `example.com`.
 
 ### Hosts the provider tells Infrawrench about
 
@@ -87,7 +88,7 @@ Check the container logs with `docker logs infrawrench-bastion`. The usual cause
 
 **A self-hosted account fails with "Update the bastion agent"**
 
-Bastion agents older than version 0.2.0 refuse hosts an account was configured with. Pull the latest image and start the container again:
+Bastion agents older than version 0.2.0 refuse hosts an account was configured with, and agents older than 0.3.0 refuse the bucket hostnames of an S3-compatible account with virtual-hosted addressing. Pull the latest image and start the container again:
 
 ```sh
 docker pull registry.infrawrench.com/bastion-agent:latest

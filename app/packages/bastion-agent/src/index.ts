@@ -22,11 +22,14 @@ import * as dns from "node:dns";
 import * as net from "node:net";
 import { WebSocket } from "ws";
 
-import { isPublicAddress } from "./public-address";
+import { isPublicAddress, matchesPublicOnlyEntry } from "./public-address";
 
-const AGENT_VERSION = "0.2.0";
+const AGENT_VERSION = "0.3.0";
 const SUBPROTOCOL = "infrawrench-bastion-v1";
-/** Marks an allowlist entry a user typed, which may only reach public addresses. */
+/**
+ * Marks an allowlist entry a user typed, which may only reach public addresses: an exact
+ * host, or `*.<host>` for a name exactly one label under it (`matchesPublicOnlyEntry`).
+ */
 const PUBLIC_ONLY_PREFIX = "public:";
 const RECONNECT_INITIAL_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
@@ -189,7 +192,8 @@ class Connection {
 
   private handleOpenStream(streamId: number, host: string, port: number): void {
     const listed = this.isAllowed(host);
-    const publicOnly = !listed && this.publicOnly.includes(host.toLowerCase());
+    const publicOnly =
+      !listed && this.publicOnly.some((entry) => matchesPublicOnlyEntry(host, entry));
     if (!listed && !publicOnly) {
       this.send({ op: "open-failed", streamId, reason: `destination not allowlisted: ${host}` });
       return;

@@ -9,6 +9,8 @@
  * only sees encrypted bytes.
  */
 
+import { matchesPublicOnlyEntry } from "./public-address.js";
+
 /** Subprotocol name advertised on the WS Upgrade. */
 export const BASTION_WS_SUBPROTOCOL = "infrawrench-bastion-v1";
 
@@ -29,11 +31,13 @@ export interface BastionHelloMessage {
    * Empty array means "no destinations allowed yet": useful for the first
    * connect before any accounts are bound.
    *
-   * A `public:` prefix marks a host an account's user typed, which is exact (never
-   * a wildcard), and the agent refuses it unless every address it resolves to is
-   * public, on the connection it dials. An agent too old to know the prefix reads it
-   * as a name no request will ever match, so it refuses the host rather than dialling
-   * it unchecked.
+   * A `public:` prefix marks a host an account's user typed, and the agent refuses it
+   * unless every address it resolves to is public, on the connection it dials. It is
+   * exact, or for a field marked `providerHostSubdomains` `public:*.<host>`, which
+   * matches exactly one label under a name of three labels or more and never an address
+   * (`matchesPublicOnlyEntry`). An agent too old to know the prefix reads it as a name
+   * no request will ever match, and an agent from before 0.3.0 reads `*.<host>` as an
+   * exact name, so either refuses the host rather than dialling it unchecked.
    */
   allowlist: string[];
   /** Application-level heartbeat interval in milliseconds. */
@@ -111,11 +115,17 @@ export type BastionMessage =
 /** Marks an allowlist entry that may only reach public addresses. See `BastionHelloMessage`. */
 export const PUBLIC_ONLY_PREFIX = "public:";
 
-/** Whether `host` is one of `patterns`: exact names, or `*.suffix` wildcards. Case-insensitive. */
+/**
+ * Whether `host` is one of `patterns`: exact names, `*.suffix` wildcards at any depth, or
+ * `public:` entries read as the agent reads them. Case-insensitive.
+ */
 export function hostMatches(host: string, patterns: readonly string[]): boolean {
   const lower = host.toLowerCase();
   return patterns.some((pattern) => {
     const candidate = pattern.toLowerCase();
+    if (candidate.startsWith(PUBLIC_ONLY_PREFIX)) {
+      return matchesPublicOnlyEntry(lower, candidate.slice(PUBLIC_ONLY_PREFIX.length));
+    }
     return candidate.startsWith("*.") ? lower.endsWith(candidate.slice(1)) : lower === candidate;
   });
 }

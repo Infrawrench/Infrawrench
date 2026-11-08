@@ -117,6 +117,65 @@ describe("openStream via connect()", () => {
       expect(opens(ws)).toEqual([]);
     });
 
+    describe("a name one label under it, for a field marked providerHostSubdomains", () => {
+      it("opens a bucket's name, and asks the agent for it as written", async () => {
+        const ws = makeWs();
+        const conn = newConn(ws);
+        conn.setAllowlist(["public:*.s3.acme.example"]);
+        expect(conn.currentAllowlist()).toEqual(["public:*.s3.acme.example"]);
+        const p = open("My-Bucket.s3.acme.example");
+        expect(opens(ws)).toMatchObject([{ host: "My-Bucket.s3.acme.example", port: 443 }]);
+        conn.handleMessage({ op: "open-failed", streamId: 1, reason: "stop here" });
+        expect((await p).err?.message).toMatch(/stop here/);
+      });
+
+      it("passes on the agent's refusal of a name that resolves to a private address", async () => {
+        const ws = makeWs();
+        const conn = newConn(ws);
+        conn.setAllowlist(["public:*.s3.acme.example"]);
+        const p = open("rebind.s3.acme.example");
+        conn.handleMessage({
+          op: "open-failed",
+          streamId: 1,
+          reason: "rebind.s3.acme.example resolves to a non-public address",
+        });
+        const { err } = await p;
+        expect(err?.message).toMatch(/non-public address/);
+        expect(err?.message).not.toMatch(/update the bastion agent/i);
+      });
+
+      it("says to update the agent when one from before 0.3.0 reads the entry as exact", async () => {
+        const ws = makeWs();
+        const conn = newConn(ws);
+        conn.setAllowlist(["public:*.s3.acme.example"]);
+        const p = open("bucket.s3.acme.example");
+        conn.handleMessage({
+          op: "open-failed",
+          streamId: 1,
+          reason: "destination not allowlisted: bucket.s3.acme.example",
+        });
+        expect((await p).err?.message).toMatch(/update the bastion agent/i);
+      });
+
+      it.each([
+        ["two labels deep", "*.s3.acme.example", "a.b.s3.acme.example"],
+        ["the host itself, which needs its own entry", "*.s3.acme.example", "s3.acme.example"],
+        ["a name that only ends the same way", "*.s3.acme.example", "bucket.evils3.acme.example"],
+        ["a two-label base", "*.acme.example", "bucket.acme.example"],
+        ["a public suffix", "*.co.uk", "acme.co.uk"],
+        ["an IPv4 base", "*.93.184.216.34", "1.93.184.216.34"],
+        ["a base ending in a number", "*.2.3.4", "1.2.3.4"],
+        ["a private address under a base ending in a number", "*.0.0.1", "127.0.0.1"],
+        ["an IPv6 base", "*.2606:4700::1111", "[a.2606:4700::1111]"],
+      ])("refuses %s", async (_label, entry, host) => {
+        const ws = makeWs();
+        newConn(ws).setAllowlist([`public:${entry}`]);
+        const { err } = await open(host);
+        expect(err?.message).toMatch(/not allowlisted/);
+        expect(opens(ws)).toEqual([]);
+      });
+    });
+
     it.each(["169.254.169.254", "10.0.0.5", "127.0.0.1", "[::1]", "[::ffff:169.254.169.254]"])(
       "refuses %s even if something put it on the list",
       async (host) => {

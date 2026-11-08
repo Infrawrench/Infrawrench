@@ -5,7 +5,10 @@ import { hostMatches } from "../bastion/protocol";
 import { isPublicAddress } from "../bastion/public-address";
 import { classifyIp } from "../egress-guard";
 
-function field(key: string, over: { sensitive?: boolean; providerHost?: boolean } = {}) {
+function field(
+  key: string,
+  over: { sensitive?: boolean; providerHost?: boolean; providerHostSubdomains?: boolean } = {},
+) {
   return { key, label: key, sensitive: false, providerHost: true, ...over };
 }
 
@@ -158,6 +161,53 @@ describe("providerHostsOf", () => {
   it("copes with an account that has no value for the field", () => {
     expect(providerHostsOf([field("url")], {})).toEqual([]);
   });
+
+  describe("on a field marked providerHostSubdomains", () => {
+    const withSubdomains = (value: string) =>
+      providerHostsOf([field("endpoint", { providerHostSubdomains: true })], { endpoint: value });
+
+    it.each([
+      ["https://s3.acme.example:9000", ["s3.acme.example", "*.s3.acme.example"]],
+      ["https://S3.EU.Acme.Example", ["s3.eu.acme.example", "*.s3.eu.acme.example"]],
+      ["s3.acme.example.", ["s3.acme.example.", "*.s3.acme.example."]],
+    ])("also allows one label under %j", (value, hosts) => {
+      expect(withSubdomains(value)).toEqual(hosts);
+    });
+
+    it.each([
+      ["a two-label name", "https://acme.example", ["acme.example"]],
+      ["a public suffix", "https://co.uk", ["co.uk"]],
+      ["a public IPv4 address", "https://93.184.216.34:9000", ["93.184.216.34"]],
+      ["a public IPv6 address", "https://[2606:4700:4700::1111]", ["2606:4700:4700::1111"]],
+      ["a decimal spelling of a public address", "http://1572395042", ["93.184.216.34"]],
+    ])("keeps %s exact", (_label, value, hosts) => {
+      expect(withSubdomains(value)).toEqual(hosts);
+    });
+
+    it.each([
+      ["the metadata address", "http://169.254.169.254"],
+      ["a private address", "http://10.0.0.5:9000"],
+      ["localhost", "http://localhost:9000"],
+      ["a .localhost name", "http://s3.minio.localhost:9000"],
+      ["a name with no dot", "minio"],
+      ["a wildcard", "https://*.s3.acme.example"],
+    ])("still leaves out %s", (_label, value) => {
+      expect(withSubdomains(value)).toEqual([]);
+    });
+
+    it("does nothing without providerHost", () => {
+      const fields = [field("endpoint", { providerHost: false, providerHostSubdomains: true })];
+      expect(providerHostsOf(fields, { endpoint: "https://s3.acme.example" })).toEqual([]);
+    });
+
+    it("widens every host of a list on its own", () => {
+      expect(withSubdomains("https://s3.acme.example, acme.example")).toEqual([
+        "s3.acme.example",
+        "*.s3.acme.example",
+        "acme.example",
+      ]);
+    });
+  });
 });
 
 describe("accountEgressHosts", () => {
@@ -177,5 +227,34 @@ describe("accountEgressHosts", () => {
   it("does not let an account's own host work as a wildcard", () => {
     const hosts = accountEgressHosts(manifest, { url: "https://self.acme.example" });
     expect(hostMatches("sub.self.acme.example", hosts)).toBe(false);
+  });
+
+  it("marks the account's own hosts the way the agent gets them", () => {
+    expect(accountEgressHosts(manifest, { url: "https://self.acme.example" })).toEqual([
+      "api.example.test",
+      "*.example.test",
+      "public:self.acme.example",
+    ]);
+  });
+
+  describe("for a field marked providerHostSubdomains", () => {
+    const s3 = {
+      egressHosts: [],
+      credentialFields: [field("endpoint", { providerHostSubdomains: true })],
+    };
+    const hostsFor = (endpoint: string) => accountEgressHosts(s3, { endpoint });
+
+    it("lets a bucket's name through, one label deep only", () => {
+      const hosts = hostsFor("https://s3.acme.example:9000");
+      expect(hostMatches("s3.acme.example", hosts)).toBe(true);
+      expect(hostMatches("my-bucket.s3.acme.example", hosts)).toBe(true);
+      expect(hostMatches("a.b.s3.acme.example", hosts)).toBe(false);
+      expect(hostMatches("bucket.other.acme.example", hosts)).toBe(false);
+    });
+
+    it("never widens an address or a two-label name", () => {
+      expect(hostMatches("bucket.acme.example", hostsFor("https://acme.example"))).toBe(false);
+      expect(hostMatches("1.93.184.216.34", hostsFor("https://93.184.216.34"))).toBe(false);
+    });
   });
 });

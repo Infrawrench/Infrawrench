@@ -1,7 +1,8 @@
 /**
  * Whether an IP literal is a public address, for a host a user typed that a bastion
  * agent may dial. Anything that does not parse is not public, so an unexpected spelling
- * fails closed.
+ * fails closed. Also how a `public:` allowlist entry matches a host, so the dispatcher
+ * and the agent read one the same way.
  *
  * The same ranges as `classifyIp` in `egress-guard.ts`, which a test holds it to. It is
  * separate because this also runs in the agent, whose image builds from its own package
@@ -137,4 +138,25 @@ export function isPublicAddress(ip: string): boolean {
 /** Whether `host` is written as an address rather than a name. */
 export function looksLikeIpAddress(host: string): boolean {
   return parseV4(host) !== null || parseV6(host) !== null || /^[0-9.]+$/.test(host);
+}
+
+const LABEL = /^[a-z0-9_-]+$/;
+
+/**
+ * Whether `host` is the `public:` allowlist entry `entry`, written without the prefix. An
+ * entry is one exact name or address, or `*.<base>` for a name exactly one label under
+ * `base`. The wildcard only counts on a name of three labels or more whose last label is
+ * not a number, so an address, `example.com` or `co.uk` never widens, and it never matches
+ * an address. Whatever matches still dials only public addresses.
+ */
+export function matchesPublicOnlyEntry(host: string, entry: string): boolean {
+  const name = host.toLowerCase();
+  const pattern = entry.toLowerCase();
+  if (!pattern.startsWith("*.")) return name === pattern;
+  const base = pattern.slice(2);
+  const labels = base.replace(/\.$/, "").split(".");
+  if (labels.length < 3 || !labels.every((label) => LABEL.test(label))) return false;
+  if (/^([0-9]+|0x[0-9a-f]*)$/.test(labels[labels.length - 1] ?? "")) return false;
+  if (looksLikeIpAddress(name) || !name.endsWith(`.${base}`)) return false;
+  return LABEL.test(name.slice(0, -(base.length + 1)));
 }
