@@ -85,7 +85,7 @@ Adding a tab kind touches the whole chain, in one change:
 - `ui/src/store/ui.store.ts`; the `WorkspaceTabTarget` union plus all three switches (`getWorkspaceTabId`, `getWorkspaceTabFallbackTitle`, `workspaceTabTargetsEqual`). For a single-instance tab with remembered state (Settings, Deploy), give it a fixed id but compare the state field in `workspaceTabTargetsEqual`; that is what makes the route sync record it and reactivation restore it.
 - `ui/src/workspace-tabs.ts`; a target factory, exported from `ui/src/index.ts`.
 - Both platforms' `lib/workspace-tabs.ts`; `getWorkspaceNavigateArgs` and `syncWorkspaceRouteFromPath` (desktop uses `?param=` search, web uses path segments). A target that carries state in the query needs the route's `validateSearch` extended too; it is a **whitelist**, so an unlisted key is dropped from the URL on navigation and the tab silently resolves to something else. Numeric values go in `search` as numbers, not strings: the router JSON-encodes each value, so `"4"` becomes `%224%22` and reads back out of a raw query string with its quotes on.
-- Both viewports' `renderPanel`, plus a no-op route stub per platform (tab content renders in the viewport, which keeps every open tab mounted).
+- Both viewports' `renderPanel`, plus a no-op route stub per platform (tab content renders in the viewport, which keeps every open tab mounted). Load the panel with `lazyPanel` by its module subpath (`@infrawrench/ui/<dir>/<Panel>` or a local path), never through the `@infrawrench/ui` barrel, or it lands back in the first download; KNOWLEDGE.md ("Code splitting") has why.
 - Desktop `__root.tsx` `validateWorkspaceTab` and the web `validate-tabs` kind list **and** the OpenAPI `TabTarget` enum; a kind missing there gets silently dropped on reload. The enum change means an `API_VERSION` minor bump.
 
 Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts`; the full conversion recipe with rationale is in KNOWLEDGE.md.
@@ -94,7 +94,7 @@ Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts
 
 The 14 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific; API transport, permissions, `openExternal`, cross-surface navigation; from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
 
-- **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper, and a docs page. Both platforms' navs derive from the registry.
+- **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper (loading the section with `lazyRouteComponent` by its module subpath, like the existing ones), and a docs page. Both platforms' navs derive from the registry.
 - **New endpoint used by a section**: the desktop reaches the cloud through its one cloud transport (the `CloudHttp` RPC, `electron/cloud-transport.ts`), which refuses any method+path outside its allowlist (`electron/cloud-allowlist.ts`). The sections call raw paths, so their surface is the hand-written `SETTINGS_RULES` there: add the new path in the same change, or the section works on web and silently fails on desktop.
 - Structured errors the sections branch on (seat limit, plan gate) live in `client-core/src/api-errors.ts` and must be thrown by both transports (web `apiFetch`, desktop `settings-client.ts`).
 
