@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const SRC = join(__dirname, "..", "..");
 const ROUTES = join(SRC, "api", "routes");
+const DOMAINS_DIR = join(SRC, "http", "domains");
 const INDEX = readFileSync(join(SRC, "api", "index.ts"), "utf8");
 
 /** Imports that mean "this module reads cost data". */
@@ -65,14 +66,22 @@ const SELF_SCOPED: Record<string, { reason: string; mustContain: string }> = {
   },
 };
 
+function readsCostData(text: string): boolean {
+  const imports = text.match(/from\s+"[^"]+"/g) ?? [];
+  return imports.some((imp) => COST_DATA.some((re) => re.test(imp)));
+}
+
 function costRouteFiles(): string[] {
   return readdirSync(ROUTES)
     .filter((f) => f.endsWith(".ts"))
-    .filter((f) => {
-      const text = readFileSync(join(ROUTES, f), "utf8");
-      const imports = text.match(/from\s+"[^"]+"/g) ?? [];
-      return imports.some((imp) => COST_DATA.some((re) => re.test(imp)));
-    });
+    .filter((f) => readsCostData(readFileSync(join(ROUTES, f), "utf8")));
+}
+
+/** HttpApi domain modules (`http/domains/*.ts`) that reach cost data. */
+function costDomainFiles(): string[] {
+  return readdirSync(DOMAINS_DIR)
+    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => readsCostData(readFileSync(join(DOMAINS_DIR, f), "utf8")));
 }
 
 /** The names `api/index.ts` imports a route module under. */
@@ -102,8 +111,20 @@ describe("cost routes run inside the caller's cost visibility", () => {
   const files = costRouteFiles();
 
   it("finds the cost routes (sanity)", () => {
+    const all = [...files, ...costDomainFiles()];
     for (const f of ["costs.ts", "budgets.ts", "cost-reports.ts", "credits.ts", "commitments.ts"]) {
-      expect(files).toContain(f);
+      expect(all).toContain(f);
+    }
+  });
+
+  it("serves every HttpApi cost domain through OrgAuth", () => {
+    // `OrgAuthLive` resolves the caller's cost visibility and runs the handler
+    // inside it, exactly as `costVisibilityMiddleware` does on the Hono tree;
+    // a cost domain served through anything else would read unscoped.
+    for (const f of costDomainFiles()) {
+      const text = readFileSync(join(DOMAINS_DIR, f), "utf8");
+      expect(text, f).toContain(".middleware(OrgAuth)");
+      expect(text, f).not.toContain(".middleware(SessionAuth)");
     }
   });
 

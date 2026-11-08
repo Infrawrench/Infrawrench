@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { httpApiMiddleware, makeHttpApiHandler } from "../http/server";
+import { DOMAINS } from "../http/domains";
+import { MiddlewareLive } from "../http/middleware-live";
 import { costVisibilityRoutes } from "./routes/cost-visibility";
 import { sharingRoutes } from "./routes/sharing";
 import {
@@ -90,7 +93,6 @@ import { rightsizingRoutes } from "./routes/rightsizing";
 import { priceCatalogRoutes } from "./routes/price-catalog";
 import { costIngestRoutes } from "./routes/cost-ingest";
 import { pageRoutes } from "./routes/pages";
-import { budgetRoutes } from "./routes/budgets";
 import { metricAlertRoutes } from "./routes/metric-alerts";
 import { changeFreezeRoutes } from "./routes/change-freezes";
 import { tagPolicyRoutes } from "./routes/tag-policy";
@@ -209,6 +211,10 @@ const api = new Hono();
 // `onError` synthesizes) carries the baseline headers. `prodApp` in server.ts
 // mounts the same middleware for static and SPA responses.
 api.use("*", securityHeaders());
+
+// Every route already on HttpApi (`http/domains.ts`), ahead of the Hono routes
+// below; a request no domain routes carries on down this stack untouched.
+api.use("*", httpApiMiddleware(makeHttpApiHandler(DOMAINS, MiddlewareLive)));
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -494,7 +500,6 @@ orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/idle-findings", idleFindingRoutes);
 orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/price-catalog", priceCatalogRoutes);
-orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/metric-alerts", metricAlertRoutes);
 orgScoped.route("/change-freezes", changeFreezeRoutes);
 orgScoped.route("/tag-policy", tagPolicyRoutes);

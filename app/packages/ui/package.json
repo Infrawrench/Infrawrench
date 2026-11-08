@@ -44,6 +44,11 @@
       "import": "./dist/cost/config.js",
       "require": "./dist/cost/config.cjs"
     },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "import": "./dist/schemas.js",
+      "require": "./dist/schemas.cjs"
+    },
     "./cost-reports": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -142,6 +147,7 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "@popperjs/core": "^2.11.8",
+    "effect": "catalog:",
     "fzstd": "^0.1.1",
     "gt-react": "^11.1.6",
     "react": "^19.2.8",

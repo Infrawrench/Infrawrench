@@ -1,26 +1,27 @@
 import { createMiddleware } from "hono/factory";
-import type { MiddlewareHandler } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import type { Context, MiddlewareHandler } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { setCookie } from "hono/cookie";
+import { Cause, Exit, Option, type Effect } from "effect";
 import { eq, and } from "drizzle-orm";
-import { workos } from "../auth/workos";
-import {
-  agentAuthResult,
-  authenticateApiRequest,
-  verifyWorkosAccessToken,
-  type WorkosAccessTokenClaims,
-} from "../auth/api-auth";
-import { effectivePermissions } from "../auth/effective-permissions";
-import { agentRouteDenial, apiKeyRouteDenial } from "../auth/api-key-route-policy";
+import type { WorkosAccessTokenClaims } from "../auth/api-auth";
 import { runWithAuditPrincipal } from "../services/audit-context";
 import { db } from "../db/client";
-import { users, organizationMembers, organizations } from "../db/schema";
+import { organizationMembers, organizations } from "../db/schema";
+import type { ResolvedRole, ActiveElevation } from "@infrawrench/server-core/permissions";
 import {
-  type ResolvedRole,
-  type ActiveElevation,
-  resolveEffectivePermissions,
-} from "@infrawrench/server-core/permissions";
-import { resolveAgentPrincipal } from "@infrawrench/server-core/trials/principal";
-import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/identity";
+  authenticateAgent,
+  authenticateApiKey,
+  authenticatePerson,
+  ensureUserFromClaims,
+  requireMembership,
+  resolvePersonPermissions,
+  SESSION_COOKIE,
+  SESSION_COOKIE_MAX_AGE,
+  type OrgCaller,
+} from "../http/auth";
+import type { HttpFailure } from "../http/errors";
+import { runFromLegacyExit } from "../http/legacy";
 
 export interface AuthSession {
   userId: string;
@@ -81,118 +82,69 @@ declare module "hono" {
 }
 
 /**
+ * The Hono side of the auth chain, while routes are still moving to HttpApi.
+ *
+ * Each middleware is an adapter over the matching Effect step in
+ * `http/auth.ts`, which is the one implementation; the Effect middleware runs
+ * the same steps for the routes already on HttpApi. Keep any change to who may
+ * call the API in `http/auth.ts`.
+ */
+async function runStep<A>(
+  c: Context,
+  step: Effect.Effect<A, HttpFailure>,
+): Promise<{ ok: true; value: A } | { ok: false; response: Response }> {
+  const exit = await runFromLegacyExit(step);
+  if (Exit.isSuccess(exit)) return { ok: true, value: exit.value };
+  const failure = Cause.findErrorOption(exit.cause);
+  if (Option.isSome(failure)) {
+    return {
+      ok: false,
+      response: c.json(failure.value.body, failure.value.status as ContentfulStatusCode),
+    };
+  }
+  throw Cause.squash(exit.cause);
+}
+
+function setRefreshedSession(c: Context, sealed: string | undefined): void {
+  if (!sealed) return;
+  setCookie(c, SESSION_COOKIE, sealed, {
+    httpOnly: true,
+    secure: process.env["NODE_ENV"] === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_COOKIE_MAX_AGE,
+  });
+}
+
+function setOrgCaller(c: Context, caller: OrgCaller): void {
+  c.set("session", caller.session);
+  c.set("organizationId", caller.organizationId);
+  c.set("permissions", caller.permissions);
+  c.set("role", caller.role);
+  c.set("elevations", caller.elevations);
+  if (caller.apiKey) {
+    const { id, scopes, agentRegistrationId } = caller.apiKey;
+    c.set("apiKey", {
+      id,
+      scopes,
+      ...(agentRegistrationId === undefined ? {} : { agentRegistrationId }),
+    });
+  }
+}
+
+/**
  * Validates WorkOS session cookie and auto-provisions users in the DB.
  * Does NOT resolve an organization: use orgMiddleware for org-scoped routes.
  */
 export const sessionMiddleware = createMiddleware(async (c, next) => {
-  const cookieValue = getCookie(c, "wos-session");
-  if (!cookieValue) {
-    const bearer = c.req.header("authorization");
-    if (bearer?.startsWith("Bearer ")) {
-      // On the org tree `agentOrgMiddleware` has already verified this exact
-      // token and stashed the claims (null = failed verification); reuse them
-      // rather than paying the JWKS signature check twice per request.
-      const stashed = c.get("bearerClaims");
-      const claims =
-        stashed !== undefined ? stashed : await verifyWorkosAccessToken(bearer.slice(7));
-      if (!claims?.sub) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      // An agent-auth token's `sub` is a registration id. Handing it to
-      // `ensureUserFromClaims` would mint a `users` row keyed by that id: a
-      // principal nobody created, holding whatever the row's org membership
-      // later granted. Refuse before provisioning, and say why: this group is
-      // the non-org surface (profile, MFA, org creation, admin), which is
-      // people-only by design, exactly as it is for `iwk_` API keys.
-      //
-      // The shape check runs FIRST and unconditionally, because it is the only
-      // one that covers a *revoked or reaped* registration: `resolveAgentPrincipal`
-      // answers null for both, and reading that as "then it must be a person"
-      // is exactly how the phantom row gets minted. The table lookup after it
-      // catches any registration id that is not UUID-shaped, and is skipped
-      // when the agent middleware already did it, or for `user_`-prefixed subs
-      // (WorkOS's user-id shape, which no registration can have).
-      const agentShaped = looksLikeAgentRegistrationId(claims.sub);
-      if (
-        agentShaped ||
-        (stashed === undefined &&
-          !claims.sub.startsWith("user_") &&
-          (await resolveAgentPrincipal(claims.sub)))
-      ) {
-        return c.json(
-          {
-            error:
-              "Agent credentials cannot be used here. This endpoint acts on a person's account.",
-          },
-          403,
-        );
-      }
-      const user = await ensureUserFromClaims(claims.sub, claims.email);
-      if (!user) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      c.set("session", {
-        userId: user.id,
-        email: user.email,
-        ...(typeof claims.sid === "string" ? { sessionId: claims.sid } : {}),
-      });
-      return next();
-    }
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const cookiePassword = process.env["WORKOS_COOKIE_PASSWORD"];
-  if (!cookiePassword) {
-    throw new Error("WORKOS_COOKIE_PASSWORD is required");
-  }
-
-  try {
-    const session = workos.userManagement.loadSealedSession({
-      sessionData: cookieValue,
-      cookiePassword,
-    });
-
-    const authResult = await session.authenticate();
-
-    if (!authResult.authenticated) {
-      try {
-        const refreshResult = await session.refresh();
-        if (!refreshResult.authenticated) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
-        if (refreshResult.sealedSession) {
-          setCookie(c, "wos-session", refreshResult.sealedSession, {
-            httpOnly: true,
-            secure: process.env["NODE_ENV"] === "production",
-            sameSite: "lax",
-            path: "/",
-            maxAge: 60 * 60 * 24 * 400,
-          });
-        }
-        const user = refreshResult.user;
-        await provisionUser(user);
-        c.set("session", {
-          userId: user.id,
-          email: user.email,
-          sessionId: refreshResult.sessionId,
-        });
-        return next();
-      } catch {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-    }
-
-    const user = authResult.user;
-    await provisionUser(user);
-    c.set("session", {
-      userId: user.id,
-      email: user.email,
-      sessionId: authResult.sessionId,
-    });
-    return next();
-  } catch {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  const result = await runStep(
+    c,
+    authenticatePerson({ raw: c.req.raw, orgId: c.req.param("orgId") }, c.get("bearerClaims")),
+  );
+  if (!result.ok) return result.response;
+  setRefreshedSession(c, result.value.refreshedSession);
+  c.set("session", result.value.session);
+  return next();
 });
 
 /**
@@ -201,282 +153,76 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
  * Must be used AFTER sessionMiddleware.
  */
 export const orgMiddleware = createMiddleware(async (c, next) => {
-  const orgId = c.req.param("orgId");
-  if (!orgId) {
-    return c.json({ error: "Missing organization ID" }, 400);
-  }
-
-  const session = c.get("session");
-  const membership = await db
-    .select({ role: organizationMembers.role })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, session.userId),
-        eq(organizationMembers.organizationId, orgId),
-      ),
-    )
-    .limit(1);
-
-  if (membership.length === 0) {
-    return c.json({ error: "Forbidden" }, 403);
-  }
-
-  c.set("organizationId", orgId);
+  const result = await runStep(c, requireMembership(c.get("session").userId, c.req.param("orgId")));
+  if (!result.ok) return result.response;
+  c.set("organizationId", result.value);
   return next();
 });
 
 /**
- * Populates `permissions` (and `role`, where applicable) on the Hono context
- * by resolving the current principal's effective permissions in the org.
- * Must run after sessionMiddleware + orgMiddleware on session-authed routes,
- * or be called manually for bearer-token endpoints.
- *
- * `permissions` here is the caller's role **union any live break-glass grant**:
- * the resolver folds those in for session principals. That is what makes an
- * elevation reach every surface at once (HTTP, the WebSocket gateway through
- * `POST /ws-token`, chat, MCP tools) instead of each having to remember.
+ * Populates `permissions`, `role` and `elevations`: the principal's role in
+ * the org **union any live break-glass grant**, which is what makes an
+ * elevation reach every surface at once.
  */
 export const permissionsMiddleware = createMiddleware(async (c, next) => {
-  const session = c.get("session");
-  const orgId = c.get("organizationId");
-  const access = await resolveEffectivePermissions(orgId, {
-    kind: "user",
-    userId: session.userId,
-  });
-  c.set("permissions", access.permissions);
-  c.set("role", access.role);
-  c.set("elevations", access.elevations);
+  const result = await runStep(
+    c,
+    resolvePersonPermissions(c.get("session").userId, c.get("organizationId")),
+  );
+  if (!result.ok) return result.response;
+  c.set("permissions", result.value.permissions);
+  c.set("role", result.value.role);
+  c.set("elevations", result.value.elevations);
   return next();
 });
 
 /**
- * Authenticate an `iwk_` API key against the org in the URL, and leave the
- * context in exactly the shape the three middlewares above would have left it.
- *
- * This is the whole of the widening. It changes *who may present credentials*
- * to the org tree and nothing else: every route keeps the `requirePermission`
- * call it already had, and the `permissions` this sets are the key's scopes
- * intersected with its owner's role right now, so a key can never do something
- * its holder could not do while signed in. See `auth/effective-permissions.ts`.
- *
- * A no-op (straight through to `sessionMiddleware`) for any request that
- * isn't presenting an `iwk_` bearer token. Session cookies and WorkOS access
- * tokens take the identical path they take today.
- *
- * Order matters and is deliberate: org pinning is checked before the route
- * policy, and both before any permission resolution, so a key aimed at the
- * wrong org learns nothing about the org it aimed at.
+ * Authenticate an `iwk_` API key against the org in the URL, leaving the
+ * context in exactly the shape the three middlewares above would. A no-op for
+ * any request not presenting an `iwk_` bearer token.
  */
 export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
-  const bearer = c.req.header("authorization");
-  if (!bearer?.startsWith("Bearer ") || !bearer.slice(7).startsWith("iwk_")) return next();
-
-  const orgId = c.req.param("orgId");
-  if (!orgId) return c.json({ error: "Missing organization ID" }, 400);
-
-  // Fails closed for an unknown, revoked, expired or past-sunset key, and for
-  // one whose owner no longer has a membership row in the key's own org.
-  const auth = await authenticateApiRequest(c.req.raw);
-  if (!auth?.apiKeyId) return c.json({ error: "Unauthorized" }, 401);
-
-  // A key is pinned to the org it was minted in. Presenting it against another
-  // org's URL is a 403 whatever the key holds: there is no cross-org key.
-  if (auth.organizationId !== orgId) {
-    return c.json({ error: "API key belongs to a different organization" }, 403);
-  }
-
-  const denial = apiKeyRouteDenial(c.req.method, new URL(c.req.url).pathname);
-  if (denial) return c.json({ error: denial }, 403);
-
-  // The owner's `users` row, which is also what `AuthSession.email` needs. A
-  // deleted user cascades away their keys and memberships, so this is belt and
-  // braces, but it is the belt that is actually checked, rather than a
-  // property of a foreign key three tables away.
-  const [owner] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, auth.userId))
-    .limit(1);
-  if (!owner) return c.json({ error: "Unauthorized" }, 401);
-
-  // Always an array, never `undefined`: `[]` means "a key holding no scopes"
-  // and resolves to no permissions, whereas `undefined` would mean "not a key"
-  // and would hand over the owner's whole role.
-  const scopes = auth.scopes ?? [];
-  const permissions = await effectivePermissions({
-    userId: auth.userId,
-    organizationId: orgId,
-    scopes,
-  });
-
-  c.set("session", { userId: auth.userId, email: owner.email });
-  c.set("organizationId", orgId);
-  c.set("permissions", permissions);
-  // A key holds no role. `role` exists so a handler can ask "is the caller an
-  // owner" (routes/team.ts does, for owner-only mutations); answering `null`
-  // makes those fail closed. The routes that ask are denied to keys anyway:
-  // this is the second lock on the same door.
-  c.set("role", null);
-  // Break-glass never reaches a key; `effectivePermissions` resolves key
-  // principals with `includeElevation: false`, so there is nothing to report.
-  c.set("elevations", []);
-  c.set("apiKey", { id: auth.apiKeyId, scopes });
-
-  return runWithAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId }, next);
+  const result = await runStep(
+    c,
+    authenticateApiKey({ raw: c.req.raw, orgId: c.req.param("orgId") }),
+  );
+  if (!result.ok) return result.response;
+  const caller = result.value;
+  if (!caller) return next();
+  setOrgCaller(c, caller);
+  return caller.auditPrincipal ? runWithAuditPrincipal(caller.auditPrincipal, next) : next();
 });
 
 /**
- * Authenticate an agent credential against the org tree.
- *
- * Deliberately a sibling of {@link apiKeyOrgMiddleware} rather than a branch
- * inside it. The two principals differ in the places that matter: an agent is
- * pinned to its org by a registration row rather than by a key row, its
- * permissions are resolved by `resolveAgentPrincipal` rather than by
- * intersecting stored scopes, and its denial policy is its own, and folding
- * them together would mean one function with two of everything.
- *
- * The context it leaves behind is identical in shape to both other paths, so
- * every route's `requirePermission` gate applies unchanged.
+ * Authenticate an agent credential against the org tree; same contract as the
+ * key middleware, with its own pinning and denial table.
  */
 export const agentOrgMiddleware = createMiddleware(async (c, next) => {
-  const bearer = c.req.header("authorization");
-  if (!bearer?.startsWith("Bearer ")) return next();
-  const token = bearer.slice(7);
-  // An `iwk_` key is never ours to handle.
-  if (token.startsWith("iwk_")) return next();
-
-  const orgId = c.req.param("orgId");
-  if (!orgId) return next();
-
-  let auth: Awaited<ReturnType<typeof authenticateApiRequest>> = null;
-  if (token.startsWith("iwa_")) {
-    // Our own opaque credential: `authenticateApiRequest`'s `iwa_` branch is
-    // the whole resolution. An unknown or revoked credential 401s here rather
-    // than falling through to `sessionMiddleware`, which could only fail to
-    // parse it as a JWT and answer the same 401 less accurately.
-    auth = await authenticateApiRequest(c.req.raw);
-    if (!auth?.agentRegistrationId) return c.json({ error: "Unauthorized" }, 401);
-  } else {
-    // A WorkOS agent token is a JWT, so it cannot be recognised by prefix.
-    // Verify it once and stash the claims: `sessionMiddleware` runs next on
-    // every non-agent bearer request, and without the stash this hottest
-    // authenticated path would pay the JWKS signature check twice.
-    const claims = await verifyWorkosAccessToken(token);
-    c.set("bearerClaims", claims ?? null);
-    // A `user_`-prefixed sub is a person (registration ids are bare UUIDs), so
-    // the registration lookup is skipped for the common case entirely.
-    if (!claims?.sub || claims.sub.startsWith("user_")) return next();
-    auth = await agentAuthResult(claims.sub, claims.act?.sub);
-    if (!auth) {
-      // A registration-shaped sub that resolves to nothing is a revoked or
-      // reaped agent whose token is still cryptographically valid. Answer 401
-      // here rather than falling through: downstream, `ensureUserFromClaims`
-      // would happily provision a person keyed by the registration id.
-      if (looksLikeAgentRegistrationId(claims.sub)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      return next();
-    }
+  const result = await runStep(
+    c,
+    authenticateAgent({ raw: c.req.raw, orgId: c.req.param("orgId") }),
+  );
+  if (!result.ok) return result.response;
+  const step = result.value;
+  if (step.kind === "pass") {
+    if (step.bearerClaims !== undefined) c.set("bearerClaims", step.bearerClaims);
+    return next();
   }
-  if (!auth.agentRegistrationId) return next();
-
-  // An agent is bound to the org its registration opened (or was merged into).
-  // Presenting it against another org's URL is a 403 whatever it holds.
-  if (auth.organizationId !== orgId) {
-    return c.json({ error: "This agent belongs to a different organization" }, 403);
-  }
-
-  const denial = agentRouteDenial(c.req.method, new URL(c.req.url).pathname);
-  if (denial) return c.json({ error: denial }, 403);
-
-  const [actor] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, auth.userId))
-    .limit(1);
-  if (!actor) return c.json({ error: "Unauthorized" }, 401);
-
-  c.set("session", { userId: auth.userId, email: actor.email });
-  c.set("organizationId", orgId);
-  // Already final: intersected with the claimer's role and the agent ceiling
-  // by `resolveAgentPrincipal`, so there is nothing left to narrow here.
-  c.set("permissions", auth.scopes ?? []);
-  // Same reasoning as the key path: an agent holds no role, and answering
-  // `null` makes every "is the caller an owner" check fail closed.
-  c.set("role", null);
-  c.set("elevations", []);
-  c.set("apiKey", {
-    id: auth.agentRegistrationId,
-    scopes: auth.scopes ?? [],
-    agentRegistrationId: auth.agentRegistrationId,
-  });
-
-  return runWithAuditPrincipal({ apiKeyId: auth.agentRegistrationId, userId: auth.userId }, next);
+  setOrgCaller(c, step.caller);
+  return step.caller.auditPrincipal
+    ? runWithAuditPrincipal(step.caller.auditPrincipal, next)
+    : next();
 });
 
 /**
  * Run `mw` only when {@link apiKeyOrgMiddleware} has not already authenticated
- * the request.
- *
- * Wrapping rather than editing the three middlewares keeps the existing path
- * byte-identical: for a cookie or WorkOS-bearer request `c.get("apiKey")` is
- * undefined and `mw` is invoked with the same context and the same `next`, in
- * the same order Hono would have invoked it directly. The wrapper returns `mw`'s
- * result untouched, so a 401/403 Response still short-circuits the chain.
+ * the request; a 401/403 Response from `mw` still short-circuits the chain.
  */
 export function unlessApiKey(mw: MiddlewareHandler): MiddlewareHandler {
   return createMiddleware((c, next) => (c.get("apiKey") ? next() : mw(c, next)));
 }
 
-export async function ensureUserFromClaims(
-  userId: string,
-  claimEmail: string | undefined,
-): Promise<{ id: string; email: string } | null> {
-  const existing = await db
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (existing[0]) return existing[0];
-
-  // Access-token JWTs may not include email: fall back to the WorkOS user
-  // endpoint so we can provision a new row.
-  let email = claimEmail;
-  let firstName: string | null = null;
-  let lastName: string | null = null;
-  if (!email) {
-    try {
-      const u = await workos.userManagement.getUser(userId);
-      email = u.email;
-      firstName = u.firstName ?? null;
-      lastName = u.lastName ?? null;
-    } catch (err) {
-      console.error(`[auth] WorkOS getUser failed for ${userId}:`, err);
-      return null;
-    }
-  }
-  if (!email) return null;
-
-  await provisionUser({ id: userId, email, firstName, lastName });
-  return { id: userId, email };
-}
-
-async function provisionUser(user: {
-  id: string;
-  email: string;
-  firstName?: string | null;
-  lastName?: string | null;
-}) {
-  await db
-    .insert(users)
-    .values({
-      id: user.id,
-      email: user.email,
-      displayName: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || null,
-    })
-    .onConflictDoNothing();
-}
+export { ensureUserFromClaims };
 
 /**
  * Returns true if the user already has a membership row in the given org.

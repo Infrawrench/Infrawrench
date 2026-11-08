@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTestApp } from "./test-utils";
+import { buildTestApi } from "@/http/testing";
 
 // Services are mocked: they reach the Drizzle client, which throws at import
 // without DATABASE_URL. This file is about the note route's transport
 // contract: permissions, validation, status codes and audit.
-vi.mock("../../../services/budgets", () => ({
+vi.mock("@/services/budgets", () => ({
   createBudget: vi.fn(),
   getBudgetWithStatus: vi.fn(),
   listBudgetEvents: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("../../../services/budgets", () => ({
 
 const mockNote = vi.fn();
 class FakeBudgetAlertNoteError extends Error {}
-vi.mock("../../../services/budget-alert-notes", () => ({
+vi.mock("@/services/budget-alert-notes", () => ({
   BudgetAlertNoteError: FakeBudgetAlertNoteError,
   noteBudgetAlertEvent: (...a: unknown[]) => mockNote(...a),
 }));
@@ -26,15 +26,16 @@ vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
 }));
 
 const mockLogAudit = vi.fn();
-vi.mock("../../../services/audit", () => ({
+vi.mock("@/services/audit", () => ({
   logAudit: (...a: unknown[]) => mockLogAudit(...a),
 }));
 
-const { budgetRoutes } = await import("@/api/routes/budgets");
+const { budgetsDomain } = await import("@/http/domains/budgets");
+const basePath = "/api/org/org-1/budgets";
 
 const path = "/b1/events/e1/note";
 const post = (body: unknown, permissions?: string[]) =>
-  buildTestApp(budgetRoutes, permissions).request(path, {
+  buildTestApi(budgetsDomain, { basePath, ...(permissions ? { permissions } : {}) }).request(path, {
     method: "POST",
     body: JSON.stringify(body),
   });

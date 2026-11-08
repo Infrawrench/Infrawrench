@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildTestApp } from "./test-utils";
+import { buildTestApi } from "@/http/testing";
 
 // The service is mocked (it reaches the Drizzle client). These tests are about
 // the transport contract for the budget shapes added with hierarchies, usage
@@ -12,7 +12,7 @@ const mockUpdate = vi.fn();
 
 class FakeBudgetValidationError extends Error {}
 
-vi.mock("../../../services/budgets", () => ({
+vi.mock("@/services/budgets", () => ({
   BudgetValidationError: FakeBudgetValidationError,
   createBudget: (...args: unknown[]) => mockCreate(...args),
   updateBudget: (...args: unknown[]) => mockUpdate(...args),
@@ -25,8 +25,8 @@ vi.mock("../../../services/budgets", () => ({
 class FakeSavedFilterError extends Error {}
 // The routes also mount the alert-note endpoint; its service reaches the
 // database and chat clients, none of which these tests exercise.
-vi.mock("../../../services/audit", () => ({ logAudit: vi.fn() }));
-vi.mock("../../../services/budget-alert-notes", () => ({
+vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
+vi.mock("@/services/budget-alert-notes", () => ({
   BudgetAlertNoteError: class extends Error {},
   noteBudgetAlertEvent: vi.fn(),
 }));
@@ -34,8 +34,9 @@ vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
   SavedCostFilterResolutionError: FakeSavedFilterError,
 }));
 
-const { budgetRoutes } = await import("@/api/routes/budgets");
-const buildApp = () => buildTestApp(budgetRoutes);
+const { budgetsDomain } = await import("@/http/domains/budgets");
+const basePath = "/api/org/org-1/budgets";
+const buildApp = () => buildTestApi(budgetsDomain, { basePath });
 
 const post = (body: unknown) =>
   buildApp().request("/", {

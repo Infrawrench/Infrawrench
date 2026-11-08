@@ -55,6 +55,7 @@
     "cloudflare": "~6.4.0",
     "dockerode": "^5.0.1",
     "drizzle-orm": "^0.45.2",
+    "effect": "catalog:",
     "gt-react": "^11.1.6",
     "hono": "^4.13.7",
     "jose": "^6.2.8",

@@ -1,0 +1,148 @@
+/**
+ * The HttpApi middlewares every Infrawrench group is served through.
+ *
+ * - {@link OrgAuth}: the org tree (`/api/org/:orgId/...`). Authenticates,
+ *   resolves cost visibility and the sharing principal, gates on the
+ *   endpoint's {@link RequiredPermission}, and provides {@link OrgPrincipal}
+ *   plus the request's AsyncLocalStorage scopes.
+ * - {@link SessionAuth}: the user-scoped surface. A person only.
+ * - {@link RequestErrors}: on every group, outermost. Renders schema failures
+ *   as `{ error, issues }` 400s and defects the way the Hono `onError` did.
+ *
+ * This module holds the middleware tags, the gate shared with tests and the
+ * error renderer, and stays light: domain modules import it. The auth-backed
+ * implementations live in `./middleware-live.ts`.
+ *
+ * Refusals from the auth chain are returned as responses rather than declared
+ * as endpoint errors, so the generated document lists the statuses each
+ * operation chooses to, as the hand-written one did.
+ */
+import { randomUUID } from "node:crypto";
+import { Cause, Context, Effect, Layer, SchemaIssue } from "effect";
+import { HttpServerResponse } from "effect/http";
+import { HttpApiError, HttpApiMiddleware, type HttpApiEndpoint } from "effect/http-api";
+import { HTTPException } from "hono/http-exception";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import {
+  GATEWAY_ONLY_HEADER,
+  isGatewayOnlyError,
+} from "@infrawrench/server-core/runtime/gateway-only";
+import type { AuditPrincipal } from "../services/audit-context";
+import {
+  ObjectAccessDeniedError,
+  ObjectNotVisibleError,
+  SharingInputError,
+  type SharingPrincipal,
+} from "../services/sharing-context";
+import { InvalidRequestMessage, RequiredPermission } from "./annotations";
+import { HttpFailure } from "./errors";
+import { withLegacyScopes } from "./legacy";
+import {
+  missingPermission,
+  OrgPrincipal,
+  type OrgPrincipalValue,
+  type SessionPrincipal,
+} from "./principal";
+
+export class OrgAuth extends HttpApiMiddleware.Service<OrgAuth, { provides: OrgPrincipal }>()(
+  "infrawrench/http/OrgAuth",
+) {}
+
+export class SessionAuth extends HttpApiMiddleware.Service<
+  SessionAuth,
+  { provides: SessionPrincipal }
+>()("infrawrench/http/SessionAuth") {}
+
+export class RequestErrors extends HttpApiMiddleware.Service<RequestErrors>()(
+  "infrawrench/http/RequestErrors",
+) {}
+
+export const json = (body: unknown, status: number) =>
+  HttpServerResponse.jsonUnsafe(body, { status });
+
+export const failureResponse = (failure: HttpFailure) => json(failure.body, failure.status);
+
+/**
+ * The org tree once the caller is known: gate on the endpoint's
+ * {@link RequiredPermission}, then run it with {@link OrgPrincipal} and the
+ * caller's AsyncLocalStorage scopes. Shared by `OrgAuthLive` and the route
+ * tests' fixed caller, so a test's 403 is the real gate's.
+ */
+export const serveAsOrgCaller = <E, R>(
+  httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+  endpoint: HttpApiEndpoint.Top,
+  caller: {
+    readonly principal: OrgPrincipalValue;
+    readonly sharing: SharingPrincipal | undefined;
+    readonly auditPrincipal: AuditPrincipal | undefined;
+  },
+): Effect.Effect<HttpServerResponse.HttpServerResponse, E, Exclude<R, OrgPrincipal>> => {
+  const required = Context.get(endpoint.annotations, RequiredPermission);
+  if (required !== undefined && !hasPermission(caller.principal.permissions, required)) {
+    return Effect.succeed(json({ error: missingPermission(required).error }, 403));
+  }
+  return httpEffect.pipe(
+    Effect.provideService(OrgPrincipal, caller.principal),
+    withLegacyScopes({
+      costVisibility: caller.principal.costVisibility,
+      sharing: caller.sharing,
+      auditPrincipal: caller.auditPrincipal,
+    }),
+  );
+};
+
+const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
+
+/**
+ * A defect as the old `onError` answered it. Object sharing throws from the
+ * services the routes and tools share: an object below `viewer` is a 404 so
+ * its existence does not leak, one the caller can see but not change a 403.
+ */
+export function renderDefect(defect: unknown): HttpServerResponse.HttpServerResponse {
+  if (defect instanceof HttpFailure) return failureResponse(defect);
+  if (defect instanceof HTTPException) return json({ error: defect.message }, defect.status);
+  if (defect instanceof ObjectNotVisibleError) return json({ error: "Not found" }, 404);
+  if (defect instanceof ObjectAccessDeniedError) return json({ error: defect.message }, 403);
+  if (defect instanceof SharingInputError) return json({ error: defect.message }, 400);
+  // Only on the edge, where Node-only libraries are stubs: the edge router
+  // sees the header and replays the request on the Node gateway.
+  if (isGatewayOnlyError(defect)) {
+    return HttpServerResponse.setHeader(
+      json({ error: "This request could not be completed here. Please try again." }, 503),
+      GATEWAY_ONLY_HEADER,
+      "1",
+    );
+  }
+  // In production the message and stack stay in the log: they leak schema, paths, secrets.
+  const correlationId = randomUUID();
+  console.error(`[api] uncaught error correlationId=${correlationId}:`, defect);
+  if (process.env["NODE_ENV"] === "production") {
+    return json({ error: "Internal server error", correlationId }, 500);
+  }
+  const message = defect instanceof Error ? defect.message : String(defect);
+  return json({ error: message, correlationId }, 500);
+}
+
+export const RequestErrorsLive = Layer.succeed(RequestErrors)((httpEffect, { endpoint }) =>
+  httpEffect.pipe(
+    Effect.catchCause((cause) => {
+      // Typed failures and interruptions are the router's to encode.
+      if (Cause.hasFails(cause) || Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+      const found = Cause.findDefect(cause);
+      const defect = found._tag === "Success" ? found.success : Cause.squash(cause);
+      if (HttpApiError.HttpApiSchemaError.is(defect) && defect.kind !== "Body") {
+        if (defect.kind === "ResponseHeaders") return Effect.succeed(renderDefect(defect));
+        return Effect.succeed(
+          json(
+            {
+              error: Context.get(endpoint.annotations, InvalidRequestMessage),
+              ...formatIssues(defect.cause.issue),
+            },
+            400,
+          ),
+        );
+      }
+      return Effect.succeed(renderDefect(defect));
+    }),
+  ),
+);

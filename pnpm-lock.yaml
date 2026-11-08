@@ -133,6 +133,9 @@ importers:
       dockerode:
         specifier: ^5.0.1
         version: 5.0.1(supports-color@10.2.2)
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@10.2.2)
@@ -1683,6 +1686,9 @@ importers:
       '@popperjs/core':
         specifier: ^2.11.8
         version: 2.11.8
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
       fzstd:
         specifier: ^0.1.1
         version: 0.1.1
@@ -1856,6 +1862,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
       gt-react:
         specifier: ^11.1.6
         version: 11.1.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

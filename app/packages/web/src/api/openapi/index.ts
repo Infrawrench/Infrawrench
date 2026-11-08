@@ -4,6 +4,8 @@ import { buildDynamicEnums } from "./dynamic";
 import { injectInternalMarkers, toPublicDocument } from "./public-spec";
 import { API_VERSION } from "./version";
 import type { BuildContext } from "./context";
+import { buildOpenApiFragment, mergeOpenApiFragment } from "../../http/openapi";
+import { DOMAINS } from "../../http/domains";
 
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
 
@@ -36,7 +38,6 @@ import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerExtendedSupportPaths } from "./paths/extended-support";
 import { registerSeatPaths } from "./paths/seats";
-import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
@@ -210,7 +211,6 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerRightsizingPaths(ctx);
   registerExtendedSupportPaths(ctx);
   registerSeatPaths(ctx);
-  registerBudgetPaths(ctx);
   registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
   registerTagPolicyPaths(ctx);
@@ -718,6 +718,9 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
     ],
   });
 
+  // The routes already on HttpApi document themselves; see `http/openapi.ts`.
+  mergeOpenApiFragment(doc, buildOpenApiFragment(DOMAINS));
+
   injectOperationIds(doc);
   injectRequiredPermissions(doc);
   injectInternalMarkers(doc);
@@ -751,8 +754,15 @@ function injectRequiredPermissions(doc: { paths?: Record<string, unknown> }) {
       const op = pathItem[method];
       if (!op) continue;
       const key = `${method.toUpperCase()} ${lookupPath}`;
-      if (!(key in REQUIRED_PERMISSION)) continue;
-      const required = REQUIRED_PERMISSION[key];
+      // An HttpApi endpoint carries its gate as an annotation, already set here;
+      // the map is only for the routes still on Hono, and never both.
+      const annotated = op["x-required-permission"];
+      if (typeof annotated === "string" && key in REQUIRED_PERMISSION) {
+        throw new Error(
+          `${key} has a RequiredPermission annotation and a REQUIRED_PERMISSION entry`,
+        );
+      }
+      const required = typeof annotated === "string" ? annotated : REQUIRED_PERMISSION[key];
       if (required === null || required === undefined) continue;
       op["x-required-permission"] = required;
       const existingDesc = typeof op["description"] === "string" ? op["description"] : "";

@@ -98,6 +98,7 @@
     "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
     "dockerode": "^5.0.1",
+    "effect": "catalog:",
     "electron-updater": "^6.8.9",
     "ioredis": "^5.11.1",
     "kill-emudhra": "^0.1.1",
