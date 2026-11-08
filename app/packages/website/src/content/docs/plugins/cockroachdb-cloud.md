@@ -28,7 +28,7 @@ Use a **service account API key**.
 1. In CockroachDB Cloud, open **Organization > Access Management > Service Accounts** and create a service account.
 2. Give it the roles you need:
    - `CLUSTER_ADMIN` (or `CLUSTER_OPERATOR_WRITER`) at the organization scope to manage clusters, databases, SQL users, allowlists, backups and exports
-   - `BILLING_VIEWER` for cost data
+   - `BILLING_COORDINATOR` at the organization scope for cost data. The API reads invoices with `BILLING_COORDINATOR` or `CLUSTER_ADMIN`, not `BILLING_VIEWER`, which only shows billing in the console.
    - `ORG_ADMIN` to manage service accounts and API keys
 3. Create an API key for the account and copy its secret (it starts with `CCDB1_`).
 
