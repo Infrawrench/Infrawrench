@@ -118,8 +118,13 @@ jobs:
         with:
           workspaces: ci-runner
 
-      - name: Install cargo-wasix
-        run: cargo install cargo-wasix --version 0.1.34 --locked
+      # The WASIX toolchain links host build scripts with -fuse-ld=lld but
+      # does not ship the wrapper that flag looks for; the system lld is it.
+      - name: Install lld and cargo-wasix
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q lld
+          cargo install cargo-wasix --version 0.1.34 --locked
 
       - name: Build
         run: bash builtins/oxfmt/build.sh

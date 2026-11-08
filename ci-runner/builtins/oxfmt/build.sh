@@ -15,9 +15,13 @@
 # crates, whose newest tokio (1.47) is older than Oxc requires (^1.52.3), so
 # the swap is turned off and mainline crates are used. Mainline tokio
 # refuses `rt-multi-thread` on wasm unless built with `--cfg tokio_unstable`.
+# cargo-wasix only sets its own target features when RUSTFLAGS is unset, so
+# they are repeated here (atomics is what threads need).
 #
 # Needs: git, cargo-wasix (`cargo install cargo-wasix`; it installs the
-# WASIX toolchain on first use).
+# WASIX toolchain on first use), and on Linux `ld.lld` on PATH (the `lld`
+# package): the WASIX toolchain links host build scripts with
+# `-fuse-ld=lld` but does not ship the wrapper that flag looks for.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -35,7 +39,8 @@ out="$(out_dir builtin oxfmt "$OXFMT_VERSION")"
 
 (
   cd "$src" || exit 1
-  CARGO_WASIX_NO_REGISTRY_CONFIG=1 RUSTFLAGS="--cfg tokio_unstable" \
+  CARGO_WASIX_NO_REGISTRY_CONFIG=1 \
+    RUSTFLAGS="-C target-feature=+atomics,+simd128,+relaxed-simd,+extended-const --cfg tokio_unstable" \
     cargo wasix build --release -p oxfmt --bin oxfmt --no-default-features
 )
 cp "$src/target/wasm32-wasmer-wasi/release/oxfmt.wasm" "$out/module.wasm"
