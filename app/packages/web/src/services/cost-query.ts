@@ -1,6 +1,6 @@
 /**
  * Org-scoped cost query execution: shared by the HTTP routes
- * (api/routes/costs.ts) and the tool registry (tools/costs.ts) so the graph
+ * (http/domains/costs/) and the tool registry (tools/costs.ts) so the graph
  * API and the MCP/chat surface stay behaviourally identical.
  */
 import { strictlyVisibleAccountIds } from "@infrawrench/server-core/cost/visibility-context";

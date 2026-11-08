@@ -10,20 +10,23 @@
 // output.
 import { Effect, Option, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
-import type { MomentResponse } from "@infrawrench/client-core" with {
-  "resolution-mode": "import",
-};
+import type {
+  MomentEvent,
+  MomentIncidentSpan,
+  MomentResponse,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliFailure, CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
 import { halfWindow } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { spreadBody, wire } from "../effect/wire";
+import { knownOr, spreadBody, Unrecognized, wire } from "../effect/wire";
 import { c, safe } from "../output";
 
-// The feed and severity enums are what `buildMomentTimeline` and
-// `describeIncidentBadge` are typed over, so they decode as literals; a
-// feed client-core adds fails this build until it is listed here.
+// The feed, severity and impact enums decode with `knownOr`: a value a newer
+// server added renders the way the legacy fallbacks did (the feed under its
+// own name, the severity as info), and one client-core adds fails this build
+// until it is listed here.
 const FEEDS = [
   "changes",
   "statusIncidents",
@@ -49,12 +52,12 @@ const SEVERITY_STYLE: Record<
 
 const Event = Schema.Struct({
   id: Schema.String,
-  feed: Schema.Literals(FEEDS),
+  feed: knownOr(FEEDS),
   kind: Schema.String,
   timestamp: Schema.String,
   title: Schema.String,
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  severity: Schema.Literals(SEVERITIES),
+  severity: knownOr(SEVERITIES),
   resourceId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   resourceName: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
@@ -64,7 +67,7 @@ const Incident = Schema.Struct({
   pluginId: Schema.String,
   pluginName: Schema.String,
   title: Schema.String,
-  impact: Schema.Literals(["maintenance", "minor", "major", "critical"]),
+  impact: knownOr(["maintenance", "minor", "major", "critical"]),
   startedAt: Schema.String,
   resolvedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   url: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -90,6 +93,39 @@ const Moment = wire<MomentResponse>()(
   }),
 );
 type Event = typeof Event.Type;
+type Incident = typeof Incident.Type;
+
+/**
+ * The events and spans as `buildMomentTimeline` is typed to take them, with
+ * a way back to each decoded event. Neither function reads severity or impact,
+ * so an unknown one is projected to any known value. Feed is the comparator's
+ * tie-break (equal timestamps sort by feed order, unknown feeds last, then by
+ * id): an unknown feed is projected to the last known one and its id prefixed
+ * so it still sorts after that feed's events and among other unknowns by id.
+ */
+function timelineInput(
+  events: ReadonlyArray<Event>,
+  incidents: ReadonlyArray<Incident>,
+  lastFeed: MomentEvent["feed"],
+) {
+  const originals = new Map<MomentEvent, Event>();
+  const projected = events.map((event) => {
+    const unknownFeed = event.feed instanceof Unrecognized;
+    const entry: MomentEvent = {
+      ...event,
+      id: `${unknownFeed ? 1 : 0}:${event.id}`,
+      feed: event.feed instanceof Unrecognized ? lastFeed : event.feed,
+      severity: event.severity instanceof Unrecognized ? "info" : event.severity,
+    };
+    originals.set(entry, event);
+    return entry;
+  });
+  const spans = incidents.map((span): MomentIncidentSpan => ({
+    ...span,
+    impact: span.impact instanceof Unrecognized ? "minor" : span.impact,
+  }));
+  return { projected, spans, original: (entry: MomentEvent) => originals.get(entry) };
+}
 
 const stamp = (iso: string) => new Date(iso).toISOString().replace("T", " ").slice(0, 19);
 
@@ -142,10 +178,11 @@ export const moment = Command.make(
     }
     const response = yield* decodeBody(Moment, path)(body);
 
-    const { buildMomentTimeline, describeIncidentBadge, MOMENT_FEED_LABELS } =
+    const { buildMomentTimeline, describeIncidentBadge, MOMENT_FEED_IDS, MOMENT_FEED_LABELS } =
       yield* Effect.promise(() => import("@infrawrench/client-core"));
     const labels: Partial<Record<string, string>> = MOMENT_FEED_LABELS;
-    const feedLabel = (feed: string) => labels[feed] ?? safe(feed);
+    const feedLabel = (feed: string | Unrecognized) =>
+      feed instanceof Unrecognized ? safe(feed.raw) : (labels[feed] ?? safe(feed));
 
     yield* Print.line(
       `${c.bold(safe(org.displayName))} ${c.dim(`· ${stamp(response.from)} → ${stamp(response.to)} UTC (±${response.windowMinutes}m around ${stamp(response.at)})`)}`,
@@ -177,7 +214,12 @@ export const moment = Command.make(
       }
     }
 
-    const timeline = buildMomentTimeline(response.events, response.incidents);
+    const { projected, spans, original } = timelineInput(
+      response.events,
+      response.incidents,
+      MOMENT_FEED_IDS.at(-1) ?? "expiryAlerts",
+    );
+    const timeline = buildMomentTimeline(projected, spans);
     if (timeline.length === 0) {
       yield* Print.line();
       return yield* Print.line(
@@ -185,9 +227,14 @@ export const moment = Command.make(
       );
     }
 
-    const spansById = (ids: string[]) => response.incidents.filter((s) => ids.includes(s.id));
-    const line = (event: Event, incidentIds: string[], indent: string) => {
-      const style = SEVERITY_STYLE[event.severity];
+    const spansById = (ids: string[]) => spans.filter((s) => ids.includes(s.id));
+    const line = (entry: MomentEvent, incidentIds: string[], indent: string) => {
+      const event = original(entry);
+      if (!event) return [];
+      const style =
+        event.severity instanceof Unrecognized
+          ? SEVERITY_STYLE.info
+          : SEVERITY_STYLE[event.severity];
       const badge = describeIncidentBadge(spansById(incidentIds));
       const parts = [
         `${indent}${c.dim(stamp(event.timestamp).slice(11))} ${style.color(style.glyph)}`,
@@ -196,20 +243,20 @@ export const moment = Command.make(
       ];
       if (event.detail) parts.push(c.dim(`(${safe(event.detail)})`));
       if (badge) parts.push(c.yellow(`(${safe(badge)})`));
-      return parts.join(" ");
+      return [parts.join(" ")];
     };
 
     yield* Print.line();
     for (const item of timeline) {
       if (item.kind === "event") {
-        yield* Print.line(line(item.event, item.incidentIds, "  "));
+        for (const text of line(item.event, item.incidentIds, "  ")) yield* Print.line(text);
       } else {
         const first = item.events[0];
         yield* Print.line(
           `  ${c.dim(first ? stamp(first.timestamp).slice(11) : "")} ${c.dim("┌")} ${c.bold(`${item.events.length} events`)} on ${safe(item.resourceName ?? item.resourceId)}`,
         );
         for (const event of item.events) {
-          yield* Print.line(line(event, item.incidentIds, "    "));
+          for (const text of line(event, item.incidentIds, "    ")) yield* Print.line(text);
         }
       }
     }

@@ -13,7 +13,7 @@
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { minLength } from "@infrawrench/ui/schemas";
-import { RequiredPermission, SuccessDescription } from "../../annotations";
+import { DocumentedPermission, RequiredPermission, SuccessDescription } from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import {
   BadRequest,
@@ -25,6 +25,7 @@ import {
 } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { ChangeFreezeBlocked } from "../../schemas/change-freeze";
+import { ChangeCostBasis, DeploymentCostImpact } from "../../schemas/change-cost-impact";
 import { documentedAs, optionalRequestBody } from "../../schemas/documented";
 import { numericQuery } from "../../schemas/query";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
@@ -188,9 +189,6 @@ const DeployRollbackInput = Schema.Struct({
   deleteCreated: Schema.optionalKey(Schema.Boolean),
 }).annotate({ identifier: "DeployRollbackInput" });
 
-/** What an undocumented endpoint sends: the service's value, unchanged. */
-export const Undocumented = Schema.Unknown;
-
 export class DeploymentsGroup extends HttpApiGroup.make("deployments")
   .add(
     HttpApiEndpoint.get("repos", "/repos", {
@@ -277,22 +275,30 @@ export class DeploymentsGroup extends HttpApiGroup.make("deployments")
       .annotate(OpenApi.Summary, "Get one deployment run, with its logs and rendered Dockerfile")
       .annotate(SuccessDescription, "Run"),
     // What this deploy did to the run rate, recomputed on every read because
-    // provider cost arrives late and is then restated. `costs:read` on top of
-    // `deployments:read` (in the handler): the response is spend. Served here
-    // but documented by the Zod registry (`api/openapi/paths/change-cost-impact.ts`,
-    // which owns the impact components shared with `/changes/cost-impacts`), so
-    // it is excluded from this domain's document until those move.
+    // provider cost arrives late and is then restated. `deployments:read` for
+    // the run, then `costs:read` for the spend it moved, both checked in the
+    // handler in that order; the document states `costs:read`, the gate that
+    // makes this a cost read. Both query parameters are read as sent; the
+    // handler parses them with its own 400s.
     HttpApiEndpoint.get("costImpact", "/runs/:id/cost-impact", {
       params: OrgIdParams,
       query: {
-        costBasis: Schema.optionalKey(Schema.String),
-        windowDays: Schema.optionalKey(Schema.String),
+        windowDays: Schema.optionalKey(
+          documentedAs(Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 30 }))),
+        ),
+        costBasis: Schema.optionalKey(documentedAs(ChangeCostBasis)),
       },
-      success: Undocumented,
+      success: DeploymentCostImpact,
       error: [BadRequest, Forbidden, NotFound],
     })
-      .annotate(RequiredPermission, "deployments:read")
-      .annotate(OpenApi.Exclude, true),
+      .annotate(DocumentedPermission, "costs:read")
+      .annotate(OpenApi.Summary, "Cost impact of a deployment run")
+      .annotate(
+        OpenApi.Description,
+        "The same comparison as `POST /changes/cost-impacts`, run over the resources this deploy " +
+          "provisioned, with a per-resource breakdown that sums to the total.",
+      )
+      .annotate(SuccessDescription, "Per-resource cost impact for the run"),
     HttpApiEndpoint.post("rollback", "/runs/:id/rollback", {
       params: OrgIdParams,
       payload: DeployRollbackInput,

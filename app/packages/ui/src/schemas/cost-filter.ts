@@ -25,7 +25,10 @@ export const CostFilterOperator = Schema.Literals(COST_FILTER_OPS).annotate({
     "test whether a `tag` or `virtual_tag` has a value, and take an empty `values`.",
 });
 
-export const CostDimension = Schema.Literals(COST_DIMENSIONS);
+/** The dimension a filter term or an axis is over. One component wherever it appears. */
+export const CostDimension = Schema.Literals(COST_DIMENSIONS).annotate({
+  identifier: "CostDimension",
+});
 
 /** The values of a term: empty exactly for `is_set` / `is_not_set`. */
 export const CostFilterValues = Schema.mutable(Schema.Array(Schema.String)).annotate({

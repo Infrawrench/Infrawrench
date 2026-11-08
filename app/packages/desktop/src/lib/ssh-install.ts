@@ -8,6 +8,7 @@ import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 export async function listLocalSshInstallAccounts(): Promise<SshInstallAccount[]> {
   const db = await getDb();
@@ -121,6 +122,6 @@ export async function runLocalSshInstall(
     rows: 24,
   };
   return installer.installOnSsh({
-    exec: (script) => invoke<string>("ssh_exec_script", { config, script }),
+    exec: (script) => runRpc(DesktopRpcClient.use((rpc) => rpc.SshExecScript({ config, script }))),
   });
 }

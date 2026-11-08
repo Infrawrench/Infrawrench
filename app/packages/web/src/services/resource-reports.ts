@@ -2,7 +2,7 @@
  * Resource reports: CRUD, the picker options, and running a report over the
  * synced inventory with per-resource cost.
  *
- * Shared by the HTTP routes (api/routes/resource-reports.ts) and anything
+ * Shared by the HTTP routes (http/domains/resource-reports) and anything
  * else that runs a report (the CLI goes through the routes). The CRUD half
  * mirrors services/cost-reports.ts: soft delete, the creator as implicit
  * owner for sharing, filed in the cost-report folder tree.

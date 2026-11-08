@@ -1,6 +1,6 @@
 /**
  * The showback report: spend grouped by cost centre through the org's
- * allocation rules. Shared by the HTTP route (`api/routes/costs.ts`)
+ * allocation rules. Shared by the HTTP route (`http/domains/costs/`)
  * and the tool registry (`tools/costs.ts`), the same split as `cost-query.ts`.
  *
  * Cost centres nest, so the report is a tree: each row carries the spend

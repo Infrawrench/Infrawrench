@@ -1,0 +1,4817 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs --from 2026-10-01 --to 2026-10-31 --cumulative 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-01","to":"2026-10-31","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"cumulative":true}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-01 → 2026-10-31 · cumulative  $36.00 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $8.00
+other ████████████░░░░░░░░░░░░░░░░░░░░ $3.00
+",
+}
+`;
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs --group-by none --json 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"none","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "none",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": null,
+  "costBasis": "cash",
+  "chargeTypes": [],
+  "displayCurrency": null,
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 36
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "collectionFailures": [],
+  "awaitingData": [],
+  "estimatedAccounts": []
+}
+",
+}
+`;
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs --group-by tag:team --bin week 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"weekly","groupBy":"tag","groupByTagKey":"team","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08  $36.00 (prev $30.00, +20.0%)
+
+weekly ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs --json 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "provider",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": null,
+  "costBasis": "cash",
+  "chargeTypes": [],
+  "displayCurrency": null,
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 36
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "collectionFailures": [],
+  "awaitingData": [],
+  "estimatedAccounts": []
+}
+",
+}
+`;
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs --last 7d --group-by service --compare 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-11-02","to":"2026-11-08","binning":"daily","groupBy":"service","filters":[],"topN":8,"comparePreviousPeriod":true,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-11-02 → 2026-11-08  $36.00 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > charts spend like the legacy command > 0 $ infrawrench costs 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08  $36.00 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > draws a dimension axis, usage and counts > 0 $ infrawrench costs --measure count --group-by service 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"service","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"measure":"count"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · distinct service count  5
+
+daily ▁█
+
+EC2 ████████████████████████████████ 7
+",
+}
+`;
+
+exports[`costs > draws a dimension axis, usage and counts > 0 $ infrawrench costs --measure usage --unit Hrs --group-by service 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"service","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"measure":"usage","usageUnit":"Hrs"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · usage in Hrs  300 Hrs
+
+daily ▁█
+
+EC2 ████████████████████████████████ 300 Hrs
+",
+}
+`;
+
+exports[`costs > draws a dimension axis, usage and counts > 0 $ infrawrench costs --x-axis service --compare 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"none","filters":[],"topN":8,"comparePreviousPeriod":true,"forecast":false,"xAxis":"service"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · by service  $27.00 (prev $10.00, +170.0%)
+
+EC2 ████████████████████████████████ $22.00 +120.0%
+S3  ███████░░░░░░░░░░░░░░░░░░░░░░░░░ $5.00 new
+
+each bar split by segment: AWS, GCP
+",
+}
+`;
+
+exports[`costs > draws a dimension axis, usage and counts > 0 $ infrawrench costs --x-axis service --group-by provider 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"xAxis":"service"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · by service  $27.00 (prev $10.00, +170.0%)
+
+EC2 ████████████████████████████████ $22.00 +120.0%
+S3  ███████░░░░░░░░░░░░░░░░░░░░░░░░░ $5.00 new
+
+each bar split by segment: AWS, GCP
+",
+}
+`;
+
+exports[`costs > draws a dimension axis, usage and counts > 0 $ infrawrench costs --x-axis tag:team --segment-by-date --json 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"none","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"xAxis":"tag","xAxisTagKey":"team","segmentByDate":true}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "none",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": null,
+  "costBasis": "cash",
+  "chargeTypes": [],
+  "displayCurrency": null,
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": {
+    "dimension": "service",
+    "segment": "dimension",
+    "values": [
+      {
+        "key": "ec2",
+        "label": "EC2"
+      },
+      {
+        "key": "s3",
+        "label": "S3"
+      }
+    ]
+  },
+  "xAxisTagKey": "team",
+  "segmentByDate": true,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "ec2",
+          "amount": 20
+        },
+        {
+          "bucket": "s3",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "key": "gcp",
+      "label": "GCP",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "ec2",
+          "amount": 2
+        }
+      ]
+    }
+  ],
+  "comparison": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "ec2",
+          "amount": 10
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 27
+  },
+  "previousTotals": {
+    "USD": 10
+  },
+  "collectionFailures": [],
+  "awaitingData": [],
+  "estimatedAccounts": []
+}
+",
+}
+`;
+
+exports[`costs > lists anomalies > 0 $ infrawrench costs --anomalies --days 7 --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=7",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "days": 7,
+  "anomalies": []
+}
+",
+}
+`;
+
+exports[`costs > lists anomalies > 0 $ infrawrench costs --anomalies --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=30",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "days": 30,
+  "anomalies": [
+    {
+      "id": "a1b2c3d4e5f6",
+      "day": "2026-11-05",
+      "kind": "spike",
+      "dimension": "service",
+      "dimensionKey": "Amazon EC2",
+      "currency": "USD",
+      "actualCents": 50000,
+      "baselineCents": 20000,
+      "thresholdCents": 30000,
+      "detectedAt": "2026-11-06T02:00:00.000Z",
+      "notifiedAt": "2026-11-06T02:01:00.000Z",
+      "hints": [],
+      "contributors": [
+        {
+          "facet": "resource",
+          "key": "i-0abc",
+          "tagKey": null,
+          "label": "api-server",
+          "accountId": "a1",
+          "resource": null,
+          "actualCents": 40000,
+          "baselineCents": 10000,
+          "deltaCents": 30000,
+          "share": 1
+        }
+      ],
+      "acknowledgement": {
+        "explanation": "The quarterly load test, which ran for most of the day against production",
+        "acknowledgedAt": "2026-11-06T09:00:00.000Z",
+        "acknowledgedByUserId": "u1",
+        "annotationId": null
+      },
+      "feedback": {
+        "verdict": "expected",
+        "reason": "planned_launch",
+        "note": null,
+        "at": "2026-11-06T09:00:00.000Z",
+        "byUserId": "u1",
+        "byName": "Ada",
+        "suppressionId": null
+      },
+      "suppressionId": null
+    },
+    {
+      "id": "a1ff00112233",
+      "day": "2026-11-06",
+      "kind": "new_source",
+      "dimension": "provider",
+      "dimensionKey": "gcp",
+      "currency": "USD",
+      "actualCents": 12000,
+      "baselineCents": 0,
+      "thresholdCents": 30000,
+      "detectedAt": "2026-11-06T02:00:00.000Z",
+      "notifiedAt": null,
+      "hints": [],
+      "contributors": [],
+      "acknowledgement": null,
+      "feedback": null,
+      "suppressionId": "s1"
+    },
+    {
+      "id": "b9c8d7",
+      "day": "2026-11-07",
+      "kind": "spike",
+      "dimension": "service",
+      "dimensionKey": "Amazon EC2",
+      "currency": "USD",
+      "actualCents": 50000,
+      "baselineCents": 20000,
+      "thresholdCents": 30000,
+      "detectedAt": "2026-11-06T02:00:00.000Z",
+      "notifiedAt": "2026-11-06T02:01:00.000Z",
+      "hints": [],
+      "feedback": {
+        "verdict": "unexpected",
+        "reason": "planned_launch",
+        "note": null,
+        "at": "2026-11-06T09:00:00.000Z",
+        "byUserId": "u1",
+        "byName": null,
+        "suppressionId": null
+      },
+      "suppressionId": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs > lists anomalies > 0 $ infrawrench costs --anomalies --last 1w 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=7",
+  ],
+  "stderr": "",
+  "stdout": "Acme · spend anomalies, last 7 days
+
+No anomalies. Each day's spend per provider and service is compared with its own trailing 28-day baseline.
+",
+}
+`;
+
+exports[`costs > lists anomalies > 0 $ infrawrench costs --anomalies 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=30",
+  ],
+  "stderr": "",
+  "stdout": "Acme · spend anomalies, last 30 days
+
+ID        DAY         WHAT SPIKED                ACTUAL   BASELINE/DAY  CHANGE  DRIVEN BY        NOTIFIED    EXPLAINED                                     FEEDBACK       
+a1b2c3d4  2026-11-05  Amazon EC2 service         $500.00       $200.00   +150%  api-server 100%  2026-11-06  The quarterly load test, which ran for most…  expected by Ada
+a1ff0011  2026-11-06  gcp provider [new source]  $120.00          none     new  -                —           —                                             suppressed     
+b9c8d7    2026-11-07  Amazon EC2 service         $500.00       $200.00   +150%  -                2026-11-06  —                                             unexpected     
+
+Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. The driven-by column is the resource that carried most of the day's rise, with its share; --json has the full breakdown by resource, account, region, usage unit, charge type and tag. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.
+Tell detection whether a row was a real problem: infrawrench costs --anomalies feedback <id> --expected|--unexpected. A suppressed row matched a suppression somebody created, so it was recorded but did not alert.
+",
+}
+`;
+
+exports[`costs > lists anomalies > 1 $ infrawrench costs --anomalies --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Anomaly detection runs on Infrawrench Cloud over your org's collected spend. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > lists anomalies > 2 $ infrawrench costs --anomalies --days 120 1`] = `
+{
+  "requests": [],
+  "stderr": "Window too large. The server accepts at most 90 days, asked for 120.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > lists change alerts > 0 $ infrawrench costs --alerts --json 1`] = `
+{
+  "requests": [
+    "GET /cost-alerts",
+    "GET /cost-alerts/events?limit=20",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "alerts": [
+    {
+      "id": "al1",
+      "name": "EC2 jump",
+      "filters": [
+        {
+          "dimension": "provider",
+          "operator": "in",
+          "values": [
+            "aws"
+          ]
+        }
+      ],
+      "groupBy": "service",
+      "groupByTagKey": null,
+      "cadence": "weekly",
+      "thresholdPercent": 25,
+      "thresholdAmountCents": 10000,
+      "direction": "increase",
+      "enabled": true,
+      "lastEvaluatedAt": null,
+      "lastFiredAt": "2026-11-03T06:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "al2",
+      "name": "Team spend",
+      "filters": [],
+      "groupBy": "tag",
+      "groupByTagKey": "team",
+      "cadence": "monthly",
+      "thresholdPercent": null,
+      "thresholdAmountCents": 5000,
+      "direction": "both",
+      "enabled": false,
+      "lastEvaluatedAt": null,
+      "lastFiredAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "al3",
+      "name": "Daily drop",
+      "filters": [],
+      "groupBy": null,
+      "groupByTagKey": null,
+      "cadence": "daily",
+      "thresholdPercent": 10,
+      "thresholdAmountCents": null,
+      "direction": "decrease",
+      "enabled": true,
+      "lastEvaluatedAt": null,
+      "lastFiredAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "alertId": "al1",
+      "alertName": "EC2 jump",
+      "periodKey": "2026-W44",
+      "windowFrom": "2026-10-27",
+      "windowTo": "2026-11-02",
+      "previousFrom": "2026-10-20",
+      "previousTo": "2026-10-26",
+      "groupKey": "Amazon EC2",
+      "currency": "USD",
+      "previousAmountCents": 10000,
+      "currentAmountCents": 17300,
+      "changePercent": 73,
+      "direction": "increase",
+      "firedAt": "2026-11-03T06:00:00.000Z",
+      "notifiedAt": null
+    },
+    {
+      "id": "e2",
+      "alertId": "al1",
+      "alertName": "EC2 jump",
+      "periodKey": "2026-W44",
+      "windowFrom": "2026-11-01",
+      "windowTo": "2026-11-01",
+      "previousFrom": "2026-10-20",
+      "previousTo": "2026-10-26",
+      "groupKey": "",
+      "currency": "USD",
+      "previousAmountCents": 10000,
+      "currentAmountCents": 17300,
+      "changePercent": null,
+      "direction": "increase",
+      "firedAt": "2026-11-03T06:00:00.000Z",
+      "notifiedAt": null
+    },
+    {
+      "id": "e3",
+      "alertId": "al1",
+      "alertName": "Daily drop",
+      "periodKey": "2026-W44",
+      "windowFrom": "2026-10-27",
+      "windowTo": "2026-11-02",
+      "previousFrom": "2026-10-20",
+      "previousTo": "2026-10-26",
+      "groupKey": "",
+      "currency": "USD",
+      "previousAmountCents": 10000,
+      "currentAmountCents": 17300,
+      "changePercent": -42,
+      "direction": "decrease",
+      "firedAt": "2026-11-03T06:00:00.000Z",
+      "notifiedAt": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs > lists change alerts > 0 $ infrawrench costs --alerts --limit 500 1`] = `
+{
+  "requests": [
+    "GET /cost-alerts",
+    "GET /cost-alerts/events?limit=200",
+  ],
+  "stderr": "",
+  "stdout": "Acme · change-based cost alerts
+
+NAME                 CADENCE                                FIRES WHEN            WATCHING                 LAST FIRED
+EC2 jump             last 7 complete days vs prior 7        ≥25% and ≥$100.00 up  each service · 1 filter  2026-11-03
+Team spend [paused]  month-to-date vs same days last month  ≥$50.00 either way    each tag[team]           never     
+Daily drop           yesterday vs same day last week        ≥10% down             one total                never     
+
+No firings yet.
+",
+}
+`;
+
+exports[`costs > lists change alerts > 0 $ infrawrench costs --alerts 1`] = `
+{
+  "requests": [
+    "GET /cost-alerts",
+    "GET /cost-alerts/events?limit=20",
+  ],
+  "stderr": "",
+  "stdout": "Acme · change-based cost alerts
+
+NAME                 CADENCE                                FIRES WHEN            WATCHING                 LAST FIRED
+EC2 jump             last 7 complete days vs prior 7        ≥25% and ≥$100.00 up  each service · 1 filter  2026-11-03
+Team spend [paused]  month-to-date vs same days last month  ≥$50.00 either way    each tag[team]           never     
+Daily drop           yesterday vs same day last week        ≥10% down             one total                never     
+
+recent firings (newest first, up to 20)
+FIRED       ALERT                  WINDOW                  PREVIOUS  CURRENT  CHANGE
+2026-11-03  EC2 jump · Amazon EC2  2026-10-27..2026-11-02   $100.00  $173.00    +73%
+2026-11-03  EC2 jump               2026-11-01               $100.00  $173.00     new
+2026-11-03  Daily drop             2026-10-27..2026-11-02   $100.00  $173.00    -42%
+
+Windows are complete UTC days: daily compares one day to the same weekday a week earlier, weekly the last 7 complete days to the prior 7, monthly the month-to-date to the same number of days at the start of last month. Each cadence period fires at most once per watched group and currency; 'new' means the prior window had no spend at all.
+",
+}
+`;
+
+exports[`costs > lists change alerts > 0 $ infrawrench costs --alerts 2`] = `
+{
+  "requests": [
+    "GET /cost-alerts",
+    "GET /cost-alerts/events?limit=20",
+  ],
+  "stderr": "",
+  "stdout": "Acme · change-based cost alerts
+
+No change alerts. A change alert fires when spend on a scope moves more than a threshold versus the prior period. Create one from the Costs panel.
+",
+}
+`;
+
+exports[`costs > lists change alerts > 1 $ infrawrench costs --alerts --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Change alerts evaluate on Infrawrench Cloud over your org's collected spend. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > lists tag keys > 0 $ infrawrench costs tag-keys --json 1`] = `
+{
+  "requests": [
+    "GET /costs/dimensions?dimension=tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "groups": [
+    {
+      "group": "tag",
+      "keys": [
+        {
+          "key": "env",
+          "name": "env",
+          "groupBy": "tag:env"
+        },
+        {
+          "key": "k8s_namespace",
+          "name": "k8s_namespace",
+          "groupBy": "tag:k8s_namespace"
+        },
+        {
+          "key": "team",
+          "name": "team",
+          "groupBy": "tag:team"
+        }
+      ]
+    },
+    {
+      "group": "k8s_node_label",
+      "keys": [
+        {
+          "key": "k8s_node_label:pool",
+          "name": "pool",
+          "groupBy": "k8s_node_label:pool"
+        }
+      ]
+    },
+    {
+      "group": "k8s_pvc_label",
+      "keys": [
+        {
+          "key": "k8s_pvc_label:app",
+          "name": "app",
+          "groupBy": "k8s_pvc_label:app"
+        }
+      ]
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs > lists tag keys > 0 $ infrawrench costs tag-keys 1`] = `
+{
+  "requests": [
+    "GET /costs/dimensions?dimension=tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "Tags
+  NAME           --GROUP-BY       
+  env            tag:env          
+  k8s_namespace  tag:k8s_namespace
+  team           tag:team         
+
+Kubernetes node labels
+  NAME  --GROUP-BY         
+  pool  k8s_node_label:pool
+
+Kubernetes volume labels
+  NAME  --GROUP-BY       
+  app   k8s_pvc_label:app
+
+",
+}
+`;
+
+exports[`costs > lists tag keys > 0 $ infrawrench costs tag-keys 2`] = `
+{
+  "requests": [
+    "GET /costs/dimensions?dimension=tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "No tagged spend yet.
+",
+}
+`;
+
+exports[`costs > lists tag keys > 1 $ infrawrench costs tag-keys --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost data lives in Infrawrench Cloud. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --basis amortized --charge-type usage --charge-type credit --currency usd --where provider = 'aws' AND tag['env'] != 'dev' --filter prod ONLY --json 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[{"dimension":"provider","op":"in","values":["aws"]},{"dimension":"tag","op":"not_in","values":["dev"],"tagKey":"env"}],"topN":8,"comparePreviousPeriod":false,"forecast":false,"costBasis":"amortized","chargeTypes":["usage","credit"],"displayCurrency":"USD","savedFilterId":"sf1"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "provider",
+  "groupByTagKey": null,
+  "where": "provider = 'aws' AND tag['env'] != 'dev'",
+  "filters": [
+    {
+      "dimension": "provider",
+      "op": "in",
+      "values": [
+        "aws"
+      ]
+    },
+    {
+      "dimension": "tag",
+      "op": "not_in",
+      "values": [
+        "dev"
+      ],
+      "tagKey": "env"
+    }
+  ],
+  "savedFilter": {
+    "id": "sf1",
+    "name": "Prod only",
+    "filters": [
+      {
+        "dimension": "account",
+        "operator": "in",
+        "values": [
+          "a1"
+        ]
+      }
+    ]
+  },
+  "costBasis": "amortized",
+  "chargeTypes": [
+    "usage",
+    "credit"
+  ],
+  "displayCurrency": "USD",
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 36
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "collectionFailures": [],
+  "awaitingData": [],
+  "estimatedAccounts": []
+}
+",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --basis amortized --charge-type usage --charge-type credit --currency usd --where provider = 'aws' AND tag['env'] != 'dev' --filter prod ONLY 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[{"dimension":"provider","op":"in","values":["aws"]},{"dimension":"tag","op":"not_in","values":["dev"],"tagKey":"env"}],"topN":8,"comparePreviousPeriod":false,"forecast":false,"costBasis":"amortized","chargeTypes":["usage","credit"],"displayCurrency":"USD","savedFilterId":"sf1"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · filter "Prod only" · provider = 'aws' AND tag['env'] != 'dev' · amortized · usage, credit  $36.00 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --basis amortized 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"costBasis":"amortized"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "! staging cost collection failing
+  AccessDenied on ce:GetCostAndUsage
+  → https://example.com/fix
+· fresh no spend data yet
+  collected without error. The provider reported no spend
+· colo spend is estimated
+  priced from current inventory at list rates. No billing API; runs low for anything deleted mid-period, and excludes credits, tax and refunds
+
+Acme · 2026-10-10 → 2026-11-08 · amortized  $36.00 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --basis blended --json 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"costBasis":"blended"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "provider",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": null,
+  "costBasis": "blended",
+  "chargeTypes": [],
+  "displayCurrency": null,
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 36
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "collectionFailures": [
+    {
+      "accountId": "a2",
+      "pluginId": "aws",
+      "displayName": "staging",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": true,
+      "blending": false,
+      "estimated": false,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": {
+        "message": "AccessDenied on ce:GetCostAndUsage",
+        "helpLink": {
+          "label": "Fix it",
+          "url": "https://example.com/fix"
+        }
+      },
+      "coverage": null
+    }
+  ],
+  "awaitingData": [
+    {
+      "accountId": "a3",
+      "pluginId": "aws",
+      "displayName": "fresh",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": true,
+      "blending": false,
+      "estimated": false,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": null,
+      "coverage": null
+    }
+  ],
+  "estimatedAccounts": [
+    {
+      "accountId": "a4",
+      "pluginId": "aws",
+      "displayName": "colo",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": false,
+      "blending": false,
+      "estimated": true,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": null,
+      "coverage": {
+        "firstDay": "2026-01-01",
+        "lastDay": "2026-11-07"
+      }
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --basis blended 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"costBasis":"blended"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · blended  $36.00 (prev $30.00, +20.0%)
+no connected provider reports blended commitment discounts, so these are the amortized amounts
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > narrows by basis, charge type, currency, --where and --filter > 0 $ infrawrench costs --filter sf1 --json 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"savedFilterId":"sf1"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "provider",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": {
+    "id": "sf1",
+    "name": "Prod only",
+    "filters": [
+      {
+        "dimension": "account",
+        "operator": "in",
+        "values": [
+          "a1"
+        ]
+      }
+    ]
+  },
+  "costBasis": "cash",
+  "chargeTypes": [],
+  "displayCurrency": null,
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD"
+  ],
+  "totals": {
+    "USD": 36
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "collectionFailures": [],
+  "awaitingData": [],
+  "estimatedAccounts": []
+}
+",
+}
+`;
+
+exports[`costs > prints collection warnings and the conversion notice > 0 $ infrawrench costs --currency USD --json 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"displayCurrency":"USD"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "groupBy": "provider",
+  "groupByTagKey": null,
+  "where": null,
+  "filters": [],
+  "savedFilter": null,
+  "costBasis": "cash",
+  "chargeTypes": [],
+  "displayCurrency": "USD",
+  "measure": "cost",
+  "usageUnit": null,
+  "binning": "daily",
+  "cumulative": false,
+  "xAxis": null,
+  "xAxisTagKey": null,
+  "segmentByDate": false,
+  "comparePreviousPeriod": false,
+  "series": [
+    {
+      "key": "aws",
+      "label": "AWS",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 10
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 12
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "key": "__other__",
+      "label": "Other",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-11-01",
+          "amount": 1
+        },
+        {
+          "bucket": "2026-11-02",
+          "amount": 2
+        },
+        {
+          "bucket": "2026-11-03",
+          "amount": 3
+        }
+      ]
+    }
+  ],
+  "currencies": [
+    "USD",
+    "JPY"
+  ],
+  "totals": {
+    "USD": 36,
+    "JPY": 1500
+  },
+  "previousTotals": {
+    "USD": 30
+  },
+  "conversion": {
+    "displayCurrency": "USD",
+    "converted": [
+      {
+        "currency": "EUR",
+        "rates": [
+          {
+            "effectiveFrom": "2026-10-01",
+            "rate": 1.08,
+            "source": "manual"
+          },
+          {
+            "effectiveFrom": "2026-11-02",
+            "rate": 1.09,
+            "source": "ecb"
+          },
+          {
+            "effectiveFrom": "2026-11-01",
+            "rate": 1.07,
+            "source": "ecb"
+          }
+        ]
+      },
+      {
+        "currency": "GBP",
+        "rates": [
+          {
+            "effectiveFrom": "2026-11-01",
+            "rate": 1.27,
+            "source": "ecb"
+          }
+        ]
+      },
+      {
+        "currency": "CHF",
+        "rates": [
+          {
+            "effectiveFrom": "2026-09-01",
+            "rate": 1.1
+          }
+        ]
+      }
+    ],
+    "unconverted": [
+      "JPY"
+    ],
+    "rateBasis": "daily"
+  },
+  "collectionFailures": [
+    {
+      "accountId": "a2",
+      "pluginId": "aws",
+      "displayName": "staging",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": true,
+      "blending": false,
+      "estimated": false,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": {
+        "message": "AccessDenied on ce:GetCostAndUsage",
+        "helpLink": {
+          "label": "Fix it",
+          "url": "https://example.com/fix"
+        }
+      },
+      "coverage": null
+    }
+  ],
+  "awaitingData": [
+    {
+      "accountId": "a3",
+      "pluginId": "aws",
+      "displayName": "fresh",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": true,
+      "blending": false,
+      "estimated": false,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": null,
+      "coverage": null
+    }
+  ],
+  "estimatedAccounts": [
+    {
+      "accountId": "a4",
+      "pluginId": "aws",
+      "displayName": "colo",
+      "supportsCosts": true,
+      "periodNative": true,
+      "dimensions": [],
+      "chargeTypes": true,
+      "amortization": false,
+      "blending": false,
+      "estimated": true,
+      "costLastPolledAt": "2026-11-07T00:00:00.000Z",
+      "costBackfilledAt": null,
+      "costPollFailureCount": 0,
+      "costPollError": null,
+      "coverage": {
+        "firstDay": "2026-01-01",
+        "lastDay": "2026-11-07"
+      }
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs > prints collection warnings and the conversion notice > 0 $ infrawrench costs --currency USD 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"displayCurrency":"USD"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "! staging cost collection failing
+  AccessDenied on ce:GetCostAndUsage
+  → https://example.com/fix
+· fresh no spend data yet
+  collected without error. The provider reported no spend
+· colo spend is estimated
+  priced from current inventory at list rates. No billing API; runs low for anything deleted mid-period, and excludes credits, tax and refunds
+
+· EUR converted to USD at 1.08 from 2026-10-01 (your rate); 1.07–1.09 (ECB reference rates, 2026-11-01 to 2026-11-02)
+· GBP converted to USD at 1.27 (ECB reference rate, 2026-11-01)
+· CHF converted to USD at 1.1 from 2026-09-01 (your rate)
+  a rate your organization stated always wins over an automatic ECB rate; weekends and holidays carry the last ECB publication; spend already in USD is not converted
+! JPY not included in the USD figure
+  no stated or automatic rate covers every day in this range (the ECB does not publish every currency), so these amounts are listed separately in their own currency rather than folded in or dropped
+
+Acme · 2026-10-10 → 2026-11-08 · converted to USD  $36.00 + ¥1,500 (prev $30.00, +20.0%)
+
+daily ▁█▁
+
+AWS   ████████████████████████████████ $30.00
+other ██████░░░░░░░░░░░░░░░░░░░░░░░░░░ $6.00
+",
+}
+`;
+
+exports[`costs > prints collection warnings and the conversion notice > 0 $ infrawrench costs 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "No cost data yet. Connect a provider account with billing access.
+",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 1 $ infrawrench costs --group-by galaxy 1`] = `
+{
+  "requests": [],
+  "stderr": "--group-by must be one of none, provider, account, service, region, resource, charge_type, commitment, tag:<key>, virtual_tag:<key>, k8s_node_label:<key>, k8s_pvc_label:<key>, k8s_pod_label:<key>; got "galaxy".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 1 $ infrawrench costs --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost data lives in Infrawrench Cloud. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --basis net 1`] = `
+{
+  "requests": [],
+  "stderr": "--basis must be one of cash, amortized, blended (got "net").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --bin fortnight 1`] = `
+{
+  "requests": [],
+  "stderr": "--bin must be one of hour, day, week, month, quarter (got "fortnight").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --charge-type fees 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Org cost graphs; --anomalies lists spend spikes, --alerts change-based cost alerts
+
+USAGE
+  infrawrench costs <subcommand> [flags]
+
+FLAGS
+  --last span                          How far back: 7d, 30d, 12w or 3m
+  --from date                          Start of the range (YYYY-MM-DD or an ISO timestamp)
+  --to date                            End of the range (YYYY-MM-DD or an ISO timestamp)
+  --days n                             costs --anomalies: whole-day window (max 90)
+  --limit n                            costs --alerts: recent firings to list (default 20, max 200)
+  --group-by dimension                 provider (default), account, service, region, resource, charge_type, commitment, or tag:<key> / virtual_tag:<key> / k8s_node_label:<key> / k8s_pvc_label:<key> / k8s_pod_label:<key>
+  --basis cash|amortized|blended       Which cost to sum (default cash)
+  --currency code                      Convert to your org's display currency (stated rates, then automatic ECB rates if on)
+  --where query                        Filter in the cost query language, e.g. "provider = 'aws' AND tag['env'] != 'dev'"
+  --filter name|id                     A saved cost filter, resolved on the server; combines with --where by AND
+  --charge-type type                   Keep only this kind of charge (repeatable): usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other
+  --measure cost|usage|count           What to sum: cost (money), usage (quantities, with --unit) or count
+  --bin hour|day|week|month|quarter    The date bins
+  --unit unit                          With --measure usage: the unit to sum, as the provider spells it
+  --cumulative                         Running totals from the start of the range
+  --x-axis dimension                   Put a dimension's values on the X axis (tag:<key> for a tag; date for the bins)
+  --segment-by-date                    With --x-axis and no --group-by: split each value's bar by date bin
+  --compare                            Add the previous period of the same length, with the change
+  --alerts                             Change-based cost alerts and recent firings ("spend moved >X%")
+  --anomalies                          Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  tag-keys        The tag keys in your cost data, Kubernetes node and volume labels grouped
+  forecast        A saved report's projected spend with its low/expected/high band (default: next 90 days)
+  forecasts       A report's named forecasts, the default marked
+  push            Push your own cost rows (--file or stdin), or upload a CSV/FOCUS file into a custom source
+  sources         Custom cost sources (uploaded spend); "costs sources <name>" for one's upload history
+  feedback        Tell detection what a spike was: --expected | --unexpected | --clear (after --anomalies)
+  suppressions    What is kept from alerting: scope, recurrence, window, hits, reason (after --anomalies)
+  precision       Per-month share of reviewed findings marked unexpected (after --anomalies)
+  sensitivity     Providers and services whose threshold feedback has raised, and why (after --anomalies)
+
+ERROR
+  --charge-type must be one of usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other (got "fees").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --currency dollars 1`] = `
+{
+  "requests": [],
+  "stderr": "--currency must be a three-letter code like USD (got "dollars").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --filter nope 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+  ],
+  "stderr": "--filter: no saved cost filter named "nope". Saved filters: "Prod only".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --filter prod 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+  ],
+  "stderr": "--filter: no saved cost filter named "prod". This organization has no saved filters yet. Create one from any cost editor.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --last 6h 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Org cost graphs; --anomalies lists spend spikes, --alerts change-based cost alerts
+
+USAGE
+  infrawrench costs <subcommand> [flags]
+
+FLAGS
+  --last span                          How far back: 7d, 30d, 12w or 3m
+  --from date                          Start of the range (YYYY-MM-DD or an ISO timestamp)
+  --to date                            End of the range (YYYY-MM-DD or an ISO timestamp)
+  --days n                             costs --anomalies: whole-day window (max 90)
+  --limit n                            costs --alerts: recent firings to list (default 20, max 200)
+  --group-by dimension                 provider (default), account, service, region, resource, charge_type, commitment, or tag:<key> / virtual_tag:<key> / k8s_node_label:<key> / k8s_pvc_label:<key> / k8s_pod_label:<key>
+  --basis cash|amortized|blended       Which cost to sum (default cash)
+  --currency code                      Convert to your org's display currency (stated rates, then automatic ECB rates if on)
+  --where query                        Filter in the cost query language, e.g. "provider = 'aws' AND tag['env'] != 'dev'"
+  --filter name|id                     A saved cost filter, resolved on the server; combines with --where by AND
+  --charge-type type                   Keep only this kind of charge (repeatable): usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other
+  --measure cost|usage|count           What to sum: cost (money), usage (quantities, with --unit) or count
+  --bin hour|day|week|month|quarter    The date bins
+  --unit unit                          With --measure usage: the unit to sum, as the provider spells it
+  --cumulative                         Running totals from the start of the range
+  --x-axis dimension                   Put a dimension's values on the X axis (tag:<key> for a tag; date for the bins)
+  --segment-by-date                    With --x-axis and no --group-by: split each value's bar by date bin
+  --compare                            Add the previous period of the same length, with the change
+  --alerts                             Change-based cost alerts and recent firings ("spend moved >X%")
+  --anomalies                          Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  tag-keys        The tag keys in your cost data, Kubernetes node and volume labels grouped
+  forecast        A saved report's projected spend with its low/expected/high band (default: next 90 days)
+  forecasts       A report's named forecasts, the default marked
+  push            Push your own cost rows (--file or stdin), or upload a CSV/FOCUS file into a custom source
+  sources         Custom cost sources (uploaded spend); "costs sources <name>" for one's upload history
+  feedback        Tell detection what a spike was: --expected | --unexpected | --clear (after --anomalies)
+  suppressions    What is kept from alerting: scope, recurrence, window, hits, reason (after --anomalies)
+  precision       Per-month share of reviewed findings marked unexpected (after --anomalies)
+  sensitivity     Providers and services whose threshold feedback has raised, and why (after --anomalies)
+
+ERROR
+  Invalid --last "6h": use forms like 7d, 30d, 12w, 3m
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --measure count --group-by none 1`] = `
+{
+  "requests": [],
+  "stderr": "Count needs a group-by: it counts the distinct values of that dimension with nonzero cost in each bin.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --measure dollars 1`] = `
+{
+  "requests": [],
+  "stderr": "--measure must be one of cost, usage, count (got "dollars").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --measure usage 1`] = `
+{
+  "requests": [
+    "GET /costs/dimensions?dimension=usage-units",
+  ],
+  "stderr": "--measure usage needs --unit: quantities in different units cannot be added. Units in your cost data: Hrs, GB-Mo.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --measure usage 2`] = `
+{
+  "requests": [
+    "GET /costs/dimensions?dimension=usage-units",
+  ],
+  "stderr": "--measure usage needs --unit, and no connected provider reports usage quantities yet.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --unit Hrs 1`] = `
+{
+  "requests": [],
+  "stderr": "A usage unit only applies to the usage measure.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --where provider =  1`] = `
+{
+  "requests": [],
+  "stderr": "--where: Expected a quoted value after "=", found the end of the query. Values are quoted: service = 'AmazonEC2'.
+  provider =
+            ^
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --where provider = 'aws' OR region = 'eu' 1`] = `
+{
+  "requests": [],
+  "stderr": "--where: OR is not supported. A cost filter is a conjunction of terms, so several values of one dimension go in a list (write dimension IN ('a', 'b')), and unrelated alternatives need separate queries.
+  provider = 'aws' OR region = 'eu'
+                   ^^
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > refuses bad flags in the legacy words > 2 $ infrawrench costs --x-axis galaxy 1`] = `
+{
+  "requests": [],
+  "stderr": "--x-axis must be one of none, provider, account, service, region, resource, charge_type, commitment, tag:<key>, virtual_tag:<key>, k8s_node_label:<key>, k8s_pvc_label:<key>, k8s_pod_label:<key>; got "galaxy".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > renders a measure or an axis segment this build does not know > 0 $ infrawrench costs --x-axis service 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"none","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false,"xAxis":"service"}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08 · by service  $27.00 (prev $10.00, +170.0%)
+
+EC2 ████████████████████████████████ $22.00 +120.0%
+S3  ███████░░░░░░░░░░░░░░░░░░░░░░░░░ $5.00 new
+
+each bar split by segment: AWS, GCP
+",
+}
+`;
+
+exports[`costs > renders a measure or an axis segment this build does not know > 0 $ infrawrench costs 1`] = `
+{
+  "requests": [
+    "POST /costs/query {"from":"2026-10-10","to":"2026-11-08","binning":"daily","groupBy":"provider","filters":[],"topN":8,"comparePreviousPeriod":false,"forecast":false}",
+    "GET /costs/status",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-10 → 2026-11-08  300
+
+daily ▁█
+
+EC2 ████████████████████████████████ 300
+",
+}
+`;
+
+exports[`costs > takes the anomaly verbs without --anomalies, and refuses an unknown verb > 0 $ infrawrench costs sensitivity 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-sensitivity",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly sensitivity, base 3σ, feedback from the last 90 days
+
+KEY                 THRESHOLD  EXPECTED  UNEXPECTED  WHY                                    
+Amazon EC2 service       3.5σ         4           0  4 expected verdicts raised the bar     
+gcp provider               3σ         0           2  unexpected verdicts keep it at the base
+",
+}
+`;
+
+exports[`costs > takes the anomaly verbs without --anomalies, and refuses an unknown verb > 2 $ infrawrench costs --anomalies suppressions nope 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  What is kept from alerting: scope, recurrence, window, hits, reason (after --anomalies)
+
+USAGE
+  infrawrench costs suppressions <subcommand> [flags]
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+  --anomalies              Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  delete    Remove one suppression; matching spikes alert again
+
+ERROR
+  Unknown subcommand "nope" for "infrawrench costs suppressions"
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs > takes the anomaly verbs without --anomalies, and refuses an unknown verb > 2 $ infrawrench costs nope 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Org cost graphs; --anomalies lists spend spikes, --alerts change-based cost alerts
+
+USAGE
+  infrawrench costs <subcommand> [flags]
+
+FLAGS
+  --last span                          How far back: 7d, 30d, 12w or 3m
+  --from date                          Start of the range (YYYY-MM-DD or an ISO timestamp)
+  --to date                            End of the range (YYYY-MM-DD or an ISO timestamp)
+  --days n                             costs --anomalies: whole-day window (max 90)
+  --limit n                            costs --alerts: recent firings to list (default 20, max 200)
+  --group-by dimension                 provider (default), account, service, region, resource, charge_type, commitment, or tag:<key> / virtual_tag:<key> / k8s_node_label:<key> / k8s_pvc_label:<key> / k8s_pod_label:<key>
+  --basis cash|amortized|blended       Which cost to sum (default cash)
+  --currency code                      Convert to your org's display currency (stated rates, then automatic ECB rates if on)
+  --where query                        Filter in the cost query language, e.g. "provider = 'aws' AND tag['env'] != 'dev'"
+  --filter name|id                     A saved cost filter, resolved on the server; combines with --where by AND
+  --charge-type type                   Keep only this kind of charge (repeatable): usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other
+  --measure cost|usage|count           What to sum: cost (money), usage (quantities, with --unit) or count
+  --bin hour|day|week|month|quarter    The date bins
+  --unit unit                          With --measure usage: the unit to sum, as the provider spells it
+  --cumulative                         Running totals from the start of the range
+  --x-axis dimension                   Put a dimension's values on the X axis (tag:<key> for a tag; date for the bins)
+  --segment-by-date                    With --x-axis and no --group-by: split each value's bar by date bin
+  --compare                            Add the previous period of the same length, with the change
+  --alerts                             Change-based cost alerts and recent firings ("spend moved >X%")
+  --anomalies                          Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  tag-keys        The tag keys in your cost data, Kubernetes node and volume labels grouped
+  forecast        A saved report's projected spend with its low/expected/high band (default: next 90 days)
+  forecasts       A report's named forecasts, the default marked
+  push            Push your own cost rows (--file or stdin), or upload a CSV/FOCUS file into a custom source
+  sources         Custom cost sources (uploaded spend); "costs sources <name>" for one's upload history
+  feedback        Tell detection what a spike was: --expected | --unexpected | --clear (after --anomalies)
+  suppressions    What is kept from alerting: scope, recurrence, window, hits, reason (after --anomalies)
+  precision       Per-month share of reviewed findings marked unexpected (after --anomalies)
+  sensitivity     Providers and services whose threshold feedback has raised, and why (after --anomalies)
+
+ERROR
+  Unknown subcommand "nope" for "infrawrench costs"
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 0 $ infrawrench costs --anomalies suppressions --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "suppressions": [
+    {
+      "id": "s1abcdef",
+      "scope": "service",
+      "scopeKey": "Amazon EC2",
+      "tagKey": null,
+      "scopeLabel": null,
+      "recurrence": "weekly",
+      "anchorDay": "2026-11-05",
+      "startsOn": "2026-11-05",
+      "expiresOn": "2027-02-05",
+      "reason": "planned_launch",
+      "note": null,
+      "sourceAnomalyId": "a1b2c3d4e5f6",
+      "createdByUserId": "u1",
+      "createdByName": "Ada",
+      "createdAt": "2026-11-06T09:00:00.000Z",
+      "updatedAt": "2026-11-06T09:00:00.000Z",
+      "active": true,
+      "suppressedCount": 3
+    },
+    {
+      "id": "s1ff9988",
+      "scope": "tag",
+      "scopeKey": "prod",
+      "tagKey": "env",
+      "scopeLabel": null,
+      "recurrence": "seasonal",
+      "anchorDay": "2026-11-05",
+      "startsOn": "2026-11-05",
+      "expiresOn": "2027-02-05",
+      "reason": null,
+      "note": null,
+      "sourceAnomalyId": "a1b2c3d4e5f6",
+      "createdByUserId": "u1",
+      "createdByName": "Ada",
+      "createdAt": "2026-11-06T09:00:00.000Z",
+      "updatedAt": "2026-11-06T09:00:00.000Z",
+      "active": false,
+      "suppressedCount": 0
+    },
+    {
+      "id": "c0ffee",
+      "scope": "cost_centre",
+      "scopeKey": "cc1",
+      "tagKey": null,
+      "scopeLabel": "Platform",
+      "recurrence": "weekly",
+      "anchorDay": "2026-11-05",
+      "startsOn": "2026-11-05",
+      "expiresOn": "2027-02-05",
+      "reason": "planned_launch",
+      "note": null,
+      "sourceAnomalyId": "a1b2c3d4e5f6",
+      "createdByUserId": "u1",
+      "createdByName": "Ada",
+      "createdAt": "2026-11-06T09:00:00.000Z",
+      "updatedAt": "2026-11-06T09:00:00.000Z",
+      "active": true,
+      "suppressedCount": 3
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 0 $ infrawrench costs --anomalies suppressions 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly suppressions
+
+ID        SCOPE        COVERS      REPEATS  WINDOW                  STATUS   SUPPRESSED  REASON        
+s1abcdef  service      Amazon EC2  weekly   2026-11-05..2027-02-05  active            3  Planned launch
+s1ff9988  tag          env=prod    yearly   2026-11-05..2027-02-05  expired           0  -             
+c0ffee    cost centre  Platform    weekly   2026-11-05..2027-02-05  active            3  Planned launch
+
+On a covered day the scope's spend is set aside before the day is judged; a finding that only existed because of it is recorded as suppressed and does not alert. Remove one with: infrawrench costs --anomalies suppressions delete <id>
+",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 0 $ infrawrench costs --anomalies suppressions 2`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly suppressions
+
+No suppressions. Mark a spike expected with --recurrence to stop the same pattern alerting: infrawrench costs --anomalies feedback <id> --expected --recurrence weekly
+",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 0 $ infrawrench costs --anomalies suppressions delete c0ffee --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+    "DELETE /costs/anomaly-suppressions/c0ffee",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "deleted": "c0ffee"
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 0 $ infrawrench costs --anomalies suppressions delete s1ab 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+    "DELETE /costs/anomaly-suppressions/s1abcdef",
+  ],
+  "stderr": "",
+  "stdout": "✓ Deleted the suppression on service Amazon EC2, weekly, 2026-11-05..2027-02-05.
+Matching spikes alert again from the next detection run.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 1 $ infrawrench costs --anomalies suppressions --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Anomaly feedback lives on Infrawrench Cloud with the anomalies it describes; there is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 1 $ infrawrench costs --anomalies suppressions delete nope 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+  ],
+  "stderr": "No suppression matches "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 2 $ infrawrench costs --anomalies suppressions delete 1`] = `
+{
+  "requests": [],
+  "stderr": "Usage: infrawrench costs --anomalies suppressions delete <id>
+Ids are the first column of \`infrawrench costs --anomalies suppressions\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > lists and deletes suppressions > 2 $ infrawrench costs --anomalies suppressions delete s1 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-suppressions",
+  ],
+  "stderr": ""s1" matches 2 suppressions:
+  s1abcdef  Amazon EC2
+  s1ff9988  env=prod
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback a1b2 --expected --reason planned_launch --note   launch week   --explain --recurrence weekly --expires 2026-12-31 --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "POST /costs/anomalies/a1b2c3d4e5f6/feedback {"verdict":"expected","reason":"planned_launch","note":"launch week","explain":true,"suppress":{"recurrence":"weekly","expiresOn":"2026-12-31"}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "anomaly": {
+    "id": "a1b2c3d4e5f6",
+    "day": "2026-11-05",
+    "kind": "spike",
+    "dimension": "service",
+    "dimensionKey": "Amazon EC2",
+    "currency": "USD",
+    "actualCents": 50000,
+    "baselineCents": 20000,
+    "thresholdCents": 30000,
+    "detectedAt": "2026-11-06T02:00:00.000Z",
+    "notifiedAt": "2026-11-06T02:01:00.000Z",
+    "hints": [],
+    "contributors": [
+      {
+        "facet": "resource",
+        "key": "i-0abc",
+        "tagKey": null,
+        "label": "api-server",
+        "accountId": "a1",
+        "resource": null,
+        "actualCents": 40000,
+        "baselineCents": 10000,
+        "deltaCents": 30000,
+        "share": 1
+      }
+    ],
+    "acknowledgement": {
+      "explanation": "The quarterly load test, which ran for most of the day against production",
+      "acknowledgedAt": "2026-11-06T09:00:00.000Z",
+      "acknowledgedByUserId": "u1",
+      "annotationId": null
+    },
+    "feedback": {
+      "verdict": "expected",
+      "reason": "planned_launch",
+      "note": null,
+      "at": "2026-11-06T09:00:00.000Z",
+      "byUserId": "u1",
+      "byName": "Ada",
+      "suppressionId": null
+    },
+    "suppressionId": null
+  },
+  "suppression": {
+    "id": "s1abcdef",
+    "scope": "service",
+    "scopeKey": "Amazon EC2",
+    "tagKey": null,
+    "scopeLabel": null,
+    "recurrence": "weekly",
+    "anchorDay": "2026-11-05",
+    "startsOn": "2026-11-05",
+    "expiresOn": "2027-02-05",
+    "reason": "planned_launch",
+    "note": null,
+    "sourceAnomalyId": "a1b2c3d4e5f6",
+    "createdByUserId": "u1",
+    "createdByName": "Ada",
+    "createdAt": "2026-11-06T09:00:00.000Z",
+    "updatedAt": "2026-11-06T09:00:00.000Z",
+    "active": true,
+    "suppressedCount": 3
+  }
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback a1b2 --expected --reason planned_launch --note   launch week   --explain --recurrence weekly --expires 2026-12-31 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "POST /costs/anomalies/a1b2c3d4e5f6/feedback {"verdict":"expected","reason":"planned_launch","note":"launch week","explain":true,"suppress":{"recurrence":"weekly","expiresOn":"2026-12-31"}}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Marked Amazon EC2 (service) on 2026-11-05 as expected (Planned launch).
+The note is now the anomaly's explanation, drawn on every cost chart covering the day.
+  suppression service Amazon EC2, weekly, 2026-11-05..2027-02-05  s1abcdef
+  Matching spikes are still recorded, marked suppressed, and do not alert. List them with: infrawrench costs --anomalies suppressions
+",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback a1b2c3d4e5f6 --clear --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "DELETE /costs/anomalies/a1b2c3d4e5f6/feedback",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "anomaly": {
+    "id": "a1b2c3d4e5f6",
+    "day": "2026-11-05",
+    "kind": "spike",
+    "dimension": "service",
+    "dimensionKey": "Amazon EC2",
+    "currency": "USD",
+    "actualCents": 50000,
+    "baselineCents": 20000,
+    "thresholdCents": 30000,
+    "detectedAt": "2026-11-06T02:00:00.000Z",
+    "notifiedAt": "2026-11-06T02:01:00.000Z",
+    "hints": [],
+    "contributors": [
+      {
+        "facet": "resource",
+        "key": "i-0abc",
+        "tagKey": null,
+        "label": "api-server",
+        "accountId": "a1",
+        "resource": null,
+        "actualCents": 40000,
+        "baselineCents": 10000,
+        "deltaCents": 30000,
+        "share": 1
+      }
+    ],
+    "acknowledgement": {
+      "explanation": "The quarterly load test, which ran for most of the day against production",
+      "acknowledgedAt": "2026-11-06T09:00:00.000Z",
+      "acknowledgedByUserId": "u1",
+      "annotationId": null
+    },
+    "feedback": {
+      "verdict": "expected",
+      "reason": "planned_launch",
+      "note": null,
+      "at": "2026-11-06T09:00:00.000Z",
+      "byUserId": "u1",
+      "byName": "Ada",
+      "suppressionId": null
+    },
+    "suppressionId": null
+  }
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback a1b2c3d4e5f6 --clear 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "DELETE /costs/anomalies/a1b2c3d4e5f6/feedback",
+  ],
+  "stderr": "",
+  "stdout": "✓ Withdrew the verdict on Amazon EC2 (service) on 2026-11-05.
+Any suppression that verdict created was removed with it.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback b9 --unexpected --reason data_issue 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "POST /costs/anomalies/b9c8d7/feedback {"verdict":"unexpected","reason":"data_issue"}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Marked Amazon EC2 (service) on 2026-11-07 as unexpected (Data issue).
+",
+}
+`;
+
+exports[`costs --anomalies feedback > records, replaces and withdraws a verdict > 0 $ infrawrench costs --anomalies feedback zz --expected 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+    "POST /costs/anomalies/zz/feedback {"verdict":"expected"}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Marked Amazon EC2 (service) on 2026-11-05 as expected.
+Repeated expected verdicts on one provider or service nudge its threshold up a little; add --recurrence to stop a known pattern alerting at all.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 1 $ infrawrench costs --anomalies feedback a1b2 --expected --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Anomaly feedback lives on Infrawrench Cloud with the anomalies it describes; there is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback 1`] = `
+{
+  "requests": [],
+  "stderr": "Usage: infrawrench costs --anomalies feedback <anomalyId> --expected|--unexpected [--reason <r>] [--note <text>] [--explain] [--recurrence <r> [--expires YYYY-MM-DD]]
+       infrawrench costs --anomalies feedback <anomalyId> --clear
+The id (or its first characters) is the first column of \`infrawrench costs --anomalies\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1 --expected 1`] = `
+{
+  "requests": [
+    "GET /costs/anomalies?days=90",
+  ],
+  "stderr": ""a1" matches 2 anomalies:
+  a1b2c3d4e5f6  2026-11-05 Amazon EC2
+  a1ff00112233  2026-11-06 gcp
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --clear --expected 1`] = `
+{
+  "requests": [],
+  "stderr": "--clear withdraws the verdict; it takes no other feedback flags.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --expires 2026-12-31 1`] = `
+{
+  "requests": [],
+  "stderr": "--expires sets when a suppression ends; add --recurrence one_off|weekly|monthly|seasonal.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --explain 1`] = `
+{
+  "requests": [],
+  "stderr": "--explain publishes the note as the anomaly's explanation; add --note <text>.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --note xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 1`] = `
+{
+  "requests": [],
+  "stderr": "--note can be at most 500 characters, got 501.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --reason vibes 1`] = `
+{
+  "requests": [],
+  "stderr": "--reason must be one of planned_launch, migration, seasonal, pricing_change, data_issue, other (got "vibes").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --recurrence daily 1`] = `
+{
+  "requests": [],
+  "stderr": "--recurrence must be one of one_off, weekly, monthly, seasonal (got "daily").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --recurrence one_off --expires 2026-02-30 1`] = `
+{
+  "requests": [],
+  "stderr": "--expires must be a YYYY-MM-DD date, got "2026-02-30".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --expected --unexpected 1`] = `
+{
+  "requests": [],
+  "stderr": "--expected and --unexpected are mutually exclusive.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 --unexpected --recurrence weekly 1`] = `
+{
+  "requests": [],
+  "stderr": "--recurrence suppresses future alerts for this pattern, which only makes sense for an --expected spike.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > refuses what the server would refuse, before the request > 2 $ infrawrench costs --anomalies feedback a1b2 1`] = `
+{
+  "requests": [],
+  "stderr": "Say what the spike was: --expected (planned or known) or --unexpected (a real problem). --clear withdraws a verdict.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies precision --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-precision?months=6",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "months": 3,
+  "periods": [
+    {
+      "month": "2026-09",
+      "detected": 5,
+      "suppressed": 1,
+      "expected": 2,
+      "unexpected": 1,
+      "precision": 0.33
+    },
+    {
+      "month": "2026-10",
+      "detected": 0,
+      "suppressed": 0,
+      "expected": 0,
+      "unexpected": 0,
+      "precision": null
+    },
+    {
+      "month": "2026-11",
+      "detected": 2,
+      "suppressed": 0,
+      "expected": 0,
+      "unexpected": 2,
+      "precision": 1
+    }
+  ],
+  "totals": {
+    "detected": 7,
+    "suppressed": 1,
+    "expected": 2,
+    "unexpected": 3,
+    "precision": 0.6
+  },
+  "reasons": [
+    {
+      "reason": "planned_launch",
+      "count": 2
+    },
+    {
+      "reason": "migration",
+      "count": 1
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies precision --months 3 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-precision?months=3",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly precision, last 1 month
+
+2026-09 ████████░░░░░░░░░░░░░░░░  33%  3 of 5 reviewed · 1 unexpected · 1 suppressed
+2026-10 ························ no verdicts  0 of 0 reviewed · 0 unexpected · 0 suppressed
+2026-11 ████████████████████████ 100%  2 of 2 reviewed · 2 unexpected · 0 suppressed
+
+overall 60%  5 of 7 reviewed · 2 expected · 3 unexpected · 1 suppressed
+
+Precision is the share of reviewed findings marked unexpected: how often an alert was a real problem. Low precision means detection keeps flagging planned spend; mark those expected (with --recurrence for a known pattern) and it learns.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies precision 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-precision?months=6",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly precision, last 3 months
+
+2026-09 ████████░░░░░░░░░░░░░░░░  33%  3 of 5 reviewed · 1 unexpected · 1 suppressed
+2026-10 ························ no verdicts  0 of 0 reviewed · 0 unexpected · 0 suppressed
+2026-11 ████████████████████████ 100%  2 of 2 reviewed · 2 unexpected · 0 suppressed
+
+overall 60%  5 of 7 reviewed · 2 expected · 3 unexpected · 1 suppressed
+reasons Planned launch 2 · Migration 1
+
+Precision is the share of reviewed findings marked unexpected: how often an alert was a real problem. Low precision means detection keeps flagging planned spend; mark those expected (with --recurrence for a known pattern) and it learns.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies sensitivity --json 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-sensitivity",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "enabled": true,
+  "windowDays": 90,
+  "baseSigmas": 3,
+  "adjustments": [
+    {
+      "dimension": "service",
+      "dimensionKey": "Amazon EC2",
+      "baseSigmas": 3,
+      "sigmas": 3.5,
+      "expectedCount": 4,
+      "unexpectedCount": 0,
+      "explanation": "4 expected verdicts raised the bar"
+    },
+    {
+      "dimension": "provider",
+      "dimensionKey": "gcp",
+      "baseSigmas": 3,
+      "sigmas": 3,
+      "expectedCount": 0,
+      "unexpectedCount": 2,
+      "explanation": "unexpected verdicts keep it at the base"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies sensitivity 1`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-sensitivity",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly sensitivity, base 3σ, feedback from the last 90 days
+
+KEY                 THRESHOLD  EXPECTED  UNEXPECTED  WHY                                    
+Amazon EC2 service       3.5σ         4           0  4 expected verdicts raised the bar     
+gcp provider               3σ         0           2  unexpected verdicts keep it at the base
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 0 $ infrawrench costs --anomalies sensitivity 2`] = `
+{
+  "requests": [
+    "GET /costs/anomaly-sensitivity",
+  ],
+  "stderr": "",
+  "stdout": "Acme · anomaly sensitivity, base 3σ, feedback from the last 90 days
+
+Feedback tuning is off for this org: every key is judged at the base threshold.
+
+No feedback in the window, so no threshold has moved.
+",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 1 $ infrawrench costs --anomalies sensitivity --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Anomaly feedback lives on Infrawrench Cloud with the anomalies it describes; there is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 2 $ infrawrench costs --anomalies precision --months 0 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Per-month share of reviewed findings marked unexpected (after --anomalies)
+
+USAGE
+  infrawrench costs precision [flags]
+
+FLAGS
+  --months n    Months to report (default 6, max 24)
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+  --anomalies              Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+ERROR
+  --months must be a whole number of at least 1, got "0"
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs --anomalies feedback > reports precision and sensitivity > 2 $ infrawrench costs --anomalies precision --months 30 1`] = `
+{
+  "requests": [],
+  "stderr": "--months can be at most 24, asked for 30.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 0 $ infrawrench costs forecasts platform spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": "",
+  "stdout": "Platform spend · named forecasts
+NAME                 BASELINE    SCENARIOS  ID 
+EU launch (default)  trend       1          fc1
+Hiring plan          driver bm1  0          fc2
+",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 0 $ infrawrench costs forecasts r1 --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reportId": "r1",
+  "report": "Platform spend",
+  "forecasts": [
+    {
+      "id": "fc1",
+      "reportId": "r1",
+      "name": "EU launch",
+      "description": null,
+      "scenarioModelIds": [
+        "m1"
+      ],
+      "driverMetricId": null,
+      "isDefault": true,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "fc2",
+      "reportId": "r1",
+      "name": "Hiring plan",
+      "description": null,
+      "scenarioModelIds": [],
+      "driverMetricId": "bm1",
+      "isDefault": false,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 0 $ infrawrench costs forecasts r1 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": "",
+  "stdout": "Platform spend · named forecasts
+(none)
+Only the automatic forecast. Add named ones from the report's Forecasts section in the app.
+",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 1 $ infrawrench costs forecasts nope 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "No cost report matches "nope". Run \`infrawrench reports\` to see the saved ones.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 1 $ infrawrench costs forecasts platform 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": ""platform" matches 2 reports: Platform spend, Platform EU. Use the full name or the id.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 1 $ infrawrench costs forecasts r1 --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Forecasts are computed in Infrawrench Cloud; there is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > lists a report's forecasts > 2 $ infrawrench costs forecasts 1`] = `
+{
+  "requests": [],
+  "stderr": "Name a report: \`infrawrench costs forecasts <report name|id>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast Platform spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {}",
+  ],
+  "stderr": "",
+  "stdout": "Platform spend · 2026-11-08 → 2027-02-05  $1,250.00 (80%: –)
+Forecast "EU launch", projected from spend through 2026-11-07.
+! Only 40 days of history
+
+22.0 ┤     ▄█
+     ┤  ▁ ▇██
+11.0 ┤ ▂█ ███
+     ┤▆██████
+     ┤███████
+0.00 ┤███████
+     └────────────────────────────────────────────────────────────
+
+Driven by Signups: $0.50 per signup × 2000 signup planned (80/90 days).
+Scenario Launch: +$250.00
+
+FORECAST             EXPECTED   80% RANGE             VS AUTOMATIC
+Automatic (trend)    $1,000.00  $900.00 to $1,100.00             –
+EU launch (default)  $1,250.00                     –      +$250.00
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --all 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {"all":true}",
+  ],
+  "stderr": "",
+  "stdout": "Platform spend · 2026-11-08 → 2027-02-05  1000.00 (80%: 900.00 to 1100.00)
+No spend collected for this report's scope yet.
+
+Driven by Signups: no unit cost × 2000 signup planned (80/90 days).
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --forecast EU LAUNCH --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {"forecastId":"fc1"}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "request": {
+    "forecastId": "fc1"
+  },
+  "reportId": "r1",
+  "reportName": "Platform spend",
+  "from": "2026-11-08",
+  "to": "2027-02-05",
+  "lastObservedDay": "2026-11-07",
+  "currency": "USD",
+  "confidenceLevel": 80,
+  "baseline": {
+    "forecastId": null,
+    "name": "Automatic",
+    "isDefault": false,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1000,
+      "low": 900,
+      "high": 1100
+    },
+    "deltaFromBaseline": 0,
+    "scenarios": [],
+    "driver": null,
+    "warnings": []
+  },
+  "forecast": {
+    "forecastId": "fc1",
+    "name": "EU launch",
+    "isDefault": true,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1250,
+      "low": null,
+      "high": null
+    },
+    "deltaFromBaseline": 250,
+    "scenarios": [
+      {
+        "modelId": "m1",
+        "modelName": "Launch",
+        "totalDelta": 250,
+        "contributions": [],
+        "outOfScope": []
+      }
+    ],
+    "driver": {
+      "metricId": "bm1",
+      "metricName": "Signups",
+      "metricUnit": "signup",
+      "unitCost": 0.5,
+      "metricTotal": 2000,
+      "coveredDays": 80,
+      "totalDays": 90
+    },
+    "warnings": [
+      "Only 40 days of history"
+    ]
+  },
+  "forecasts": [
+    {
+      "forecastId": "fc1",
+      "name": "EU launch",
+      "isDefault": true,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1250,
+        "low": null,
+        "high": null
+      },
+      "deltaFromBaseline": 250,
+      "scenarios": [
+        {
+          "modelId": "m1",
+          "modelName": "Launch",
+          "totalDelta": 250,
+          "contributions": [],
+          "outOfScope": []
+        }
+      ],
+      "driver": {
+        "metricId": "bm1",
+        "metricName": "Signups",
+        "metricUnit": "signup",
+        "unitCost": 0.5,
+        "metricTotal": 2000,
+        "coveredDays": 80,
+        "totalDays": 90
+      },
+      "warnings": [
+        "Only 40 days of history"
+      ]
+    },
+    {
+      "forecastId": "fc2",
+      "name": "Hiring plan",
+      "isDefault": false,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1000,
+        "low": 900,
+        "high": 1100
+      },
+      "deltaFromBaseline": -40,
+      "scenarios": [],
+      "driver": null,
+      "warnings": []
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --forecast auto --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {"forecastId":"baseline"}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "request": {
+    "forecastId": "baseline"
+  },
+  "reportId": "r1",
+  "reportName": "Platform spend",
+  "from": "2026-11-08",
+  "to": "2027-02-05",
+  "lastObservedDay": "2026-11-07",
+  "currency": "USD",
+  "confidenceLevel": 80,
+  "baseline": {
+    "forecastId": null,
+    "name": "Automatic",
+    "isDefault": false,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1000,
+      "low": 900,
+      "high": 1100
+    },
+    "deltaFromBaseline": 0,
+    "scenarios": [],
+    "driver": null,
+    "warnings": []
+  },
+  "forecast": {
+    "forecastId": "fc1",
+    "name": "EU launch",
+    "isDefault": true,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1250,
+      "low": null,
+      "high": null
+    },
+    "deltaFromBaseline": 250,
+    "scenarios": [
+      {
+        "modelId": "m1",
+        "modelName": "Launch",
+        "totalDelta": 250,
+        "contributions": [],
+        "outOfScope": []
+      }
+    ],
+    "driver": {
+      "metricId": "bm1",
+      "metricName": "Signups",
+      "metricUnit": "signup",
+      "unitCost": 0.5,
+      "metricTotal": 2000,
+      "coveredDays": 80,
+      "totalDays": 90
+    },
+    "warnings": [
+      "Only 40 days of history"
+    ]
+  },
+  "forecasts": [
+    {
+      "forecastId": "fc1",
+      "name": "EU launch",
+      "isDefault": true,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1250,
+        "low": null,
+        "high": null
+      },
+      "deltaFromBaseline": 250,
+      "scenarios": [
+        {
+          "modelId": "m1",
+          "modelName": "Launch",
+          "totalDelta": 250,
+          "contributions": [],
+          "outOfScope": []
+        }
+      ],
+      "driver": {
+        "metricId": "bm1",
+        "metricName": "Signups",
+        "metricUnit": "signup",
+        "unitCost": 0.5,
+        "metricTotal": 2000,
+        "coveredDays": 80,
+        "totalDays": 90
+      },
+      "warnings": [
+        "Only 40 days of history"
+      ]
+    },
+    {
+      "forecastId": "fc2",
+      "name": "Hiring plan",
+      "isDefault": false,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1000,
+        "low": 900,
+        "high": 1100
+      },
+      "deltaFromBaseline": -40,
+      "scenarios": [],
+      "driver": null,
+      "warnings": []
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --forecast hiring --provider aws, gcp --service Amazon EC2 --level 95% --from 2026-11-10 --to 2026-12-31 --all --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {"from":"2026-11-10","to":"2026-12-31","forecastId":"fc2","providers":["aws","gcp"],"services":["Amazon EC2"],"confidenceLevel":95,"all":true}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "request": {
+    "from": "2026-11-10",
+    "to": "2026-12-31",
+    "forecastId": "fc2",
+    "providers": [
+      "aws",
+      "gcp"
+    ],
+    "services": [
+      "Amazon EC2"
+    ],
+    "confidenceLevel": 95,
+    "all": true
+  },
+  "reportId": "r1",
+  "reportName": "Platform spend",
+  "from": "2026-11-08",
+  "to": "2027-02-05",
+  "lastObservedDay": "2026-11-07",
+  "currency": "USD",
+  "confidenceLevel": 80,
+  "baseline": {
+    "forecastId": null,
+    "name": "Automatic",
+    "isDefault": false,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1000,
+      "low": 900,
+      "high": 1100
+    },
+    "deltaFromBaseline": 0,
+    "scenarios": [],
+    "driver": null,
+    "warnings": []
+  },
+  "forecast": {
+    "forecastId": "fc1",
+    "name": "EU launch",
+    "isDefault": true,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1250,
+      "low": null,
+      "high": null
+    },
+    "deltaFromBaseline": 250,
+    "scenarios": [
+      {
+        "modelId": "m1",
+        "modelName": "Launch",
+        "totalDelta": 250,
+        "contributions": [],
+        "outOfScope": []
+      }
+    ],
+    "driver": {
+      "metricId": "bm1",
+      "metricName": "Signups",
+      "metricUnit": "signup",
+      "unitCost": 0.5,
+      "metricTotal": 2000,
+      "coveredDays": 80,
+      "totalDays": 90
+    },
+    "warnings": [
+      "Only 40 days of history"
+    ]
+  },
+  "forecasts": [
+    {
+      "forecastId": "fc1",
+      "name": "EU launch",
+      "isDefault": true,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1250,
+        "low": null,
+        "high": null
+      },
+      "deltaFromBaseline": 250,
+      "scenarios": [
+        {
+          "modelId": "m1",
+          "modelName": "Launch",
+          "totalDelta": 250,
+          "contributions": [],
+          "outOfScope": []
+        }
+      ],
+      "driver": {
+        "metricId": "bm1",
+        "metricName": "Signups",
+        "metricUnit": "signup",
+        "unitCost": 0.5,
+        "metricTotal": 2000,
+        "coveredDays": 80,
+        "totalDays": 90
+      },
+      "warnings": [
+        "Only 40 days of history"
+      ]
+    },
+    {
+      "forecastId": "fc2",
+      "name": "Hiring plan",
+      "isDefault": false,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1000,
+        "low": 900,
+        "high": 1100
+      },
+      "deltaFromBaseline": -40,
+      "scenarios": [],
+      "driver": null,
+      "warnings": []
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --forecast hiring --provider aws, gcp --service Amazon EC2 --level 95% --from 2026-11-10 --to 2026-12-31 --all 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {"from":"2026-11-10","to":"2026-12-31","forecastId":"fc2","providers":["aws","gcp"],"services":["Amazon EC2"],"confidenceLevel":95,"all":true}",
+  ],
+  "stderr": "",
+  "stdout": "Platform spend · 2026-11-08 → 2027-02-05  $1,250.00 (80%: –)
+Forecast "EU launch", projected from spend through 2026-11-07.
+! Only 40 days of history
+
+22.0 ┤     ▄█
+     ┤  ▁ ▇██
+11.0 ┤ ▂█ ███
+     ┤▆██████
+     ┤███████
+0.00 ┤███████
+     └────────────────────────────────────────────────────────────
+
+Driven by Signups: $0.50 per signup × 2000 signup planned (80/90 days).
+Scenario Launch: +$250.00
+
+FORECAST             EXPECTED   80% RANGE             VS AUTOMATIC
+Automatic (trend)    $1,000.00  $900.00 to $1,100.00             –
+EU launch (default)  $1,250.00                     –      +$250.00
+Hiring plan          $1,000.00  $900.00 to $1,100.00       -$40.00
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 0 $ infrawrench costs forecast r1 --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+    "POST /cost-reports/r1/forecasted-costs {}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "request": {},
+  "reportId": "r1",
+  "reportName": "Platform spend",
+  "from": "2026-11-08",
+  "to": "2027-02-05",
+  "lastObservedDay": "2026-11-07",
+  "currency": "USD",
+  "confidenceLevel": 80,
+  "baseline": {
+    "forecastId": null,
+    "name": "Automatic",
+    "isDefault": false,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1000,
+      "low": 900,
+      "high": 1100
+    },
+    "deltaFromBaseline": 0,
+    "scenarios": [],
+    "driver": null,
+    "warnings": []
+  },
+  "forecast": {
+    "forecastId": "fc1",
+    "name": "EU launch",
+    "isDefault": true,
+    "points": [
+      {
+        "day": "2026-11-10",
+        "expected": 10,
+        "low": 8,
+        "high": 12
+      },
+      {
+        "day": "2026-11-11",
+        "expected": 12,
+        "low": 10,
+        "high": 14
+      },
+      {
+        "day": "2026-11-12",
+        "expected": 15,
+        "low": 13,
+        "high": 17
+      },
+      {
+        "day": "2026-11-13",
+        "expected": 11,
+        "low": 9,
+        "high": 13
+      },
+      {
+        "day": "2026-11-14",
+        "expected": 18,
+        "low": 16,
+        "high": 20
+      },
+      {
+        "day": "2026-11-15",
+        "expected": 20,
+        "low": 18,
+        "high": 22
+      },
+      {
+        "day": "2026-11-16",
+        "expected": 22,
+        "low": 20,
+        "high": 24
+      }
+    ],
+    "total": {
+      "expected": 1250,
+      "low": null,
+      "high": null
+    },
+    "deltaFromBaseline": 250,
+    "scenarios": [
+      {
+        "modelId": "m1",
+        "modelName": "Launch",
+        "totalDelta": 250,
+        "contributions": [],
+        "outOfScope": []
+      }
+    ],
+    "driver": {
+      "metricId": "bm1",
+      "metricName": "Signups",
+      "metricUnit": "signup",
+      "unitCost": 0.5,
+      "metricTotal": 2000,
+      "coveredDays": 80,
+      "totalDays": 90
+    },
+    "warnings": [
+      "Only 40 days of history"
+    ]
+  },
+  "forecasts": [
+    {
+      "forecastId": "fc1",
+      "name": "EU launch",
+      "isDefault": true,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1250,
+        "low": null,
+        "high": null
+      },
+      "deltaFromBaseline": 250,
+      "scenarios": [
+        {
+          "modelId": "m1",
+          "modelName": "Launch",
+          "totalDelta": 250,
+          "contributions": [],
+          "outOfScope": []
+        }
+      ],
+      "driver": {
+        "metricId": "bm1",
+        "metricName": "Signups",
+        "metricUnit": "signup",
+        "unitCost": 0.5,
+        "metricTotal": 2000,
+        "coveredDays": 80,
+        "totalDays": 90
+      },
+      "warnings": [
+        "Only 40 days of history"
+      ]
+    },
+    {
+      "forecastId": "fc2",
+      "name": "Hiring plan",
+      "isDefault": false,
+      "points": [
+        {
+          "day": "2026-11-10",
+          "expected": 10,
+          "low": 8,
+          "high": 12
+        },
+        {
+          "day": "2026-11-11",
+          "expected": 12,
+          "low": 10,
+          "high": 14
+        },
+        {
+          "day": "2026-11-12",
+          "expected": 15,
+          "low": 13,
+          "high": 17
+        },
+        {
+          "day": "2026-11-13",
+          "expected": 11,
+          "low": 9,
+          "high": 13
+        },
+        {
+          "day": "2026-11-14",
+          "expected": 18,
+          "low": 16,
+          "high": 20
+        },
+        {
+          "day": "2026-11-15",
+          "expected": 20,
+          "low": 18,
+          "high": 22
+        },
+        {
+          "day": "2026-11-16",
+          "expected": 22,
+          "low": 20,
+          "high": 24
+        }
+      ],
+      "total": {
+        "expected": 1000,
+        "low": 900,
+        "high": 1100
+      },
+      "deltaFromBaseline": -40,
+      "scenarios": [],
+      "driver": null,
+      "warnings": []
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 1 $ infrawrench costs forecast r1 --forecast a 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": ""a" matches 2 forecasts: EU launch, Hiring plan.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 1 $ infrawrench costs forecast r1 --forecast nope 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": "No forecast on this report matches "nope". Run \`infrawrench costs forecasts <report>\` to list them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 2 $ infrawrench costs forecast 1`] = `
+{
+  "requests": [],
+  "stderr": "Name a report: \`infrawrench costs forecast <report name|id> [--forecast <name>] [--to YYYY-MM-DD]\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 2 $ infrawrench costs forecast r1 --level 70 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/forecasts",
+  ],
+  "stderr": "--level must be 80, 90 or 95 (got "70").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs forecast(s) > projects a report's spend > 2 $ infrawrench costs forecast r1 --to tomorrow 1`] = `
+{
+  "requests": [],
+  "stderr": "--to must be a day, YYYY-MM-DD (got "tomorrow").
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources --json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "sources": [
+    {
+      "id": "cs1",
+      "name": "Colo",
+      "description": null,
+      "defaultCurrency": "USD",
+      "pluginId": "custom-colo",
+      "uploadCount": 2,
+      "lastUploadAt": "2026-10-02T09:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cs2",
+      "name": "Datadog",
+      "description": null,
+      "defaultCurrency": null,
+      "pluginId": "custom-datadog",
+      "uploadCount": 0,
+      "lastUploadAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "",
+  "stdout": "NAME     UPLOADS  LAST UPLOAD  CURRENCY   PROVIDER ID   
+Colo           2  2026-10-02   USD        custom-colo   
+Datadog        0  never        from file  custom-datadog
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources 2`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "",
+  "stdout": "No custom cost sources. Create one under Settings → Custom Cost Sources, then \`infrawrench costs push --source <name> --format csv --file bill.csv\`.
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources Datadog 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs2/uploads",
+  ],
+  "stderr": "",
+  "stdout": "Datadog · 0 upload(s)
+(none)
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources colo 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+  ],
+  "stderr": "",
+  "stdout": "Colo · 3 upload(s)
+UPLOADED          BY               FILE      DATES                    ROWS  TOTAL      STATUS    
+2026-10-02 09:00  Ada              sept.csv  2026-09-01 → 2026-09-30    30  $1,200.00  complete  
+2026-10-02 09:00  bot@example.com  rows      2026-09-01 → 2026-09-30    30  $1,200.00  replaced  
+2026-10-02 09:00  -                aug.csv   2026-09-01 → 2026-09-30     0  $1,200.00  incomplete
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 0 $ infrawrench costs sources cs1 --json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "source": {
+    "id": "cs1",
+    "name": "Colo",
+    "description": null,
+    "defaultCurrency": "USD",
+    "pluginId": "custom-colo",
+    "uploadCount": 2,
+    "lastUploadAt": "2026-10-02T09:00:00.000Z",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  "uploads": [
+    {
+      "id": "u1",
+      "sourceId": "cs1",
+      "fileName": "sept.csv",
+      "format": "csv",
+      "mode": "append",
+      "status": "complete",
+      "fromDate": "2026-09-01",
+      "toDate": "2026-09-30",
+      "rowCount": 30,
+      "totals": {
+        "USD": 1200
+      },
+      "uploadedBy": {
+        "id": "u1",
+        "name": "Ada",
+        "email": "ada@example.com"
+      },
+      "via": "web",
+      "createdAt": "2026-10-02T09:00:00.000Z",
+      "completedAt": "2026-10-02T09:00:05.000Z"
+    },
+    {
+      "id": "u2",
+      "sourceId": "cs1",
+      "fileName": null,
+      "format": "rows",
+      "mode": "append",
+      "status": "replaced",
+      "fromDate": "2026-09-01",
+      "toDate": "2026-09-30",
+      "rowCount": 30,
+      "totals": {
+        "USD": 1200
+      },
+      "uploadedBy": {
+        "id": "u2",
+        "name": null,
+        "email": "bot@example.com"
+      },
+      "via": "cli",
+      "createdAt": "2026-10-02T09:00:00.000Z",
+      "completedAt": "2026-10-02T09:00:05.000Z"
+    },
+    {
+      "id": "u4",
+      "sourceId": "cs1",
+      "fileName": "aug.csv",
+      "format": "csv",
+      "mode": "append",
+      "status": "uploading",
+      "fromDate": "2026-09-01",
+      "toDate": "2026-09-30",
+      "rowCount": 0,
+      "totals": {
+        "USD": 1200
+      },
+      "uploadedBy": null,
+      "via": "web",
+      "createdAt": "2026-10-02T09:00:00.000Z",
+      "completedAt": "2026-10-02T09:00:05.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 1 $ infrawrench costs sources --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost data lives in Infrawrench Cloud. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > lists custom sources and one source's uploads > 2 $ infrawrench costs sources nope 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "No custom cost source "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > pushes JSON rows to the plain endpoint and into a custom source > 0 $ infrawrench costs push --source Colo --file <dir>/rows.json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"rows.json","format":"rows","mode":"append","via":"cli","fromDate":"2026-11-01","toDate":"2026-11-01"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-11-01","currency":"USD","amount":10}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "",
+  "stdout": "✓ uploaded 2 daily rows to Colo (2026-11-01 → 2026-11-02, $30.00)
+",
+}
+`;
+
+exports[`costs push and sources > pushes JSON rows to the plain endpoint and into a custom source > 0 $ infrawrench costs push --source colo-script --file <dir>/rows.json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "POST /costs/rows {"source":"colo-script","rows":[{"date":"2026-11-01","currency":"USD","amount":10}]}",
+  ],
+  "stderr": "",
+  "stdout": "✓ pushed 1 row
+",
+}
+`;
+
+exports[`costs push and sources > pushes JSON rows to the plain endpoint and into a custom source > 0 $ infrawrench costs push --source colo-script -f <dir>/envelope.json --json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "POST /costs/rows {"source":"colo-script","rows":[{"date":"2026-11-01","currency":"USD","amount":10}]}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "written": 1
+}
+",
+}
+`;
+
+exports[`costs push and sources > pushes JSON rows to the plain endpoint and into a custom source > 0 $ infrawrench costs push --source cs1 --file <dir>/rows.json --json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"rows.json","format":"rows","mode":"append","via":"cli","fromDate":"2026-11-01","toDate":"2026-11-01"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-11-01","currency":"USD","amount":10}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "id": "u3",
+  "sourceId": "cs1",
+  "fileName": "nov.csv",
+  "format": "csv",
+  "mode": "append",
+  "status": "complete",
+  "fromDate": "2026-11-01",
+  "toDate": "2026-11-02",
+  "rowCount": 2,
+  "totals": {
+    "USD": 30
+  },
+  "uploadedBy": {
+    "id": "u1",
+    "name": "Ada",
+    "email": "ada@example.com"
+  },
+  "via": "cli",
+  "createdAt": "2026-10-02T09:00:00.000Z",
+  "completedAt": "2026-10-02T09:00:05.000Z"
+}
+",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 0 $ infrawrench costs push --source colo --format csv --file <dir>/ambiguous.csv --date-format mdy 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"ambiguous.csv","format":"csv","mode":"append","via":"cli","fromDate":"2026-01-02","toDate":"2026-03-04"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-01-02","currency":"USD","amount":10},{"date":"2026-03-04","currency":"USD","amount":5}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "",
+  "stdout": "✓ uploaded 2 daily rows to Colo (2026-11-01 → 2026-11-02, $30.00)
+",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 1 $ infrawrench costs push --source colo --file <dir>/plain.csv --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost data lives in Infrawrench Cloud. There is no local cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --file <dir>/plain.csv 1`] = `
+{
+  "requests": [],
+  "stderr": "--source <name> is required. It names the system raising this.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --file <dir>/empty.json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "Nothing to upload: no valid rows.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format csv --file <dir>/ambiguous.csv --date-format iso 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "--date-format must be ymd, mdy or dmy.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format csv --file <dir>/ambiguous.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "The dates could be month-first or day-first. Pass --date-format mdy or --date-format dmy.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format csv --file <dir>/headerless.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "The file has no header row.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format csv --file <dir>/no-cost.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "Couldn't find the cost column. Map it with --map cost=<column> (columns: Day, Thing).
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format focus --file <dir>/not-focus.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "That isn't a FOCUS file: it needs BilledCost, ChargePeriodStart and BillingCurrency columns. Use --format csv to map its columns instead.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source colo --format xml --file <dir>/plain.csv 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Push your own cost rows (--file or stdin), or upload a CSV/FOCUS file into a custom source
+
+USAGE
+  infrawrench costs push [flags]
+
+FLAGS
+  --source name                Who is pushing: the system raising this (required)
+  --file, -f path              JSON rows, or a CSV / FOCUS file with --format (stdin when omitted)
+  --format json|csv|focus      What the rows are: json (default), csv or focus
+  --map field=column           --format csv: map a column (date, cost, currency, service, account, region, resource, usageQuantity, usageUnit, tags; tag=<col> keeps a column as a tag). Repeatable
+  --currency code              Currency for CSV rows with no currency column
+  --date-format ymd|mdy|dmy    Order of slash-separated CSV dates
+  --replace                    Dates overlap an earlier upload: supersede its spend
+  --append                     Dates overlap an earlier upload: add to its spend
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+  --anomalies              Days a provider or service spiked past its own baseline; also introduces feedback, suppressions, precision and sensitivity
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+ERROR
+  --format for costs push must be json, csv or focus.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source nope --format csv --file <dir>/plain.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "No custom cost source named "nope". CSV and FOCUS files upload into one: create it under Settings → Custom Cost Sources (or with Terraform), then retry.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source x --file <dir>/bad.json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "Rows aren't valid JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source x --file <dir>/missing.json 1`] = `
+{
+  "requests": [],
+  "stderr": "Can't read <dir>/missing.json: ENOENT: no such file or directory, open '<dir>/missing.json'
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > refuses bad input in the legacy words > 2 $ infrawrench costs push --source x --file <dir>/shape.json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "Expected a JSON array of rows, or an object with a "rows" array.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 0 $ infrawrench costs push --source colo --format csv --file <dir>/nov.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"nov.csv","format":"csv","mode":"append","via":"cli","fromDate":"2026-11-01","toDate":"2026-11-02"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-11-01","currency":"USD","amount":10,"service":"Rack"},{"date":"2026-11-02","currency":"USD","amount":20,"service":"Power"}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "",
+  "stdout": "✓ uploaded 2 daily rows to Colo (2026-11-01 → 2026-11-02, $30.00)
+",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 0 $ infrawrench costs push --source colo --format csv --file <dir>/sept.csv --append 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"sept.csv","format":"csv","mode":"append","via":"cli","fromDate":"2026-09-03","toDate":"2026-09-03"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-09-03","currency":"USD","amount":10}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "line 3: Unreadable cost "oops".
+! 1 of 2 line(s) skipped
+",
+  "stdout": "✓ uploaded 2 daily rows to Colo (2026-11-01 → 2026-11-02, $30.00)
+",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 0 $ infrawrench costs push --source colo --format csv --file <dir>/sept.csv --replace 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"sept.csv","format":"csv","mode":"replace","via":"cli","fromDate":"2026-09-03","toDate":"2026-09-03"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-09-03","currency":"USD","amount":10}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "line 3: Unreadable cost "oops".
+! 1 of 2 line(s) skipped
+",
+  "stdout": "✓ uploaded 2 daily rows to Colo (2026-11-01 → 2026-11-02, $30.00)
+",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 0 $ infrawrench costs push --source colo --format focus --file <dir>/nov-focus.csv --json 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+    "POST /custom-cost-sources/cs1/uploads {"fileName":"nov-focus.csv","format":"focus","mode":"append","via":"cli","fromDate":"2026-11-01","toDate":"2026-11-02"}",
+    "POST /custom-cost-sources/cs1/uploads/u3/rows {"rows":[{"date":"2026-11-01","currency":"USD","amount":10,"service":"Rack"},{"date":"2026-11-02","currency":"USD","amount":20,"service":"Power"}]}",
+    "POST /custom-cost-sources/cs1/uploads/u3/complete {}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "id": "u3",
+  "sourceId": "cs1",
+  "fileName": "nov.csv",
+  "format": "csv",
+  "mode": "append",
+  "status": "complete",
+  "fromDate": "2026-11-01",
+  "toDate": "2026-11-02",
+  "rowCount": 2,
+  "totals": {
+    "USD": 30
+  },
+  "uploadedBy": {
+    "id": "u1",
+    "name": "Ada",
+    "email": "ada@example.com"
+  },
+  "via": "cli",
+  "createdAt": "2026-10-02T09:00:00.000Z",
+  "completedAt": "2026-10-02T09:00:05.000Z"
+}
+",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 2 $ infrawrench costs push --source colo --format csv --file <dir>/nov.csv --map cost=Service 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "line 2: Unreadable cost "Rack".
+line 3: Unreadable cost "Power".
+! 2 of 2 line(s) skipped
+Nothing to upload: no valid rows.
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 2 $ infrawrench costs push --source colo --format csv --file <dir>/nov.csv --map nope 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+  ],
+  "stderr": "Expected field=Column, got "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`costs push and sources > uploads CSV and FOCUS files into a custom source > 2 $ infrawrench costs push --source colo --format csv --file <dir>/sept.csv 1`] = `
+{
+  "requests": [
+    "GET /custom-cost-sources",
+    "GET /custom-cost-sources/cs1/uploads",
+  ],
+  "stderr": "line 3: Unreadable cost "oops".
+! 1 of 2 line(s) skipped
+  sept.csv  2026-09-01 → 2026-09-30  $1,200.00
+2026-09-03 → 2026-09-03 overlaps 1 earlier upload(s) of "Colo". Pass --replace to supersede that spend or --append to add to it.
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > pages and clears > 0 $ infrawrench page clear --source monitor --json 1`] = `
+{
+  "requests": [
+    "DELETE /pages?source=monitor",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "cleared": false
+}
+",
+}
+`;
+
+exports[`page > pages and clears > 0 $ infrawrench page clear --source monitor --key db 1`] = `
+{
+  "requests": [
+    "DELETE /pages?source=monitor&key=db",
+  ],
+  "stderr": "",
+  "stdout": "✓ cooldown cleared; the next page delivers immediately
+",
+}
+`;
+
+exports[`page > pages and clears > 0 $ infrawrench page clear --source monitor 1`] = `
+{
+  "requests": [
+    "DELETE /pages?source=monitor",
+  ],
+  "stderr": "",
+  "stdout": "· nothing to clear; that key wasn't in cooldown
+",
+}
+`;
+
+exports[`page > pages and clears > 0 $ infrawrench page db is down --source monitor --key db --title Outage --cooldown 15 --voice --json 1`] = `
+{
+  "requests": [
+    "POST /pages {"source":"monitor","message":"db is down","title":"Outage","key":"db","cooldownMinutes":15,"voice":true}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "delivered": true,
+  "suppressed": false,
+  "sms": 1,
+  "push": 2,
+  "slack": 1,
+  "msTeams": 0
+}
+",
+}
+`;
+
+exports[`page > pages and clears > 0 $ infrawrench page db is down --source monitor --key db --title Outage --cooldown 15 --voice 1`] = `
+{
+  "requests": [
+    "POST /pages {"source":"monitor","message":"db is down","title":"Outage","key":"db","cooldownMinutes":15,"voice":true}",
+  ],
+  "stderr": "",
+  "stdout": "✓ paged 1 sms/voice, 2 push, 1 slack
+",
+}
+`;
+
+exports[`page > refuses a page with nothing to say, no source, a bad cooldown or --local > 1 $ infrawrench page hi --source monitor --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Paging goes through Infrawrench Cloud. \`--local\` has nobody to page.
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > refuses a page with nothing to say, no source, a bad cooldown or --local > 2 $ infrawrench page --source monitor 1`] = `
+{
+  "requests": [],
+  "stderr": "Nothing to say. Pass the alert text: \`infrawrench page …\`
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > refuses a page with nothing to say, no source, a bad cooldown or --local > 2 $ infrawrench page clear 1`] = `
+{
+  "requests": [],
+  "stderr": "--source <name> is required. It names the system raising this.
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > refuses a page with nothing to say, no source, a bad cooldown or --local > 2 $ infrawrench page hi --source monitor --cooldown 1.5 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Alert the org's on-call transports (page clear drops a key's cooldown)
+
+USAGE
+  infrawrench page <subcommand> [flags] [<message...>]
+
+ARGUMENTS
+  message... string    The alert text (the words join into one message) (optional)
+
+FLAGS
+  --source name     Who is pushing: the system raising this (required)
+  --key k           The throttle key (the server defaults it to "default")
+  --title t         A title above the message
+  --cooldown min    Minutes to suppress repeat pages under the same key
+  --voice           Also place a voice call
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  clear    Drop a page key's cooldown after a recovery
+
+ERROR
+  --cooldown must be a whole number of minutes, got "1.5"
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > refuses a page with nothing to say, no source, a bad cooldown or --local > 2 $ infrawrench page hi 1`] = `
+{
+  "requests": [],
+  "stderr": "--source <name> is required. It names the system raising this.
+",
+  "stdout": "",
+}
+`;
+
+exports[`page > says when a page was suppressed or reached nobody > 0 $ infrawrench page hi --source monitor 1`] = `
+{
+  "requests": [
+    "POST /pages {"source":"monitor","message":"hi"}",
+  ],
+  "stderr": "",
+  "stdout": "○ suppressed: this key is still in cooldown until 2026-11-08T12:15:00.000Z
+",
+}
+`;
+
+exports[`page > says when a page was suppressed or reached nobody > 0 $ infrawrench page hi --source monitor 2`] = `
+{
+  "requests": [
+    "POST /pages {"source":"monitor","message":"hi"}",
+  ],
+  "stderr": "",
+  "stdout": "! nobody was reached; check the org's paging settings
+",
+}
+`;

@@ -42,7 +42,7 @@ const AssociationsHandlers = HttpApiBuilder.group(AssociationsApi, "associations
         // `provider_resource_id` is a foreign key with ON DELETE RESTRICT, so an
         // unvalidated one lets a caller pin a row in someone else's
         // organization: the owning org then can't hard-delete that resource
-        // (see the agent-session teardown in `api/routes/agents.ts`), and the
+        // (see the agent-session teardown in `http/domains/agents/sessions.ts`), and the
         // failure lands after the cloud resource is already gone.
         if (!(yield* resourceInOrg(organizationId, input.providerResourceId))) {
           return yield* notFound("Provider resource not found");

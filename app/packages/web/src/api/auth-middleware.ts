@@ -16,10 +16,9 @@ import {
   ensureUserFromClaims,
   requireMembership,
   resolvePersonPermissions,
-  SESSION_COOKIE,
-  SESSION_COOKIE_MAX_AGE,
   type OrgCaller,
 } from "../http/auth";
+import { SESSION_COOKIE, sessionCookieOptions } from "../http/session-cookie";
 import type { HttpFailure } from "../http/errors";
 import { runFromLegacyExit } from "../http/legacy";
 
@@ -107,13 +106,7 @@ async function runStep<A>(
 
 function setRefreshedSession(c: Context, sealed: string | undefined): void {
   if (!sealed) return;
-  setCookie(c, SESSION_COOKIE, sealed, {
-    httpOnly: true,
-    secure: process.env["NODE_ENV"] === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_COOKIE_MAX_AGE,
-  });
+  setCookie(c, SESSION_COOKIE, sealed, sessionCookieOptions());
 }
 
 function setOrgCaller(c: Context, caller: OrgCaller): void {

@@ -6,6 +6,11 @@
  * domain moves here by deleting its Hono routes in the same change.
  */
 import type { Domain } from "./domain";
+import { costReportNotificationsDomain } from "./domains/cost-report-notifications/index";
+import { dashboardNotificationsDomain } from "./domains/dashboard-notifications/index";
+import { costReportAnomalyAlertsDomain } from "./domains/cost-report-anomaly-alerts/index";
+import { costExportsDomain } from "./domains/cost-exports/index";
+import { costExportJobsDomain } from "./domains/cost-export-jobs/index";
 import { budgetsDomain } from "./domains/budgets/index";
 import { onCallDomain } from "./domains/on-call/index";
 import { queryMonitorsDomain } from "./domains/query-monitors/index";
@@ -73,14 +78,104 @@ import { prChecksDomain } from "./domains/pr-checks/index";
 import { logWorkspacesDomain } from "./domains/log-workspaces/index";
 import { aiAttributionDomain } from "./domains/ai-attribution/index";
 import { networkFlowsDomain } from "./domains/network-flows/index";
+import { wsTokenDomain } from "./domains/ws-token/index";
+import { statusIncidentsDomain } from "./domains/status-incidents/index";
+import { statusPagesDomain } from "./domains/status-pages/index";
+import { calendarFeedDomain } from "./domains/calendar-feed/index";
+import { alertEmailUnsubscribeDomain } from "./domains/alert-email-unsubscribe/index";
+import { anomalyFeedbackLinkDomain } from "./domains/anomaly-feedback-link/index";
+import { githubDomain } from "./domains/github/index";
+import { twilioDomain } from "./domains/twilio/index";
+import { pushDomain } from "./domains/push/index";
+import { k8sEfficiencyReportsDomain } from "./domains/k8s-efficiency-reports/index";
+import { resourceReportsDomain } from "./domains/resource-reports/index";
+import { resourceChangesDomain } from "./domains/resource-changes/index";
 import { currencyDomain } from "./domains/currency/index";
 import { costCentresDomain } from "./domains/cost-centres/index";
 import { billingRulesDomain } from "./domains/billing-rules/index";
 import { virtualTagsDomain } from "./domains/virtual-tags/index";
 import { costScenariosDomain } from "./domains/cost-scenarios/index";
 import { customCostSourcesDomain } from "./domains/custom-cost-sources/index";
+import { orphansDomain } from "./domains/orphans/index";
+import { idleFindingsDomain } from "./domains/idle-findings/index";
+import { rightsizingDomain } from "./domains/rightsizing/index";
+import { commitmentsDomain } from "./domains/commitments/index";
+import { creditsDomain } from "./domains/credits/index";
+import { carbonDomain } from "./domains/carbon/index";
+import { momentDomain } from "./domains/moment/index";
+import { priceCatalogDomain } from "./domains/price-catalog/index";
+import { savingsDomain } from "./domains/savings/index";
+import { savingsFindingsDomain } from "./domains/savings-findings/index";
+import { invoicesDomain } from "./domains/invoices/index";
+import { billingProfilesDomain } from "./domains/billing-profiles/index";
+import { businessMetricsDomain } from "./domains/business-metrics/index";
+import { dashboardsDomain } from "./domains/dashboards/index";
+import { searchDomain } from "./domains/search/index";
+import { starredDomain } from "./domains/starred/index";
+import { orgConfigDomain } from "./domains/org-config/index";
+import { costVisibilityDomain } from "./domains/cost-visibility/index";
+import { sharingDomain } from "./domains/sharing/index";
+import { metricAlertsDomain } from "./domains/metric-alerts/index";
+import { customGraphsDomain } from "./domains/custom-graphs/index";
+import { costsDomain } from "./domains/costs/index";
+import { costCanvasesDomain } from "./domains/cost-canvases/index";
+import { accountsDomain } from "./domains/accounts/index";
+import { agentsDomain } from "./domains/agents/index";
+import { agentRegistrationsDomain } from "./domains/agent-registrations/index";
+import { agentLinksDomain } from "./domains/agent-links/index";
+import { resourcesDomain } from "./domains/resources/index";
+import { costIngestDomain } from "./domains/cost-ingest/index";
+import { pagesDomain } from "./domains/pages/index";
+import { chatDomain } from "./domains/chat/index";
+import { discoveryDomain } from "./domains/discovery/index";
+import { apiDocsDomain } from "./domains/api-docs/index";
+import { syncDomain } from "./domains/sync/index";
+import { whoamiDomain } from "./domains/whoami/index";
+import { authDomain } from "./domains/auth/index";
+import { profileDomain } from "./domains/profile/index";
+import { orgsDomain } from "./domains/orgs/index";
+import { invitationsDomain } from "./domains/invitations/index";
+import { adminDomain } from "./domains/admin/index";
+import { pushDevicesDomain } from "./domains/push-devices/index";
+import { awsBulkPricingDomain } from "./domains/aws-bulk-pricing/index";
+import { instancePricingDomain } from "./domains/instance-pricing/index";
+import { connectionFeaturesDomain } from "./domains/connection-features/index";
+
+import { storageTransfersDomain } from "./domains/storage-transfers/index";
+import { sftpTransfersDomain } from "./domains/sftp-transfers/index";
+import { sshHostKeysDomain } from "./domains/ssh-host-keys/index";
+import { sessionRecordingsDomain } from "./domains/session-recordings/index";
+import { sharedConsolesDomain } from "./domains/shared-consoles/index";
+import { connectDomain } from "./domains/connect/index";
+import { sshTunnelsDomain } from "./domains/ssh-tunnels/index";
+import { sshFanoutDomain } from "./domains/ssh-fanout/index";
+import { linuxAppsDomain } from "./domains/linux-apps/index";
+import { stripeWebhookDomain } from "./domains/stripe-webhook/index";
+import { workflowGitWebhookDomain } from "./domains/workflows-git/index";
+import { issueWebhooksDomain } from "./domains/issue-webhooks/index";
+import { internalRelayDomain } from "./domains/internal-relay/index";
+import { callbackDomain } from "./domains/callback/index";
+import { slackOAuthDomain } from "./domains/slack-oauth/index";
+import { slackInboundDomain } from "./domains/slack-inbound/index";
+import { providerOAuthDomain } from "./domains/provider-oauth/index";
+import { agentAuthDomain } from "./domains/agent-auth/index";
+import { agentLinkPlatformDomain } from "./domains/agent-link-platform/index";
 
 export const DOMAINS: readonly Domain[] = [
+  storageTransfersDomain,
+  sftpTransfersDomain,
+  sshHostKeysDomain,
+  sessionRecordingsDomain,
+  sharedConsolesDomain,
+  connectDomain,
+  sshTunnelsDomain,
+  sshFanoutDomain,
+  linuxAppsDomain,
+  costReportNotificationsDomain,
+  dashboardNotificationsDomain,
+  costReportAnomalyAlertsDomain,
+  costExportsDomain,
+  costExportJobsDomain,
   budgetsDomain,
   onCallDomain,
   queryMonitorsDomain,
@@ -154,4 +249,70 @@ export const DOMAINS: readonly Domain[] = [
   virtualTagsDomain,
   costScenariosDomain,
   customCostSourcesDomain,
+  invoicesDomain,
+  billingProfilesDomain,
+  businessMetricsDomain,
+  dashboardsDomain,
+  orphansDomain,
+  idleFindingsDomain,
+  rightsizingDomain,
+  commitmentsDomain,
+  creditsDomain,
+  carbonDomain,
+  momentDomain,
+  priceCatalogDomain,
+  savingsDomain,
+  savingsFindingsDomain,
+  searchDomain,
+  starredDomain,
+  orgConfigDomain,
+  costVisibilityDomain,
+  sharingDomain,
+  metricAlertsDomain,
+  customGraphsDomain,
+  costsDomain,
+  costCanvasesDomain,
+  wsTokenDomain,
+  statusIncidentsDomain,
+  statusPagesDomain,
+  calendarFeedDomain,
+  alertEmailUnsubscribeDomain,
+  anomalyFeedbackLinkDomain,
+  githubDomain,
+  twilioDomain,
+  pushDomain,
+  k8sEfficiencyReportsDomain,
+  resourceReportsDomain,
+  resourceChangesDomain,
+  accountsDomain,
+  agentsDomain,
+  agentRegistrationsDomain,
+  agentLinksDomain,
+  resourcesDomain,
+  connectionFeaturesDomain,
+  costIngestDomain,
+  pagesDomain,
+  chatDomain,
+  discoveryDomain,
+  apiDocsDomain,
+  syncDomain,
+  whoamiDomain,
+  authDomain,
+  profileDomain,
+  orgsDomain,
+  invitationsDomain,
+  adminDomain,
+  pushDevicesDomain,
+  awsBulkPricingDomain,
+  instancePricingDomain,
+  stripeWebhookDomain,
+  workflowGitWebhookDomain,
+  issueWebhooksDomain,
+  internalRelayDomain,
+  callbackDomain,
+  slackOAuthDomain,
+  slackInboundDomain,
+  providerOAuthDomain,
+  agentAuthDomain,
+  agentLinkPlatformDomain,
 ];

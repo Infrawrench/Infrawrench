@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 import { FileBrowser, formatErrorMessage, toast } from "@infrawrench/ui";
 import type { StorageObject, SftpConfig } from "@infrawrench/plugin-base";
 import { invoke } from "../lib/invoke";
+import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { planSftpDownloads } from "../lib/sftp-download-plan";
 import {
   cloudSftpList,
@@ -46,7 +47,9 @@ export function SftpBrowserPanel({
         })) as StorageObject[];
       }
       if (!sftpConfig) throw new Error("SFTP not configured");
-      return invoke<StorageObject[]>("sftp_list", { config: sftpConfig, path });
+      const config = sftpConfig;
+      const entries = await runRpc(DesktopRpcClient.use((rpc) => rpc.SftpList({ config, path })));
+      return [...entries];
     },
     [sftpConfig, cloudContext],
   );
@@ -68,7 +71,12 @@ export function SftpBrowserPanel({
         return;
       }
       if (!sftpConfig) throw new Error("SFTP not configured");
-      await invoke("sftp_upload", { config: sftpConfig, remotePath: key, data: Buffer.from(buf) });
+      const config = sftpConfig;
+      await runRpc(
+        DesktopRpcClient.use((rpc) =>
+          rpc.SftpUpload({ config, remotePath: key, data: new Uint8Array(buf) }),
+        ),
+      );
     },
     [sftpConfig, cloudContext],
   );
@@ -87,7 +95,8 @@ export function SftpBrowserPanel({
         return;
       }
       if (!sftpConfig) throw new Error("SFTP not configured");
-      await invoke("sftp_mkdir", { config: sftpConfig, path: key });
+      const config = sftpConfig;
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.SftpMkdir({ config, path: key })));
     },
     [sftpConfig, cloudContext],
   );
@@ -107,7 +116,9 @@ export function SftpBrowserPanel({
         return;
       }
       if (!sftpConfig) throw new Error("SFTP not configured");
-      await invoke("sftp_delete", { config: sftpConfig, path: key, isDir: isDirectory ?? false });
+      const config = sftpConfig;
+      const isDir = isDirectory ?? false;
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.SftpDelete({ config, path: key, isDir })));
     },
     [sftpConfig, cloudContext],
   );
@@ -146,12 +157,12 @@ export function SftpBrowserPanel({
             return;
           }
           if (!sftpConfig) throw new Error("SFTP not configured");
-          await invoke("sftp_download", {
-            config: sftpConfig,
-            remotePath,
-            destFolder,
-            relativePath,
-          });
+          const config = sftpConfig;
+          await runRpc(
+            DesktopRpcClient.use((rpc) =>
+              rpc.SftpDownload({ config, remotePath, destFolder, relativePath }),
+            ),
+          );
         }),
       );
     },

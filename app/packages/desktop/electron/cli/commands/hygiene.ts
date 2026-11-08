@@ -13,11 +13,11 @@ import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import * as Print from "../effect/print";
 import { days } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { spreadBody, wire } from "../effect/wire";
+import { knownOr, spreadBody, Unrecognized, wire } from "../effect/wire";
 import { c, safe, type Column } from "../output";
 
 const Finding = Schema.Struct({
-  severity: Schema.Literals(["high", "medium", "low"]),
+  severity: knownOr(["high", "medium", "low"]),
   title: Schema.String,
   detail: Schema.String,
 });
@@ -34,6 +34,8 @@ const Report = wire<HygieneReport>()(
 );
 
 function severityCell(finding: Finding): string {
+  // A severity a newer server added prints as it came, uncoloured.
+  if (finding.severity instanceof Unrecognized) return safe(finding.severity.raw);
   switch (finding.severity) {
     case "high":
       return c.red("high");

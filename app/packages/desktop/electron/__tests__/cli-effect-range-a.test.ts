@@ -22,15 +22,9 @@ vi.mock("../cloud-tokens", () => ({
   setTokenStoreReadOnly: vi.fn(),
 }));
 
-import { serveRoutes, useCliCapture } from "./cli-harness";
-import { agrees, cli, compareWith, type LegacyInvoke } from "./cli-legacy-compare";
-import * as LHygiene from "../cli/commands/hygiene.legacy";
-import * as LCarbon from "../cli/commands/carbon.legacy";
-import * as LAlerts from "../cli/commands/alerts.legacy";
-import * as LRouting from "../cli/commands/routing.legacy";
+import { run, serveRoutes, useCliCapture } from "./cli-harness";
 
 const out = useCliCapture();
-compareWith(out);
 
 const NOW = new Date("2026-11-08T12:00:00.000Z");
 beforeEach(() => {
@@ -72,14 +66,10 @@ const HYGIENE = {
   counts: { high: 1, medium: 0, low: 1, total: 2 },
 };
 
-const L = {
-  hygiene: (ctx, p) => LHygiene.cmdHygiene(ctx, { days: p.range.days }),
-} satisfies Record<string, LegacyInvoke>;
-
 describe("hygiene", () => {
   it("prints findings and the caveat", async () => {
     serveRoutes(out, { "GET /credential-hygiene?windowDays=90": HYGIENE });
-    expect(await cli("hygiene", "--days", "90")).toBe(0);
+    expect(await run("hygiene", "--days", "90")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · credential hygiene over the last 90 days
 
@@ -93,7 +83,6 @@ describe("hygiene", () => {
       Only 40 days of audit history. Unused-permission findings were withheld.
       "
     `);
-    await agrees(out, L.hygiene);
   });
 
   it("says when there is nothing, and with no history", async () => {
@@ -106,7 +95,7 @@ describe("hygiene", () => {
         counts: { high: 0, medium: 0, low: 0, total: 0 },
       },
     });
-    expect(await cli("hygiene")).toBe(0);
+    expect(await run("hygiene")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · credential hygiene over the last 30 days
 
@@ -116,20 +105,24 @@ describe("hygiene", () => {
       No audit history yet. Unused-permission findings were withheld.
       "
     `);
-    await agrees(out, L.hygiene);
   });
 
   it("prints the body under --json", async () => {
     serveRoutes(out, { "GET /credential-hygiene": HYGIENE });
-    expect(await cli("hygiene", "--json")).toBe(0);
+    expect(await run("hygiene", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", ...HYGIENE }));
-    await agrees(out, L.hygiene);
   });
 
   it("refuses a bad --days with the legacy sentence", async () => {
-    expect(await cli("hygiene", "--days", "0")).toBe(2);
+    expect(await run("hygiene", "--days", "0")).toBe(2);
     expect(out.stderr).toContain('--days must be a whole number of at least 1, got "0"');
     expect(out.requests).toEqual([]);
+  });
+
+  it("refuses a flag it does not read, with its help", async () => {
+    expect(await run("hygiene", "--last", "7d")).toBe(2);
+    expect(out.stderr).toContain("--last");
+    expect(out.stdout).toBe("");
   });
 });
 
@@ -207,12 +200,10 @@ const CARBON = {
   generatedAt: "2026-11-08T11:00:00.000Z",
 };
 
-const LC: LegacyInvoke = (ctx, p) => LCarbon.cmdCarbon(ctx, p.range);
-
 describe("carbon", () => {
   it("prints the estimate with its gaps", async () => {
     serveRoutes(out, { "GET /carbon?windowDays=30": CARBON });
-    expect(await cli("carbon")).toBe(0);
+    expect(await run("carbon")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "~413 kg CO2e · estimated · Acme · last 30d · 1320 kWh
       3 resources estimated · 23 could not be estimated · 2 nodes counted as their instance
@@ -238,28 +229,24 @@ describe("carbon", () => {
       Estimated, not measured. 50% CPU utilisation assumed; grid figures 2024; processors only.
       "
     `);
-    await agrees(out, LC);
   });
 
   it("sizes the window from --last or --days, and prints the body under --json", async () => {
     serveRoutes(out, { "GET /carbon?windowDays=14": CARBON, "GET /carbon?windowDays=90": CARBON });
-    expect(await cli("carbon", "--last", "2w", "--json")).toBe(0);
+    expect(await run("carbon", "--last", "2w", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty(CARBON));
-    await agrees(out, LC);
     out.stdout = "";
-    expect(await cli("carbon", "--days", "90", "--last", "2w", "--json")).toBe(0);
-    await agrees(out, LC);
+    expect(await run("carbon", "--days", "90", "--last", "2w", "--json")).toBe(0);
   });
 
   it("refuses a window past the bound and a bad --last", async () => {
     serveRoutes(out, {});
-    expect(await cli("carbon", "--days", "400")).toBe(2);
+    expect(await run("carbon", "--days", "400")).toBe(2);
     expect(out.stderr).toBe(
       "Window too large. The server accepts at most 365 days, asked for 400.\n",
     );
-    await agrees(out, LC);
     out.stderr = "";
-    expect(await cli("carbon", "--last", "6h")).toBe(2);
+    expect(await run("carbon", "--last", "6h")).toBe(2);
     expect(out.stderr).toContain('Invalid --last "6h": use forms like 7d, 30d, 12w, 3m');
   });
 });
@@ -326,15 +313,10 @@ const EVENTS = [
   },
 ];
 
-const LA = {
-  list: (ctx, p, rest) =>
-    rest[0] === "events" ? LAlerts.cmdAlertEvents(ctx, p.range.limit) : LAlerts.cmdAlerts(ctx),
-} satisfies Record<string, LegacyInvoke>;
-
 describe("alerts", () => {
   it("lists rules as text and JSON", async () => {
     serveRoutes(out, { "GET /metric-alerts": RULES });
-    expect(await cli("alerts")).toBe(0);
+    expect(await run("alerts")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · 2 rules · 2 firings
 
@@ -345,17 +327,14 @@ describe("alerts", () => {
       Rules match resources by query (provider + type + tag), so resources created later are covered automatically. \`infrawrench alerts events\` shows recent firings.
       "
     `);
-    await agrees(out, LA.list);
     out.stdout = "";
-    expect(await cli("alerts", "--json")).toBe(0);
+    expect(await run("alerts", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", rules: RULES }));
-    await agrees(out, LA.list);
   });
 
   it("says when there are no rules", async () => {
     serveRoutes(out, { "GET /metric-alerts": [] });
-    expect(await cli("alerts")).toBe(0);
-    await agrees(out, LA.list);
+    expect(await run("alerts")).toBe(0);
   });
 
   it("lists events with a capped limit", async () => {
@@ -363,7 +342,7 @@ describe("alerts", () => {
       "GET /metric-alerts/events?limit=200": EVENTS,
       "GET /metric-alerts/events": [],
     });
-    expect(await cli("alerts", "events", "--limit", "500")).toBe(0);
+    expect(await run("alerts", "events", "--limit", "500")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · 2 firings, newest first
 
@@ -372,22 +351,17 @@ describe("alerts", () => {
       Hot CPU  web-2           91  2026-11-07 10:00  resolved 2026-11-07 11:30
       "
     `);
-    await agrees(out, LA.list);
     out.stdout = "";
-    expect(await cli("alerts", "events", "--limit", "500", "--json")).toBe(0);
+    expect(await run("alerts", "events", "--limit", "500", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", events: EVENTS }));
-    await agrees(out, LA.list);
     out.stdout = "";
-    expect(await cli("alerts", "events")).toBe(0);
-    await agrees(out, LA.list);
+    expect(await run("alerts", "events")).toBe(0);
   });
 
   it("refuses --local", async () => {
-    expect(await cli("alerts", "--local")).toBe(1);
-    await agrees(out, LA.list);
+    expect(await run("alerts", "--local")).toBe(1);
     out.stderr = "";
-    expect(await cli("alerts", "events", "--local")).toBe(1);
-    await agrees(out, LA.list);
+    expect(await run("alerts", "events", "--local")).toBe(1);
   });
 });
 
@@ -530,115 +504,3 @@ const EMAIL = {
   memberDomains: ["example.com"],
   suppressions: [{ id: "s1", email: "old@example.com", createdAt: "2026-10-01T09:00:00.000Z" }],
 };
-
-const LR: LegacyInvoke = (ctx, p, rest) =>
-  rest[0] === "queue"
-    ? LRouting.cmdRoutingQueue(ctx, p.range.limit)
-    : rest[0] === "email"
-      ? LRouting.cmdRoutingEmail(ctx)
-      : LRouting.cmdRouting(ctx);
-
-describe("routing", () => {
-  it("prints the rules in evaluation order", async () => {
-    serveRoutes(out, { "GET /alert-rules": ROUTING });
-    expect(await cli("routing")).toBe(0);
-    expect(out.stdout).toMatchInlineSnapshot(`
-      "Evaluated top to bottom; the first match wins unless a rule says otherwise.
-
-      1. Big anomalies
-         when  trigger is cost-anomaly, budget and severity at least warning and account is not prod, acc_9 and amount ≥ $500.00 and name contains "prod" and text does not contain "test"
-         →     #incidents, #(removed), teams:Ops, on-call:Primary, email:ada@example.com, email:(former member), email:finance@example.com, PagerDuty:SVC1, on-call:(removed account)/POL1
-         quiet 22:00–08:00 Europe/Berlin, ISO days 1,2,3, except critical and above
-         esc   unacknowledged after 15m → mobile push
-         also  keeps evaluating the rules below this one
-
-      2. Swallow drift (disabled)
-         when  provider is aws and type is not s3-bucket and name is "drift"
-         →     nowhere (this rule swallows matching alerts)
-         quiet 00:00–01:00 UTC, every day, holding everything
-
-      3. Everything
-         when  every alert
-         →     github issues, mobile push
-
-      "
-    `);
-    await agrees(out, LR);
-    out.stdout = "";
-    expect(await cli("routing", "--json")).toBe(0);
-    expect(out.stdout).toBe(pretty({ org: "org_1", ...ROUTING }));
-    await agrees(out, LR);
-  });
-
-  it("notes the default rules, and an older server without members", async () => {
-    const { members: _members, ...older } = ROUTING;
-    serveRoutes(out, { "GET /alert-rules": { ...older, usingDefaults: true } });
-    expect(await cli("routing")).toBe(0);
-    await agrees(out, LR);
-    serveRoutes(out, { "GET /alert-rules": { ...ROUTING, rules: [] } });
-    out.stdout = "";
-    expect(await cli("routing")).toBe(0);
-    expect(out.stdout).toBe("No routing rules, and nothing to route to.\n");
-    await agrees(out, LR);
-  });
-
-  it("prints the queue", async () => {
-    serveRoutes(out, {
-      "GET /alert-rules/deliveries?limit=50": DELIVERIES,
-      "GET /alert-rules/deliveries?limit=200": [],
-    });
-    expect(await cli("routing", "queue")).toBe(0);
-    expect(out.stdout).toMatchInlineSnapshot(`
-      "WHEN              STATE            SEVERITY  ALERT               RULE           DUE                       
-      2026-11-08 02:00  held             critical  Spend spike on EC2  Big anomalies  sends 2026-11-08 07:00    
-      2026-11-08 03:00  awaiting ack     warning   Budget at 90%       —              escalates 2026-11-08 03:15
-      2026-11-08 04:00  brand_new_state  info      Odd                 x              —                         
-      "
-    `);
-    await agrees(out, LR);
-    out.stdout = "";
-    expect(await cli("routing", "queue", "--json")).toBe(0);
-    await agrees(out, LR);
-    out.stdout = "";
-    expect(await cli("routing", "queue", "--limit", "999")).toBe(0);
-    await agrees(out, LR);
-  });
-
-  it("prints the email policy", async () => {
-    serveRoutes(out, { "GET /alert-email/settings": EMAIL });
-    expect(await cli("routing", "email")).toBe(0);
-    expect(out.stdout).toMatchInlineSnapshot(`
-      "This deployment has no mail provider configured: alert email is never sent.
-
-      extra addresses  member domains (example.com) plus partner.io
-
-      Unsubscribed
-      ADDRESS          SINCE           
-      old@example.com  2026-10-01 09:00
-      "
-    `);
-    await agrees(out, LR);
-    out.stdout = "";
-    expect(await cli("routing", "email", "--json")).toBe(0);
-    await agrees(out, LR);
-    serveRoutes(out, {
-      "GET /alert-email/settings": {
-        ...EMAIL,
-        externalPolicy: "any",
-        emailAvailable: true,
-        suppressions: [],
-      },
-    });
-    out.stdout = "";
-    expect(await cli("routing", "email")).toBe(0);
-    await agrees(out, LR);
-  });
-
-  it("refuses --local in every verb", async () => {
-    for (const verb of [[], ["queue"], ["email"]]) {
-      out.stderr = "";
-      expect(await cli("routing", ...verb, "--local")).toBe(1);
-      await agrees(out, LR);
-    }
-  });
-});

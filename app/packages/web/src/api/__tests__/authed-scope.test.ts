@@ -1,12 +1,15 @@
 /**
- * The session-only router (`authed` in `api/index.ts`) must not run its session
- * middleware on the org tree.
+ * The session-only surface must not run its session check on the org tree.
  *
- * It did, for as long as it existed: a sub-app's `use("*")` mounted at `/api`
- * becomes `/api/*`, so `sessionMiddleware` ran ahead of `apiKeyOrgMiddleware`
- * on every `/api/org/...` request and turned away `iwk_` API keys and agent
- * tokens, which are not a person's WorkOS session. The middleware tests build a
- * mini app without that router, so only a test against the real `api` sees it.
+ * It did, for as long as it was a Hono router: a sub-app's `use("*")` mounted
+ * at `/api` becomes `/api/*`, so `sessionMiddleware` ran ahead of
+ * `apiKeyOrgMiddleware` on every `/api/org/...` request and turned away `iwk_`
+ * API keys and agent tokens, which are not a person's WorkOS session. The
+ * surface is HttpApi now (`SessionAuth`, each prefix guarded whole), and the
+ * person check is the one implementation both halves run, `authenticatePerson`
+ * in `http/auth.ts`; that is what this test intercepts. The middleware tests
+ * build a mini app without the real routing, so only a test against the real
+ * `api` sees it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,17 +20,27 @@ vi.hoisted(() => {
 
 const calls = vi.hoisted(() => ({ session: 0, apiKey: 0 }));
 
+// Stand-ins that answer instead of authenticating, so the test reads which
+// check a request reached first.
+vi.mock("../../http/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../http/auth")>();
+  const { Effect } = await import("effect");
+  const { HttpFailure } = await import("../../http/errors");
+  return {
+    ...actual,
+    authenticatePerson: () =>
+      Effect.suspend(() => {
+        calls.session++;
+        return Effect.fail(new HttpFailure(401, { by: "session" }));
+      }),
+  };
+});
+
 vi.mock("../auth-middleware", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../auth-middleware")>();
   const { createMiddleware } = await import("hono/factory");
   return {
     ...actual,
-    // Stand-ins that answer instead of authenticating, so the test reads which
-    // middleware a request reached first.
-    sessionMiddleware: createMiddleware(async (c) => {
-      calls.session++;
-      return c.json({ by: "session" }, 401);
-    }),
     apiKeyOrgMiddleware: createMiddleware(async (c, next) => {
       const bearer = c.req.header("authorization") ?? "";
       if (!bearer.startsWith("Bearer iwk_")) return next();

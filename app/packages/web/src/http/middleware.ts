@@ -18,7 +18,7 @@
  * operation chooses to, as the hand-written one did.
  */
 import { randomUUID } from "node:crypto";
-import { Cause, Context, Effect, Layer, SchemaIssue } from "effect";
+import { Cause, Context, Effect, Layer, Predicate, SchemaIssue } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiError, type HttpApiEndpoint } from "effect/http-api";
 import { RequestErrors } from "./middleware-tags";
@@ -36,7 +36,21 @@ import {
   type SharingPrincipal,
 } from "../services/sharing-context";
 import { InvalidRequestMessage, RequiredPermission } from "./annotations";
-import { HttpFailure } from "./errors";
+import {
+  BadGateway,
+  BadRequest,
+  Conflict,
+  Forbidden,
+  GatewayTimeout,
+  Gone,
+  HttpFailure,
+  InternalServerError,
+  NotFound,
+  PaymentRequired,
+  ServiceUnavailable,
+  Unauthorized,
+  UnprocessableEntity,
+} from "./errors";
 import { withLegacyScopes } from "./legacy";
 import { missingPermission, OrgPrincipal, type OrgPrincipalValue } from "./principal";
 
@@ -78,6 +92,29 @@ export const serveAsOrgCaller = <E, R>(
 
 const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
 
+const API_ERRORS = [
+  [BadRequest, 400],
+  [Unauthorized, 401],
+  [PaymentRequired, 402],
+  [Forbidden, 403],
+  [NotFound, 404],
+  [Conflict, 409],
+  [Gone, 410],
+  [UnprocessableEntity, 422],
+  [InternalServerError, 500],
+  [BadGateway, 502],
+  [ServiceUnavailable, 503],
+  [GatewayTimeout, 504],
+] as const;
+
+/** The status of one of `./errors.ts`'s classes, or undefined for anything else. */
+function apiErrorStatus(error: unknown): number | undefined {
+  for (const [errorClass, status] of API_ERRORS) {
+    if (error instanceof errorClass) return status;
+  }
+  return undefined;
+}
+
 /**
  * A defect as the old `onError` answered it. Object sharing throws from the
  * services the routes and tools share: an object below `viewer` is a 404 so
@@ -85,6 +122,10 @@ const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
  */
 export function renderDefect(defect: unknown): HttpServerResponse.HttpServerResponse {
   if (defect instanceof HttpFailure) return failureResponse(defect);
+  const apiStatus = apiErrorStatus(defect);
+  if (apiStatus !== undefined && Predicate.hasProperty(defect, "error")) {
+    return json({ error: defect.error }, apiStatus);
+  }
   if (defect instanceof HTTPException) return json({ error: defect.message }, defect.status);
   if (defect instanceof ObjectNotVisibleError) return json({ error: "Not found" }, 404);
   if (defect instanceof ObjectAccessDeniedError) return json({ error: defect.message }, 403);
@@ -130,6 +171,13 @@ export const RequestErrorsLive = Layer.succeed(RequestErrors)((httpEffect, { end
         const error: unknown = failed.success;
         if (HttpApiError.HttpApiSchemaError.is(error)) {
           return Effect.succeed(schemaErrorResponse(error));
+        }
+        // The API's own error classes render themselves, declared or not: an
+        // endpoint that forgot to declare `Forbidden` beside a handler-level
+        // `requirePermission` would otherwise fail to encode it and answer 500.
+        const status = apiErrorStatus(error);
+        if (status !== undefined && Predicate.hasProperty(error, "error")) {
+          return Effect.succeed(json({ error: error.error }, status));
         }
         // Every other typed failure is the endpoint's to encode.
         return Effect.failCause(cause);

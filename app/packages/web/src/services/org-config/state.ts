@@ -639,7 +639,7 @@ interface CardMaps {
  * The card list of every dashboard, in grid order.
  *
  * Resource pins, workflow pins and widgets share one `gridX` sequence (see
- * `api/routes/dashboards.ts`), so they are merged and re-sorted into the single
+ * `http/domains/dashboards/store.ts`), so they are merged and re-sorted into the single
  * ordered `cards` array the document carries, which is also what makes the
  * order reviewable in a diff instead of hidden in integer columns.
  */

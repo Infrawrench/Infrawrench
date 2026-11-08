@@ -21,7 +21,7 @@ import { CliFailure, CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
 import { days, from, kind, lastDays, limit, resource, to } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { wire } from "../effect/wire";
+import { knownOr, Unrecognized, wire } from "../effect/wire";
 import { c, safe } from "../output";
 import { formatChangeTime } from "../format";
 
@@ -41,7 +41,7 @@ const KIND_STYLE: Record<Kind, { glyph: string; color: (s: string) => string }> 
 
 const Entry = Schema.Struct({
   createdAt: Schema.String,
-  changeKind: Schema.Literals(KINDS),
+  changeKind: knownOr(KINDS),
   displayName: Schema.String,
   pluginId: Schema.String,
   resourceTypeId: Schema.String,
@@ -194,7 +194,12 @@ export const changes = Command.make(
       { header: "when", value: (e) => c.dim(formatChangeTime(e.createdAt)) },
       {
         header: "",
-        value: (e) => KIND_STYLE[e.changeKind].color(KIND_STYLE[e.changeKind].glyph),
+        value: (e) => {
+          // A kind a newer server added gets a neutral mark and its own name.
+          if (e.changeKind instanceof Unrecognized) return c.dim("?");
+          const style = KIND_STYLE[e.changeKind];
+          return style.color(style.glyph);
+        },
       },
       { header: "resource", value: (e) => c.bold(safe(e.displayName)) },
       { header: "type", value: (e) => c.dim(safe(`${e.pluginId}/${e.resourceTypeId}`)) },
@@ -202,7 +207,13 @@ export const changes = Command.make(
         header: "account",
         value: (e) => (Predicate.isNullish(e.accountName) ? c.dim("—") : safe(e.accountName)),
       },
-      { header: "what changed", value: (e) => safe(summarizeChange(e)) },
+      {
+        header: "what changed",
+        value: (e) =>
+          e.changeKind instanceof Unrecognized
+            ? safe(e.changeKind.raw)
+            : safe(summarizeChange({ changeKind: e.changeKind, diff: e.diff })),
+      },
     ]);
 
     // Field-level diffs are the reason to look at one resource, so they print in

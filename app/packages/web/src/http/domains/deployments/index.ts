@@ -34,6 +34,7 @@ import { fieldsOf, readJson, readJsonOr } from "../../json-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
+import { DeploymentCostImpact } from "../../schemas/change-cost-impact";
 import { ok } from "../../schemas/common";
 import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
@@ -44,7 +45,6 @@ import {
   DeployPlanResult,
   DeployRepo,
   DeployTrigger,
-  Undocumented,
 } from "./api";
 
 /**
@@ -167,6 +167,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
     )
     .handle("costImpact", ({ params, query }) =>
       Effect.gen(function* () {
+        yield* requirePermission("deployments:read");
         yield* requirePermission("costs:read");
         const { organizationId } = yield* OrgPrincipal;
         const basis = parseCostBasis(query.costBasis);
@@ -179,7 +180,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
           }),
         );
         if (!impact) return yield* notFound("Deployment run not found");
-        return yield* respond(Undocumented)(impact);
+        return yield* respond(DeploymentCostImpact)(impact);
       }),
     )
     // Re-run a previous run's `deploy()` with the image and plan it recorded,

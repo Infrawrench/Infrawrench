@@ -108,8 +108,9 @@ function normalize(schema: Json | undefined, doc: Obj, stack: readonly string[] 
       }
     }
     if (objects.length === 1 && objects[0]) {
-      const { $name: _name, ...member } = objects[0];
-      s = { ...member, ...s };
+      // `allOf: [$ref X, { description }]` is a reference to X described at
+      // the use site: it keeps X's name.
+      s = { ...objects[0], ...s };
     } else if (objects.length > 1) {
       const properties: Obj = {};
       const required = new Set<string>();

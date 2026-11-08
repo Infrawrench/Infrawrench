@@ -53,3 +53,14 @@ export const SuccessDescription = Context.Reference<string | undefined>(
   "infrawrench/http/SuccessDescription",
   { defaultValue: () => undefined },
 );
+
+/**
+ * The `x-required-permission` an operation documents when its handler owns the
+ * gate (any of several permissions, or one that depends on the body or the
+ * caller): stated in the document, not enforced by `OrgAuth`. Prefer
+ * {@link RequiredPermission}, which is both.
+ */
+export const DocumentedPermission = Context.Reference<string | undefined>(
+  "infrawrench/http/DocumentedPermission",
+  { defaultValue: () => undefined },
+);

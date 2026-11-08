@@ -17,6 +17,10 @@ import {
 import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { SshError, type SshShellConfig } from "../shared/rpc/groups/ssh-common";
+import { acquireSshChain } from "./ssh-shell";
 import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
 import { get1PasswordAgentPath } from "./onepassword-agent";
 import {
@@ -436,4 +440,88 @@ export async function workflowSshProbe(
     await new Promise((r) => setTimeout(r, interval));
   }
   return false;
+}
+
+const toSshError = (cause: unknown) => new SshError({ message: errorMessage(cause) });
+
+const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toSshError });
+
+/**
+ * Tunnels (`@infrawrench/ssh-tunnel-core`, with the desktop's agents and
+ * host-key pins) and one-off commands, as the RPC handlers call them.
+ */
+export class SshTunnels extends Context.Service<
+  SshTunnels,
+  {
+    readonly open: (
+      config: SshTunnelConfig,
+    ) => Effect.Effect<{ tunnelId: string; localPort: number }, SshError>;
+    readonly close: (tunnelId: string) => Effect.Effect<void>;
+    readonly active: Effect.Effect<ReturnType<typeof getActiveTunnels>>;
+    readonly exec: (
+      config: WorkflowSshConfig,
+      command: string,
+    ) => Effect.Effect<{ stdout: string; stderr: string; code: number }, SshError>;
+    /** Feed `script` on stdin through the full chain (jump hops, agents, cloud keys). */
+    readonly execScript: (
+      config: SshShellConfig,
+      script: string,
+    ) => Effect.Effect<string, SshError>;
+  }
+>()("infrawrench/desktop/SshTunnels") {
+  static readonly layer = Layer.succeed(SshTunnels)(
+    SshTunnels.of({
+      open: (config) => attempt(() => openTunnel(config)),
+      close: (tunnelId) => Effect.sync(() => closeTunnel(tunnelId)),
+      active: Effect.sync(getActiveTunnels),
+      exec: (config, command) => attempt(() => sshExecCommand(config, command)),
+      execScript: (config, script) =>
+        Effect.gen(function* () {
+          const { execSshScript } = yield* attempt(() => import("@infrawrench/ssh-tunnel-core"));
+          const { client } = yield* acquireSshChain(config);
+          return yield* attempt(() => execSshScript(client, script));
+        }).pipe(Effect.scoped),
+    }),
+  );
+}
+
+type WorkflowStreamRead = Awaited<ReturnType<typeof workflowSshStreamRead>>;
+
+/** The workflow sandbox's SSH capabilities, as the RPC handlers call them. */
+export class WorkflowSsh extends Context.Service<
+  WorkflowSsh,
+  {
+    readonly exec: (
+      config: WorkflowSshConfig,
+      command: string,
+      skipHostKeyCheck: boolean,
+    ) => Effect.Effect<{ stdoutBase64: string; stderrBase64: string; code: number }, SshError>;
+    readonly execScript: (
+      config: WorkflowSshConfig,
+      script: string,
+      skipHostKeyCheck: boolean,
+    ) => Effect.Effect<string, SshError>;
+    readonly streamStart: (
+      config: WorkflowSshConfig,
+      command: string,
+      skipHostKeyCheck: boolean,
+    ) => Effect.Effect<{ streamId: string }, SshError>;
+    readonly streamRead: (streamId: string) => Effect.Effect<WorkflowStreamRead, SshError>;
+    readonly streamClose: (streamId: string) => Effect.Effect<void>;
+    readonly probe: (host: string, port: number, timeoutMs: number) => Effect.Effect<boolean>;
+  }
+>()("infrawrench/desktop/WorkflowSsh") {
+  static readonly layer = Layer.succeed(WorkflowSsh)(
+    WorkflowSsh.of({
+      exec: (config, command, skip) => attempt(() => workflowSshExec(config, command, skip)),
+      execScript: (config, script, skip) =>
+        attempt(() => workflowSshExecScript(config, script, skip)),
+      streamStart: (config, command, skip) =>
+        attempt(() => workflowSshStreamStart(config, command, skip)),
+      streamRead: (streamId) => attempt(() => workflowSshStreamRead(streamId)),
+      streamClose: (streamId) => Effect.sync(() => workflowSshStreamClose(streamId)),
+      probe: (host, port, timeoutMs) =>
+        Effect.promise(() => workflowSshProbe(host, port, timeoutMs)),
+    }),
+  );
 }

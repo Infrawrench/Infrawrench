@@ -8,8 +8,8 @@
  * Potential savings section and `infrawrench orphans --local` at all.
  *
  * Lives in the main process rather than the renderer because it has two
- * callers: the `local_orphans_list` IPC handler and the CLI, which has no
- * renderer. It reads the workspace and loads plugin *metadata* only: no
+ * callers: the `LocalOrphansList` RPC ({@link LocalOrphans}) and the CLI,
+ * which has no renderer. It reads the workspace and loads plugin *metadata* only: no
  * plugin client is constructed, no account credentials are decrypted, and no
  * provider is contacted. That is the whole point: classification is a property
  * of stored state, so it works with the network off.
@@ -22,6 +22,8 @@ import {
   countOrphans,
   type OrphanListResponse,
 } from "@infrawrench/plugin-base";
+import { Context, Effect, Layer } from "effect";
+import { LocalWorkspaceError } from "../shared/rpc/errors";
 import { getDb } from "./main-utils";
 import { loadPlugins } from "../src/plugins/loader";
 
@@ -116,4 +118,19 @@ export async function listLocalOrphans(): Promise<OrphanListResponse> {
     costBasis: "unavailable",
     generatedAt: new Date().toISOString(),
   };
+}
+
+/** The orphan scan as an Effect service, for Costs' Potential savings over RPC. */
+export class LocalOrphans extends Context.Service<
+  LocalOrphans,
+  { readonly list: Effect.Effect<OrphanListResponse, LocalWorkspaceError> }
+>()("infrawrench/desktop/LocalOrphans") {
+  static readonly layer = Layer.succeed(LocalOrphans)(
+    LocalOrphans.of({
+      list: Effect.tryPromise({
+        try: () => listLocalOrphans(),
+        catch: LocalWorkspaceError.fromCause,
+      }),
+    }),
+  );
 }

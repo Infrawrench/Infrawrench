@@ -7,11 +7,17 @@
 import { Schema } from "effect";
 import { maxLength, pattern } from "@infrawrench/ui/schemas";
 
-/** A calendar day on an invoice, `YYYY-MM-DD`, as the service holds it. */
-export const InvoiceDay = Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
-  format: "date",
-  examples: ["2026-01-31"],
-});
+/**
+ * A calendar day on an invoice, `YYYY-MM-DD`, as the service holds it. A
+ * factory, since a description has to be annotated before the check to
+ * survive into the document.
+ */
+export const invoiceDay = (annotations: { readonly description?: string } = {}) =>
+  Schema.String.annotate({ format: "date", examples: ["2026-01-31"], ...annotations }).check(
+    pattern(/^\d{4}-\d{2}-\d{2}$/),
+  );
+
+export const InvoiceDay = invoiceDay();
 
 /** Currency code to an amount in the currency's major unit. */
 export const CurrencyAmounts = Schema.Record(Schema.String, Schema.Finite).annotate({

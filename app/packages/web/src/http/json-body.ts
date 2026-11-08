@@ -96,3 +96,15 @@ export const decodeAsPayload = <S extends Schema.Decoder<unknown>>(
     // The renderer answers a schema error raised as a defect as it does a typed one.
     Effect.orDie,
   );
+
+/**
+ * `body.field?.trim()` on a destructured body field, as the Hono handlers
+ * wrote it: `undefined` for an absent or null field, the trimmed string, or,
+ * for any other JSON value, the `TypeError` (a 500) the handler threw.
+ */
+export const trimmedField = (value: unknown, name: string): Effect.Effect<string | undefined> => {
+  if (typeof value === "string" || value === undefined || value === null) {
+    return Effect.succeed(typeof value === "string" ? value.trim() : undefined);
+  }
+  return Effect.die(new TypeError(`body.${name}?.trim is not a function`));
+};

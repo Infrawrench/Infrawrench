@@ -1,0 +1,438 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { buildTestApi } from "@/http/testing";
+
+/**
+ * The invoice routes' permission boundary and its error mapping.
+ *
+ * The boundary is the interesting half. `invoices:write` prepares (add a
+ * customer, raise a draft) and `invoices:issue` is the irreversible half:
+ * approving freezes what a customer will be sent, sending states that they have
+ * it, voiding withdraws a document already in their hands. An org that wants a
+ * billing clerk preparing the month while only the finance lead issues it needs
+ * those two to be genuinely separate, so that separation is pinned here.
+ */
+
+const service = {
+  listManagedAccounts: vi.fn(),
+  getManagedAccount: vi.fn(),
+  createManagedAccount: vi.fn(),
+  updateManagedAccount: vi.fn(),
+  deleteManagedAccount: vi.fn(),
+};
+
+class ManagedAccountError extends Error {}
+class ManagedAccountNameConflictError extends Error {}
+class ManagedAccountScopeConflictError extends Error {
+  constructor(readonly conflicts: unknown[]) {
+    super('already billed to "Northwind"');
+  }
+}
+
+vi.mock("@infrawrench/server-core/cost/managed-accounts", () => ({
+  ManagedAccountError,
+  ManagedAccountNameConflictError,
+  ManagedAccountScopeConflictError,
+  listManagedAccounts: (...a: unknown[]) => service.listManagedAccounts(...a),
+  getManagedAccount: (...a: unknown[]) => service.getManagedAccount(...a),
+  createManagedAccount: (...a: unknown[]) => service.createManagedAccount(...a),
+  updateManagedAccount: (...a: unknown[]) => service.updateManagedAccount(...a),
+  deleteManagedAccount: (...a: unknown[]) => service.deleteManagedAccount(...a),
+}));
+
+class InvoiceError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400,
+  ) {
+    super(message);
+  }
+}
+
+const invoices = {
+  listInvoices: vi.fn(),
+  getInvoice: vi.fn(),
+  createInvoice: vi.fn(),
+  updateInvoice: vi.fn(),
+  deleteInvoice: vi.fn(),
+  approveInvoice: vi.fn(),
+  sendInvoice: vi.fn(),
+  voidInvoice: vi.fn(),
+  renderInvoiceCsv: vi.fn((..._a: unknown[]) => "number,total\nINV-2026-0001,100\n"),
+  renderInvoicePdfFor: vi.fn(async (..._a: unknown[]) => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+};
+
+vi.mock("@infrawrench/server-core/cost/invoices", () => ({
+  InvoiceError,
+  listInvoices: (...a: unknown[]) => invoices.listInvoices(...a),
+  getInvoice: (...a: unknown[]) => invoices.getInvoice(...a),
+  createInvoice: (...a: unknown[]) => invoices.createInvoice(...a),
+  updateInvoice: (...a: unknown[]) => invoices.updateInvoice(...a),
+  deleteInvoice: (...a: unknown[]) => invoices.deleteInvoice(...a),
+  approveInvoice: (...a: unknown[]) => invoices.approveInvoice(...a),
+  sendInvoice: (...a: unknown[]) => invoices.sendInvoice(...a),
+  voidInvoice: (...a: unknown[]) => invoices.voidInvoice(...a),
+  renderInvoiceCsv: (...a: unknown[]) => invoices.renderInvoiceCsv(...a),
+  renderInvoicePdfFor: (...a: unknown[]) => invoices.renderInvoicePdfFor(...a),
+}));
+
+const scope = {
+  findUnassignedSpend: vi.fn(),
+  previewManagedAccountAssignment: vi.fn(),
+  assignManagedAccountScope: vi.fn(),
+};
+vi.mock("@infrawrench/server-core/cost/managed-account-scope", () => ({
+  findUnassignedSpend: (...a: unknown[]) => scope.findUnassignedSpend(...a),
+  previewManagedAccountAssignment: (...a: unknown[]) => scope.previewManagedAccountAssignment(...a),
+  assignManagedAccountScope: (...a: unknown[]) => scope.assignManagedAccountScope(...a),
+}));
+
+const mockLogAudit = vi.fn();
+vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
+
+const { invoicesDomain } = await import("@/http/domains/invoices/index");
+const app = (basePath: string) => (permissions?: string[]) =>
+  buildTestApi(invoicesDomain, { basePath, ...(permissions ? { permissions } : {}) });
+const invoiceApp = app("/api/org/org-1/invoices");
+const accountsApp = app("/api/org/org-1/managed-accounts");
+
+const INVOICE = {
+  id: "inv-1",
+  managedAccountId: "cust-1",
+  managedAccountName: "Northwind",
+  number: "INV-2026-0001",
+  status: "approved",
+  periodFrom: "2026-01-01",
+  periodTo: "2026-01-31",
+  currency: "GBP",
+  totals: { collected: {}, adjustment: {}, adjusted: {}, billed: { GBP: 1104 } },
+  derivation: { rateDate: "2026-01-31" },
+  supersedesInvoiceId: null,
+};
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("permission boundary", () => {
+  it("refuses reads without invoices:read, costs:read notwithstanding", async () => {
+    const app = invoiceApp(["costs:read", "costs:write"]);
+    const res = await app.request("/");
+    expect(res.status).toBe(403);
+    expect(invoices.listInvoices).not.toHaveBeenCalled();
+  });
+
+  it("lets invoices:write raise a draft but not approve one", async () => {
+    const app = invoiceApp(["invoices:read", "invoices:write"]);
+
+    invoices.createInvoice.mockResolvedValue({ ...INVOICE, status: "draft", number: null });
+    const created = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        managedAccountId: "cust-1",
+        periodFrom: "2026-01-01",
+        periodTo: "2026-01-31",
+      }),
+    });
+    expect(created.status).toBe(200);
+
+    // The maker-checker split: preparing is not issuing.
+    const approved = await app.request("/inv-1/approve", { method: "POST" });
+    expect(approved.status).toBe(403);
+    expect(invoices.approveInvoice).not.toHaveBeenCalled();
+  });
+
+  it("lets invoices:issue approve, send and void", async () => {
+    const app = invoiceApp(["invoices:read", "invoices:issue"]);
+    invoices.approveInvoice.mockResolvedValue(INVOICE);
+    invoices.sendInvoice.mockResolvedValue({ ...INVOICE, status: "sent" });
+    invoices.voidInvoice.mockResolvedValue({
+      invoice: { ...INVOICE, status: "void" },
+      replacement: null,
+    });
+
+    expect((await app.request("/inv-1/approve", { method: "POST" })).status).toBe(200);
+    expect((await app.request("/inv-1/send", { method: "POST" })).status).toBe(200);
+    const voided = await app.request("/inv-1/void", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "Wrong cost centre" }),
+    });
+    expect(voided.status).toBe(200);
+  });
+
+  it("does not let invoices:issue create or delete drafts", async () => {
+    const app = invoiceApp(["invoices:read", "invoices:issue"]);
+    const created = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        managedAccountId: "c1",
+        periodFrom: "2026-01-01",
+        periodTo: "2026-01-31",
+      }),
+    });
+    expect(created.status).toBe(403);
+    expect((await app.request("/inv-1", { method: "DELETE" })).status).toBe(403);
+  });
+
+  it("gates the managed-account routes the same way", async () => {
+    const readOnly = accountsApp(["invoices:read"]);
+    service.listManagedAccounts.mockResolvedValue([]);
+    expect((await readOnly.request("/")).status).toBe(200);
+    const created = await readOnly.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "X", billingCurrency: "GBP" }),
+    });
+    expect(created.status).toBe(403);
+  });
+});
+
+describe("error mapping", () => {
+  it("surfaces the service's refusal verbatim with its own status", async () => {
+    const app = invoiceApp();
+    invoices.deleteInvoice.mockRejectedValue(
+      new InvoiceError("Void it and raise a corrective invoice.", 409),
+    );
+    const res = await app.request("/inv-1", { method: "DELETE" });
+    expect(res.status).toBe(409);
+    // The user reads the same sentence the UI's disabled tooltip shows.
+    expect(await res.json()).toEqual({ error: "Void it and raise a corrective invoice." });
+  });
+
+  it("maps a scope conflict to 409 and names the other customer", async () => {
+    const app = accountsApp();
+    service.createManagedAccount.mockRejectedValue(
+      new ManagedAccountScopeConflictError([
+        { kind: "cost_centre", id: "cc-1", ownerName: "Northwind" },
+      ]),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Contoso", billingCurrency: "GBP", costCentreIds: ["cc-1"] }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; conflicts: unknown[] };
+    expect(body.error).toContain("Northwind");
+    expect(body.conflicts).toHaveLength(1);
+  });
+
+  it("passes the resend flag through, and defaults it off for a bodyless send", async () => {
+    const app = invoiceApp();
+    invoices.sendInvoice.mockResolvedValue({ ...INVOICE, status: "sent", delivery: null });
+
+    // The ordinary first send: no body at all.
+    await app.request("/inv-1/send", { method: "POST" });
+    expect(invoices.sendInvoice).toHaveBeenLastCalledWith("org-1", "inv-1", "user-1", {
+      resend: false,
+    });
+
+    // The deliberate second copy has to be asked for in as many words.
+    await app.request("/inv-1/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resend: true }),
+    });
+    expect(invoices.sendInvoice).toHaveBeenLastCalledWith("org-1", "inv-1", "user-1", {
+      resend: true,
+    });
+  });
+
+  it("surfaces the refusal to double-send as a 409 the user can read", async () => {
+    const app = invoiceApp();
+    invoices.sendInvoice.mockRejectedValue(
+      new InvoiceError("This invoice already reached 1 of 1 recipient on 2026-02-01.", 409),
+    );
+    const res = await app.request("/inv-1/send", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "This invoice already reached 1 of 1 recipient on 2026-02-01.",
+    });
+  });
+
+  it("rejects a void with no reason before reaching the service", async () => {
+    const app = invoiceApp();
+    const res = await app.request("/inv-1/void", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "" }),
+    });
+    expect(res.status).toBe(400);
+    expect(invoices.voidInvoice).not.toHaveBeenCalled();
+  });
+});
+
+describe("audit", () => {
+  it("records the frozen figure on approval, so who-approved-what survives", async () => {
+    const app = invoiceApp();
+    invoices.approveInvoice.mockResolvedValue(INVOICE);
+    await app.request("/inv-1/approve", { method: "POST" });
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "invoice.approve",
+        entityType: "invoice",
+        entityId: "inv-1",
+        userId: "user-1",
+        metadata: expect.objectContaining({
+          number: "INV-2026-0001",
+          billed: { GBP: 1104 },
+          rateDate: "2026-01-31",
+        }),
+      }),
+    );
+  });
+
+  it("records what became of the delivery, not merely that Send was pressed", async () => {
+    const app = invoiceApp();
+    invoices.sendInvoice.mockResolvedValue({
+      ...INVOICE,
+      status: "sent",
+      delivery: {
+        status: "partial",
+        recipients: ["ap@northwind.example", "finance@northwind.example"],
+        delivered: 1,
+        attemptedAt: "2026-02-01T10:00:00.000Z",
+        deliveredAt: "2026-02-01T10:00:00.000Z",
+        attempts: 1,
+        error: "Delivered to 1 of 2 recipients",
+      },
+    });
+    const res = await app.request("/inv-1/send", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "invoice.send",
+        metadata: expect.objectContaining({
+          resend: false,
+          deliveryStatus: "partial",
+          delivered: 1,
+          recipients: ["ap@northwind.example", "finance@northwind.example"],
+        }),
+      }),
+    );
+  });
+
+  it("logs the corrective invoice as its own creation, not a side effect", async () => {
+    const app = invoiceApp();
+    invoices.voidInvoice.mockResolvedValue({
+      invoice: { ...INVOICE, status: "void" },
+      replacement: { ...INVOICE, id: "inv-2", number: null, status: "draft" },
+    });
+    await app.request("/inv-1/void", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "Wrong period", supersede: true }),
+    });
+    const actions = mockLogAudit.mock.calls.map((c) => (c[0] as { action: string }).action);
+    expect(actions).toEqual(["invoice.void", "invoice.create"]);
+  });
+});
+
+describe("export", () => {
+  it("serves the CSV as an attachment named after the invoice", async () => {
+    const app = invoiceApp();
+    invoices.getInvoice.mockResolvedValue(INVOICE);
+    const res = await app.request("/inv-1/export");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/csv");
+    expect(res.headers.get("Content-Disposition")).toContain('filename="INV-2026-0001.csv"');
+    expect(await res.text()).toContain("INV-2026-0001");
+  });
+
+  it("serves the PDF as an attachment named after the invoice", async () => {
+    const app = invoiceApp(["invoices:read"]);
+    invoices.getInvoice.mockResolvedValue(INVOICE);
+    const res = await app.request("/inv-1/pdf");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/pdf");
+    expect(res.headers.get("Content-Disposition")).toContain('filename="INV-2026-0001.pdf"');
+    expect(invoices.renderInvoicePdfFor).toHaveBeenCalledWith("org-1", INVOICE);
+  });
+});
+
+describe("scope tools", () => {
+  it("keeps the unassigned-spend finder and the preview behind costs:read too", async () => {
+    const invoicesOnly = accountsApp(["invoices:read", "invoices:write"]);
+    expect((await invoicesOnly.request("/unassigned")).status).toBe(403);
+    expect(
+      (
+        await invoicesOnly.request("/assignments/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ managedAccountId: null, accountIds: ["a1"] }),
+        })
+      ).status,
+    ).toBe(403);
+    expect(scope.findUnassignedSpend).not.toHaveBeenCalled();
+
+    const both = accountsApp(["invoices:read", "costs:read"]);
+    scope.findUnassignedSpend.mockResolvedValue({ rows: [], assignable: 0 });
+    const res = await both.request("/unassigned?from=2026-01-01&to=2026-01-31");
+    expect(res.status).toBe(200);
+    expect(scope.findUnassignedSpend).toHaveBeenCalledWith("org-1", {
+      from: "2026-01-01",
+      to: "2026-01-31",
+    });
+  });
+
+  it("does not mistake /unassigned for a customer id", async () => {
+    const app = accountsApp();
+    scope.findUnassignedSpend.mockResolvedValue({ rows: [], assignable: 0 });
+    await app.request("/unassigned");
+    expect(service.getManagedAccount).not.toHaveBeenCalled();
+  });
+
+  it("assigns on invoices:write and audits every customer whose scope changed", async () => {
+    const reader = accountsApp(["invoices:read", "costs:read"]);
+    const body = JSON.stringify({ managedAccountId: "cust-2", costCentreIds: ["cc-1"] });
+    const post = { method: "POST", headers: { "Content-Type": "application/json" }, body };
+    expect((await reader.request("/assignments", post)).status).toBe(403);
+
+    const app = accountsApp(["invoices:write"]);
+    scope.assignManagedAccountScope.mockResolvedValue([
+      {
+        id: "cust-1",
+        name: "Northwind",
+        before: { costCentreIds: ["cc-1"], accountIds: [] },
+        after: { costCentreIds: [], accountIds: [] },
+      },
+      {
+        id: "cust-2",
+        name: "Contoso",
+        before: { costCentreIds: [], accountIds: [] },
+        after: { costCentreIds: ["cc-1"], accountIds: [] },
+      },
+    ]);
+    service.listManagedAccounts.mockResolvedValue([]);
+    const res = await app.request("/assignments", post);
+    expect(res.status).toBe(200);
+    expect(scope.assignManagedAccountScope).toHaveBeenCalledWith("org-1", {
+      managedAccountId: "cust-2",
+      costCentreIds: ["cc-1"],
+      accountIds: [],
+    });
+    const actions = mockLogAudit.mock.calls.map(
+      (c) => `${(c[0] as { action: string }).action}:${(c[0] as { entityId: string }).entityId}`,
+    );
+    expect(actions).toEqual([
+      "managed_account.assign:cust-2",
+      "managed_account.update:cust-1",
+      "managed_account.update:cust-2",
+    ]);
+  });
+
+  it("maps a refused assignment to a 400 with the service's sentence", async () => {
+    const app = accountsApp();
+    scope.assignManagedAccountScope.mockRejectedValue(
+      new ManagedAccountError("Unknown cost centre or account: nope"),
+    );
+    const res = await app.request("/assignments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ managedAccountId: null, costCentreIds: ["nope"] }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("nope");
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+});

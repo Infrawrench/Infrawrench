@@ -17,6 +17,7 @@ import {
 import type { KeySource } from "../lib/ssh-key-source";
 import { openSshShell, type SshShellHandle } from "../lib/ssh-dispatch";
 import { invoke } from "../lib/invoke";
+import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { cloudSftpUpload } from "../lib/cloud-api";
 
 interface SshTerminalProps {
@@ -116,11 +117,12 @@ export function SshTerminal({
               sshUsername: username,
             });
           } else {
-            await invoke("sftp_upload", {
-              config: { host, port, username, privateKey },
-              remotePath,
-              data: image.data,
-            });
+            const config = { host, port, username, privateKey };
+            await runRpc(
+              DesktopRpcClient.use((rpc) =>
+                rpc.SftpUpload({ config, remotePath, data: image.data }),
+              ),
+            );
           }
           return remotePath;
         } catch (err) {

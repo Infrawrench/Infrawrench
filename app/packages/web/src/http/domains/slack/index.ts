@@ -4,8 +4,8 @@
  * `install-url` points at our own `start` hop rather than straight at Slack:
  * the request may come from the desktop main process or the mobile app,
  * neither of which is the browser that will finish the install, so the nonce
- * cookie is set when that browser arrives (`slackOauthRoute` in
- * `api/routes/slack.ts`, which stays on Hono).
+ * cookie is set when that browser arrives (the `slack-oauth` domain,
+ * `http/domains/slack-oauth/`).
  */
 import crypto from "node:crypto";
 import { Effect, Predicate } from "effect";
@@ -36,7 +36,7 @@ import {
   SlackTestResult,
 } from "./api";
 
-/** The same base the OAuth hops derive their URLs from (`api/routes/slack.ts`). */
+/** The same base the OAuth hops derive their URLs from (`http/domains/slack-oauth/`). */
 function appUrl(): string {
   return process.env["APP_URL"] ?? "http://localhost:3000";
 }

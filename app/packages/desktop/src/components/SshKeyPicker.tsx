@@ -2,6 +2,12 @@ import { useState, useEffect, useId } from "react";
 import { useGT } from "gt-react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem, CloseIcon } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
+import {
+  is1PasswordAvailable,
+  isPageantAvailable,
+  listSystemKeys,
+  readSystemKey,
+} from "../lib/ssh-keys";
 import { getDb } from "../db/client";
 import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
 import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
@@ -41,10 +47,10 @@ export function SshKeyPicker({
 
   async function loadKeys() {
     const [sys, db, pageant, onePassword] = await Promise.all([
-      invoke<SystemKey[]>("ssh_list_system_keys"),
+      listSystemKeys(),
       getDb(),
-      invoke<boolean>("ssh_check_pageant").catch(() => false),
-      invoke<boolean>("ssh_check_1password").catch(() => false),
+      isPageantAvailable().catch(() => false),
+      is1PasswordAvailable().catch(() => false),
     ]);
     setSystemKeys(sys);
     setPageantAvailable(pageant);
@@ -90,7 +96,7 @@ export function SshKeyPicker({
       // Derive username from pub key comment
       if (first.type === "system") {
         try {
-          const pub = await invoke<string>("ssh_read_system_key", { name: `${first.name}.pub` });
+          const pub = await readSystemKey(`${first.name}.pub`);
           const comment = pub.trim().split(" ")[2];
           if (comment) {
             const derived = deriveSSHUsername(comment);
@@ -109,7 +115,7 @@ export function SshKeyPicker({
     } else if (source.type === "1password") {
       onKeyResolved(ONEPASSWORD_SENTINEL);
     } else if (source.type === "system") {
-      const key = await invoke<string>("ssh_read_system_key", { name: source.name });
+      const key = await readSystemKey(source.name);
       onKeyResolved(key);
     } else if (source.type === "app") {
       const key = await invoke<string>("ssh_key_get_private_key", { keyId: source.id });
@@ -128,7 +134,7 @@ export function SshKeyPicker({
 
     if (source.type === "system") {
       try {
-        const pub = await invoke<string>("ssh_read_system_key", { name: `${source.name}.pub` });
+        const pub = await readSystemKey(`${source.name}.pub`);
         const comment = pub.trim().split(" ")[2];
         if (comment) {
           const derived = deriveSSHUsername(comment);

@@ -3,7 +3,7 @@
  *
  * The only surface today is the Slack button `routeAlert` attaches when a rule
  * has an escalation policy; the inbound handler in
- * `web/src/api/routes/slack-inbound.ts` resolves the clicking Slack user to an
+ * `web/src/http/domains/slack-inbound/` resolves the clicking Slack user to an
  * org member first, so this module can take "who" on trust and worry only about
  * "which row".
  */

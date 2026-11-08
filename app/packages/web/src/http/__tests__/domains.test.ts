@@ -50,9 +50,24 @@ describe("HttpApi domains", () => {
         return hit ? [`${route.method} ${route.path} -> ${hit.handler}`] : [];
       });
     expect(shadowed).toEqual([]);
-    // The check is only as good as its inputs: both sides must be non-trivial.
-    expect(api.routes.length).toBeGreaterThan(100);
+    // The router side must be non-trivial for the check to mean anything. The
+    // Hono side shrinks to nothing as routes move, which is the point.
     expect(router.find("GET", "/api/org/sample/budgets/sample")).toBeDefined();
+  });
+
+  it("own the prefixes they guard outright", () => {
+    // A guarded prefix answers every method and path under it before Hono
+    // does (`http/prefix-guard.ts`), so a Hono route there would sit behind
+    // the guard's 401.
+    const guarded = DOMAINS.flatMap((domain) => domain.guardedPrefixes ?? []);
+    expect(guarded.length).toBeGreaterThan(0);
+    const under = api.routes
+      .filter((route) => route.method !== "ALL")
+      .filter((route) =>
+        guarded.some((prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`)),
+      )
+      .map((route) => `${route.method} ${route.path}`);
+    expect(under).toEqual([]);
   });
 
   it("document themselves without conflicting components", () => {

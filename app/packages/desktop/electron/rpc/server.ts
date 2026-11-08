@@ -10,9 +10,27 @@ import { Effect, Layer } from "effect";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { DesktopRpcs } from "../../shared/rpc/groups";
 import { layerIpcSocketServer } from "./ipc-socket-server";
+import { LocalDeployHistoryHandlers } from "./handlers/deploy-history";
+import { LocalDnsHandlers } from "./handlers/local-dns";
+import { LocalEnvironmentDiffHandlers } from "./handlers/local-environment-diff";
+import { LocalExpiringHandlers } from "./handlers/local-expiring";
+import { LocalExtendedSupportHandlers } from "./handlers/local-extended-support";
+import { LocalOrphansHandlers } from "./handlers/local-orphans";
+import { LocalPostureHandlers } from "./handlers/local-posture";
 import { ShellCommandHandlers } from "./handlers/shell-command";
+import { SshHandlers } from "./handlers/ssh";
 
-const DesktopRpcHandlers = Layer.mergeAll(ShellCommandHandlers);
+const DesktopRpcHandlers = Layer.mergeAll(
+  ShellCommandHandlers,
+  LocalDeployHistoryHandlers,
+  LocalDnsHandlers,
+  LocalEnvironmentDiffHandlers,
+  LocalExpiringHandlers,
+  LocalExtendedSupportHandlers,
+  LocalOrphansHandlers,
+  LocalPostureHandlers,
+  SshHandlers,
+);
 
 export const RpcServerLive = RpcServer.layer(DesktopRpcs).pipe(
   Layer.provide(DesktopRpcHandlers),

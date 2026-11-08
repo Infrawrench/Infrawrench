@@ -2,19 +2,14 @@ import { Hono } from "hono";
 import { httpApiMiddleware, makeHttpApiHandler } from "../http/server";
 import { DOMAINS } from "../http/domains";
 import { MiddlewareLive } from "../http/middleware-live";
-import { costVisibilityRoutes } from "./routes/cost-visibility";
-import { sharingRoutes } from "./routes/sharing";
 import {
   ObjectAccessDeniedError,
   ObjectNotVisibleError,
   SharingInputError,
 } from "../services/object-sharing";
 import { costVisibilityMiddleware } from "../auth/cost-visibility";
-import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
-import { setCookie } from "hono/cookie";
-import { randomBytes, randomUUID } from "node:crypto";
-import { apiReference } from "@scalar/hono-api-reference";
+import { randomUUID } from "node:crypto";
 import {
   sessionMiddleware,
   orgMiddleware,
@@ -28,109 +23,8 @@ import {
   GATEWAY_ONLY_HEADER,
   isGatewayOnlyError,
 } from "@infrawrench/server-core/runtime/gateway-only";
-import { workos, clientId } from "../auth/workos";
-import { getPublicOpenApiDocument } from "./openapi/index";
-import {
-  OAUTH_STATE_COOKIE,
-  RETURN_TO_COOKIE,
-  OAUTH_COOKIE_MAX_AGE,
-  safeReturnPath,
-} from "./oauth-state";
 
-import { callbackRoutes } from "./routes/callback";
-import { stripeWebhookRoutes } from "./routes/stripe-webhook";
-import { workflowGitWebhook } from "./routes/workflows-git";
-import { githubRoutes, githubSetupRoute } from "./routes/github";
-
-import { authRoutes } from "./routes/auth";
-import { profileRoutes } from "./routes/profile";
-
-import { orgManagementRoutes } from "./routes/orgs";
-import { agentAuthRoutes, agentClaimRoutes } from "./routes/agent-auth";
-import relayRoutes from "./routes/internal-relay";
-import { agentRegistrationRoutes } from "./routes/agent-registrations";
-import { agentLinkRequestRoutes, agentLinkRoutes } from "./routes/agent-links";
-import { agentLinkOrgRoutes } from "./routes/agent-links-org";
-import { invitationAcceptRoutes } from "./routes/invitation-accept";
-import { adminRoutes } from "./routes/admin";
-
-import { dashboardRoutes } from "./routes/dashboards";
-import { costRoutes } from "./routes/costs";
-import { costCanvasRoutes } from "./routes/cost-canvases";
-import { kubernetesEfficiencyReportRoutes } from "./routes/k8s-efficiency-reports";
-import {
-  costReportNotificationRoutes,
-  orgReportNotificationRoutes,
-} from "./routes/cost-report-notifications";
-import {
-  costReportPdfRoutes,
-  dashboardNotificationRoutes,
-  orgDashboardNotificationRoutes,
-} from "./routes/dashboard-notifications";
-import { resourceReportRoutes } from "./routes/resource-reports";
-import { costExportRoutes } from "./routes/cost-exports";
-import { costExportJobRoutes } from "./routes/cost-export-jobs";
-import {
-  costReportAnomalyAlertRoutes,
-  orgReportAnomalyAlertRoutes,
-} from "./routes/cost-report-anomaly-alerts";
-import { businessMetricRoutes } from "./routes/business-metrics";
-import { orphanRoutes } from "./routes/orphans";
-import { idleFindingRoutes } from "./routes/idle-findings";
-import { rightsizingRoutes } from "./routes/rightsizing";
-import { priceCatalogRoutes } from "./routes/price-catalog";
-import { costIngestRoutes } from "./routes/cost-ingest";
-import { pageRoutes } from "./routes/pages";
-import { metricAlertRoutes } from "./routes/metric-alerts";
-import { invoiceRoutes, managedAccountRoutes } from "./routes/invoices";
-import { billingProfileRoutes } from "./routes/billing-profiles";
-import { customGraphRoutes } from "./routes/custom-graphs";
-import { orgConfigRoutes } from "./routes/org-config";
-import { accountRoutes } from "./routes/accounts";
 import { billingRoutes } from "./routes/billing";
-import { connectionFeatureRoutes } from "./routes/connection-features";
-import { resourceDetailRoutes } from "./routes/resource-detail";
-import { resourceChangeRoutes } from "./routes/resource-changes";
-import { statusIncidentRoutes } from "./routes/status-incidents";
-import { publicCalendarRoutes } from "./routes/calendar-feed";
-import { pagingWebhookRoutes } from "./routes/paging-providers";
-import { carbonRoutes } from "./routes/carbon";
-import { momentRoutes } from "./routes/moment";
-import { statusPageRoutes, publicStatusRoutes } from "./routes/status-pages";
-import { wsTokenRoutes } from "./routes/ws-token";
-import { storageRoutes } from "./routes/storage";
-import { sftpRoutes } from "./routes/sftp";
-import { sshHostKeyRoutes } from "./routes/ssh-host-keys";
-import sessionRecordingRoutes from "./routes/session-recordings.js";
-import sharedConsoleRoutes from "./routes/shared-consoles.js";
-import creditRoutes from "./routes/credits.js";
-import commitmentRoutes from "./routes/commitments.js";
-import savingsRoutes from "./routes/savings.js";
-import { savingsFindingRoutes, savingsViewRoutes } from "./routes/savings-findings.js";
-import { searchRoutes } from "./routes/search";
-import { starredRoutes } from "./routes/starred";
-import { connectRoutes } from "./routes/connect";
-import { sshTunnelRoutes } from "./routes/ssh-tunnels";
-import { sshFanoutRoutes } from "./routes/ssh-fanout";
-import { appsRoutes } from "./routes/apps";
-import { twilioRoutes } from "./routes/twilio";
-import { slackOauthRoute } from "./routes/slack";
-import { providerOAuthRoutes, providerOAuthCallbackRoute } from "./routes/provider-oauth";
-import { slackInboundRoutes } from "./routes/slack-inbound";
-import { anomalyFeedbackLinkRoutes } from "./routes/anomaly-feedback-link";
-import { issueWebhookRoutes } from "./routes/issue-webhooks";
-import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
-import { alertEmailPublicRoutes } from "./routes/alert-email";
-
-// API-key-authed; handles its own auth.
-import { syncRoutes } from "./routes/sync";
-import { whoamiRoutes } from "./routes/whoami";
-import { awsBulkPricingRoutes } from "./routes/aws-bulk-pricing";
-import { instancePricingRoutes } from "./routes/instance-pricing";
-import { chatRoutes } from "./routes/chat";
-
-import { wellKnownRoutes } from "../mcp/well-known";
-import { authMdRoutes } from "../mcp/auth-md";
 
 const api = new Hono();
 
@@ -168,200 +62,54 @@ api.onError((err, c) => {
   return c.json({ error: message, correlationId }, 500);
 });
 
-api.route("/callback", callbackRoutes);
-api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
-// Public git webhook for workflows (no session; opaque token in path).
-api.route("/api", workflowGitWebhook);
-// GitHub App setup callback, outside the org tree: it checks the session
-// itself (bouncing through sign-in) and verifies the installation over OAuth.
-api.route("/api", githubSetupRoute);
-// Public Slack OAuth callback (no session; signed `state` binds the org).
-api.route("/api", slackOauthRoute);
-// Provider OAuth callback ("Connect with X"): unauthenticated, the sealed
-// state is the proof. See routes/provider-oauth.ts.
-api.route("/api", providerOAuthCallbackRoute);
-// Inbound Slack: slash commands + interactivity (signature-verified), and the
-// session-authed account-link landing (it bounces through sign-in itself).
-api.route("/api", slackInboundRoutes);
-// The page behind the Expected/Unexpected links on Teams anomaly cards.
-api.route("/api", anomalyFeedbackLinkRoutes);
-// Public alert-email unsubscribe (no session; HMAC-signed token in the URL).
-api.route("/api", alertEmailPublicRoutes);
-// Inbound paging-provider webhooks (no session; the provider's signature,
-// verified with the stored secret, is the authentication).
-api.route("/api", pagingWebhookRoutes);
-// Inbound tracker webhooks for live issue status (no session; the tracker's
-// HMAC signature over the raw body is the authentication).
-api.route("/api", issueWebhookRoutes);
-api.route("/.well-known", wellKnownRoutes);
-// `auth.md` at the domain root: the agent-registration skill document the
-// `agent_auth` discovery block points at.
-api.route("/", authMdRoutes);
+// The WorkOS sign-in callback (`/callback`), the Slack OAuth hops
+// (`/api/slack/oauth/*`), the provider OAuth callback
+// (`/api/provider-oauth/:pluginId/callback`) and inbound Slack (slash commands,
+// interactivity and the account-link landing) are HttpApi domains with no auth
+// middleware: the sign-in cookies, a signed or sealed state and Slack's
+// signature are their proof, and the two that need a person run the session
+// check themselves (`http/domains/callback`, `slack-oauth`, `provider-oauth`,
+// `slack-inbound`).
+// The GitHub App setup callback (`/api/github/setup`), the Teams anomaly
+// feedback page (`/api/anomaly-feedback`) and the alert-email unsubscribe
+// pages are HttpApi domains with no auth middleware: the first two check the
+// session themselves (bouncing through sign-in), the last takes an
+// HMAC-signed token (`http/domains/github`, `anomaly-feedback-link`,
+// `alert-email-unsubscribe`).
+// The discovery documents at the domain root (`/.well-known/*` for MCP's
+// OAuth discovery, `/auth.md` for agent registration) and the API's own docs
+// (`/openapi.json`, `/docs`) are public HttpApi domains
+// (`http/domains/discovery/`, `api-docs/`).
 
-/**
- * The `@scalar/api-reference` standalone bundle the docs page loads. Keep this
- * in step with the `@scalar/hono-api-reference` dependency: the integration
- * emits a config shape the bundle has to understand, and a drifting pair
- * renders a half-broken page (client-library picker showing bare labels, etc.).
- */
-const SCALAR_VERSION = "1.63.0";
+// The bearer-only `/api/v1` surface (desktop sync, whoami, the bulk and
+// warehouse pricing data) is served by its HttpApi domains, which
+// authenticate themselves (`http/bearer-caller.ts`).
 
-// Public: the spec describes the API surface, not private data. Internal
-// routes (platform admin, webhooks, browser auth, desktop sync, ws-token, push)
-// and the `sessionCookie` scheme are stripped here; see `openapi/public-spec.ts`.
-api.get("/openapi.json", async (c) => c.json(await getPublicOpenApiDocument()));
-api.get(
-  "/docs",
-  apiReference({
-    url: "/openapi.json",
-    pageTitle: "Infrawrench API",
-    theme: "default",
-    // Pin the standalone bundle. The default CDN URL is unversioned, so the
-    // docs UI would otherwise track upstream releases, which is how the page
-    // ended up rendering a v1 bundle against a v0.5 config shape.
-    cdn: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_VERSION}`,
-    // Snippets for languages we can actually vouch for, with curl the default.
-    // Left unfiltered, Scalar offers ~35 clients (Clojure, OCaml, ObjC…) that
-    // nobody here has run against this API.
-    defaultHttpClient: { targetKey: "shell", clientKey: "curl" },
-    hiddenClients: {
-      c: true,
-      clojure: true,
-      csharp: true,
-      dart: true,
-      http: true,
-      java: true,
-      kotlin: true,
-      objc: true,
-      ocaml: true,
-      php: true,
-      powershell: true,
-      r: true,
-      ruby: true,
-      swift: true,
-      // Keep one idiomatic client per remaining language.
-      shell: ["httpie", "wget"],
-      js: ["axios", "jquery", "ofetch", "xhr"],
-      node: ["axios", "ofetch", "undici"],
-      python: ["python3"],
-    },
-  }),
-);
+// Chat (`http/domains/chat/`) and the push-up surfaces for servers outside
+// Infrawrench, `POST /costs/rows` and `/pages` (`cost-ingest/`, `pages/`), are
+// HttpApi domains that authenticate themselves (`http/org-request-caller.ts`):
+// a session, a WorkOS bearer token or an `iwk_` key holding the route's scope,
+// so the HttpApi router answers them ahead of the org tree below.
 
-api.get("/api/auth/sign-in", async (c) => {
-  const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
-  // Per-request nonce. The callback verifies the cookie matches the returned
-  // `state` parameter, blocking login CSRF.
-  const state = randomBytes(32).toString("base64url");
-  setCookie(c, OAUTH_STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: process.env["NODE_ENV"] === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: OAUTH_COOKIE_MAX_AGE,
-  });
-  // Where to land afterwards. Used by the step-up flow so a user sent back to
-  // sign-in mid-settings-change returns to the page they were on. Validated to
-  // a same-origin path: an open redirect here would be a phishing primitive.
-  const returnTo = safeReturnPath(c.req.query("return_to"));
-  if (returnTo) {
-    setCookie(c, RETURN_TO_COOKIE, returnTo, {
-      httpOnly: true,
-      secure: process.env["NODE_ENV"] === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: OAUTH_COOKIE_MAX_AGE,
-    });
-  }
-  const url = workos.userManagement.getAuthorizationUrl({
-    provider: "authkit",
-    clientId,
-    redirectUri,
-    state,
-  });
-  return c.redirect(url);
-});
+// Public status pages (`/api/status/:slug`) and iCalendar feeds
+// (`/api/calendar/:token.ics`) are HttpApi groups with no auth middleware
+// (`http/domains/status-pages/public.ts`, `calendar-feed`): the slug or the
+// 32-byte token is the sole credential, and neither URL carries an org id.
 
-api.route("/api/v1/sync", syncRoutes);
-// Bearer-only identity check, outside the org tree so a key needs no org in the
-// path; the instances-bundles Worker gates its downloads on it.
-api.route("/api/v1/whoami", whoamiRoutes);
-// AWS bulk pricing data from Workers KV, for the bulk-instances SDKs: any
-// bearer credential, outside the org tree, and not in the OpenAPI spec.
-api.route("/api/v1/aws-bulk-pricing", awsBulkPricingRoutes);
-api.route("/api/v1/instance-pricing", instancePricingRoutes);
-// The path before the warehouse covered other clouds; kept as an alias.
-api.route("/api/v1/aws-pricing", instancePricingRoutes);
+// Agent registration and the claim ceremony (`/api/agent`, `/api/agent/claim`)
+// and the agent link device flow and link surface (`/api/agent-links/requests`,
+// `/api/agent-link`) are HttpApi domains outside every auth layer
+// (`http/domains/agent-auth`, `agent-link-platform`): registration serves a
+// caller with no credentials, so the rate limit in `trials/ceremony.ts` stands
+// in for authentication on the only route that creates an organization with no
+// person behind it; the person's halves run `SessionAuth`, and the linked
+// platform presents its own `iwl_` credential.
 
-// Chat handles its own auth so it can serve both session-cookie UI clients
-// and `iwk_` API-key holders with the `chat:write` scope.
-api.route("/api/org/:orgId/chat", chatRoutes);
-
-// Push-up surfaces for servers outside Infrawrench. Same reason as chat: the
-// org tree's session middleware 401s `iwk_` keys, so these authenticate
-// themselves (see auth/org-request-auth.ts). Registered before the org tree so
-// `POST /costs/rows` resolves here; every other `/costs/*` path falls through
-// to the session-authed router below.
-api.route("/api/org/:orgId/costs", costIngestRoutes);
-api.route("/api/org/:orgId/pages", pageRoutes);
-
-// Public status pages. Registered outside every auth layer *and* outside the
-// org tree, because the whole point is to answer callers with no account and
-// the URL deliberately contains no org id, only the page's slug, which is its
-// sole credential. The handler can reach nothing but the public payload
-// assembler (see routes/status-pages.ts).
-api.route("/api/status", publicStatusRoutes);
-
-// Public iCalendar feeds. Outside every auth layer for the same reason as the
-// status pages above (a calendar client can hold no session) with a 32-byte
-// token in the path as the sole credential and no org id anywhere in the URL.
-api.route("/api", publicCalendarRoutes);
-
-// Agent registration and the claim ceremony. Outside every auth layer because
-// its whole purpose is serving a caller with no credentials: the rate limit in
-// `trials/ceremony.ts` is what stands in for authentication here, and it has to,
-// since this is the only route in the product that creates an organization
-// without a person behind it.
-api.route("/api/agent", agentAuthRoutes);
-// The human half of the same ceremony, session-authed on its own router.
-api.route("/api/agent/claim", agentClaimRoutes);
-// Agent links: a platform asks to be linked and polls (no auth, rate limited
-// per address), a person approves (session-only, per path inside the router),
-// and the linked platform manages its agents with its own `iwl_` credential.
-api.route("/api/agent-links/requests", agentLinkRequestRoutes);
-api.route("/api/agent-link", agentLinkRoutes);
-// Pod-to-pod: run an operation on the replica that holds its session. Outside
-// every auth layer because the caller is another replica, not a person: it
-// authenticates with INTERNAL_RELAY_SECRET and forwards work it already
-// authorised. See routes/internal-relay.ts for why that is the whole check.
-api.route("/api/internal", relayRoutes);
-
-// The session-only surface: user-scoped, so it lives outside the org tree.
-//
-// One `use` per mount, never `authed.use("*")`. Hono registers a sub-app's
-// `use("*")` as `/api/*` once the sub-app is mounted at `/api`, so it ran on
-// the org tree too, ahead of `apiKeyOrgMiddleware`, and rejected every `iwk_`
-// key and agent token there (neither is a person's WorkOS session).
-// `authed-scope.test.ts` drives the real `api` to keep it that way.
-const authed = new Hono();
-const AUTHED_ROUTES = [
-  ["/auth", authRoutes],
-  // Personal account settings.
-  ["/profile", profileRoutes],
-  ["/orgs", orgManagementRoutes],
-  ["/invitations", invitationAcceptRoutes],
-  // Platform-admin surface: session-authed here, allowlist-gated inside.
-  ["/admin", adminRoutes],
-  // Push devices are user-scoped (a phone registers once across orgs).
-  ["/push", pushDeviceRoutes],
-] as const;
-for (const [path, routes] of AUTHED_ROUTES) {
-  // `/x/*` also matches `/x` itself, and not `/xy`.
-  authed.use(`${path}/*`, sessionMiddleware);
-  authed.route(path, routes);
-}
-
-api.route("/api", authed);
+// The session-only surface (`/api/auth`, `/api/profile`, `/api/orgs`,
+// `/api/invitations`, `/api/admin`, `/api/push`) is served by HttpApi domains
+// behind `SessionAuth`: user-scoped, a person only, each prefix guarded whole
+// (`guardSessionPrefixes` in `http/prefix-guard.ts`) and none of it reaching
+// the org tree. `authed-scope.test.ts` drives the real `api` to keep it so.
 
 const orgScoped = new Hono();
 // `iwk_` API keys authenticate here, alongside the session cookie and WorkOS
@@ -387,77 +135,9 @@ orgScoped.use("*", unlessApiKey(permissionsMiddleware));
 // every ClickHouse cost read is narrowed by it. See auth/cost-visibility.ts.
 orgScoped.use("*", costVisibilityMiddleware);
 
-orgScoped.route("/dashboards", dashboardRoutes);
-orgScoped.route("/costs", costRoutes);
 // Background export jobs: `/costs/exports/jobs…`.
-orgScoped.route("/costs", costExportJobRoutes);
-// Delivery schedules share the /cost-reports prefix (their paths are all
-// /:id/notifications…); the org-wide list lives on its own prefix so it can
-// never collide with /cost-reports/:id.
-orgScoped.route("/cost-reports", costReportNotificationRoutes);
-orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
-// A report's own anomaly alert (`/:id/anomaly-alert…`), and the org-wide list.
-orgScoped.route("/cost-reports", costReportAnomalyAlertRoutes);
-orgScoped.route("/cost-report-anomaly-alerts", orgReportAnomalyAlertRoutes);
-// PDF export (`/:id/pdf`) and dashboard delivery schedules (`/:id/notifications…`)
-// share their parents' prefixes the same way; the org-wide schedule list gets
-// its own.
-orgScoped.route("/cost-reports", costReportPdfRoutes);
-orgScoped.route("/dashboards", dashboardNotificationRoutes);
-orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 // Saved inventory tables with per-resource cost, filed in the cost-report folders.
-orgScoped.route("/resource-reports", resourceReportRoutes);
-// Natural-language report canvases: CRUD, run, preview, PDF and schedules.
-orgScoped.route("/cost-canvases", costCanvasRoutes);
-orgScoped.route("/k8s-efficiency-reports", kubernetesEfficiencyReportRoutes);
-orgScoped.route("/cost-exports", costExportRoutes);
-orgScoped.route("/business-metrics", businessMetricRoutes);
-orgScoped.route("/orphans", orphanRoutes);
-orgScoped.route("/idle-findings", idleFindingRoutes);
-orgScoped.route("/rightsizing", rightsizingRoutes);
-orgScoped.route("/price-catalog", priceCatalogRoutes);
-orgScoped.route("/metric-alerts", metricAlertRoutes);
-orgScoped.route("/managed-accounts", managedAccountRoutes);
-orgScoped.route("/billing-profiles", billingProfileRoutes);
-orgScoped.route("/invoices", invoiceRoutes);
-orgScoped.route("/custom-graphs", customGraphRoutes);
-orgScoped.route("/config", orgConfigRoutes);
-orgScoped.route("/agents", agentRoutes);
-orgScoped.route("/github", githubRoutes);
-orgScoped.route("/accounts", accountRoutes);
-orgScoped.route("/provider-oauth", providerOAuthRoutes);
-orgScoped.route("/agent-registrations", agentRegistrationRoutes);
-orgScoped.route("/agent-links", agentLinkOrgRoutes);
-orgScoped.route("/cost-visibility", costVisibilityRoutes);
-orgScoped.route("/sharing", sharingRoutes);
 orgScoped.route("/billing", billingRoutes);
-orgScoped.route("/", connectionFeatureRoutes);
-orgScoped.route("/resources", resourceDetailRoutes);
-orgScoped.route("/changes", resourceChangeRoutes);
-orgScoped.route("/status-incidents", statusIncidentRoutes);
-orgScoped.route("/carbon", carbonRoutes);
-orgScoped.route("/moment", momentRoutes);
-orgScoped.route("/status-pages", statusPageRoutes);
-orgScoped.route("/ws-token", wsTokenRoutes);
-orgScoped.route("/v1/storage", storageRoutes);
-orgScoped.route("/v1/sftp", sftpRoutes);
-orgScoped.route("/ssh-host-keys", sshHostKeyRoutes);
-orgScoped.route("/session-recordings", sessionRecordingRoutes);
-orgScoped.route("/shared-consoles", sharedConsoleRoutes);
-orgScoped.route("/credits", creditRoutes);
-orgScoped.route("/commitments", commitmentRoutes);
-// Before `/savings`: the findings workflow is `resources:read`, realized savings `costs:read`.
-orgScoped.route("/savings/findings", savingsFindingRoutes);
-orgScoped.route("/savings-views", savingsViewRoutes);
-orgScoped.route("/savings", savingsRoutes);
-orgScoped.route("/search", searchRoutes);
-orgScoped.route("/starred", starredRoutes);
-orgScoped.route("/connect", connectRoutes);
-orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
-orgScoped.route("/ssh-fanout", sshFanoutRoutes);
-orgScoped.route("/apps", appsRoutes);
-orgScoped.route("/twilio", twilioRoutes);
-orgScoped.route("/push", pushOrgRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

@@ -2,7 +2,7 @@
 // and only listen to events in EVENT_LITERALS / EVENT_PREFIXES: there is no
 // path for a compromised renderer to pass an arbitrary channel name through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { RPC_CONNECT, RPC_FRAME } from "../shared/rpc/channels";
+import { RPC_CONNECT, RPC_DISCONNECT, RPC_FRAME } from "../shared/rpc/channels";
 
 // Must stay in sync with the ipcMain.handle(...) calls in the electron/ dir.
 const INVOKE_CHANNELS = [
@@ -47,12 +47,6 @@ const INVOKE_CHANNELS = [
   "plugin_docker_command",
   "plugin_k8s_command",
   "storage_download_batch",
-  // ssh
-  "ssh_open_tunnel",
-  "ssh_close_tunnel",
-  "ssh_get_active_tunnels",
-  "ssh_exec_command",
-  "ssh_exec_script",
   // Linux applications: open a session on a host, relay frames, list apps,
   // and check (or fix) what the host is missing before any of that.
   "apps_session_open",
@@ -61,39 +55,7 @@ const INVOKE_CHANNELS = [
   "apps_list",
   "apps_preflight",
   "apps_install",
-  "ssh_shell_spawn",
-  "ssh_shell_write",
-  "ssh_shell_resize",
-  "ssh_shell_kill",
-  "ssh_list_system_keys",
-  "ssh_read_system_key",
-  "ssh_check_pageant",
-  "ssh_check_1password",
-  "ssh_list_1password_keys",
-  "ssh_host_key_decide",
-  // workflow ssh
-  "workflow_ssh_exec",
-  "workflow_ssh_exec_script",
-  "workflow_ssh_stream_start",
-  "workflow_ssh_stream_read",
-  "workflow_ssh_stream_close",
-  "workflow_ssh_probe",
-  // workflow sftp
-  "workflow_sftp_list",
-  "workflow_sftp_get",
-  "workflow_sftp_put",
-  "workflow_sftp_mkdir",
-  "workflow_sftp_delete",
-  "agent_plan_setup",
-  "agent_sync_files",
-  "agent_reconcile_fetch",
-  // sftp
-  "sftp_list",
-  "sftp_mkdir",
-  "sftp_delete",
-  "sftp_upload",
   "clipboard_read_image",
-  "sftp_download",
   // k8s
   "k8s_exec_spawn",
   "k8s_exec_write",
@@ -111,7 +73,6 @@ const INVOKE_CHANNELS = [
   "k8s_api_request",
   // shell command (`infrawrench` CLI shim)
   // what `infrawrench deploy` did on this machine (local mode's Deploy tab)
-  "local_deploy_history",
   // cloud
   "cloud_auth_start",
   "cloud_auth_status",
@@ -218,7 +179,6 @@ const INVOKE_CHANNELS = [
   "cloud_savings_view_create",
   "cloud_savings_view_update",
   "cloud_savings_view_delete",
-  "local_extended_support_list",
   "cloud_carbon_estimate",
   "cloud_network_flows",
   "cloud_network_flow_settings_update",
@@ -230,7 +190,6 @@ const INVOKE_CHANNELS = [
   "cloud_network_flow_report_create",
   "cloud_network_flow_report_update",
   "cloud_network_flow_report_delete",
-  "local_orphans_list",
   "cloud_expiring",
   "cloud_quotas",
   "cloud_price_catalog_search",
@@ -651,7 +610,6 @@ const EVENT_LITERALS = new Set<string>([
   // main forwards an infrawrench://open/… link for the renderer to open
   "deep_link_open",
   "storage_download_progress",
-  "ssh_host_key_prompt",
   "update_available_prompt",
   "update_error",
   // main asks the renderer to serve a workflow host capability mid-run
@@ -661,8 +619,6 @@ const EVENT_LITERALS = new Set<string>([
 ]);
 
 const EVENT_PREFIXES: readonly string[] = [
-  "ssh_shell_data_",
-  "ssh_shell_exit_",
   "k8s_exec_data_",
   "k8s_exec_exit_",
   "k9s_data_",
@@ -690,11 +646,17 @@ for (const ch of INVOKE_CHANNELS) {
 }
 
 // The Effect RPC transport (`shared/rpc/channels.ts`): the renderer connects,
-// then exchanges JSON frames. Only these two channels, so the RPC bridge adds
-// no way to reach a handler by name.
+// then exchanges JSON frames. Only these channels, so the RPC bridge adds no
+// way to reach a handler by name. The token names this page load, so its
+// disconnect on `pagehide` can never end the connection of the page that
+// replaces it.
+// (The main project has no DOM lib; this is the one DOM API the preload uses.)
+declare const window: { addEventListener(type: "pagehide", listener: () => void): void };
+const rpcPageToken = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+window.addEventListener("pagehide", () => ipcRenderer.send(RPC_DISCONNECT, rpcPageToken));
 const rpcBridge = {
   connect(): void {
-    ipcRenderer.send(RPC_CONNECT);
+    ipcRenderer.send(RPC_CONNECT, rpcPageToken);
   },
   send(frame: string): void {
     if (typeof frame === "string") ipcRenderer.send(RPC_FRAME, frame);

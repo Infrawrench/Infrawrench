@@ -38,6 +38,7 @@ import type { AuditPrincipal } from "../services/audit-context";
 import type { AuthSession } from "../api/auth-middleware";
 import { HttpFailure } from "./errors";
 import { legacy } from "./legacy";
+import { SESSION_COOKIE } from "./session-cookie";
 import type { ApiKeyPrincipal } from "./principal";
 
 /** What the chain reads from a request. */
@@ -48,11 +49,7 @@ export interface AuthInput {
   readonly orgId: string | undefined;
 }
 
-/** The session cookie the WorkOS session is sealed into. */
-export const SESSION_COOKIE = "wos-session";
-
-/** Lifetime of a refreshed session cookie, matching the callback's. */
-export const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
+export { SESSION_COOKIE, SESSION_COOKIE_MAX_AGE } from "./session-cookie";
 
 const unauthorized = () => new HttpFailure(401, { error: "Unauthorized" });
 const fail = (status: number, error: string) => Effect.fail(new HttpFailure(status, { error }));

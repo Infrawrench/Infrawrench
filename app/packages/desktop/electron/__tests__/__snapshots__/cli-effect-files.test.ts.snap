@@ -1,0 +1,3567 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "",
+  "stdout": "Acme · canvases
+
+NAME      BLOCKS  DASHBOARDS  UPDATED   
+AI spend  8       Finance     2026-11-01
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas ai 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+    "POST /cost-canvases/cv1/run",
+  ],
+  "stderr": "",
+  "stdout": "AI spend · refreshed 2026-11-08T12:00:00.000Z
+
+Overview
+What we spend on models.
+
+Monthly AI spend  $4,210.00  +12.5% vs previous  (2026-10-10 → 2026-11-08)
+  includes credits
+
+By service  $300.00  ▁█  (2026-10-10 → 2026-11-08)
+
+By account
+      2026-09  2026-10  TOTAL 
+prod  $10.00   $20.00   $30.00
+
+Budgets
+  AI  $1,200.00 of $1,000.00 120%
+
+Spikes
+  withheld: anomalies are org-wide and your cost view is scoped
+
+custom_graph  (no output)
+
+cost_report  Report was deleted.
+
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas list --json 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "canvases": [
+    {
+      "id": "cv1",
+      "name": "AI spend",
+      "description": "Model and GPU spend",
+      "spec": {
+        "version": 1,
+        "blocks": [
+          {
+            "id": "b1",
+            "kind": "text",
+            "text": "# Overview\\nWhat we spend on models."
+          },
+          {
+            "id": "b2",
+            "kind": "kpi",
+            "title": "Monthly AI spend",
+            "metric": {
+              "type": "spend",
+              "dateRange": {
+                "kind": "relative",
+                "preset": "30d"
+              },
+              "filters": []
+            }
+          },
+          {
+            "id": "b3",
+            "kind": "chart",
+            "title": "By service",
+            "config": {
+              "chartType": "stacked_bar",
+              "groupBy": "service"
+            }
+          },
+          {
+            "id": "b4",
+            "kind": "table",
+            "title": "By account",
+            "query": {
+              "groupBy": "account",
+              "binning": "monthly"
+            }
+          },
+          {
+            "id": "b5",
+            "kind": "budgets",
+            "title": "Budgets"
+          },
+          {
+            "id": "b6",
+            "kind": "anomalies",
+            "title": "Spikes",
+            "days": 30,
+            "limit": 5
+          },
+          {
+            "id": "b7",
+            "kind": "custom_graph",
+            "graphId": "g1"
+          },
+          {
+            "id": "b8",
+            "kind": "cost_report",
+            "reportId": "r1"
+          }
+        ]
+      },
+      "prompt": "Show me AI spend",
+      "conversationId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T09:00:00.000Z",
+      "placements": [
+        {
+          "widgetId": "w1",
+          "dashboardId": "d1",
+          "dashboardName": "Finance"
+        }
+      ]
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas refresh AI spend 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+    "POST /cost-canvases/cv1/run",
+  ],
+  "stderr": "",
+  "stdout": "AI spend · refreshed 2026-11-08T12:00:00.000Z
+
+Overview
+What we spend on models.
+
+Monthly AI spend  $4,210.00  +12.5% vs previous  (2026-10-10 → 2026-11-08)
+  includes credits
+
+By service  $300.00  ▁█  (2026-10-10 → 2026-11-08)
+
+By account
+      2026-09  2026-10  TOTAL 
+prod  $10.00   $20.00   $30.00
+
+Budgets
+  AI  $1,200.00 of $1,000.00 120%
+
+Spikes
+  withheld: anomalies are org-wide and your cost view is scoped
+
+custom_graph  (no output)
+
+cost_report  Report was deleted.
+
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas run ai --json 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+    "POST /cost-canvases/cv1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "canvas": {
+    "id": "cv1",
+    "name": "AI spend"
+  },
+  "result": {
+    "canvasId": "cv1",
+    "name": "AI spend",
+    "ranAt": "2026-11-08T12:00:00.000Z",
+    "displayCurrency": null,
+    "blocks": [
+      {
+        "id": "b1",
+        "kind": "text",
+        "text": "# Overview\\nWhat we spend on models."
+      },
+      {
+        "id": "b2",
+        "kind": "kpi",
+        "kpi": {
+          "value": 4210,
+          "unit": "money",
+          "currency": "USD",
+          "changePercent": 12.5,
+          "from": "2026-10-10",
+          "to": "2026-11-08",
+          "note": "includes credits"
+        }
+      },
+      {
+        "id": "b3",
+        "kind": "chart",
+        "from": "2026-10-10",
+        "to": "2026-11-08",
+        "cost": {
+          "currencies": [
+            "USD"
+          ],
+          "totals": {
+            "USD": 300
+          },
+          "series": [
+            {
+              "key": "bedrock",
+              "label": "Bedrock",
+              "currency": "USD",
+              "points": [
+                {
+                  "bucket": "2026-11-01",
+                  "amount": 100
+                },
+                {
+                  "bucket": "2026-11-02",
+                  "amount": 200
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "b4",
+        "kind": "table",
+        "table": {
+          "columns": [
+            "2026-09",
+            "2026-10"
+          ],
+          "rows": [
+            {
+              "key": "a",
+              "label": "prod",
+              "values": [
+                10,
+                20
+              ],
+              "total": 30
+            }
+          ],
+          "currency": "USD",
+          "otherCurrencies": [],
+          "from": "2026-09-01",
+          "to": "2026-10-31"
+        }
+      },
+      {
+        "id": "b5",
+        "kind": "budgets",
+        "budgets": [
+          {
+            "name": "AI",
+            "currency": "USD",
+            "amountCents": 100000,
+            "actualCents": 120000
+          }
+        ],
+        "missing": []
+      },
+      {
+        "id": "b6",
+        "kind": "anomalies",
+        "anomalies": [],
+        "withheld": true
+      },
+      {
+        "id": "b7",
+        "kind": "custom_graph",
+        "graph": {
+          "id": "g1",
+          "name": "GPU hours"
+        },
+        "spec": null
+      },
+      {
+        "id": "b8",
+        "kind": "cost_report",
+        "report": null,
+        "error": "Report was deleted."
+      }
+    ]
+  }
+}
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas show ai --json 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "canvas": {
+    "id": "cv1",
+    "name": "AI spend",
+    "description": "Model and GPU spend",
+    "spec": {
+      "version": 1,
+      "blocks": [
+        {
+          "id": "b1",
+          "kind": "text",
+          "text": "# Overview\\nWhat we spend on models."
+        },
+        {
+          "id": "b2",
+          "kind": "kpi",
+          "title": "Monthly AI spend",
+          "metric": {
+            "type": "spend",
+            "dateRange": {
+              "kind": "relative",
+              "preset": "30d"
+            },
+            "filters": []
+          }
+        },
+        {
+          "id": "b3",
+          "kind": "chart",
+          "title": "By service",
+          "config": {
+            "chartType": "stacked_bar",
+            "groupBy": "service"
+          }
+        },
+        {
+          "id": "b4",
+          "kind": "table",
+          "title": "By account",
+          "query": {
+            "groupBy": "account",
+            "binning": "monthly"
+          }
+        },
+        {
+          "id": "b5",
+          "kind": "budgets",
+          "title": "Budgets"
+        },
+        {
+          "id": "b6",
+          "kind": "anomalies",
+          "title": "Spikes",
+          "days": 30,
+          "limit": 5
+        },
+        {
+          "id": "b7",
+          "kind": "custom_graph",
+          "graphId": "g1"
+        },
+        {
+          "id": "b8",
+          "kind": "cost_report",
+          "reportId": "r1"
+        }
+      ]
+    },
+    "prompt": "Show me AI spend",
+    "conversationId": null,
+    "createdByUserId": null,
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T09:00:00.000Z",
+    "placements": [
+      {
+        "widgetId": "w1",
+        "dashboardId": "d1",
+        "dashboardName": "Finance"
+      }
+    ]
+  }
+}
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 0 $ infrawrench canvas show ai 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "",
+  "stdout": "AI spend · cv1
+Model and GPU spend
+
+prompt      Show me AI spend
+blocks      8
+dashboards  Finance
+updated     2026-11-01T09:00:00.000Z
+
+ 1  text         Overview
+ 2  kpi          Monthly AI spend (spend)
+ 3  chart        By service (stacked bar, by service)
+ 4  table        By account (by account, monthly)
+ 5  budgets      Budgets
+ 6  anomalies    Spikes
+ 7  custom_graph custom_graph
+ 8  cost_report  cost_report
+
+Run it: infrawrench canvas refresh "AI spend"
+",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 1 $ infrawrench canvas --format pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "Which canvas? \`infrawrench canvas show <name|id> --format pdf\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 1 $ infrawrench canvas list --format pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "Which canvas? \`infrawrench canvas show <name|id> --format pdf\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 1 $ infrawrench canvas show 1`] = `
+{
+  "requests": [],
+  "stderr": "Which canvas? \`infrawrench canvas show <name|id>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`canvas > lists, shows and refreshes like the legacy command > 1 $ infrawrench canvas show nope 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "No canvas matches "nope". \`infrawrench canvas list\` shows them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`canvas > writes the PDF from show and refresh > 0 $ infrawrench canvas ai --format pdf -f c.pdf 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+    "GET /cost-canvases/cv1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "✓ AI spend → <cwd>/c.pdf (24 B)
+",
+}
+`;
+
+exports[`canvas > writes the PDF from show and refresh > 0 $ infrawrench canvas show ai --format pdf 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+    "GET /cost-canvases/cv1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "✓ AI spend → <cwd>/ai-spend.pdf (24 B)
+",
+}
+`;
+
+exports[`canvas > writes the PDF from show and refresh > 1 $ infrawrench canvas refresh ai --out c.pdf 1`] = `
+{
+  "requests": [
+    "GET /cost-canvases",
+  ],
+  "stderr": "--out/--file writes a file: add --format pdf (\`infrawrench canvas refresh <name|id> --format pdf --out <path>\`).
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses a pack that is not a ZIP > 1 $ infrawrench compliance export 1`] = `
+{
+  "requests": [
+    "GET /compliance/pack?framework=soc2&from=2026-08-11&to=2026-11-08",
+  ],
+  "stderr": "The server did not return a ZIP for the soc2 evidence pack.
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance --framework SOC 2 1`] = `
+{
+  "requests": [],
+  "stderr": "--framework takes a framework id such as soc2 or iso27001 (got "SOC 2").
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance --from 2026-03-01 --to 2026-01-01 1`] = `
+{
+  "requests": [],
+  "stderr": "--from must be on or before --to.
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance --from 2026-13-01 1`] = `
+{
+  "requests": [],
+  "stderr": "--from must be a date (YYYY-MM-DD), got "2026-13-01".
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance --last 30d 1`] = `
+{
+  "requests": [],
+  "stderr": "\`compliance\` takes an audit period as --from/--to (YYYY-MM-DD), not --last. Omit both for the last 90 days.
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance --local 1`] = `
+{
+  "requests": [],
+  "stderr": "\`compliance\` is cloud-only: the evidence is gathered by Infrawrench Cloud from your organization's access reviews, findings and change records, not by this machine. Drop --local, or pass --org <id|name>.
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > refuses bad selections in the legacy words > 2 $ infrawrench compliance frameworks --local 1`] = `
+{
+  "requests": [],
+  "stderr": "\`compliance\` is cloud-only: the evidence is gathered by Infrawrench Cloud from your organization's access reviews, findings and change records, not by this machine. Drop --local, or pass --org <id|name>.
+",
+  "stdout": "",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance --framework ISO27001 --from 2026-01-01 --to 2026-03-31 1`] = `
+{
+  "requests": [
+    "GET /compliance?framework=iso27001&from=2026-01-01&to=2026-03-31",
+  ],
+  "stderr": "",
+  "stdout": "Acme · SOC 2 2017 TSC · 2026-08-10 to 2026-11-07 (90 days)
+1 with evidence · 1 with gaps · 1 not applicable · 1 unowned (of 3)
+
+CONTROL  STATUS    OWNER    TITLE        
+CC6.1    evidence  Ada      Control CC6.1
+CC6.2    gaps      unowned  Control CC6.2
+CC9.9    n/a       unowned  Control CC9.9
+
+Evidence sources · 2
+
+SOURCE                  STATUS       SUMMARY              
+Access reviews          present      2 reviews completed  
+Vulnerability findings  unavailable  Scanner not connected
+
+Only the gaps, with reasons: --gaps. Save the evidence pack with \`infrawrench compliance export --framework iso27001\`.
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance --gaps --json 1`] = `
+{
+  "requests": [
+    "GET /compliance?framework=soc2",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "framework": {
+    "id": "soc2",
+    "name": "SOC 2",
+    "version": "2017 TSC",
+    "description": "Trust services criteria",
+    "scopeNote": "",
+    "controlCount": 3
+  },
+  "period": {
+    "from": "2026-08-10",
+    "to": "2026-11-07"
+  },
+  "controls": [
+    {
+      "id": "CC6.2",
+      "title": "Control CC6.2",
+      "group": "Access",
+      "sources": [
+        "access_reviews"
+      ],
+      "status": "gaps",
+      "reasons": [
+        "No access review in the period"
+      ],
+      "missingSources": [],
+      "applicable": true,
+      "justification": null,
+      "owner": null,
+      "notes": "Quarterly review scheduled",
+      "settingUpdatedAt": null
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "access_reviews",
+      "label": "Access reviews",
+      "kind": "control",
+      "status": "present",
+      "summary": "2 reviews completed",
+      "metrics": [],
+      "gaps": [],
+      "itemCount": 2,
+      "error": null
+    },
+    {
+      "sourceId": "vulns",
+      "label": "Vulnerability findings",
+      "kind": "monitoring",
+      "status": "unavailable",
+      "summary": "",
+      "metrics": [],
+      "gaps": [],
+      "itemCount": 0,
+      "error": "Scanner not connected"
+    }
+  ],
+  "counts": {
+    "evidence": 1,
+    "gaps": 1,
+    "notApplicable": 1,
+    "total": 3,
+    "unowned": 1
+  },
+  "generatedAt": "2026-11-08T12:00:00.000Z"
+}
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance --gaps 1`] = `
+{
+  "requests": [
+    "GET /compliance?framework=soc2",
+  ],
+  "stderr": "",
+  "stdout": "Acme · SOC 2 2017 TSC · 2026-08-10 to 2026-11-07 (90 days)
+1 with evidence · 1 with gaps · 1 not applicable · 1 unowned (of 3)
+
+CONTROL  STATUS  OWNER    TITLE        
+CC6.2    gaps    unowned  Control CC6.2
+
+CC6.2 · Control CC6.2
+  • No access review in the period
+  Notes: Quarterly review scheduled
+
+Evidence sources · 2
+
+SOURCE                  STATUS       SUMMARY              
+Access reviews          present      2 reviews completed  
+Vulnerability findings  unavailable  Scanner not connected
+
+Save the evidence pack with \`infrawrench compliance export\`.
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance 1`] = `
+{
+  "requests": [
+    "GET /compliance?framework=soc2",
+  ],
+  "stderr": "",
+  "stdout": "Acme · SOC 2 2017 TSC · 2026-08-10 to 2026-11-07 (90 days)
+1 with evidence · 1 with gaps · 1 not applicable · 1 unowned (of 3)
+
+CONTROL  STATUS    OWNER    TITLE        
+CC6.1    evidence  Ada      Control CC6.1
+CC6.2    gaps      unowned  Control CC6.2
+CC9.9    n/a       unowned  Control CC9.9
+
+Evidence sources · 2
+
+SOURCE                  STATUS       SUMMARY              
+Access reviews          present      2 reviews completed  
+Vulnerability findings  unavailable  Scanner not connected
+
+Only the gaps, with reasons: --gaps. Save the evidence pack with \`infrawrench compliance export\`.
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance frameworks --json 1`] = `
+{
+  "requests": [
+    "GET /compliance/frameworks",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "frameworks": [
+    {
+      "id": "soc2",
+      "name": "SOC 2",
+      "version": "2017 TSC",
+      "description": "Trust services criteria",
+      "scopeNote": "",
+      "controlCount": 33
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance frameworks 1`] = `
+{
+  "requests": [
+    "GET /compliance/frameworks",
+  ],
+  "stderr": "",
+  "stdout": "ID    FRAMEWORK  VERSION   CONTROLS  DESCRIPTION            
+soc2  SOC 2      2017 TSC        33  Trust services criteria
+
+Report on one with \`infrawrench compliance --framework <id>\`.
+",
+}
+`;
+
+exports[`compliance > reports status, gaps and frameworks like the legacy command > 0 $ infrawrench compliance status --json 1`] = `
+{
+  "requests": [
+    "GET /compliance?framework=soc2",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "framework": {
+    "id": "soc2",
+    "name": "SOC 2",
+    "version": "2017 TSC",
+    "description": "Trust services criteria",
+    "scopeNote": "",
+    "controlCount": 3
+  },
+  "period": {
+    "from": "2026-08-10",
+    "to": "2026-11-07"
+  },
+  "controls": [
+    {
+      "id": "CC6.1",
+      "title": "Control CC6.1",
+      "group": "Access",
+      "sources": [
+        "access_reviews"
+      ],
+      "status": "evidence",
+      "reasons": [],
+      "missingSources": [],
+      "applicable": true,
+      "justification": null,
+      "owner": {
+        "userId": "u1",
+        "displayName": "Ada"
+      },
+      "notes": null,
+      "settingUpdatedAt": null
+    },
+    {
+      "id": "CC6.2",
+      "title": "Control CC6.2",
+      "group": "Access",
+      "sources": [
+        "access_reviews"
+      ],
+      "status": "gaps",
+      "reasons": [
+        "No access review in the period"
+      ],
+      "missingSources": [],
+      "applicable": true,
+      "justification": null,
+      "owner": null,
+      "notes": "Quarterly review scheduled",
+      "settingUpdatedAt": null
+    },
+    {
+      "id": "CC9.9",
+      "title": "Control CC9.9",
+      "group": "Access",
+      "sources": [
+        "access_reviews"
+      ],
+      "status": "not-applicable",
+      "reasons": [],
+      "missingSources": [],
+      "applicable": false,
+      "justification": null,
+      "owner": null,
+      "notes": null,
+      "settingUpdatedAt": null
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "access_reviews",
+      "label": "Access reviews",
+      "kind": "control",
+      "status": "present",
+      "summary": "2 reviews completed",
+      "metrics": [],
+      "gaps": [],
+      "itemCount": 2,
+      "error": null
+    },
+    {
+      "sourceId": "vulns",
+      "label": "Vulnerability findings",
+      "kind": "monitoring",
+      "status": "unavailable",
+      "summary": "",
+      "metrics": [],
+      "gaps": [],
+      "itemCount": 0,
+      "error": "Scanner not connected"
+    }
+  ],
+  "counts": {
+    "evidence": 1,
+    "gaps": 1,
+    "notApplicable": 1,
+    "total": 3,
+    "unowned": 1
+  },
+  "generatedAt": "2026-11-08T12:00:00.000Z"
+}
+",
+}
+`;
+
+exports[`compliance > writes the evidence pack where it was told, or where the server named it > 0 $ infrawrench compliance export --framework iso27001 --from 2026-01-01 --to 2026-03-31 --json 1`] = `
+{
+  "requests": [
+    "GET /compliance/pack?framework=iso27001&from=2026-01-01&to=2026-03-31",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "path": "<cwd>/iso27001-evidence-2026-01-01-to-2026-03-31.zip",
+  "bytes": 12,
+  "framework": "iso27001",
+  "period": {
+    "from": "2026-01-01",
+    "to": "2026-03-31"
+  }
+}
+",
+}
+`;
+
+exports[`compliance > writes the evidence pack where it was told, or where the server named it > 0 $ infrawrench compliance export --out pack.zip 1`] = `
+{
+  "requests": [
+    "GET /compliance/pack?framework=soc2&from=2026-08-11&to=2026-11-08",
+  ],
+  "stderr": "",
+  "stdout": "✓ soc2 evidence pack · 2026-08-11 to 2026-11-08 → <cwd>/pack.zip (12 B)
+",
+}
+`;
+
+exports[`compliance > writes the evidence pack where it was told, or where the server named it > 0 $ infrawrench compliance export 1`] = `
+{
+  "requests": [
+    "GET /compliance/pack?framework=soc2&from=2026-08-11&to=2026-11-08",
+  ],
+  "stderr": "",
+  "stdout": "✓ soc2 evidence pack · 2026-08-11 to 2026-11-08 → <cwd>/soc2-pack.zip (12 B)
+",
+}
+`;
+
+exports[`dashboards > keeps the list when delivery and the default cannot be read > 0 $ infrawrench dashboards 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboard-notifications",
+    "GET /dashboards/default",
+  ],
+  "stderr": "",
+  "stdout": "Acme · dashboards
+
+NAME                DELIVERY  ID
+Finance             —         d1
+Home (org default)  —         d2
+
+Save one as a PDF with \`infrawrench dashboards <name|id> --format pdf\`; \`infrawrench dashboards send <name|id>\` delivers it to its schedules now.
+",
+}
+`;
+
+exports[`dashboards > keeps the list when delivery and the default cannot be read > 0 $ infrawrench dashboards finance 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/notifications",
+    "GET /dashboards/d1",
+  ],
+  "stderr": "",
+  "stdout": "Finance · d1
+
+No delivery schedules. Add one from the dashboard's menu (web or desktop).
+
+A terminal can't draw the cards: \`infrawrench dashboards "Finance" --format pdf\` saves the rendered dashboard.
+",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 0 $ infrawrench dashboards --json 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboard-notifications",
+    "GET /dashboards/default",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "dashboards": [
+    {
+      "id": "d1",
+      "name": "Finance",
+      "isDefault": false,
+      "isResolvedDefault": true
+    },
+    {
+      "id": "d2",
+      "name": "Home",
+      "isDefault": true
+    }
+  ],
+  "notifications": [
+    {
+      "id": "n1",
+      "cadence": "weekly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "succeeded",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "dashboardId": "d1",
+      "attachPdf": true
+    },
+    {
+      "id": "n2",
+      "cadence": "weekly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "failed",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "dashboardId": "d1",
+      "attachPdf": false
+    }
+  ],
+  "default": {
+    "dashboardId": "d1",
+    "dashboardName": "Finance",
+    "source": "role",
+    "userDefaultDashboardId": null,
+    "roleDefault": {
+      "roleId": "r1",
+      "roleName": "Finance",
+      "dashboardId": "d1"
+    },
+    "orgDefaultDashboardId": "d2",
+    "skipped": [
+      "user"
+    ]
+  }
+}
+",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 0 $ infrawrench dashboards 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboard-notifications",
+    "GET /dashboards/default",
+  ],
+  "stderr": "",
+  "stdout": "Acme · dashboards
+
+NAME                    DELIVERY                 ID
+Finance (your default)  2 schedules (1 failing)  d1
+Home (org default)      —                        d2
+
+You land on Finance · default for the Finance role
+Your own default is no longer shared with you, so it was skipped.
+
+Save one as a PDF with \`infrawrench dashboards <name|id> --format pdf\`; \`infrawrench dashboards send <name|id>\` delivers it to its schedules now.
+",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 0 $ infrawrench dashboards finance --json 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/notifications",
+    "GET /dashboards/d1",
+    "POST /dashboards/kpi",
+    "POST /dashboards/kpi",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "dashboard": {
+    "id": "d1",
+    "name": "Finance",
+    "isDefault": false,
+    "isResolvedDefault": true
+  },
+  "notifications": [
+    {
+      "id": "n1",
+      "cadence": "weekly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "succeeded",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "dashboardId": "d1",
+      "attachPdf": true
+    },
+    {
+      "id": "n2",
+      "cadence": "monthly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "failed",
+      "lastError": "channel_not_found",
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "dashboardId": "d1",
+      "attachPdf": false
+    }
+  ],
+  "kpis": [
+    {
+      "widgetId": "w1",
+      "title": "Budget left",
+      "config": {
+        "version": 1,
+        "source": {
+          "kind": "budget",
+          "budgetId": "b1",
+          "measure": "remaining"
+        },
+        "comparePreviousPeriod": true
+      },
+      "result": {
+        "value": 41,
+        "unit": "percent",
+        "previous": 36,
+        "change": 5,
+        "changePercent": 13.9,
+        "upIsGood": false,
+        "from": "2026-10-10",
+        "to": "2026-11-08"
+      },
+      "error": null
+    },
+    {
+      "widgetId": "w2",
+      "title": "",
+      "config": {
+        "version": 1,
+        "source": {
+          "kind": "cost_report",
+          "reportId": "r1",
+          "measure": "cost",
+          "aggregation": "daily_average"
+        },
+        "comparePreviousPeriod": true
+      },
+      "result": {
+        "value": 41,
+        "unit": "percent",
+        "previous": 36,
+        "change": 5,
+        "changePercent": 13.9,
+        "upIsGood": false,
+        "from": "2026-10-10",
+        "to": "2026-11-08"
+      },
+      "error": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 0 $ infrawrench dashboards finance 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/notifications",
+    "GET /dashboards/d1",
+    "POST /dashboards/kpi",
+    "POST /dashboards/kpi",
+  ],
+  "stderr": "",
+  "stdout": "Finance · d1
+
+KPIs
+CARD                  VALUE  CHANGE           WINDOW                  
+Budget left           41%    +5 pts (+13.9%)  2026-10-10 to 2026-11-08
+Spend, daily average  41%    +5 pts (+13.9%)  2026-10-10 to 2026-11-08
+
+Delivery
+  weekly Mon 08:00 UTC · 1 Slack, 2 emails · PDF attached · succeeded
+  monthly day 1 08:00 UTC · 1 Slack, 2 emails · failed
+    channel_not_found
+
+A terminal can't draw the cards: \`infrawrench dashboards "Finance" --format pdf\` saves the rendered dashboard.
+",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 1 $ infrawrench dashboards --format pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "Which dashboard? \`infrawrench dashboards <name|id> --format pdf\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 1 $ infrawrench dashboards --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Dashboard PDFs and scheduled delivery live in Infrawrench Cloud. Drop --local to use them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`dashboards > lists, shows one, and prints --json like the legacy command > 1 $ infrawrench dashboards nope 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+  ],
+  "stderr": "No dashboard matches "nope". Run \`infrawrench dashboards\` to see them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`dashboards > sends to each schedule and reports the failures > 0 $ infrawrench dashboards send finance --json 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/notifications",
+    "POST /dashboards/d1/notifications/n1/send",
+    "POST /dashboards/d1/notifications/n2/send",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "dashboard": {
+    "id": "d1",
+    "name": "Finance"
+  },
+  "sent": [
+    {
+      "notificationId": "n1",
+      "attempted": 3,
+      "succeeded": 3,
+      "slack": {
+        "attempted": 1,
+        "succeeded": 1
+      },
+      "teams": {
+        "attempted": 0,
+        "succeeded": 0
+      },
+      "email": {
+        "attempted": 2,
+        "succeeded": 2
+      },
+      "pdfAttached": true,
+      "slackFilesUploaded": 0
+    }
+  ],
+  "failed": [
+    {
+      "notificationId": "n2",
+      "error": "Cloud request failed: 502 /dashboards/d1/notifications/n2/send slack down"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`dashboards > sends to each schedule and reports the failures > 0 $ infrawrench dashboards send finance 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/notifications",
+    "POST /dashboards/d1/notifications/n1/send",
+    "POST /dashboards/d1/notifications/n2/send",
+  ],
+  "stderr": "",
+  "stdout": "Finance · send now
+
+  ✓ weekly Mon 08:00 UTC · delivered to 3/3 destination(s); PDF attached, PDF uploaded to 0/1 Slack channel(s)
+  ✗ monthly day 1 08:00 UTC · Cloud request failed: 502 /dashboards/d1/notifications/n2/send slack down
+
+Slack channels without the file got the message only: the Slack install needs the files:write scope to upload PDFs.
+",
+}
+`;
+
+exports[`dashboards > sends to each schedule and reports the failures > 1 $ infrawrench dashboards send 1`] = `
+{
+  "requests": [],
+  "stderr": "Which dashboard? \`infrawrench dashboards send <name|id>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`dashboards > writes the PDF to its default name and to --out > 0 $ infrawrench dashboards finance --format PDF --out d.pdf --json 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "dashboard": {
+    "id": "d1",
+    "name": "Finance"
+  },
+  "path": "<cwd>/d.pdf",
+  "bytes": 24
+}
+",
+}
+`;
+
+exports[`dashboards > writes the PDF to its default name and to --out > 0 $ infrawrench dashboards finance --format pdf 1`] = `
+{
+  "requests": [
+    "GET /dashboards",
+    "GET /dashboards/d1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "✓ Finance → <cwd>/finance.pdf (24 B)
+",
+}
+`;
+
+exports[`dashboards > writes the PDF to its default name and to --out > 1 $ infrawrench dashboards finance --out d.pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "--out/--file writes a file: add --format pdf (\`infrawrench dashboards <name|id> --format pdf --out <path>\`).
+",
+  "stdout": "",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency --group-by namespace --last 7d 1`] = `
+{
+  "requests": [
+    "POST /k8s-efficiency-reports/query",
+  ],
+  "stderr": "",
+  "stdout": "Kubernetes efficiency · 2026-10-10 → 2026-11-08 · by namespace · efficiency of total cost · idle separate
+Part of this window predates the CPU/memory and usage split: that cost is shown as combined and unmeasured.
+
+$800.00 total · 50% efficient · 90% measured
+used $400.00 · requested, unused $200.00 · unmeasured $0.00 · idle $100.00 · overhead $100.00
+
+By cost category
+CPU    ██████████████████████████████ $500.00 50%
+Memory ██████████████████░░░░░░░░░░░░ $300.00 50%
+
+GROUP          TOTAL    USED     UNUSED   UNMEASURED  IDLE    OVERHEAD  EFFICIENCY
+default        $600.00  $300.00  $150.00       $0.00  $75.00    $75.00         50%
+Idle capacity  $200.00  $100.00   $50.00       $0.00  $25.00    $25.00         50%
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency --group-by tag:team --basis allocated --json 1`] = `
+{
+  "requests": [
+    "POST /k8s-efficiency-reports/query",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "name": "Kubernetes efficiency",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "granularity": "day",
+  "groupBy": "namespace",
+  "idle": "separate",
+  "basis": "total",
+  "buckets": [
+    "2026-10-10"
+  ],
+  "includesLegacyRows": true,
+  "currencies": [
+    {
+      "currency": "USD",
+      "totals": {
+        "total": 800,
+        "used": 400,
+        "unused": 200,
+        "unmeasured": 0,
+        "idle": 100,
+        "overhead": 100,
+        "allocated": 800,
+        "efficiency": 0.5,
+        "measuredShare": 0.9
+      },
+      "categories": [
+        {
+          "category": "cpu",
+          "figures": {
+            "total": 500,
+            "used": 250,
+            "unused": 125,
+            "unmeasured": 0,
+            "idle": 62.5,
+            "overhead": 62.5,
+            "allocated": 500,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          }
+        },
+        {
+          "category": "memory",
+          "figures": {
+            "total": 300,
+            "used": 150,
+            "unused": 75,
+            "unmeasured": 0,
+            "idle": 37.5,
+            "overhead": 37.5,
+            "allocated": 300,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          }
+        }
+      ],
+      "points": [],
+      "rows": [
+        {
+          "key": "default",
+          "kind": "group",
+          "label": "default",
+          "figures": {
+            "total": 600,
+            "used": 300,
+            "unused": 150,
+            "unmeasured": 0,
+            "idle": 75,
+            "overhead": 75,
+            "allocated": 600,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          },
+          "categories": [],
+          "points": []
+        },
+        {
+          "key": "idle",
+          "kind": "idle",
+          "label": "",
+          "figures": {
+            "total": 200,
+            "used": 100,
+            "unused": 50,
+            "unmeasured": 0,
+            "idle": 25,
+            "overhead": 25,
+            "allocated": 200,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          },
+          "categories": [],
+          "points": []
+        }
+      ]
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency --group-by workload --from 2026-10-01 --to 2026-10-31 1`] = `
+{
+  "requests": [
+    "POST /k8s-efficiency-reports/query",
+  ],
+  "stderr": "",
+  "stdout": "Kubernetes efficiency · 2026-10-10 → 2026-11-08 · by namespace · efficiency of total cost · idle separate
+Part of this window predates the CPU/memory and usage split: that cost is shown as combined and unmeasured.
+
+$800.00 total · 50% efficient · 90% measured
+used $400.00 · requested, unused $200.00 · unmeasured $0.00 · idle $100.00 · overhead $100.00
+
+By cost category
+CPU    ██████████████████████████████ $500.00 50%
+Memory ██████████████████░░░░░░░░░░░░ $300.00 50%
+
+GROUP          TOTAL    USED     UNUSED   UNMEASURED  IDLE    OVERHEAD  EFFICIENCY
+default        $600.00  $300.00  $150.00       $0.00  $75.00    $75.00         50%
+Idle capacity  $200.00  $100.00   $50.00       $0.00  $25.00    $25.00         50%
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency --json 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reports": [
+    {
+      "id": "k1",
+      "name": "Namespaces",
+      "description": null,
+      "config": {
+        "version": 1,
+        "dateRange": {
+          "kind": "relative",
+          "preset": "30d"
+        },
+        "granularity": "day",
+        "filters": [],
+        "groupBy": "namespace",
+        "idle": "separate",
+        "basis": "total"
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+  ],
+  "stderr": "",
+  "stdout": "Acme · Kubernetes efficiency reports
+
+NAME        GROUPED BY  BASIS  IDLE      ID
+Namespaces  namespace   total  separate  k1
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency namespaces --format csv --out k8s.csv 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+    "GET /k8s-efficiency-reports/k1/export?format=csv&perPeriod=true",
+  ],
+  "stderr": "",
+  "stdout": "Wrote k8s.csv
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency namespaces --format csv 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+    "GET /k8s-efficiency-reports/k1/export?format=csv&perPeriod=true",
+  ],
+  "stderr": "",
+  "stdout": "currency,period,group
+USD,2026-10,default
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency namespaces --json 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+    "POST /k8s-efficiency-reports/k1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "name": "Namespaces",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "granularity": "day",
+  "groupBy": "namespace",
+  "idle": "separate",
+  "basis": "total",
+  "buckets": [
+    "2026-10-10"
+  ],
+  "includesLegacyRows": true,
+  "currencies": [
+    {
+      "currency": "USD",
+      "totals": {
+        "total": 800,
+        "used": 400,
+        "unused": 200,
+        "unmeasured": 0,
+        "idle": 100,
+        "overhead": 100,
+        "allocated": 800,
+        "efficiency": 0.5,
+        "measuredShare": 0.9
+      },
+      "categories": [
+        {
+          "category": "cpu",
+          "figures": {
+            "total": 500,
+            "used": 250,
+            "unused": 125,
+            "unmeasured": 0,
+            "idle": 62.5,
+            "overhead": 62.5,
+            "allocated": 500,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          }
+        },
+        {
+          "category": "memory",
+          "figures": {
+            "total": 300,
+            "used": 150,
+            "unused": 75,
+            "unmeasured": 0,
+            "idle": 37.5,
+            "overhead": 37.5,
+            "allocated": 300,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          }
+        }
+      ],
+      "points": [],
+      "rows": [
+        {
+          "key": "default",
+          "kind": "group",
+          "label": "default",
+          "figures": {
+            "total": 600,
+            "used": 300,
+            "unused": 150,
+            "unmeasured": 0,
+            "idle": 75,
+            "overhead": 75,
+            "allocated": 600,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          },
+          "categories": [],
+          "points": []
+        },
+        {
+          "key": "idle",
+          "kind": "idle",
+          "label": "",
+          "figures": {
+            "total": 200,
+            "used": 100,
+            "unused": 50,
+            "unmeasured": 0,
+            "idle": 25,
+            "overhead": 25,
+            "allocated": 200,
+            "efficiency": 0.5,
+            "measuredShare": 0.9
+          },
+          "categories": [],
+          "points": []
+        }
+      ]
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 0 $ infrawrench k8s-efficiency namespaces 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+    "POST /k8s-efficiency-reports/k1/run",
+  ],
+  "stderr": "",
+  "stdout": "Namespaces · 2026-10-10 → 2026-11-08 · by namespace · efficiency of total cost · idle separate
+Part of this window predates the CPU/memory and usage split: that cost is shown as combined and unmeasured.
+
+$800.00 total · 50% efficient · 90% measured
+used $400.00 · requested, unused $200.00 · unmeasured $0.00 · idle $100.00 · overhead $100.00
+
+By cost category
+CPU    ██████████████████████████████ $500.00 50%
+Memory ██████████████████░░░░░░░░░░░░ $300.00 50%
+
+GROUP          TOTAL    USED     UNUSED   UNMEASURED  IDLE    OVERHEAD  EFFICIENCY
+default        $600.00  $300.00  $150.00       $0.00  $75.00    $75.00         50%
+Idle capacity  $200.00  $100.00   $50.00       $0.00  $25.00    $25.00         50%
+",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 1 $ infrawrench k8s-efficiency --format csv 1`] = `
+{
+  "requests": [],
+  "stderr": "Which report? \`infrawrench k8s-efficiency <name|id> --format csv\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 1 $ infrawrench k8s-efficiency --group-by namespace --basis cash 1`] = `
+{
+  "requests": [],
+  "stderr": "--basis must be total or allocated for k8s-efficiency.
+",
+  "stdout": "",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 1 $ infrawrench k8s-efficiency --group-by namespace --format csv 1`] = `
+{
+  "requests": [],
+  "stderr": "--format exports a saved report: name one.
+",
+  "stdout": "",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 1 $ infrawrench k8s-efficiency --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Kubernetes efficiency reports live in Infrawrench Cloud: they read the cost the cloud collects from each cluster.
+",
+  "stdout": "",
+}
+`;
+
+exports[`k8s-efficiency > lists, runs, queries ad hoc and exports like the legacy command > 1 $ infrawrench k8s-efficiency nope 1`] = `
+{
+  "requests": [
+    "GET /k8s-efficiency-reports",
+  ],
+  "stderr": "No Kubernetes efficiency report matches "nope". Run \`infrawrench k8s-efficiency\` to list them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 0 $ infrawrench network-reports --json 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reports": [
+    {
+      "id": "nr1",
+      "name": "Egress by VPC",
+      "description": null,
+      "config": {
+        "version": 1,
+        "dateRange": {
+          "kind": "relative",
+          "preset": "30d"
+        },
+        "granularity": "daily",
+        "groupBy": "network",
+        "filters": {},
+        "metric": "both"
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 0 $ infrawrench network-reports 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+  ],
+  "stderr": "",
+  "stdout": "REPORT         SHOWS                     GRANULARITY  GROUP BY       ID 
+Egress by VPC  Bytes and estimated cost  Daily        VPC / network  nr1
+",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 0 $ infrawrench network-reports Egress by VPC --json 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reportId": "nr1",
+  "name": "Egress by VPC",
+  "from": "2026-10-01",
+  "to": "2026-10-02",
+  "granularity": "daily",
+  "groupBy": "network",
+  "metric": "both",
+  "estimated": true,
+  "buckets": [
+    "2026-10-01",
+    "2026-10-02"
+  ],
+  "series": [
+    {
+      "id": "vpc-1|USD",
+      "groupKey": "vpc-1",
+      "label": "vpc-1",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-10-01",
+          "bytes": 2000000000,
+          "estimatedCost": 0.18,
+          "sampledBytes": 500000000,
+          "sampledCost": 0,
+          "unattributedBytes": 0,
+          "truncatedBytes": 0
+        },
+        {
+          "bucket": "2026-10-02",
+          "bytes": 1000000000,
+          "estimatedCost": 0,
+          "sampledBytes": 0,
+          "sampledCost": 0,
+          "unattributedBytes": 0,
+          "truncatedBytes": 0
+        }
+      ],
+      "total": {
+        "bytes": 2000000000,
+        "estimatedCost": 0.18,
+        "sampledBytes": 500000000,
+        "sampledCost": 0,
+        "unattributedBytes": 0,
+        "truncatedBytes": 0
+      }
+    }
+  ],
+  "overall": [
+    {
+      "id": "|USD",
+      "groupKey": "",
+      "label": "",
+      "currency": "USD",
+      "points": [
+        {
+          "bucket": "2026-10-01",
+          "bytes": 2000000000,
+          "estimatedCost": 0.18,
+          "sampledBytes": 500000000,
+          "sampledCost": 0,
+          "unattributedBytes": 0,
+          "truncatedBytes": 0
+        },
+        {
+          "bucket": "2026-10-02",
+          "bytes": 1000000000,
+          "estimatedCost": 0,
+          "sampledBytes": 0,
+          "sampledCost": 0,
+          "unattributedBytes": 0,
+          "truncatedBytes": 0
+        }
+      ],
+      "total": {
+        "bytes": 2000000000,
+        "estimatedCost": 0.18,
+        "sampledBytes": 500000000,
+        "sampledCost": 0,
+        "unattributedBytes": 0,
+        "truncatedBytes": 0
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupKey": "vpc-1",
+      "label": "vpc-1",
+      "currency": "USD",
+      "pairCount": 3,
+      "bytes": 2000000000,
+      "estimatedCost": 0.18,
+      "sampledBytes": 500000000,
+      "sampledCost": 0,
+      "unattributedBytes": 0,
+      "truncatedBytes": 0
+    }
+  ],
+  "groupCount": 2,
+  "topTalkers": [
+    {
+      "source": {
+        "ref": "i-1",
+        "label": "web-1",
+        "zone": "us-east-1a",
+        "region": "us-east-1",
+        "service": "",
+        "resourceTypeId": "",
+        "network": "vpc-1"
+      },
+      "destination": {
+        "ref": "internet",
+        "label": "Internet",
+        "zone": "us-east-1a",
+        "region": "us-east-1",
+        "service": "",
+        "resourceTypeId": "",
+        "network": "vpc-1"
+      },
+      "scope": "internet_egress",
+      "direction": "egress",
+      "attribution": "resolved",
+      "bytes": 2000000000,
+      "packets": 100,
+      "estimatedCost": 0.18,
+      "currency": "USD",
+      "accountId": "acc_1",
+      "accountName": "prod",
+      "pluginId": "aws",
+      "days": 2,
+      "sampled": true
+    }
+  ],
+  "sampledPluginIds": [
+    "aws"
+  ],
+  "notices": [
+    "sampled_sources"
+  ]
+}
+",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 0 $ infrawrench network-reports egress 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": "Egress by VPC · 2026-10-01 to 2026-10-02 · daily · by vpc / network
+  Estimated from flow logs at list prices: it will not match the invoice.
+  Some figures come from a flow source that samples traffic (the provider's scaled-up estimate).
+
+USD  $0.18 estimated  ·  2.0 GB  ·  25% sampled  ·  100% attributed to a pair
+     cost  █▁
+
+VPC / NETWORK  BYTES   EST. COST  PAIRS  SAMPLED
+vpc-1          2.0 GB      $0.18      3      25%
+  1 more not listed.
+
+SOURCE  DESTINATION  CLASS            BYTES   EST. COST  DAYS
+web-1   Internet     Internet egress  2.0 GB     $0.18*     2
+* from a sampled flow source
+",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 1 $ infrawrench network-reports egress --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Network flow reports live in Infrawrench Cloud: flows are collected server-side.
+",
+  "stdout": "",
+}
+`;
+
+exports[`network-reports > lists, runs, and prints --json like the legacy command > 1 $ infrawrench network-reports nope 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+  ],
+  "stderr": "No network flow report named "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`network-reports > renders the other groupings and metrics like the legacy command > 0 $ infrawrench network-reports classes 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr2/run",
+  ],
+  "stderr": "",
+  "stdout": "Egress by VPC · 2026-10-01 to 2026-10-02 · daily · by traffic class
+  Estimated from flow logs at list prices: it will not match the invoice.
+  Some figures come from a flow source that samples traffic (the provider's scaled-up estimate).
+
+USD  $0.18 estimated  ·  25% sampled  ·  100% attributed to a pair
+     cost  █▁
+
+TRAFFIC CLASS    EST. COST  PAIRS  SAMPLED
+Internet egress      $0.18      1      25%
+everything else      $0.00      2         
+
+SOURCE  DESTINATION  CLASS            EST. COST  DAYS
+web-1   Internet     Internet egress     $0.18*     2
+* from a sampled flow source
+",
+}
+`;
+
+exports[`network-reports > renders the other groupings and metrics like the legacy command > 0 $ infrawrench network-reports flat --format csv 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr4/run",
+  ],
+  "stderr": "",
+  "stdout": ""bucket","group","currency","bytes","estimated_cost","sampled_share","unattributed_bytes","outside_top_pairs_bytes"
+"2026-10-01","","USD",2000000000,0.18,0.25,0,0
+"2026-10-02","","USD",1000000000,0,0,0,0
+"total","","USD",2000000000,0.18,0.25,0,0
+",
+}
+`;
+
+exports[`network-reports > renders the other groupings and metrics like the legacy command > 0 $ infrawrench network-reports flat 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr4/run",
+  ],
+  "stderr": "",
+  "stdout": "Egress by VPC · 2026-10-01 to 2026-10-02 · daily
+  Estimated from flow logs at list prices: it will not match the invoice.
+  Some figures come from a flow source that samples traffic (the provider's scaled-up estimate).
+
+USD  $0.18 estimated  ·  2.0 GB  ·  25% sampled  ·  100% attributed to a pair
+     cost  █▁
+
+No flow pairs in this window for these filters.
+",
+}
+`;
+
+exports[`network-reports > renders the other groupings and metrics like the legacy command > 0 $ infrawrench network-reports sources 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr3/run",
+  ],
+  "stderr": "",
+  "stdout": "Egress by VPC · 2026-10-01 to 2026-10-02 · daily · by source
+  Estimated from flow logs at list prices: it will not match the invoice.
+
+USD  2.0 GB  ·  25% sampled  ·  100% attributed to a pair
+     bytes  █▁
+
+SOURCE                              BYTES   PAIRS  SAMPLED
+flows outside the stored top pairs  2.0 GB      0      25%
+unidentified peer                   2.0 GB      0      25%
+web-1                               2.0 GB      1      25%
+
+SOURCE  DESTINATION  CLASS            BYTES   DAYS
+web-1   Internet     Internet egress  2.0 GB     2
+* from a sampled flow source
+",
+}
+`;
+
+exports[`network-reports > writes both CSVs to stdout and to --out/--file > 0 $ infrawrench network-reports egress --format csv --out series.csv 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": "Wrote series.csv
+",
+}
+`;
+
+exports[`network-reports > writes both CSVs to stdout and to --out/--file > 0 $ infrawrench network-reports egress --format csv 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": ""bucket","group","currency","bytes","estimated_cost","sampled_share","unattributed_bytes","outside_top_pairs_bytes"
+"2026-10-01","vpc-1","USD",2000000000,0.18,0.25,0,0
+"2026-10-02","vpc-1","USD",1000000000,0,0,0,0
+"total","vpc-1","USD",2000000000,0.18,0.25,0,0
+",
+}
+`;
+
+exports[`network-reports > writes both CSVs to stdout and to --out/--file > 0 $ infrawrench network-reports egress --format pairs-csv -f pairs.csv 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": "Wrote pairs.csv
+",
+}
+`;
+
+exports[`network-reports > writes both CSVs to stdout and to --out/--file > 0 $ infrawrench network-reports egress --format pairs-csv 1`] = `
+{
+  "requests": [
+    "GET /network-flows/reports",
+    "POST /network-flows/reports/nr1/run",
+  ],
+  "stderr": "",
+  "stdout": ""source","source_ref","source_zone","source_region","source_network","destination","destination_ref","destination_zone","destination_region","destination_network","traffic_class","direction","attribution","account","bytes","estimated_cost","currency","days","sampled"
+"web-1","i-1","us-east-1a","us-east-1","vpc-1","Internet","internet","us-east-1a","us-east-1","vpc-1","internet_egress","egress","resolved","prod",2000000000,0.18,"USD",2,true
+",
+}
+`;
+
+exports[`recordings > lists, and passes the asciicast through or to --file > 0 $ infrawrench recordings 1`] = `
+{
+  "requests": [
+    "GET /session-recordings",
+    "GET /session-recordings/settings",
+  ],
+  "stderr": "",
+  "stdout": "Session recording is off for this organization. Turn it on in Settings → Session Recordings.
+
+Acme · 2 recordings, 40 KB stored, kept 90d
+
+ID        STARTED            WHO      TARGET           DURATION  SIZE   STATUS  
+rec_1234  2026-11-01 10:00Z  Ada      ubuntu@10.0.0.5  4m 12s    20 KB  complete
+rec_api   2026-11-01 10:00Z  api key  ubuntu@10.0.0.5  —         20 KB  live    
+
+infrawrench recordings get <id> | asciinema play -   (or --file out.cast to save it)
+",
+}
+`;
+
+exports[`recordings > lists, and passes the asciicast through or to --file > 0 $ infrawrench recordings get rec_1 --file s.cast 1`] = `
+{
+  "requests": [
+    "GET /session-recordings/rec_1/cast?download=1",
+  ],
+  "stderr": "",
+  "stdout": "Wrote 55 B to s.cast
+Play it with: asciinema play s.cast
+",
+}
+`;
+
+exports[`recordings > lists, and passes the asciicast through or to --file > 0 $ infrawrench recordings get rec_1 1`] = `
+{
+  "requests": [
+    "GET /session-recordings/rec_1/cast?download=1",
+  ],
+  "stderr": "",
+  "stdout": "{"version":2,"width":80,"height":24}
+[0.1,"o","hello"]
+",
+}
+`;
+
+exports[`recordings > lists, and passes the asciicast through or to --file > 0 $ infrawrench recordings list --json 1`] = `
+{
+  "requests": [
+    "GET /session-recordings",
+    "GET /session-recordings/settings",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "settings": {
+    "enabled": false,
+    "captureInput": false,
+    "retentionDays": 90,
+    "usage": {
+      "recordingCount": 2,
+      "storedBytes": 40960,
+      "capturedBytes": 40960
+    }
+  },
+  "recordings": [
+    {
+      "id": "rec_12345678abc",
+      "userId": "u1",
+      "userName": "Ada",
+      "accountId": null,
+      "resourceId": null,
+      "host": "10.0.0.5",
+      "port": 22,
+      "username": "ubuntu",
+      "hopCount": 0,
+      "cols": 80,
+      "rows": 24,
+      "hasInput": false,
+      "status": "complete",
+      "outputBytes": 20480,
+      "eventCount": 10,
+      "startedAt": "2026-11-01T10:00:00.000Z",
+      "endedAt": "2026-11-01T10:04:12.000Z",
+      "durationMs": 252000
+    },
+    {
+      "id": "rec_api",
+      "userId": "u1",
+      "userName": null,
+      "accountId": null,
+      "resourceId": null,
+      "host": "10.0.0.5",
+      "port": 22,
+      "username": "ubuntu",
+      "hopCount": 0,
+      "cols": 80,
+      "rows": 24,
+      "hasInput": false,
+      "status": "recording",
+      "outputBytes": 20480,
+      "eventCount": 10,
+      "startedAt": "2026-11-01T10:00:00.000Z",
+      "endedAt": "2026-11-01T10:04:12.000Z",
+      "durationMs": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`recordings > lists, and passes the asciicast through or to --file > 1 $ infrawrench recordings get 1`] = `
+{
+  "requests": [],
+  "stderr": "Usage: infrawrench recordings get <recording-id> [--file <path>]
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > checks a usage measure against the units the org has > 0 $ infrawrench reports monthly spend --x-axis account --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r1",
+    "name": "Monthly spend",
+    "description": "What finance watches",
+    "config": {
+      "version": 1,
+      "chartType": "stacked_bar",
+      "binning": "daily",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d"
+      },
+      "groupBy": "service",
+      "filters": [],
+      "topN": 5,
+      "comparePreviousPeriod": false,
+      "showForecast": false
+    },
+    "folderId": "f2",
+    "createdByUserId": null,
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-10-01T00:00:00.000Z",
+    "placements": [
+      {
+        "widgetId": "w",
+        "dashboardId": "d1",
+        "dashboardName": "Finance"
+      }
+    ]
+  },
+  "overrides": {
+    "xAxis": "account"
+  },
+  "reportId": "r1",
+  "name": "Monthly spend",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "result": {
+    "series": [
+      {
+        "key": "ec2",
+        "label": "EC2",
+        "currency": "USD",
+        "points": [
+          {
+            "bucket": "2026-11-01",
+            "amount": 100
+          },
+          {
+            "bucket": "2026-11-02",
+            "amount": 150
+          }
+        ]
+      },
+      {
+        "key": "__other__",
+        "label": "Other",
+        "currency": "USD",
+        "points": [
+          {
+            "bucket": "2026-11-01",
+            "amount": 20
+          }
+        ]
+      }
+    ],
+    "currencies": [
+      "USD"
+    ],
+    "totals": {
+      "USD": 270
+    },
+    "previousTotals": {
+      "USD": 200
+    }
+  }
+}
+",
+}
+`;
+
+exports[`reports > checks a usage measure against the units the org has > 2 $ infrawrench reports gpu usage --measure count 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "Count needs a group-by: it counts the distinct values of that dimension with nonzero cost in each bin.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > checks a usage measure against the units the org has > 2 $ infrawrench reports monthly spend --measure usage 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /costs/dimensions?dimension=usage-units",
+  ],
+  "stderr": "--measure usage needs --unit: quantities in different units cannot be added. Units in your cost data: Hrs.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > fails when every send failed > 1 $ infrawrench reports send monthly spend --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/notifications",
+    "POST /cost-reports/r1/notifications/n1/send",
+    "POST /cost-reports/r1/notifications/n2/send",
+  ],
+  "stderr": "Every send failed.
+",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r1",
+    "name": "Monthly spend"
+  },
+  "sent": [],
+  "failed": [
+    {
+      "notificationId": "n1",
+      "error": "Cloud request failed: 500 /cost-reports/r1/notifications/n1/send boom"
+    },
+    {
+      "notificationId": "n2",
+      "error": "Cloud request failed: 500 /cost-reports/r1/notifications/n2/send boom"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`reports > fails when every send failed > 1 $ infrawrench reports send monthly spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/notifications",
+    "POST /cost-reports/r1/notifications/n1/send",
+    "POST /cost-reports/r1/notifications/n2/send",
+  ],
+  "stderr": "Every send failed. See the errors above.
+",
+  "stdout": "Monthly spend · send now
+
+  ✗ weekly Mon 08:00 UTC (Cloud request failed: 500 /cost-reports/r1/notifications/n1/send boom)
+  ✗ weekly Mon 08:00 UTC (Cloud request failed: 500 /cost-reports/r1/notifications/n2/send boom)
+",
+}
+`;
+
+exports[`reports > keeps the list without the delivery column > 0 $ infrawrench reports 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "GET /cost-report-notifications",
+  ],
+  "stderr": "",
+  "stdout": "Acme · saved cost reports
+
+NAME                FOLDER             SHAPE                                               DASHBOARDS  DELIVERY  ID
+Monthly spend       Finance / Monthly  stacked bar · by service · 30d                               1  —         r1
+Monthly by account  —                  stacked bar · by account · 2026-01-01 → 2026-03-31           —  —         r2
+GPU usage           —                  stacked bar · ungrouped · 30d                                —  —         r3
+
+Run one with \`infrawrench reports <name|id>\`; \`infrawrench reports send <name|id>\` delivers it to its schedules now.
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 0 $ infrawrench reports --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "GET /cost-report-notifications",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reports": [
+    {
+      "id": "r1",
+      "name": "Monthly spend",
+      "description": "What finance watches",
+      "config": {
+        "version": 1,
+        "chartType": "stacked_bar",
+        "binning": "daily",
+        "dateRange": {
+          "kind": "relative",
+          "preset": "30d"
+        },
+        "groupBy": "service",
+        "filters": [],
+        "topN": 5,
+        "comparePreviousPeriod": false,
+        "showForecast": false
+      },
+      "folderId": "f2",
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "placements": [
+        {
+          "widgetId": "w",
+          "dashboardId": "d1",
+          "dashboardName": "Finance"
+        }
+      ]
+    },
+    {
+      "id": "r2",
+      "name": "Monthly by account",
+      "description": null,
+      "config": {
+        "version": 1,
+        "chartType": "stacked_bar",
+        "binning": "daily",
+        "dateRange": {
+          "kind": "absolute",
+          "from": "2026-01-01",
+          "to": "2026-03-31"
+        },
+        "groupBy": "account",
+        "filters": [],
+        "topN": 5,
+        "comparePreviousPeriod": false,
+        "showForecast": false
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "placements": []
+    },
+    {
+      "id": "r3",
+      "name": "GPU usage",
+      "description": null,
+      "config": {
+        "version": 1,
+        "chartType": "stacked_bar",
+        "binning": "daily",
+        "dateRange": {
+          "kind": "relative",
+          "preset": "30d"
+        },
+        "groupBy": "none",
+        "filters": [],
+        "topN": 5,
+        "comparePreviousPeriod": false,
+        "showForecast": false
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "placements": []
+    }
+  ],
+  "folders": [
+    {
+      "id": "f1",
+      "name": "Finance",
+      "parentFolderId": null,
+      "createdAt": "x",
+      "updatedAt": "x"
+    },
+    {
+      "id": "f2",
+      "name": "Monthly",
+      "parentFolderId": "f1",
+      "createdAt": "x",
+      "updatedAt": "x"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "n1",
+      "cadence": "weekly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "succeeded",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "costReportId": "r1"
+    },
+    {
+      "id": "n2",
+      "cadence": "weekly",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "no_targets",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "costReportId": "r1"
+    },
+    {
+      "id": "n3",
+      "cadence": "daily",
+      "sendDay": 1,
+      "sendDayOfMonth": 1,
+      "hour": 8,
+      "timezone": "UTC",
+      "slackChannelIds": [
+        "C1"
+      ],
+      "teamsWebhookIds": [],
+      "emailRecipients": [
+        "a@example.com",
+        "b@example.com"
+      ],
+      "enabled": true,
+      "nextSendAt": null,
+      "lastSentAt": null,
+      "lastStatus": "succeeded",
+      "lastError": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z",
+      "costReportId": "r2"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 0 $ infrawrench reports 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "GET /cost-report-notifications",
+  ],
+  "stderr": "",
+  "stdout": "Acme · saved cost reports
+
+NAME                FOLDER             SHAPE                                               DASHBOARDS  DELIVERY                 ID
+Monthly spend       Finance / Monthly  stacked bar · by service · 30d                               1  2 schedules (1 failing)  r1
+Monthly by account  —                  stacked bar · by account · 2026-01-01 → 2026-03-31           —  daily 08:00 UTC          r2
+GPU usage           —                  stacked bar · ungrouped · 30d                                —  —                        r3
+
+Run one with \`infrawrench reports <name|id>\`; \`infrawrench reports send <name|id>\` delivers it to its schedules now.
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 0 $ infrawrench reports Monthly spend --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r1",
+    "name": "Monthly spend",
+    "description": "What finance watches",
+    "config": {
+      "version": 1,
+      "chartType": "stacked_bar",
+      "binning": "daily",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d"
+      },
+      "groupBy": "service",
+      "filters": [],
+      "topN": 5,
+      "comparePreviousPeriod": false,
+      "showForecast": false
+    },
+    "folderId": "f2",
+    "createdByUserId": null,
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-10-01T00:00:00.000Z",
+    "placements": [
+      {
+        "widgetId": "w",
+        "dashboardId": "d1",
+        "dashboardName": "Finance"
+      }
+    ]
+  },
+  "reportId": "r1",
+  "name": "Monthly spend",
+  "from": "2026-10-10",
+  "to": "2026-11-08",
+  "result": {
+    "series": [
+      {
+        "key": "ec2",
+        "label": "EC2",
+        "currency": "USD",
+        "points": [
+          {
+            "bucket": "2026-11-01",
+            "amount": 100
+          },
+          {
+            "bucket": "2026-11-02",
+            "amount": 150
+          }
+        ]
+      },
+      {
+        "key": "__other__",
+        "label": "Other",
+        "currency": "USD",
+        "points": [
+          {
+            "bucket": "2026-11-01",
+            "amount": 20
+          }
+        ]
+      }
+    ],
+    "currencies": [
+      "USD"
+    ],
+    "totals": {
+      "USD": 270
+    },
+    "previousTotals": {
+      "USD": 200
+    }
+  }
+}
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 0 $ infrawrench reports monthly by account 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r2/run",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · 2026-10-10 → 2026-11-08  $270.00 (prev $200.00, +35.0%)
+
+prod    ████████████████████████████████ $120.00
+staging ████████░░░░░░░░░░░░░░░░░░░░░░░░ $30.00
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 0 $ infrawrench reports monthly spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r1/run",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · 2026-10-10 → 2026-11-08  $270.00 (prev $200.00, +35.0%)
+What finance watches
+
+daily ▁█
+
+EC2   ████████████████████████████████ $250.00
+other ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ $20.00
+
+Shown on Finance. Editing this report changes those cards too.
+",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 1 $ infrawrench reports --format pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "Which report? \`infrawrench reports <name|id> --format pdf\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 1 $ infrawrench reports --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost reports live in Infrawrench Cloud. There is no local report store or cost history.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 1 $ infrawrench reports monthly 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": ""monthly" matches 2 reports: Monthly spend, Monthly by account. Use the full name or the id.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > lists, runs and prints --json like the legacy command > 1 $ infrawrench reports nope 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "No cost report matches "nope". Run \`infrawrench reports\` to see the saved ones.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > renders a usage and a count run like the legacy command > 0 $ infrawrench reports monthly by account 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r2/run",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · 2026-10-10 → 2026-11-08  270 (prev 200, +35.0%)
+
+daily · distinct account count ▁█
+
+EC2   ████████████████████████████████ 250
+other ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 20
+",
+}
+`;
+
+exports[`reports > renders a usage and a count run like the legacy command > 0 $ infrawrench reports monthly spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r1/run",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · 2026-10-10 → 2026-11-08  270 Hrs (prev 200 Hrs, +35.0%)
+What finance watches
+
+daily · usage in Hrs ▁█
+
+EC2   ████████████████████████████████ 250 Hrs
+other ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 20 Hrs
+
+Shown on Finance. Editing this report changes those cards too.
+",
+}
+`;
+
+exports[`reports > sends display overrides and refuses a bad one > 0 $ infrawrench reports monthly spend --bin week --cumulative 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /cost-reports/r1/run",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · 2026-10-10 → 2026-11-08  $270.00 (prev $200.00, +35.0%)
+What finance watches
+
+weekly cumulative ▁█
+
+EC2   ████████████████████████████████ $150.00
+other ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░ $20.00
+
+Shown on Finance. Editing this report changes those cards too.
+",
+}
+`;
+
+exports[`reports > sends display overrides and refuses a bad one > 2 $ infrawrench reports monthly spend --measure dollars 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "--measure must be one of cost, usage, count (got "dollars").
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports anomalies --json 1`] = `
+{
+  "requests": [
+    "GET /cost-report-anomaly-alerts",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "alerts": [
+    {
+      "id": "a1",
+      "reportId": "r1",
+      "reportName": "Monthly spend",
+      "enabled": true,
+      "sigmas": 3,
+      "minDeltaCents": 5000,
+      "destinations": [
+        {
+          "kind": "slack",
+          "channelId": "C1"
+        },
+        {
+          "kind": "push"
+        }
+      ],
+      "createdAt": "x",
+      "updatedAt": "x",
+      "lastEvaluatedAt": null,
+      "lastError": "Slack token expired",
+      "recent": [
+        {
+          "id": "f1",
+          "day": "2026-11-01",
+          "currency": "USD",
+          "actual": 420,
+          "baseline": 100,
+          "threshold": 150,
+          "notifiedAt": "2026-11-01T09:00:00Z",
+          "createdAt": "x"
+        }
+      ]
+    },
+    {
+      "id": "a2",
+      "reportId": "r2",
+      "reportName": "Monthly by account",
+      "enabled": false,
+      "sigmas": 2.5,
+      "minDeltaCents": 1000,
+      "destinations": [],
+      "createdAt": "x",
+      "updatedAt": "x",
+      "lastEvaluatedAt": null,
+      "lastError": null,
+      "recent": []
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports anomalies 1`] = `
+{
+  "requests": [
+    "GET /cost-report-anomaly-alerts",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend on · 3σ · floor 50/day · to slack, push
+  ! Slack token expired
+DAY         SPEND       BASELINE/DAY  SENT
+2026-11-01  420.00 USD    100.00 USD  yes 
+
+Monthly by account off · 2.5σ · floor 10/day · to none
+  no anomalies found
+
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports anomalies gpu 1`] = `
+{
+  "requests": [
+    "GET /cost-report-anomaly-alerts",
+    "GET /cost-reports",
+  ],
+  "stderr": "",
+  "stdout": "This report has no anomaly alert. Set one up on the report's page.
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports anomalies monthly spend 1`] = `
+{
+  "requests": [
+    "GET /cost-report-anomaly-alerts",
+    "GET /cost-reports",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend on · 3σ · floor 50/day · to slack, push
+  ! Slack token expired
+DAY         SPEND       BASELINE/DAY  SENT
+2026-11-01  420.00 USD    100.00 USD  yes 
+
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports delete gpu -y 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "POST /cost-reports/bulk",
+  ],
+  "stderr": "",
+  "stdout": "Deleted 1 report(s) and 1 folder(s).
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports move gpu --folder top --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "POST /cost-reports/bulk",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "action": "move",
+  "reports": 1,
+  "folders": 1,
+  "targetFolderId": null,
+  "items": [
+    {
+      "kind": "report",
+      "id": "r3",
+      "label": "GPU usage"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports move monthly spend folder:Monthly --folder Finance 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+    "POST /cost-reports/bulk",
+  ],
+  "stderr": "",
+  "stdout": "  ✓ Monthly spend
+  ✓ folder Finance / Monthly
+
+Moved 1 report(s) and 1 folder(s) to Finance.
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports send monthly spend --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/notifications",
+    "POST /cost-reports/r1/notifications/n1/send",
+    "POST /cost-reports/r1/notifications/n2/send",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r1",
+    "name": "Monthly spend"
+  },
+  "sent": [
+    {
+      "notificationId": "n1",
+      "attempted": 2,
+      "succeeded": 2,
+      "slack": {
+        "attempted": 1,
+        "succeeded": 1
+      },
+      "teams": {
+        "attempted": 0,
+        "succeeded": 0
+      },
+      "email": {
+        "attempted": 1,
+        "succeeded": 1
+      }
+    }
+  ],
+  "failed": [
+    {
+      "notificationId": "n2",
+      "error": "Cloud request failed: 500 /cost-reports/r1/notifications/n2/send boom"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 0 $ infrawrench reports send monthly spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/notifications",
+    "POST /cost-reports/r1/notifications/n1/send",
+    "POST /cost-reports/r1/notifications/n2/send",
+  ],
+  "stderr": "",
+  "stdout": "Monthly spend · send now
+
+  ✓ weekly Mon 08:00 UTC delivered to 2/2 destination(s)
+  ✗ weekly Mon 08:00 UTC (Cloud request failed: 500 /cost-reports/r1/notifications/n2/send boom)
+",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 1 $ infrawrench reports move gpu --folder Nowhere 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+  ],
+  "stderr": "No folder matches "Nowhere". Use \`--folder top\` for the top level.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 1 $ infrawrench reports move zzz --folder top 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+  ],
+  "stderr": "Nothing matches "zzz". Run \`infrawrench reports\` to see reports and folder paths.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 1 $ infrawrench reports send 1`] = `
+{
+  "requests": [],
+  "stderr": "Which report? \`infrawrench reports send <name|id>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 1 $ infrawrench reports send gpu 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r3/notifications",
+  ],
+  "stderr": ""GPU usage" has no delivery schedules. Add one on the report's page (web or desktop) first.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 2 $ infrawrench reports delete 1`] = `
+{
+  "requests": [],
+  "stderr": "What should be deleted? \`infrawrench reports delete "<report>" -y\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 2 $ infrawrench reports delete gpu 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-report-folders",
+  ],
+  "stderr": "Refusing to delete without confirmation on a non-interactive run. Re-run with -y.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 2 $ infrawrench reports move --folder top 1`] = `
+{
+  "requests": [],
+  "stderr": "What should move? \`infrawrench reports move "<report>" folder:"<folder>" --folder <path|top>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > sends, moves, deletes and lists anomaly alerts > 2 $ infrawrench reports move gpu 1`] = `
+{
+  "requests": [],
+  "stderr": "Where to? Add \`--folder <path|id>\`, or \`--folder top\` for the top level.
+",
+  "stdout": "",
+}
+`;
+
+exports[`reports > writes the PDF > 0 $ infrawrench reports monthly spend --file m.pdf --format pdf --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r1",
+    "name": "Monthly spend"
+  },
+  "path": "<cwd>/m.pdf",
+  "bytes": 24
+}
+",
+}
+`;
+
+exports[`reports > writes the PDF > 0 $ infrawrench reports monthly spend --format pdf 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /cost-reports/r1/pdf?tz=<zone>",
+  ],
+  "stderr": "",
+  "stdout": "✓ Monthly spend → <cwd>/monthly-spend.pdf (24 B)
+",
+}
+`;
+
+exports[`reports > writes the PDF > 1 $ infrawrench reports monthly spend --out m.pdf 1`] = `
+{
+  "requests": [],
+  "stderr": "--out/--file writes a file: add --format pdf (\`infrawrench reports <name|id> --format pdf --out <path>\`).
+",
+  "stdout": "",
+}
+`;
+
+exports[`resource-reports > keeps the list when the folders cannot be read > 0 $ infrawrench resource-reports 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/folders",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 1 resource report
+
+REPORT        FOLDER  COLUMNS  FILTERS  ID 
+Untagged EC2                3        3  rr1
+
+\`infrawrench resource-reports <id|name>\` runs one (--limit, --offset, --sort <column> [--desc], --format csv [--out file]).
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports --json 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reports": [
+    {
+      "id": "rr1",
+      "name": "Untagged EC2",
+      "description": "Instances without an owner tag",
+      "config": {
+        "version": 1,
+        "filters": {
+          "pluginIds": [
+            "aws"
+          ],
+          "accountIds": [],
+          "resourceTypes": [],
+          "regions": [
+            "us-east-1"
+          ],
+          "statuses": [],
+          "tags": [
+            {
+              "source": "tag",
+              "key": "owner",
+              "op": "missing",
+              "values": []
+            }
+          ],
+          "nameContains": null,
+          "createdFrom": null,
+          "createdTo": null
+        },
+        "columns": [
+          "core:name",
+          "core:created",
+          "cost:range"
+        ],
+        "sort": null,
+        "costRange": {
+          "kind": "relative",
+          "preset": "30d"
+        },
+        "costBasis": "cash",
+        "pageSize": 50
+      },
+      "folderId": "f1",
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/folders",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 1 resource report
+
+REPORT        FOLDER   COLUMNS  FILTERS  ID 
+Untagged EC2  Hygiene        3        3  rr1
+
+\`infrawrench resource-reports <id|name>\` runs one (--limit, --offset, --sort <column> [--desc], --format csv [--out file]).
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports untagged --format csv --out rr.csv 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/rr1/csv",
+  ],
+  "stderr": "",
+  "stdout": "Wrote rr.csv
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports untagged --format csv 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/rr1/csv",
+  ],
+  "stderr": "",
+  "stdout": "Name,Cost
+web-1,12.50
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports untagged --json 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/rr1/rows",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "rr1",
+    "name": "Untagged EC2",
+    "description": "Instances without an owner tag",
+    "config": {
+      "version": 1,
+      "filters": {
+        "pluginIds": [
+          "aws"
+        ],
+        "accountIds": [],
+        "resourceTypes": [],
+        "regions": [
+          "us-east-1"
+        ],
+        "statuses": [],
+        "tags": [
+          {
+            "source": "tag",
+            "key": "owner",
+            "op": "missing",
+            "values": []
+          }
+        ],
+        "nameContains": null,
+        "createdFrom": null,
+        "createdTo": null
+      },
+      "columns": [
+        "core:name",
+        "core:created",
+        "cost:range"
+      ],
+      "sort": null,
+      "costRange": {
+        "kind": "relative",
+        "preset": "30d"
+      },
+      "costBasis": "cash",
+      "pageSize": 50
+    },
+    "folderId": "f1",
+    "createdByUserId": null,
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-10-01T00:00:00.000Z"
+  },
+  "columns": [
+    {
+      "id": "core:name",
+      "kind": "core",
+      "key": "name",
+      "label": "Name"
+    },
+    {
+      "id": "core:created",
+      "kind": "core",
+      "key": "created",
+      "label": "Created"
+    },
+    {
+      "id": "cost:range",
+      "kind": "cost",
+      "key": "range",
+      "label": "Accrued cost"
+    }
+  ],
+  "rows": [
+    {
+      "id": "r1",
+      "accountId": "acc_1",
+      "pluginId": "aws",
+      "resourceTypeId": "ec2",
+      "values": {
+        "core:name": "web-1",
+        "core:created": "2026-01-02T03:04:05Z"
+      },
+      "costs": {
+        "cost:range": [
+          {
+            "currency": "USD",
+            "amount": 12.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "r2",
+      "accountId": "acc_1",
+      "pluginId": "aws",
+      "resourceTypeId": "ec2",
+      "values": {
+        "core:name": "web-2",
+        "core:created": null
+      },
+      "costs": {}
+    }
+  ],
+  "total": 120,
+  "offset": 0,
+  "limit": 2,
+  "truncated": false,
+  "sort": {
+    "column": "core:name",
+    "direction": "asc"
+  },
+  "cost": {
+    "available": true,
+    "reason": null,
+    "basis": "cash",
+    "windows": [
+      {
+        "window": "range",
+        "from": "2026-10-10",
+        "to": "2026-11-08"
+      }
+    ]
+  }
+}
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports untagged --offset 2 --limit 2 --sort core:name --desc 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/rr1/rows?offset=2&limit=2&sort=core%3Aname&direction=desc",
+  ],
+  "stderr": "",
+  "stdout": "Untagged EC2
+Instances without an owner tag
+Accrued cost 2026-10-10 to 2026-11-08 (cash)
+
+NAME ↑  CREATED     ACCRUED COST
+web-1   2026-01-02     12.50 USD
+web-2   -                      -
+
+1-2 of 120 resources  (next page: --offset 2)
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 0 $ infrawrench resource-reports untagged 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+    "GET /resource-reports/rr1/rows",
+  ],
+  "stderr": "",
+  "stdout": "Untagged EC2
+Instances without an owner tag
+Accrued cost 2026-10-10 to 2026-11-08 (cash)
+
+NAME ↑  CREATED     ACCRUED COST
+web-1   2026-01-02     12.50 USD
+web-2   -                      -
+
+1-2 of 120 resources  (next page: --offset 2)
+",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 1 $ infrawrench resource-reports --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Resource reports live in Infrawrench Cloud: their rows join the synced inventory with the cost store. Drop --local.
+",
+  "stdout": "",
+}
+`;
+
+exports[`resource-reports > lists, runs a page, and exports like the legacy command > 1 $ infrawrench resource-reports nothing 1`] = `
+{
+  "requests": [
+    "GET /resource-reports",
+  ],
+  "stderr": "No resource report matches "nothing". Run \`infrawrench resource-reports\` to list them.
+",
+  "stdout": "",
+}
+`;

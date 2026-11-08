@@ -59,6 +59,7 @@ import { getDb } from "../db/client";
 import { mergeResourceRow, mergeStoredFields, upsertResourceRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { createPluginClient } from "./plugin-client";
 import {
   installLocalAgentServices,
@@ -617,7 +618,7 @@ export function createDesktopAgentClient(): AgentClient {
       const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
-      const result = await invoke<{ message: string }>("agent_reconcile_fetch", {
+      const reconcile = {
         config: {
           sshHost: target.host,
           sshPort: target.port,
@@ -627,7 +628,10 @@ export function createDesktopAgentClient(): AgentClient {
         workspaceName: workspaceNameForRow(row),
         branchName: row.branch_name,
         repoPath: row.repo,
-      });
+      };
+      const result = await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.AgentReconcileFetch(reconcile)),
+      );
       return { branchName: row.branch_name, message: result.message };
     },
     async applyT3Policy(request: AgentT3PolicyApplyRequest) {
@@ -763,11 +767,9 @@ async function createAgentSetupPlan(
     };
   }
 
-  return invoke<AgentSetupPlan>("agent_plan_setup", {
-    repoPath: repo,
-    tool,
-    workspaceName,
-  });
+  return runRpc(
+    DesktopRpcClient.use((rpc) => rpc.AgentPlanSetup({ repoPath: repo, tool, workspaceName })),
+  );
 }
 
 function setupPlanLogLines(plan: AgentSetupPlan): string[] {
@@ -1216,7 +1218,7 @@ async function syncAgentFiles(
   remoteHome: string,
   opts?: { syncLocalRepo?: boolean },
 ): Promise<AgentSyncFilesResult> {
-  return invoke<AgentSyncFilesResult>("agent_sync_files", {
+  const sync = {
     config: {
       sshHost: target.host,
       sshPort: target.port,
@@ -1227,7 +1229,9 @@ async function syncAgentFiles(
     remoteHome,
     projectDir: `${remoteHome}/${workspaceNameForRow(row)}`,
     ...(opts?.syncLocalRepo && !isCloneableGitRepo(row.repo) ? { repoPath: row.repo } : {}),
-  });
+  };
+  const result = await runRpc(DesktopRpcClient.use((rpc) => rpc.AgentSyncFiles(sync)));
+  return { ...result, warnings: [...result.warnings] };
 }
 
 /**
@@ -1339,11 +1343,12 @@ async function uploadAgentEnvFile(
     `mkdir -p "$HOME/.infrawrench-agent" && chmod 700 "$HOME/.infrawrench-agent"`,
   );
   if (mkdir.code !== 0) throw new Error(formatCommandFailure(mkdir));
-  await invoke("sftp_upload", {
+  const upload = {
     config: { host: target.host, port: target.port, username: target.username, privateKey },
     remotePath,
     data: new TextEncoder().encode(buildAgentEnvFile(env)),
-  });
+  };
+  await runRpc(DesktopRpcClient.use((rpc) => rpc.SftpUpload(upload)));
   const chmod = await agentSshExecCommand(config, `chmod 600 ${shellQuote(remotePath)}`);
   if (chmod.code !== 0) throw new Error(formatCommandFailure(chmod));
 }
@@ -1429,15 +1434,9 @@ async function agentSshExecCommand(
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
-  const result = await invoke<{
-    stdoutBase64: string;
-    stderrBase64: string;
-    code: number;
-  }>("workflow_ssh_exec", {
-    config,
-    command,
-    skipHostKeyCheck: true,
-  });
+  const result = await runRpc(
+    DesktopRpcClient.use((rpc) => rpc.WorkflowSshExec({ config, command, skipHostKeyCheck: true })),
+  );
   return {
     stdout: decodeBase64(result.stdoutBase64),
     stderr: decodeBase64(result.stderrBase64),
@@ -1451,22 +1450,20 @@ async function agentSshStreamCommand(
   logger: AgentSetupOutputLogger,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   let streamId: string | null = null;
-  const started = await invoke<{ streamId: string }>("workflow_ssh_stream_start", {
-    config,
-    command,
-    skipHostKeyCheck: true,
-  });
+  const started = await runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.WorkflowSshStreamStart({ config, command, skipHostKeyCheck: true }),
+    ),
+  );
   streamId = started.streamId;
   let stdout = "";
   let stderr = "";
   try {
     for (;;) {
-      const chunk = await invoke<{
-        stdoutBase64?: string;
-        stderrBase64?: string;
-        done: boolean;
-        code?: number;
-      }>("workflow_ssh_stream_read", { streamId });
+      const id = streamId;
+      const chunk = await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamRead({ streamId: id })),
+      );
       if (chunk.stdoutBase64) {
         const text = decodeBase64(chunk.stdoutBase64);
         stdout += text;
@@ -1484,7 +1481,10 @@ async function agentSshStreamCommand(
     }
   } finally {
     if (streamId) {
-      await invoke("workflow_ssh_stream_close", { streamId }).catch(() => undefined);
+      const id = streamId;
+      await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamClose({ streamId: id })),
+      ).catch(() => undefined);
     }
   }
 }

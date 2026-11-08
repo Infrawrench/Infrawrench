@@ -13,9 +13,6 @@
  * get a 403 carrying `code: "reauthentication_required"`, which the client uses
  * to send the user back through sign-in and retry.
  */
-import { HTTPException } from "hono/http-exception";
-import type { Context } from "hono";
-import { workos } from "./workos";
 import type { AuthSession } from "../api/auth-middleware";
 
 /**
@@ -28,23 +25,31 @@ export const STEP_UP_MAX_AGE_MS = 10 * 60 * 1000;
 /** Machine-readable marker on the 403 body; clients branch on this, not prose. */
 export const REAUTHENTICATION_REQUIRED = "reauthentication_required";
 
+/**
+ * The refusal: the route answers it as `403 { error: message, code }`
+ * (`http/domains/profile`), and the client re-authenticates on the code.
+ */
+export class ReauthenticationRequiredError extends Error {
+  readonly code = REAUTHENTICATION_REQUIRED;
+  constructor(message: string) {
+    super(message);
+    this.name = "ReauthenticationRequiredError";
+  }
+}
+
 function deny(message: string): never {
-  throw new HTTPException(403, {
-    res: Response.json({ error: message, code: REAUTHENTICATION_REQUIRED }, { status: 403 }),
-  });
+  throw new ReauthenticationRequiredError(message);
 }
 
 /**
- * Throws 403 unless the caller's current session was established within
- * {@link STEP_UP_MAX_AGE_MS}. Must run after `sessionMiddleware`.
+ * Throws {@link ReauthenticationRequiredError} unless the caller's current
+ * session was established within {@link STEP_UP_MAX_AGE_MS}.
  *
  * Fails closed: a token with no `sid` claim, a session WorkOS no longer lists,
  * or a WorkOS outage all deny rather than fall through to allowing the
  * sensitive action.
  */
-export async function requireRecentAuthentication(c: Context): Promise<void> {
-  const session = c.get("session") as AuthSession;
-
+export async function requireRecentAuthentication(session: AuthSession): Promise<void> {
   // Bearer principals (API keys, MCP OAuth tokens) have no interactive sign-in
   // to be recent: these operations are browser-only by design.
   if (!session.sessionId) {
@@ -53,6 +58,9 @@ export async function requireRecentAuthentication(c: Context): Promise<void> {
 
   let established: Date | null = null;
   try {
+    // Loaded here, not at import: this module is in the HttpApi domains' graph,
+    // which the spec build loads without a WorkOS key (see `http/workos.ts`).
+    const { workos } = await import("./workos");
     const list = await workos.userManagement.listSessions(session.userId);
     const current = list.data.find((s) => s.id === session.sessionId);
     if (current) established = new Date(current.createdAt);

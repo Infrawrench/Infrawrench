@@ -13,7 +13,8 @@
  * data, not dashboard furniture. Configuring, previewing and running an
  * importer needs `resources:execute` on top of `costs:write`, the query
  * monitors' permission: an importer runs a query with the account's
- * credentials.
+ * credentials. Those four check `costs:write` and then `resources:execute` in
+ * the handler, before anything else, and document the stronger.
  *
  * The bodies are the shared schemas the metric editor, the unit-cost card and
  * the importer form validate with (`@infrawrench/ui/schemas`).
@@ -48,9 +49,14 @@ import {
   UnitCostScale,
   UnitCostThreshold,
 } from "@infrawrench/ui/schemas";
-import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from "../../annotations";
+import {
+  DocumentedPermission,
+  InvalidRequestMessage,
+  RequiredPermission,
+  SuccessDescription,
+} from "../../annotations";
 import { withApiDefaults } from "../../domain";
-import { BadRequest, Conflict, NotFound } from "../../errors";
+import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, Ok, OrgId, OrgParams, Uuid } from "../../schemas/common";
 import { documentedAs, optionalRequestBody } from "../../schemas/documented";
@@ -62,9 +68,9 @@ const MetricParams = {
   id: Schema.String.annotate({ description: "Metric id or key" }),
 } as const;
 
-const ForecastDay = Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
-  examples: ["2026-11-01"],
-});
+const ForecastDay = Schema.String.annotate({ examples: ["2026-11-01"] }).check(
+  pattern(/^\d{4}-\d{2}-\d{2}$/),
+);
 
 /* ------------------------------------------------------------------ *
  * Metrics
@@ -477,9 +483,9 @@ export class BusinessMetricsGroup extends HttpApiGroup.make("businessMetrics")
       params: OrgParams,
       payload: BusinessMetricSourceOptionsRequest,
       success: BusinessMetricSourceOptions,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, Forbidden, NotFound],
     })
-      .annotate(RequiredPermission, "resources:execute")
+      .annotate(DocumentedPermission, "resources:execute")
       .annotate(OpenApi.Summary, "List an importer picker's choices")
       .annotate(
         OpenApi.Description,
@@ -492,9 +498,9 @@ export class BusinessMetricsGroup extends HttpApiGroup.make("businessMetrics")
       params: OrgParams,
       payload: BusinessMetricImportPreviewRequest,
       success: BusinessMetricImportPreview,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, Forbidden, NotFound],
     })
-      .annotate(RequiredPermission, "resources:execute")
+      .annotate(DocumentedPermission, "resources:execute")
       .annotate(OpenApi.Summary, "Preview an importer")
       .annotate(
         OpenApi.Description,
@@ -675,9 +681,9 @@ export class BusinessMetricsGroup extends HttpApiGroup.make("businessMetrics")
       params: MetricParams,
       payload: BusinessMetricImporterInput,
       success: BusinessMetricImporter,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, Forbidden, NotFound],
     })
-      .annotate(RequiredPermission, "resources:execute")
+      .annotate(DocumentedPermission, "resources:execute")
       .annotate(OpenApi.Summary, "Create or replace a metric's importer")
       .annotate(
         OpenApi.Description,
@@ -705,9 +711,9 @@ export class BusinessMetricsGroup extends HttpApiGroup.make("businessMetrics")
       params: MetricParams,
       payload: BusinessMetricImportRunRequest,
       success: BusinessMetricImportRun,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, Forbidden, NotFound],
     })
-      .annotate(RequiredPermission, "resources:execute")
+      .annotate(DocumentedPermission, "resources:execute")
       .annotate(OpenApi.Summary, "Run a metric's importer now")
       .annotate(
         OpenApi.Description,

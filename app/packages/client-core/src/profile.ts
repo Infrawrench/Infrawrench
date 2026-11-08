@@ -3,7 +3,7 @@ import { CloudApiError, type CloudFetch } from "./fetch";
 /**
  * The signed-in user's own account: name, two-factor factors, and active
  * sessions. Server contract: user-scoped `/api/profile` routes (see web
- * `api/routes/profile.ts`), which wrap WorkOS user management.
+ * `http/domains/profile/`), which wrap WorkOS user management.
  *
  * Lives here rather than in `@infrawrench/ui` so mobile can use it without
  * pulling in DOM-dependent code; `@infrawrench/ui` re-exports it for the web

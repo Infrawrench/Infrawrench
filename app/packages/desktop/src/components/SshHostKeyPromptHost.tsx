@@ -2,28 +2,49 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { Modal, WarningIcon } from "@infrawrench/ui";
 import type { HostKeyPromptPayload } from "@infrawrench/plugin-base";
-import { invoke } from "../lib/invoke";
+import { Effect, Stream } from "effect";
+import { DesktopRpcClient, forkRpc, runRpc } from "../lib/rpc/client";
 
 /**
- * Mount once at the root. Listens for `ssh_host_key_prompt` events from the
- * main process and shows a modal for each, letting the user accept or deny
- * the connection. Multiple prompts queue up: we show one at a time.
+ * Mount once at the root. Holds the `SshHostKeyPrompts` subscription open and
+ * shows a modal for each prompt the main process raises, letting the user
+ * accept or deny the connection. Multiple prompts queue up: we show one at a
+ * time. A prompt settled elsewhere (another window, the timeout) is dropped.
  */
 export function SshHostKeyPromptHost() {
   const gt = useGT();
   const [queue, setQueue] = useState<HostKeyPromptPayload[]>([]);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    window.electronAPI.on("ssh_host_key_prompt", (...args: unknown[]) => {
-      const payload = args[0] as HostKeyPromptPayload | undefined;
-      if (!payload || !payload.requestId) return;
-      setQueue((prev) => [...prev, payload]);
-    });
-    return () => {
-      window.electronAPI.offAll("ssh_host_key_prompt");
-    };
-  }, []);
+  useEffect(
+    () =>
+      forkRpc(
+        Effect.gen(function* () {
+          const rpc = yield* DesktopRpcClient;
+          yield* Stream.runForEach(rpc.SshHostKeyPrompts(), (event) =>
+            Effect.sync(() => {
+              if (event._tag === "Prompt") {
+                const { prompt } = event;
+                setQueue((prev) =>
+                  prev.some((p) => p.requestId === prompt.requestId) ? prev : [...prev, prompt],
+                );
+              } else {
+                setQueue((prev) => prev.filter((p) => p.requestId !== event.requestId));
+              }
+            }),
+          );
+        }).pipe(
+          // While nothing is subscribed the main process denies every prompt,
+          // so a dropped subscription is re-established rather than left off.
+          Effect.catchCause((cause) =>
+            Effect.sync(() => console.error("[ssh-host-key-prompt] subscription ended:", cause)),
+          ),
+          Effect.andThen(Effect.sleep("1 second")),
+          Effect.forever,
+        ),
+      ),
+    [],
+  );
 
   const current = queue[0];
   if (!current) return null;
@@ -32,11 +53,12 @@ export function SshHostKeyPromptHost() {
     if (!current || busy) return;
     setBusy(true);
     try {
-      await invoke("ssh_host_key_decide", { requestId: current.requestId, accept });
+      const { requestId } = current;
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.SshHostKeyDecide({ requestId, accept })));
     } catch (err) {
       console.error("[ssh-host-key-prompt] failed to send decision:", err);
     } finally {
-      setQueue((prev) => prev.slice(1));
+      setQueue((prev) => prev.filter((p) => p.requestId !== current.requestId));
       setBusy(false);
     }
   }

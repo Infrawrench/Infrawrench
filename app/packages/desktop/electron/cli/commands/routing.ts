@@ -22,13 +22,37 @@ import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { limit } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { spreadBody, wire } from "../effect/wire";
+import { openUnion, spreadBody, Unrecognized, wire } from "../effect/wire";
 import { c, safe, type Column } from "../output";
 import { formatChangeTime } from "../format";
 
-// Both unions are switched on exhaustively, so their discriminants decode as
-// literals; the operators only pick a wording, so they stay strings.
-const Destination = Schema.Union([
+// Both unions are switched on exhaustively. A kind or field a newer server
+// added decodes as `Unrecognized` and reads as nothing, which is what the
+// legacy switch's missing case printed; one client-core adds fails the build
+// until it has a case. The operators only pick a wording, so they stay strings.
+const DESTINATION_KINDS = [
+  "push",
+  "slack",
+  "msteams",
+  "on-call",
+  "github-issues",
+  "email-member",
+  "email-address",
+  "paging-provider",
+  "provider-on-call",
+];
+const CONDITION_FIELDS = [
+  "trigger",
+  "severity",
+  "accountId",
+  "pluginId",
+  "resourceTypeId",
+  "amountCents",
+  "key",
+  "text",
+];
+
+const KnownDestination = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("push") }),
   Schema.Struct({ kind: Schema.Literal("slack"), channelId: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("msteams"), webhookId: Schema.String }),
@@ -47,6 +71,7 @@ const Destination = Schema.Union([
     sourceId: Schema.String,
   }),
 ]);
+const Destination = openUnion(KnownDestination, "kind", DESTINATION_KINDS);
 type Destination = typeof Destination.Type;
 
 const ValuesCondition = <F extends string>(field: F) =>
@@ -56,7 +81,7 @@ const ValuesCondition = <F extends string>(field: F) =>
     values: Schema.Array(Schema.String),
   });
 
-const Condition = Schema.Union([
+const KnownCondition = Schema.Union([
   ValuesCondition("trigger"),
   Schema.Struct({ field: Schema.Literal("severity"), op: Schema.String, severity: Schema.String }),
   ValuesCondition("accountId"),
@@ -66,6 +91,7 @@ const Condition = Schema.Union([
   Schema.Struct({ field: Schema.Literal("key"), op: Schema.String, value: Schema.String }),
   Schema.Struct({ field: Schema.Literal("text"), op: Schema.String, value: Schema.String }),
 ]);
+const Condition = openUnion(KnownCondition, "field", CONDITION_FIELDS);
 type Condition = typeof Condition.Type;
 
 const Rule = Schema.Struct({
@@ -132,6 +158,7 @@ const EmailSettings = wire<AlertEmailSettingsView>()(
 
 /** Names for the ids a destination holds, resolved against the same response. */
 function destinationName(d: Destination, data: RulesResponse): string {
+  if (d instanceof Unrecognized) return "";
   switch (d.kind) {
     case "push":
       return "mobile push";
@@ -173,6 +200,7 @@ function destinationName(d: Destination, data: RulesResponse): string {
 /** One condition as the sentence a person would say. */
 function describeCondition(cond: Condition, data: RulesResponse): string {
   const list = (values: ReadonlyArray<string>): string => values.join(", ");
+  if (cond instanceof Unrecognized) return "";
   switch (cond.field) {
     case "trigger":
       return `${cond.op === "in" ? "trigger is" : "trigger is not"} ${list(cond.values)}`;

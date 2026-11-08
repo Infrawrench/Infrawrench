@@ -249,3 +249,40 @@ function makeCloudApi(baseUrl: string): CloudApi["Service"] {
 export const runCloudApi = <A, E extends CloudError>(
   f: (api: CloudApi["Service"]) => Effect.Effect<A, E>,
 ): Effect.Effect<A, E> => CloudApi.use(f).pipe(Effect.provide(CloudApi.layer));
+
+/**
+ * `effect`, or `fallback()` when it fails for any reason, a defect (a network
+ * error) included: a read the command can do without, such as an optional
+ * column or a marker an older server cannot answer. The Promise code it
+ * replaces was `.catch(() => fallback)`, which swallowed rejections of every kind.
+ */
+export const bestEffort =
+  <B>(fallback: () => B) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A | B, never, R> =>
+    effect.pipe(
+      Effect.orElseSucceed(fallback),
+      Effect.catchDefect(() => Effect.succeed(fallback())),
+    );
+
+/** {@link attempt}'s answer: the value, or the sentence the call failed with. */
+export type Attempt<A> =
+  { readonly ok: true; readonly value: A } | { readonly ok: false; readonly error: string };
+
+/**
+ * Run `effect` and answer with its value or the sentence it failed with (a
+ * typed error's message, a defect's), for a loop that reports each failure and
+ * carries on: one delivery of several, one card of a dashboard.
+ */
+export const attempt = <A, E extends { readonly message: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<Attempt<A>, never, R> =>
+  effect.pipe(
+    Effect.map((value): Attempt<A> => ({ ok: true, value })),
+    Effect.catch((e) => Effect.succeed<Attempt<A>>({ ok: false, error: e.message })),
+    Effect.catchDefect((d) =>
+      Effect.succeed<Attempt<A>>({
+        ok: false,
+        error: d instanceof Error ? d.message : String(d),
+      }),
+    ),
+  );

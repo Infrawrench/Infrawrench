@@ -71,7 +71,7 @@ export function StorageBrowser({
       // takes `keys` as a JSON array, not a singular `key` per window, but it
       // also lives under `/v1/storage` (`api/index.ts`), where only
       // list/mkdir/delete are also served unversioned from
-      // `connection-features.ts`. So the old request 404'd before it could
+      // `http/domains/connection-features/`. So the old request 404'd before it could
       // even 400, and fixing the payload alone would not have helped.
       //
       // Chunked at MAX_BULK_KEYS: the server rejects a larger selection

@@ -10,6 +10,7 @@ import {
   type FieldActionCallbacks,
 } from "@infrawrench/ui";
 import { invoke } from "../../lib/invoke";
+import { list1PasswordKeys, listSystemKeys, readSystemKey } from "../../lib/ssh-keys";
 
 export function FieldRenderer({
   field,
@@ -45,12 +46,12 @@ export function FieldRenderer({
 
     async function loadSystemKeys() {
       try {
-        const sysKeys = await invoke<{ name: string }[]>("ssh_list_system_keys");
+        const sysKeys = await listSystemKeys();
         const entries: SystemSshKey[] = [];
         await Promise.all(
           sysKeys.map(async ({ name }) => {
             try {
-              const pub = await invoke<string>("ssh_read_system_key", { name: `${name}.pub` });
+              const pub = await readSystemKey(`${name}.pub`);
               if (!cancelled && pub.trim()) {
                 entries.push({ name, publicKey: pub.trim() });
               }
@@ -68,7 +69,7 @@ export function FieldRenderer({
 
     async function loadOnePasswordKeys() {
       try {
-        const keys = await invoke<AgentSshKey[]>("ssh_list_1password_keys");
+        const keys = await list1PasswordKeys();
         if (!cancelled) setOnePasswordKeys(keys);
       } catch {
         /* agent unavailable */

@@ -27,7 +27,7 @@ import { BadRequest, badRequest, Conflict, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CostAnomaly } from "../../schemas/zod-components";
+import { CostAnomaly } from "../../schemas/cost-anomalies";
 import {
   CostAnomalyFeedbackApi,
   CostAnomalyFeedbackResult,

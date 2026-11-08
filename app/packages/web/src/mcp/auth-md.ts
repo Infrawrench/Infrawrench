@@ -9,25 +9,18 @@
  * Written as instructions to an agent, in the imperative, with literal curl.
  * That is the format's whole point: an agent that finds this should be able to
  * act on it without a human translating, and without an SDK.
+ *
+ * The route is an HttpApi domain (`http/domains/discovery/`); this module
+ * holds the document.
  */
-import { Hono } from "hono";
-import type { Context } from "hono";
-
 import {
   CLAIM_CODE_TTL_MS,
   REGISTRATIONS_PER_IP_PER_HOUR,
 } from "@infrawrench/server-core/trials/ceremony";
 import { TRIAL_DURATION_MS } from "@infrawrench/server-core/trials/create";
 
-function baseUrl(c: Context): string {
-  const fromEnv = process.env["PUBLIC_BASE_URL"] ?? process.env["APP_URL"];
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  const u = new URL(c.req.url);
-  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
-  return `${proto ? `${proto}:` : u.protocol}//${u.host}`;
-}
-
-function authMarkdown(base: string): string {
+/** The document, with every URL on `base` (the public origin) and the live limits filled in. */
+export function authMarkdown(base: string): string {
   const trialHours = Math.round(TRIAL_DURATION_MS / 3_600_000);
   const codeMinutes = Math.round(CLAIM_CODE_TTL_MS / 60_000);
 
@@ -146,15 +139,3 @@ If your credential stops working after the workspace was claimed, a person
 revoked it deliberately. Ask them, rather than registering again.
 `;
 }
-
-const app = new Hono();
-
-app.get("/auth.md", (c) =>
-  c.text(authMarkdown(baseUrl(c)), 200, {
-    "content-type": "text/markdown; charset=utf-8",
-    // Short, because the document embeds live limits and the trial duration.
-    "cache-control": "public, max-age=300",
-  }),
-);
-
-export { app as authMdRoutes };

@@ -1,5 +1,4 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { Context } from "hono";
 import type { HostPluginClient } from "@infrawrench/plugin-base";
 import {
   TAG_POLICY_OVERRIDE_HEADER,
@@ -23,9 +22,9 @@ import { logAudit } from "./audit";
 
 /**
  * Create-time enforcement of the org tag policy, in the same shape as the
- * change-freeze gate (`services/change-freezes.ts`): a `check*` function the
+ * change-freeze gate (`services/change-freezes.ts`): an `evaluate*` function the
  * route calls before touching the provider, which returns null to proceed or
- * a 4xx `Response` to refuse, with an override header gated on a dedicated
+ * the refusal's body, with an override header gated on a dedicated
  * permission and both blocks and overrides audit-logged.
  *
  * The freeze speaks 423 (the org is locked); this speaks 422 (the request is
@@ -76,22 +75,31 @@ interface TagPolicyCreateTarget {
   fields: Record<string, string>;
 }
 
+/** Who is creating, as the gate needs to know it. */
+export interface TagPolicyCaller {
+  organizationId: string;
+  userId: string | undefined;
+  permissions: readonly string[];
+  /** The raw `x-tag-policy-override` header, if sent. */
+  overrideHeader: string | undefined;
+}
+
 /**
  * Enforce the org's tag policy on a resource create.
  *
  * Returns null when the request may proceed: no policy, enforcement off, the
  * type cannot carry tags (neither the submitted fields nor the plugin's create
  * config declare a `tags`/`labels` field), the tags satisfy the policy, or an
- * authorized explicit override (audit-logged). Returns a 422 `Response`
- * describing the violations when the create must be refused; the block is
- * audit-logged too. Call it after resolving the account/client and before
- * calling the plugin's `createResource`.
+ * authorized explicit override (audit-logged). Returns the 422 body describing
+ * the violations when the create must be refused; the block is audit-logged
+ * too. Call it after resolving the account/client and before calling the
+ * plugin's `createResource`.
  */
-export async function checkTagPolicyOnCreate(
-  c: Context,
+export async function evaluateTagPolicyOnCreate(
+  caller: TagPolicyCaller,
   target: TagPolicyCreateTarget,
-): Promise<Response | null> {
-  const organizationId = c.get("organizationId");
+): Promise<ReturnType<typeof tagPolicyBlockedPayload> | null> {
+  const { organizationId, userId } = caller;
   const policy = await getOrgTagPolicy(organizationId);
   if (!policy.enforceOnCreate || policy.requiredTags.length === 0) return null;
 
@@ -109,8 +117,6 @@ export async function checkTagPolicyOnCreate(
   const violations = tagPolicyViolations(tags, policy.requiredTags);
   if (violations.length === 0) return null;
 
-  const session = c.get("session") as { userId?: string } | undefined;
-  const userId = session?.userId;
   const baseMeta = {
     pluginId: target.pluginId,
     resourceTypeId: target.resourceTypeId,
@@ -118,10 +124,9 @@ export async function checkTagPolicyOnCreate(
     violations: violations.map((v) => ({ key: v.key, reason: v.reason })),
   };
 
-  const overrideRequested = c.req.header(TAG_POLICY_OVERRIDE_HEADER)?.toLowerCase() === "true";
+  const overrideRequested = caller.overrideHeader?.toLowerCase() === "true";
   if (overrideRequested) {
-    const granted = (c.get("permissions") ?? []) as readonly string[];
-    if (hasPermission(granted, "tag-policy:override")) {
+    if (hasPermission(caller.permissions, "tag-policy:override")) {
       void logAudit({
         organizationId,
         userId,
@@ -143,7 +148,7 @@ export async function checkTagPolicyOnCreate(
     entityId: target.resourceTypeId,
     metadata: { ...baseMeta, overrideRequested },
   });
-  return c.json(tagPolicyBlockedPayload(policy, violations), 422);
+  return tagPolicyBlockedPayload(policy, violations);
 }
 
 /**

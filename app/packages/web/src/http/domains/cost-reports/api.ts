@@ -30,7 +30,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, Ok, OrgId, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
 import { optionalRequestBody } from "../../schemas/documented";
-import { CostQueryResponse } from "../../schemas/zod-components";
+import { CostQueryResponse } from "../../schemas/cost-query";
 
 const ReportDay = Day.annotate({ examples: ["2026-07-01"] });
 

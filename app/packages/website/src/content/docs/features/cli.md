@@ -12,7 +12,7 @@ You can use the CLI in three ways:
 - **Text mode.** Human-readable tables and terminal charts. This is the default for every subcommand.
 - **JSON mode.** Pass `--json` to any command for stable output you can script against (with `jq`, for example).
 
-`infrawrench help` lists every command. Most of the listing commands also have their own help, so `infrawrench orgs --help` prints just that command's usage and flags: `access`, `accounts`, `agents`, `blast-radius`, `cli`, `commitments`, `cost-visibility`, `credits`, `declared-incidents`, `dns`, `estimate`, `expiring`, `extended-support`, `github-issues`, `idle-rules`, `incidents`, `issues`, `leases`, `login`, `logout`, `orgs`, `orphans`, `oversized`, `ownership`, `probes`, `resource`, `resources`, `schedules`, `slos`, `status-pages`, `webhooks` and `whoami`. More commands get this as they are updated. Those commands are also strict about what they're given. A flag they don't take, an extra argument or an unknown subcommand (`access frobnicate`, `issues trello`) prints their help and the error to stderr and exits with status 2. Before, the extra input was ignored, or the command printed a one-line error and exited with status 1. Their own flags go after the command name: `infrawrench resources --type droplet -a prod`, not `infrawrench --type droplet resources`.
+`infrawrench help` lists every command. Most of the listing commands also have their own help, so `infrawrench orgs --help` prints just that command's usage and flags: `access`, `accounts`, `agents`, `blast-radius`, `budgets`, `cli`, `commitments`, `cost-visibility`, `credits`, `declared-incidents`, `dns`, `estimate`, `expiring`, `extended-support`, `github-issues`, `idle-rules`, `incidents`, `issues`, `leases`, `login`, `logout`, `orgs`, `orphans`, `oversized`, `ownership`, `page`, `probes`, `resource`, `resources`, `schedules`, `slos`, `status-pages`, `tag-keys`, `virtual-tags`, `webhooks` and `whoami`, plus the commands that take a time range or a listing filter: `ai-spend`, `alerts`, `billing-rules`, `carbon`, `changes`, `costs`, `currency`, `dora`, `graph`, `hygiene`, `invoices`, `k8s-network`, `metrics`, `moment`, `routing`, `savings`, `scenarios`, `search`, `showback`, `starred`, `tags` and `unit-costs`, and the commands that write files: `canvas`, `compliance`, `dashboards`, `export`, `exports`, `k8s-efficiency`, `network-reports`, `recordings`, `reports` and `resource-reports`. More commands get this as they are updated. Those commands are also strict about what they're given. A flag they don't take, an extra argument or an unknown subcommand (`access frobnicate`, `issues trello`) prints their help and the error to stderr and exits with status 2. Before, the extra input was ignored, or the command printed a one-line error and exited with status 1. Their own flags go after the command name, and after the subcommand for the flags only it takes: `infrawrench resources --type droplet -a prod`, not `infrawrench --type droplet resources`, and `infrawrench dora changes --failed`, not `infrawrench dora --failed changes`. A bad flag value, such as `--last 6h` on a command that counts whole days, is reported the same way, with the same sentence as before. That includes a `--format` the command cannot write (`k8s-efficiency --format xlsx`), which used to exit with status 1 on some of them, and on `network-reports` and `resource-reports` is now refused even when you list reports rather than run one.
 
 ## Install the shell command
 
@@ -149,6 +149,8 @@ infrawrench costs --anomalies feedback <id> --expected|--unexpected [--reason r]
 infrawrench costs --anomalies suppressions | precision | sensitivity
 ```
 
+The verbs also work without `--anomalies`: `infrawrench costs feedback <id> --expected` is the same command.
+
 ### Cost reports
 
 `reports` lists the org's saved [cost reports](./cost-reports.md), with each one's shape and how many dashboards show it. Run one by name to chart it without retyping any filters:
@@ -282,7 +284,7 @@ infrawrench export jobs 3f2a91c0 --wait --out monthly.csv   # wait for one (an i
 infrawrench export jobs 3f2a91c0 cancel
 ```
 
-All of them take `--json`. Finished files are kept for 24 hours.
+All of them take `--json`. A job that fails exits with status 1, with `--json` too, so a script waiting on one notices. Finished files are kept for 24 hours.
 
 ## Check schedules, probes, SLOs and services
 
@@ -465,7 +467,7 @@ infrawrench k8s-network
 infrawrench k8s-network prod-cluster --last 30d --json
 ```
 
-`network-reports` lists your saved [network flow reports](./network-flow-reports.md), or runs one by name or id: estimated cost and bytes over the window, group totals and the top talking pairs. Figures from a sampling flow source are marked as sampled. `--format csv` writes the series CSV and `--format pairs-csv` the top talkers CSV (add `--out` to write a file). Cloud only.
+`network-reports` lists your saved [network flow reports](./network-flow-reports.md), or runs one by name or id: estimated cost and bytes over the window, group totals and the top talking pairs. Figures from a sampling flow source are marked as sampled. `--format csv` writes the series CSV and `--format pairs-csv` the top talkers CSV (add `--out` to write a file). If the server reports a traffic class, direction or attribution newer than your desktop app, the pairs CSV is refused with the value named rather than written wrong; the series CSV and the text output show such values as they are. Cloud only.
 
 ```
 infrawrench network-reports
@@ -547,7 +549,7 @@ infrawrench currency import rates.csv     # preview every row, then ask before w
 You set single rates in Settings. `currency import` is the only command here that writes. It always shows a preview first, marking each row as new, replacing a stored rate, unchanged, or an error with its line. Then it asks before writing:
 
 - `-y` skips the question. You need it in a non-interactive shell, which otherwise stops at the preview.
-- A file with errors writes nothing unless you pass `--skip-invalid`.
+- A file with errors writes nothing unless you pass `--skip-invalid`, and exits with status 1 so a script notices.
 
 See [Uploading many rates from a CSV](./cloud-costs.md#uploading-many-rates-from-a-csv).
 

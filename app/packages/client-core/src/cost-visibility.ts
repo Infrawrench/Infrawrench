@@ -20,8 +20,8 @@
  *
  * Server contract: `/api/org/:orgId/cost-visibility` (scopes, `team:read` to
  * list, `team:role:write` to change) and `/api/org/:orgId/sharing/:type/:id`
- * (object sharing). See web `api/routes/cost-visibility.ts` and
- * `api/routes/sharing.ts`.
+ * (object sharing). See web `http/domains/cost-visibility/` and
+ * `http/domains/sharing/`.
  */
 import type { CloudFetch } from "./fetch";
 

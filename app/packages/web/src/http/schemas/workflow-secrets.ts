@@ -26,3 +26,15 @@ export const WorkflowSecret = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 }).annotate({ identifier: "WorkflowSecret" });
+
+/**
+ * A secret's value, write-only. The body of the workflow-secrets value write
+ * and of the chat password field's handoff (`POST .../chat/conversations/
+ * {conversationId}/secret-requests/{requestId}`), one component for both.
+ */
+export const WorkflowSecretValueWrite = Schema.Struct({
+  value: Schema.String.check(minLength(1), maxLength(1024 * 1024)).annotate({
+    description:
+      "Write-only plaintext. It is AES-256-GCM encrypted before storage and is never returned.",
+  }),
+}).annotate({ identifier: "WorkflowSecretValueWrite" });

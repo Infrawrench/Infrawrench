@@ -8,7 +8,7 @@
  * the policy to tell the truth about what will send. The policy and the
  * suppressions are `org:settings:write`, the alert-routing gate. The public
  * unsubscribe link (`/api/alert-email/unsubscribe`, an HMAC token and no
- * session) stays on Hono in `api/routes/alert-email.ts`.
+ * session) is `../alert-email-unsubscribe`.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";

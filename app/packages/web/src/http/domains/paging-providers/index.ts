@@ -1,14 +1,17 @@
 /**
- * Paging providers, the handlers for the org-tree groups. The server half
- * lives in `server-core/src/paging/providers.ts`; these only parse, gate and
- * audit. The inbound webhook stays on Hono (`api/routes/paging-providers.ts`).
+ * Paging providers, the handlers. The server half lives in
+ * `server-core/src/paging/providers.ts`; the org-tree handlers only parse,
+ * gate and audit, and the inbound webhook only reads the raw body and hands
+ * it, with the headers, to the account's plugin to verify.
  */
 import { Effect, Layer, Predicate } from "effect";
+import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import type { PagingProviderSettingsInput } from "@infrawrench/client-core";
 import {
   PagingProviderError,
   actOnPagerIncident,
+  handlePagingWebhook,
   listPagerIncidents,
   listPagingDestinations,
   listPagingEvents,
@@ -19,8 +22,9 @@ import {
 } from "@infrawrench/server-core/paging/providers";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound } from "../../errors";
+import { BadRequest, InternalServerError, NotFound, notFound, Unauthorized } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { json } from "../../middleware";
 import { invalidBody, readObjectBody } from "../../object-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
@@ -199,8 +203,41 @@ const PagingIncidentsHandlers = HttpApiBuilder.group(
       .handle("resolve", ({ params }) => actOn("resolve", params.id)),
 );
 
+/** Bodies past this are not a provider webhook; refuse before hashing them. */
+const MAX_WEBHOOK_BYTES = 1_000_000;
+
+const WEBHOOK_TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
+
+const PagingWebhookHandlers = HttpApiBuilder.group(
+  PagingProvidersApi,
+  "pagingWebhook",
+  (handlers) =>
+    handlers.handleRaw("receive", ({ request, params }) =>
+      Effect.gen(function* () {
+        const { token } = params;
+        if (!WEBHOOK_TOKEN.test(token)) return yield* notFound();
+        // The exact text the provider signed; nothing has parsed or re-encoded it.
+        const body = yield* Effect.orDie(request.text);
+        if (body.length > MAX_WEBHOOK_BYTES) return json({ error: "Payload too large" }, 413);
+        // Every header, keys lowercased, as a plain record for the plugin.
+        const headers: Record<string, string> = { ...request.headers };
+        const status = yield* legacyTry(
+          () => handlePagingWebhook(token, headers, body),
+          (err) => {
+            console.error("[paging] webhook handling failed:", err);
+            // A 5xx makes the provider retry, which is what a transient failure here wants.
+            return new InternalServerError({ error: "Webhook processing failed" });
+          },
+        );
+        if (status === 404) return yield* notFound();
+        if (status === 401) return yield* new Unauthorized({ error: "Invalid signature" });
+        return HttpServerResponse.empty({ status: 202 });
+      }),
+    ),
+);
+
 export const pagingProvidersDomain = makeDomain(
   "paging-providers",
   PagingProvidersApi,
-  Layer.mergeAll(PagingProvidersHandlers, PagingIncidentsHandlers),
+  Layer.mergeAll(PagingProvidersHandlers, PagingIncidentsHandlers, PagingWebhookHandlers),
 );

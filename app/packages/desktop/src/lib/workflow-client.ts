@@ -56,6 +56,8 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPeerPluginClient, createPluginClient } from "./plugin-client";
 import { invoke } from "./invoke";
+import { list1PasswordKeys, listSystemKeys, readSystemKey } from "./ssh-keys";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /** Fired after a local workflow is created/updated/deleted, so the cron runner re-syncs. */
 export const WORKFLOWS_CHANGED_EVENT = "iw:workflows-changed";
@@ -240,8 +242,8 @@ async function listLocalSshKeyNames(): Promise<string[]> {
     getDb()
       .then((db) => db.select<{ name: string }[]>("SELECT name FROM ssh_keys ORDER BY name ASC"))
       .catch(() => [] as { name: string }[]),
-    invoke<{ name: string }[]>("ssh_list_system_keys").catch(() => [] as { name: string }[]),
-    invoke<{ name: string }[]>("ssh_list_1password_keys").catch(() => [] as { name: string }[]),
+    listSystemKeys().catch(() => [] as { name: string }[]),
+    list1PasswordKeys().catch(() => [] as { name: string }[]),
     orgId
       ? invoke<{ name: string }[]>("cloud_ssh_keys_list", { orgId }).catch(
           () => [] as { name: string }[],
@@ -273,7 +275,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
   }
   // 1Password agent: public key is returned directly.
   try {
-    const onepw = await invoke<{ name: string; publicKey: string }[]>("ssh_list_1password_keys");
+    const onepw = await list1PasswordKeys();
     const match = onepw.find((k) => k.name === nameOrId);
     if (match?.publicKey) return match.publicKey;
   } catch {
@@ -295,7 +297,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
   }
   // System ~/.ssh key: read the matching .pub file.
   try {
-    const pub = await invoke<string>("ssh_read_system_key", { name: `${nameOrId}.pub` });
+    const pub = await readSystemKey(`${nameOrId}.pub`);
     if (pub?.trim()) return pub.trim();
   } catch {
     /* fall through */
@@ -556,7 +558,7 @@ async function resolveSshPrivateKey(sshKey: string): Promise<string> {
   );
   if (rows[0]) return invoke<string>("ssh_key_get_private_key", { keyId: rows[0].id });
   // Fall back to a system key file name in ~/.ssh (may prompt for consent).
-  return invoke<string>("ssh_read_system_key", { name: sshKey });
+  return readSystemKey(sshKey);
 }
 
 /** Build a full connect config (host + key) for a workflow `resource.ssh(...)` call. */
@@ -927,46 +929,57 @@ export async function runWorkflowById(
     // config (host + key) and bridges the exec/stream/probe to main via IPC.
     sshExec: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_exec", {
-        config,
-        command: params.command,
-        skipHostKeyCheck: params.skipHostKeyCheck,
-      });
+      return runRpc(
+        DesktopRpcClient.use((rpc) =>
+          rpc.WorkflowSshExec({
+            config,
+            command: params.command,
+            skipHostKeyCheck: params.skipHostKeyCheck,
+          }),
+        ),
+      );
     },
     sshStreamStart: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_stream_start", {
-        config,
-        command: params.command,
-        skipHostKeyCheck: params.skipHostKeyCheck,
-      });
+      return runRpc(
+        DesktopRpcClient.use((rpc) =>
+          rpc.WorkflowSshStreamStart({
+            config,
+            command: params.command,
+            skipHostKeyCheck: params.skipHostKeyCheck,
+          }),
+        ),
+      );
     },
-    sshStreamRead: (streamId) => invoke("workflow_ssh_stream_read", { streamId }),
+    sshStreamRead: (streamId) =>
+      runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamRead({ streamId }))),
     sshStreamClose: async (streamId) => {
-      await invoke("workflow_ssh_stream_close", { streamId });
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamClose({ streamId })));
     },
 
     // SFTP runs in electron main; the renderer resolves the connect config.
-    sftpList: async (params, path) =>
-      invoke("workflow_sftp_list", { config: await resolveDesktopSftpConfig(params), path }),
-    sftpGet: async (params, path) =>
-      invoke("workflow_sftp_get", { config: await resolveDesktopSftpConfig(params), path }),
+    sftpList: async (params, path) => {
+      const config = await resolveDesktopSftpConfig(params);
+      const entries = await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.WorkflowSftpList({ config, path })),
+      );
+      return [...entries];
+    },
+    sftpGet: async (params, path) => {
+      const config = await resolveDesktopSftpConfig(params);
+      return runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSftpGet({ config, path })));
+    },
     sftpPut: async (params, path, base64) => {
-      await invoke("workflow_sftp_put", {
-        config: await resolveDesktopSftpConfig(params),
-        path,
-        base64,
-      });
+      const config = await resolveDesktopSftpConfig(params);
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSftpPut({ config, path, base64 })));
     },
     sftpMkdir: async (params, path) => {
-      await invoke("workflow_sftp_mkdir", { config: await resolveDesktopSftpConfig(params), path });
+      const config = await resolveDesktopSftpConfig(params);
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSftpMkdir({ config, path })));
     },
     sftpDelete: async (params, path, isDir) => {
-      await invoke("workflow_sftp_delete", {
-        config: await resolveDesktopSftpConfig(params),
-        path,
-        isDir,
-      });
+      const config = await resolveDesktopSftpConfig(params);
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSftpDelete({ config, path, isDir })));
     },
     sshProbe: async (params) => {
       // Resolve the host inside the loop: a just-created VM may not have an IP
@@ -978,11 +991,12 @@ export async function runWorkflowById(
         if (stopRequested) return false; // bail out of waitUntilReachable on Stop
         const target = await resolveSshTarget(params).catch(() => null);
         if (target?.host) {
-          const ok = await invoke<boolean>("workflow_ssh_probe", {
+          const probe = {
             host: target.host,
             port: params.port ?? target.port ?? 22,
             timeoutMs: Math.max(interval, deadline - Date.now()),
-          });
+          };
+          const ok = await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSshProbe(probe)));
           return ok;
         }
         if (Date.now() + interval >= deadline) break;

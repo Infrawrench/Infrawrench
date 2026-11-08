@@ -447,7 +447,7 @@ export async function loadAnomalyFeedbackContext(
  *
  * Anomaly alerts carry Expected / Unexpected buttons. The value names the org
  * and the anomaly and nothing else: it is not a credential. The inbound
- * handler (web `slack-inbound.ts`) honours a click only once the Slack user
+ * handler (web `http/domains/slack-inbound/`) honours a click only once the Slack user
  * resolves through `slack_user_links` to a member of that org holding
  * `costs:write`, the same gate as the HTTP route, and the write is scoped to
  * that org, so a forged value matches no row.

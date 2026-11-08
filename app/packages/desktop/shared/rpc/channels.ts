@@ -12,3 +12,13 @@
  */
 export const RPC_CONNECT = "iw-rpc:connect";
 export const RPC_FRAME = "iw-rpc:frame";
+/**
+ * The page is going away (a reload, a navigation, the window closing). Sent
+ * by the preload on `pagehide` with the token its {@link RPC_CONNECT} carried,
+ * so the main process ends that page's connection, interrupting its streams
+ * (and releasing what they hold, such as an SSH channel) at once instead of
+ * when the next page happens to connect. A token that does not match the
+ * current connection is ignored: it is a stale page's, and the connection
+ * belongs to its successor.
+ */
+export const RPC_DISCONNECT = "iw-rpc:disconnect";

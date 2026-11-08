@@ -3,7 +3,7 @@ import { DEFAULT_MUTED_TRIGGERS, type AlertTrigger } from "./alert-routing";
 
 /**
  * Device registration for mobile push. Server contract: user-scoped
- * `/api/push/devices` routes (see web `api/routes/push-devices.ts`).
+ * `/api/push/devices` routes (see web `http/domains/push-devices/`).
  */
 
 export interface RegisterPushTokenArgs {

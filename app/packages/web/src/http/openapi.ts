@@ -9,7 +9,13 @@
  * it moves: its schemas are the ones its requests are decoded with.
  */
 import { Context, Predicate } from "effect";
-import { Internal, RequiredPermission, Security, SuccessDescription } from "./annotations";
+import {
+  DocumentedPermission,
+  Internal,
+  RequiredPermission,
+  Security,
+  SuccessDescription,
+} from "./annotations";
 import type { Domain } from "./domain";
 
 type JsonObject = Record<string, unknown>;
@@ -55,9 +61,12 @@ const ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "403": "Forbidden",
   "404": "Not found",
   "409": "Conflict",
+  "410": "Gone: the file expired or was deleted",
+  "422": "Unprocessable: the request is well formed but cannot be acted on",
   "500": "Server error",
   "502": "Bad gateway: an upstream service failed",
   "503": "A backing service this endpoint depends on is not available",
+  "504": "Gateway timeout: an upstream service did not answer in time",
 };
 
 const REF_PREFIX = "#/components/schemas/";
@@ -202,7 +211,9 @@ export function buildOpenApiFragment(domains: readonly Domain[]): OpenApiFragmen
         const security = Context.get(annotations, Security);
         if (security === undefined) delete op["security"];
         else op["security"] = security;
-        const permission = Context.get(annotations, RequiredPermission);
+        const permission =
+          Context.get(annotations, RequiredPermission) ??
+          Context.get(annotations, DocumentedPermission);
         if (permission !== undefined) op["x-required-permission"] = permission;
         if (Context.get(annotations, Internal)) op["x-internal"] = true;
         const successDescription = Context.get(annotations, SuccessDescription);
@@ -289,7 +300,9 @@ export function requiredPermissionIndex(domains: readonly Domain[]): Record<stri
   const index: Record<string, string> = {};
   for (const domain of domains) {
     for (const endpoint of domain.endpoints()) {
-      const permission = Context.get(endpoint.annotations, RequiredPermission);
+      const permission =
+        Context.get(endpoint.annotations, RequiredPermission) ??
+        Context.get(endpoint.annotations, DocumentedPermission);
       if (permission === undefined) continue;
       const path = toOpenApiPath(endpoint.path).replace(/^\/api\/org\/\{orgId\}/, "") || "/";
       index[`${endpoint.method.toUpperCase()} ${path}`] = permission;

@@ -7,22 +7,11 @@
  * against the operation's schemas in `shared/rpc/groups`, the same ones the
  * main process uses.
  */
-import { Context, Effect, Layer, ManagedRuntime, Predicate } from "effect";
-import { RpcClient, RpcSerialization, type RpcClientError } from "effect/rpc";
-import { DesktopRpcs } from "../../../shared/rpc/groups";
-import { layerIpcSocket, type RpcBridge } from "./ipc-socket";
+import { Effect, Fiber, ManagedRuntime, Predicate } from "effect";
+import { DesktopRpcClient } from "./desktop-client";
+import type { RpcBridge } from "./ipc-socket";
 
-export class DesktopRpcClient extends Context.Service<
-  DesktopRpcClient,
-  RpcClient.FromGroup<typeof DesktopRpcs, RpcClientError.RpcClientError>
->()("infrawrench/desktop/DesktopRpcClient") {
-  static readonly layer = (bridge: RpcBridge) =>
-    Layer.effect(DesktopRpcClient)(RpcClient.make(DesktopRpcs)).pipe(
-      Layer.provide(RpcClient.layerProtocolSocket()),
-      Layer.provide(layerIpcSocket(bridge)),
-      Layer.provide(RpcSerialization.layerJson),
-    );
-}
+export { DesktopRpcClient };
 
 function rpcBridge(): RpcBridge {
   const bridge: unknown = window.electronAPI?.["rpc"];
@@ -46,4 +35,20 @@ let runtime: ManagedRuntime.ManagedRuntime<DesktopRpcClient, never> | undefined;
 export function runRpc<A, E>(effect: Effect.Effect<A, E, DesktopRpcClient>): Promise<A> {
   runtime ??= ManagedRuntime.make(DesktopRpcClient.layer(rpcBridge()));
   return runtime.runPromise(effect);
+}
+
+/**
+ * Start a long-lived RPC effect from React code, such as consuming a stream
+ * (`Stream.runForEach(rpc.SshShellOpen(...), ...)`), and return the function
+ * that stops it. Stopping interrupts the fiber, and an interrupted stream
+ * tells the main process to interrupt its end too, which is what releases
+ * whatever the stream holds there. Handle the outcome inside `effect`
+ * (`Effect.onExit`); nothing is reported here.
+ */
+export function forkRpc<A, E>(effect: Effect.Effect<A, E, DesktopRpcClient>): () => void {
+  runtime ??= ManagedRuntime.make(DesktopRpcClient.layer(rpcBridge()));
+  const fiber = runtime.runFork(effect);
+  return () => {
+    Effect.runFork(Fiber.interrupt(fiber));
+  };
 }

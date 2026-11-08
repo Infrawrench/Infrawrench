@@ -9,7 +9,9 @@
  * the active workspace is cloud or local.
  */
 
+import { Cause, Effect, Exit, Predicate, Stream } from "effect";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 import type { KeySource } from "./ssh-key-source";
 import { getCloudWsUrl } from "./cloud-ws";
 
@@ -60,64 +62,126 @@ interface LocalShellParams {
 type OpenSshShellParams =
   ({ mode: "cloud" } & CloudShellParams) | ({ mode: "local" } & LocalShellParams);
 
-export async function openSshShell(params: OpenSshShellParams): Promise<SshShellHandle> {
+export function openSshShell(params: OpenSshShellParams): Promise<SshShellHandle> {
   if (params.mode === "cloud") {
     return openCloudShell(params);
   }
   return openLocalShell(params);
 }
 
-async function openLocalShell(params: LocalShellParams): Promise<SshShellHandle> {
-  const id = await invoke<string>("ssh_shell_spawn", {
-    host: params.host,
-    port: params.port,
-    username: params.username,
-    privateKey: params.privateKey,
-    cols: params.cols,
-    rows: params.rows,
-    ...(params.agentForward ? { agentForward: true } : {}),
-    ...(params.jumpHops && params.jumpHops.length > 0 ? { jumpHops: params.jumpHops } : {}),
-  });
-
+/**
+ * A local shell is one `SshShellOpen` stream: it resolves once the stream
+ * reports `Opened`, carries the output after that, and ends when the shell
+ * exits. `kill` interrupts the stream, which is what makes the main process
+ * close the channel and the connection.
+ */
+function openLocalShell(params: LocalShellParams): Promise<SshShellHandle> {
   const dataListeners: Array<(d: Uint8Array) => void> = [];
   const exitListeners: Array<() => void> = [];
+  const errorListeners: Array<(err: string) => void> = [];
 
-  window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
-    const data = args[0] as Uint8Array;
-    for (const cb of dataListeners) cb(data);
-  });
-  window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
-    for (const cb of exitListeners) cb();
-  });
-
+  let shellId: string | null = null;
   let killed = false;
-  return {
-    kind: "local",
-    write: (data: string) => {
-      if (killed) return;
-      void invoke("ssh_shell_write", { shellId: id, data });
-    },
-    resize: (cols: number, rows: number) => {
-      if (killed) return;
-      void invoke("ssh_shell_resize", { shellId: id, cols, rows });
-    },
-    kill: () => {
-      if (killed) return;
-      killed = true;
-      window.electronAPI.offAll(`ssh_shell_data_${id}`);
-      window.electronAPI.offAll(`ssh_shell_exit_${id}`);
-      void invoke("ssh_shell_kill", { shellId: id });
-    },
-    onData: (cb) => {
-      dataListeners.push(cb);
-    },
-    onExit: (cb) => {
-      exitListeners.push(cb);
-    },
-    onError: () => {
-      /* local errors surface via exit/reject */
-    },
+  let stop: () => void = () => {};
+
+  // Keystrokes go one call at a time, coalesced while one is in flight, so
+  // they reach the shell in the order they were typed.
+  let unsent = "";
+  let sending = false;
+  const flush = (): void => {
+    if (sending || killed || shellId === null || unsent === "") return;
+    const data = unsent;
+    const id = shellId;
+    unsent = "";
+    sending = true;
+    void runRpc(DesktopRpcClient.use((rpc) => rpc.SshShellWrite({ shellId: id, data })))
+      .catch(() => undefined)
+      .finally(() => {
+        sending = false;
+        flush();
+      });
   };
+
+  return new Promise<SshShellHandle>((resolve, reject) => {
+    const handle: SshShellHandle = {
+      kind: "local",
+      write: (data: string) => {
+        if (killed) return;
+        unsent += data;
+        flush();
+      },
+      resize: (cols: number, rows: number) => {
+        if (killed || shellId === null) return;
+        const id = shellId;
+        void runRpc(
+          DesktopRpcClient.use((rpc) => rpc.SshShellResize({ shellId: id, cols, rows })),
+        ).catch(() => undefined);
+      },
+      kill: () => {
+        if (killed) return;
+        killed = true;
+        unsent = "";
+        stop();
+      },
+      onData: (cb) => {
+        dataListeners.push(cb);
+      },
+      onExit: (cb) => {
+        exitListeners.push(cb);
+      },
+      onError: (cb) => {
+        errorListeners.push(cb);
+      },
+    };
+
+    const config = {
+      host: params.host,
+      port: params.port,
+      username: params.username,
+      privateKey: params.privateKey,
+      cols: params.cols,
+      rows: params.rows,
+      ...(params.agentForward ? { agentForward: true } : {}),
+      ...(params.jumpHops && params.jumpHops.length > 0 ? { jumpHops: params.jumpHops } : {}),
+    };
+
+    stop = forkRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        yield* Stream.runForEach(rpc.SshShellOpen(config), (event) =>
+          Effect.sync(() => {
+            if (event._tag === "Opened") {
+              shellId = event.shellId;
+              resolve(handle);
+              flush();
+              return;
+            }
+            for (const cb of dataListeners) cb(event.data);
+          }),
+        );
+      }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            if (killed) return;
+            const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+            const message =
+              failure === undefined
+                ? undefined
+                : Predicate.isError(failure)
+                  ? failure.message
+                  : String(failure);
+            if (shellId === null) {
+              // Never opened: the dial, the host-key check or the PTY failed.
+              reject(new Error(message ?? "SSH shell closed before it opened"));
+              return;
+            }
+            if (message !== undefined) for (const cb of errorListeners) cb(message);
+            for (const cb of exitListeners) cb();
+          }),
+        ),
+      ),
+    );
+  });
 }
 
 interface CloudSshErrorFrame {

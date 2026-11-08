@@ -34,6 +34,7 @@ import { CostDimension, CostFilter } from "./cost-filter";
 import { CurrencyCode, IsoDate, NonEmptyString } from "./primitives";
 import {
   BusinessMetricLabelKey,
+  businessMetricLabelKey,
   UnitCostLabelFilter,
   UnitCostMode,
   UnitCostScale,
@@ -41,6 +42,14 @@ import {
 
 const L = BUSINESS_METRIC_LIMITS;
 const IL = BUSINESS_METRIC_IMPORT_LIMITS;
+
+/** A saved cost filter's id, documented as the UUID it is; checked only for being non-empty. */
+const savedFilterRef = (annotations: { readonly description?: string } = {}) =>
+  Schema.String.annotate({
+    format: "uuid",
+    examples: ["00000000-0000-0000-0000-000000000000"],
+    ...annotations,
+  }).check(minLength(1));
 
 export const BusinessMetricScopeTerm = CostFilter.annotate({
   identifier: "BusinessMetricScopeTerm",
@@ -109,9 +118,11 @@ export const UnitCostThreshold = Schema.Struct({
       "`margin`.",
   }),
   scale: Schema.optionalKey(UnitCostScale),
-  groupByLabel: Schema.optionalKey(BusinessMetricLabelKey).annotateKey({
-    description: "Evaluate per value of this label. The label must be mapped.",
-  }),
+  groupByLabel: Schema.optionalKey(
+    businessMetricLabelKey({
+      description: "Evaluate per value of this label. The label must be mapped.",
+    }),
+  ),
   windowDays: Schema.optionalKey(
     Schema.Int.check(
       Schema.isBetween({ minimum: L.minThresholdWindowDays, maximum: L.maxThresholdWindowDays }),
@@ -170,7 +181,7 @@ export const BusinessMetricInput = Schema.Struct({
       }),
   ),
   savedFilterId: Schema.optionalKey(
-    NonEmptyString.annotate({
+    savedFilterRef({
       description:
         "A saved cost filter AND-composed with `costScope`, resolved server-side at query time. A " +
         "reference that fails to resolve errors the unit-cost query rather than silently widening " +
@@ -251,11 +262,13 @@ const unitCostQueryRequestFields = {
           "the spend is narrowed to the same values on the mapped dimension.",
       }),
   ),
-  groupByLabel: Schema.optionalKey(BusinessMetricLabelKey).annotateKey({
-    description:
-      "One series per value of this label (the 25 largest by metric total; the rest fold into " +
-      "`Other`). In a ratio mode the label must be mapped.",
-  }),
+  groupByLabel: Schema.optionalKey(
+    businessMetricLabelKey({
+      description:
+        "One series per value of this label (the 25 largest by metric total; the rest fold into " +
+        "`Other`). In a ratio mode the label must be mapped.",
+    }),
+  ),
   usageUnit: Schema.optionalKey(
     Schema.String.check(minLength(1), maxLength(120)).annotate({
       description:
@@ -275,7 +288,7 @@ const unitCostQueryRequestFields = {
       description: "The same narrowing as cost-query-language text.",
     }),
   ),
-  savedFilterId: Schema.optionalKey(NonEmptyString),
+  savedFilterId: Schema.optionalKey(savedFilterRef()),
   costBasis: Schema.optionalKey(CostBasisValue),
   chargeTypes: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.Literals(COST_CHARGE_TYPES)))),
   displayCurrency: Schema.optionalKey(

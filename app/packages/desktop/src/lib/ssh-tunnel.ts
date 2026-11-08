@@ -1,4 +1,5 @@
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { getDb } from "../db/client";
 import type { KeySource } from "./ssh-key-source";
 
@@ -20,7 +21,7 @@ interface ActiveTunnelInfo {
 export function sshOpenTunnel(
   payload: SshOpenTunnelPayload,
 ): Promise<{ tunnelId: string; localPort: number }> {
-  return invoke<{ tunnelId: string; localPort: number }>("ssh_open_tunnel", { ...payload });
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.SshTunnelOpen({ ...payload })));
 }
 
 /** Why a plain tunnel cannot open with these inputs, or null when it can. */
@@ -44,21 +45,20 @@ export function openPlainTunnel(
 }
 
 export function sshCloseTunnel(tunnelId: string): Promise<void> {
-  return invoke<void>("ssh_close_tunnel", { tunnelId });
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.SshTunnelClose({ tunnelId })));
 }
 
-function sshGetActiveTunnels(): Promise<Record<string, ActiveTunnelInfo>> {
-  return invoke<Record<string, ActiveTunnelInfo>>("ssh_get_active_tunnels");
+function sshGetActiveTunnels(): Promise<Readonly<Record<string, ActiveTunnelInfo>>> {
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.SshTunnelsActive()));
 }
 
 export function sshExecCommand(
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
-  return invoke<{ stdout: string; stderr: string; code: number }>("ssh_exec_command", {
-    config: { ...config },
-    command,
-  });
+  return runRpc(
+    DesktopRpcClient.use((rpc) => rpc.SshExecCommand({ config: { ...config }, command })),
+  );
 }
 
 /**

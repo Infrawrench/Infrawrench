@@ -6,17 +6,12 @@
  * visibility resolver.
  */
 import { Effect, Layer } from "effect";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpRouter, HttpServerRequest } from "effect/http";
 import { COST_SCOPE_RESTRICTED_CODE } from "@infrawrench/client-core";
 import { resolveCostVisibility } from "@infrawrench/server-core/cost/visibility";
 import { costScopeRouteDenial } from "../auth/cost-visibility";
 import { resolveSharingPrincipal } from "../services/object-sharing";
-import {
-  authenticateOrgCaller,
-  authenticatePerson,
-  SESSION_COOKIE,
-  SESSION_COOKIE_MAX_AGE,
-} from "./auth";
+import { authenticateOrgCaller, authenticatePerson } from "./auth";
 import { legacy } from "./legacy";
 import {
   failureResponse,
@@ -27,6 +22,7 @@ import {
   SessionAuth,
 } from "./middleware";
 import { costVisibilityPrincipal, SessionPrincipal } from "./principal";
+import { keepRefreshedSession } from "./session-cookie";
 
 /** The raw web `Request` behind the current HttpApi request. */
 const rawRequest = Effect.gen(function* () {
@@ -41,18 +37,6 @@ const routeParam = Effect.fnUntraced(function* (name: string) {
   return route.params[name];
 });
 
-const withRefreshedSession =
-  (sealed: string | undefined) => (response: HttpServerResponse.HttpServerResponse) =>
-    sealed === undefined
-      ? response
-      : HttpServerResponse.setCookieUnsafe(response, SESSION_COOKIE, sealed, {
-          httpOnly: true,
-          secure: process.env["NODE_ENV"] === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: SESSION_COOKIE_MAX_AGE,
-        });
-
 export const OrgAuthLive = Layer.succeed(OrgAuth)((httpEffect, { endpoint }) =>
   Effect.gen(function* () {
     const raw = yield* rawRequest;
@@ -60,6 +44,8 @@ export const OrgAuthLive = Layer.succeed(OrgAuth)((httpEffect, { endpoint }) =>
     const authenticated = yield* Effect.result(authenticateOrgCaller({ raw, orgId }));
     if (authenticated._tag === "Failure") return failureResponse(authenticated.failure);
     const caller = authenticated.success;
+    // Before anything below can refuse: every response carries a refreshed session.
+    yield* keepRefreshedSession(caller.refreshedSession);
 
     // Fails closed: a resolution error is a 500, never an unscoped request.
     const costVisibility = yield* legacy(() =>
@@ -73,7 +59,7 @@ export const OrgAuthLive = Layer.succeed(OrgAuth)((httpEffect, { endpoint }) =>
       resolveSharingPrincipal(caller.organizationId, caller.session.userId, caller.permissions),
     );
 
-    const response = yield* serveAsOrgCaller(httpEffect, endpoint, {
+    return yield* serveAsOrgCaller(httpEffect, endpoint, {
       principal: {
         session: caller.session,
         organizationId: caller.organizationId,
@@ -86,7 +72,6 @@ export const OrgAuthLive = Layer.succeed(OrgAuth)((httpEffect, { endpoint }) =>
       sharing,
       auditPrincipal: caller.auditPrincipal,
     });
-    return withRefreshedSession(caller.refreshedSession)(response);
   }),
 );
 
@@ -96,8 +81,8 @@ export const SessionAuthLive = Layer.succeed(SessionAuth)((httpEffect) =>
     const authenticated = yield* Effect.result(authenticatePerson({ raw, orgId: undefined }));
     if (authenticated._tag === "Failure") return failureResponse(authenticated.failure);
     const person = authenticated.success;
-    const response = yield* Effect.provideService(httpEffect, SessionPrincipal, person.session);
-    return withRefreshedSession(person.refreshedSession)(response);
+    yield* keepRefreshedSession(person.refreshedSession);
+    return yield* Effect.provideService(httpEffect, SessionPrincipal, person.session);
   }),
 );
 

@@ -67,10 +67,13 @@ export const respond =
         }
         if (strictMode())
           return HttpServerResponse.jsonUnsafe(value, { status: options?.status ?? 200 });
-        const key = `${String(schema.ast.annotations?.["identifier"] ?? "")}|${summary}`;
+        // Production logs name the fields only. An issue's message can quote
+        // the value, and some of these bodies are secrets (account credentials).
+        const fields = issues.map((i) => i.path?.map(String).join(".") || "(root)").join(", ");
+        const key = `${String(schema.ast.annotations?.["identifier"] ?? "")}|${fields}`;
         if (!reported.has(key)) {
           reported.add(key);
-          console.warn(`[api] response does not match its documented schema: ${summary}`);
+          console.warn(`[api] response does not match its documented schema at: ${fields}`);
         }
       }
       return HttpServerResponse.jsonUnsafe(value, { status: options?.status ?? 200 });

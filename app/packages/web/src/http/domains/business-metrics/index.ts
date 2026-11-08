@@ -153,8 +153,11 @@ const findMetric = Effect.fnUntraced(function* (organizationId: string, idOrKey:
   return metric;
 });
 
-/** Importer writes run queries with an account's credentials: `costs:write` too. */
-const requireImporterWrite = requirePermission("costs:write");
+/** Importer writes run queries with an account's credentials: both permissions, in this order. */
+const requireImporterWrite = Effect.gen(function* () {
+  yield* requirePermission("costs:write");
+  yield* requirePermission("resources:execute");
+});
 
 /** `?limit=` as the routes always read it: absent is the default, anything else an integer in range. */
 const pageLimit = (raw: string | undefined, fallback: number, max: number) =>

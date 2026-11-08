@@ -43,8 +43,40 @@ import { moment } from "../commands/moment";
 import { metrics } from "../commands/metrics";
 import { graph } from "../commands/graph";
 import { search, starred } from "../commands/search";
+import { showback, tags } from "../commands/tags";
+import { k8sNetwork } from "../commands/k8s-network";
+import { aiSpend } from "../commands/ai-spend";
+import { scenarios } from "../commands/scenarios";
+import { billingRules } from "../commands/billing-rules";
+import { savings } from "../commands/savings";
+import { dora } from "../commands/dora";
+import { currencyCommand } from "../commands/currency";
 import { hygiene } from "../commands/hygiene";
 import { routing } from "../commands/routing";
+import { networkReports } from "../commands/network-reports";
+import { k8sEfficiency } from "../commands/k8s-efficiency";
+import { resourceReports } from "../commands/resource-reports";
+import { recordings } from "../commands/recordings";
+import { dashboards } from "../commands/dashboards";
+import { canvas } from "../commands/canvas";
+import { reports } from "../commands/reports";
+import { compliance } from "../commands/compliance";
+import { costs } from "../commands/costs";
+import { page } from "../commands/push";
+import { budgets } from "../commands/budgets";
+import { tagKeys } from "../commands/tag-keys";
+import { virtualTags } from "../commands/virtual-tags";
+import { invoices } from "../commands/invoices";
+import { unitCostsCommand } from "../commands/unit-costs";
+import { exportCommand } from "../commands/export";
+import { exportsCommand } from "../commands/exports";
+import { paging } from "../commands/paging";
+import { seats } from "../commands/seats";
+import { diff } from "../commands/diff";
+import { posture } from "../commands/posture";
+import { prices } from "../commands/prices";
+import { prCheck } from "../commands/pr-check";
+import { services } from "../commands/services";
 import { CliSession, globalFlags, makeSession } from "./session";
 
 const subcommands = [
@@ -90,6 +122,39 @@ const subcommands = [
   graph,
   search,
   starred,
+  tags,
+  showback,
+  k8sNetwork,
+  aiSpend,
+  scenarios,
+  billingRules,
+  savings,
+  dora,
+  currencyCommand,
+  networkReports,
+  k8sEfficiency,
+  resourceReports,
+  recordings,
+  dashboards,
+  canvas,
+  reports,
+  compliance,
+  costs,
+  page,
+  budgets,
+  tagKeys,
+  virtualTags,
+  invoices,
+  unitCostsCommand,
+  exportCommand,
+  exportsCommand,
+  paging,
+  seats,
+  diff,
+  posture,
+  prices,
+  prCheck,
+  services,
 ] as const;
 
 export const root = Command.make("infrawrench").pipe(

@@ -156,7 +156,7 @@ export interface ResourceRow {
 
 /**
  * `fieldsJson` / `outputsJson` are jsonb columns and the API serves them as
- * real JSON objects (`JsonObject` in api/openapi/paths/accounts.ts): the name
+ * real JSON objects (`JsonObject` in web's http/schemas/common.ts): the name
  * is a leftover from the column, not a promise of a string. A string is still
  * accepted for anything that does send one.
  */

@@ -11,13 +11,21 @@ import {
   type BillingProfileInput as BillingProfileInputContract,
   type ManagedInvoiceUpdate as ManagedInvoiceUpdateContract,
 } from "@infrawrench/client-core";
-import { maxLength, minLength } from "./checks";
+import { maxLength, minLength, pattern } from "./checks";
 import type { Exact } from "./contract";
 import { ManagedAccountPricing } from "./billing-rules";
 import { CostBasisValue } from "./cost-enums";
-import { CurrencyCode, IsoDate, NonEmptyString } from "./primitives";
+import { CurrencyCode, NonEmptyString } from "./primitives";
 
-const InvoiceDay = IsoDate.annotate({ examples: ["2026-01-31"] });
+const InvoiceDay = Schema.String.annotate({ format: "date", examples: ["2026-01-31"] }).check(
+  pattern(/^\d{4}-\d{2}-\d{2}$/, { message: "expected YYYY-MM-DD" }),
+);
+
+/** An id the API documents as the UUID it is; checked only for being non-empty. */
+const UuidRef = Schema.String.annotate({
+  format: "uuid",
+  examples: ["00000000-0000-0000-0000-000000000000"],
+}).check(minLength(1));
 const Text = (max: number) => Schema.String.check(maxLength(max));
 const nullish = <S extends Schema.Top>(schema: S) => Schema.optionalKey(Schema.NullOr(schema));
 
@@ -66,7 +74,7 @@ export const ManagedAccountInput = Schema.Struct({
   }),
   notes: nullish(Text(MANAGED_ACCOUNT_LIMITS.maxNotesLength)),
   billingProfileId: Schema.optionalKey(
-    Schema.NullOr(NonEmptyString).annotate({
+    Schema.NullOr(UuidRef).annotate({
       description:
         "The billing profile this customer's invoices are addressed, taxed and numbered by. " +
         "Absent on update leaves the saved profile; null removes it.",
@@ -84,6 +92,7 @@ export const ManagedAccountInput = Schema.Struct({
         "rules, and a second vocabulary over the same data would eventually disagree with the " +
         "first: at which point an invoice would stop matching the showback report the customer " +
         "was shown.",
+      default: [],
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   accountIds: Schema.mutable(Schema.Array(NonEmptyString))
@@ -94,6 +103,7 @@ export const ManagedAccountInput = Schema.Struct({
         "allocation rule, so an account in scope claims only the spend no cost centre already " +
         "claimed. Every cost row therefore resolves exactly once: nothing is billed twice and " +
         "nothing goes missing.",
+      default: [],
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
 }).annotate({ identifier: "ManagedAccountInput" });
@@ -103,12 +113,12 @@ export const ManagedAccountInput = Schema.Struct({
  * no currency or scope (both come from the customer).
  */
 export const ManagedInvoiceInput = Schema.Struct({
-  managedAccountId: NonEmptyString,
+  managedAccountId: UuidRef,
   periodFrom: InvoiceDay,
   periodTo: InvoiceDay,
   notes: nullish(Text(MANAGED_INVOICE_LIMITS.maxNotesLength)),
   supersedesInvoiceId: Schema.optionalKey(
-    Schema.NullOr(NonEmptyString).annotate({
+    Schema.NullOr(UuidRef).annotate({
       description:
         "The void invoice this one corrects. The original must already be void; a correction that " +
         "leaves the original standing means the customer holds two live invoices for one period.",
@@ -145,6 +155,7 @@ export const ManagedInvoiceVoid = Schema.Struct({
     description:
       "Raise the corrective draft in the same call, linked both ways to the original. Doing it " +
       "in one call is what keeps the pair from being left half-made by a failed second request.",
+    default: false,
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 }).annotate({ identifier: "InvoiceVoidRequest" });
 
@@ -160,6 +171,7 @@ export const ManagedInvoiceSend = Schema.Struct({
       "that case: retrying a delivery that reached nobody (`failed`, `no_targets`) needs no " +
       "flag, because there is no inbox to duplicate into. Refused with 409 without it when the " +
       "last attempt landed, or when its outcome is unknown (`pending`).",
+    default: false,
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 }).annotate({ identifier: "InvoiceSendRequest" });
 
@@ -283,14 +295,16 @@ export const BillingProfileInput = Schema.Struct({
 }).annotate({ identifier: "BillingProfileInput" });
 
 const assignmentFields = {
-  managedAccountId: Schema.NullOr(NonEmptyString).annotate({
+  managedAccountId: Schema.NullOr(UuidRef).annotate({
     description: "The customer to assign to, or null to take the items off every customer.",
   }),
   costCentreIds: Schema.mutable(Schema.Array(NonEmptyString))
     .check(maxLength(500))
+    .annotate({ default: [] })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   accountIds: Schema.mutable(Schema.Array(NonEmptyString))
     .check(maxLength(500))
+    .annotate({ default: [] })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
 };
 

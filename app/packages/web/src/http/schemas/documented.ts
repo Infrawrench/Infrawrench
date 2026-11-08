@@ -63,3 +63,21 @@ export const requiredQuery =
       ),
     };
   };
+
+/**
+ * An `OpenApi.Transform` setting one response's description, for an endpoint
+ * whose old spec worded a status its own way ("A live savings view already
+ * uses this name."). The status default comes from the spec builder.
+ */
+export const describeResponse =
+  (status: number, description: string) =>
+  (operation: Record<string, unknown>): Record<string, unknown> => {
+    const responses = operation["responses"];
+    if (!Predicate.isObject(responses)) return operation;
+    const response = (responses as Record<string, unknown>)[String(status)];
+    if (!Predicate.isObject(response)) return operation;
+    return {
+      ...operation,
+      responses: { ...responses, [String(status)]: { ...response, description } },
+    };
+  };

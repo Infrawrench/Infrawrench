@@ -190,7 +190,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     // type at all: the client may still expose `deleteResource` for its other
     // types. Checking only the method (as this did) offered a Delete button
     // that dispatched into a throw. The cloud path already gates on both; see
-    // `web/src/api/routes/resource-detail.ts`.
+    // `web/src/http/domains/resources/operations.ts`.
     setters.setCanDelete(!!client.deleteResource && resourceTypeDef?.supportsDelete !== false);
     const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
     setters.setCanEdit(canEdit);

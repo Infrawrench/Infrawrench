@@ -98,7 +98,7 @@ export function joinSubtitle(
  * True when the host will fetch metric series for this resource type.
  *
  * Mirrors, exactly, the condition the hosts use to decide whether to call
- * `fetchMetricSeries` (`web/src/api/routes/resource-detail.ts`, the desktop
+ * `fetchMetricSeries` (`web/src/http/domains/resources/operations.ts`, the desktop
  * loaders, the poller): the type's own `supportsMetrics`, **or** a peer
  * integration that exposes its metrics to the parent. The second half is easy
  * to forget: a managed-Kubernetes type usually has no series of its own and

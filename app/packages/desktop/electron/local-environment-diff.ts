@@ -1,5 +1,6 @@
 /**
- * Local-mode environment diff for the CLI.
+ * Local-mode environment diff, for the renderer's Environment diff tab (over
+ * RPC, {@link LocalEnvironmentDiff}) and `infrawrench diff --local`.
  *
  * The cloud path (`GET /api/org/:orgId/environment-diff`) compares two
  * accounts' already-synced rows server-side. This is the same computation
@@ -13,9 +14,9 @@
  * from the comparison rather than reported as absent: "we couldn't ask" and
  * "prod doesn't have one" are opposite answers.
  *
- * The renderer has its own twin (src/lib/local-environment-diff.ts) because
- * the GUI's DB access goes over IPC; this one exists for the CLI, which has no
- * renderer.
+ * The GUI names its two accounts by id and compares every declared resource
+ * type ({@link diffLocalAccounts}); the CLI resolves its accounts itself and
+ * compares the sidebar's listable types, or the one `--type` names.
  *
  * The `computeEnvironmentDiff` import is dynamic because this module graph is
  * CommonJS and client-core ships ESM (the same CJS→ESM bridge as
@@ -29,6 +30,10 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentDiffUnavailableType,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
+import { Context, Effect, Layer } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { LocalEnvironmentDiffError } from "../shared/rpc/groups/local-environment-diff";
+import { getDb } from "./main-utils";
 import { listAccountResourcesLive } from "./plugin-runtime";
 import { loadPlugins } from "../src/plugins/loader";
 
@@ -46,7 +51,12 @@ export interface LocalDiffAccount {
 export async function computeLocalEnvironmentDiff(
   accountA: LocalDiffAccount,
   accountB: LocalDiffAccount,
-  options: { resourceTypeId?: string | undefined; includeIdentityFields?: boolean } = {},
+  options: {
+    resourceTypeId?: string | undefined;
+    includeIdentityFields?: boolean;
+    /** Compare every declared type, not only the sidebar's listable ones. */
+    allTypes?: boolean;
+  } = {},
 ): Promise<EnvironmentDiffResponse> {
   const [plugins, { computeEnvironmentDiff }] = await Promise.all([
     loadPlugins(),
@@ -58,7 +68,9 @@ export async function computeLocalEnvironmentDiff(
     resourceTypeNames[type.id] = type.displayName;
   }
 
-  const listOptions = options.resourceTypeId ? { typeId: options.resourceTypeId } : {};
+  const listOptions = options.resourceTypeId
+    ? { typeId: options.resourceTypeId }
+    : { allTypes: options.allTypes ?? false };
   const [listedA, listedB] = await Promise.all([
     listAccountResourcesLive(accountA, listOptions),
     listAccountResourcesLive(accountB, listOptions),
@@ -105,4 +117,62 @@ export async function computeLocalEnvironmentDiff(
     ...(options.resourceTypeId ? { resourceTypeId: options.resourceTypeId } : {}),
     ...(options.includeIdentityFields ? { includeIdentityFields: true } : {}),
   });
+}
+
+/**
+ * Compare two of this workspace's accounts by id, refusing before any
+ * provider call when either is missing or they belong to different providers.
+ */
+export async function diffLocalAccounts(
+  accountIdA: string,
+  accountIdB: string,
+  options: { includeIdentityFields?: boolean } = {},
+): Promise<EnvironmentDiffResponse> {
+  const db = await getDb();
+  const rows = await db.select<{ id: string; display_name: string; plugin_id: string }[]>(
+    `SELECT id, display_name, plugin_id FROM accounts
+     WHERE deleted_at IS NULL AND id IN (?, ?)`,
+    [accountIdA, accountIdB],
+  );
+  const byId = new Map(
+    rows.map((r) => [r.id, { id: r.id, displayName: r.display_name, pluginId: r.plugin_id }]),
+  );
+  const accountA = byId.get(accountIdA);
+  const accountB = byId.get(accountIdB);
+  if (!accountA) throw new Error(`No account ${accountIdA} in this workspace.`);
+  if (!accountB) throw new Error(`No account ${accountIdB} in this workspace.`);
+  if (accountA.pluginId !== accountB.pluginId) {
+    // computeEnvironmentDiff refuses this too; failing before the provider
+    // calls saves a round of listing that could never be compared.
+    throw new Error(
+      `"${accountA.displayName}" and "${accountB.displayName}" use different providers; ` +
+        `an environment diff compares two accounts of the same provider.`,
+    );
+  }
+  return computeLocalEnvironmentDiff(accountA, accountB, {
+    allTypes: true,
+    ...(options.includeIdentityFields ? { includeIdentityFields: true } : {}),
+  });
+}
+
+/** The GUI's environment diff as an Effect service, served over RPC. */
+export class LocalEnvironmentDiff extends Context.Service<
+  LocalEnvironmentDiff,
+  {
+    readonly diff: (
+      accountIdA: string,
+      accountIdB: string,
+      options: { readonly includeIdentityFields: boolean },
+    ) => Effect.Effect<EnvironmentDiffResponse, LocalEnvironmentDiffError>;
+  }
+>()("infrawrench/desktop/LocalEnvironmentDiff") {
+  static readonly layer = Layer.succeed(LocalEnvironmentDiff)(
+    LocalEnvironmentDiff.of({
+      diff: (accountIdA, accountIdB, { includeIdentityFields }) =>
+        Effect.tryPromise({
+          try: () => diffLocalAccounts(accountIdA, accountIdB, { includeIdentityFields }),
+          catch: (cause) => new LocalEnvironmentDiffError({ message: errorMessage(cause) }),
+        }),
+    }),
+  );
 }

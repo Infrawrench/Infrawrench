@@ -32,7 +32,7 @@ import {
  * Cloud mode mirrors web exactly over the `cloud_ssh_fanout_*` IPC bridge
  * (server-side exec, freeze gate, audit, org-shared snippets). Local-only mode
  * fans out over the machine's own SSH accounts through the existing
- * `ssh_exec_command` IPC (host-key prompts and 1Password/Pageant sentinels
+ * `SshExecCommand` RPC (host-key prompts and 1Password/Pageant sentinels
  * included), with client-side concurrency. Local mode has no org, so snippets
  * (an org-shared server-side store) are cloud-only.
  */

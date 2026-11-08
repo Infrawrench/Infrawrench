@@ -5,8 +5,8 @@
  * Connection status, the "Add to Slack" URL (a signed `state` binding the
  * install to this org and caller), the channel picker, and the channels alert
  * rules can name. All `org:settings:write`. The browser half of the install
- * (`/api/slack/oauth/start` and `/callback`) is outside the org tree and stays
- * on Hono in `api/routes/slack.ts`, as do the inbound Slack endpoints.
+ * (`/api/slack/oauth/start` and `/callback`) is outside the org tree, the
+ * `slack-oauth` domain; the inbound Slack endpoints are `slack-inbound`.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";

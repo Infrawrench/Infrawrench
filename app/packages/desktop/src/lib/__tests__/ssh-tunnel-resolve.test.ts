@@ -5,11 +5,24 @@ const select = vi.fn();
 const execute = vi.fn();
 
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 vi.mock("../../db/client", () => ({
   getDb: () => Promise.resolve({ select, execute }),
 }));
 
+import { Effect } from "effect";
 import { resolveTunneledHost } from "../ssh-tunnel";
+import { fakeRpc, resetFakeRpc } from "./fake-rpc";
+
+/** Answer `tag` with `value`, recording each payload. */
+function answer(tag: string, value: unknown) {
+  const calls: unknown[] = [];
+  fakeRpc[tag] = (payload: unknown) => {
+    calls.push(payload);
+    return Effect.succeed(value);
+  };
+  return calls;
+}
 
 const tunnelRow = {
   id: "tc1",
@@ -23,6 +36,7 @@ const tunnelRow = {
 };
 
 beforeEach(() => {
+  resetFakeRpc();
   invoke.mockReset();
   select.mockReset();
   execute.mockReset();
@@ -38,22 +52,23 @@ describe("resolveTunneledHost", () => {
 
   it("reuses an existing active tunnel matching host+remotePort", async () => {
     select.mockResolvedValueOnce([tunnelRow]);
-    invoke.mockResolvedValueOnce({
+    const active = answer("SshTunnelsActive", {
       t1: { localPort: 6001, sshHost: "bastion", remotePort: 5432 },
     });
+    const opened = answer("SshTunnelOpen", { tunnelId: "unused", localPort: 1 });
     const res = await resolveTunneledHost("acc1", "rawhost");
     expect(res).toBe("tcp://127.0.0.1:6001");
-    // only the active-tunnels lookup invoke happened; no open-tunnel invoke
-    expect(invoke).toHaveBeenCalledTimes(1);
-    expect(invoke).toHaveBeenCalledWith("ssh_get_active_tunnels");
+    // only the active-tunnels lookup happened: no key decrypted, no tunnel opened
+    expect(active).toHaveLength(1);
+    expect(opened).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("opens a new tunnel when none is active", async () => {
     select.mockResolvedValueOnce([tunnelRow]);
-    invoke
-      .mockResolvedValueOnce({}) // ssh_get_active_tunnels -> none
-      .mockResolvedValueOnce("decrypted-key") // ssh_tunnel_config_get_private_key
-      .mockResolvedValueOnce({ tunnelId: "newt", localPort: 7002 }); // ssh_open_tunnel
+    answer("SshTunnelsActive", {});
+    invoke.mockResolvedValueOnce("decrypted-key"); // ssh_tunnel_config_get_private_key
+    const opened = answer("SshTunnelOpen", { tunnelId: "newt", localPort: 7002 });
     const res = await resolveTunneledHost("acc1", "rawhost");
     expect(res).toBe("tcp://127.0.0.1:7002");
     expect(invoke).toHaveBeenCalledWith("ssh_tunnel_config_get_private_key", {
@@ -61,13 +76,15 @@ describe("resolveTunneledHost", () => {
       ciphertext: "cipher",
       iv: "iv",
     });
-    expect(invoke).toHaveBeenCalledWith("ssh_open_tunnel", {
-      sshHost: "bastion",
-      sshPort: 22,
-      sshUser: "u",
-      privateKey: "decrypted-key",
-      remoteHost: "db.internal",
-      remotePort: 5432,
-    });
+    expect(opened).toEqual([
+      {
+        sshHost: "bastion",
+        sshPort: 22,
+        sshUser: "u",
+        privateKey: "decrypted-key",
+        remoteHost: "db.internal",
+        remotePort: 5432,
+      },
+    ]);
   });
 });

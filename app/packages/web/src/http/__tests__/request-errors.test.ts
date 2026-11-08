@@ -53,4 +53,39 @@ describe("schema failures", () => {
       expect(((await res.json()) as { error: string }).error).toBe("Invalid budget");
     }
   });
+
+  it("render an API error class that reaches them undeclared with its own status", async () => {
+    const { Effect, Schema } = await import("effect");
+    const { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } =
+      await import("effect/http-api");
+    const { makeDomain, withApiDefaults } = await import("@/http/domain");
+    const { OrgAuth } = await import("@/http/middleware-tags");
+    const { requirePermission } = await import("@/http/principal");
+    // No `error: Forbidden` on the endpoint, and the refusal arrives as a
+    // defect (how a loosely typed path delivers it): it must still be a 403.
+    const Group = HttpApiGroup.make("undeclared")
+      .add(HttpApiEndpoint.get("gated", "/", { success: Schema.String }))
+      .prefix("/api/org/:orgId/undeclared")
+      .middleware(OrgAuth);
+    class UndeclaredApi extends withApiDefaults(HttpApi.make("undeclared").add(Group)) {}
+    const domain = makeDomain(
+      "undeclared",
+      UndeclaredApi,
+      HttpApiBuilder.group(UndeclaredApi, "undeclared", (h) =>
+        h.handle("gated", () =>
+          Effect.gen(function* () {
+            yield* Effect.orDie(requirePermission("costs:write"));
+            return "ok";
+          }),
+        ),
+      ),
+    );
+    const gated = buildTestApi(domain, {
+      basePath: "/api/org/org-1/undeclared",
+      permissions: ["costs:read"],
+    });
+    const res = await gated.request("/");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Missing permission: costs:write" });
+  });
 });

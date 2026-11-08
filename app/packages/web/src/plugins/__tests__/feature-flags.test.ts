@@ -4,7 +4,7 @@ import type { LoadedPlugin } from "@/plugins/loader";
 import { makeMockCredentials } from "@infrawrench/plugin-base/test-harness";
 
 /**
- * Derive feature flags from a plugin manifest the same way resource-detail.ts does.
+ * Derive feature flags from a plugin manifest the same way the resource detail route does (`http/domains/resources/operations.ts`).
  * These flags come from the manifest declarations, not the client instance.
  */
 function deriveFeatureFlags(loaded: LoadedPlugin) {

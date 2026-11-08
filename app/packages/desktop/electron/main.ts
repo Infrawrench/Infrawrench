@@ -43,9 +43,6 @@ import { isInternalRendererUrl } from "./renderer-navigation";
 import { getActiveTunnels } from "./ssh-tunnel";
 import { CLOUD_URL } from "../env";
 import { startRpcServer } from "./rpc/server";
-import { readLocalDeploys } from "./deploy-history";
-import { listLocalOrphans } from "./local-orphans";
-import { listLocalExtendedSupport } from "./local-extended-support";
 import {
   getEncryptionKey,
   encryptValue,
@@ -77,8 +74,6 @@ process.on("uncaughtException", (err) => {
 
 // Side-effect imports register IPC handlers for each domain.
 import "./plugin-host";
-import "./ssh-host";
-import "./ssh-host-key-prompt";
 import { registerIwappdHandlers, shutdownIwappdSessions } from "./iwappd-host";
 import "./k8s-host";
 import "./cloud-auth";
@@ -782,21 +777,6 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
 // channel IPC. Listening before any window loads, so a renderer's first
 // connect is never missed.
 startRpcServer();
-
-// What `infrawrench deploy` did on this machine: see deploy-history.ts for why
-// it is a file rather than a table. Read-only from the renderer: only the CLI
-// ever deploys locally, so only the CLI writes.
-ipcMain.handle("local_deploy_history", () => readLocalDeploys());
-
-// Potential savings without an org: the same orphan scan the cloud runs over
-// synced rows, run over the local workspace. Credential-free: see
-// electron/local-orphans.ts. The cloud counterpart is `cloud_orphans_list`.
-ipcMain.handle("local_orphans_list", () => listLocalOrphans());
-
-// Extended-support findings without an org: the same declared support
-// calendars over the local workspace, list price only. See
-// electron/local-extended-support.ts; cloud counterpart `cloud_extended_support_list`.
-ipcMain.handle("local_extended_support_list", () => listLocalExtendedSupport());
 
 // Native clipboard image read. The renderer cannot use
 // navigator.clipboard.read() (Electron fails its permission check and the

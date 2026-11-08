@@ -1,7 +1,7 @@
 /**
  * Anomaly feedback: verdicts, suppressions, sensitivity and precision, under
- * `/api/org/:orgId/costs` beside the anomaly list (whose routes are still on
- * Hono, so `CostAnomaly` is referenced from the Zod registry). The endpoint
+ * `/api/org/:orgId/costs` beside the anomaly list (the costs domain), sharing
+ * its `CostAnomaly` from `http/schemas/cost-anomalies.ts`. The endpoint
  * definitions.
  *
  * Reads are `costs:read`; writes are `costs:write`, the scope the
@@ -26,7 +26,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, OrgId, OrgParams, Uuid } from "../../schemas/common";
 import { documentedAs } from "../../schemas/documented";
-import { CostAnomaly } from "../../schemas/zod-components";
+import { CostAnomaly } from "../../schemas/cost-anomalies";
 
 const SuppressionDay = Day.annotate({ examples: ["2026-10-01"] });
 

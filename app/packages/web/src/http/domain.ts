@@ -44,6 +44,12 @@ export interface Domain {
   readonly openapi: () => OpenApi.OpenAPISpec;
   /** Visit each endpoint with its merged annotations, for the spec builder and tests. */
   readonly endpoints: () => ReadonlyArray<DomainEndpoint>;
+  /**
+   * Path prefixes the domain also guards beyond its endpoints, every method
+   * and path under each (`./prefix-guard.ts`). The route-shadowing test holds
+   * them to owning their prefix outright.
+   */
+  readonly guardedPrefixes?: readonly string[];
 }
 
 export interface DomainEndpoint {

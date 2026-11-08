@@ -4,6 +4,7 @@ import {
   type ExtendedSupportListResponse,
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
  * Extended-support data access. Both modes run the same declared support
@@ -15,7 +16,7 @@ export function createDesktopExtendedSupportClient(): ExtendedSupportClient {
   return {
     listExtendedSupport: (refresh?: boolean) => {
       const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return invoke<ExtendedSupportListResponse>("local_extended_support_list");
+      if (!orgId) return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalExtendedSupportList()));
       return invoke<ExtendedSupportListResponse>("cloud_extended_support_list", {
         orgId,
         refresh: Boolean(refresh),

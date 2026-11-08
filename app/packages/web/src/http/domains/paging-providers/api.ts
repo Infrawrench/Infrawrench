@@ -10,19 +10,21 @@
  *   Infrawrench, read with `incidents:read` and acknowledged or resolved with
  *   `incidents:write`, the split declared incidents use.
  *
- * The inbound webhook (`/api/paging-webhooks/:token`) is not here: it is
- * public, authenticated by the provider's signature over the raw body, and
- * stays on Hono in `api/routes/paging-providers.ts`.
+ * And one public group, the inbound webhook (`/api/paging-webhooks/:token`):
+ * no session, the token picks the account and the provider's signature over
+ * the raw body, verified with the stored secret, is the authentication. Its
+ * handler reads that body itself (`handleRaw`).
  */
 import { Schema } from "effect";
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { maxLength } from "@infrawrench/ui/schemas";
-import { RequiredPermission, SuccessDescription } from "../../annotations";
+import { RequiredPermission, Security, SuccessDescription } from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import {
   BadRequest,
   Conflict,
   Forbidden,
+  InternalServerError,
   NotFound,
   PaymentRequired,
   ServiceUnavailable,
@@ -30,6 +32,7 @@ import {
 } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, OrgParams } from "../../schemas/common";
+import { describeResponse } from "../../schemas/documented";
 import { enumQuery, numericQuery } from "../../schemas/query";
 
 const message = Schema.String.annotate({ description: "Human-readable error message" });
@@ -347,6 +350,40 @@ export class PagingIncidentsGroup extends HttpApiGroup.make("pagingIncidents")
   .middleware(OrgAuth)
   .annotate(OpenApi.Title, "Paging providers") {}
 
+/**
+ * The inbound webhook. The payload is the provider's own and is never decoded
+ * here; it is a nudge, and each incident it names is re-read from the API.
+ */
+export class PagingWebhookGroup extends HttpApiGroup.make("pagingWebhook")
+  .add(
+    HttpApiEndpoint.post("receive", "/api/paging-webhooks/:token", {
+      params: { token: Schema.String },
+      success: HttpApiSchema.Accepted.annotate({ description: "Accepted" }),
+      error: [Unauthorized, NotFound, InternalServerError],
+    })
+      .annotate(OpenApi.Summary, "Inbound paging provider webhook")
+      .annotate(
+        OpenApi.Description,
+        "Called by the provider, not by clients. The token in the path picks the account; the provider's signature, verified with the stored secret, authenticates the delivery. The payload is treated as a nudge: each incident it names is re-read from the provider's API.",
+      )
+      .annotate(Security, [])
+      .annotate(OpenApi.Transform, (operation) =>
+        describeResponse(
+          500,
+          "Processing failed; the provider retries",
+        )(
+          describeResponse(
+            404,
+            "Unknown token",
+          )(describeResponse(401, "The signature did not verify")(operation)),
+        ),
+      ),
+  )
+  .annotate(OpenApi.Title, "Paging providers") {}
+
 export class PagingProvidersApi extends withApiDefaults(
-  HttpApi.make("paging-providers").add(PagingProvidersGroup).add(PagingIncidentsGroup),
+  HttpApi.make("paging-providers")
+    .add(PagingProvidersGroup)
+    .add(PagingIncidentsGroup)
+    .add(PagingWebhookGroup),
 ) {}

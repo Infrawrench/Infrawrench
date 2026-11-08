@@ -5,8 +5,13 @@ const getCloudWsUrl = vi.fn();
 
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 vi.mock("../cloud-ws", () => ({ getCloudWsUrl: () => getCloudWsUrl() }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
+import { type Cause, Effect, Predicate, Queue, Stream } from "effect";
+import { SshError } from "../../../shared/rpc/groups/ssh-common";
+import type { SshShellEvent } from "../../../shared/rpc/groups/ssh-shell";
 import { openSshShell } from "../ssh-dispatch";
+import { fakeRpc, resetFakeRpc } from "./fake-rpc";
 
 // ---- fakes ----------------------------------------------------------------
 
@@ -72,6 +77,7 @@ class FakeWebSocket {
 (FakeWebSocket as unknown as { OPEN: number }).OPEN = 1;
 
 beforeEach(() => {
+  resetFakeRpc();
   invoke.mockReset();
   getCloudWsUrl.mockReset();
   FakeWebSocket.instances = [];
@@ -83,11 +89,48 @@ afterEach(() => {
 });
 
 describe("openSshShell (local mode)", () => {
-  it("spawns via ssh_shell_spawn and wires data/exit listeners", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce("shell-1"); // ssh_shell_spawn
+  /** A main process that opens `shell-1` and lets the test drive its output. */
+  function fakeShell() {
+    const opened: unknown[] = [];
+    const writes: string[] = [];
+    const resizes: unknown[] = [];
+    let interrupted = false;
+    let output: Queue.Queue<SshShellEvent, Cause.Done> | undefined;
+    fakeRpc.SshShellOpen = (config: unknown) => {
+      opened.push(config);
+      return Stream.callback<SshShellEvent>((queue) =>
+        Effect.gen(function* () {
+          output = queue;
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              interrupted = true;
+            }),
+          );
+          yield* Queue.offer(queue, { _tag: "Opened", shellId: "shell-1" });
+        }),
+      );
+    };
+    fakeRpc.SshShellWrite = (payload: unknown) =>
+      Effect.sync(() => {
+        if (Predicate.hasProperty(payload, "data") && Predicate.isString(payload.data)) {
+          writes.push(payload.data);
+        }
+      });
+    fakeRpc.SshShellResize = (payload: unknown) =>
+      Effect.sync(() => {
+        resizes.push(payload);
+      });
+    const emit = (event: SshShellEvent) => {
+      if (output) Queue.offerUnsafe(output, event);
+    };
+    const end = () => {
+      if (output) Queue.endUnsafe(output);
+    };
+    return { opened, writes, resizes, emit, end, isInterrupted: () => interrupted };
+  }
 
+  it("opens one SshShellOpen stream and routes data, input, resize and exit", async () => {
+    const shell = fakeShell();
     const handle = await openSshShell({
       mode: "local",
       host: "h",
@@ -101,60 +144,66 @@ describe("openSshShell (local mode)", () => {
     });
 
     expect(handle.kind).toBe("local");
-    const spawnArgs = invoke.mock.calls[0]![1] as Record<string, unknown>;
-    expect(spawnArgs).toMatchObject({
+    expect(shell.opened).toEqual([
+      {
+        host: "h",
+        port: 22,
+        username: "u",
+        privateKey: "k",
+        cols: 80,
+        rows: 24,
+        agentForward: true,
+        jumpHops: [{ host: "j", port: 22, username: "ju", privateKey: "jk" }],
+      },
+    ]);
+
+    const received: Uint8Array[] = [];
+    handle.onData((d) => received.push(d));
+    shell.emit({ _tag: "Data", data: new Uint8Array([1, 2, 3]) });
+    await vi.waitFor(() => expect(received).toEqual([new Uint8Array([1, 2, 3])]));
+
+    handle.write("l");
+    handle.write("s\n");
+    await vi.waitFor(() => expect(shell.writes.join("")).toBe("ls\n"));
+    handle.resize(100, 40);
+    await vi.waitFor(() =>
+      expect(shell.resizes).toEqual([{ shellId: "shell-1", cols: 100, rows: 40 }]),
+    );
+
+    // The remote shell exits: the stream ends.
+    const exits: number[] = [];
+    handle.onExit(() => exits.push(1));
+    shell.end();
+    await vi.waitFor(() => expect(exits).toHaveLength(1));
+  });
+
+  it("kill interrupts the stream, and is idempotent", async () => {
+    const shell = fakeShell();
+    const handle = await openSshShell({
+      mode: "local",
       host: "h",
       port: 22,
       username: "u",
       privateKey: "k",
       cols: 80,
       rows: 24,
-      agentForward: true,
     });
-    expect(spawnArgs.jumpHops).toHaveLength(1);
-
-    // onError is a no-op for local shells (errors surface via exit)
-    expect(() => handle.onError(() => {})).not.toThrow();
-
-    // data callback fires
-    const received: Uint8Array[] = [];
-    handle.onData((d) => received.push(d));
-    api.emit("ssh_shell_data_shell-1", new Uint8Array([1, 2, 3]));
-    expect(received[0]).toEqual(new Uint8Array([1, 2, 3]));
-
-    // exit callback fires
     const exits: number[] = [];
     handle.onExit(() => exits.push(1));
-    api.emit("ssh_shell_exit_shell-1");
-    expect(exits).toHaveLength(1);
-
-    // write/resize route through invoke
-    handle.write("ls\n");
-    expect(invoke).toHaveBeenCalledWith("ssh_shell_write", { shellId: "shell-1", data: "ls\n" });
-    handle.resize(100, 40);
-    expect(invoke).toHaveBeenCalledWith("ssh_shell_resize", {
-      shellId: "shell-1",
-      cols: 100,
-      rows: 40,
-    });
-
-    // kill deregisters listeners and is idempotent
     handle.kill();
-    expect(api.offAllCalls).toContain("ssh_shell_data_shell-1");
-    expect(api.offAllCalls).toContain("ssh_shell_exit_shell-1");
-    expect(invoke).toHaveBeenCalledWith("ssh_shell_kill", { shellId: "shell-1" });
-
-    const killInvokes = invoke.mock.calls.filter((c) => c[0] === "ssh_shell_kill").length;
+    await vi.waitFor(() => expect(shell.isInterrupted()).toBe(true));
     handle.write("x"); // no-op after kill
     handle.resize(1, 1); // no-op after kill
     handle.kill(); // idempotent
-    expect(invoke.mock.calls.filter((c) => c[0] === "ssh_shell_kill").length).toBe(killInvokes);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(shell.writes).toEqual([]);
+    expect(shell.resizes).toEqual([]);
+    // A terminal the user closed is not told its connection closed.
+    expect(exits).toEqual([]);
   });
 
-  it("omits jumpHops when none provided", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce("shell-2");
+  it("omits jumpHops and agentForward when not asked for", async () => {
+    const shell = fakeShell();
     await openSshShell({
       mode: "local",
       host: "h",
@@ -164,9 +213,26 @@ describe("openSshShell (local mode)", () => {
       cols: 80,
       rows: 24,
     });
-    const spawnArgs = invoke.mock.calls[0]![1] as Record<string, unknown>;
-    expect(spawnArgs).not.toHaveProperty("jumpHops");
-    expect(spawnArgs).not.toHaveProperty("agentForward");
+    expect(shell.opened[0]).not.toHaveProperty("jumpHops");
+    expect(shell.opened[0]).not.toHaveProperty("agentForward");
+  });
+
+  it("rejects with the main process's sentence when the shell cannot open", async () => {
+    fakeRpc.SshShellOpen = () =>
+      Stream.fail(
+        new SshError({ message: "SSH error: All configured authentication methods failed" }),
+      );
+    await expect(
+      openSshShell({
+        mode: "local",
+        host: "h",
+        port: 22,
+        username: "u",
+        privateKey: "k",
+        cols: 80,
+        rows: 24,
+      }),
+    ).rejects.toThrow("SSH error: All configured authentication methods failed");
   });
 });
 

@@ -8,13 +8,16 @@
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
-import { maxLength, minLength } from "@infrawrench/ui/schemas";
 import { RequiredPermission, SuccessDescription } from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import { BadRequest, Conflict, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { Ok, OrgId, OrgParams, Uuid } from "../../schemas/common";
-import { WorkflowSecret, WorkflowSecretName } from "../../schemas/workflow-secrets";
+import {
+  WorkflowSecret,
+  WorkflowSecretName,
+  WorkflowSecretValueWrite,
+} from "../../schemas/workflow-secrets";
 
 const SecretParams = {
   orgId: OrgId,
@@ -30,13 +33,6 @@ const WorkflowSecretUpdate = Schema.Struct({
   name: Schema.optionalKey(WorkflowSecretName),
   description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 }).annotate({ identifier: "WorkflowSecretUpdate" });
-
-export const WorkflowSecretValueWrite = Schema.Struct({
-  value: Schema.String.check(minLength(1), maxLength(1024 * 1024)).annotate({
-    description:
-      "Write-only plaintext. It is AES-256-GCM encrypted before storage and is never returned.",
-  }),
-}).annotate({ identifier: "WorkflowSecretValueWrite" });
 
 export class WorkflowSecretsGroup extends HttpApiGroup.make("workflowSecrets")
   .add(

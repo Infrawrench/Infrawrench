@@ -9,72 +9,8 @@ import { DOMAINS } from "../../http/domains";
 
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
 
-import { registerAuthPaths } from "./paths/auth";
-import { registerProfilePaths } from "./paths/profile";
-import { registerOrgPaths } from "./paths/orgs";
-import { registerInvitationPaths } from "./paths/invitations";
-import { registerAccountPaths } from "./paths/accounts";
-import { registerDashboardPaths } from "./paths/dashboards";
-import { registerCostPaths } from "./paths/costs";
-import { registerResourceReportPaths } from "./paths/resource-reports";
-import { registerCostForecastPaths } from "./paths/cost-forecasts";
-import { registerCostCanvasPaths } from "./paths/cost-canvases";
-import { registerKubernetesEfficiencyReportPaths } from "./paths/k8s-efficiency-reports";
-import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
-import { registerCostReportAnomalyAlertPaths } from "./paths/cost-report-anomaly-alerts";
-import { registerDashboardNotificationPaths } from "./paths/dashboard-notifications";
-import { registerCostExportPaths } from "./paths/cost-exports";
-import { registerBusinessMetricPaths } from "./paths/business-metrics";
-import { registerOrphanPaths } from "./paths/orphans";
-import { registerIdleFindingPaths } from "./paths/idle-findings";
-import { registerRightsizingPaths } from "./paths/rightsizing";
-import { registerMetricAlertPaths } from "./paths/metric-alerts";
-import { registerUntaggedSpendPaths } from "./paths/tag-policy";
-import { registerShowbackPaths } from "./paths/showback";
-import { registerInvoicePaths } from "./paths/invoices";
-import { registerCustomGraphPaths } from "./paths/custom-graphs";
-import { registerOrgConfigPaths } from "./paths/org-config";
-import { registerChatPaths } from "./paths/chat";
-import { registerPagePaths } from "./paths/pages";
-import { registerResourcePaths } from "./paths/resources";
-import { registerResourceChangePaths } from "./paths/resource-changes";
-import { registerChangeCostImpactPaths } from "./paths/change-cost-impact";
-import { registerStatusIncidentPaths } from "./paths/status-incidents";
-import { registerPagingWebhookPaths } from "./paths/paging-providers";
-import { registerCarbonPaths } from "./paths/carbon";
-import { registerPriceCatalogPaths } from "./paths/price-catalog";
-import { registerInstancePricingPaths } from "./paths/instance-pricing";
-import { registerMomentPaths } from "./paths/moment";
-import { registerSessionRecordingPaths } from "./paths/session-recordings";
-import { registerSharedConsolePaths } from "./paths/shared-consoles";
-import { registerCreditPaths } from "./paths/credits";
-import { registerCostVisibilityPaths } from "./paths/cost-visibility";
-import { registerCommitmentPaths } from "./paths/commitments";
-import { registerSavingsPaths } from "./paths/savings";
-import { registerSavingsFindingPaths } from "./paths/savings-findings";
-import { registerStatusPagePaths } from "./paths/status-pages";
-import { registerConnectionFeaturePaths } from "./paths/connection-features";
-import { registerSearchPaths } from "./paths/search";
-import { registerConnectPaths } from "./paths/connect";
-import { registerStorageUploadPaths } from "./paths/storage-upload";
-import { registerSftpUploadPaths } from "./paths/sftp-upload";
-import { registerAppsPaths } from "./paths/apps";
-import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
-import { registerSshFanoutPaths } from "./paths/ssh-fanout";
-import { registerAgentPaths } from "./paths/agents";
 import { registerBillingPaths } from "./paths/billing";
-import { registerAgentAuthPaths } from "./paths/agent-auth";
-import { registerAgentLinkPaths } from "./paths/agent-links";
-import { registerWsTokenPaths } from "./paths/ws-token";
-import { registerSyncPaths } from "./paths/sync";
-import { registerWebhookPaths } from "./paths/webhooks";
-import { registerAdminPaths } from "./paths/admin";
-import { registerPushPaths } from "./paths/push";
-import { registerAlertEmailUnsubscribePaths } from "./paths/alert-email";
-import { registerSlackInboundPaths } from "./paths/slack";
-import { registerProviderOAuthPaths } from "./paths/provider-oauth";
 import { registerEventWebhooks } from "./paths/event-subscriptions";
-import { registerIssueWebhookPaths } from "./paths/issue-status";
 import { REQUIRED_PERMISSION, normalizePathForPermissionLookup } from "./required-permissions";
 
 interface BuildOptions {
@@ -112,76 +48,23 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
     bearerFormat: "JWT",
     description: "WorkOS access token (JWT) or Infrawrench API key. Used by programmatic clients.",
   });
+  // The `/api/agent-link` operations (`http/domains/agent-link-platform/`) name it.
+  registry.registerComponent("securitySchemes", "agentLinkCredential", {
+    type: "http",
+    scheme: "bearer",
+    bearerFormat: "iwl_",
+    description: "An agent link credential, collected once from the device flow's token poll.",
+  });
 
   const enums = await buildDynamicEnums();
   const ctx: BuildContext = { registry, enums };
+  // HttpApi domains refer to these enums by `$ref` (`http/schemas/plugin-registry.ts`),
+  // so they are components whether or not a Zod path still uses them.
+  registry.register("PluginId", enums.PluginId);
+  registry.register("ResourceTypeId", enums.ResourceTypeId);
 
-  registerAuthPaths(ctx);
-  registerProfilePaths(ctx);
-  registerOrgPaths(ctx);
-  registerInvitationPaths(ctx);
-  registerAccountPaths(ctx);
-  registerProviderOAuthPaths(ctx);
-  registerDashboardPaths(ctx);
-  registerCostPaths(ctx);
-  registerResourceReportPaths(ctx);
-  registerCostForecastPaths(ctx);
-  registerCostCanvasPaths(ctx);
-  registerKubernetesEfficiencyReportPaths(ctx);
-  registerCostReportNotificationPaths(ctx);
-  registerCostReportAnomalyAlertPaths(ctx);
-  registerDashboardNotificationPaths(ctx);
-  registerCostExportPaths(ctx);
-  registerBusinessMetricPaths(ctx);
-  registerOrphanPaths(ctx);
-  registerIdleFindingPaths(ctx);
-  registerRightsizingPaths(ctx);
-  registerMetricAlertPaths(ctx);
-  registerUntaggedSpendPaths(ctx);
-  registerShowbackPaths(ctx);
-  registerInvoicePaths(ctx);
-  registerCustomGraphPaths(ctx);
-  registerOrgConfigPaths(ctx);
-  registerChatPaths(ctx);
-  registerPagePaths(ctx);
-  registerResourcePaths(ctx);
-  registerResourceChangePaths(ctx);
-  registerChangeCostImpactPaths(ctx);
-  registerStatusIncidentPaths(ctx);
-  registerPagingWebhookPaths(ctx);
-  registerCarbonPaths(ctx);
-  registerPriceCatalogPaths(ctx);
-  registerInstancePricingPaths(ctx);
-  registerMomentPaths(ctx);
-  registerSessionRecordingPaths(ctx);
-  registerSharedConsolePaths(ctx);
-  registerCreditPaths(ctx);
-  registerCostVisibilityPaths(ctx);
-  registerCommitmentPaths(ctx);
-  registerSavingsPaths(ctx);
-  registerSavingsFindingPaths(ctx);
-  registerStatusPagePaths(ctx);
-  registerConnectionFeaturePaths(ctx);
-  registerSearchPaths(ctx);
-  registerConnectPaths(ctx);
-  registerStorageUploadPaths(ctx);
-  registerSftpUploadPaths(ctx);
-  registerAppsPaths(ctx);
-  registerSshTunnelPaths(ctx);
-  registerSshFanoutPaths(ctx);
-  registerAgentPaths(ctx);
   registerBillingPaths(ctx);
-  registerAgentAuthPaths(ctx);
-  registerAgentLinkPaths(ctx);
-  registerWsTokenPaths(ctx);
-  registerSyncPaths(ctx);
-  registerWebhookPaths(ctx);
-  registerAdminPaths(ctx);
-  registerPushPaths(ctx);
-  registerAlertEmailUnsubscribePaths(ctx);
-  registerSlackInboundPaths(ctx);
   registerEventWebhooks(ctx);
-  registerIssueWebhookPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 

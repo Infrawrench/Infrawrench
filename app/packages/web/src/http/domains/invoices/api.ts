@@ -48,13 +48,23 @@ import {
   ManagedInvoiceVoid,
   NonEmptyString,
 } from "@infrawrench/ui/schemas";
-import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from "../../annotations";
+import {
+  DocumentedPermission,
+  InvalidRequestMessage,
+  RequiredPermission,
+  SuccessDescription,
+} from "../../annotations";
 import { withApiDefaults } from "../../domain";
-import { BadRequest, Conflict, NotFound } from "../../errors";
+import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { documentedAs, optionalRequestBody } from "../../schemas/documented";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import { BillingProfileBank, CurrencyAmounts, InvoiceDay } from "../../schemas/invoicing";
+import {
+  BillingProfileBank,
+  CurrencyAmounts,
+  InvoiceDay,
+  invoiceDay,
+} from "../../schemas/invoicing";
 import { PricingEffect, PricingExpressionFailure, RerateCoverage } from "../../schemas/pricing";
 
 const CostBasis = Schema.Literals(COST_BASES);
@@ -251,7 +261,7 @@ const InvoiceTotals = Schema.Struct({
 const InvoiceDerivation = Schema.Struct({
   costBasis: CostBasis,
   applyBillingRules: Schema.Boolean,
-  rateDate: InvoiceDay.annotate({
+  rateDate: invoiceDay({
     description:
       "The day the exchange rates were read; always the period's last day. One rate for the " +
       "period rather than a per-day blend: “January, at the 31 January rate” is a sentence a " +
@@ -467,16 +477,17 @@ export class ManagedAccountsGroup extends HttpApiGroup.make("managedAccounts")
           "the same spend the showback report attributes to those centres.",
       )
       .annotate(SuccessDescription, "Customers, name-sorted"),
-    // `costs:read` on top of `invoices:read` (checked first, by the handler):
-    // this is a cost breakdown of the whole org, not a view of the customer
-    // book, and a role that may see invoices but not spend should not get
-    // spend through the side door.
+    // The finder and the preview check `invoices:read` and then `costs:read`
+    // in the handler, before reading the request: this is a cost breakdown of
+    // the whole org, not a view of the customer book, and a role that may see
+    // invoices but not spend should not get spend through the side door. The
+    // document states the stronger of the two.
     HttpApiEndpoint.get("unassigned", "/unassigned", {
       params: OrgParams,
       query: {
         from: Schema.optionalKey(
           documentedAs(
-            InvoiceDay.annotate({
+            invoiceDay({
               description: "Defaults, with `to`, to the last full calendar month.",
             }),
           ),
@@ -484,9 +495,9 @@ export class ManagedAccountsGroup extends HttpApiGroup.make("managedAccounts")
         to: Schema.optionalKey(documentedAs(InvoiceDay)),
       },
       success: UnassignedSpendReport,
-      error: BadRequest,
+      error: [BadRequest, Forbidden],
     })
-      .annotate(RequiredPermission, "costs:read")
+      .annotate(DocumentedPermission, "costs:read")
       .annotate(OpenApi.Summary, "Find spend no customer is billed for")
       .annotate(
         OpenApi.Description,
@@ -500,9 +511,9 @@ export class ManagedAccountsGroup extends HttpApiGroup.make("managedAccounts")
       params: OrgParams,
       payload: ManagedAccountAssignmentPreview,
       success: ManagedAccountAssignmentPreviewResult,
-      error: BadRequest,
+      error: [BadRequest, Forbidden],
     })
-      .annotate(RequiredPermission, "costs:read")
+      .annotate(DocumentedPermission, "costs:read")
       .annotate(OpenApi.Summary, "Preview a bulk assignment")
       .annotate(
         OpenApi.Description,

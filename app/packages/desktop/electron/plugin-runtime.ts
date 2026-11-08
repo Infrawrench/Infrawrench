@@ -383,15 +383,22 @@ export interface LiveResourceListing {
  * Enumerate a local account's resources live from the provider, the way the
  * GUI's sidebar does. The local `resources` table is only a cache of what the
  * app itself created or pinned, so it is not a usable source for listing.
+ *
+ * `allTypes` lists every declared type rather than the sidebar's listable
+ * ones: the GUI's environment diff compares the whole account, child types
+ * included, and reports a type the provider will not list account-wide as
+ * unavailable rather than skipping it.
  */
 export async function listAccountResourcesLive(
   account: LocalAccountRow,
-  options: { typeId?: string } = {},
+  options: { typeId?: string; allTypes?: boolean } = {},
 ): Promise<LiveResourceListing> {
   const { plugin, client } = await createAccountPluginClient(account);
   const types = options.typeId
     ? plugin.resourceTypes.filter((t) => t.id === options.typeId)
-    : listableResourceTypes(plugin.resourceTypes);
+    : options.allTypes
+      ? plugin.resourceTypes
+      : listableResourceTypes(plugin.resourceTypes);
   if (options.typeId && types.length === 0) {
     const known = plugin.resourceTypes.map((t) => t.id).sort();
     throw new UserFacingError(

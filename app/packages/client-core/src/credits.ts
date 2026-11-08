@@ -7,7 +7,7 @@
  * "you have $42" tells you nothing, while "$42, six days left at your current
  * burn" is a decision.
  *
- * Server contract: `/api/org/:orgId/credits` (web `api/routes/credits.ts`),
+ * Server contract: `/api/org/:orgId/credits` (web `http/domains/credits/`),
  * gated on `costs:read`.
  */
 import type { CloudFetch } from "./fetch";

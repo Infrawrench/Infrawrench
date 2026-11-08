@@ -10,7 +10,7 @@
  * The window and the subscription body are checked by hand in the handlers,
  * with the sentences the routes always answered with, so the query carries
  * plain strings and the create endpoint is served raw. The public iCalendar
- * feed itself (`/api/calendar/:token.ics`) is still a Hono route.
+ * feed itself (`/api/calendar/:token.ics`) is `../calendar-feed`.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";

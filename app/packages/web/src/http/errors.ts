@@ -51,6 +51,17 @@ export class Conflict extends Schema.Error<Conflict>("infrawrench/http/Conflict"
   errorAnnotations(409),
 ) {}
 
+/** What was there is gone for good (an expired download), unlike a 404's never-was. */
+export class Gone extends Schema.Error<Gone>("infrawrench/http/Gone")(
+  { error: message },
+  errorAnnotations(410),
+) {}
+
+/** A well-formed request the server cannot act on (a widget kind this version does not know, ...). */
+export class UnprocessableEntity extends Schema.Error<UnprocessableEntity>(
+  "infrawrench/http/UnprocessableEntity",
+)({ error: message }, errorAnnotations(422)) {}
+
 export class InternalServerError extends Schema.Error<InternalServerError>(
   "infrawrench/http/InternalServerError",
 )({ error: message }, errorAnnotations(500)) {}
@@ -59,6 +70,12 @@ export class InternalServerError extends Schema.Error<InternalServerError>(
 export class BadGateway extends Schema.Error<BadGateway>("infrawrench/http/BadGateway")(
   { error: message },
   errorAnnotations(502),
+) {}
+
+/** An upstream service (a warehouse, a provider API) took longer than this route waits. */
+export class GatewayTimeout extends Schema.Error<GatewayTimeout>("infrawrench/http/GatewayTimeout")(
+  { error: message },
+  errorAnnotations(504),
 ) {}
 
 export class ServiceUnavailable extends Schema.Error<ServiceUnavailable>(

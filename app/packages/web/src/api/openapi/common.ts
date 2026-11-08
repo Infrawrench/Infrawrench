@@ -67,17 +67,6 @@ export const ResourceId = z
     example: "gcp:00000000-0000-0000-0000-000000000000:projects/p/instances/i",
   });
 
-/**
- * The 403 returned by routes that require a recent sign-in rather than merely
- * a valid session (see `auth/step-up.ts`). Distinguished from a plain 403 by
- * the `code` field so clients can re-authenticate and retry instead of
- * reporting a permanent authorization failure.
- */
-const ReauthenticationRequiredResponse = strict({
-  error: z.string().openapi({ description: "Human-readable error message" }),
-  code: z.literal("reauthentication_required"),
-}).openapi("ReauthenticationRequired");
-
 /** Common header shared by every error response slot in this spec. */
 export const ErrorResponses = {
   400: { description: "Bad request", content: { "application/json": { schema: ErrorResponse } } },
@@ -94,12 +83,6 @@ export const ErrorResponses = {
   402: {
     description: "Payment required: the organization's plan does not include this",
     content: { "application/json": { schema: ErrorResponse } },
-  },
-  /** Use in place of `403` on step-up-protected routes. */
-  reauth: {
-    description:
-      "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
-    content: { "application/json": { schema: ReauthenticationRequiredResponse } },
   },
   404: { description: "Not found", content: { "application/json": { schema: ErrorResponse } } },
   /** The resource is busy, e.g. a deploy to this environment is already running. */

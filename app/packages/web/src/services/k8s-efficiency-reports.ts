@@ -1,6 +1,6 @@
 /**
  * Kubernetes efficiency reports: CRUD, execution and the pickers' options.
- * Shared by the HTTP routes (api/routes/k8s-efficiency-reports.ts) and the
+ * Shared by the HTTP routes (http/domains/k8s-efficiency-reports) and the
  * chat/MCP tools, so both enforce sharing and run the same query.
  *
  * A report is a saved `KubernetesEfficiencyConfig`. Running one scans the

@@ -23,7 +23,9 @@ export function useCliCapture(): Captured {
     captured.stderr = "";
     captured.requests = [];
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      captured.stdout += String(chunk);
+      // A downloaded file is written as bytes; read it back as the text it is.
+      captured.stdout +=
+        chunk instanceof Uint8Array ? Buffer.from(chunk).toString("utf8") : String(chunk);
       return true;
     });
     vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
@@ -38,11 +40,16 @@ export function useCliCapture(): Captured {
   return captured;
 }
 
-/** A fixture that is not a 200 JSON body: an error status, or a body that is not JSON. */
+/**
+ * A fixture that is not a 200 JSON body: an error status, a body that is not
+ * JSON (a CSV, a PDF's bytes), or one that needs response headers
+ * (`Content-Disposition` on a download).
+ */
 export class RawResponse {
   constructor(
     readonly status: number,
-    readonly body: string,
+    readonly body: string | Uint8Array,
+    readonly headers: Record<string, string> = {},
   ) {}
 }
 
@@ -62,7 +69,11 @@ export function serveRoutes(captured: Captured, routes: Record<string, unknown>)
       captured.requests.push(key);
       if (!(key in routes)) return new Response(`no fixture for ${key}`, { status: 404 });
       const route = routes[key];
-      if (route instanceof RawResponse) return new Response(route.body, { status: route.status });
+      if (route instanceof RawResponse) {
+        // A 204 (a dismissal DELETE) has no body; `Response` refuses one, even empty.
+        const body = route.status === 204 ? null : route.body;
+        return new Response(body, { status: route.status, headers: route.headers });
+      }
       return new Response(JSON.stringify(route), { status: 200 });
     }),
   );

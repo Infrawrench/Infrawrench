@@ -8,22 +8,22 @@
  *
  * In all cases it produces a principal pinned to the org in the URL, and in all
  * cases that principal must hold `requiredScope`: see
- * {@link denyUnlessPermitted}. Returns a 401/403 `Response` the caller should
- * return directly when auth fails, the org doesn't match, or the permission is
- * missing.
+ * {@link denyUnlessPermitted}. {@link authenticateOrgRawRequest} answers a
+ * refusal (a status and its `error` sentence) when auth fails, the org doesn't
+ * match, or the permission is missing; `http/org-request-caller.ts` sends it.
  *
  * The org tree now accepts `iwk_` keys too, through `apiKeyOrgMiddleware` in
  * `api/auth-middleware.ts`: the same `authenticateApiRequest` and the same
  * `effectivePermissions` intersection, so there is one rule about what a key
- * may do, not two. This function stays for the four routers that sit *outside*
- * that tree on purpose (chat, cost ingest, paging): they are mounted ahead of
- * it, they authenticate per-handler rather than per-request, and their failure
+ * may do, not two. This function stays for the routers that sit *outside* that
+ * tree on purpose (chat, cost ingest and paging, through
+ * `http/caller-auth.ts`): they are served ahead of it, they authenticate
+ * per-handler rather than per-request, and their failure
  * responses are part of a published contract. Folding them in would change the
  * order the checks run in and the wording of three error bodies for no gain:
- * see the note on {@link authenticateOrgRequest}.
+ * see the note on {@link authenticateOrgRawRequest}.
  */
-import type { Context } from "hono";
-import { getCookie } from "hono/cookie";
+import { parse as parseCookies } from "hono/utils/cookie";
 import { workos } from "./workos";
 import { effectivePermissions } from "./effective-permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -48,6 +48,23 @@ export interface OrgAuthResult {
   via: "session" | "workos-bearer" | "api-key";
 }
 
+/** Why {@link authenticateOrgRawRequest} refused: the status and `{ error }` it answers with. */
+export interface OrgAuthRefusal {
+  readonly ok: false;
+  readonly status: 401 | 403 | 500;
+  readonly error: string;
+}
+
+export type OrgRequestAuth = { readonly ok: true; readonly caller: OrgAuthResult } | OrgAuthRefusal;
+
+const refuse = (status: OrgAuthRefusal["status"], error: string): OrgAuthRefusal => ({
+  ok: false,
+  status,
+  error,
+});
+
+const accept = (caller: OrgAuthResult): OrgRequestAuth => ({ ok: true, caller });
+
 /**
  * Enforce `requiredScope` against the principal's effective permissions.
  *
@@ -61,20 +78,19 @@ export interface OrgAuthResult {
  * held by someone whose role lacks it no longer passes.
  */
 async function denyUnlessPermitted(
-  c: Context,
   principal: { userId: string; organizationId: string; scopes?: readonly string[] | undefined },
   requiredScope: string,
-): Promise<Response | null> {
+): Promise<OrgAuthRefusal | null> {
   const granted = await effectivePermissions(principal);
   if (!hasPermission(granted, requiredScope)) {
-    return c.json({ error: `Missing required permission: ${requiredScope}` }, 403);
+    return refuse(403, `Missing required permission: ${requiredScope}`);
   }
   return null;
 }
 
 /**
  * Authenticate the request and verify membership in `:orgId`. On failure
- * returns a Response that the caller should return directly.
+ * answers the refusal: the status and the `{ error }` sentence to send.
  *
  * Deliberately **not** collapsed into `apiKeyOrgMiddleware` + `requirePermission`,
  * even though the two now agree on every authorization question. The observable
@@ -92,27 +108,26 @@ async function denyUnlessPermitted(
  * The duplication that mattered (a second answer to "what may this key do")
  * is already gone: both paths resolve through {@link effectivePermissions}.
  */
-export async function authenticateOrgRequest(
-  c: Context,
+export async function authenticateOrgRawRequest(
+  request: Request,
   pathOrgId: string,
   requiredScope: string,
-): Promise<OrgAuthResult | Response> {
+): Promise<OrgRequestAuth> {
   // 1) Bearer token: either iwk_ API key or WorkOS access token.
-  const bearer = c.req.header("authorization");
+  const bearer = request.headers.get("authorization") ?? undefined;
   if (bearer?.startsWith("Bearer ")) {
     if (bearer.slice(7).startsWith("iwk_")) {
-      const auth = await authenticateApiRequest(c.req.raw);
-      if (!auth) return c.json({ error: "Unauthorized" }, 401);
+      const auth = await authenticateApiRequest(request);
+      if (!auth) return refuse(401, "Unauthorized");
       try {
         requireScope(auth, requiredScope);
       } catch {
-        return c.json({ error: `Missing required scope: ${requiredScope}` }, 403);
+        return refuse(403, `Missing required scope: ${requiredScope}`);
       }
       if (auth.organizationId !== pathOrgId) {
-        return c.json({ error: "API key belongs to a different organization" }, 403);
+        return refuse(403, "API key belongs to a different organization");
       }
       const denied = await denyUnlessPermitted(
-        c,
         { userId: auth.userId, organizationId: auth.organizationId, scopes: auth.scopes ?? [] },
         requiredScope,
       );
@@ -130,29 +145,29 @@ export async function authenticateOrgRequest(
       // Carried, not established: `AsyncLocalStorage.enterWith` only reaches
       // the current execution's descendants, and this function is awaited by
       // its callers; a store entered here is gone by the time the handler
-      // resumes. Callers that go on to write audit rows call
-      // `enterAuditPrincipal` themselves; see `api/routes/chat.ts`.
+      // resumes. Callers that go on to write audit rows establish the
+      // principal themselves: `withLegacyScopes({ auditPrincipal })` in
+      // `http/caller-auth.ts`.
       if (auth.apiKeyId) result.apiKeyId = auth.apiKeyId;
-      return result;
+      return accept(result);
     }
     // WorkOS access token (browser SPAs that send Bearer instead of cookie).
     const claims = await verifyWorkosAccessToken(bearer.slice(7));
-    if (!claims?.sub) return c.json({ error: "Unauthorized" }, 401);
+    if (!claims?.sub) return refuse(401, "Unauthorized");
     // An agent token's `sub` is a registration id, not a user id. These routes
     // resolve a person and provision one on sight, so an agent reaching here
     // would mint a `users` row keyed by that registration, including a
     // revoked or already-reaped one, which no table lookup can rule out. See
     // `looksLikeAgentRegistrationId`.
     if (looksLikeAgentRegistrationId(claims.sub)) {
-      return c.json({ error: "Agent credentials cannot be used on this endpoint." }, 403);
+      return refuse(403, "Agent credentials cannot be used on this endpoint.");
     }
     const user = await ensureUserFromClaims(claims.sub, claims.email);
-    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    if (!user) return refuse(401, "Unauthorized");
     if (!(await hasMembership(user.id, pathOrgId))) {
-      return c.json({ error: "Forbidden: not a member of this organization" }, 403);
+      return refuse(403, "Forbidden: not a member of this organization");
     }
     const denied = await denyUnlessPermitted(
-      c,
       { userId: user.id, organizationId: pathOrgId },
       requiredScope,
     );
@@ -163,16 +178,19 @@ export async function authenticateOrgRequest(
       via: "workos-bearer",
     };
     if (claims.email) result.email = claims.email;
-    return result;
+    return accept(result);
   }
 
-  // 2) Session cookie (the React UI's path).
-  const cookieValue = getCookie(c, "wos-session");
-  if (!cookieValue) return c.json({ error: "Unauthorized" }, 401);
+  // 2) Session cookie (the React UI's path). Read as Hono's `getCookie` does.
+  const cookieHeader = request.headers.get("cookie");
+  const cookieValue = cookieHeader
+    ? parseCookies(cookieHeader, "wos-session")["wos-session"]
+    : undefined;
+  if (!cookieValue) return refuse(401, "Unauthorized");
 
   const cookiePassword = process.env["WORKOS_COOKIE_PASSWORD"];
   if (!cookiePassword) {
-    return c.json({ error: "Server misconfiguration" }, 500);
+    return refuse(500, "Server misconfiguration");
   }
 
   try {
@@ -181,7 +199,7 @@ export async function authenticateOrgRequest(
       cookiePassword,
     });
     const authResult = await session.authenticate();
-    if (!authResult.authenticated) return c.json({ error: "Unauthorized" }, 401);
+    if (!authResult.authenticated) return refuse(401, "Unauthorized");
 
     const userId = authResult.user.id;
     const email = authResult.user.email;
@@ -192,23 +210,19 @@ export async function authenticateOrgRequest(
       .onConflictDoUpdate({ target: users.id, set: { email } });
 
     if (!(await hasMembership(userId, pathOrgId))) {
-      return c.json({ error: "Forbidden: not a member of this organization" }, 403);
+      return refuse(403, "Forbidden: not a member of this organization");
     }
 
-    const denied = await denyUnlessPermitted(
-      c,
-      { userId, organizationId: pathOrgId },
-      requiredScope,
-    );
+    const denied = await denyUnlessPermitted({ userId, organizationId: pathOrgId }, requiredScope);
     if (denied) return denied;
 
-    return {
+    return accept({
       userId,
       organizationId: pathOrgId,
       email,
       via: "session",
-    };
+    });
   } catch {
-    return c.json({ error: "Unauthorized" }, 401);
+    return refuse(401, "Unauthorized");
   }
 }

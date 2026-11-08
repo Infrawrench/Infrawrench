@@ -1,6 +1,6 @@
 /**
  * Org-scoped metric alert rule CRUD + status: shared by the HTTP routes
- * (api/routes/metric-alerts.ts). Evaluation lives in
+ * (http/domains/metric-alerts/). Evaluation lives in
  * `server-core/src/metric-alerts/`; this module only reads/writes the rules
  * and their firing history, mirroring `services/budgets.ts`.
  */

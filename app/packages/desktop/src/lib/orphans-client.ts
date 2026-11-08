@@ -6,6 +6,7 @@ import {
   type OrphansClient,
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
  * Potential savings data access. The same declarative orphan rules classify
@@ -15,7 +16,7 @@ import { invoke } from "./invoke";
  * - cloud: the server scans the org's synced rows and annotates each match
  *   with trailing spend from the collected billing data.
  * - local: the main process scans this machine's SQLite workspace
- *   (`local_orphans_list`). No billing data exists locally, so the response
+ *   (the `LocalOrphansList` RPC). No billing data exists locally, so the response
  *   comes back with `costBasis: "unavailable"` and the section drops the cost
  *   column rather than implying every flagged resource is free.
  *
@@ -29,7 +30,7 @@ export function createDesktopOrphansClient({
   const client: OrphansClient = {
     listOrphans: () => {
       const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return invoke<OrphanListResponse>("local_orphans_list");
+      if (!orgId) return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalOrphansList()));
       return invoke<OrphanListResponse>("cloud_orphans_list", { orgId });
     },
   };

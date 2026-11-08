@@ -139,14 +139,14 @@ export const ANOMALY_SCOPE_LABELS: Record<string, string> = {
  * section of KNOWLEDGE.md), and the same 20% floor.
  */
 export function anomalyDriverLabel(anomaly: {
-  contributors?:
-    | Array<{
-        facet: string;
-        key: string;
-        label: string;
-        deltaCents: number;
-        share: number | null;
-        other?: boolean | undefined;
+  readonly contributors?:
+    | ReadonlyArray<{
+        readonly facet: string;
+        readonly key: string;
+        readonly label: string;
+        readonly deltaCents: number;
+        readonly share: number | null;
+        readonly other?: boolean | undefined;
       }>
     | undefined;
 }): string {
@@ -612,28 +612,35 @@ export function formatInvoiceTotal(
  * its server still prints an older row as a monthly spend budget.
  */
 export interface CliBudgetRow {
-  id: string;
-  name: string;
-  amountCents: number;
-  currency: string;
-  month: string;
-  actualCents: number;
-  forecastCents: number | null;
+  readonly id: string;
+  readonly name: string;
+  readonly amountCents: number;
+  readonly currency: string;
+  readonly month: string;
+  readonly actualCents: number;
+  readonly forecastCents: number | null;
   /** The trend forecast's 80% interval, in cents; absent from older servers. */
-  forecastLowCents?: number | null | undefined;
-  forecastHighCents?: number | null | undefined;
-  scenarioForecastCents?: number | null | undefined;
-  currentMonthEvents: unknown[];
-  measure?: "cost" | "usage" | undefined;
-  usageUnit?: string | null | undefined;
-  parentBudgetId?: string | null | undefined;
-  periodStart?: string | null | undefined;
-  periodEnd?: string | null | undefined;
-  periodLimit?: number | null | undefined;
-  actualUsage?: number | null | undefined;
-  forecastUsage?: number | null | undefined;
-  rolledUp?: boolean | undefined;
-  hierarchyWarnings?: Array<{ kind: string; childTotal: number; parentLimit: number }> | undefined;
+  readonly forecastLowCents?: number | null | undefined;
+  readonly forecastHighCents?: number | null | undefined;
+  readonly scenarioForecastCents?: number | null | undefined;
+  readonly currentMonthEvents: ReadonlyArray<unknown>;
+  /** `cost` or `usage`; a measure a newer server adds prints as money, like `cost`. */
+  readonly measure?: string | undefined;
+  readonly usageUnit?: string | null | undefined;
+  readonly parentBudgetId?: string | null | undefined;
+  readonly periodStart?: string | null | undefined;
+  readonly periodEnd?: string | null | undefined;
+  readonly periodLimit?: number | null | undefined;
+  readonly actualUsage?: number | null | undefined;
+  readonly forecastUsage?: number | null | undefined;
+  readonly rolledUp?: boolean | undefined;
+  readonly hierarchyWarnings?:
+    | ReadonlyArray<{
+        readonly kind: string;
+        readonly childTotal: number;
+        readonly parentLimit: number;
+      }>
+    | undefined;
 }
 
 /** A budget figure in its own unit: money from cents, or a usage quantity. */
@@ -705,7 +712,7 @@ export function formatBudgetPeriod(row: CliBudgetRow): string {
  * level rather than vanishing, and a cycle is broken at the first repeat.
  */
 export function orderBudgetTree<T extends CliBudgetRow>(
-  rows: T[],
+  rows: ReadonlyArray<T>,
 ): Array<{ row: T; depth: number }> {
   const ids = new Set(rows.map((r) => r.id));
   const out: Array<{ row: T; depth: number }> = [];
@@ -1079,36 +1086,41 @@ export function orderScoreRows<T extends { score: number | null; name: string }>
  * Labels and the two derivations below are restated from client-core's
  * `leaked-secrets.ts` (`LEAKED_SECRET_STATUS_LABELS`, `leakSeverity`,
  * `leakLocationLabel`, ...) because the CLI's client-core imports are
- * type-only. Each map is typed against the wire union, so a value added or
- * removed upstream fails this file's typecheck rather than printing blank.
+ * type-only. Each map `satisfies` the wire union, so a value added or removed
+ * upstream fails this file's typecheck rather than printing blank, and is
+ * read with any string: a value a newer server sends prints as itself.
+ *
+ * The helpers take the wire's enum fields as plain strings for the same
+ * reason: `leaks` decodes them as text so a newer server's value renders.
  */
-export const LEAK_STATUS_LABELS: Record<LeakedSecretStatus, string> = {
+export const LEAK_STATUS_LABELS: Partial<Record<string, string>> = {
   open: "Open",
   rotated: "Rotated",
   dismissed: "Dismissed",
   resolved: "Resolved upstream",
-};
+} satisfies Record<LeakedSecretStatus, string>;
 
-export const LEAK_ROTATION_LABELS: Record<LeakRotationMethod, string> = {
+export const LEAK_ROTATION_LABELS: Partial<Record<string, string>> = {
   reissued: "Reissued in Infrawrench",
   replaced: "New value stored",
   detected: "Stored value changed",
   manual: "Marked rotated",
-};
+} satisfies Record<LeakRotationMethod, string>;
 
-export const LEAK_DISMISS_LABELS: Record<LeakDismissReason, string> = {
+export const LEAK_DISMISS_LABELS: Partial<Record<string, string>> = {
   "false-positive": "False positive",
   "used-in-tests": "Used in tests",
   "wont-fix": "Won't fix",
-};
+} satisfies Record<LeakDismissReason, string>;
 
 const LEAK_STATUSES = Object.keys(LEAK_STATUS_LABELS) as LeakedSecretStatus[];
 const LEAK_DISMISS_REASONS = Object.keys(LEAK_DISMISS_LABELS) as LeakDismissReason[];
 
 /** Critical unless the scanner says the token is dead and it matched nothing. */
-export function formatLeakSeverity(
-  leak: Pick<LeakedSecret, "validity" | "matchKind">,
-): "critical" | "high" {
+export function formatLeakSeverity(leak: {
+  readonly validity: string | null;
+  readonly matchKind: string;
+}): "critical" | "high" {
   if (leak.validity === "inactive" && leak.matchKind === "none") return "high";
   return "critical";
 }
@@ -1126,15 +1138,16 @@ export function formatLeakLocation(
 export function formatLeakTarget(
   leak: Pick<
     LeakedSecret,
-    | "matchKind"
-    | "matchConfidence"
     | "matchedAccountId"
     | "matchedAccountName"
     | "matchedResourceId"
     | "matchedResourceName"
-    | "candidateAccountIds"
     | "ownerPluginName"
-  >,
+  > & {
+    readonly matchKind: string;
+    readonly matchConfidence: string;
+    readonly candidateAccountIds: readonly string[];
+  },
 ): string {
   if (leak.matchKind === "account") {
     const name = safe(leak.matchedAccountName ?? leak.matchedAccountId ?? "");
@@ -1155,10 +1168,11 @@ export function formatLeakTarget(
 
 /** The status cell: the label plus how it got there, e.g. "Dismissed: Used in tests". */
 export function formatLeakStatus(
-  leak: Pick<
-    LeakedSecret,
-    "status" | "rotationMethod" | "dismissedReason" | "upstreamResolution" | "rotatedBy"
-  >,
+  leak: Pick<LeakedSecret, "upstreamResolution" | "rotatedBy"> & {
+    readonly status: string;
+    readonly rotationMethod: string | null;
+    readonly dismissedReason: string | null;
+  },
 ): string {
   const label = LEAK_STATUS_LABELS[leak.status] ?? safe(leak.status);
   if (leak.status === "rotated" && leak.rotationMethod) {
@@ -1243,7 +1257,10 @@ export function parseLeakDismissReason(raw: string | null | undefined): LeakDism
  * where, and what records it afterwards.
  */
 export function leakRotateRefusal(
-  leak: Pick<LeakedSecret, "id" | "status" | "rotation" | "ownerPluginName">,
+  leak: Pick<LeakedSecret, "id" | "ownerPluginName"> & {
+    readonly status: string;
+    readonly rotation: { readonly mode: string; readonly manageUrl: string | null };
+  },
 ): string | null {
   if (leak.status !== "open") {
     return `This leak is ${LEAK_STATUS_LABELS[leak.status]?.toLowerCase() ?? safe(leak.status)}, not open. Reopen it first with \`infrawrench leaks reopen ${shortId(leak.id)}\`.`;

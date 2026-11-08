@@ -3,6 +3,7 @@ import type { AgentServiceInstall, AgentSshTarget } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { createPluginClient } from "./plugin-client";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { listLocalSshInstallAccounts } from "./ssh-install";
 
 /**
@@ -71,7 +72,11 @@ export async function installLocalAgentServices(
     try {
       result = await client.installOnSsh({
         exec: (script) =>
-          invoke<string>("workflow_ssh_exec_script", { config, script, skipHostKeyCheck: true }),
+          runRpc(
+            DesktopRpcClient.use((rpc) =>
+              rpc.WorkflowSshExecScript({ config, script, skipHostKeyCheck: true }),
+            ),
+          ),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

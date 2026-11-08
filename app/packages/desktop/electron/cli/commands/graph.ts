@@ -23,15 +23,17 @@ import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { resource } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { wire } from "../effect/wire";
+import { knownOr, Unrecognized, wire } from "../effect/wire";
 import { c, safe } from "../output";
 import { renderTree, type TreeChild } from "../format";
 
 const PATH = "/dependency-graph";
 
 // The whole node and edge: the model is built from them and every field is
-// read by something client-core exports. `kind` is the one enum, and only
-// compared against "containment", but the model is typed over it.
+// read by something client-core exports. `kind` is the one enum, only ever
+// compared against "containment": one a newer server added decodes as
+// `Unrecognized`, reads as a plain field link (as it always did), and prints
+// as it came under `--json`.
 const Node = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
@@ -49,9 +51,7 @@ const Edge = Schema.Struct({
   consumerFieldKey: Schema.String,
   providerResourceId: Schema.String,
   providerOutputKey: Schema.String,
-  kind: Schema.optionalKey(
-    Schema.Literals(["output-ref", "declared", "containment", "field-match"]),
-  ),
+  kind: Schema.optionalKey(knownOr(["output-ref", "declared", "containment", "field-match"])),
   label: Schema.optionalKey(Schema.String),
 });
 
@@ -110,12 +110,25 @@ export const graph = Command.make(
     const body = yield* api.json(org.id, PATH);
     const data = yield* decodeBody(Graph, PATH)(body);
     const raw = yield* decodeBody(RawGraph, PATH)(body);
+    // The model is typed over the known edge kinds, so an unknown one is left
+    // off the edge it is built from (nothing in it reads `kind`); `kindOf`
+    // gives back what the server sent.
+    const sentKinds = new Map<DependencyGraphEdge, string>();
+    const edges = data.edges.map((edge): DependencyGraphEdge => {
+      const { kind, ...rest } = edge;
+      if (kind === undefined) return rest;
+      const entry = kind instanceof Unrecognized ? rest : { ...rest, kind };
+      sentKinds.set(entry, kind instanceof Unrecognized ? kind.raw : kind);
+      return entry;
+    });
+    const kindOf = (edge: DependencyGraphEdge) => sentKinds.get(edge);
     const rawNode = rawLookup<DependencyGraphNode>(data.nodes, raw.nodes);
-    const rawEdge = rawLookup<DependencyGraphEdge>(data.edges, raw.edges);
+    const rawEdge = rawLookup<DependencyGraphEdge>(edges, raw.edges);
 
-    const { buildDependencyGraph, directDependencies, collectDependents, collectDependencies } =
-      yield* Effect.promise(() => import("@infrawrench/client-core"));
-    const model = buildDependencyGraph(data.nodes, data.edges);
+    const { buildDependencyGraph, collectDependents, collectDependencies } = yield* Effect.promise(
+      () => import("@infrawrench/client-core"),
+    );
+    const model = buildDependencyGraph(data.nodes, edges);
     const truncated = data.truncated === true;
 
     // `graph <resource-id>` is the same as --resource; the positional wins.
@@ -142,16 +155,32 @@ export const graph = Command.make(
 
     if (session.output === "json") {
       const keep = new Set([...collectDependencies(model, focusId), ...dependents]);
-      const direct = directDependencies(model, focusId);
-      const neighbours = (list: typeof direct.dependsOn) =>
-        list.map((n) => ({ ...n, node: rawNode(n.node) }));
+      // `directDependencies`' rows, built here so `kind` is the one the
+      // server sent rather than the model's.
+      const neighbours = (list: ReadonlyArray<DependencyGraphEdge>, end: "provider" | "consumer") =>
+        list.flatMap((edge) => {
+          const node = model.nodesById.get(
+            end === "provider" ? edge.providerResourceId : edge.consumerResourceId,
+          );
+          const kind = kindOf(edge);
+          if (!node) return [];
+          return [
+            {
+              node: rawNode(node),
+              fieldKey: edge.consumerFieldKey,
+              outputKey: edge.providerOutputKey,
+              ...(kind ? { kind } : {}),
+              ...(edge.label ? { label: edge.label } : {}),
+            },
+          ];
+        });
       return yield* Print.json({
         org: org.id,
         truncated,
         resource: rawNode(focus),
         // Direct neighbours, exactly as the Dependencies tab lists them.
-        dependsOn: neighbours(direct.dependsOn),
-        dependedOnBy: neighbours(direct.dependedOnBy),
+        dependsOn: neighbours(model.dependsOn.get(focusId) ?? [], "provider"),
+        dependedOnBy: neighbours(model.dependedOnBy.get(focusId) ?? [], "consumer"),
         // Transitive consumers, minus the resource itself: what breaks with it.
         blastRadius: [...dependents].filter((id) => id !== focusId),
         nodes: model.nodes.filter((n) => keep.has(n.id)).map(rawNode),

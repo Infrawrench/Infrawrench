@@ -30,7 +30,7 @@ import { useCostReportsById } from "@/features/cost-reports/useCostReports";
 import { useBudgets } from "./useBudgets";
 import { useCostStatus } from "./useCostStatus";
 
-/** Shapes from GET /api/org/:orgId/dashboards/:id (web api/routes/dashboards.ts). */
+/** Shapes from GET /api/org/:orgId/dashboards/:id (web http/domains/dashboards). */
 export interface DashboardData {
   dashboard: { id: string; name: string; isDefault: boolean };
   pins: Array<{

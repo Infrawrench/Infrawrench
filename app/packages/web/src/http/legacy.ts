@@ -109,10 +109,14 @@ export const withLegacyScopes =
  * (object sharing, gateway-only, `HTTPException`) into the same responses, and
  * anything else into a 500 with a correlation id.
  */
-export const legacy = <A>(fn: (signal: AbortSignal) => PromiseLike<A>): Effect.Effect<A> =>
+export const legacy = <A>(fn: (signal: AbortSignal) => PromiseLike<A> | A): Effect.Effect<A> =>
   Effect.gen(function* () {
     const scopes = yield* LegacyScopes;
-    return yield* Effect.promise((signal) => runInLegacyScopes(scopes, () => fn(signal)));
+    // `Promise.resolve` so a function that returns a plain value (a stub, a
+    // synchronous service) is answered rather than rejected.
+    return yield* Effect.promise((signal) =>
+      Promise.resolve(runInLegacyScopes(scopes, () => fn(signal))),
+    );
   });
 
 /**
@@ -121,13 +125,13 @@ export const legacy = <A>(fn: (signal: AbortSignal) => PromiseLike<A>): Effect.E
  * does not, which stays a defect.
  */
 export const legacyTry = <A, E>(
-  fn: (signal: AbortSignal) => PromiseLike<A>,
+  fn: (signal: AbortSignal) => PromiseLike<A> | A,
   mapError: (error: unknown) => E | undefined,
 ): Effect.Effect<A, E> =>
   Effect.gen(function* () {
     const scopes = yield* LegacyScopes;
     return yield* Effect.tryPromise({
-      try: (signal) => runInLegacyScopes(scopes, () => fn(signal)),
+      try: (signal) => Promise.resolve(runInLegacyScopes(scopes, () => fn(signal))),
       // A throwing `catch` makes the rejection a defect carrying the original
       // error, which is what an unrecognised error should be.
       catch: (error) => {

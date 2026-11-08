@@ -1,6 +1,6 @@
 /**
  * Alert email, the handlers for the org-tree half. The public unsubscribe
- * pages stay on Hono (`api/routes/alert-email.ts`).
+ * pages are `../alert-email-unsubscribe`.
  */
 import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";

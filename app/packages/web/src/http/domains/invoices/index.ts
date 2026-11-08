@@ -125,6 +125,15 @@ const accountMetadata = (account: {
   billingProfileId: account.billingProfileId,
 });
 
+/**
+ * The scope tools are cost breakdowns of the whole org: `invoices:read`, then
+ * `costs:read`, in that order, as the routes always checked them.
+ */
+const requireCostBreakdown = Effect.gen(function* () {
+  yield* requirePermission("invoices:read");
+  yield* requirePermission("costs:read");
+});
+
 /** One invoice, or a 404 for none. */
 const findInvoice = Effect.fnUntraced(function* (organizationId: string, id: string) {
   const invoice = yield* invoiceCall(() => getInvoice(organizationId, id));
@@ -142,11 +151,10 @@ const ManagedAccountsHandlers = HttpApiBuilder.group(InvoicesApi, "managedAccoun
       }),
     )
     // Spend in the period that no customer is billed for, by cost centre and
-    // account. `invoices:read` comes first, as it always did, then the
-    // endpoint's own `costs:read`, then the period.
+    // account. Both permissions are checked before the period is read.
     .handle("unassigned", ({ query }) =>
       Effect.gen(function* () {
-        yield* requirePermission("invoices:read");
+        yield* requireCostBreakdown;
         const period = yield* HttpApiError.HttpApiSchemaError.wrap(
           "Query",
           Schema.decodeEffect(UnassignedPeriodQuery)(query, { errors: "all" }),
@@ -160,7 +168,7 @@ const ManagedAccountsHandlers = HttpApiBuilder.group(InvoicesApi, "managedAccoun
     // that moves with them. A dry run; nothing is written.
     .handleRaw("previewAssignment", ({ request }) =>
       Effect.gen(function* () {
-        yield* requirePermission("invoices:read");
+        yield* requireCostBreakdown;
         const { periodFrom, periodTo, ...assignment } = yield* decodeAsPayload(
           ManagedAccountAssignmentPreview,
           yield* readJson(request),

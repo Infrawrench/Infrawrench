@@ -52,7 +52,7 @@ import {
 } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
 
-/** Shape of POST /api/org/:orgId/push/test (web api/routes/push-devices.ts). */
+/** Shape of POST /api/org/:orgId/push/test (web http/domains/push/). */
 interface TestPushResult {
   ok: boolean;
   attempted: number;

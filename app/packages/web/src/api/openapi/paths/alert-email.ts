@@ -1,11 +1,11 @@
 import { z } from "../zod";
 import { strict } from "../common";
-import type { BuildContext } from "../context";
 
 /**
  * Alert email: the shared recipient shape every cost alert object carries
- * (still referenced by the Hono-documented cost routes) and the public
- * unsubscribe link.
+ * (still referenced by the Hono-documented cost routes). The public
+ * unsubscribe link is documented by its HttpApi domain
+ * (`http/domains/alert-email-unsubscribe`).
  */
 
 export const AlertEmailRecipients = strict({
@@ -25,29 +25,3 @@ export const AlertEmailRecipients = strict({
   description:
     "Who is emailed when this object fires, **in addition to** whatever the organization's alert routing rules decide. Delivered whether or not a rule matched and not held by quiet hours. On a write, omitting the field leaves the stored list unchanged; send empty arrays to clear it.",
 });
-
-/**
- * The public unsubscribe link. The org-scoped alert-email routes are
- * documented by their HttpApi domain (`http/domains/alert-email`).
- */
-export function registerAlertEmailUnsubscribePaths(ctx: BuildContext) {
-  const { registry } = ctx;
-
-  for (const method of ["get", "post"] as const) {
-    registry.registerPath({
-      method,
-      path: "/api/alert-email/unsubscribe",
-      tags: ["Alerts"],
-      summary:
-        method === "get"
-          ? "Unsubscribe confirmation page (from an alert email)"
-          : "Unsubscribe an address from alert email (RFC 8058 one-click)",
-      security: [],
-      request: { query: z.object({ t: z.string() }) },
-      responses: {
-        200: { description: "An HTML page", content: { "text/html": { schema: z.string() } } },
-        400: { description: "Invalid token", content: { "text/html": { schema: z.string() } } },
-      },
-    });
-  }
-}

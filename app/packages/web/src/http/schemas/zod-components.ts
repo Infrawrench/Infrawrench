@@ -3,8 +3,7 @@
  * than redefined.
  *
  * Some response bodies embed a component whose owning route is still on Hono
- * (`CostQueryResponse` is `/costs/query`'s, the VS Code and Raycast
- * extensions' contract; `CostAnomaly` is `/costs/anomalies`'). Defining it
+ * (`TerraformExport` is the resource routes'). Defining it
  * again here would replace the Zod definition for every operation in the
  * document, so a domain refers to it by name: the document carries a bare
  * `$ref` to the registry's definition, and on the wire it is whatever the
@@ -26,23 +25,15 @@ const zodComponent = (name: string) =>
     ),
   );
 
-/** `POST /costs/query`'s result (`api/openapi/paths/costs.ts`). */
-export const CostQueryResponse = zodComponent("CostQueryResponse");
-
-/** One detected cost anomaly, as `GET /costs/anomalies` lists it. */
-export const CostAnomaly = zodComponent("CostAnomaly");
-
-/** A change's measured cost impact, as `POST /changes/cost-impacts` reports it. */
-export const ChangeCostImpact = zodComponent("ChangeCostImpact");
-
-/** The charge-type basis a change's cost impact is read on. */
-export const ChangeCostBasis = zodComponent("ChangeCostBasis");
-
 /**
- * The pricing pipeline's report pieces, shared by `POST /billing-rules/preview`
- * and the managed-account invoices (`api/openapi/paths/billing-rules.ts`,
- * documented under `/invoices`).
+ * The agent-link platform's own agent shapes, which the org tree's Settings
+ * edit shares with the link-authenticated routes. Their owner has moved: the
+ * `agent-link-platform` domain defines them (`./agent-links.ts`). They stay
+ * references rather than imports here because the org tree never decoded
+ * them (a `PatchPlatformAgent` body is checked by hand there), and the real
+ * schema would start refusing bodies those routes have always accepted.
  */
-export const PricingEffect = zodComponent("PricingEffect");
-export const RerateCoverage = zodComponent("RerateCoverage");
-export const PricingExpressionFailure = zodComponent("PricingExpressionFailure");
+export const PatchPlatformAgent = zodComponent("PatchPlatformAgent");
+export const PlatformAgentEnvelope = zodComponent("PlatformAgentEnvelope");
+export const AgentLinkScopeGroup = zodComponent("AgentLinkScopeGroup");
+export const AgentLinkProvider = zodComponent("AgentLinkProvider");

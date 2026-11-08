@@ -9,7 +9,7 @@
  * the server and the `Unmatched` route its 404.
  */
 import { Context, Effect, Layer } from "effect";
-import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
+import { FindMyWay, HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import type { MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 import { securityHeaderEntries } from "../api/security-headers";
@@ -68,6 +68,7 @@ export function makeHttpApiHandler(
     Layer.provide(HttpServer.layerServices),
   );
 
+  const routes = makeRouteMatcher(domains);
   let web: ReturnType<typeof makeWebHandler> | undefined;
   const makeWebHandler = () => HttpRouter.toWebHandler(App, { disableLogger: true });
 
@@ -82,8 +83,21 @@ export function makeHttpApiHandler(
       const context = Context.make(Invocation, { env, executionCtx }).pipe(
         Context.add(LegacyScopes, ambientLegacyScopes()),
       );
-      const response = await web.handler(asJsonBody(request), context);
-      return response.headers.get(UNMATCHED_HEADER) === "1" ? undefined : response;
+      // Only a request a domain routes is handed over: building the router's
+      // copy takes the body, which Hono could then not read.
+      // Hono answered HEAD with the GET route minus its body; so does this.
+      const head = request.method === "HEAD";
+      const routed = head ? new Request(request, { method: "GET" }) : request;
+      if (!routes.matches(routed)) return undefined;
+      const response = await web.handler(forRouter(routed), context);
+      if (response.headers.get(UNMATCHED_HEADER) === "1") return undefined;
+      if (!head) return response;
+      await response.body?.cancel();
+      return new Response(null, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
     },
   };
 }
@@ -99,14 +113,57 @@ export function makeHttpApiHandler(
  */
 const READ_AS_JSON = new Set(["text/plain", "application/x-www-form-urlencoded"]);
 
-function asJsonBody(request: Request): Request {
+/**
+ * The request as the router sees it. Detached from the client's abort signal:
+ * Hono ran a handler to its end when the client went away, and the Effect web
+ * handler would otherwise interrupt it there, between two steps of a write (a
+ * row claimed and its work never run). A streamed response still stops when
+ * the client stops reading. A JSON body sent under a text or form type gets
+ * the JSON type, as above.
+ */
+function forRouter(request: Request): Request {
   const contentType = request.headers.get("content-type");
-  if (contentType === null) return request;
-  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-  if (!READ_AS_JSON.has(mediaType)) return request;
+  const mediaType = contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!READ_AS_JSON.has(mediaType)) return new Request(request, { signal: null });
   const headers = new Headers(request.headers);
   headers.set("content-type", "application/json");
-  return new Request(request, { headers });
+  return new Request(request, { headers, signal: null });
+}
+
+const isRouterPath = (path: string): path is `/${string}` => path.startsWith("/");
+
+/**
+ * Whether a domain routes a request, decided from the method and path alone
+ * (the same table the route-shadowing test builds), so a request no domain
+ * routes reaches Hono with its body unread. A guarded prefix counts: what
+ * falls through it is Hono's 404, never a Hono route (the shadowing test).
+ */
+function makeRouteMatcher(domains: readonly Domain[]) {
+  // Two tables: a guarded prefix claims every method, which would collide
+  // with an endpoint on the bare prefix (`DELETE /api/profile`).
+  const endpoints = FindMyWay.make<true>();
+  const prefixes = FindMyWay.make<true>();
+  const seenPrefixes = new Set<string>();
+  for (const domain of domains) {
+    for (const endpoint of domain.endpoints()) {
+      if (isRouterPath(endpoint.path)) endpoints.on(endpoint.method, endpoint.path, true);
+    }
+    for (const prefix of domain.guardedPrefixes ?? []) {
+      if (!isRouterPath(prefix) || seenPrefixes.has(prefix)) continue;
+      seenPrefixes.add(prefix);
+      prefixes.all(prefix, true);
+      prefixes.all(`${prefix}/*`, true);
+    }
+  }
+  return {
+    matches(request: Request): boolean {
+      const path = new URL(request.url).pathname;
+      return (
+        endpoints.find(request.method, path) !== undefined ||
+        prefixes.find(request.method, path) !== undefined
+      );
+    },
+  };
 }
 
 /**

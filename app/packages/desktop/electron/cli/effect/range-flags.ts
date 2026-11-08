@@ -1,7 +1,10 @@
-// The range flags (`--last`, `--from`, `--to`, `--days`, `--limit`, `--kind`,
-// `--resource`, `--window`, `--group-by`, `--series`, `--currency`,
-// `--customer`, `--month`) as typed `Flag`s. Each command spreads in the subset
-// it reads: `Command.make("tags", { ...dateRange }, ...)`.
+// The range flags (`--last`, `--from`, `--to`, `--days`, `--limit`,
+// `--offset`, `--kind`, `--resource`, `--type`, `--window`, `--group-by`,
+// `--series`, `--currency`, `--customer`, `--month`), the cost scope flags
+// (`--where`, `--filter`, `--charge-type`) and the cost display flags
+// (`--basis`, `--measure`, `--bin`, `--unit`, `--cumulative`, `--x-axis`) as
+// typed `Flag`s. Each command spreads in the subset it reads:
+// `Command.make("tags", { ...dateRange }, ...)`.
 //
 // Parsing and every error sentence are the legacy parser's (`../args.ts`): a
 // bad value is a parse error (the command's help and the sentence on stderr,
@@ -13,6 +16,7 @@
 // that ends before it starts) stay in the command, as `CliUsageError`s.
 import { Effect, Option } from "effect";
 import { CliError, Flag } from "effect/cli";
+import type { CostChargeType } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { parseDuration, parseLastDays } from "../args";
 import { CliUsageError } from "./errors";
 
@@ -32,13 +36,25 @@ const parsedBy =
       ),
     );
 
-/** `--<name>` as a whole number of at least 1, in `positiveInt`'s words. */
-const positiveInt = (name: string): Flag.Flag<number> =>
+/** `--<name>` as a whole number of at least 1, in the legacy parser's words. */
+export const positiveInt = (name: string): Flag.Flag<number> =>
   Flag.String(name).pipe(
     parsedBy((text) => {
       const value = Number(text);
       if (!Number.isInteger(value) || value < 1) {
         throw new Error(`--${name} must be a whole number of at least 1, got "${text}"`);
+      }
+      return value;
+    }),
+  );
+
+/** `--<name>` as a whole number from `min` to `max`, in the legacy parser's words. */
+export const boundedInt = (name: string, min: number, max: number): Flag.Flag<number> =>
+  Flag.String(name).pipe(
+    parsedBy((text) => {
+      const value = Number(text);
+      if (!Number.isInteger(value) || value < min || value > max) {
+        throw new Error(`--${name} must be a whole number from ${min} to ${max}, got "${text}"`);
       }
       return value;
     }),
@@ -86,11 +102,25 @@ export const limit = positiveInt("limit").pipe(
   Flag.optional,
 );
 
+/** `--offset <n>`: rows to skip, a listing's page offset. */
+export const offset = boundedInt("offset", 0, 100_000_000).pipe(
+  Flag.withMetavar("n"),
+  Flag.withDescription("Rows to skip"),
+  Flag.optional,
+);
+
 export const kind = Flag.String("kind").pipe(Flag.withDescription("Filter by kind"), Flag.optional);
 
 export const resource = Flag.String("resource").pipe(
   Flag.withMetavar("id"),
   Flag.withDescription("Focus on one resource"),
+  Flag.optional,
+);
+
+/** `--type <typeId>`: only resources of this resource type. */
+export const type = Flag.String("type").pipe(
+  Flag.withMetavar("typeId"),
+  Flag.withDescription("Only resources of this resource type"),
   Flag.optional,
 );
 
@@ -137,6 +167,121 @@ export const month = Flag.String("month").pipe(
   }),
   Flag.optional,
 );
+
+// The cost scope flags. `--where` and `--filter` stay strings: the command
+// compiles `--where` with client-core's parser, which reports a mistake with
+// its offset and a caret, and resolves `--filter` against the org's saved
+// filters, naming the ones that exist when nothing matches.
+
+/** `--where "<cost query>"`: the filter, as text. */
+export const where = Flag.String("where").pipe(
+  Flag.withMetavar("query"),
+  Flag.withDescription(
+    "Filter in the cost query language, e.g. \"provider = 'aws' AND tag['env'] != 'dev'\"",
+  ),
+  Flag.optional,
+);
+
+/** `--filter <name|id>`: a saved cost filter, applied by reference. */
+export const filter = Flag.String("filter").pipe(
+  Flag.withMetavar("name|id"),
+  Flag.withDescription("A saved cost filter, resolved on the server; combines with --where by AND"),
+  Flag.optional,
+);
+
+/**
+ * The charge types, restated as a plain array: client-core is imported
+ * type-only, and typing the array against the wire union fails this file's
+ * build when one is removed upstream.
+ */
+export const CHARGE_TYPES: readonly CostChargeType[] = [
+  "usage",
+  "commitment_covered_usage",
+  "commitment_fee",
+  "commitment_discount",
+  "credit",
+  "tax",
+  "refund",
+  "adjustment",
+  "support",
+  "other",
+];
+
+/**
+ * `--charge-type <t>`, repeatable: keep only these kinds of charge. None is
+ * every kind, which is what makes the default total net.
+ */
+export const chargeType = Flag.String("charge-type").pipe(
+  Flag.withMetavar("type"),
+  Flag.withDescription(`Keep only this kind of charge (repeatable): ${CHARGE_TYPES.join(", ")}`),
+  Flag.atLeast(0),
+  Flag.mapEffect((values) =>
+    Effect.forEach(values, (value) => {
+      const match = CHARGE_TYPES.find((t) => t === value);
+      return match === undefined
+        ? Effect.fail(
+            new CliError.ValidationError({
+              message: `--charge-type must be one of ${CHARGE_TYPES.join(", ")} (got "${value}").`,
+            }),
+          )
+        : Effect.succeed(match);
+    }),
+  ),
+);
+
+/** `--where`, `--filter` and `--charge-type` together. */
+export const costScope = { where, filter, chargeType };
+
+// The cost display flags, as typed: the values are checked by the cost
+// helpers that read them (`parseDisplayFlags` in `../commands/costs.ts`), so
+// a mistake is reported in those helpers' words.
+
+/** `--basis <b>`: which number to sum; each command names the bases it takes. */
+export const basis = Flag.String("basis").pipe(
+  Flag.withMetavar("basis"),
+  Flag.withDescription("Which cost to sum"),
+  Flag.optional,
+);
+
+/** `--measure cost|usage|count`: what a cost chart sums. */
+export const measure = Flag.String("measure").pipe(
+  Flag.withMetavar("cost|usage|count"),
+  Flag.withDescription("What to sum: cost (money), usage (quantities, with --unit) or count"),
+  Flag.optional,
+);
+
+/** `--bin hour|day|week|month|quarter`: a cost chart's bins. */
+export const bin = Flag.String("bin").pipe(
+  Flag.withMetavar("hour|day|week|month|quarter"),
+  Flag.withDescription("The date bins"),
+  Flag.optional,
+);
+
+/** `--unit <u>`: with `--measure usage`, the unit to sum, as the provider spells it. */
+export const unit = Flag.String("unit").pipe(
+  Flag.withMetavar("unit"),
+  Flag.withDescription("With --measure usage: the unit to sum, as the provider spells it"),
+  Flag.optional,
+);
+
+/** `--cumulative`: running totals from the start of the range. */
+export const cumulative = Flag.Boolean("cumulative").pipe(
+  Flag.withDescription("Running totals from the start of the range"),
+  Flag.withDefault(false),
+  Flag.withoutNegation,
+);
+
+/** `--x-axis <dimension|date>`: a dimension's values on the X axis instead of dates. */
+export const xAxis = Flag.String("x-axis").pipe(
+  Flag.withMetavar("dimension"),
+  Flag.withDescription(
+    "Put a dimension's values on the X axis (tag:<key> for a tag; date for the bins)",
+  ),
+  Flag.optional,
+);
+
+/** `--measure`, `--bin`, `--unit`, `--cumulative` and `--x-axis` together. */
+export const costDisplay = { measure, bin, unit, cumulative, xAxis };
 
 /** `--last`, `--from` and `--to` for a command that asks for whole days. */
 export const dateRange = { last: lastDays, from, to };

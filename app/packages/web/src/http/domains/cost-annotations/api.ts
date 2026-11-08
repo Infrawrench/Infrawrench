@@ -21,7 +21,7 @@ import { BadRequest, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
 import { optionalRequestBody } from "../../schemas/documented";
-import { ChangeCostBasis, ChangeCostImpact } from "../../schemas/zod-components";
+import { ChangeCostBasis, ChangeCostImpact } from "../../schemas/change-cost-impact";
 
 const AnnotationDay = Day.annotate({ examples: ["2026-07-15"] });
 

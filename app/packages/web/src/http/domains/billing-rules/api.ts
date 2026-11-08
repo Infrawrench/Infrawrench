@@ -40,11 +40,7 @@ import { withApiDefaults } from "../../domain";
 import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import {
-  PricingEffect,
-  PricingExpressionFailure,
-  RerateCoverage,
-} from "../../schemas/zod-components";
+import { PricingEffect, PricingExpressionFailure, RerateCoverage } from "../../schemas/pricing";
 
 export const BillingRule = Schema.Struct({
   id: Uuid,

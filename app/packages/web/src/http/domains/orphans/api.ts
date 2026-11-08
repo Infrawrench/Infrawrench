@@ -86,7 +86,12 @@ const OrphanIdleDetail = Schema.Struct({
       "False when the subject is not a synced resource (a custom metric): `id` is then a " +
       "finding id, not a resource id.",
   }),
-}).annotate({ identifier: "OrphanIdleDetail" });
+}).annotate({
+  identifier: "OrphanIdleDetail",
+  description:
+    "Present when a metric-based idle rule flagged the row rather than the type's " +
+    "orphan rule: the rule, the metric evidence and the lookback window.",
+});
 
 const OrphanedResource = Schema.Struct({
   id: Schema.String.annotate({
@@ -122,11 +127,9 @@ const OrphanedResource = Schema.Struct({
     description:
       "Ready-to-run commands to clean this resource up (snapshot first where it applies).",
   }),
-  idle: Schema.optionalKey(OrphanIdleDetail).annotateKey({
-    description:
-      "Present when a metric-based idle rule flagged the row rather than the type's " +
-      "orphan rule: the rule, the metric evidence and the lookback window.",
-  }),
+  // A bare reference, as before: describing the key would wrap it in an
+  // `allOf`, so the description is the component's.
+  idle: Schema.optionalKey(OrphanIdleDetail),
   estimate: Schema.optionalKey(
     Schema.NullOr(IdleSavingsEstimate).annotate({
       description:

@@ -25,3 +25,6 @@ const componentRef = (name: string) =>
 
 /** Manifest id of an installed plugin (the `PluginId` enum component). */
 export const PluginId = componentRef("PluginId");
+
+/** A resource type id one of the installed plugins declares (the `ResourceTypeId` enum component). */
+export const ResourceTypeId = componentRef("ResourceTypeId");

@@ -54,12 +54,19 @@ const COST_DATA = [
  * Route modules mounted outside the org tree that reach cost data, and how
  * each establishes the scope instead. Adding one here needs a reason.
  */
-const SELF_SCOPED: Record<string, { reason: string; mustContain: string }> = {
-  "slack-inbound.ts": {
-    reason: "Resolves the linked member per org and wraps the query.",
+const SELF_SCOPED: Record<string, { reason: string; mustContain: string }> = {};
+
+/**
+ * HttpApi domains served outside `OrgAuth` that reach cost data, and how each
+ * establishes the scope instead. Adding one here needs a reason.
+ */
+const SELF_SCOPED_DOMAINS: Record<string, { reason: string; mustContain: string }> = {
+  "slack-inbound": {
+    reason:
+      "Slack's slash commands and buttons: resolves the linked member per org and wraps the query.",
     mustContain: "withPrincipalCostVisibility(",
   },
-  "anomaly-feedback-link.ts": {
+  "anomaly-feedback-link": {
     reason:
       "The session-authed page behind Teams anomaly cards: resolves the signed-in member and wraps every read and write.",
     mustContain: "withPrincipalCostVisibility(",
@@ -136,6 +143,12 @@ describe("cost routes run inside the caller's cost visibility", () => {
     // a cost domain served through anything else would read unscoped.
     for (const f of costDomainFiles()) {
       const text = domainSource(f);
+      const self = SELF_SCOPED_DOMAINS[f];
+      if (self) {
+        expect(text, f).toContain(self.mustContain);
+        expect(text, f).not.toContain(".middleware(");
+        continue;
+      }
       expect(text, f).toContain(".middleware(OrgAuth)");
       expect(text, f).not.toContain(".middleware(SessionAuth)");
     }

@@ -1,4 +1,4 @@
-import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import type { LocalDeployRun } from "./deploy-history-types";
 
 export type { LocalDeployRun };
@@ -10,5 +10,5 @@ export type { LocalDeployRun };
  * (see `electron/deploy-history.ts` for why it is a file, not a table).
  */
 export function listLocalDeploys(): Promise<LocalDeployRun[]> {
-  return invoke<LocalDeployRun[]>("local_deploy_history");
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalDeployHistory()));
 }

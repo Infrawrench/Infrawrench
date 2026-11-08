@@ -50,7 +50,7 @@ const HEARTBEAT_EVERY_MS = 15_000;
 /** How long to wait on a forwarded call before giving up on the owner. */
 const FORWARD_TIMEOUT_MS = 60_000;
 
-/** The path {@link forwardToOwner} posts to, served by `api/routes/internal-relay.ts`. */
+/** The path {@link forwardToOwner} posts to, served by `http/domains/internal-relay/`. */
 export const RELAY_PATH = "/api/internal/relay";
 
 /** A pod address: a bare private IPv4 and a port, which is all GKE ever gives us. */

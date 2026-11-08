@@ -18,8 +18,8 @@
  * address here is a routing hint and never a capability: the permission check
  * happens on the pod the request arrived at, before anything is forwarded, and
  * the receiving pod authenticates its sibling with a shared secret rather than
- * re-deriving a user's rights. `api/routes/internal-relay.ts` sets out why
- * that is the right boundary and what stops it being the only one.
+ * re-deriving a user's rights. The web handler (`http/domains/internal-relay/`)
+ * sets out why that is the right boundary and what stops it being the only one.
  *
  * The lease is heartbeat-based rather than deleted-on-exit, because the case
  * that matters most is the one where no cleanup runs: a pod that is OOM

@@ -7,7 +7,7 @@
  * against the resource's own spend before the action. A projection is a
  * promise; a realized figure is the receipt finance asks for.
  *
- * Server contract: `/api/org/:orgId/savings/*` (web `api/routes/savings.ts`).
+ * Server contract: `/api/org/:orgId/savings/*` (web `http/domains/savings/`).
  * Reads are `costs:read`; logging, editing and dismissing an entry, and the
  * settings, are `costs:write`.
  *

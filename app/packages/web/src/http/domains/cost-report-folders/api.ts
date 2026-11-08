@@ -15,19 +15,10 @@ import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from ".
 import { withApiDefaults } from "../../domain";
 import { BadRequest, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
-import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
+import { Ok, OrgIdParams, OrgParams } from "../../schemas/common";
+import { CostReportFolder } from "../../schemas/cost-report-folder";
 
-export const CostReportFolder = Schema.Struct({
-  id: Uuid,
-  name: Schema.String,
-  parentFolderId: Schema.NullOr(Schema.String).annotate({
-    description:
-      "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and " +
-      "moving a folder inside itself or one of its own subfolders is rejected, both are 400s.",
-  }),
-  createdAt: IsoDateTime,
-  updatedAt: IsoDateTime,
-}).annotate({ identifier: "CostReportFolder" });
+export { CostReportFolder };
 
 export class CostReportFoldersGroup extends HttpApiGroup.make("costReportFolders")
   .add(
