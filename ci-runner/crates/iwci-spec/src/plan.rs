@@ -121,9 +121,9 @@ impl JobTemplate {
     /// Unknown paths always run it.
     pub fn affected_by(&self, changed_paths: Option<&[String]>) -> bool {
         match changed_paths {
-            Some(paths) if !self.paths.is_empty() => {
-                paths.iter().any(|p| crate::glob::any_match(&self.paths, p))
-            }
+            Some(paths) if !self.paths.is_empty() => paths
+                .iter()
+                .any(|p| crate::glob::filter_matches(&self.paths, p)),
             _ => true,
         }
     }
@@ -204,14 +204,14 @@ impl Event {
 }
 
 impl Triggers {
-    /// Whether an `event` on `branch` that changed `changed_paths` starts a
-    /// run. `None` for the paths means they are not known (a first push, a
-    /// force push), which never filters a run out.
     /// Whether any of the pipeline's schedules falls on `minute`.
     pub fn due(&self, minute: crate::cron::Minute) -> bool {
         self.schedule.iter().any(|c| c.matches(minute))
     }
 
+    /// Whether an `event` on `branch` that changed `changed_paths` starts a
+    /// run. `None` for the paths means they are not known (a first push, a
+    /// force push), which never filters a run out.
     pub fn matches(&self, event: Event, branch: &str, changed_paths: Option<&[String]>) -> bool {
         let filter = match event {
             Event::Push => &self.push,
@@ -223,13 +223,13 @@ impl Triggers {
         let Some(filter) = filter else {
             return false;
         };
-        if !filter.branches.is_empty() && !crate::glob::any_match(&filter.branches, branch) {
+        if !filter.branches.is_empty() && !crate::glob::filter_matches(&filter.branches, branch) {
             return false;
         }
         match changed_paths {
             Some(paths) if !filter.paths.is_empty() => paths
                 .iter()
-                .any(|p| crate::glob::any_match(&filter.paths, p)),
+                .any(|p| crate::glob::filter_matches(&filter.paths, p)),
             _ => true,
         }
     }

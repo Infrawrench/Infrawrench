@@ -457,8 +457,8 @@ impl Validator<'_> {
             f.map(|f| {
                 for (field, globs) in [("branches", &f.branches), ("paths", &f.paths)] {
                     for g in globs {
-                        if let Err(e) = glob::compile(g) {
-                            self.error(format!("on.{name}.{field}"), format!("`{g}`: {e}"));
+                        if let Err(e) = glob::check_filter(g) {
+                            self.error(format!("on.{name}.{field}"), e);
                         }
                     }
                 }
@@ -892,8 +892,8 @@ impl Validator<'_> {
             );
         }
         for p in &job.paths {
-            if let Err(e) = glob::compile(p) {
-                self.error(format!("{path}.paths"), format!("`{p}`: {e}"));
+            if let Err(e) = glob::check_filter(p) {
+                self.error(format!("{path}.paths"), e);
             }
         }
         for k in job.env.keys() {

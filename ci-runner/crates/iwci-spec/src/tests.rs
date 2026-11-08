@@ -457,6 +457,47 @@ fn triggers() {
 }
 
 #[test]
+fn filters_take_exclusions() {
+    let plan = parse(
+        "name: x\non:\n  push:\n    branches: [\"**\", \"!dependabot/**\"]\n    paths: [app/**, \"!app/docs/**\"]\njobs:\n  a:\n    using: builtin:t@1\n    paths: [\"!**/*.md\"]\n",
+        &ctx(),
+    )
+    .unwrap();
+    let t = &plan.triggers;
+    assert!(t.matches(Event::Push, "main", Some(&["app/web/a.ts".into()])));
+    assert!(!t.matches(Event::Push, "dependabot/npm/x", None));
+    assert!(!t.matches(Event::Push, "main", Some(&["app/docs/a.md".into()])));
+    assert!(
+        t.matches(
+            Event::Push,
+            "main",
+            Some(&["app/docs/a.md".into(), "app/web/a.ts".into()])
+        ),
+        "one path let through is enough"
+    );
+    let a = plan.template("a").unwrap();
+    assert!(a.affected_by(Some(&["src/lib.rs".into()])));
+    assert!(!a.affected_by(Some(&["README.md".into(), "docs/x.md".into()])));
+
+    let bad = "name: x\njobs:\n  a:\n    using: builtin:t@1\n    paths: [\"!\"]\n";
+    let err = parse(bad, &ctx()).unwrap_err().to_string();
+    assert!(
+        err.contains("jobs.a.paths") && err.contains("nothing to match"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_unquoted_exclusion_is_an_error_not_a_silent_tag() {
+    let yaml = "name: x\njobs:\n  a:\n    using: builtin:t@1\n    paths:\n      - !docs/**\n";
+    let err = parse(yaml, &ctx()).unwrap_err().to_string();
+    assert!(
+        err.contains("jobs.a.paths") && err.contains("has to be quoted"),
+        "{err}"
+    );
+}
+
+#[test]
 fn job_paths_filter() {
     let plan = parse(include_str!("../../../examples/tests.yml"), &ctx()).unwrap();
     let gofmt = plan.template("gofmt").unwrap();

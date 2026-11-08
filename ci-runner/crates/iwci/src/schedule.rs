@@ -502,7 +502,9 @@ struct State<'p> {
     /// Expanded jobs ready to run.
     queue: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
-    open: HashMap<String, (usize, Vec<JobReport>)>,
+    /// Started templates: their instances' ids in matrix order, and the
+    /// reports of those finished so far.
+    open: HashMap<String, (Vec<String>, Vec<JobReport>)>,
     running: usize,
     reports: HashMap<String, Vec<JobReport>>,
 }
@@ -639,10 +641,19 @@ pub fn run<T: Tools>(
                     let mut s = state.lock().unwrap();
                     s.running -= 1;
                     let entry = s.open.get_mut(&template.key).expect("activated");
-                    entry.0 -= 1;
                     entry.1.push(report);
-                    if entry.0 == 0 {
-                        let (_, reports) = s.open.remove(&template.key).expect("activated");
+                    if entry.1.len() == entry.0.len() {
+                        let (order, mut reports) = s.open.remove(&template.key).expect("activated");
+                        // Matrix entries finish in any order; report them in
+                        // matrix order. The order comes from the instances
+                        // that ran, since a matrix another job set has none
+                        // on its template.
+                        reports.sort_by_key(|r| {
+                            order
+                                .iter()
+                                .position(|id| *id == r.id)
+                                .unwrap_or(usize::MAX)
+                        });
                         finish(&mut s, template, reports);
                         activate(&mut s, plan, options);
                     }
@@ -773,8 +784,8 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 finish(s, template, vec![report]);
             }
             Ok(jobs) => {
-                s.open
-                    .insert(template.key.clone(), (jobs.len(), Vec::new()));
+                let order = jobs.iter().map(|j| j.id.clone()).collect();
+                s.open.insert(template.key.clone(), (order, Vec::new()));
                 // The queue is a stack; push in reverse so entries start in
                 // matrix order.
                 for job in jobs.into_iter().rev() {
@@ -785,7 +796,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
     }
 }
 
-fn finish(s: &mut State<'_>, template: &JobTemplate, mut reports: Vec<JobReport>) {
+fn finish(s: &mut State<'_>, template: &JobTemplate, reports: Vec<JobReport>) {
     let blocks = reports.iter().any(|r| r.blocks);
     let result = if reports
         .iter()
@@ -805,15 +816,6 @@ fn finish(s: &mut State<'_>, template: &JobTemplate, mut reports: Vec<JobReport>
         .first()
         .map(|r| r.outputs.clone())
         .unwrap_or_default();
-    // Matrix entries finish in any order; report them in matrix order.
-    if let Some(instances) = &template.instances {
-        reports.sort_by_key(|r| {
-            instances
-                .iter()
-                .position(|j| j.id == r.id)
-                .unwrap_or(usize::MAX)
-        });
-    }
     s.finished.insert(
         template.key.clone(),
         Finished {

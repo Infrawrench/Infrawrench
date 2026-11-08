@@ -114,6 +114,30 @@ schedule, which in this repository is the proxy Worker (see
 to read a lockfile below the root. pnpm also takes `only: [app/packages/web]`
 to install just those importers' closure.
 
+### Filters
+
+`branches` and `paths` (under `on.push`, `on.pull-request`, and on a job)
+are globs: `*` stops at `/`, `**` crosses it. A pattern starting with `!`
+excludes. Patterns are read in order and the last one that matches
+decides, so a later pattern can include again; a list that starts with an
+exclusion begins from everything. A run or job goes ahead when any changed
+path gets through.
+
+```yaml
+on:
+  push:
+    branches: ["**", "!dependabot/**"] # every branch but Dependabot's
+    paths: [app/**, "!app/docs/**", app/docs/openapi.json]
+jobs:
+  test:
+    paths: ["!**/*.md"] # anything but Markdown
+```
+
+Quote exclusions: YAML reads an unquoted leading `!` as a tag, and the
+parser then reports an empty pattern. When the changed paths are not known
+(a first push or a force push without `--base`), path filters let
+everything through.
+
 ### Jobs
 
 | Key       | Meaning                                                                                                                                                                        |
@@ -131,7 +155,7 @@ to install just those importers' closure.
 | `needs`   | Jobs that must finish first. Naming a matrix job waits for all of its entries.                                                                                                 |
 | `if`      | When the job runs, given how its `needs` went. See below.                                                                                                                      |
 | `outputs` | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
-| `paths`   | Skip the job unless the commit touches one of these globs. A skipped job does not block its dependents.                                                                        |
+| `paths`   | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
 | `timeout` | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
 | `memory`  | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
 | `cache`   | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |

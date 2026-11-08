@@ -74,14 +74,14 @@
           "items": {
             "type": "string"
           },
-          "description": "Branch globs. Empty means every branch."
+          "description": "Branch globs. Empty means every branch. A pattern starting with ! excludes; the last pattern that matches decides, and a list that starts with ! begins from every branch."
         },
         "paths": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Run only when the commit touches one of these path globs."
+          "description": "Run only when the commit touches a path these globs let through. A pattern starting with ! excludes; the last pattern that matches decides, and a list that starts with ! begins from every path."
         }
       }
     },
@@ -318,7 +318,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Skip the job unless the commit touches one of these path globs."
+          "description": "Skip the job unless the commit touches a path these globs let through. A pattern starting with ! excludes; the last pattern that matches decides, and a list that starts with ! begins from every path."
         },
         "timeout": {
           "type": "string",
