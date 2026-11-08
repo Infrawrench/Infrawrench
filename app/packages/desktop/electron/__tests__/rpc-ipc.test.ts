@@ -86,7 +86,7 @@ const run = <A, E>(
   bridge: ReturnType<typeof fakeRenderer>["bridge"],
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(clientLayer(bridge)), Effect.provide(ServerLive), Effect.scoped),
+    effect.pipe(Effect.provide(clientLayer(bridge).pipe(Layer.provide(ServerLive))), Effect.scoped),
   );
 
 describe("Effect RPC over Electron IPC", () => {
