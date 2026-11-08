@@ -59,6 +59,7 @@ If you already know the status or error you are looking at, jump straight to its
 
 **kubectl and access**
 
+- Unable to connect to the server, localhost:8080 refused or x509 errors: [kubectl cannot reach the cluster](/blog/kubectl-unable-to-connect-to-the-server)
 - Forbidden errors: [RBAC permissions](/blog/kubernetes-rbac-forbidden)
 - kubectl exec or port-forward fails: [exec and port-forward errors](/blog/kubernetes-kubectl-exec-port-forward-errors)
 
