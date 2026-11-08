@@ -10,7 +10,7 @@
 # (`tsc --version`), not the tsc-rs release, because that is what a user
 # pins: tsc-rs 0.8.0 reports 7.1.0-dev and publishes as 7.1.0.
 #
-# Needs: git, rustup with wasm32-wasip1, binaryen's wasm-opt 132+, node.
+# Needs: git, rustup, binaryen's wasm-opt 132+, node.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -26,6 +26,9 @@ out="$(out_dir builtin typescript "$TS_VERSION")"
 # compiled once and cached by the runner anyway.
 (
   cd "$src" || exit 1
+  # ts-rust's rust-toolchain.toml pins the compiler but not the target, so
+  # add it to that toolchain (run here, rustup picks the pinned one).
+  rustup target add wasm32-wasip1
   CARGO_PROFILE_WASM_OPT_LEVEL=s \
     WASM_RUSTFLAGS="-C llvm-args=-inlinehint-threshold=150" \
     scripts/wasm/build.sh "$out/module.wasm"

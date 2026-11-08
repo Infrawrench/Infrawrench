@@ -57,5 +57,58 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
-      - name: shellcheck the builtin build scripts
-        run: shellcheck -x builtins/*/build.sh builtins/lib.sh
+      - name: shellcheck the builtin scripts
+        run: shellcheck -x builtins/*/build.sh builtins/lib.sh builtins/test.sh
+
+  # The builtins that are cheap to build, built from their own scripts and
+  # tested twice: the runtime's fixture tests (which skip without fixtures
+  # in the job above, and fail here instead), and builtins/test.sh, which
+  # publishes them to a throwaway store and runs pipelines through `iwci
+  # run`. typescript, oxfmt and bash-node need much larger toolchains and
+  # are tested by ci-runner-builtins.yml.
+  builtins:
+    name: Builtins (gofmt, bash)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Any Go will do: the build script pins its own with GOTOOLCHAIN.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      # Downloads are checked against the content hashes pinned in the
+      # scripts, so a changed upstream package fails here.
+      - name: Build gofmt and the environments
+        run: |
+          bash builtins/gofmt/build.sh
+          bash builtins/environments/build.sh
+
+      # Paths found rather than written down, so a version bump in a build
+      # script needs no edit here.
+      - name: Locate the built fixtures
+        run: |
+          echo "IWCI_TEST_GOFMT_WASM=$(ls "$PWD"/dist/builtin/gofmt/*/module.wasm)" >> "$GITHUB_ENV"
+          echo "IWCI_TEST_WEBC_DIR=$(ls -d "$PWD"/dist/environment/bash/*)" >> "$GITHUB_ENV"
+
+      - name: Runtime tests against the built builtins
+        env:
+          IWCI_REQUIRE_FIXTURES: "1"
+        run: cargo test -p iwci-runtime
+
+      - name: Publish and run them through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh gofmt bash

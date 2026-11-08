@@ -9,8 +9,9 @@ members = [
   "crates/iwci-runtime",
   "crates/iwci",
 ]
-# The builtin tools build for wasm32-wasip1 with their own lockfiles.
-exclude = ["builtins"]
+# The builtin tools build for wasm32-wasip1 with their own lockfiles, and
+# vendor/ holds patched third-party crates (vendor/README.md).
+exclude = ["builtins", "vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -53,3 +54,9 @@ codegen-units = 1
 # TypeScript module; optimise dependencies even in dev.
 [profile.dev.package."*"]
 opt-level = 2
+
+# wasmer-napi 0.705.0 with vendor/wasmer-napi.patch: terminating a job's V8
+# isolates no longer waits for a lock the running script holds, so a job
+# timeout stops a spinning `node`. See vendor/README.md for when to remove it.
+[patch.crates-io]
+wasmer-napi = { path = "vendor/wasmer-napi" }
