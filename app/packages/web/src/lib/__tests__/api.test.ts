@@ -127,3 +127,56 @@ describe("apiPatch", () => {
     );
   });
 });
+
+describe("responses index.html started at boot", () => {
+  type BootWindow = { __IW_BOOT__?: { at: number; responses: Record<string, unknown> } };
+  const bootWindow = window as unknown as BootWindow;
+  const bootResponse = (body: string, status = 200) =>
+    Promise.resolve({ ok: status < 400, status, text: async () => body } as Response);
+
+  beforeEach(() => {
+    locationMock.href = "";
+  });
+
+  afterEach(() => {
+    delete bootWindow.__IW_BOOT__;
+    vi.restoreAllMocks();
+  });
+
+  it("answers the first plain GET of a path from boot, and only the first", async () => {
+    const fn = mockFetch({ ok: true, status: 200, text: async () => '{"from":"network"}' });
+    bootWindow.__IW_BOOT__ = {
+      at: Date.now(),
+      responses: { "/api/auth/me": bootResponse('{"from":"boot"}') },
+    };
+    expect(await apiFetch("/api/auth/me")).toEqual({ from: "boot" });
+    expect(fn).not.toHaveBeenCalled();
+    expect(await apiFetch("/api/auth/me")).toEqual({ from: "network" });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a boot 401 like any other: back through sign-in", async () => {
+    mockFetch({ ok: true, status: 200, text: async () => "" });
+    bootWindow.__IW_BOOT__ = {
+      at: Date.now(),
+      responses: { "/api/auth/me": bootResponse("", 401) },
+    };
+    void apiFetch("/api/auth/me");
+    await vi.waitFor(() => expect(locationMock.href).toMatch(/^\/api\/auth\/sign-in\?return_to=/));
+  });
+
+  it("never answers a write or a stale boot response", async () => {
+    const fn = mockFetch({ ok: true, status: 200, text: async () => '{"from":"network"}' });
+    bootWindow.__IW_BOOT__ = {
+      at: Date.now(),
+      responses: { "/api/x": bootResponse('{"from":"boot"}') },
+    };
+    expect(await apiPost("/api/x", {})).toEqual({ from: "network" });
+    bootWindow.__IW_BOOT__ = {
+      at: Date.now() - 60_000,
+      responses: { "/api/y": bootResponse('{"from":"boot"}') },
+    };
+    expect(await apiFetch("/api/y")).toEqual({ from: "network" });
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+});

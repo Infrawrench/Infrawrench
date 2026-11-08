@@ -7,8 +7,9 @@
  * GKE web pods running `server.ts`) for what needs a long-lived process. For
  * each request it either:
  *
- * - serves the SPA from Workers static assets (`dist/client`), with the same
- *   security headers and hashed-asset 404 rule `server.ts` applies;
+ * - answers the SPA's routes with its shell, and a missing hashed asset with
+ *   the 404 `server.ts` sends (the files themselves never reach the Worker:
+ *   the asset layer serves them near the visitor, headers from `_headers`);
  * - runs the API (`src/api`, the HttpApi router) itself, against Hyperdrive
  *   and the private ClickHouse binding; or
  * - forwards to Node, with `src/edge/gateway-routes.ts` choosing the tier:
@@ -179,22 +180,30 @@ async function needsSession(
   return withEdgeInvocation(env, ctx, () => accounts.accountNeedsSession(accountId));
 }
 
+/**
+ * A non-API request that matched no static file (the asset layer serves the
+ * ones that do without running the Worker; see `assets` in wrangler.jsonc).
+ */
 async function serveAsset(request: Request, env: Env): Promise<Response> {
-  const response = await env.ASSETS.fetch(request);
   const { pathname } = new URL(request.url);
   // A hashed asset that does not exist must 404, never fall back to
   // index.html: a 200 text/html under a .js URL is cached by extension at the
   // CDN for hours, breaking the app for everyone (see server.ts). no-store
   // keeps the miss out of the cache so the browser recovers on reload.
-  if (
-    pathname.startsWith("/assets/") &&
-    response.headers.get("content-type")?.startsWith("text/html")
-  ) {
+  if (pathname === "/assets" || pathname.startsWith("/assets/")) {
     return withSecurityHeaders(
       new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } }),
     );
   }
-  return withSecurityHeaders(response);
+  // Asked again first, so a request that reaches here for a file after all
+  // (`wrangler dev`, a race with a deploy) still gets it.
+  const response = await env.ASSETS.fetch(request);
+  if (response.status !== 404) return withSecurityHeaders(response);
+  // Any other path is a route of the SPA: answer the shell, keeping the
+  // request's conditional headers so a revalidation can still be a 304.
+  return withSecurityHeaders(
+    await env.ASSETS.fetch(new Request(new URL("/", request.url), request)),
+  );
 }
 
 async function handleApi(

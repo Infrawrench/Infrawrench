@@ -7,21 +7,22 @@
  *    `index.html`: `Content-Type` by extension, `Content-Length`,
  *    `Last-Modified`, and a single byte range when one is asked for (no
  *    `ETag`; none was ever sent);
- * 2. a missing hashed asset (`/assets/...`) answers 404 `no-store`, never the
+ * 2. a hashed asset (`/assets/...`) is cached for a year, `immutable`, since
+ *    its name changes with its bytes; a missing one answers 404 `no-store`, never the
  *    SPA shell: during a rolling deploy an old pod can be asked for a new
  *    bundle, and a 200 `text/html` under a `.js` URL is cached by extension at
  *    the CDN for hours, breaking the app for everyone; `no-store` keeps the
  *    miss out of the cache so the browser recovers on the next load;
  * 3. anything else answers with the SPA shell, `index.html`.
  *
- * Every answer carries the security headers. This is byte for byte what the
- * production Hono app (`serveStatic` from `@hono/node-server`) sent, method
- * handling included: HEAD and OPTIONS get the headers and no body, any other
- * method the file.
+ * Every answer carries the security headers. Apart from the hashed assets'
+ * cache header, this is byte for byte what the production Hono app
+ * (`serveStatic` from `@hono/node-server`) sent, method handling included:
+ * HEAD and OPTIONS get the headers and no body, any other method the file.
  */
 import { createReadStream, statSync, type Stats } from "node:fs";
 import { join } from "node:path";
-import { setSecurityHeaders } from "../api/security-headers";
+import { HASHED_ASSET_CACHE_CONTROL, setSecurityHeaders } from "../api/security-headers";
 
 /** Content types by extension; anything else is `application/octet-stream`. */
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
@@ -129,11 +130,12 @@ function byteRange(header: string, size: number): ByteRange | undefined {
   return first < size && first <= last ? { start: first, end: last } : undefined;
 }
 
-function fileResponse(request: Request, path: string, stats: Stats): Response {
+function fileResponse(request: Request, path: string, stats: Stats, hashed = false): Response {
   const headers = new Headers({
     "content-type": contentTypeFor(path),
     "last-modified": stats.mtime.toUTCString(),
   });
+  if (hashed) headers.set("cache-control", HASHED_ASSET_CACHE_CONTROL);
   setSecurityHeaders(headers);
   const size = stats.size;
   if (request.method === "HEAD" || request.method === "OPTIONS") {
@@ -187,9 +189,12 @@ function textResponse(body: string, status: number, extra: Record<string, string
 export function makeStaticClientHandler(root: string): (request: Request) => Promise<Response> {
   return async (request) => {
     const { pathname } = new URL(request.url);
-    const file = resolveFile(root, pathname);
-    if (file) return fileResponse(request, file.path, file.stats);
-    if (pathname === "/assets" || pathname.startsWith("/assets/")) {
+    const hashed = pathname === "/assets" || pathname.startsWith("/assets/");
+    // `_headers` is the edge's header config (`workersAssetHeadersFile`),
+    // which the Workers asset layer never serves either.
+    const file = pathname === "/_headers" ? undefined : resolveFile(root, pathname);
+    if (file) return fileResponse(request, file.path, file.stats, hashed);
+    if (hashed) {
       return textResponse("Not found", 404, { "cache-control": "no-store" });
     }
     const shell = join(root, "index.html");
