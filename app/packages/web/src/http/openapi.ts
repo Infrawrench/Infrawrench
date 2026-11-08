@@ -246,8 +246,19 @@ export function buildOpenApiFragment(domains: readonly Domain[]): OpenApiFragmen
       }
       schemas[name] = schema;
     }
+    // A group whose endpoints are all excluded still emits its tag; publish
+    // only the tags an operation in this domain carries, or the reference
+    // shows empty sections.
+    const used = new Set<string>();
+    for (const item of Object.values(spec.paths)) {
+      for (const method of METHODS) {
+        const opTags = item[method]?.["tags"];
+        if (Array.isArray(opTags))
+          for (const tag of opTags) if (typeof tag === "string") used.add(tag);
+      }
+    }
     for (const tag of spec.tags ?? []) {
-      if (!tags.has(tag.name)) tags.set(tag.name, tag);
+      if (used.has(tag.name) && !tags.has(tag.name)) tags.set(tag.name, tag);
     }
   }
 
