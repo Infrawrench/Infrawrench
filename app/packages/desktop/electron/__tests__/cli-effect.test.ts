@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The effect/cli runner end to end: parsing, rendering and exit codes, with the
 // Electron app object and the token store stubbed. Nothing reaches a network.
+// Pin the cloud URL: env.ts is generated per machine, and CI's points at production.
+vi.mock("../../env", async (original) => ({
+  ...(await original<typeof import("../../env")>()),
+  CLOUD_URL: "http://localhost:3000",
+}));
 vi.mock("electron", () => ({
   app: { getPath: () => "/tmp", getVersion: () => "9.9.9" },
   shell: { openExternal: vi.fn() },

@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // `status-pages`, `declared-incidents`, `issues` and `estimate` on effect/cli:
 // text and `--json` output, refusals and exit codes, against fixtures.
 // Nothing reaches a network or a database.
+// Pin the cloud URL: env.ts is generated per machine, and CI's points at production.
+vi.mock("../../env", async (original) => ({
+  ...(await original<typeof import("../../env")>()),
+  CLOUD_URL: "http://localhost:3000",
+}));
 vi.mock("electron", () => ({
   app: { getPath: () => "/tmp", getVersion: () => "9.9.9" },
   shell: { openExternal: vi.fn() },
