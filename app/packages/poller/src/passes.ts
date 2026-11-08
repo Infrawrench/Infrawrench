@@ -20,6 +20,7 @@
  * Every `run` is defensive: it logs and swallows its own failure, so one
  * broken pass never stops the next, on either runtime.
  */
+import { runCiPass } from "@infrawrench/server-core/ci/pass";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -505,6 +506,16 @@ export const PASSES: readonly Pass[] = [
     name: "revnu-reports",
     runtime: "edge",
     run: guarded("[revnu] report tick failed:", () => runRevnuReportPass()),
+  },
+
+  // CI: dispatch queued runs, follow running ones, close unapproved forks'
+  // runs and send usage to the billing meters. Postgres, the CI proxy,
+  // GitHub and Stripe only, and every step claims its rows, so the edge.
+  {
+    kind: "periodic",
+    name: "ci",
+    runtime: "edge",
+    run: guarded("[ci] tick failed:", () => runCiPass()),
   },
 
   // Retention: idempotent prunes, at most hourly.

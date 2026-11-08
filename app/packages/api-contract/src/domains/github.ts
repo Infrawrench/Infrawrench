@@ -79,7 +79,13 @@ export class GithubGroup extends HttpApiGroup.make("github")
         // Read as sent: a page not on the list returns to the agents page.
         return: Schema.optionalKey(
           documentedAs(
-            Schema.Literals(["agents", "workflows", "settings/github-issues"]).annotate({
+            Schema.Literals([
+              "agents",
+              "workflows",
+              "settings/github-issues",
+              "settings/pr-checks",
+              "ci",
+            ]).annotate({
               description:
                 "The page (under the organization) the install flow returns to. Anything else: `agents`.",
             }),

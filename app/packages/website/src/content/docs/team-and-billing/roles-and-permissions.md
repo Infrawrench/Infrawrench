@@ -126,6 +126,14 @@ Some older custom roles and API keys that granted `dashboards:read` / `dashboard
 
 A `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:write`.
 
+### CI
+
+[CI](../features/ci.md) uses three permissions:
+
+- `ci:read`: [CI](../features/ci.md) runs and usage. Members hold it.
+- `ci:write`: which GitHub accounts run CI, and CI secrets and variables. Admins and owners hold it.
+- `ci:approve`: approving or rejecting CI for pull requests from forks. Admins and owners hold it.
+
 ### Config as code
 
 [Config as code](../features/config-as-code.md) has its own pair:

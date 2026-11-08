@@ -281,6 +281,14 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "runbooks" })).toEqual({ to: "/runbooks" });
   });
 
+  it("returns ci route args, clearing ?run= for the list", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "ci" })).toEqual({ to: "/ci", search: {} });
+    expect(getWorkspaceNavigateArgs({ kind: "ci", runId: "run-1" })).toEqual({
+      to: "/ci",
+      search: { run: "run-1" },
+    });
+  });
+
   it("returns delivery route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({ to: "/delivery" });
   });
@@ -444,6 +452,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the delivery path", () => {
     expect(syncWorkspaceRouteFromPath("/delivery")).toEqual({ kind: "delivery" });
+  });
+
+  it("parses the ci path and its open run", () => {
+    expect(syncWorkspaceRouteFromPath("/ci")).toEqual({ kind: "ci" });
+    expect(syncWorkspaceRouteFromPath("/ci", undefined, "?run=run-1")).toEqual({
+      kind: "ci",
+      runId: "run-1",
+    });
   });
 
   it("parses the query-monitors path", () => {

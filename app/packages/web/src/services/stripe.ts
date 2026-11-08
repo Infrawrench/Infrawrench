@@ -35,6 +35,21 @@ export function getStripeBuildPriceId(): string | null {
 }
 
 /**
+ * Metered CI prices, each bound to the meter its env names
+ * (`INFRAWRENCH_STRIPE_CI_{VCPU,MEMORY,STORAGE}_METER_EVENT`, see
+ * `server-core/src/ci/billing.ts`): vCPU-seconds, memory GiB-seconds and
+ * cache storage GiB-hours. Each optional: one that is unset is left off
+ * subscriptions, and that part of CI goes unbilled.
+ */
+export function getStripeCiPriceIds(): string[] {
+  return [
+    process.env["STRIPE_CI_VCPU_PRICE_ID"],
+    process.env["STRIPE_CI_MEMORY_PRICE_ID"],
+    process.env["STRIPE_CI_STORAGE_PRICE_ID"],
+  ].filter((id): id is string => Boolean(id));
+}
+
+/**
  * One-time price of a single prepaid capacity slot: a seat bought outright for
  * a fixed term rather than rented monthly (see
  * `server-core/billing/capacity-slots.ts`).

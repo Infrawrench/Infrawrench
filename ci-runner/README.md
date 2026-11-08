@@ -7,7 +7,9 @@ a copy-on-write view of that snapshot. A job starts in the time it takes to
 instantiate a module that is already compiled: there is no container to
 pull, no clone per job and no `pnpm install` per job.
 
-It is not wired into the rest of Infrawrench yet. It is a standalone Rust
+The app reaches it through the proxy (`app/packages/ci-proxy`): the GitHub
+App's push and pull request webhooks become runs (`server-core/src/ci/`),
+shown on the **CI** tab of the web and desktop apps. It is a standalone Rust
 workspace, outside the pnpm workspace and `turbo.json`, with its own CI
 (`.github/workflows/ci-runner.yml`).
 
@@ -528,6 +530,7 @@ A request body (for `runs` and `prepare`):
   "default-branch": "main",
   "storage-quota": "10GiB, or bytes; overrides the server's --storage-quota",
   "pipeline": "optional: a pipeline file's text, run instead of the repository's",
+  "ref": "optional: the ref the commit is reachable from, such as refs/pull/12/head; default refs/heads/<branch>",
   "token": "optional: for a private repository; never stored or echoed",
   "secrets": { "NPM_TOKEN": "optional: never stored or echoed, masked in output" },
   "vars": { "REGION": "optional: for ${{ vars.<name> }}" }

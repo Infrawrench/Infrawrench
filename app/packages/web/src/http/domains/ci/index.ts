@@ -1,0 +1,236 @@
+/**
+ * `/api/org/:orgId/ci`: CI on the organization's GitHub repositories. The
+ * logic lives in `server-core/src/ci/`; these handlers gate on the
+ * organization's `ci` feature, map its errors and audit the decisions.
+ */
+import { Effect, Schema } from "effect";
+import { HttpApiBuilder } from "effect/http-api";
+import {
+  CiAccountSchema,
+  CiApi,
+  CiRunDetailSchema,
+  CiRunSchema,
+  CiStatusSchema,
+  CiUsageSchema,
+  CiValuesSchema,
+  badRequest,
+  notFound,
+  Ok,
+} from "@infrawrench/api-contract";
+import { CI_RUN_STATUSES } from "@infrawrench/client-core";
+import { ciStatus, setCiAccount } from "@infrawrench/server-core/ci/accounts";
+import { ciUsage } from "@infrawrench/server-core/ci/billing";
+import {
+  approveRun,
+  CiInputError,
+  dispatchRun,
+  getRun,
+  listRuns,
+  rejectRun,
+} from "@infrawrench/server-core/ci/runs";
+import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
+import { orgHasFeature } from "@infrawrench/server-core/features";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { inputRefusal } from "../../refusals";
+import { respond } from "../../response";
+
+const refusal = (error: unknown) =>
+  error instanceof CiInputError ? inputRefusal(error) : undefined;
+
+/** Everything but the status is a 404 until CI is turned on for the org. */
+const requireCi = Effect.gen(function* () {
+  const principal = yield* OrgPrincipal;
+  const enabled = yield* legacy(() => orgHasFeature(principal.organizationId, "ci"));
+  if (!enabled) return yield* notFound("CI is not turned on for this organization.");
+  return principal;
+});
+
+/** A values scope as sent: an installation id, and a repository or none. */
+const valueScope = (query: { installationId: string; repo?: string }) =>
+  Effect.gen(function* () {
+    const installationId = Number(query.installationId);
+    if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+      return yield* badRequest("installationId must be a GitHub App installation id");
+    }
+    return { installationId, repo: query.repo ? query.repo : null };
+  });
+
+const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
+  handlers
+    .handle("status", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const status = yield* legacy(() => ciStatus(organizationId));
+        return yield* respond(CiStatusSchema)(status);
+      }),
+    )
+    .handle("setAccount", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const account = yield* legacyTry(
+          () =>
+            setCiAccount(
+              organizationId,
+              params.installationId,
+              payload.enabled,
+              session.userId ?? "",
+            ),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: payload.enabled ? "ci.account.enable" : "ci.account.disable",
+            entityType: "ci_account",
+            entityId: String(params.installationId),
+            metadata: { accountLogin: account.accountLogin },
+          }),
+        );
+        return yield* respond(CiAccountSchema)(account);
+      }),
+    )
+    .handle("listRuns", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        // Read as sent: a limit that is not a number is the default, and a
+        // status that is not one lists every run.
+        const asked = Number(query.limit);
+        const limit = Number.isInteger(asked) ? Math.min(Math.max(asked, 1), 200) : 50;
+        const status = CI_RUN_STATUSES.find((s) => s === query.status);
+        const runs = yield* legacy(() =>
+          listRuns(organizationId, { limit, ...(status ? { status } : {}) }),
+        );
+        return yield* respond(Schema.Struct({ runs: Schema.Array(CiRunSchema) }))({ runs });
+      }),
+    )
+    .handle("getRun", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const detail = yield* legacyTry(() => getRun(organizationId, params.runId), refusal);
+        return yield* respond(CiRunDetailSchema)(detail);
+      }),
+    )
+    .handle("approveRun", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        yield* legacyTry(
+          () => approveRun(organizationId, params.runId, session.userId ?? ""),
+          refusal,
+        );
+        // `keepAlive`: on the edge the dispatch outlives the response.
+        yield* fireAndForget(() => keepAlive(dispatchRun(params.runId)));
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.run.approve",
+            entityType: "ci_run",
+            entityId: params.runId,
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("rejectRun", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        yield* legacyTry(
+          () => rejectRun(organizationId, params.runId, session.userId ?? ""),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.run.reject",
+            entityType: "ci_run",
+            entityId: params.runId,
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("listValues", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const scope = yield* valueScope(query);
+        const values = yield* legacyTry(
+          () => listCiValues(organizationId, scope.installationId, scope.repo),
+          refusal,
+        );
+        return yield* respond(CiValuesSchema)(values);
+      }),
+    )
+    .handle("setValue", ({ params, query, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const scope = yield* valueScope(query);
+        yield* legacyTry(
+          () =>
+            setCiValue(
+              organizationId,
+              scope.installationId,
+              scope.repo,
+              params.kind,
+              params.name,
+              payload.value,
+            ),
+          refusal,
+        );
+        // The name and scope only: a secret's value never reaches the log.
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: params.kind === "secrets" ? "ci.secret.set" : "ci.variable.set",
+            entityType: "ci_value",
+            entityId: params.name,
+            metadata: { installationId: scope.installationId, repo: scope.repo },
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("deleteValue", ({ params, query }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const scope = yield* valueScope(query);
+        yield* legacyTry(
+          () =>
+            deleteCiValue(
+              organizationId,
+              scope.installationId,
+              scope.repo,
+              params.kind,
+              params.name,
+            ),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: params.kind === "secrets" ? "ci.secret.delete" : "ci.variable.delete",
+            entityType: "ci_value",
+            entityId: params.name,
+            metadata: { installationId: scope.installationId, repo: scope.repo },
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("usage", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const usage = yield* legacy(() => ciUsage(organizationId, query.month));
+        return yield* respond(CiUsageSchema)(usage);
+      }),
+    ),
+);
+
+export const ciDomain = makeDomain("ci", CiApi, CiHandlers);

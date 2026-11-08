@@ -212,6 +212,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns ci route args, with the open run as a path segment", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "ci" })).toEqual({
+      to: "/org/$orgId/ci",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "ci", runId: "run-1" })).toEqual({
+      to: "/org/$orgId/ci/$runId",
+      params: { orgId: "test-org", runId: "run-1" },
+    });
+  });
+
   it("returns delivery route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({
       to: "/org/$orgId/delivery",
@@ -661,6 +672,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the delivery path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/delivery")).toEqual({ kind: "delivery" });
+  });
+
+  it("parses the ci paths", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/ci")).toEqual({ kind: "ci" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/ci/run-1")).toEqual({
+      kind: "ci",
+      runId: "run-1",
+    });
   });
 
   it("parses the slos list path", () => {

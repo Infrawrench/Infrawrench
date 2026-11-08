@@ -22,12 +22,15 @@ const stripeClient = {
 };
 const mockChatPriceId = vi.fn<() => string | null>(() => "price_chat");
 const mockCapacityPriceId = vi.fn<() => string | null>(() => "price_capacity");
+const mockCiPriceIds = vi.fn<() => string[]>(() => []);
 vi.mock("@/services/stripe", () => ({
   getStripe: () => stripeClient,
   getStripePriceId: () => "price_123",
   getStripeChatPriceId: () => mockChatPriceId(),
   // Unset by default: the build line item is opt-in, same as chat's.
   getStripeBuildPriceId: () => null,
+  // None by default: CI's metered prices are opt-in too.
+  getStripeCiPriceIds: () => mockCiPriceIds(),
   getStripeCapacitySlotPriceId: () => mockCapacityPriceId(),
 }));
 
@@ -241,6 +244,18 @@ describe("Billing routes", () => {
           ],
         }),
       );
+    });
+
+    it("adds CI's metered prices when they are configured", async () => {
+      mockCiPriceIds.mockReturnValueOnce(["price_ci_vcpu", "price_ci_memory"]);
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout5" });
+      await buildApp().request("/checkout", { method: "POST" });
+      const lineItems = mockCheckoutCreate.mock.calls[0]![0].line_items;
+      expect(lineItems.slice(-2)).toEqual([
+        { price: "price_ci_vcpu" },
+        { price: "price_ci_memory" },
+      ]);
     });
 
     it("omits the chat line item when STRIPE_CHAT_PRICE_ID is unset", async () => {

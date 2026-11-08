@@ -348,6 +348,7 @@ const TAB_KINDS = [
   "slos",
   "services",
   "delivery",
+  "ci",
   "workflows",
   "deployments",
   "settings",
@@ -384,6 +385,11 @@ const TabTarget = Schema.Struct({
    * to invalidate the tab: a deleted SLO just lands on the list.
    */
   sloId: Schema.optionalKey(Uuid),
+  /**
+   * Which run the CI tab was last on. Omitted for the list view. Never used
+   * to invalidate the tab: an unknown run just shows its error.
+   */
+  runId: Schema.optionalKey(Uuid),
   /**
    * Which service the Services tab was last on. Omitted for the list and the
    * scorecards view. Never used to invalidate the tab: a deleted service just

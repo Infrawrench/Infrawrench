@@ -28,6 +28,8 @@ export {
   type OrgRoleSummary,
 } from "./permissions";
 export { ALL_PERMISSIONS } from "./permission-catalog";
+export * from "./org-features";
+export * from "./ci";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.
 export * as PricingWarehouse from "./pricing-warehouse";

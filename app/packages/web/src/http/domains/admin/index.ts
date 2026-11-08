@@ -11,10 +11,13 @@ import {
   AdminOrganization,
   badRequest,
   ComplimentaryResult,
+  FeatureResult,
   forbidden,
   notFound,
 } from "@infrawrench/api-contract";
+import { featuresByOrg, orgFeatures, setOrgFeature } from "@infrawrench/server-core/features";
 import { isPlatformAdmin } from "../../../auth/platform-admin";
+import { ensureCiPrices } from "../billing/operations";
 import { db } from "../../../db/client";
 import { organizationMembers, organizations, subscriptions } from "../../../db/schema";
 import { makeDomain } from "../../domain";
@@ -54,7 +57,10 @@ const AdminHandlers = HttpApiBuilder.group(AdminApi, "admin", (handlers) =>
             .leftJoin(subscriptions, eq(subscriptions.organizationId, organizations.id))
             .orderBy(organizations.createdAt),
         );
-        return yield* respond(Schema.Array(AdminOrganization))(rows);
+        const features = yield* legacy(() => featuresByOrg(rows.map((r) => r.id)));
+        return yield* respond(Schema.Array(AdminOrganization))(
+          rows.map((r) => ({ ...r, features: features.get(r.id) ?? [] })),
+        );
       }),
     )
     .handleRaw("setComplimentary", ({ params, request }) =>
@@ -79,6 +85,43 @@ const AdminHandlers = HttpApiBuilder.group(AdminApi, "admin", (handlers) =>
           `[admin] ${session.email} set complimentary=${updated.complimentary} on org ${updated.id}`,
         );
         return yield* respond(ComplimentaryResult)(updated);
+      }),
+    )
+    .handle("setFeature", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const session = yield* requirePlatformAdmin;
+        const [org] = yield* legacy(() =>
+          db
+            .select({ id: organizations.id })
+            .from(organizations)
+            .where(eq(organizations.id, params.orgId))
+            .limit(1),
+        );
+        if (!org) return yield* notFound("Organization not found");
+        yield* legacy(() => setOrgFeature(org.id, params.feature, payload.enabled, session.email));
+        // CI is billed by metered prices that subscriptions made before CI
+        // existed lack. Adding them is best-effort: CI still turns on, and the
+        // log says what to fix by hand.
+        if (params.feature === "ci" && payload.enabled) {
+          yield* legacy(() =>
+            ensureCiPrices(org.id).then(
+              (added) => {
+                if (added.length > 0)
+                  console.log(`[admin] added CI prices ${added.join(", ")} to org ${org.id}`);
+              },
+              (err) =>
+                console.error(
+                  `[admin] could not add CI prices to org ${org.id}'s subscription:`,
+                  err,
+                ),
+            ),
+          );
+        }
+        console.log(
+          `[admin] ${session.email} turned ${params.feature} ${payload.enabled ? "on" : "off"} for org ${org.id}`,
+        );
+        const features = yield* legacy(() => orgFeatures(org.id));
+        return yield* respond(FeatureResult)({ id: org.id, features });
       }),
     ),
 );

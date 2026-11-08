@@ -1240,6 +1240,13 @@
       "when": 1794089259367,
       "tag": "0176_leaked_secret_scan_partial",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1794177351633,
+      "tag": "0177_ci_and_org_features",
+      "breakpoints": true
     }
   ]
 }

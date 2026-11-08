@@ -217,6 +217,14 @@ export function deliveryTabTarget(): WorkspaceTabTarget {
   return { kind: "delivery" };
 }
 
+/**
+ * CI: GitHub accounts, runs and approvals. One tab, optionally remembering
+ * the open run (the SLOs shape).
+ */
+export function ciTabTarget(runId?: string): WorkspaceTabTarget {
+  return { kind: "ci", ...(runId ? { runId } : {}) };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

@@ -43,6 +43,7 @@ import {
   k8sEfficiencyTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  ciTabTarget,
   servicesTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
@@ -165,6 +166,7 @@ const WebServicesPanel = lazyPanel(() =>
 const WebDeliveryPanel = lazyPanel(() =>
   import("./WebDeliveryPanel").then((m) => m.WebDeliveryPanel),
 );
+const WebCiPanel = lazyPanel(() => import("./WebCiPanel").then((m) => m.WebCiPanel));
 const WebEnvironmentsPanel = lazyPanel(() =>
   import("./WebEnvironmentsPanel").then((m) => m.WebEnvironmentsPanel),
 );
@@ -1000,6 +1002,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       );
     case "delivery":
       return <WebDeliveryPanel key={orgId} orgId={orgId} />;
+    case "ci":
+      return (
+        <WebCiPanel
+          key={orgId}
+          orgId={orgId}
+          runId={t.runId}
+          // The URL owns which run is open, the SLOs rule.
+          onSelectRun={(runId) =>
+            void navigate(getWorkspaceNavigateArgs(ciTabTarget(runId ?? undefined)))
+          }
+        />
+      );
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":

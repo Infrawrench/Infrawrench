@@ -38,6 +38,7 @@ import {
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
+  ciTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -61,6 +62,7 @@ export {
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
+  ciTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
@@ -308,6 +310,19 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "ci":
+      // The SLOs shape: the open run is a path segment.
+      return target.runId
+        ? {
+            to: "/org/$orgId/ci/$runId",
+            params: { orgId, runId: target.runId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/ci",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "dns":
       return {
         to: "/org/$orgId/dns",
@@ -683,6 +698,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "delivery") {
     return deliveryTabTarget();
+  }
+  if (s[0] === "ci") {
+    return ciTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

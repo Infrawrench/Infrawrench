@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.99.0",
+    "version": "1.100.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -458,6 +458,12 @@
     },
     {
       "name": "Savings findings"
+    },
+    {
+      "name": "Organization"
+    },
+    {
+      "name": "CI"
     },
     {
       "name": "Config as Code"
@@ -1451,7 +1457,6 @@
           "parsing-rule-group",
           "permission",
           "perplexity-agent-model",
-          "perplexity-async-request",
           "perplexity-router-model",
           "perplexity-skill",
           "perplexity-sonar-model",
@@ -23642,6 +23647,9 @@
           "freezes:read",
           "freezes:write",
           "freezes:override",
+          "ci:read",
+          "ci:write",
+          "ci:approve",
           "incidents:read",
           "incidents:write",
           "tag-policy:override",
@@ -56854,6 +56862,7 @@
               "slos",
               "services",
               "delivery",
+              "ci",
               "workflows",
               "deployments",
               "settings",
@@ -56907,6 +56916,13 @@
             ]
           },
           "sloId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "runId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -62276,6 +62292,597 @@
           "displayName",
           "kind",
           "starredAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgFeatureList": {
+        "type": "object",
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgFeatureName"
+            }
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "additionalProperties": false
+      },
+      "OrgFeatureName": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "ci"
+            ]
+          }
+        ]
+      },
+      "CiUsage": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "vcpuSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              }
+            ]
+          },
+          "memoryGibSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              }
+            ]
+          },
+          "storageGibHours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              }
+            ]
+          },
+          "storageBytes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "month",
+          "runs",
+          "vcpuSeconds",
+          "memoryGibSeconds",
+          "storageGibHours",
+          "storageBytes"
+        ],
+        "additionalProperties": false
+      },
+      "CiValues": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiSecret"
+            },
+            "description": "Secret names only: a secret's value is write-only."
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiVariable"
+            }
+          }
+        },
+        "required": [
+          "installationId",
+          "repo",
+          "secrets",
+          "variables"
+        ],
+        "additionalProperties": false
+      },
+      "CiVariable": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiSecret": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiRunDetail": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/CiRun"
+          },
+          "jobs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CiJobOutput"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "run",
+          "jobs"
+        ],
+        "additionalProperties": false
+      },
+      "CiJobOutput": {
+        "type": "object",
+        "properties": {
+          "pipeline": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "skipped",
+              "error"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pipeline",
+          "id",
+          "name",
+          "status",
+          "reason",
+          "durationMs",
+          "stdout",
+          "stderr"
+        ],
+        "additionalProperties": false
+      },
+      "CiRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repoFullName": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "push",
+              "pull-request"
+            ]
+          },
+          "headRef": {
+            "type": "string"
+          },
+          "sha": {
+            "type": "string"
+          },
+          "pullNumber": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "headRepoFullName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fromFork": {
+            "type": "boolean"
+          },
+          "actorLogin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CiRunStatus"
+          },
+          "statusReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jobs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CiJobSummary"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vcpuSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memoryGibSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "githubUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "repoFullName",
+          "event",
+          "headRef",
+          "sha",
+          "pullNumber",
+          "headRepoFullName",
+          "fromFork",
+          "actorLogin",
+          "status",
+          "statusReason",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "jobs",
+          "vcpuSeconds",
+          "memoryGibSeconds",
+          "githubUrl"
+        ],
+        "additionalProperties": false
+      },
+      "CiJobSummary": {
+        "type": "object",
+        "properties": {
+          "pipeline": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "skipped",
+              "error"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pipeline",
+          "id",
+          "name",
+          "status",
+          "reason",
+          "durationMs"
+        ],
+        "additionalProperties": false
+      },
+      "CiRunStatus": {
+        "type": "string",
+        "enum": [
+          "awaiting_approval",
+          "queued",
+          "running",
+          "passed",
+          "failed",
+          "error",
+          "rejected"
+        ]
+      },
+      "CiAccount": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "accountLogin": {
+            "type": "string"
+          },
+          "accountType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ciEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "installationId",
+          "accountLogin",
+          "accountType",
+          "ciEnabled"
+        ],
+        "additionalProperties": false
+      },
+      "CiStatus": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "CI is turned on for this organization"
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "The runner pool is configured on this server"
+          },
+          "githubConfigured": {
+            "type": "boolean"
+          },
+          "planIncludesCi": {
+            "type": "boolean"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiAccount"
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "configured",
+          "githubConfigured",
+          "planIncludesCi",
+          "accounts"
         ],
         "additionalProperties": false
       },
@@ -77173,6 +77780,37 @@
         ],
         "additionalProperties": false
       },
+      "AdminFeatureResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgFeatureName"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "features"
+        ],
+        "additionalProperties": false
+      },
+      "AdminFeatureUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
       "ComplimentaryResult": {
         "type": "object",
         "properties": {
@@ -77223,6 +77861,13 @@
             "minimum": 0,
             "maximum": 9007199254740991
           },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgFeatureName"
+            },
+            "description": "Rolled-out features a platform admin has turned on for the org"
+          },
           "subscriptionStatus": {
             "anyOf": [
               {
@@ -77248,6 +77893,7 @@
           "complimentary",
           "createdAt",
           "memberCount",
+          "features",
           "subscriptionStatus"
         ],
         "additionalProperties": false
@@ -124609,6 +125255,811 @@
         "operationId": "deleteOrgOrgIdStarredKindObjectId"
       }
     },
+    "/api/org/{orgId}/features": {
+      "get": {
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's features",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgFeatureList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Features still being rolled out are turned on per organization by a platform admin. A feature not listed here is refused by its own routes.",
+        "summary": "List the organization's rolled-out features",
+        "operationId": "getOrgOrgIdFeatures"
+      }
+    },
+    "/api/org/{orgId}/ci": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CI status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiStatus"
+                }
+              }
+            }
+          }
+        },
+        "summary": "CI status and the GitHub accounts that run it",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCi",
+        "description": "_Requires permission: `ci:read`._"
+      }
+    },
+    "/api/org/{orgId}/ci/accounts/{installationId}": {
+      "put": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Run CI, or stop running it, for a connected GitHub account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci:write",
+        "operationId": "putOrgOrgIdCiAccountsInstallationId",
+        "description": "_Requires permission: `ci:write`._"
+      }
+    },
+    "/api/org/{orgId}/ci/runs": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/CiRunStatus"
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CiRun"
+                      }
+                    }
+                  },
+                  "required": [
+                    "runs"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List CI runs, newest first",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiRuns",
+        "description": "_Requires permission: `ci:read`._"
+      }
+    },
+    "/api/org/{orgId}/ci/runs/{runId}": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiRunDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "A CI run, with each job's output once it has finished",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiRunsRunId",
+        "description": "_Requires permission: `ci:read`._"
+      }
+    },
+    "/api/org/{orgId}/ci/runs/{runId}/approve": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Runs CI for this one commit of a pull request from a fork, without the organization's or repository's secrets. A later commit needs approving again.\n\n_Requires permission: `ci:approve`._",
+        "summary": "Approve a fork's pull request commit",
+        "x-required-permission": "ci:approve",
+        "operationId": "postOrgOrgIdCiRunsRunIdApprove"
+      }
+    },
+    "/api/org/{orgId}/ci/runs/{runId}/reject": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Decline to run a fork's pull request commit",
+        "x-required-permission": "ci:approve",
+        "operationId": "postOrgOrgIdCiRunsRunIdReject",
+        "description": "_Requires permission: `ci:approve`._"
+      }
+    },
+    "/api/org/{orgId}/ci/values": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "The GitHub App installation of an account that runs CI."
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A repository's name, for its own values. Omitted: the whole account's."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Names, and variables' values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiValues"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A repository's own value overrides the account's of the same name. Pipelines read them as `${{ secrets.NAME }}` and `${{ vars.NAME }}`; a fork's pull request gets variables but never secrets.\n\n_Requires permission: `ci:write`._",
+        "summary": "List an account's or a repository's CI secrets and variables",
+        "x-required-permission": "ci:write",
+        "operationId": "getOrgOrgIdCiValues"
+      }
+    },
+    "/api/org/{orgId}/ci/values/{kind}/{name}": {
+      "put": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "secrets",
+                "variables"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "The GitHub App installation of an account that runs CI."
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A repository's name, for its own values. Omitted: the whole account's."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Set a CI secret or variable",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci:write",
+        "operationId": "putOrgOrgIdCiValuesKindName",
+        "description": "_Requires permission: `ci:write`._"
+      },
+      "delete": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "secrets",
+                "variables"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "The GitHub App installation of an account that runs CI."
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A repository's name, for its own values. Omitted: the whole account's."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Remove a CI secret or variable",
+        "x-required-permission": "ci:write",
+        "operationId": "deleteOrgOrgIdCiValuesKindName",
+        "description": "_Requires permission: `ci:write`._"
+      }
+    },
+    "/api/org/{orgId}/ci/usage": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiUsage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "CI usage in a month: runs, compute and cache storage",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiUsage",
+        "description": "_Requires permission: `ci:read`._"
+      }
+    },
     "/api/org/{orgId}/config/export": {
       "get": {
         "tags": [
@@ -128943,7 +130394,9 @@
               "enum": [
                 "agents",
                 "workflows",
-                "settings/github-issues"
+                "settings/github-issues",
+                "settings/pr-checks",
+                "ci"
               ],
               "description": "The page (under the organization) the install flow returns to. Anything else: `agents`."
             },
@@ -138844,6 +140297,88 @@
           }
         },
         "operationId": "putAdminOrganizationsOrgIdComplimentary",
+        "x-internal": true
+      }
+    },
+    "/api/admin/organizations/{orgId}/features/{feature}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id"
+            },
+            "required": true
+          },
+          {
+            "name": "feature",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/OrgFeatureName"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org's features after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFeatureResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). 403 for everyone else.",
+        "summary": "Turn a rolled-out feature on or off for an org",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminFeatureUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "putAdminOrganizationsOrgIdFeaturesFeature",
         "x-internal": true
       }
     },

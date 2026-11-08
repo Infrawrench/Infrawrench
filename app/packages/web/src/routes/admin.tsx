@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useGT } from "gt-react";
+import type { OrgFeature } from "@infrawrench/client-core";
 import { apiGet, apiPut } from "@/lib/api";
 
 interface AdminOrg {
@@ -10,6 +11,8 @@ interface AdminOrg {
   createdAt: string;
   memberCount: number;
   subscriptionStatus: string | null;
+  /** Rolled-out features turned on for the org (`ORG_FEATURES`). */
+  features: OrgFeature[];
 }
 
 export const Route = createFileRoute("/admin")({
@@ -52,6 +55,24 @@ function AdminPage() {
     }
   }
 
+  async function toggleFeature(org: AdminOrg, feature: OrgFeature) {
+    setBusyOrgId(org.id);
+    setError(null);
+    try {
+      const updated = await apiPut<{ id: string; features: OrgFeature[] }>(
+        `/api/admin/organizations/${encodeURIComponent(org.id)}/features/${feature}`,
+        { enabled: !org.features.includes(feature) },
+      );
+      setOrgs((prev) =>
+        prev?.map((o) => (o.id === updated.id ? { ...o, features: updated.features } : o)),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Failed to update organization"));
+    } finally {
+      setBusyOrgId(null);
+    }
+  }
+
   if (forbidden) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
@@ -80,6 +101,9 @@ function AdminPage() {
         <p className="text-sm text-on-surface-tertiary mb-6">
           {gt(
             "Complimentary organizations get every paid feature, uncapped AI chat, and are never billed.",
+          )}{" "}
+          {gt(
+            "CI is rolled out one organization at a time: turning it on adds CI's metered prices to the organization's subscription.",
           )}
         </p>
 
@@ -107,6 +131,9 @@ function AdminPage() {
                   <th scope="col" className="px-4 py-3 font-medium">
                     {gt("Created")}
                   </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    {gt("CI")}
+                  </th>
                   <th scope="col" className="px-4 py-3 font-medium text-right">
                     {gt("Complimentary")}
                   </th>
@@ -133,6 +160,18 @@ function AdminPage() {
                     </td>
                     <td className="px-4 py-3 text-on-surface-tertiary">
                       {new Date(org.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <label className="flex items-center gap-2 text-xs text-on-surface-secondary">
+                        <input
+                          type="checkbox"
+                          checked={org.features.includes("ci")}
+                          disabled={busyOrgId === org.id}
+                          onChange={() => void toggleFeature(org, "ci")}
+                          aria-label={gt("CI for {org}", { org: org.displayName })}
+                        />
+                        {org.features.includes("ci") ? gt("On") : gt("Off")}
+                      </label>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

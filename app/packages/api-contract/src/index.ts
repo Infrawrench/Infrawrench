@@ -180,6 +180,8 @@ export * from "./domains/ssh-host-keys";
 export * from "./domains/ssh-keys";
 export * from "./domains/ssh-tunnels";
 export * from "./domains/starred";
+export * from "./domains/org-features";
+export * from "./domains/ci";
 export * from "./domains/status-incidents";
 export * from "./domains/status-pages";
 export * from "./domains/storage-transfers";
@@ -336,6 +338,8 @@ import { SshHostKeysApi } from "./domains/ssh-host-keys";
 import { SshKeysApi } from "./domains/ssh-keys";
 import { SshTunnelsApi } from "./domains/ssh-tunnels";
 import { StarredApi } from "./domains/starred";
+import { OrgFeaturesApi } from "./domains/org-features";
+import { CiApi } from "./domains/ci";
 import { StatusIncidentsApi } from "./domains/status-incidents";
 import { StatusPagesApi } from "./domains/status-pages";
 import { StorageTransfersApi } from "./domains/storage-transfers";
@@ -497,6 +501,8 @@ export const API_DEFINITIONS = {
   "ssh-keys": SshKeysApi,
   "ssh-tunnels": SshTunnelsApi,
   starred: StarredApi,
+  orgFeatures: OrgFeaturesApi,
+  ci: CiApi,
   "status-incidents": StatusIncidentsApi,
   "status-pages": StatusPagesApi,
   "storage-transfers": StorageTransfersApi,

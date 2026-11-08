@@ -38,6 +38,7 @@ import {
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
+  ciTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -90,6 +91,7 @@ export {
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
+  ciTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -222,6 +224,14 @@ export function getWorkspaceNavigateArgs(
       return { to: "/query-monitors", ...(replace ? { replace: true } : {}) };
     case "delivery":
       return { to: "/delivery", ...(replace ? { replace: true } : {}) };
+    case "ci":
+      // The SLOs rule: search passed explicitly so going back to the list
+      // CLEARS ?run= instead of resolving straight back into the run.
+      return {
+        to: "/ci",
+        search: target.runId ? { run: target.runId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
     case "iac":
@@ -514,6 +524,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "slos") {
     const params = new URLSearchParams(search ?? "");
     return slosTabTarget(params.get("slo") ?? undefined);
+  }
+  if (segments[0] === "ci") {
+    const params = new URLSearchParams(search ?? "");
+    return ciTabTarget(params.get("run") ?? undefined);
   }
   if (segments[0] === "services") {
     const params = new URLSearchParams(search ?? "");

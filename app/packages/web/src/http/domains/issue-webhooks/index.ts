@@ -21,6 +21,13 @@ import { Effect, Layer, Predicate } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { findJiraWebhookByToken, touchJiraWebhookDelivery } from "@infrawrench/server-core/jira";
+import { parseCiEvent } from "@infrawrench/server-core/ci/events";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import {
+  acceptCiEvent,
+  announceAwaitingApproval,
+  dispatchRun,
+} from "@infrawrench/server-core/ci/runs";
 import {
   findLinearWebhookByToken,
   touchLinearWebhookDelivery,
@@ -45,7 +52,7 @@ import {
   Unauthorized,
 } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { legacy, legacyTry } from "../../legacy";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { respond } from "../../response";
 
@@ -141,6 +148,27 @@ const GithubHandlers = HttpApiBuilder.group(IssueWebhooksApi, "githubIssueWebhoo
       // GitHub sends `ping` when the webhook is saved; answering it keeps the
       // App's delivery log green.
       if (event === "ping") return yield* respond(PingAcknowledged)({ ok: true });
+      // Pushes and pull requests start CI runs, for organizations that run CI
+      // on the repository's GitHub account. Recorded now; the dispatch (or,
+      // for a fork, the "waiting for a maintainer" check) happens after the
+      // answer, and the CI poller pass retries anything it does not finish.
+      if (event === "push" || event === "pull_request") {
+        const ciEvent = parseCiEvent(event, parseJson(body));
+        if (!ciEvent) return HttpServerResponse.empty({ status: 202 });
+        const accepted = yield* legacyTry(
+          () => acceptCiEvent(ciEvent),
+          (err) => {
+            console.error("[ci] webhook failed:", err);
+            return new InternalServerError({ error: "Webhook processing failed" });
+          },
+        );
+        if (accepted?.status === "queued") {
+          yield* fireAndForget(() => keepAlive(dispatchRun(accepted.id)));
+        } else if (accepted?.status === "awaiting_approval") {
+          yield* fireAndForget(() => keepAlive(announceAwaitingApproval(accepted.id)));
+        }
+        return HttpServerResponse.empty({ status: 202 });
+      }
       return yield* applying("GitHub", () =>
         applyGithubWebhook(parseGithubWebhook(event, parseJson(body))),
       );
