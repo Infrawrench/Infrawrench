@@ -34,7 +34,7 @@ export function EmbedBrand({ kind }: { kind: EmbedKind }) {
       rel="noopener"
       onClick={() => clicked(kind, "brand")}
     >
-      <img src="/icon.png" width={22} height={22} alt="" style={{ borderRadius: 5 }} />
+      <img src="/icon.svg" width={22} height={22} alt="" />
       {/* i18n-ignore: product name */}
       <span className="font-extrabold text-ink">Infrawrench</span>
       <span className="font-medium text-ink-2">{gt("Instances")}</span>

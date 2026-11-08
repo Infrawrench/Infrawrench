@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <mask id="iw-wrench-cut" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600">
+      <rect x="-300" y="-300" width="600" height="600" fill="#fff"/>
+      <path d="M-34 -240H34V-112Q34 -98 20 -98H-20Q-34 -98 -34 -112Z" fill="#000"/>
+      <circle cx="0" cy="128" r="22" fill="#000"/>
+    </mask>
+  </defs>
+  <g transform="translate(256 256) rotate(45) translate(0 16)">
+    <g mask="url(#iw-wrench-cut)" fill="currentColor">
+      <circle cx="0" cy="-114" r="88"/>
+      <path d="M-34 100V20C-34 -10 -44 -34 -64 -60H64C44 -34 34 -10 34 20V100Z"/>
+      <circle cx="0" cy="128" r="48"/>
+    </g>
+  </g>
+</svg>

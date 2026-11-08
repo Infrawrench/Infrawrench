@@ -50,7 +50,7 @@ export function Nav() {
         <div className="nav-inner">
           {/* The site's own home: every service. Logo and name are one link to it. */}
           <Link className="nav-logo" href={localePath(locale, "/")}>
-            <img src="/icon.png" width={28} height={28} alt="" style={{ borderRadius: 6 }} />
+            <img src="/icon.svg" width={28} height={28} alt="" />
             {/* i18n-ignore: product name */}
             <span className="nav-logo-text">Infrawrench</span>
             <span className="nav-logo-sub">{gt("Instances")}</span>

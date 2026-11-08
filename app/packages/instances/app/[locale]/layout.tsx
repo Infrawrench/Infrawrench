@@ -26,7 +26,12 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
         "Instance specs and prices for AWS, Azure, Google Cloud, Alibaba Cloud, Oracle Cloud, IBM Cloud, Hetzner, OVHcloud and RunPod, with their full history.",
       ),
     ),
-    icons: { icon: "/icon.png" },
+    icons: {
+      icon: [
+        { url: "/icon.svg", type: "image/svg+xml" },
+        { url: "/icon.png", type: "image/png" },
+      ],
+    },
   };
 }
 

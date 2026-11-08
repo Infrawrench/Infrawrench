@@ -20,11 +20,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: "portrait",
   userInterfaceStyle: "dark",
   newArchEnabled: true,
-  // Both icons derive from the website's `public/icon.png`, which is a rounded
-  // badge floating on transparency. iOS rejects an alpha channel and masks its
-  // own corners, so `icon.png` is the badge cropped to its bounds and made
-  // opaque. Android composites `adaptiveIcon` itself, so that one keeps the
-  // transparency and is inset to ~62% to survive the circular safe zone.
+  // Both icons are rendered from `brand/logo.svg` by `brand/build.sh`. iOS
+  // rejects an alpha channel and masks its own corners, so `icon.png` is the
+  // tile full bleed and opaque. Android composites `adaptiveIcon` itself: the
+  // foreground is the wrench alone, inset to 60% to survive the circular safe
+  // zone, over the tile's gradient as the background layer.
   icon: "./assets/icon.png",
   ios: {
     bundleIdentifier: "com.infrawrench.mobile",
@@ -66,7 +66,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     edgeToEdgeEnabled: true,
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
-      backgroundColor: "#0b0d10",
+      backgroundImage: "./assets/adaptive-icon-background.png",
+      backgroundColor: "#f43f5e",
     },
   },
   plugins: [

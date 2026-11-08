@@ -4376,6 +4376,15 @@ Product analytics, web analytics and session replay on the three browser surface
 - **Ingestion goes through PostHog's managed reverse proxy at `hedgehogs.infrawrench.com`**, the package's default `api_host`, with `ui_host` set to `https://us.posthog.com` so toolbar and replay links still open the real app. It is configured in PostHog (Settings, Managed reverse proxy), not in our infrastructure. A first-party host is not on the ad-blocker lists that `*.i.posthog.com` is, so fewer events and replays go missing. The `POSTHOG_HOST` repository variable is unset on purpose; setting it overrides the proxy.
 - **Pin `posthog-js` within pnpm's minimum release age.** It publishes several times a day; let the range resolve to an aged version rather than adding a `minimumReleaseAgeExclude` entry. Its `core-js` dependency's postinstall is disallowed in `allowBuilds`.
 
+## Brand assets (`brand/`)
+
+`brand/logo.svg` is the logo's single source: a 512 x 512 rounded tile (pink `#ec4899` through rose `#f43f5e` to orange `#fb923c`, bottom left to top right) with a white combination wrench built from three primitives and a mask, so it stays crisp from 16 px to 1024 px. `brand/build.sh` (needs librsvg's `rsvg-convert`) derives everything else from it and writes them into the packages; rerun it after any change to the SVG and commit the outputs. Nothing builds them at install or deploy time.
+
+- **Variants are line edits of the one file, not copies.** Every element of the tile carries an id starting `iw-tile`, so the script drops those lines for `brand/mark.svg` (the wrench alone, the Android adaptive foreground), strips `rx` for the full-bleed square iOS wants (it masks its own corners and rejects alpha), and drops the wrench group for the adaptive background. A new tile element needs that id prefix or it leaks into the mark.
+- **Vector where the consumer takes it**: `web/public/favicon.svg`, `website/public/icon.svg`, `instances/public/icon.svg` (favicons with the PNG as fallback, and the navs), and `vscode/media/activity.svg` (the mark in `currentColor`; VS Code uses it as a mask).
+- **PNG where it does not**: electron-builder (`desktop/build/icon.png`, the tile at 824 on a 1024 canvas per Apple's grid), Expo (`mobile/assets/*`), Raycast, the VS Code Marketplace, Satori (`instances/lib/og-logo.png`), and the OAuth client documents' `logo_uri` (`website/public/icon.png`).
+- `rsvg-convert` refuses `<image>` hrefs outside the wrapper's own directory and renders them blank without an error, which is why the padded variants nest the source inline (`inset` in the script).
+
 ## website package — Astro on Cloudflare Workers
 
 Public landing site + releases proxy for the desktop app. The GH repo `Infrawrench/Infrawrench` is private, but releases need to be downloadable; the worker proxies them with a server-side fine-grained PAT and caches at the edge.

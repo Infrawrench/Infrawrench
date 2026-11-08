@@ -9,7 +9,12 @@ type Params = Promise<{ locale: string }>;
 export const metadata: Metadata = {
   metadataBase: new URL("https://instances.infrawrench.com"),
   title: "Infrawrench Instances",
-  icons: { icon: "/icon.png" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+  },
   // The player for a page that is itself indexed.
   robots: { index: false, follow: false },
 };

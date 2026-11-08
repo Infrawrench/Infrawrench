@@ -27,6 +27,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <title>{pageTitle}</title>
     {description && <meta name="description" content={description} />}
     {noindex && <meta name="robots" content="noindex" />}
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="icon" href="/icon.png" type="image/png" />
     <link rel="canonical" href={canonical} />
     <link rel="alternate" type="application/rss+xml" title="Infrawrench blog" href="/blog/rss.xml" />
