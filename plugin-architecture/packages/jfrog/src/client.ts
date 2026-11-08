@@ -25,6 +25,7 @@ import type { JfrogContext } from "./api.js";
 import {
   accessPaged,
   encodePath,
+  JfrogApiError,
   jfrogFetch,
   jfrogText,
   normaliseBaseUrl,
@@ -343,27 +344,83 @@ export class JfrogClient implements PluginClient {
     });
   }
 
+  /**
+   * The newest violations. v1 documents a 429 for "a database query limitation", and
+   * JFrog's v2 page says v1 is cut short with a 429 past 50,000 matching violations
+   * (#849). Only then is the cursor route asked: it needs Xray 3.152.0 and the system
+   * property `server.api.v2.violations.enabled`, and answers 404 without it. Asking v1
+   * first keeps every Xray that reads today on the exact request it reads with.
+   *
+   * A v1 429 that v2 cannot answer still fails the type. JFrog Cloud also throttles with
+   * a 429 and documents no header or body that tells the two apart, so reading it as a
+   * refusal would hide a throttle, which must fail the type.
+   */
   private violations(filters: Record<string, string> = {}): Promise<XrayViolation[]> {
     const path = "/xray/api/v1/violations";
     return noneWithoutXray(async () => {
-      const res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
-        method: "POST",
-        body: {
-          filters,
-          pagination: {
-            order_by: "created",
-            direction: "desc",
-            limit: VIOLATIONS_LIMIT,
-            offset: 1,
+      let res: { violations?: XrayViolation[] | null } | undefined;
+      try {
+        res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
+          method: "POST",
+          body: {
+            filters,
+            pagination: {
+              order_by: "created",
+              direction: "desc",
+              limit: VIOLATIONS_LIMIT,
+              offset: 1,
+            },
           },
-        },
-      });
+        });
+      } catch (err) {
+        if (statusOf(err) !== 429) throw err;
+        return this.violationsByCursor(filters, err);
+      }
       return requireListPage(res?.violations, {
         vendor: "JFrog Xray",
         path,
         key: "violations",
       });
     });
+  }
+
+  /**
+   * The first page of `POST /xray/api/v2/violations`, after v1 answered with a
+   * 429. `full` details are the ones v1 sends, so `violation_details_url`, which keys each
+   * row, is the same. v2 orders by `updated` (`created` is only an alias for it), so the
+   * window is the newest by update rather than by creation. Any failure here throws v1's
+   * 429, which is what the type failed with before.
+   */
+  private async violationsByCursor(
+    filters: Record<string, string>,
+    refused: unknown,
+  ): Promise<XrayViolation[]> {
+    const path = "/xray/api/v2/violations";
+    let res: { violations?: XrayViolation[] | null } | undefined;
+    try {
+      res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
+        method: "POST",
+        body: {
+          filters,
+          pagination: {
+            order_by: "updated",
+            direction: "desc",
+            limit: VIOLATIONS_LIMIT,
+            include_details: "full",
+          },
+        },
+      });
+    } catch {
+      throw refused instanceof JfrogApiError
+        ? new JfrogApiError(
+            429,
+            `${refused.message}. Past 50,000 matching violations Xray answers this route with a 429; ` +
+              "an Xray 3.152.0 or later with the system property server.api.v2.violations.enabled " +
+              "set is read through the cursor route instead.",
+          )
+        : refused;
+    }
+    return requireListPage(res?.violations, { vendor: "JFrog Xray", path, key: "violations" });
   }
 
   private user(name: string): Promise<AccessUser> {
