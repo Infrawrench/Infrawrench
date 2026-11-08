@@ -29,6 +29,7 @@ import {
   buildContext,
   ConsulApiError,
   consulFetch,
+  consulRequest,
   encodeKey,
   isPermissionRefused,
   joinId,
@@ -206,6 +207,18 @@ interface AgentSelf {
   Config?: { Datacenter?: string; NodeName?: string; Server?: boolean; Version?: string };
 }
 
+/**
+ * Names the rows a filtered list left out as unread, so a sync keeps them. A token that
+ * is always narrow therefore never prunes a row deleted upstream from these parts: the
+ * cost of not deleting what the token simply cannot see. Where the host keeps no rows
+ * (the desktop, whose lists prune nothing, or a workflow's own call) this answers false,
+ * and the rows the token can read are still the whole answer: there is nothing more this
+ * token can read, so returning them is not returning part of what it could.
+ */
+function keepFilteredRows(idPrefixes: readonly string[]): void {
+  reportUnreadListPart({ idPrefixes });
+}
+
 export class ConsulClient implements PluginClient {
   private readonly ctx: ConsulContext;
 
@@ -249,17 +262,38 @@ export class ConsulClient implements PluginClient {
   }
 
   /** One read: Consul's lists have no pages. Go encodes a nil slice as a bare null, which is empty. */
-  private async rows<T>(path: string): Promise<T[]> {
-    const body = await this.get<T[] | null | undefined>(path);
-    return body === null ? [] : requireListPage(body, { vendor: "Consul", path, key: null });
+  private async readRows<T>(path: string): Promise<{ rows: T[]; filteredByAcls: boolean }> {
+    const { body, filteredByAcls } = await consulRequest<T[] | null | undefined>(this.ctx, path);
+    const rows = body === null ? [] : requireListPage(body, { vendor: "Consul", path, key: null });
+    return { rows, filteredByAcls };
   }
 
-  private async serviceTags(): Promise<Record<string, string[]>> {
+  private async rows<T>(path: string): Promise<T[]> {
+    return (await this.readRows<T>(path)).rows;
+  }
+
+  /**
+   * The rows of a list a sync prunes against. Consul answers a token it filtered with a
+   * 200 and only what the token may read, and says so with a header, so the rows it left
+   * out are named as unread and stay rather than being pruned as deleted. `idPrefixes`
+   * is the part of the type this list stands for: the whole type unless the type is read
+   * as several lists.
+   */
+  private async listed<T>(path: string, idPrefixes: readonly string[] = [""]): Promise<T[]> {
+    const { rows, filteredByAcls } = await this.readRows<T>(path);
+    if (filteredByAcls) keepFilteredRows(idPrefixes);
+    return rows;
+  }
+
+  private async serviceTags(keepFiltered = false): Promise<Record<string, string[]>> {
     const path = "/catalog/services";
-    const body = await this.get<Record<string, string[]> | null | undefined>(path);
+    const { body, filteredByAcls } = await consulRequest<
+      Record<string, string[]> | null | undefined
+    >(this.ctx, path);
     if (body === null) return {};
     if (typeof body !== "object" || Array.isArray(body))
       throw new ListPageError({ vendor: "Consul", path, key: null, found: body });
+    if (keepFiltered && filteredByAcls) keepFilteredRows([""]);
     return body;
   }
 
@@ -325,7 +359,9 @@ export class ConsulClient implements PluginClient {
     const lists = await Promise.all(
       CONFIG_KINDS.map(async (k) => {
         try {
-          return await this.optional(this.rows<ConfigEntry>(`/config/${k}`));
+          return await this.optional(
+            this.listed<ConfigEntry>(`/config/${k}`, [`${accountId}:consul-config-entry:${k}/`]),
+          );
         } catch (err) {
           // Consul answers a kind it does not know with a plain 500. Community Edition does
           // for control-plane-request-limit, and an older server for any newer kind.
@@ -354,7 +390,7 @@ export class ConsulClient implements PluginClient {
   }
 
   private async policies(accountId: string): Promise<ResourceInstance[]> {
-    const listed = await this.optional(this.rows<AclPolicy>("/acl/policies"));
+    const listed = await this.optional(this.listed<AclPolicy>("/acl/policies"));
     const out: AclPolicy[] = [];
     const reads = Math.min(listed.length, MAX_POLICY_RULE_READS);
     for (let i = 0; i < reads; i += POLICY_READ_BATCH) {
@@ -387,7 +423,7 @@ export class ConsulClient implements PluginClient {
         return [await this.cluster(accountId)];
       case "consul-node": {
         const [nodes, checks] = await Promise.all([
-          this.rows<CatalogNode>("/catalog/nodes"),
+          this.listed<CatalogNode>("/catalog/nodes"),
           this.checksOrRefused(this.checks()),
         ]);
         return nodes.map((n) =>
@@ -400,7 +436,7 @@ export class ConsulClient implements PluginClient {
       }
       case "consul-service": {
         const [services, checks] = await Promise.all([
-          this.serviceTags(),
+          this.serviceTags(true),
           this.checksOrRefused(this.checks()),
         ]);
         return Object.entries(services).map(([name, tags]) =>
@@ -416,12 +452,12 @@ export class ConsulClient implements PluginClient {
         );
       }
       case "consul-check":
-        return withinListCap(await this.checks(), MAX_CHECKS, {
+        return withinListCap(await this.listed<Check>("/health/state/any"), MAX_CHECKS, {
           vendor: "Consul",
           path: "/health/state/any",
         }).map((c) => mapCheck(accountId, c));
       case "consul-intention":
-        return (await this.optional(this.rows<Intention>("/connect/intentions"))).map((i) =>
+        return (await this.optional(this.listed<Intention>("/connect/intentions"))).map((i) =>
           mapIntention(accountId, i),
         );
       case "consul-config-entry":
@@ -429,23 +465,23 @@ export class ConsulClient implements PluginClient {
       case "consul-acl-policy":
         return this.policies(accountId);
       case "consul-acl-role":
-        return (await this.optional(this.rows<AclRole>("/acl/roles"))).map((r) =>
+        return (await this.optional(this.listed<AclRole>("/acl/roles"))).map((r) =>
           mapRole(accountId, r),
         );
       case "consul-acl-token":
-        return (await this.optional(this.rows<AclToken>("/acl/tokens"))).map((t) =>
+        return (await this.optional(this.listed<AclToken>("/acl/tokens"))).map((t) =>
           mapToken(accountId, t),
         );
       case "consul-session":
-        return (await this.rows<Session>("/session/list")).map((s) => mapSession(accountId, s));
+        return (await this.listed<Session>("/session/list")).map((s) => mapSession(accountId, s));
       case "consul-peering":
-        return (await this.optional(this.rows<Peering>("/peerings"))).map((p) =>
+        return (await this.optional(this.listed<Peering>("/peerings"))).map((p) =>
           mapPeering(accountId, p),
         );
       case "consul-namespace":
         return (
           await this.optional(
-            this.rows<{
+            this.listed<{
               Name?: string;
               Description?: string;
               Partition?: string;
@@ -455,7 +491,7 @@ export class ConsulClient implements PluginClient {
         ).map((n) => this.mapNamespace(accountId, n));
       case "consul-partition":
         return (
-          await this.optional(this.rows<{ Name?: string; Description?: string }>("/partitions"))
+          await this.optional(this.listed<{ Name?: string; Description?: string }>("/partitions"))
         ).map((p) =>
           instance(
             accountId,

@@ -1,12 +1,14 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConsulApiError, normaliseAddress } from "../api.js";
 import { ConsulClient, configTemplate, pickerList } from "../client.js";
 import { consulTerraformExport } from "../terraform.js";
 import type { Call } from "./helpers.js";
-import { makeHttp } from "./helpers.js";
+import { blockNetwork, makeHttp } from "./helpers.js";
 
 const ACCOUNT = "acct";
+
+blockNetwork();
 
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
@@ -481,6 +483,108 @@ describe("lists a sync prunes against", () => {
     it("the service map reads a bare null as empty", async () => {
       const { c } = client(() => ({ text: "null" }));
       expect(await c.listResources("consul-service", ACCOUNT)).toEqual([]);
+    });
+  });
+
+  describe("a list Consul filtered by the token's ACLs", () => {
+    // https://developer.hashicorp.com/consul/api-docs/api-structure#results-filtered-by-acls
+    const FILTERED = { "X-Consul-Results-Filtered-By-ACLs": "true" };
+
+    // One row per synced list, keyed by the path the type is read from.
+    const LISTS: Array<[typeId: string, path: string, body: unknown]> = [
+      ["consul-node", "/v1/catalog/nodes", [{ Node: "n1" }]],
+      ["consul-service", "/v1/catalog/services", { web: [] }],
+      ["consul-check", "/v1/health/state/any", checks(1)],
+      ["consul-intention", "/v1/connect/intentions", [{ SourceName: "a", DestinationName: "b" }]],
+      ["consul-session", "/v1/session/list", [{ ID: "s1", Node: "n1" }]],
+      ["consul-peering", "/v1/peerings", [{ Name: "east" }]],
+      ["consul-namespace", "/v1/namespaces", [{ Name: "team" }]],
+      ["consul-partition", "/v1/partitions", [{ Name: "eu" }]],
+      ["consul-acl-token", "/v1/acl/tokens", [{ AccessorID: "t1" }]],
+      ["consul-acl-role", "/v1/acl/roles", [{ ID: "r1", Name: "ops" }]],
+      ["consul-acl-policy", "/v1/acl/policies", [{ Name: "p" }]],
+    ];
+    const route =
+      (path: string, body: unknown, headers?: Record<string, string>) => (call: Call) => {
+        if (call.url.pathname === path) return headers ? { body, headers } : body;
+        if (call.url.pathname === "/v1/health/state/any") return [];
+        throw new Error(`unexpected request to ${call.url.pathname}`);
+      };
+
+    it.each(LISTS)(
+      "%s keeps the rows the token cannot see and lists the rest",
+      async (typeId, path, body) => {
+        const parts = trackUnread();
+        const { c } = client(route(path, body, FILTERED));
+        expect(await c.listResources(typeId, ACCOUNT)).toHaveLength(1);
+        expect(parts).toEqual([{ idPrefixes: [""] }]);
+      },
+    );
+
+    it.each(LISTS)("%s names nothing when the header is not set", async (typeId, path, body) => {
+      const parts = trackUnread();
+      const { c } = client(route(path, body));
+      expect(await c.listResources(typeId, ACCOUNT)).toHaveLength(1);
+      expect(parts).toEqual([]);
+    });
+
+    it("reads the header in any case, and only when it says true", async () => {
+      const parts = trackUnread();
+      const nodes = [{ Node: "n1" }];
+      await client(
+        route("/v1/catalog/nodes", nodes, { "x-consul-results-filtered-by-acls": "false" }),
+      ).c.listResources("consul-node", ACCOUNT);
+      expect(parts).toEqual([]);
+      await client(
+        route("/v1/catalog/nodes", nodes, { "X-Consul-Results-Filtered-By-Acls": "true" }),
+      ).c.listResources("consul-node", ACCOUNT);
+      expect(parts).toEqual([{ idPrefixes: [""] }]);
+    });
+
+    it("keeps only the kinds of config entry that were filtered", async () => {
+      const parts = trackUnread();
+      const { c } = client((call) => {
+        const kind = call.url.pathname.replace("/v1/config/", "");
+        if (kind === "service-defaults")
+          return { body: [{ Kind: "service-defaults", Name: "web" }], headers: FILTERED };
+        return [];
+      });
+      const rows = await c.listResources("consul-config-entry", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["service-defaults/web"]);
+      expect(parts).toEqual([{ idPrefixes: [`${ACCOUNT}:consul-config-entry:service-defaults/`] }]);
+    });
+
+    it("a filtered check list under nodes only narrows the counts, and keeps no nodes", async () => {
+      const parts = trackUnread();
+      const { c } = client((call) =>
+        call.url.pathname === "/v1/health/state/any"
+          ? { body: checks(1), headers: FILTERED }
+          : [{ Node: "n1" }],
+      );
+      expect(await c.listResources("consul-node", ACCOUNT)).toHaveLength(1);
+      expect(parts).toEqual([]);
+    });
+
+    it("returns what the token can read where the host keeps no track", async () => {
+      const { c } = client(route("/v1/catalog/nodes", [{ Node: "n1" }, { Node: "n2" }], FILTERED));
+      const rows = await c.listResources("consul-node", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["n1", "n2"]);
+    });
+
+    it("reads the header over plain fetch, when there is no host transport", async () => {
+      const parts = trackUnread();
+      vi.stubGlobal("fetch", async (input: string | URL) => {
+        const url = new URL(String(input));
+        if (url.origin !== "http://consul.internal:8500" || url.pathname !== "/v1/session/list")
+          throw new Error(`unexpected request to ${url.href}`);
+        return new Response(JSON.stringify([{ ID: "s1", Node: "n1" }]), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...FILTERED },
+        });
+      });
+      const c = hostClient(new ConsulClient({ address: "consul.internal:8500", token: "tok" }));
+      expect(await c.listResources("consul-session", ACCOUNT)).toHaveLength(1);
+      expect(parts).toEqual([{ idPrefixes: [""] }]);
     });
   });
 });

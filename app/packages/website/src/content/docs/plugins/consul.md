@@ -39,6 +39,7 @@ Connect a Consul datacenter through any agent's HTTP API. You can see what is re
 ## Tips & limits
 
 - **Private clusters**: the desktop app connects directly. The cloud app reaches a private cluster through an [SSH tunnel](../features/ssh-tunnels.md) on the account. Through a tunnel the connection goes to `127.0.0.1`, so an HTTPS certificate must also cover that address.
+- **A token that can't see everything**: Consul answers a list with only the rows the token's policies allow, and says when it left rows out. When it does, Infrawrench keeps the rows it found earlier that the token can no longer see, rather than treating them as deleted, and updates the rows the token can still read. Config entries are judged one kind at a time, so only the kinds that were narrowed keep their old rows. The cost: while the token stays narrow, something deleted in Consul that the token can't see stays listed until a token that can see it syncs the account. Consul only says a list was narrowed for a real token, so with no token (the anonymous token) rows it hides are removed as usual. A list the token may not read at all also keeps its rows in the cloud app, and the desktop app shows the refusal instead.
 - Every health check is listed, up to 100,000. Past that the list fails rather than showing part of it. Every ACL policy is listed, with rules read for the first 1,000.
 - KV values are read and written as text. A write to a key locked by a session is refused.
 - Metrics are point-in-time readings, so the charts fill in over time.
