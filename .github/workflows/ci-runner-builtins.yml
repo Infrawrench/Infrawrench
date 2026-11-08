@@ -134,6 +134,17 @@ jobs:
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh oxfmt
 
+      # The module, so a failure can be reproduced against a local runner
+      # without the WASIX toolchain.
+      - name: Keep the built module
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: oxfmt-module
+          path: ci-runner/dist/builtin/oxfmt
+          retention-days: 7
+          if-no-files-found: ignore
+
   bash-node:
     name: bash-node (Edge.js on V8)
     # wasmer-napi's build script downloads a prebuilt V8, and there is no

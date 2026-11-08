@@ -11,9 +11,10 @@
 #   builtins/test.sh typescript oxfmt bash-node
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
-# must pass and one ending in `-fails` must fail. A tool that does not
-# resolve or start is an `error`, not a failure, so it cannot hide behind an
-# expected failure.
+# must pass and one ending in `-fails` must fail, for the reason
+# `want_reason` gives (a formatter by changing files, not by exiting with an
+# error). A tool that does not resolve or start is an `error`, not a
+# failure, so it cannot hide behind an expected failure.
 #
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`). SKIP_BUILD=1 publishes what is
@@ -153,6 +154,16 @@ YAML
   esac
 }
 
+# What a `-fails` job's failure reason must contain.
+want_reason() {
+  case "$1" in
+    gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
+    typescript/type-error-fails) echo "exited with 2" ;;
+    bash/false-fails | bash-node/throw-fails) echo "exited with 1" ;;
+    *) echo "" ;;
+  esac
+}
+
 failed=0
 for name in "$@"; do
   file="$SCRATCH/$name.yml"
@@ -175,8 +186,12 @@ for name in "$@"; do
   fi
   # One line per job: its id, the status it had, and the status it needed.
   while IFS=$'\t' read -r id status want reason; do
-    if [[ "$status" == "$want" ]]; then
-      echo "  ok   $id: $status"
+    reason_wanted="$(want_reason "$name/$id")"
+    if [[ "$status" == "$want" && "$reason" == *"$reason_wanted"* ]]; then
+      echo "  ok   $id: $status${reason:+ ($reason)}"
+    elif [[ "$status" == "$want" ]]; then
+      echo "  FAIL $id: $status as expected, but because \"$reason\", not \"$reason_wanted\""
+      failed=1
     else
       echo "  FAIL $id: $status, expected $want ($reason)"
       failed=1
