@@ -19,20 +19,24 @@ import {
 } from "@infrawrench/server-core/leaked-secrets/actions";
 import { listLeakedSecrets } from "@infrawrench/server-core/leaked-secrets/store";
 import { scanOrgLeakedSecretsNow } from "@infrawrench/server-core/leaked-secrets/scan";
+import {
+  badRequest,
+  BadRequest,
+  Conflict,
+  LeakedSecretList,
+  LeakedSecretResponse,
+  LeakedSecretsApi,
+  LeakedSecretScanResult,
+  NotFound,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, BadRequest, Conflict, HttpFailure, NotFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { inputRefusal } from "../../refusals";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  LeakedSecretList,
-  LeakedSecretResponse,
-  LeakedSecretScanResult,
-  LeakedSecretsApi,
-} from "./api";
 
 const DISMISS_REASONS: readonly LeakDismissReason[] = [
   "false-positive",

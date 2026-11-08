@@ -14,6 +14,15 @@ import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { stripOAuthGrantState } from "@infrawrench/plugin-base";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import {
+  badRequest,
+  Ok,
+  ok,
+  SyncApi,
+  SyncPullResponse,
+  SyncPushRequest,
+  SyncStatus,
+} from "@infrawrench/api-contract";
 import type { ApiAuthResult } from "../../../auth/api-auth";
 import { MissingScopeError } from "../../../auth/scope-error";
 import { effectivePermissions } from "../../../auth/effective-permissions";
@@ -28,13 +37,10 @@ import {
 } from "../../../services/object-sharing";
 import { asBearerCaller } from "../../bearer-caller";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { respond } from "../../response";
-import { Ok, ok } from "../../schemas/common";
-import { SyncApi, SyncPullResponse, SyncPushRequest, SyncStatus } from "./api";
 
 /**
  * `requireScope(auth, scope)`, answering its refusal as this surface always

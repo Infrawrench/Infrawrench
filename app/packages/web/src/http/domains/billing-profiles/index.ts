@@ -18,14 +18,20 @@ import {
   listBillingProfiles,
   updateBillingProfile,
 } from "@infrawrench/server-core/cost/billing-profiles";
+import {
+  BadRequest,
+  BillingProfile,
+  BillingProfilesApi,
+  Conflict,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { BillingProfile, BillingProfilesApi } from "./api";
 
 /**
  * The service's write refusals, as the route always answered them. A profile

@@ -21,13 +21,9 @@ import {
 } from "@infrawrench/server-core/cost/currency-settings";
 import { getFxFeedSnapshot, getFxFeedStatus } from "@infrawrench/server-core/cost/fx-feed-store";
 import { feedRateFor, publicationIndexFor } from "@infrawrench/server-core/cost/fx-feed";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, notFound } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  badRequest,
   CurrencyApi,
   CurrencyConfig,
   CurrencySettings,
@@ -36,7 +32,13 @@ import {
   ExchangeRateImportResult,
   ExchangeRateLookup,
   FxFeedRates,
-} from "./api";
+  notFound,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /** A rate or setting the service refused (an unknown currency, a pair to itself). */
 const settingsRefusal = (error: unknown) =>

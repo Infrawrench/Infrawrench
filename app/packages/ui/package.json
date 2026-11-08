@@ -44,11 +44,6 @@
       "import": "./dist/cost/config.js",
       "require": "./dist/cost/config.cjs"
     },
-    "./schemas": {
-      "types": "./dist/schemas.d.ts",
-      "import": "./dist/schemas.js",
-      "require": "./dist/schemas.cjs"
-    },
     "./cost-reports": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -142,6 +137,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@infrawrench/api-contract": "workspace:*",
     "@infrawrench/appstream-core": "workspace:*",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",

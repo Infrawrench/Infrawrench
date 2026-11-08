@@ -18,18 +18,24 @@ import { Effect, Schema } from "effect";
 import type { HttpServerRequest } from "effect/http";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  BadGateway,
+  LinuxAppHostCheck,
+  LinuxAppHostTarget,
+  LinuxAppsApi,
+  LinuxAppSetupRequest,
+  NotFound,
+} from "@infrawrench/api-contract";
 import { HostKeyTrustRequiredError } from "../../../services/ssh-host-keys";
 import { AppsKeyMissingError } from "../../../services/apps-host";
 import { checkAppsHost, installAppsHostRequirements } from "../../../services/apps-preflight";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
-import { BadGateway, NotFound } from "../../errors";
 import { readJson, decodeFirstIssue } from "../../request-body";
 import { fireAndForget, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond, webStream } from "../../response";
 import { hostKeyTrustBody, hostKeyTrustRefusal } from "../ssh-host-key-trust";
-import { LinuxAppHostCheck, LinuxAppHostTarget, LinuxAppSetupRequest, LinuxAppsApi } from "./api";
 
 const messageOr = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;

@@ -1,46 +1,43 @@
 /**
- * Who is calling, as Effect services the auth middleware provides.
+ * Who is calling: the server's half of the principal services.
  *
- * {@link OrgPrincipal} is the org tree's context: the same fields the Hono
- * middlewares set (`session`, `organizationId`, `permissions`, `role`,
- * `elevations`, `apiKey`, `costVisibility`) in one value. Whichever credential
- * authenticated (session cookie, WorkOS bearer, `iwk_` key, agent token), it
- * leaves this in the identical shape, so a permission gate means the same
- * thing for each.
+ * `OrgPrincipal` and `SessionPrincipal` are the contract's
+ * (`@infrawrench/api-contract`, `http/principal.ts`), since the middleware
+ * tags endpoint definitions name provide them. The contract types the part of
+ * the org-tree caller any reader can (`session`, `organizationId`,
+ * `permissions`, `apiKey`); the fields typed by server-core are added here, by
+ * augmenting its `OrgPrincipalValue`, so every handler's `yield* OrgPrincipal`
+ * is fully typed while the contract never imports server code. This module is
+ * imported by every handler that reads the principal, which keeps the
+ * augmentation in each program that needs it.
  */
-import { Context, Effect } from "effect";
+import { Effect } from "effect";
+import {
+  Forbidden,
+  OrgPrincipal,
+  type ApiKeyPrincipal,
+  type SessionPrincipalValue,
+} from "@infrawrench/api-contract";
 import type { ActiveElevation, ResolvedRole } from "@infrawrench/server-core/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import type { CostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import type { CostVisibilityPrincipal } from "@infrawrench/server-core/cost/visibility";
-import type { AuthSession } from "../auth/users";
-import { Forbidden } from "./errors";
 
-/** The `iwk_` key or agent credential the request authenticated with, if any. */
-export interface ApiKeyPrincipal {
-  readonly id: string;
-  readonly scopes: readonly string[];
-  readonly agentRegistrationId?: string | undefined;
+declare module "@infrawrench/api-contract" {
+  /** What the auth chain resolves beside the contract's fields, typed by server-core. */
+  interface OrgPrincipalValue {
+    readonly role: ResolvedRole | null;
+    readonly elevations: readonly ActiveElevation[];
+    readonly costVisibility: CostVisibility;
+  }
 }
 
-export interface OrgPrincipalValue {
-  readonly session: AuthSession;
-  readonly organizationId: string;
-  readonly permissions: readonly string[];
-  readonly role: ResolvedRole | null;
-  readonly elevations: readonly ActiveElevation[];
-  readonly apiKey: ApiKeyPrincipal | undefined;
-  readonly costVisibility: CostVisibility;
-}
-
-export class OrgPrincipal extends Context.Service<OrgPrincipal, OrgPrincipalValue>()(
-  "infrawrench/http/OrgPrincipal",
-) {}
-
-/** The user-scoped surface (`/api/profile`, `/api/orgs`, ...): a person, no org. */
-export class SessionPrincipal extends Context.Service<SessionPrincipal, AuthSession>()(
-  "infrawrench/http/SessionPrincipal",
-) {}
+export {
+  OrgPrincipal,
+  SessionPrincipal,
+  type ApiKeyPrincipal,
+  type OrgPrincipalValue,
+} from "@infrawrench/api-contract";
 
 /** The 403 `requirePermission` has always answered with. */
 export const missingPermission = (permission: string) =>
@@ -77,7 +74,7 @@ export const visibilityUserId = Effect.gen(function* () {
 
 /** The principal in the shape the cost visibility resolver takes. */
 export function costVisibilityPrincipal(p: {
-  readonly session: AuthSession;
+  readonly session: SessionPrincipalValue;
   readonly apiKey: ApiKeyPrincipal | undefined;
 }): CostVisibilityPrincipal {
   return {

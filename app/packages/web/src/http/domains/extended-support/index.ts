@@ -14,14 +14,19 @@ import {
   type ExtendedSupportSettingsPatch,
   type ExtendedSupportSettingsRecord,
 } from "@infrawrench/server-core/extended-support/settings";
+import {
+  BadRequest,
+  badRequest,
+  ExtendedSupportApi,
+  ExtendedSupportListResponse,
+  ExtendedSupportSettings,
+} from "@infrawrench/api-contract";
 import { listExtendedSupportWithBilling } from "../../../services/extended-support";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ExtendedSupportApi, ExtendedSupportListResponse, ExtendedSupportSettings } from "./api";
 
 function toWire(s: ExtendedSupportSettingsRecord) {
   return {

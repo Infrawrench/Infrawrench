@@ -7,10 +7,10 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { Whoami, WhoamiApi } from "@infrawrench/api-contract";
 import { asBearerCaller } from "../../bearer-caller";
 import { makeDomain } from "../../domain";
 import { respond } from "../../response";
-import { Whoami, WhoamiApi } from "./api";
 
 const WhoamiHandlers = HttpApiBuilder.group(WhoamiApi, "whoami", (handlers) =>
   handlers.handle("get", () =>

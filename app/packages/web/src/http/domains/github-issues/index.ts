@@ -32,28 +32,31 @@ import {
 } from "@infrawrench/server-core/github-issues/pull-request";
 import { appPath } from "@infrawrench/server-core/app-url";
 import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadGateway, BadRequest, badRequest, HttpFailure } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { IssueStatusRefreshResult } from "../../schemas/issue-status";
-import { unexpectedAs } from "../../refusals";
 import {
+  BadGateway,
+  BadRequest,
+  badRequest,
   FileGithubIssueResult,
   GithubAssignees,
   GithubBranches,
   GithubIssueLinks,
-  GithubIssueSettings,
   GithubIssuesApi,
+  GithubIssueSettings,
   GithubIssuesStatus,
   GithubLabels,
   GithubPermissionRequired,
   GithubPullRequestPreview,
   GithubPullRequestResult,
+  IssueStatusRefreshResult,
   RouteResolution,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
+import { unexpectedAs } from "../../refusals";
 
 /** An installation lacking a permission: answered once its manage URL is looked up. */
 class NeedsPermission extends Data.TaggedError("NeedsPermission")<{

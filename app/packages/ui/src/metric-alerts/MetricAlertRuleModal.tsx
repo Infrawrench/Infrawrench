@@ -1,5 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { T, Var, useGT } from "gt-react";
+import {
+  MetricAlertRuleInput as MetricAlertRuleInputSchema,
+  decodeForm,
+} from "@infrawrench/api-contract/schemas";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   DEFAULT_METRIC_ALERT_INPUT,
@@ -11,10 +15,6 @@ import {
   type MetricAlertSelectorPreview,
   type MetricSeriesKeyOption,
 } from "./config.js";
-import {
-  MetricAlertRuleInput as MetricAlertRuleInputSchema,
-  decodeForm,
-} from "../schemas/index.js";
 import { Modal } from "../components/Modal.js";
 import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import type { MetricAlertsClient } from "./types.js";

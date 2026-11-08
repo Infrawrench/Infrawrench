@@ -13,6 +13,17 @@ import type { HttpServerRequest } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import type { MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
 import {
+  badRequest,
+  notFound,
+  ok,
+  Unauthorized,
+  Undocumented,
+  WorkflowsApi,
+  WorkflowScheduleResponse,
+  WorkflowSecretAssignment,
+  WorkflowTypingsResponse,
+} from "@infrawrench/api-contract";
+import {
   WorkflowError,
   assignWorkflowSecrets,
   checkWorkflowSource,
@@ -38,20 +49,11 @@ import {
   listAssignedWorkflowSecrets,
 } from "../../../services/workflow-secrets";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound, Unauthorized } from "../../errors";
 import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  WorkflowScheduleResponse,
-  WorkflowSecretAssignment,
-  WorkflowsApi,
-  WorkflowTypingsResponse,
-  Undocumented,
-} from "./api";
 
 /** `fail(c, e)`: the service's refusals carry their status; anything else is a 500. */
 const workflowRefusal: ReadRefusal = (error) =>

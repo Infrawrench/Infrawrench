@@ -10,11 +10,11 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
+import { OrgStatusIncidentsResponse, StatusIncidentsApi } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { OrgStatusIncidentsResponse, StatusIncidentsApi } from "./api";
 
 const StatusIncidentsHandlers = HttpApiBuilder.group(
   StatusIncidentsApi,

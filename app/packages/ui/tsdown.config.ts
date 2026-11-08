@@ -14,9 +14,6 @@ export default defineConfig({
     // React-free cost widget config schemas: imported by the web API for
     // request/config validation as well as by the widget editors.
     "cost/config": "src/cost/config.ts",
-    // React-free Effect schemas for request bodies: the web API decodes with
-    // them and documents them, the forms validate with them.
-    schemas: "src/schemas/index.ts",
     // React-free metric alert rule schemas: same split, same consumer.
     "metric-alerts/config": "src/metric-alerts/config.ts",
     // React-free API key scope catalog. The web test suite asserts it against

@@ -4,15 +4,15 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
-import { TagPolicy } from "@infrawrench/ui/schemas";
+import { TagPolicy } from "@infrawrench/api-contract/schemas";
 import { getOrgTagPolicy, setOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
+import { TagComplianceReport, TagPolicyApi } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { getAccountTagCompliance } from "../../../services/tag-policy";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { TagComplianceReport, TagPolicyApi } from "./api";
 
 const TagPolicyHandlers = HttpApiBuilder.group(TagPolicyApi, "tagPolicy", (handlers) =>
   handlers

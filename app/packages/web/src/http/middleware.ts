@@ -21,7 +21,23 @@ import { randomUUID } from "node:crypto";
 import { Cause, Context, Effect, Layer, Predicate, SchemaIssue } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiError, type HttpApiEndpoint } from "effect/http-api";
-import { RequestErrors } from "./middleware-tags";
+import {
+  BadGateway,
+  BadRequest,
+  Conflict,
+  Forbidden,
+  GatewayTimeout,
+  Gone,
+  InternalServerError,
+  InvalidRequestMessage,
+  NotFound,
+  PaymentRequired,
+  RequestErrors,
+  RequiredPermission,
+  ServiceUnavailable,
+  Unauthorized,
+  UnprocessableEntity,
+} from "@infrawrench/api-contract";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import {
   GATEWAY_ONLY_HEADER,
@@ -34,26 +50,11 @@ import {
   SharingInputError,
   type SharingPrincipal,
 } from "../services/sharing-context";
-import { InvalidRequestMessage, RequiredPermission } from "./annotations";
-import {
-  BadGateway,
-  BadRequest,
-  Conflict,
-  Forbidden,
-  GatewayTimeout,
-  Gone,
-  HttpFailure,
-  InternalServerError,
-  NotFound,
-  PaymentRequired,
-  ServiceUnavailable,
-  Unauthorized,
-  UnprocessableEntity,
-} from "./errors";
+import { HttpFailure } from "./errors";
 import { withLegacyScopes } from "./legacy";
 import { missingPermission, OrgPrincipal, type OrgPrincipalValue } from "./principal";
 
-export { OrgAuth, RequestErrors, SessionAuth } from "./middleware-tags";
+export { OrgAuth, RequestErrors, SessionAuth } from "@infrawrench/api-contract";
 
 export const json = (body: unknown, status: number) =>
   HttpServerResponse.jsonUnsafe(body, { status });

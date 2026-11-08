@@ -7,6 +7,16 @@
 import { Effect, Layer, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { parseCostBasis } from "@infrawrench/client-core";
+import {
+  BadRequest,
+  badRequest,
+  ChangeCostImpactAnnotationResponse,
+  CostAnnotation,
+  CostAnnotationList,
+  CostAnnotationsApi,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   ChangeImpactAnnotationError,
@@ -20,18 +30,10 @@ import {
   updateCostAnnotation,
 } from "../../../services/cost-annotations";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound, badRequest } from "../../errors";
 import { fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  ChangeCostImpactAnnotationResponse,
-  CostAnnotation,
-  CostAnnotationList,
-  CostAnnotationsApi,
-} from "./api";
 
 /** A backwards span, an over-long note, or a report id from another org. */
 const annotationRefusal = (error: unknown) =>

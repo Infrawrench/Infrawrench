@@ -13,6 +13,18 @@ import {
   kubernetesEfficiencyCsv,
   kubernetesEfficiencyExportRecords,
 } from "@infrawrench/client-core";
+import {
+  badRequest,
+  BadRequest,
+  KubernetesEfficiencyOptions,
+  KubernetesEfficiencyReport,
+  KubernetesEfficiencyReportsApi,
+  KubernetesEfficiencyResult,
+  KubernetesEfficiencyRunResult,
+  KubernetesEfficiencyValues,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { CostReportFolderError } from "../../../services/cost-report-folders";
 import {
@@ -27,19 +39,9 @@ import {
   updateKubernetesEfficiencyReport,
 } from "../../../services/k8s-efficiency-reports";
 import { makeDomain } from "../../domain";
-import { badRequest, BadRequest, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  KubernetesEfficiencyOptions,
-  KubernetesEfficiencyReport,
-  KubernetesEfficiencyReportsApi,
-  KubernetesEfficiencyResult,
-  KubernetesEfficiencyRunResult,
-  KubernetesEfficiencyValues,
-} from "./api";
 
 /** A folder the caller cannot file into: 400 with the service's sentence. */
 const folderRefusal = (error: unknown) =>

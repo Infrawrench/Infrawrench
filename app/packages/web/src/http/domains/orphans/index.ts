@@ -6,12 +6,12 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { OrphanListResponse, OrphansApi } from "@infrawrench/api-contract";
 import { listOrphans } from "../../../services/orphans";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { OrphanListResponse, OrphansApi } from "./api";
 
 const OrphansHandlers = HttpApiBuilder.group(OrphansApi, "orphans", (handlers) =>
   handlers.handle("list", () =>

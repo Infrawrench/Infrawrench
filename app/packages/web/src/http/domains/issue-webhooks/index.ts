@@ -37,12 +37,17 @@ import {
   applyJiraWebhook,
   applyLinearWebhook,
 } from "@infrawrench/server-core/issue-status/sync";
+import {
+  InternalServerError,
+  IssueWebhooksApi,
+  notFound,
+  PingAcknowledged,
+  Unauthorized,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { InternalServerError, notFound, Unauthorized } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { respond } from "../../response";
-import { IssueWebhooksApi, PingAcknowledged } from "./api";
 
 /** Bodies past this are not a tracker webhook; refuse before hashing them. */
 const MAX_WEBHOOK_BYTES = 2_000_000;

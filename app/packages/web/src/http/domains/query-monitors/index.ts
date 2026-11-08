@@ -19,15 +19,9 @@ import {
   runMonitorQuery,
   updateQueryMonitor,
 } from "@infrawrench/server-core/query-monitors/store";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { notFound, badRequest } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal } from "../../refusals";
-import { readObjectBody } from "../../request-body";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  badRequest,
+  notFound,
   QUERY_MONITOR_MODES,
   QUERY_MONITOR_OPERATORS,
   QueryMonitor,
@@ -37,7 +31,14 @@ import {
   QueryMonitorsApi,
   QueryMonitorTargets,
   QueryMonitorTestResult,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 type MonitorFields =
   | { readonly ok: true; readonly value: Partial<QueryMonitorInput> }

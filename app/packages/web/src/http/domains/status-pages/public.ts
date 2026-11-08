@@ -13,10 +13,10 @@ import { Effect } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { getPublicStatusPage } from "@infrawrench/server-core/status-pages/store";
-import { HttpFailure, notFound } from "../../errors";
+import { notFound, PublicStatusPage, StatusPagesApi } from "@infrawrench/api-contract";
+import { HttpFailure } from "../../errors";
 import { legacy } from "../../legacy";
 import { respond } from "../../response";
-import { PublicStatusPage, StatusPagesApi } from "./api";
 
 export const PublicStatusHandlers = HttpApiBuilder.group(StatusPagesApi, "publicStatus", (h) =>
   h.handle("read", ({ params }) =>

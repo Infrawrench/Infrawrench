@@ -11,8 +11,9 @@
  * web and desktop keep importing them from there.
  *
  * If you change a response shape on the server, update the corresponding type
- * here too (and the response schema in the route's `web/src/http/domains/<name>/api.ts`,
- * which `respond` checks route tests against).
+ * here too (and the response schema in the route's
+ * `api-contract/src/domains/<name>.ts`, which `respond` checks route tests
+ * against).
  */
 
 import type { AttachTarget, PeerPaneSchema, ShowcaseField } from "@infrawrench/plugin-base";

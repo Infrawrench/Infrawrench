@@ -5,21 +5,24 @@
  */
 import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  BadRequest,
+  badRequest,
+  BillingApi,
+  BillingStatus,
+  InternalServerError,
+  notFound,
+  RevnuConsentRefresh,
+  ServiceUnavailable,
+  StripeRedirectUrl,
+} from "@infrawrench/api-contract";
 import { refreshUnreportedConsent } from "../../../services/revnu-checkout";
 import { getStripeCapacitySlotPriceId } from "../../../services/stripe";
 import { makeDomain } from "../../domain";
-import {
-  BadRequest,
-  InternalServerError,
-  notFound,
-  ServiceUnavailable,
-  badRequest,
-} from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { BillingApi, BillingStatus, RevnuConsentRefresh, StripeRedirectUrl } from "./api";
 import {
   MAX_SLOTS_PER_PURCHASE,
   billingStatus,

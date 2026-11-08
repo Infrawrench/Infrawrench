@@ -7,17 +7,16 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { badRequest, MomentApi, MomentResponse } from "@infrawrench/api-contract";
 import {
   computeMoment,
   MOMENT_FEED_PERMISSIONS,
   parseMomentTimestamp,
 } from "../../../services/moment";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { missingPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { MomentApi, MomentResponse } from "./api";
 
 const MomentHandlers = HttpApiBuilder.group(MomentApi, "moment", (handlers) =>
   handlers.handle("get", ({ query }) =>

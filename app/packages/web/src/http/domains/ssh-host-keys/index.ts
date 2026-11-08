@@ -9,19 +9,17 @@ import { and, asc, eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import { notFound, ok, SshHostKeysApi, TrustHostKeyInput } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { sshHostKeys } from "../../../db/schema";
 import { HostKeyMismatchError, trustHostKey } from "../../../services/ssh-host-keys";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
 import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import { hostKeyTrustRequired } from "../ssh-host-key-trust";
-import { SshHostKeysApi, TrustHostKeyInput } from "./api";
 
 const SshHostKeysHandlers = HttpApiBuilder.group(SshHostKeysApi, "sshHostKeys", (handlers) =>
   handlers

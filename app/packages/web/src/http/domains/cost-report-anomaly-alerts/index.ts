@@ -24,21 +24,24 @@ import {
   loadDestinationCatalog,
   loadOwnedDestinations,
 } from "@infrawrench/server-core/alerts/destinations";
-import { getCostReport } from "../../../services/cost-reports";
-import { filterVisibleObjects } from "../../../services/object-sharing";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, NotFound, notFound } from "../../errors";
-import { decodeAsPayload, readJson } from "../../request-body";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal, visibilityUserId } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  badRequest,
   CostReportAnomalyAlert,
   CostReportAnomalyAlertList,
   CostReportAnomalyAlertsApi,
   CostReportAnomalyAlertTargets,
-} from "./api";
+  NotFound,
+  notFound,
+} from "@infrawrench/api-contract";
+import { getCostReport } from "../../../services/cost-reports";
+import { filterVisibleObjects } from "../../../services/object-sharing";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { decodeAsPayload, readJson } from "../../request-body";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal, visibilityUserId } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * Shape only, as the route's zod schema was: `costReportAnomalyAlertProblem`

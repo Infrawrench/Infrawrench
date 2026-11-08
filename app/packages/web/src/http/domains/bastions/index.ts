@@ -7,18 +7,23 @@ import { HttpApiBuilder } from "effect/http-api";
 import { v4 as uuid } from "uuid";
 import { eq, and, count } from "drizzle-orm";
 import { bastionLiveStatuses } from "@infrawrench/server-core/bastion/registry";
+import {
+  badRequest,
+  Bastion,
+  BastionsApi,
+  CreateBastionResponse,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { bastionVms, accounts } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { keyedHash } from "../../../services/encryption";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { Bastion, BastionsApi, CreateBastionResponse } from "./api";
 
 const BASTION_TOKEN_HASH_DOMAIN = "bastion-agent";
 

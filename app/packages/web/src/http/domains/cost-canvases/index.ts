@@ -16,7 +16,7 @@ import {
   CostCanvasSpec,
   formatCostCanvasSpecSchemaIssues,
   STRICT_PARSE_OPTIONS,
-} from "@infrawrench/ui/schemas";
+} from "@infrawrench/api-contract/schemas";
 import {
   ReportNotificationInputError,
   listReportDeliveryTargets,
@@ -29,6 +29,20 @@ import {
   sendCanvasNotificationNow,
   updateCanvasNotification,
 } from "@infrawrench/server-core/report-delivery/canvas";
+import {
+  BadRequest,
+  badRequest,
+  CanvasConversation,
+  CostCanvas,
+  CostCanvasesApi,
+  CostCanvasNotification,
+  CostCanvasRunResult,
+  DashboardNotificationSendResult,
+  NotFound,
+  notFound,
+  ok,
+  ReportDeliveryTargets,
+} from "@infrawrench/api-contract";
 import {
   CostCanvasInputError,
   createCostCanvas,
@@ -45,24 +59,11 @@ import { renderCanvasForDelivery, renderCostCanvasPdf } from "../../../services/
 import { attachmentDisposition } from "../../../lib/content-disposition";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, NotFound, notFound } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  DashboardNotificationSendResult,
-  ReportDeliveryTargets,
-} from "../../schemas/report-delivery";
 import { readScheduleBody } from "../cost-report-notifications/delivery";
-import {
-  CanvasConversation,
-  CostCanvas,
-  CostCanvasesApi,
-  CostCanvasNotification,
-  CostCanvasRunResult,
-} from "./api";
 
 /** The services' refusals, with the status each carries. */
 const canvasRefusal = (error: unknown): BadRequest | NotFound | undefined => {

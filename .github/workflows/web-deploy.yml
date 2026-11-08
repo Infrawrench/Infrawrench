@@ -69,6 +69,8 @@ on:
       - "app/packages/poller/**"
       - "app/packages/github-watcher/**"
       - "app/packages/ui/**"
+      # The HttpApi definitions the API serves and documents.
+      - "app/packages/api-contract/**"
       # Not imported by web directly, but ui and server-core both depend on it,
       # so a client-core-only change still alters what ships.
       - "app/packages/client-core/**"

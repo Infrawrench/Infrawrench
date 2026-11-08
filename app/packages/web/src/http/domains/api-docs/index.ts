@@ -10,9 +10,9 @@
 import { Effect } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import { ApiDocsApi } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
-import { ApiDocsApi } from "./api";
 import { REFERENCE_PAGE } from "./reference-page";
 
 const ApiDocsHandlers = HttpApiBuilder.group(ApiDocsApi, "apiDocs", (handlers) =>

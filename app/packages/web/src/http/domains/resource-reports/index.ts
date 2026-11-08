@@ -15,7 +15,19 @@ import {
   type ResourceReportConfig as ResourceReportConfigValue,
   type ResourceReportSort,
 } from "@infrawrench/client-core";
-import { ResourceReportConfig, STRICT_PARSE_OPTIONS } from "@infrawrench/ui/schemas";
+import { ResourceReportConfig, STRICT_PARSE_OPTIONS } from "@infrawrench/api-contract/schemas";
+import {
+  BadRequest,
+  badRequest,
+  CostReportFolder,
+  notFound,
+  ok,
+  ResourceReport,
+  ResourceReportOptions,
+  ResourceReportRows,
+  ResourceReportsApi,
+  ResourceReportTagValues,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { CostReportFolderError } from "../../../services/cost-report-folders";
 import {
@@ -33,20 +45,10 @@ import {
   updateResourceReport,
 } from "../../../services/resource-reports";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, notFound } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { CostReportFolder } from "../../schemas/cost-report-folder";
-import {
-  ResourceReport,
-  ResourceReportOptions,
-  ResourceReportRows,
-  ResourceReportsApi,
-  ResourceReportTagValues,
-} from "./api";
 
 const canReadCosts = holdsPermission("costs:read");
 

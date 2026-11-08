@@ -22,7 +22,8 @@
  *
  * `plan` and `apply` hand the raw body to `parseOrgConfigDocument` (the Zod
  * schema in `services/org-config/schema.ts`, which the CLI's error output is
- * worded by), exactly as before; the Effect schemas in `./api.ts` only
+ * worded by), exactly as before; the Effect schemas in its contract
+ * definition (`@infrawrench/api-contract`, `domains/org-config.ts`) only
  * document the document.
  */
 import { Effect } from "effect";
@@ -35,6 +36,13 @@ import {
   type OrgConfigSection,
 } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import {
+  forbidden,
+  OrgConfigApi,
+  OrgConfigApplyResult,
+  OrgConfigDocument,
+  OrgConfigPlan,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { organizations } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
@@ -48,13 +56,11 @@ import {
   planOrgConfig,
 } from "../../../services/org-config";
 import { makeDomain } from "../../domain";
-import { forbidden } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { OrgConfigApi, OrgConfigApplyResult, OrgConfigDocument, OrgConfigPlan } from "./api";
 
 /** `fail(c, e)`: the service's refusal with its status, a plan gate as 402. */
 const orgConfigRefusal: ReadRefusal = (error) => {

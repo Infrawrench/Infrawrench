@@ -17,13 +17,17 @@ import {
   ACCESS_REVIEW_STALE_DAYS_MIN,
 } from "@infrawrench/client-core";
 import { listAccessReview } from "@infrawrench/server-core/access-review/feed";
+import {
+  AccessReviewApi,
+  AccessReviewDismissal,
+  AccessReviewResponse,
+  badRequest,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { AccessReviewApi, AccessReviewDismissal, AccessReviewResponse } from "./api";
 import { dismissFinding, restoreFinding } from "./dismissals";
 
 /**

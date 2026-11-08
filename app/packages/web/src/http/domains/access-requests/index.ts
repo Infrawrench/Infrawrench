@@ -9,7 +9,7 @@
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { eq } from "drizzle-orm";
-import { lengthBetween, minLength } from "@infrawrench/ui/schemas";
+import { lengthBetween, minLength } from "@infrawrench/api-contract/schemas";
 import { db } from "@infrawrench/server-core/db/client";
 import { users } from "@infrawrench/server-core/db/schema";
 import {
@@ -24,14 +24,6 @@ import {
   type AccessRequestStatus,
 } from "@infrawrench/server-core/access/break-glass";
 import { ALL_PERMISSIONS, hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound, Unauthorized } from "../../errors";
-import { decodeFirstIssue, readJsonOr } from "../../request-body";
-import { legacy } from "../../legacy";
-import { OrgPrincipal, requirePermission } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
   AccessDecision,
   AccessDecisionConflict,
@@ -41,7 +33,17 @@ import {
   AccessRequestsApi,
   AccessRevokeConflict,
   AccessWithdrawConflict,
-} from "./api";
+  badRequest,
+  notFound,
+  ok,
+  Unauthorized,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { decodeFirstIssue, readJsonOr } from "../../request-body";
+import { legacy } from "../../legacy";
+import { OrgPrincipal, requirePermission } from "../../principal";
+import { respond } from "../../response";
 
 const STATUSES: readonly AccessRequestStatus[] = ["pending", "approved", "denied", "expired"];
 const isStatus = (value: string): value is AccessRequestStatus =>

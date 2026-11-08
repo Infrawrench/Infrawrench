@@ -17,7 +17,7 @@ import {
 } from "@infrawrench/client-core";
 import { validateAlertEmailRecipients } from "@infrawrench/server-core/alerts/email";
 import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
-import { CostEfficiencySettings } from "@infrawrench/ui/schemas";
+import { CostEfficiencySettings } from "@infrawrench/api-contract/schemas";
 import {
   getOrgAnomalySettings,
   setOrgAnomalySettings,
@@ -27,6 +27,20 @@ import {
   setOrgEfficiencySettings,
 } from "@infrawrench/server-core/cost/efficiency-settings";
 import { isSmsPagingConfigured } from "@infrawrench/server-core/twilio-pager";
+import {
+  badRequest,
+  CostAnomaly,
+  CostAnomalyList,
+  CostAnomalySettingsView,
+  CostDimensionValues,
+  CostQueryResponse,
+  CostsApi,
+  CostStatus,
+  EfficiencyAlertEvents,
+  notFound,
+  ShowbackReport,
+  UntaggedSpendReport,
+} from "@infrawrench/api-contract";
 import { listEfficiencyAlerts } from "../../../services/efficiency-alerts";
 import {
   CostQueryError,
@@ -47,22 +61,9 @@ import { focusExportFilename, streamFocusExport } from "../../../services/focus-
 import { getUntaggedSpendReport } from "../../../services/tag-policy";
 import { getShowbackReport } from "../../../services/showback";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry, LegacyScopes, runInLegacyScopes } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CostAnomaly } from "../../schemas/cost-anomalies";
-import { CostQueryResponse } from "../../schemas/cost-query";
-import {
-  CostAnomalyList,
-  CostDimensionValues,
-  CostAnomalySettingsView,
-  CostsApi,
-  CostStatus,
-  EfficiencyAlertEvents,
-  ShowbackReport,
-  UntaggedSpendReport,
-} from "./api";
 
 const asCostQueryError = (error: unknown) => (error instanceof CostQueryError ? error : undefined);
 

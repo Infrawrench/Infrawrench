@@ -12,12 +12,19 @@ import {
   decideWorkflowApproval,
   listWorkflowApprovals,
 } from "@infrawrench/server-core/workflows/approvals";
+import {
+  badRequest,
+  conflict,
+  notFound,
+  WorkflowApproval,
+  WorkflowApprovalsApi,
+  WorkflowApprovalStatus,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { badRequest, conflict, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { WorkflowApproval, WorkflowApprovalsApi, WorkflowApprovalStatus } from "./api";
 
 const STATUSES = WorkflowApprovalStatus.literals;
 const isStatus = Schema.is(WorkflowApprovalStatus);

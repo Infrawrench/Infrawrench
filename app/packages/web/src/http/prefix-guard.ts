@@ -17,10 +17,10 @@
 import { Cause, Effect, Layer } from "effect";
 import { HttpRouter, type HttpServerRequest, type HttpServerResponse } from "effect/http";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
+import { OrgAuth, SessionAuth } from "@infrawrench/api-contract";
 import type { AuthSession } from "../auth/users";
 import type { Domain } from "./domain";
 import { renderDefect } from "./middleware";
-import { OrgAuth, SessionAuth } from "./middleware-tags";
 import { SessionPrincipal } from "./principal";
 import { notFound } from "./server";
 

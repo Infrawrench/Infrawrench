@@ -225,7 +225,10 @@ vi.mock("@infrawrench/server-core/jit-access/service", () => ({
   }),
 }));
 
-vi.mock("@infrawrench/client-core", () => ({
+// Partial: the endpoint definitions (`@infrawrench/api-contract`) read
+// client-core's constants as they load.
+vi.mock("@infrawrench/client-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@infrawrench/client-core")>()),
   formatMoney: (amount: number, currency: string) => `${currency} ${amount.toFixed(2)}`,
 }));
 

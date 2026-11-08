@@ -18,6 +18,17 @@ import {
   parseIncidentStatus,
   parseIncidentTimestamp,
 } from "@infrawrench/server-core/incidents/store";
+import {
+  badRequest,
+  Incident,
+  IncidentDetail,
+  IncidentList,
+  IncidentNote,
+  IncidentPostmortem,
+  IncidentsApi,
+  IncidentTimeline,
+  notFound,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   addNote,
@@ -32,21 +43,11 @@ import {
   type IncidentActor,
 } from "../../../services/incidents";
 import { makeDomain } from "../../domain";
-import { notFound, badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  Incident,
-  IncidentDetail,
-  IncidentList,
-  IncidentNote,
-  IncidentPostmortem,
-  IncidentsApi,
-  IncidentTimeline,
-} from "./api";
 
 const incidentStore = refusalsOf(IncidentInputError, {
   logPrefix: "[incidents]",

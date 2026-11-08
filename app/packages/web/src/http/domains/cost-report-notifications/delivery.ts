@@ -6,7 +6,7 @@ import { Effect, Predicate } from "effect";
 import type { HttpServerRequest } from "effect/http";
 import type { ReportNotificationInput } from "@infrawrench/client-core";
 import { ReportNotificationInputError } from "@infrawrench/server-core/report-delivery/store";
-import { BadRequest, NotFound } from "../../errors";
+import { BadRequest, NotFound } from "@infrawrench/api-contract";
 import { fieldsOf, readJson } from "../../request-body";
 import { legacyTry } from "../../legacy";
 

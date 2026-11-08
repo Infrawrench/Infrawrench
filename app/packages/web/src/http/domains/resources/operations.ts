@@ -44,6 +44,7 @@ import {
 import { updateAccountCredentials } from "@infrawrench/server-core/provider-oauth";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { resourceCarbonEstimate, type ResourceCarbonEstimate } from "@infrawrench/client-core";
+import { BadRequest, InternalServerError, NotFound } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { accounts, associations, resources } from "../../../db/schema";
 import { getPlugin } from "../../../plugins/loader";
@@ -58,7 +59,6 @@ import { loadSecretStatesForResource } from "../../../services/secret-states";
 import { exportStoredResourcesToTerraform } from "../../../services/terraform-export";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { logAudit } from "../../../services/audit";
-import { BadRequest, InternalServerError, NotFound } from "../../errors";
 
 /** A resolved account (or peer resource) client, as `getClientForResource` answers. */
 export type ResourceClient = NonNullable<Awaited<ReturnType<typeof getClientForResource>>>;

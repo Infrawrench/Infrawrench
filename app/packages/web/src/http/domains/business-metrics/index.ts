@@ -22,7 +22,7 @@ import {
   BusinessMetricImportRunRequest,
   BusinessMetricSourceOptionsRequest,
   BusinessMetricValuesBody,
-} from "@infrawrench/ui/schemas";
+} from "@infrawrench/api-contract/schemas";
 import {
   BUSINESS_METRIC_LIMITS,
   unitCostExportFile,
@@ -45,6 +45,32 @@ import {
   runBusinessMetricImporterNow,
   upsertBusinessMetricImporter,
 } from "@infrawrench/server-core/cost/metric-importers";
+import {
+  BadRequest,
+  badRequest,
+  BusinessMetric,
+  BusinessMetricForecastValueList,
+  BusinessMetricForecastValuesDeleted,
+  BusinessMetricForecastValuesWritten,
+  BusinessMetricImporter,
+  BusinessMetricImporterResult,
+  BusinessMetricImportPreview,
+  BusinessMetricImportRun,
+  BusinessMetricImportRunList,
+  BusinessMetricLabelList,
+  BusinessMetricList,
+  BusinessMetricsApi,
+  BusinessMetricSourceList,
+  BusinessMetricSourceOptions,
+  BusinessMetricValueList,
+  BusinessMetricValuesWritten,
+  Conflict,
+  NotFound,
+  notFound,
+  ok,
+  UnitCostQueryResponse,
+  UsageUnitList,
+} from "@infrawrench/api-contract";
 import {
   BusinessMetricInputError,
   BusinessMetricKeyConflictError,
@@ -72,33 +98,12 @@ import {
 } from "../../../services/business-metric-forecast-values";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, NotFound, notFound, badRequest } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { decodeAsPayload, readJson, readJsonOr } from "../../request-body";
 import { inputRefusal } from "../../refusals";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  BusinessMetric,
-  BusinessMetricForecastValueList,
-  BusinessMetricForecastValuesDeleted,
-  BusinessMetricForecastValuesWritten,
-  BusinessMetricImporter,
-  BusinessMetricImporterResult,
-  BusinessMetricImportPreview,
-  BusinessMetricImportRun,
-  BusinessMetricImportRunList,
-  BusinessMetricLabelList,
-  BusinessMetricList,
-  BusinessMetricSourceList,
-  BusinessMetricSourceOptions,
-  BusinessMetricsApi,
-  BusinessMetricValueList,
-  BusinessMetricValuesWritten,
-  UnitCostQueryResponse,
-  UsageUnitList,
-} from "./api";
 
 /** The write-path refusals, each with the status the route always gave it. */
 const writeRefusal = (error: unknown): BadRequest | NotFound | Conflict | undefined => {

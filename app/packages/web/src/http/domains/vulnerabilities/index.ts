@@ -22,19 +22,20 @@ import {
   updateVulnerabilitySettings,
   type VulnerabilitySettingsPatch,
 } from "@infrawrench/server-core/vulnerabilities/settings";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
-import { fireAndForget, legacy } from "../../legacy";
-import { readObjectBody } from "../../request-body";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  badRequest,
+  notFound,
   VulnerabilitiesApi,
   VulnerabilityDismissal,
   VulnerabilityListResponse,
   VulnerabilitySettings,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy } from "../../legacy";
+import { readObjectBody } from "../../request-body";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 const VulnerabilitiesHandlers = HttpApiBuilder.group(
   VulnerabilitiesApi,

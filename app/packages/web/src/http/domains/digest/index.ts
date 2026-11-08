@@ -17,21 +17,22 @@ import {
   listDigestEmailRecipients,
   removeDigestEmailRecipient,
 } from "@infrawrench/server-core/digest/recipients";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../request-body";
-import { legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  badRequest,
   DigestApi,
   DigestEmailRecipient,
   DigestEmailRecipientList,
   DigestRemoved,
   DigestSendResult,
   DigestSettings,
-} from "./api";
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
+import { makeDomain } from "../../domain";
+import { fieldsOf, readJson } from "../../request-body";
+import { legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 function toWire(s: DigestSettingsRecord) {
   return {

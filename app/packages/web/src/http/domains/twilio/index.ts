@@ -10,16 +10,21 @@ import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { and, eq } from "drizzle-orm";
 import { encryptTwilioCredential, sendTestPage } from "@infrawrench/server-core/twilio-pager";
+import {
+  BadRequest,
+  badRequest,
+  notFound,
+  ok,
+  TwilioApi,
+  Undocumented,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { twilioRecipients, twilioSettings } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound, badRequest } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { TwilioApi, Undocumented } from "./api";
 
 // E.164: leading "+" then 1–15 digits.
 const E164 = /^\+[1-9]\d{1,14}$/;

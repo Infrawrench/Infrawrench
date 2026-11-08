@@ -9,12 +9,12 @@ import { HttpApiBuilder } from "effect/http-api";
 import { eq } from "drizzle-orm";
 import { suppressAlertEmail, verifyUnsubscribeToken } from "@infrawrench/server-core/alerts/email";
 import { escapeHtml } from "@infrawrench/server-core/email-html";
+import { AlertEmailUnsubscribeApi } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { organizations } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
-import { AlertEmailUnsubscribeApi } from "./api";
 
 function page(title: string, body: string): string {
   return `<!doctype html>

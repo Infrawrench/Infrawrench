@@ -33,15 +33,8 @@ import {
   updateJitPolicy,
 } from "@infrawrench/server-core/jit-access/service";
 import { JIT_REQUEST_STATUSES, type JitRequestStatus } from "@infrawrench/client-core";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { badRequest, HttpFailure, notFound, Unauthorized } from "../../errors";
-import { decodeFirstIssue, readJsonOr } from "../../request-body";
-import { fireAndForget, legacy } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  badRequest,
   JitAccessAccount,
   JitAccessApi,
   JitAccessRequest,
@@ -54,7 +47,17 @@ import {
   JitPolicyInput,
   JitPrincipalOption,
   JitPrincipalResolution,
-} from "./api";
+  notFound,
+  ok,
+  Unauthorized,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { decodeFirstIssue, readJsonOr } from "../../request-body";
+import { fireAndForget, legacy } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * Call the service, answering its refusal with the status and body it chose:

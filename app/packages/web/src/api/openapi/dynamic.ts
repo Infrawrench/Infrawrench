@@ -4,7 +4,8 @@ import { loadPlugins } from "../../plugins/loader";
  * The `PluginId` and `ResourceTypeId` components, enums of exactly the plugins
  * and resource types loaded, built at spec time so the document always lists
  * what the running server accepts. Endpoint definitions cannot load plugins,
- * so domains refer to these by `$ref` (`http/schemas/plugin-registry.ts`).
+ * so domains refer to these by `$ref` (`@infrawrench/api-contract`,
+ * `http/schemas/plugin-registry.ts`).
  */
 export async function buildDynamicEnums(): Promise<Record<string, Record<string, unknown>>> {
   const loaded = await loadPlugins();

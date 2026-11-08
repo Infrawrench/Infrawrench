@@ -22,6 +22,25 @@ import {
 } from "@infrawrench/server-core/permissions";
 import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
 import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
+import {
+  BadRequest,
+  badRequest,
+  conflict,
+  forbidden,
+  Invitation,
+  InviteResponse,
+  MeResponse,
+  notFound,
+  ok,
+  OrgMember,
+  PaymentRequired,
+  PermissionCatalog,
+  Role,
+  SeatLimitReached,
+  SeatPurchaseFailed,
+  TeamApi,
+  TeamUnprocessable,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import {
   apiKeys,
@@ -36,31 +55,10 @@ import { addSeat, checkSeatAvailability, releaseSeat } from "../../../services/s
 import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../../services/entitlements";
 import { isOwnerRole } from "../../../services/org-roles";
 import { makeDomain } from "../../domain";
-import {
-  BadRequest,
-  badRequest,
-  conflict,
-  forbidden,
-  notFound,
-  PaymentRequired,
-} from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  Invitation,
-  InviteResponse,
-  MeResponse,
-  OrgMember,
-  PermissionCatalog,
-  Role,
-  SeatLimitReached,
-  SeatPurchaseFailed,
-  TeamApi,
-  Unprocessable,
-} from "./api";
 
 type RoleRow = typeof roles.$inferSelect;
 
@@ -337,7 +335,7 @@ const TeamHandlers = HttpApiBuilder.group(TeamApi, "team", (handlers) =>
         const existing = yield* findRole(organizationId, roleId);
         if (!existing) return yield* notFound("Role not found");
         if (existing.isSystem) {
-          return yield* new Unprocessable({ error: "System roles cannot be edited" });
+          return yield* new TeamUnprocessable({ error: "System roles cannot be edited" });
         }
 
         const updates: Partial<typeof roles.$inferInsert> = { updatedAt: new Date() };
@@ -376,7 +374,7 @@ const TeamHandlers = HttpApiBuilder.group(TeamApi, "team", (handlers) =>
         const existing = yield* findRole(organizationId, roleId);
         if (!existing) return yield* notFound("Role not found");
         if (existing.isSystem) {
-          return yield* new Unprocessable({ error: "System roles cannot be deleted" });
+          return yield* new TeamUnprocessable({ error: "System roles cannot be deleted" });
         }
 
         // Reject if any member or pending invitation still references the role.

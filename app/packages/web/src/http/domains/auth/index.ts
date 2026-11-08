@@ -6,6 +6,7 @@ import { Duration, Effect, Layer, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { eq } from "drizzle-orm";
+import { AuthApi, OrgMembership, Session, SignedOut } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { organizationMembers, organizations, users } from "../../../db/schema";
 import {
@@ -21,7 +22,6 @@ import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { expireSessionCookie } from "../../session-cookie";
 import { workosClient } from "../../workos";
-import { AuthApi, OrgMembership, Session, SignedOut } from "./api";
 
 /** The sign-in round trip's cookies, as Hono's `setCookie` wrote them. */
 const oauthCookieOptions = () => ({

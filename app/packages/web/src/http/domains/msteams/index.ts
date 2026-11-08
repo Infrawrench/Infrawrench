@@ -12,16 +12,22 @@ import {
   listMsTeamsWebhooks,
   sendMsTeamsTest,
 } from "@infrawrench/server-core/msteams";
+import {
+  badRequest,
+  MsTeamsApi,
+  MsTeamsStatus,
+  MsTeamsTestResult,
+  MsTeamsWebhook,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { msteamsWebhooks } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { MsTeamsApi, MsTeamsStatus, MsTeamsTestResult, MsTeamsWebhook } from "./api";
 
 /** Any failure of a write the user started: its message, rendered verbatim by the form. */
 const refusedWith = (fallback: string) => (error: unknown) =>

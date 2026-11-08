@@ -3,12 +3,12 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { DependencyGraphApi, DependencyGraphResponse } from "@infrawrench/api-contract";
 import { loadDependencyGraph } from "../../../services/dependency-graph";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { DependencyGraphApi, DependencyGraphResponse } from "./api";
 
 const DependencyGraphHandlers = HttpApiBuilder.group(
   DependencyGraphApi,

@@ -16,19 +16,19 @@ import {
 } from "@infrawrench/server-core/report-delivery/store";
 import { sendReportNotificationNow } from "@infrawrench/server-core/report-delivery/deliver";
 import type { ReportNotificationInput } from "@infrawrench/client-core";
+import {
+  CostReportNotificationsApi,
+  ok,
+  ReportDeliveryTargets,
+  ReportNotification,
+  ReportNotificationSendResult,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { ReportDeliveryTargets } from "../../schemas/report-delivery";
 import { deliveryCall, readScheduleBody } from "./delivery";
-import {
-  CostReportNotificationsApi,
-  ReportNotification,
-  ReportNotificationSendResult,
-} from "./api";
 
 const CostReportNotificationsHandlers = HttpApiBuilder.group(
   CostReportNotificationsApi,

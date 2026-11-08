@@ -11,8 +11,8 @@
  * handler's `legacyTry`. Every endpoint declares the one 409 class,
  * `SshHostKeyTrustRequired` (`../schemas/ssh-host-key-trust.ts`).
  */
+import { SshHostKeyTrustRequired } from "@infrawrench/api-contract";
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
-import { SshHostKeyTrustRequired } from "../schemas/ssh-host-key-trust";
 
 /** The fields a host-key refusal carries, as the service's error holds them. */
 export interface HostKeyTrustFields {

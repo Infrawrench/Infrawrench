@@ -6,13 +6,12 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { badRequest, BlastRadiusApi, BlastRadiusReport } from "@infrawrench/api-contract";
 import { getBlastRadius } from "../../../services/blast-radius";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { BlastRadiusApi, BlastRadiusReport } from "./api";
 
 const BlastRadiusHandlers = HttpApiBuilder.group(BlastRadiusApi, "blastRadius", (handlers) =>
   handlers.handle("get", ({ query }) =>

@@ -13,14 +13,18 @@ import {
   CostIngestError,
   writeExternalCostRows,
 } from "@infrawrench/server-core/cost/external-costs";
+import {
+  BadRequest,
+  CostIngestApi,
+  CostPushRequest,
+  CostPushResponse,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
 import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { fireAndForget, legacyTry } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";
-import { CostIngestApi, CostPushRequest, CostPushResponse } from "./api";
 
 const CostIngestHandlers = HttpApiBuilder.group(CostIngestApi, "costIngest", (handlers) =>
   handlers.handleRaw("push", ({ request, params }) =>

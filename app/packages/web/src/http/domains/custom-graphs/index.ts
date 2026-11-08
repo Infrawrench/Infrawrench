@@ -14,6 +14,17 @@ import { Effect, Predicate, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import {
+  badRequest,
+  CustomGraphCheckResult,
+  CustomGraphFull,
+  CustomGraphRenderRequest,
+  CustomGraphRenderResult,
+  CustomGraphsApi,
+  CustomGraphSummary,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
+import {
   CustomGraphError,
   checkCustomGraphSource,
   createCustomGraph,
@@ -27,21 +38,11 @@ import {
 } from "../../../services/custom-graphs";
 import { PlanRequiredError } from "../../../services/entitlements";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  CustomGraphCheckResult,
-  CustomGraphFull,
-  CustomGraphRenderRequest,
-  CustomGraphRenderResult,
-  CustomGraphsApi,
-  CustomGraphSummary,
-} from "./api";
 
 /** `fail(c, e)`: the service's refusal with its status, a plan gate as 402. */
 const customGraphRefusal: ReadRefusal = (error) => {

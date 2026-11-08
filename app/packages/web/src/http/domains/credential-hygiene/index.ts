@@ -13,12 +13,11 @@ import {
   MIN_HYGIENE_WINDOW_DAYS,
   buildHygieneReport,
 } from "@infrawrench/server-core/hygiene/report";
+import { badRequest, CredentialHygieneApi, HygieneReport } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CredentialHygieneApi, HygieneReport } from "./api";
 
 const CredentialHygieneHandlers = HttpApiBuilder.group(
   CredentialHygieneApi,

@@ -1,0 +1,181 @@
+/**
+ * Every permission string the API knows. Hierarchical, colon-separated;
+ * wildcards (`*`) may appear at any segment of a granted permission, which is
+ * why a role or key can hold strings this list does not.
+ *
+ * Data only, so the API contract (`@infrawrench/api-contract`, whose
+ * `Permission` component documents this enum) and server-core
+ * (`permissions/catalog.ts`, which holds the matcher and the expansion over
+ * it) read one list.
+ */
+export const ALL_PERMISSIONS = [
+  "accounts:read",
+  "accounts:write",
+  "accounts:delete",
+  "resources:read",
+  "resources:write",
+  "resources:delete",
+  "resources:execute",
+  "secrets:read",
+  "secrets:write",
+  "storage:read",
+  "storage:write",
+  "dashboards:read",
+  "dashboards:write",
+  // Workflows are sandboxed automations, not dashboard content: they get their
+  // own family. `approve` is separate from `write` on purpose: landing the
+  // decision on someone else's `infra.waitForApproval(...)` is a different
+  // trust level from editing the automation, and separating them is what makes
+  // "can edit but cannot self-approve" (and its inverse) expressible in a
+  // custom role at all.
+  "workflows:read",
+  "workflows:write",
+  "workflows:approve",
+  "deployments:read",
+  "deployments:plan",
+  "deployments:write",
+  "costs:read",
+  "costs:write",
+  "budgets:read",
+  "budgets:write",
+  "metric-alerts:read",
+  "metric-alerts:write",
+  "freezes:read",
+  "freezes:write",
+  "freezes:override",
+  // Declared incidents (incident mode), not provider status incidents, which
+  // ride `resources:read` with the rest of the correlation feeds.
+  //
+  // `incidents:write` sits with the *members* rather than the admins, which is
+  // unusual for a write permission and deliberate: the people who notice an
+  // outage at 03:14 are rarely admins, and a product where declaring needs an
+  // admin is a product where nobody declares. What declaring can *do* keeps its
+  // own gates: opening a change freeze still needs `freezes:write`, and a
+  // declaration by someone without it records the freeze as a failed artefact
+  // naming the permission instead of quietly escalating.
+  "incidents:read",
+  "incidents:write",
+  // Create anyway when the org's tag policy would reject the resource. Its own
+  // family (not `resources:*`) so "can create but cannot skip governance"
+  // stays expressible, mirroring `freezes:override`.
+  "tag-policy:override",
+  // Org config as code: exporting and applying the one JSON document that
+  // carries dashboards, workflows, budgets, custom graphs, alert rules and
+  // policies. Its own family because the *document* is the unit of trust:
+  // `config:read` hands over every workflow's source in one call, and
+  // `config:write` rewrites nine surfaces at once. Neither is a substitute for
+  // the per-section permissions: apply requires both, so a role denied
+  // `workflows:write` cannot reach workflows through a config document.
+  "config:read",
+  "config:write",
+  // IaC reconciliation: uploading the Terraform state an org already has, and
+  // reading the managed / drifted / unmanaged classification it produces. Its
+  // own family rather than `resources:*` because the two verbs are different
+  // in kind: reading the classification is a reporting act over inventory
+  // somebody already has `resources:read` for, while uploading a state
+  // document hands the org a picture of its whole Terraform estate and is not
+  // a mutation of any cloud resource, so neither half fits `resources:write`.
+  "iac:read",
+  "iac:write",
+  "audit:read",
+  // Break-glass access. Its own family because the three verbs are held by
+  // genuinely different people: everyone can ask, everyone can see the queue
+  // (an elevation nobody can see is not a control), and only a subset decides.
+  //
+  // `access:approve` is the one that matters and it is deliberately NOT
+  // implied by `team:role:write`: granting someone a role is a considered
+  // change with a paper trail, while approving an elevation happens in the
+  // middle of an incident, and an org should be able to say who may do the
+  // second without also saying who may do the first.
+  "access:read",
+  "access:request",
+  "access:approve",
+  "team:read",
+  "team:invite",
+  "team:role:write",
+  "team:remove",
+  "apikeys:read",
+  "apikeys:write",
+  "billing:read",
+  "billing:write",
+  "ssh-keys:read",
+  "ssh-keys:write",
+  // Recorded SSH sessions. Its own family rather than `ssh-keys:*` or
+  // `audit:read`, because watching a colleague's terminal back is a distinct
+  // and much sharper capability than either holding a key or reading the audit
+  // log, and the people who should hold it (compliance, security) are often
+  // not the people who administer keys. `write` covers the org's recording
+  // policy and deleting tapes; both are the kind of thing an investigation
+  // would want to know had happened, so both are audit-logged.
+  //
+  // Deliberately absent from the `member` system role: recording exists to
+  // watch operators, so handing every operator the ability to watch is
+  // self-defeating. Admins and owners get it for free (their sets are
+  // catalog-derived).
+  "session-recordings:read",
+  "session-recordings:write",
+  "bastions:read",
+  "bastions:write",
+  "chat:read",
+  "chat:write",
+  // Jira issue tracking. `read` covers the integration's redacted config and the
+  // finding→issue links a list view needs to render "already filed"; `write`
+  // covers configuring the site credential and filing an issue. Split because
+  // the "already filed" marker is useless if only admins can see it, while
+  // filing writes into a third-party system under the org's shared credential
+  // and cannot be retracted from here.
+  "jira:read",
+  "jira:write",
+  // Linear issue tracking: the same split as Jira, for the same reasons:
+  // `read` covers the integration's redacted config and the finding→issue
+  // links a list view needs to render "already filed"; `write` covers
+  // configuring the API key and filing. The "already filed" marker is useless
+  // if only admins can see it, while filing writes into a third-party system
+  // under the org's shared credential and cannot be retracted from here.
+  "linear:read",
+  "linear:write",
+  // GitHub issue filing through the org's GitHub App: the same read/write
+  // split as Jira and Linear. `read` covers the settings document, the
+  // installations' granted permissions and the finding→issue links; `write`
+  // covers filing an issue and opening an IaC pull request. Changing the
+  // settings themselves (routes, the pull-request switch) takes
+  // `org:settings:write`, because turning pull requests on lets every holder
+  // of `write` propose infrastructure changes.
+  "github-issues:read",
+  "github-issues:write",
+  // Managed accounts and their invoices: the managed-service-provider surface.
+  //
+  // Its own family rather than more `costs:*` because the acts are of a
+  // different kind. `costs:write` is "name a report, define a cost centre, save
+  // a filter": internal views of the org's own spend, all of them revisable and
+  // none of them leaving the building. An invoice is a commercial document
+  // raised against a third party, and `invoices:read` carries a customer's
+  // contact details and what they were charged, which is not something every
+  // member who can read a cost graph should see by default.
+  //
+  // Three, not two, because generating and issuing are genuinely different
+  // risks and the split is exactly what an org will want to express. `write`
+  // prepares: create a customer, raise a draft, edit a period. `issue` is the
+  // irreversible half: approving freezes the numbers, sending states that the
+  // customer has them, and voiding withdraws a document already in their hands.
+  // A billing clerk can hold `write` and prepare a month's invoices while only
+  // the finance lead holds `issue`; collapsing them would make maker-checker
+  // inexpressible, which is the one control this domain most obviously needs.
+  //
+  // Deliberately not `org:settings:write` (where billing rules and exchange
+  // rates ride): those are configuration acts that restate the org's own
+  // figures, and issuing an invoice every month is operational work that should
+  // not require handing someone SSO, seats and the org's whole money story.
+  "invoices:read",
+  "invoices:write",
+  "invoices:issue",
+  "pages:write",
+  // Open and re-share every cost report, report folder and dashboard
+  // regardless of its sharing. Its own permission, in the spirit of
+  // `freezes:override` / `tag-policy:override`: sharing is a per-object choice
+  // somebody made, and stepping past it is a distinct act from editing. It is
+  // what keeps an object whose owner left manageable. Admins and owners hold
+  // it through their catalog-derived sets; members do not.
+  "sharing:override",
+  "org:settings:write",
+] as const;

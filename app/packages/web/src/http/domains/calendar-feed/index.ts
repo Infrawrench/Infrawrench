@@ -13,9 +13,9 @@ import {
 } from "@infrawrench/client-core";
 import { listCalendarEvents } from "@infrawrench/server-core/calendar/feed";
 import { resolveCalendarToken } from "@infrawrench/server-core/calendar/subscriptions";
+import { CalendarFeedApi } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
-import { CalendarFeedApi } from "./api";
 
 const MS_PER_DAY = 86_400_000;
 

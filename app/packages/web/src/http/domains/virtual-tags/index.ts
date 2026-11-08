@@ -21,14 +21,20 @@ import {
   updateVirtualTag,
 } from "@infrawrench/server-core/cost/virtual-tags";
 import { previewVirtualTag } from "@infrawrench/server-core/cost/virtual-tag-pass";
+import {
+  BadRequest,
+  notFound,
+  ok,
+  VirtualTag,
+  VirtualTagsApi,
+  VirtualTagStats,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { isCostScoped, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { VirtualTag, VirtualTagStats, VirtualTagsApi } from "./api";
 
 /**
  * A write, its refusals answered as the Hono route's `writeError` did: a key

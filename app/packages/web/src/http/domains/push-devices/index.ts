@@ -5,16 +5,22 @@ import { randomUUID } from "node:crypto";
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { and, eq } from "drizzle-orm";
+import {
+  badRequest,
+  DeviceRemoved,
+  notFound,
+  PushDevice,
+  PushDevicesApi,
+  RegisteredDevice,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { pushDevices } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fieldsOf, readJson, trimmedField } from "../../request-body";
 import { legacy } from "../../legacy";
 import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { DeviceRemoved, PushDevice, PushDevicesApi, RegisteredDevice } from "./api";
 
 const EXPO_TOKEN_RE = /^Expo(nent)?PushToken\[.+\]$/;
 

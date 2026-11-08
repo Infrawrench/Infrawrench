@@ -17,15 +17,21 @@ import {
   removeAlertEmailSuppression,
   setAlertEmailSettings,
 } from "@infrawrench/server-core/alerts/email";
+import {
+  AlertEmailApi,
+  AlertEmailOptions,
+  AlertEmailRemoved,
+  AlertEmailSettingsView,
+  badRequest,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { AlertEmailApi, AlertEmailOptions, AlertEmailRemoved, AlertEmailSettingsView } from "./api";
 
 type SettingsRead =
   | { readonly ok: true; readonly input: AlertEmailSettings }

@@ -8,6 +8,16 @@ import { HttpApiBuilder } from "effect/http-api";
 import { SavedCostFilterResolutionError } from "@infrawrench/server-core/cost/saved-filters";
 import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
 import {
+  BadRequest,
+  BudgetAlertEvent,
+  BudgetAlertNoteResult,
+  BudgetFull,
+  BudgetsApi,
+  BudgetWithStatus,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
+import {
   BudgetValidationError,
   createBudget,
   getBudgetWithStatus,
@@ -19,18 +29,9 @@ import {
 import { BudgetAlertNoteError, noteBudgetAlertEvent } from "../../../services/budget-alert-notes";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  BudgetAlertEvent,
-  BudgetAlertNoteResult,
-  BudgetFull,
-  BudgetsApi,
-  BudgetWithStatus,
-} from "./api";
 
 /** The service's refusals that are the caller's fault: 400 with its sentence. */
 const writeRefusal = (error: unknown) =>

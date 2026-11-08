@@ -34,18 +34,26 @@ import {
   updateSloRecord,
 } from "@infrawrench/server-core/slos/store";
 import { sloMetricTarget } from "@infrawrench/server-core/slos/eval";
+import {
+  badRequest,
+  notFound,
+  Slo,
+  SloActiveFreeze,
+  SloDetail,
+  SloList,
+  SlosApi,
+  SloSources,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { resources, syntheticProbes } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { createChangeFreeze, getActiveChangeFreeze } from "../../../services/change-freezes";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { Slo, SloActiveFreeze, SloDetail, SloList, SloSources, SlosApi } from "./api";
 
 type Body = { readonly [key: string]: unknown };
 

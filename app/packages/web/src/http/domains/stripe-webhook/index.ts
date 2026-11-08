@@ -10,12 +10,16 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  BadRequest,
+  InternalServerError,
+  StripeWebhookAck,
+  StripeWebhookApi,
+} from "@infrawrench/api-contract";
 import { getStripe, getStripeWebhookSecret } from "../../../services/stripe";
 import { makeDomain } from "../../domain";
-import { BadRequest, InternalServerError } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { respond } from "../../response";
-import { StripeWebhookAck, StripeWebhookApi } from "./api";
 import { applyStripeEvent } from "./events";
 
 const StripeWebhookHandlers = HttpApiBuilder.group(StripeWebhookApi, "stripeWebhook", (handlers) =>

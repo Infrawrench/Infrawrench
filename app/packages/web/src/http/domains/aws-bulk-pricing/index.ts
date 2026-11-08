@@ -15,6 +15,7 @@
 import { Effect, Option, Predicate, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import { AWS_BULK_PRICING_PREFIX, AwsBulkPricingApi } from "@infrawrench/api-contract";
 import {
   PLATFORMS,
   instanceKey,
@@ -30,7 +31,6 @@ import { json } from "../../middleware";
 import { guardPrefixes } from "../../prefix-guard";
 import { respond } from "../../response";
 import { Invocation } from "../../server";
-import { AWS_BULK_PRICING_PREFIX, AwsBulkPricingApi } from "./api";
 
 /** The KV calls this needs, on a binding or over the REST API. */
 interface PricingStore {

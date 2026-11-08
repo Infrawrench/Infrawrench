@@ -4,14 +4,18 @@
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { getLink, listOrgLinks, revokeLink } from "@infrawrench/server-core/agent-links/links";
+import {
+  AgentLinkRevoked,
+  AgentLinksApi,
+  AgentLinkSummary,
+  notFound,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { buildOrgLinkSummary } from "../../../services/agent-links";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { AgentLinkRevoked, AgentLinksApi, AgentLinkSummary } from "./api";
 
 const AgentLinksHandlers = HttpApiBuilder.group(AgentLinksApi, "agentLinks", (handlers) =>
   handlers

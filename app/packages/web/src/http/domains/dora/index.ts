@@ -25,22 +25,23 @@ import {
   updateDoraSettings,
 } from "@infrawrench/server-core/dora/settings";
 import { DoraInputError, recordApiDeployEvent } from "@infrawrench/server-core/dora/record";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { readObjectBody } from "../../request-body";
-import { unexpectedAs } from "../../refusals";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  badRequest,
   DoraApi,
   DoraChangeList,
   DoraDeploymentRecorded,
   DoraReport,
   DoraRestoreList,
   DoraSettings,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { readObjectBody } from "../../request-body";
+import { unexpectedAs } from "../../refusals";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 type Body = { readonly [key: string]: unknown };
 

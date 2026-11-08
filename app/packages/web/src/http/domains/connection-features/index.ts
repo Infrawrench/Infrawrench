@@ -11,6 +11,23 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
+import {
+  BadRequest,
+  badRequest,
+  ConnectionsApi,
+  DockerCommandResponse,
+  InternalServerError,
+  JsonObject,
+  KvCommandResponse,
+  NotFound,
+  notFound,
+  ok,
+  SftpEntries,
+  SqlExecuteResponse,
+  SqlQueryResult,
+  StorageObjects,
+  Undocumented,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { dockerDrivers, kvDrivers, sqlDrivers } from "../../../services/drivers";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
@@ -18,21 +35,9 @@ import { sftpDelete, sftpList, sftpMkdir } from "../../../services/sftp";
 import { resolveSshConfig } from "../../../services/ssh";
 import { rewriteConnectionForTunnel } from "../../../services/tunnel-resolver";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, InternalServerError, NotFound, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { JsonObject, ok } from "../../schemas/common";
-import {
-  ConnectionsApi,
-  DockerCommandResponse,
-  KvCommandResponse,
-  SftpEntries,
-  SqlExecuteResponse,
-  SqlQueryResult,
-  StorageObjects,
-  Undocumented,
-} from "./api";
 
 type AccountClient = NonNullable<Awaited<ReturnType<typeof getClientForAccount>>>;
 

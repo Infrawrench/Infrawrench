@@ -5,8 +5,19 @@
  */
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
-import { MetricAlertSelector } from "@infrawrench/ui/schemas";
+import { MetricAlertSelector } from "@infrawrench/api-contract/schemas";
 import { listMetricSeriesKeys } from "@infrawrench/server-core/clickhouse/readers";
+import {
+  MetricAlertEvent,
+  MetricAlertRule,
+  MetricAlertRuleWithStatus,
+  MetricAlertsApi,
+  MetricAlertSelectorOptions,
+  MetricAlertSelectorPreview,
+  MetricSeriesKey,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import {
   createRule,
   getRule,
@@ -18,21 +29,10 @@ import {
   updateRule,
 } from "../../../services/metric-alerts";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
 import { decodeAsPayload } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  MetricAlertEvent,
-  MetricAlertRule,
-  MetricAlertRuleWithStatus,
-  MetricAlertSelectorOptions,
-  MetricAlertSelectorPreview,
-  MetricAlertsApi,
-  MetricSeriesKey,
-} from "./api";
 
 /** `c.req.query(name) || undefined`: an empty parameter is an absent one. */
 const present = (value: string | undefined) => value || undefined;

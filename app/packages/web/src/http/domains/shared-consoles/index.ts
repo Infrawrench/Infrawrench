@@ -55,29 +55,32 @@ import {
   type SharedConsoleRow,
 } from "@infrawrench/server-core/shared-console/store";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { logAudit } from "../../../services/audit";
-import { publicParticipant, publicShare } from "../../../services/shared-console/hub";
-import * as consoleRelay from "../../../services/shared-console/relay";
-import { makeDomain } from "../../domain";
-import { badRequest, conflict, forbidden, notFound } from "../../errors";
-import { readJsonOr, decodeFirstIssue } from "../../request-body";
-import { legacy } from "../../legacy";
-import { json } from "../../middleware";
-import { OrgPrincipal, type OrgPrincipalValue } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  badRequest,
+  conflict,
   CreateSharedConsole,
+  forbidden,
   HandoverSharedConsole,
   JoinSharedConsole,
   MintSharedConsoleInvite,
+  notFound,
+  ok,
   SharedConsoleCreated,
   SharedConsoleInvitePreview,
   SharedConsoleJoined,
   SharedConsolesApi,
   SharedConsoleState,
   SharedConsoleSummary,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { publicParticipant, publicShare } from "../../../services/shared-console/hub";
+import * as consoleRelay from "../../../services/shared-console/relay";
+import { makeDomain } from "../../domain";
+import { readJsonOr, decodeFirstIssue } from "../../request-body";
+import { legacy } from "../../legacy";
+import { json } from "../../middleware";
+import { OrgPrincipal, type OrgPrincipalValue } from "../../principal";
+import { respond } from "../../response";
 
 /** A synchronous relay call, inside the request's scopes like every other one. */
 const relay = (fn: () => void) => legacy(() => Promise.resolve(fn()));

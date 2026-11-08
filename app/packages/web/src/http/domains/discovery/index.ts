@@ -11,6 +11,7 @@ import { Effect, Layer } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { DiscoveryApi } from "@infrawrench/api-contract";
 import { authMarkdown } from "../../../mcp/auth-md";
 import { probeClientRegistrationSupport } from "../../../mcp/registration-probe";
 import {
@@ -22,7 +23,6 @@ import {
 import { makeDomain } from "../../domain";
 import { fireAndForget } from "../../legacy";
 import { rawRequest } from "../../caller-auth";
-import { DiscoveryApi } from "./api";
 
 /** The public origin of this request, as {@link getPublicBaseUrl} reads it. */
 const publicBaseUrl = Effect.gen(function* () {

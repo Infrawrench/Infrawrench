@@ -20,28 +20,17 @@ import { Effect, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { eq, inArray } from "drizzle-orm";
-import type { workos as WorkosClient } from "../../../auth/workos";
-import { db } from "../../../db/client";
-import { organizations, users } from "../../../db/schema";
-import { ReauthenticationRequiredError, requireRecentAuthentication } from "../../../auth/step-up";
-import type { AuthSession } from "../../../auth/users";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJsonOr } from "../../request-body";
-import { legacy, legacyTry } from "../../legacy";
-import { guardSessionPrefixes } from "../../prefix-guard";
-import { SessionPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok, Ok } from "../../schemas/common";
-import { expireSessionCookie } from "../../session-cookie";
-import { workosClient } from "../../workos";
 import {
   AccountDeleted,
   AccountDeletionPreview,
   AuthFactor,
+  badRequest,
   Challenge,
   EmailChanged,
   EmailChangeStarted,
+  notFound,
+  ok,
+  Ok,
   PasswordResetLink,
   Profile,
   ProfileApi,
@@ -51,7 +40,20 @@ import {
   TotpEnrollment,
   UserSession,
   Verified,
-} from "./api";
+} from "@infrawrench/api-contract";
+import type { workos as WorkosClient } from "../../../auth/workos";
+import { db } from "../../../db/client";
+import { organizations, users } from "../../../db/schema";
+import { ReauthenticationRequiredError, requireRecentAuthentication } from "../../../auth/step-up";
+import type { AuthSession } from "../../../auth/users";
+import { makeDomain } from "../../domain";
+import { fieldsOf, readJsonOr } from "../../request-body";
+import { legacy, legacyTry } from "../../legacy";
+import { guardSessionPrefixes } from "../../prefix-guard";
+import { SessionPrincipal } from "../../principal";
+import { respond } from "../../response";
+import { expireSessionCookie } from "../../session-cookie";
+import { workosClient } from "../../workos";
 
 /** Issuer shown in the user's authenticator app next to the code. */
 const TOTP_ISSUER = "Infrawrench";

@@ -31,6 +31,21 @@ import {
   getNetworkFlowReportOptions,
   runNetworkFlowReportConfig,
 } from "@infrawrench/server-core/network-flow/report";
+import {
+  BadRequest,
+  badRequest,
+  KubernetesNetworkReport,
+  KubernetesNetworkSettings,
+  NetworkFlowFeed,
+  NetworkFlowsApi,
+  NetworkFlowSettings,
+  notFound,
+  ok,
+  Options,
+  Report,
+  Result,
+  RunResult,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { CostReportFolderError } from "../../../services/cost-report-folders";
 import {
@@ -42,24 +57,11 @@ import {
   updateNetworkFlowReport,
 } from "../../../services/network-flow-reports";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, notFound } from "../../errors";
 import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  KubernetesNetworkReport,
-  KubernetesNetworkSettings,
-  NetworkFlowFeed,
-  NetworkFlowSettings,
-  NetworkFlowsApi,
-  Options,
-  Report,
-  Result,
-  RunResult,
-} from "./api";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE_ERROR = "from/to must be YYYY-MM-DD with from <= to";

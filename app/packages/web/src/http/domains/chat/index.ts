@@ -26,6 +26,15 @@ import {
 } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import {
+  badRequest,
+  ChatApi,
+  ChatAskQuestionResult,
+  ChatSecretRequestResult,
+  conflict,
+  forbidden,
+  notFound,
+} from "@infrawrench/api-contract";
 import type { OrgAuthResult } from "../../../auth/org-request-auth";
 import { effectivePermissions } from "../../../auth/effective-permissions";
 import { executePendingAction, rejectPendingAction, runAgentTurn } from "../../../chat/agent";
@@ -43,12 +52,10 @@ import {
 import { logAudit } from "../../../services/audit";
 import type { ToolAuthContext } from "../../../tools/types";
 import { makeDomain } from "../../domain";
-import { badRequest, conflict, forbidden, notFound } from "../../errors";
 import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";
-import { ChatApi, ChatAskQuestionResult, ChatSecretRequestResult } from "./api";
 import { turnStreamResponse } from "./turn-stream";
 
 /**

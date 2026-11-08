@@ -11,17 +11,23 @@ import {
   getSystemRole,
   isSystemRoleKey,
 } from "@infrawrench/server-core/permissions";
+import {
+  AcceptInvitationResponse,
+  badRequest,
+  forbidden,
+  InvitationDetail,
+  InvitationsApi,
+  notFound,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { invitations, organizationMembers, organizations } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { badRequest, forbidden, notFound } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { legacy } from "../../legacy";
 import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { workosClient } from "../../workos";
-import { AcceptInvitationResponse, InvitationDetail, InvitationsApi } from "./api";
 
 /**
  * The stored hash of an invitation token. `createHash().update()` threw a

@@ -15,14 +15,19 @@ import {
   pageFromExternal,
 } from "@infrawrench/server-core/paging/external-pages";
 import { isValidSourceName, SOURCE_NAME_HELP } from "@infrawrench/server-core/source-name";
+import {
+  badRequest,
+  PageClearResponse,
+  PageRequest,
+  PageResponse,
+  PagesApi,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";
-import { PageClearResponse, PageRequest, PageResponse, PagesApi } from "./api";
 
 const PagesHandlers = HttpApiBuilder.group(PagesApi, "pages", (handlers) =>
   handlers

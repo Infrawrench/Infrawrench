@@ -4,11 +4,11 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { listDns } from "@infrawrench/server-core/dns/feed";
+import { DnsApi, DnsInventoryResponse } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { DnsApi, DnsInventoryResponse } from "./api";
 
 const DnsHandlers = HttpApiBuilder.group(DnsApi, "dns", (handlers) =>
   handlers.handle("list", () =>

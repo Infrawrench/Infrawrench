@@ -20,8 +20,11 @@ import {
 import { useEffect, useId, useState } from "react";
 import { T, useGT } from "gt-react";
 
+import {
+  CostAlertInput as CostAlertInputSchema,
+  decodeForm,
+} from "@infrawrench/api-contract/schemas";
 import { COST_DIMENSIONS, type CostFilter } from "./config.js";
-import { CostAlertInput as CostAlertInputSchema, decodeForm } from "../schemas/index.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import { VirtualTagKeySelect } from "./VirtualTagKeySelect.js";
 import { formatMoney } from "./transform.js";

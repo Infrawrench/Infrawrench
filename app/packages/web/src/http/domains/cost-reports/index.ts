@@ -10,7 +10,21 @@
 import { Effect, Layer, Schema } from "effect";
 import type { HttpServerRequest } from "effect/http";
 import { HttpApiBuilder, HttpApiError } from "effect/http-api";
-import { CostForecastRunRequest, CostReportRunOverrides } from "@infrawrench/ui/schemas";
+import { CostForecastRunRequest, CostReportRunOverrides } from "@infrawrench/api-contract/schemas";
+import {
+  BadRequest,
+  badRequest,
+  Conflict,
+  CostForecast,
+  CostForecastList,
+  CostForecastResult,
+  CostReport,
+  CostReportBulkResult,
+  CostReportRunResult,
+  CostReportsApi,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   CostForecastError,
@@ -33,20 +47,10 @@ import {
 } from "../../../services/cost-reports";
 import { applyCostReportBulk, CostReportBulkError } from "../../../services/cost-reports-bulk";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, notFound, badRequest } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  CostForecast,
-  CostForecastList,
-  CostForecastResult,
-  CostReport,
-  CostReportBulkResult,
-  CostReportRunResult,
-  CostReportsApi,
-} from "./api";
 
 /** A folderId outside the org (or stale) is a bad request, not a server bug. */
 const folderRefusal = (error: unknown) =>

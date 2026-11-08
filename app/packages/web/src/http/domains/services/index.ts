@@ -45,23 +45,24 @@ import {
   listScorecardResults,
   markScorecardsDue,
 } from "@infrawrench/server-core/scorecards/store";
+import {
+  badRequest,
+  notFound,
+  Service,
+  ServiceDetail,
+  ServiceList,
+  ServicesApi,
+  ServiceScorecards,
+  ServicesForResources,
+  ServiceSummary,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  Service,
-  ServiceDetail,
-  ServiceList,
-  ServicesApi,
-  ServicesForResources,
-  ServiceScorecards,
-  ServiceSummary,
-} from "./api";
 
 type Body = { readonly [key: string]: unknown };
 

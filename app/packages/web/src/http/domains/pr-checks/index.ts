@@ -26,21 +26,24 @@ import {
   previewFilesCheck,
   previewPullRequestCheck,
 } from "@infrawrench/server-core/pr-checks/pass";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadGateway, badRequest, HttpFailure, notFound } from "../../errors";
-import { fireAndForget, legacy } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { type Refusals, refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import {
+  BadGateway,
+  badRequest,
+  notFound,
   PrCheckDeleted,
   PrCheckPreview,
   PrCheckRepository,
   PrCheckRun,
   PrChecksApi,
   PrCheckStatus,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { fireAndForget, legacy } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
+import { type Refusals, refuse, refusalCall, type ReadRefusal } from "../../refusals";
 
 /**
  * The route's `failure(c, err)`: a settings refusal carries its status; a

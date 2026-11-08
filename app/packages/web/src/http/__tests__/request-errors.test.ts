@@ -58,8 +58,8 @@ describe("schema failures", () => {
     const { Effect, Schema } = await import("effect");
     const { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } =
       await import("effect/http-api");
-    const { makeDomain, withApiDefaults } = await import("@/http/domain");
-    const { OrgAuth } = await import("@/http/middleware-tags");
+    const { makeDomain } = await import("@/http/domain");
+    const { OrgAuth, withApiDefaults } = await import("@infrawrench/api-contract");
     const { requirePermission } = await import("@/http/principal");
     // No `error: Forbidden` on the endpoint, and the refusal arrives as a
     // defect (how a loosely typed path delivers it): it must still be a 403.

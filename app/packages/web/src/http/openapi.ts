@@ -16,7 +16,7 @@ import {
   RequiredPermission,
   Security,
   SuccessDescription,
-} from "./annotations";
+} from "@infrawrench/api-contract";
 import type { Domain } from "./domain";
 
 type JsonObject = Record<string, unknown>;

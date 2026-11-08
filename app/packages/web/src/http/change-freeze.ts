@@ -7,6 +7,7 @@
  */
 import { Effect } from "effect";
 import type { HttpServerRequest } from "effect/http";
+import { ChangeFreezeBlocked } from "@infrawrench/api-contract";
 import {
   CHANGE_FREEZE_OVERRIDE_HEADER,
   evaluateChangeFreeze,
@@ -14,7 +15,6 @@ import {
 } from "../services/change-freezes";
 import { legacy } from "./legacy";
 import { OrgPrincipal } from "./principal";
-import { ChangeFreezeBlocked } from "./schemas/change-freeze";
 
 export const requireNoChangeFreeze = Effect.fnUntraced(function* (
   request: HttpServerRequest.HttpServerRequest,

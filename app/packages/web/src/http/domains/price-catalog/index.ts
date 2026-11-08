@@ -14,17 +14,18 @@ import {
   normalizePriceCatalogCompareQuery,
   normalizePriceCatalogSearchQuery,
 } from "@infrawrench/client-core";
-import { makeDomain } from "../../domain";
-import { BadRequest, NotFound } from "../../errors";
-import { legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  NotFound,
   PriceCatalogApi,
   PriceCatalogCompareResponse,
   PriceCatalogProviders,
   PriceCatalogSearchResponse,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { makeDomain } from "../../domain";
+import { legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * The query as the normalizers have always received it: every parameter,

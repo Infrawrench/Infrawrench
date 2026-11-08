@@ -1,6 +1,7 @@
 import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, useGT, useMessages } from "gt-react";
+import { BudgetInput as BudgetInputSchema, decodeForm } from "@infrawrench/api-contract/schemas";
 import {
   BUDGET_LIMITS,
   BUDGET_PERIOD_UNITS,
@@ -15,7 +16,6 @@ import {
   type CostFilter,
   type CostScenarioModel,
 } from "./config.js";
-import { BudgetInput as BudgetInputSchema, decodeForm } from "../schemas/index.js";
 import {
   COST_BASIS_UNAVAILABLE_HINT,
   CostBasisField,

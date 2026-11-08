@@ -32,6 +32,26 @@ import {
   type OAuthStatus,
 } from "@infrawrench/server-core/provider-oauth";
 import { showcaseFields, stripOAuthGrantState } from "@infrawrench/plugin-base";
+import {
+  Account,
+  AccountDetail,
+  AccountsApi,
+  badRequest,
+  CreateAccountResponse,
+  CredentialOptionsResponse,
+  notFound,
+  ok,
+  PaymentRequired,
+  PluginSummary,
+  PolicyTemplateResponse,
+  PreflightReport,
+  Resource,
+  RotatedCredentials,
+  SyncedResource,
+  SyncResponse,
+  TerraformExport,
+  UpdatedAccount,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { accounts, bastionVms, resources } from "../../../db/schema";
 import { buildAad, decrypt, encrypt } from "../../../services/encryption";
@@ -42,28 +62,11 @@ import { exportStoredResourcesToTerraform } from "../../../services/terraform-ex
 import { FREE_PLAN_LIMITS, planAccess } from "../../../services/entitlements";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, HttpFailure, notFound, PaymentRequired } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { TerraformExport } from "../../schemas/terraform-export";
-import {
-  AccountDetail,
-  AccountsApi,
-  Account,
-  CreateAccountResponse,
-  CredentialOptionsResponse,
-  PluginSummary,
-  PolicyTemplateResponse,
-  PreflightReport,
-  Resource,
-  RotatedCredentials,
-  SyncedResource,
-  SyncResponse,
-  UpdatedAccount,
-} from "./api";
 
 const StringMap = Schema.Record(Schema.String, Schema.String);
 /** A credentials map as sent back, without inspecting a value (see `credentials`). */

@@ -17,7 +17,26 @@
 import { Effect, Layer, Predicate, Result, Schema, SchemaIssue } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
-import { DashboardKpiRequest, decodeForm } from "@infrawrench/ui/schemas";
+import { DashboardKpiRequest, decodeForm } from "@infrawrench/api-contract/schemas";
+import {
+  badRequest,
+  Dashboard,
+  DashboardFull,
+  DashboardKpiResult,
+  DashboardsApi,
+  DashboardWidgetFull,
+  DashboardWithPins,
+  DefaultDashboardResolution,
+  forbidden,
+  Ok,
+  ok,
+  PinFull,
+  PinRangeResponse,
+  ProbeStatus,
+  RoleDefaultDashboard,
+  DashboardUnprocessable,
+  ValidateTabsResponse,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { DashboardKpiError, evaluateDashboardKpi } from "../../../services/dashboard-kpi";
 import {
@@ -30,27 +49,11 @@ import {
   setRoleDefaultDashboard,
 } from "../../../services/default-dashboards";
 import { makeDomain } from "../../domain";
-import { badRequest, forbidden } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { refuse, refusalCall, type StatusRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { Ok, ok } from "../../schemas/common";
-import { DashboardsApi, Unprocessable } from "./api";
-import {
-  Dashboard,
-  DashboardFull,
-  DashboardKpiResult,
-  DashboardWidgetFull,
-  DashboardWithPins,
-  DefaultDashboardResolution,
-  PinFull,
-  PinRangeResponse,
-  ProbeStatus,
-  RoleDefaultDashboard,
-  ValidateTabsResponse,
-} from "./schemas";
 import {
   DashboardRefusal,
   createDashboard,
@@ -255,7 +258,10 @@ const DefaultsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardDefaults"
         if (!dashboardId) return yield* badRequest("dashboardId is required");
         const { role, dashboard } = yield* refusalCall(
           readRefusal,
-          { ...badRequestOrNotFound, 422: (error: string) => new Unprocessable({ error }) },
+          {
+            ...badRequestOrNotFound,
+            422: (error: string) => new DashboardUnprocessable({ error }),
+          },
           () => setRoleDefaultDashboard(organizationId, params.roleId, dashboardId),
         );
         yield* fireAndForget(() =>

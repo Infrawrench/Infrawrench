@@ -12,19 +12,11 @@ import { Effect, Schema } from "effect";
 import type { HttpServerRequest } from "effect/http";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
-import { db } from "../../../db/client";
-import { sshSnippets } from "../../../db/schema";
-import { logAudit } from "../../../services/audit";
-import { FanoutInputError, listFanoutTargets, runFanout } from "../../../services/ssh-fanout";
-import { requireNoChangeFreeze } from "../../change-freeze";
-import { makeDomain } from "../../domain";
-import { BadRequest, conflict, notFound } from "../../errors";
-import { readJson, decodeFirstIssue } from "../../request-body";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  BadRequest,
+  conflict,
+  notFound,
+  ok,
   SnippetCreated,
   SnippetList,
   SshFanoutApi,
@@ -32,7 +24,17 @@ import {
   SshFanoutRunResponse,
   SshFanoutTargetsResponse,
   SshSnippetInput,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { db } from "../../../db/client";
+import { sshSnippets } from "../../../db/schema";
+import { logAudit } from "../../../services/audit";
+import { FanoutInputError, listFanoutTargets, runFanout } from "../../../services/ssh-fanout";
+import { requireNoChangeFreeze } from "../../change-freeze";
+import { makeDomain } from "../../domain";
+import { readJson, decodeFirstIssue } from "../../request-body";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /** The JSON body (a non-JSON one is a 500), judged as the route's zod schema judged it. */
 const decodeBody = <S extends Schema.ConstraintDecoder<unknown>>(

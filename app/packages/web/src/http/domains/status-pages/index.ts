@@ -18,15 +18,19 @@ import type {
   StatusPageCreate,
   StatusPagePatch,
 } from "@infrawrench/client-core";
+import {
+  badRequest,
+  StatusPage,
+  StatusPageListResponse,
+  StatusPagesApi,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { StatusPage, StatusPageListResponse, StatusPagesApi } from "./api";
 import { PublicStatusHandlers } from "./public";
 
 type Body = { readonly [key: string]: unknown };

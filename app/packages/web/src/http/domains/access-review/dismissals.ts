@@ -19,8 +19,8 @@ import {
   restorePostureFinding,
   MAX_DISMISSAL_REASON_LENGTH,
 } from "@infrawrench/server-core/posture/dismissals";
+import { badRequest, notFound } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
-import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";

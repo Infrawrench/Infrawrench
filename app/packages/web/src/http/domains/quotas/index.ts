@@ -18,13 +18,18 @@ import {
   type QuotaSettingsPatchInput,
   type QuotaSettingsRecord,
 } from "@infrawrench/server-core/quotas/settings";
+import {
+  BadRequest,
+  badRequest,
+  QuotaAlertSettings,
+  QuotaListResponse,
+  QuotasApi,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { QuotaAlertSettings, QuotaListResponse, QuotasApi } from "./api";
 
 function toWire(s: QuotaSettingsRecord) {
   return {

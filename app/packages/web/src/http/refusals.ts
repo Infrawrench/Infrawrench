@@ -17,7 +17,8 @@
  * is the original defect or the route's own 500, as the policy says.
  */
 import { Effect } from "effect";
-import { BadRequest, Conflict, HttpFailure, NotFound, PaymentRequired } from "./errors";
+import { BadRequest, Conflict, NotFound, PaymentRequired } from "@infrawrench/api-contract";
+import { HttpFailure } from "./errors";
 import { legacyTry } from "./legacy";
 
 /** A service refusal, read off a thrown error: its status and its sentence. */

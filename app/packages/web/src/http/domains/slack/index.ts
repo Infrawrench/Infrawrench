@@ -18,23 +18,24 @@ import {
   sendSlackTest,
   signSlackState,
 } from "@infrawrench/server-core/slack";
-import { db } from "../../../db/client";
-import { slackChannels, slackInstallations } from "../../../db/schema";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../request-body";
-import { legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  badRequest,
+  notFound,
+  ok,
   SlackApi,
   SlackAvailableChannels,
   SlackChannel,
   SlackInstallUrl,
   SlackStatus,
   SlackTestResult,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { db } from "../../../db/client";
+import { slackChannels, slackInstallations } from "../../../db/schema";
+import { makeDomain } from "../../domain";
+import { fieldsOf, readJson } from "../../request-body";
+import { legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /** The same base the OAuth hops derive their URLs from (`http/domains/slack-oauth/`). */
 function appUrl(): string {

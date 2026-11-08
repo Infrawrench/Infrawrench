@@ -14,19 +14,23 @@ import { Effect, Predicate } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { safeRelativePathSegments } from "@infrawrench/client-core";
+import {
+  badRequest,
+  InternalServerError,
+  notFound,
+  ok,
+  SftpTransfersApi,
+} from "@infrawrench/api-contract";
 import { attachmentDisposition } from "../../../lib/content-disposition";
 import { sftpDownloadToBuffer, sftpUpload } from "../../../services/sftp";
 import { getClientForAccount } from "../../../services/plugin-clients";
 import { resolveSshConfig } from "../../../services/ssh";
 import { makeDomain } from "../../domain";
-import { badRequest, InternalServerError, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
-import { ok } from "../../schemas/common";
 import { hostKeyTrustRefusal } from "../ssh-host-key-trust";
 import { formFile, formString, readFormFields } from "../../request-body";
 import { webStream } from "../../response";
-import { SftpTransfersApi } from "./api";
 
 const MAX_BULK_PATHS = 100;
 

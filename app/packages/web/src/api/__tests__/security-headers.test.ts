@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Effect, Schema } from "effect";
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
-import { makeDomain, withApiDefaults } from "@/http/domain";
+import { withApiDefaults } from "@infrawrench/api-contract";
+import { makeDomain } from "@/http/domain";
 import { makeHttpApiHandler } from "@/http/server";
 import { testMiddleware } from "@/http/testing";
 

@@ -4,7 +4,7 @@
  * code, called through `refusalCall`.
  *
  * A config is decoded against its kind's schema (`WIDGET_CONFIG_SCHEMAS` in
- * `@infrawrench/ui/schemas`, the editors' own) and stored as decoded. A card
+ * `@infrawrench/api-contract/schemas`, the editors' own) and stored as decoded. A card
  * pointing at a report or canvas may only be placed by a caller who can open
  * that object: the card would otherwise show its figures.
  */
@@ -17,7 +17,7 @@ import {
   duplicateCostReportName,
   type DashboardWidgetKind,
 } from "@infrawrench/client-core";
-import { WIDGET_CONFIG_SCHEMAS } from "@infrawrench/ui/schemas";
+import { WIDGET_CONFIG_SCHEMAS } from "@infrawrench/api-contract/schemas";
 import { db } from "../../../db/client";
 import {
   dashboardPins,

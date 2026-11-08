@@ -24,15 +24,21 @@ import {
   getOrgSavingsSettings,
   setOrgSavingsSettings,
 } from "@infrawrench/server-core/savings/settings";
+import {
+  BadRequest,
+  notFound,
+  ok,
+  RealizedSavingsReport,
+  RealizedSavingsSettings,
+  SavingsApi,
+  SavingsEvent,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import { refuse, refusalCall, type StatusRefusal } from "../../refusals";
-import { RealizedSavingsReport, RealizedSavingsSettings, SavingsApi, SavingsEvent } from "./api";
 
 const savingsRefusal = (error: unknown): StatusRefusal | undefined =>
   error instanceof SavingsEventError ? { status: error.status, message: error.message } : undefined;

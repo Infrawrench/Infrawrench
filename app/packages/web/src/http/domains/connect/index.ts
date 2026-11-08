@@ -9,6 +9,14 @@ import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
+import {
+  BadRequest,
+  badRequest,
+  ConnectApi,
+  ConnectTemplatesResponse,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { sshKeys } from "../../../db/schema";
 import { buildAad, decrypt } from "../../../services/encryption";
@@ -17,13 +25,10 @@ import { getClientForAccount } from "../../../services/plugin-clients";
 import { sshExec } from "../../../services/ssh";
 import { resolveSafeHost } from "../../../services/host-validation";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, notFound } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import { hostKeyTrustRefusal } from "../ssh-host-key-trust";
-import { ConnectApi, ConnectTemplatesResponse } from "./api";
 
 /**
  * Defense in depth: even with the quote-escape below, banning shell

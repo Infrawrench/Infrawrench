@@ -5,11 +5,11 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { getWallboard } from "@infrawrench/server-core/wallboard/feed";
+import { WallboardApi, WallboardResponse } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { WallboardApi, WallboardResponse } from "./api";
 
 const WallboardHandlers = HttpApiBuilder.group(WallboardApi, "wallboard", (handlers) =>
   handlers.handle("get", () =>

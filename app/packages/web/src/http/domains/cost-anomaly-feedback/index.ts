@@ -8,6 +8,19 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { COST_ANOMALY_FEEDBACK_LIMITS } from "@infrawrench/client-core";
+import {
+  BadRequest,
+  badRequest,
+  Conflict,
+  CostAnomaly,
+  CostAnomalyFeedbackApi,
+  CostAnomalyFeedbackResult,
+  CostAnomalyPrecisionReport,
+  CostAnomalySensitivity,
+  CostAnomalySuppression,
+  CostAnomalySuppressionList,
+  notFound,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { CostAnomalyAcknowledgeError } from "../../../services/cost-anomalies";
 import {
@@ -23,19 +36,9 @@ import {
   updateCostAnomalySuppression,
 } from "../../../services/cost-anomaly-feedback";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, Conflict, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CostAnomaly } from "../../schemas/cost-anomalies";
-import {
-  CostAnomalyFeedbackApi,
-  CostAnomalyFeedbackResult,
-  CostAnomalyPrecisionReport,
-  CostAnomalySensitivity,
-  CostAnomalySuppression,
-  CostAnomalySuppressionList,
-} from "./api";
 
 /** The Hono route's `failure`: anything else is a defect, a 500. */
 const feedbackRefusal = (error: unknown) => {

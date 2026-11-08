@@ -25,6 +25,21 @@ import {
 import { buildNibbletsSignInCommand, isNibbletsSurface } from "@infrawrench/ui/agents/nibblets";
 import { AGENT_SCOPES } from "@infrawrench/ui/settings/api-key-scopes";
 import { grantablePermissions } from "@infrawrench/server-core/agent-links/links";
+import {
+  AgentLinkableScopes,
+  AgentOpenCommand,
+  AgentReconcile,
+  AgentsApi,
+  AgentSession,
+  AgentSessionDeleted,
+  AgentSettings,
+  AgentT3PolicyApplyResult,
+  AgentVmAccount,
+  BadGateway,
+  badRequest,
+  forbidden,
+  notFound,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   releaseAgentServices,
@@ -37,22 +52,11 @@ import {
   revokeT3CodeLinkOnVm,
 } from "../../../services/agent-setup";
 import { makeDomain } from "../../domain";
-import { BadGateway, badRequest, forbidden, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  AgentLinkableScopes,
-  AgentOpenCommand,
-  AgentReconcile,
-  AgentSession,
-  AgentSessionDeleted,
-  AgentSettings,
-  AgentsApi,
-  AgentT3PolicyApplyResult,
-  AgentVmAccount,
-} from "./api";
 import {
   authorizeT3Policy,
   createAgentSession,

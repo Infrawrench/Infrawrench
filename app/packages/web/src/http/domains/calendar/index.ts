@@ -19,19 +19,22 @@ import {
   listCalendarSubscriptions,
   revokeCalendarSubscription,
 } from "@infrawrench/server-core/calendar/subscriptions";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure, NotFound, badRequest } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { readObjectBody } from "../../request-body";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  badRequest,
   CalendarApi,
   CalendarResponse,
   CalendarSubscription,
   CalendarSubscriptionList,
-} from "./api";
+  NotFound,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { readObjectBody } from "../../request-body";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 const MS_PER_DAY = 86_400_000;
 /** Default view when the caller names no window: the month around today. */

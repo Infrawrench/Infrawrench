@@ -17,22 +17,24 @@ import {
   SeatSettingsError,
   updateSeatSettings,
 } from "@infrawrench/server-core/seats/settings";
-import { logAudit } from "../../../services/audit";
-import { requireNoChangeFreeze } from "../../change-freeze";
-import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure, badRequest } from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal } from "../../refusals";
-import { readObjectBody } from "../../request-body";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  BadRequest,
+  badRequest,
   SeatListResponse,
   SeatRefreshResponse,
   SeatRemovalResponse,
   SeatsApi,
   SeatSettings,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { requireNoChangeFreeze } from "../../change-freeze";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 const SeatsHandlers = HttpApiBuilder.group(SeatsApi, "seats", (handlers) =>
   handlers

@@ -8,16 +8,15 @@ import { HttpApiBuilder } from "effect/http-api";
 import { v4 as uuid } from "uuid";
 import { ensureSystemRoles, getSystemRole } from "@infrawrench/server-core/permissions";
 import { ensureDefaultScorecard } from "@infrawrench/server-core/scorecards/store";
+import { badRequest, Organization, OrgsApi } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { dashboards, organizationMembers, organizations } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { fieldsOf, readJson, trimmedField } from "../../request-body";
 import { legacy } from "../../legacy";
 import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { Organization, OrgsApi } from "./api";
 
 const OrgsHandlers = HttpApiBuilder.group(OrgsApi, "orgs", (handlers) =>
   handlers.handleRaw("create", ({ request }) =>

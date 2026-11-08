@@ -30,14 +30,6 @@ import {
   type AiAttributionDimensionInput,
   type AiRequestSourceInput,
 } from "@infrawrench/client-core";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadGateway, badRequest, NotFound, notFound } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../request-body";
-import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
   AiAttributionApi,
   AiAttributionDimension,
@@ -50,7 +42,18 @@ import {
   AiSourceKinds,
   AiSources,
   AiSpendBreakdown,
-} from "./api";
+  BadGateway,
+  badRequest,
+  NotFound,
+  notFound,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;

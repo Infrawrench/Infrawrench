@@ -81,7 +81,8 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
     components: {
       securitySchemes: { ...SECURITY_SCHEMES },
       // HttpApi domains refer to the registry enums by `$ref`
-      // (`http/schemas/plugin-registry.ts`), so they are components here.
+      // (`@infrawrench/api-contract`, `http/schemas/plugin-registry.ts`), so
+      // they are components here.
       schemas: { ...(await buildDynamicEnums()), ...events.schemas },
     },
     paths: {},

@@ -19,6 +19,14 @@ import {
   sendDashboardNotificationNow,
   updateDashboardNotification,
 } from "@infrawrench/server-core/report-delivery/dashboard";
+import {
+  DashboardNotification,
+  DashboardNotificationsApi,
+  DashboardNotificationSendResult,
+  notFound,
+  ok,
+  ReportDeliveryTargets,
+} from "@infrawrench/api-contract";
 import { attachmentDisposition } from "../../../lib/content-disposition";
 import { logAudit } from "../../../services/audit";
 import {
@@ -27,18 +35,10 @@ import {
   renderDashboardPdf,
 } from "../../../services/dashboard-pdf";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { ReportDeliveryTargets } from "../../schemas/report-delivery";
 import { deliveryCall, readScheduleBody } from "../cost-report-notifications/delivery";
-import {
-  DashboardNotification,
-  DashboardNotificationSendResult,
-  DashboardNotificationsApi,
-} from "./api";
 
 /** A validated IANA zone from `?tz=`, for the "generated at" line. */
 function requestTimezone(tz: string | undefined): string | undefined {

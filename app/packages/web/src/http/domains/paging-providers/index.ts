@@ -20,33 +20,31 @@ import {
   syncPagingIncidents,
   updatePagingProviderSettings,
 } from "@infrawrench/server-core/paging/providers";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
 import {
+  PagingBadGateway,
   BadRequest,
+  badRequest,
   InternalServerError,
   NotFound,
   notFound,
-  Unauthorized,
-  badRequest,
-} from "../../errors";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { json } from "../../middleware";
-import { readObjectBody } from "../../request-body";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import {
-  BadGateway,
   PagerIncident,
   PagerIncidentsResponse,
   PagingDestinationsResponse,
   PagingEventsResponse,
   PagingOnCallNowResponse,
-  PagingProviderSettingsResult,
   PagingProvidersApi,
+  PagingProviderSettingsResult,
   PagingProvidersResponse,
   PagingSyncResult,
-} from "./api";
+  Unauthorized,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { json } from "../../middleware";
+import { readObjectBody } from "../../request-body";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * A provider error as its status; anything else is the upstream's failure. A
@@ -55,7 +53,7 @@ import {
  * only raises `PagingProviderError` with 400 or 404; any other status would
  * stay a defect and answer 500.
  */
-const providerFailure = (error: unknown): BadRequest | NotFound | BadGateway | undefined => {
+const providerFailure = (error: unknown): BadRequest | NotFound | PagingBadGateway | undefined => {
   if (error instanceof PagingProviderError) {
     if (error.status === 404) return new NotFound({ error: error.message });
     if (error.status === 400) return new BadRequest({ error: error.message });
@@ -67,7 +65,7 @@ const providerFailure = (error: unknown): BadRequest | NotFound | BadGateway | u
     return new BadRequest({ error: `The provider refused the request: ${message}` });
   }
   if (status === 404) return new NotFound({ error: message });
-  return new BadGateway({ error: message });
+  return new PagingBadGateway({ error: message });
 };
 
 const PagingProvidersHandlers = HttpApiBuilder.group(

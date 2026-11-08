@@ -7,12 +7,12 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { WsTokenApi, WsTokenResponse } from "@infrawrench/api-contract";
 import { createWsToken } from "../../../services/ws-tokens";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { WsTokenApi, WsTokenResponse } from "./api";
 
 const WsTokenHandlers = HttpApiBuilder.group(WsTokenApi, "wsToken", (handlers) =>
   handlers.handle("create", () =>

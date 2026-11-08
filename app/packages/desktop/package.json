@@ -92,6 +92,7 @@
     }
   },
   "dependencies": {
+    "@infrawrench/api-contract": "workspace:*",
     "@infrawrench/appstream-core": "workspace:*",
     "@infrawrench/appstream-host": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

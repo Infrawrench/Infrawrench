@@ -17,19 +17,28 @@ import {
   signSshData,
 } from "@infrawrench/ssh-tunnel-core";
 import { hasPermission } from "@infrawrench/server-core/permissions";
+import {
+  badRequest,
+  BadRequest,
+  GeneratedSshKey,
+  ImportedSshKey,
+  NotFound,
+  notFound,
+  ok,
+  SignSshKeyResponse,
+  SshKey,
+  SshKeysApi,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { sshKeys, users } from "../../../db/schema";
 import { encrypt, decrypt, buildAad } from "../../../services/encryption";
 import { validateSshPublicKey } from "../../../services/ssh-keys";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, BadRequest, NotFound, notFound } from "../../errors";
 import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { GeneratedSshKey, ImportedSshKey, SignSshKeyResponse, SshKey, SshKeysApi } from "./api";
 
 async function listSshKeys(organizationId: string) {
   const rows = await db

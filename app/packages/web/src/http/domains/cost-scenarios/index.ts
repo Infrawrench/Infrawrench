@@ -7,6 +7,16 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  BadRequest,
+  CostScenarioModel,
+  CostScenarioModelList,
+  CostScenarioNameTaken,
+  CostScenarioReferents,
+  CostScenariosApi,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   CostScenarioInUseError,
@@ -20,18 +30,10 @@ import {
   updateCostScenarioModel,
 } from "../../../services/cost-scenarios";
 import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  CostScenarioModel,
-  CostScenarioModelList,
-  CostScenarioNameTaken,
-  CostScenarioReferents,
-  CostScenariosApi,
-} from "./api";
 
 /**
  * A write, its refusals mapped as the Hono route's `writeError` did: a name

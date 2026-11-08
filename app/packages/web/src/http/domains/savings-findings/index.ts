@@ -22,6 +22,16 @@ import {
 import { orgAppUrl } from "@infrawrench/server-core/app-url";
 import { strictlyVisibleAccountIds } from "@infrawrench/server-core/cost/visibility-context";
 import { setFindingStatus } from "@infrawrench/server-core/savings/findings";
+import {
+  badRequest,
+  Conflict,
+  notFound,
+  ok,
+  SavingsFindingsApi,
+  SavingsFindingsResponse,
+  SavingsFindingStatusResult,
+  SavingsView,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { listSavingsFindings } from "../../../services/savings-findings";
 import {
@@ -34,18 +44,10 @@ import {
   updateSavingsView,
 } from "../../../services/savings-views";
 import { makeDomain } from "../../domain";
-import { Conflict, notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  SavingsFindingsApi,
-  SavingsFindingsResponse,
-  SavingsFindingStatusResult,
-  SavingsView,
-} from "./api";
 
 /** Run a client-core normalizer; what it throws is the 400's sentence. */
 const refusing = <A>(normalize: () => A) =>

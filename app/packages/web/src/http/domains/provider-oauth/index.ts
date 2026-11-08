@@ -8,14 +8,18 @@
 import { Effect, Layer } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  BadRequest,
+  NotFound,
+  ProviderOAuthApi,
+  ProviderOAuthAuthorizeResponse,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { htmlPage, queryParam, redirect } from "../raw-responses";
-import { ProviderOAuthApi, ProviderOAuthAuthorizeResponse } from "./api";
 import { authorizeProviderOAuth, completeProviderOAuth } from "./operations";
 
 const ProviderOAuthHandlers = HttpApiBuilder.group(ProviderOAuthApi, "providerOAuth", (handlers) =>

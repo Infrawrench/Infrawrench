@@ -8,12 +8,17 @@ import {
   EnvironmentDiffAccountNotFoundError,
   EnvironmentDiffPluginMismatchError,
 } from "@infrawrench/server-core/environment-diff";
+import {
+  BadRequest,
+  badRequest,
+  EnvironmentDiffApi,
+  EnvironmentDiffResponse,
+  NotFound,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound, badRequest } from "../../errors";
 import { legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { EnvironmentDiffApi, EnvironmentDiffResponse } from "./api";
 
 const EnvironmentDiffHandlers = HttpApiBuilder.group(
   EnvironmentDiffApi,

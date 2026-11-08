@@ -24,18 +24,12 @@ import {
   verifyStoredLinearCredentials,
 } from "@infrawrench/server-core/linear";
 import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadGateway, BadRequest, notFound } from "../../errors";
-import { decodeAsPayload, readJsonOr } from "../../request-body";
-import { unexpectedAs } from "../../refusals";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { IssueStatusRefreshResult, IssueWebhookSetupResult } from "../../schemas/issue-status";
 import {
+  BadGateway,
+  BadRequest,
   CreateLinearIssueResult,
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
   LinearApi,
   LinearIntegration,
   LinearIntegrationResponse,
@@ -45,7 +39,16 @@ import {
   LinearVerifyResult,
   LinearWebhookInput,
   LinearWebhookUrl,
-} from "./api";
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { decodeAsPayload, readJsonOr } from "../../request-body";
+import { unexpectedAs } from "../../refusals";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * The Jira split: 400 is "fix your input" (a missing key, a team the

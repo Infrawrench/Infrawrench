@@ -29,7 +29,7 @@ import {
   ManagedAccountAssignmentPreview,
   ManagedInvoiceSend,
   ManagedInvoiceVoid,
-} from "@infrawrench/ui/schemas";
+} from "@infrawrench/api-contract/schemas";
 import {
   ManagedAccountError,
   ManagedAccountNameConflictError,
@@ -59,16 +59,9 @@ import {
   previewManagedAccountAssignment,
 } from "@infrawrench/server-core/cost/managed-account-scope";
 import { invoicePdfFilename } from "@infrawrench/server-core/cost/invoice-pdf";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, notFound } from "../../errors";
-import { decodeAsPayload, readJson, readJsonOr } from "../../request-body";
-import { inputRefusal } from "../../refusals";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal, requirePermission } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  BadRequest,
+  Conflict,
   Invoice,
   InvoicesApi,
   InvoiceSummary,
@@ -76,9 +69,19 @@ import {
   ManagedAccount,
   ManagedAccountAssignmentPreviewResult,
   ManagedAccountAssignmentResult,
+  notFound,
+  ok,
   UnassignedPeriodQuery,
   UnassignedSpendReport,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { HttpFailure } from "../../errors";
+import { decodeAsPayload, readJson, readJsonOr } from "../../request-body";
+import { inputRefusal } from "../../refusals";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal, requirePermission } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * A managed-account write's refusals: a taken name or a scope already billed

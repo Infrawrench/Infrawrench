@@ -6,18 +6,24 @@
 import { Effect, Predicate, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { eq, sql } from "drizzle-orm";
+import {
+  AdminApi,
+  AdminOrganization,
+  badRequest,
+  ComplimentaryResult,
+  forbidden,
+  notFound,
+} from "@infrawrench/api-contract";
 import { isPlatformAdmin } from "../../../auth/platform-admin";
 import { db } from "../../../db/client";
 import { organizationMembers, organizations, subscriptions } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { badRequest, forbidden, notFound } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { json } from "../../middleware";
 import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { AdminApi, AdminOrganization, ComplimentaryResult } from "./api";
 
 /** 403 unless the session's email is on the allowlist. */
 const requirePlatformAdmin = Effect.gen(function* () {

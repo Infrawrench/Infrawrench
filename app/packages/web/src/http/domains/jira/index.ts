@@ -24,17 +24,12 @@ import {
   verifyStoredJiraCredentials,
 } from "@infrawrench/server-core/jira";
 import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { BadGateway, BadRequest, notFound } from "../../errors";
-import { decodeAsPayload, readJsonOr } from "../../request-body";
-import { unexpectedAs } from "../../refusals";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import {
+  BadGateway,
+  BadRequest,
   CreateJiraIssueResult,
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
   JiraApi,
   JiraIntegration,
   JiraIntegrationResponse,
@@ -44,8 +39,16 @@ import {
   JiraVerifyInput,
   JiraVerifyResult,
   JiraWebhookInput,
-} from "./api";
-import { IssueStatusRefreshResult, IssueWebhookSetupResult } from "../../schemas/issue-status";
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { decodeAsPayload, readJsonOr } from "../../request-body";
+import { unexpectedAs } from "../../refusals";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /**
  * 400 means "fix your input and try again" (bad site URL, missing token, a

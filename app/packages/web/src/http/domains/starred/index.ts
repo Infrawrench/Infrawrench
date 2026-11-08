@@ -21,17 +21,21 @@ import {
   type StarRef,
   type StarredItem as StarredItemValue,
 } from "@infrawrench/client-core";
+import {
+  badRequest,
+  conflict,
+  notFound,
+  ok,
+  StarredApi,
+  StarredItem,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { starredItems } from "../../../db/schema";
 import { resolvePaletteRefs } from "../../../services/palette-search";
 import { makeDomain } from "../../domain";
-import { badRequest, conflict, notFound } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { StarredItem } from "../../schemas/search";
-import { StarredApi } from "./api";
 
 function parseRef(kind: string, id: string): StarRef | null {
   if (!isSearchResultKind(kind) || !id || id.length > 512) return null;

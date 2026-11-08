@@ -22,6 +22,15 @@ The plugin contract is written in [Effect](https://effect.website): every asynch
 - **`@infrawrench/plugin-base`'s root entry has no Effect runtime and must stay that way**, because the SPA and mobile import it: Effect types there are `import type` only. Runtime lives in `@infrawrench/plugin-base/effect`, validators in `@infrawrench/plugin-base/validation`.
 - **A contract method calling another** goes through `runPluginEffect(this.x(...))`. Awaiting the Effect directly does nothing, and tsc-rs's `floatingEffect` rule does not catch every form (`await client.x?.()` gets past it), so never hold a contract client outside a plugin.
 
+## API contract
+
+The HTTP API's endpoint definitions live in `@infrawrench/api-contract` (`app/packages/api-contract`): every domain's `HttpApi` in `src/domains/<name>.ts`, the shared foundation (annotations, error classes, middleware tags, principal tags, `withApiDefaults`, shared schemas) in `src/http/`, and the request schemas the UI forms validate in `src/schemas/` (`@infrawrench/api-contract/schemas`). Web's `http/domains/<name>/index.ts` holds only the handlers. KNOWLEDGE.md ("Web API on Effect HttpApi", "The API contract package") has the recipe.
+
+- **The package imports nothing but `effect`, `@infrawrench/client-core` and itself**: never server-core, ui, web or desktop, and nothing Node-only. Data a definition needs from the server moves to client-core, and server-core re-exports it. Server-typed fields of the principal are added by module augmentation in web's `http/principal.ts`, never by importing server types into the contract.
+- **A new domain** is a module there plus an `export *` line and an `API_DEFINITIONS` entry in its `src/index.ts`; export names must be unique across the package (the build fails otherwise).
+- **Web, ui and desktop read its `dist`**: rebuild it (`turbo run build --filter=@infrawrench/api-contract`) after changing a definition, before typechecking or testing them.
+- **Clients decode what a newer server may extend leniently.** The desktop and the CLI ship behind the server, so a client never fails on an enum value or a field the server added: the CLI decodes server enums with `knownOr`/`openUnion`, and typed requests built from the contract pass the response body through rather than decoding it strictly.
+
 # Learning more about Effect
 
 This repository uses the Effect Typescript library.

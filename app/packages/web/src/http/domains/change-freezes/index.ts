@@ -3,6 +3,14 @@
  */
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import {
+  badRequest,
+  ChangeFreeze,
+  ChangeFreezesApi,
+  ChangeFreezeStatus,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   createChangeFreeze,
@@ -15,12 +23,9 @@ import {
   type ChangeFreezeRow,
 } from "../../../services/change-freezes";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { ChangeFreeze, ChangeFreezesApi, ChangeFreezeStatus } from "./api";
 
 function toWire(freeze: ChangeFreezeRow) {
   return {

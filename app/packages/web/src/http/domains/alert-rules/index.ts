@@ -33,15 +33,6 @@ import {
   cancelAlertDeliveries,
   listAlertDeliveries,
 } from "@infrawrench/server-core/alerts/ack";
-import { db } from "../../../db/client";
-import { accounts } from "../../../db/schema";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound, Unauthorized } from "../../errors";
-import { fieldsOf, readJson } from "../../request-body";
-import { legacy } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
   AcknowledgeResult,
   AdoptDefaultsResult,
@@ -49,8 +40,19 @@ import {
   AlertRuleList,
   AlertRulesApi,
   AlertRulesResponse,
+  badRequest,
   CancelResult,
-} from "./api";
+  notFound,
+  Unauthorized,
+} from "@infrawrench/api-contract";
+import { db } from "../../../db/client";
+import { accounts } from "../../../db/schema";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fieldsOf, readJson } from "../../request-body";
+import { legacy } from "../../legacy";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 /** A rule as it arrives, once {@link structuralError} has passed it. */
 interface RuleBody {

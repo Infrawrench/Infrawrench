@@ -66,6 +66,25 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  app/packages/api-contract:
+    dependencies:
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../client-core
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(tsx@4.23.11)(unrun@0.3.1)
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
   app/packages/bastion-agent:
     dependencies:
       kill-emudhra:
@@ -115,6 +134,9 @@ importers:
 
   app/packages/desktop:
     dependencies:
+      '@infrawrench/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
       '@infrawrench/appstream-core':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/appstream-core
@@ -1671,6 +1693,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
+      '@infrawrench/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
       '@infrawrench/appstream-core':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/appstream-core
@@ -1793,6 +1818,9 @@ importers:
       '@infrawrench/analytics':
         specifier: workspace:*
         version: link:../analytics
+      '@infrawrench/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
       '@infrawrench/appstream-core':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/appstream-core
@@ -30656,12 +30684,12 @@ snapshots:
       sprintf-js: 1.1.3
     optional: true
 
-  rolldown-plugin-dts@0.27.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(rolldown@1.2.3):
+  rolldown-plugin-dts@0.27.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(rolldown@1.2.16):
     dependencies:
       dts-resolver: 3.0.0(oxc-resolver@11.24.2)
       get-tsconfig: 5.0.0-beta.5
       obug: 2.1.4
-      rolldown: 1.2.3
+      rolldown: 1.2.16
       yuku-ast: 0.8.4
       yuku-codegen: 0.8.4
       yuku-parser: 0.8.4
@@ -31599,9 +31627,9 @@ snapshots:
       hookable: 6.1.1
       import-without-cache: 0.4.0
       obug: 2.1.4
-      picomatch: 4.0.5
-      rolldown: 1.2.3
-      rolldown-plugin-dts: 0.27.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(rolldown@1.2.3)
+      picomatch: 4.0.7
+      rolldown: 1.2.16
+      rolldown-plugin-dts: 0.27.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(rolldown@1.2.16)
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
       tree-kill: 1.2.2
@@ -32039,7 +32067,7 @@ snapshots:
       lightningcss: 1.33.0
       picomatch: 4.0.7
       postcss: 8.5.26
-      rolldown: 1.2.3
+      rolldown: 1.2.16
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 26.2.0

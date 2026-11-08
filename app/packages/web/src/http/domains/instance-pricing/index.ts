@@ -23,6 +23,13 @@ import { HttpServerResponse, type HttpServerRequest } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { INSTANCE_PRICING_KEY } from "@infrawrench/client-core";
 import {
+  AWS_PRICING_PREFIX,
+  AwsPricingQueryResult,
+  AwsPricingSchema,
+  INSTANCE_PRICING_PREFIX,
+  InstancePricingApi,
+} from "@infrawrench/api-contract";
+import {
   InstancePricingNotConfiguredError,
   classifyInstancePricingError,
   getInstancePricingSchema,
@@ -38,13 +45,6 @@ import { legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { guardPrefixes } from "../../prefix-guard";
 import { respond } from "../../response";
-import {
-  AWS_PRICING_PREFIX,
-  AwsPricingQueryResult,
-  AwsPricingSchema,
-  INSTANCE_PRICING_PREFIX,
-  InstancePricingApi,
-} from "./api";
 
 const unavailable = () =>
   json({ error: "The instance pricing warehouse is not configured on this deployment" }, 503);

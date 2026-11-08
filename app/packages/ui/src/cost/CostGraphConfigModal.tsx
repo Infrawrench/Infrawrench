@@ -1,6 +1,10 @@
 import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, msg, useGT, useMessages } from "gt-react";
+import {
+  CostGraphConfig as CostGraphConfigSchema,
+  decodeForm,
+} from "@infrawrench/api-contract/schemas";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   COST_BASES,
@@ -24,7 +28,6 @@ import {
   type CostGraphConfig,
   type CostScenarioModel,
 } from "./config.js";
-import { CostGraphConfig as CostGraphConfigSchema, decodeForm } from "../schemas/index.js";
 import { UnitCostConfigFields } from "./UnitCostConfigFields.js";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";

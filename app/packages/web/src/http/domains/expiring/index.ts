@@ -14,13 +14,18 @@ import {
   type ExpirySettingsPatch,
   type ExpirySettingsRecord,
 } from "@infrawrench/server-core/expiry/settings";
+import {
+  BadRequest,
+  badRequest,
+  ExpiringApi,
+  ExpiryAlertSettings,
+  ExpiryListResponse,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ExpiringApi, ExpiryAlertSettings, ExpiryListResponse } from "./api";
 
 function toWire(s: ExpirySettingsRecord) {
   return {

@@ -10,14 +10,12 @@ import {
   isSearchResultKind,
   type SearchResultKind,
 } from "@infrawrench/client-core";
+import { badRequest, SearchApi, SearchHit } from "@infrawrench/api-contract";
 import { legacySearch, searchPalette, searchableKinds } from "../../../services/palette-search";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { SearchHit } from "../../schemas/search";
-import { SearchApi } from "./api";
 
 /**
  * Parse `kinds=`: a comma list of `SearchResultKind`s, or `all`. Null for an

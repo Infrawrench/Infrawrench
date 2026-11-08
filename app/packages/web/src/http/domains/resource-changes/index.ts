@@ -24,6 +24,21 @@ import {
   REVERT_CONFLICT_CODE,
   type RevertAuditOutcome,
 } from "@infrawrench/client-core";
+import {
+  BadGateway,
+  BadRequest,
+  badRequest,
+  ChangeCostImpactsResponse,
+  DriftAlertSettings,
+  InternalServerError,
+  NotFound,
+  notFound,
+  ResourceChangeFeedResponse,
+  ResourceChangeListResponse,
+  ResourceChangesApi,
+  RevertApplyResponse,
+  RevertPreviewResponse,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { accounts, resourceChanges } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
@@ -38,27 +53,10 @@ import {
 } from "../../../services/change-revert";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
-import {
-  BadGateway,
-  BadRequest,
-  badRequest,
-  InternalServerError,
-  NotFound,
-  notFound,
-} from "../../errors";
 import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import {
-  ChangeCostImpactsResponse,
-  DriftAlertSettings,
-  ResourceChangeFeedResponse,
-  ResourceChangeListResponse,
-  ResourceChangesApi,
-  RevertApplyResponse,
-  RevertPreviewResponse,
-} from "./api";
 
 type ChangeKind = "created" | "updated" | "deleted";
 const CHANGE_KINDS: ReadonlySet<string> = new Set(["created", "updated", "deleted"]);

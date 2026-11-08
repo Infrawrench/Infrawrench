@@ -22,11 +22,10 @@ import { HttpApiBuilder } from "effect/http-api";
 import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
+import { notFound, Unauthorized, WorkflowGitWebhookApi } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { notFound, Unauthorized } from "../../errors";
 import { legacy } from "../../legacy";
 import { respond } from "../../response";
-import { WorkflowGitWebhookApi } from "./api";
 
 type Body = { readonly [key: string]: unknown };
 

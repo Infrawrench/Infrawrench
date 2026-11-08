@@ -14,15 +14,20 @@ import {
 } from "@infrawrench/server-core/idle/settings";
 import { getIdleFindingsOverview } from "@infrawrench/server-core/idle/feed";
 import type { IdleRuleOverride } from "@infrawrench/client-core";
+import {
+  BadRequest,
+  badRequest,
+  IdleFindingsApi,
+  IdleFindingSettings,
+  IdleFindingsOverview,
+  ok,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { IdleFindingSettings, IdleFindingsApi, IdleFindingsOverview } from "./api";
 
 const isPlainObject = (value: unknown): value is { readonly [key: string]: unknown } =>
   Predicate.isObject(value) && !Array.isArray(value);

@@ -34,13 +34,13 @@ export type {
   MetricSeriesKeyOption,
 } from "@infrawrench/client-core";
 
-// Effect twin: `MetricAlertComparator` in `ui/src/schemas/metric-alerts.ts`.
+// Effect twin: `MetricAlertComparator` in `api-contract/src/schemas/metric-alerts.ts`.
 export const metricAlertComparatorSchema = z.enum([">", ">=", "<", "<="]);
 
 /** A selector part: a non-empty bounded string, or null for "any". */
 const selectorPart = (max: number) => z.string().trim().min(1).max(max).nullable();
 
-// Effect twin: `MetricAlertSelector` in `ui/src/schemas/metric-alerts.ts`.
+// Effect twin: `MetricAlertSelector` in `api-contract/src/schemas/metric-alerts.ts`.
 export const metricAlertSelectorSchema = z.object({
   pluginId: selectorPart(100),
   resourceTypeId: selectorPart(100),
@@ -48,7 +48,7 @@ export const metricAlertSelectorSchema = z.object({
   tagValue: selectorPart(METRIC_ALERT_LIMITS.maxTagLength),
 });
 
-// Effect twin: `MetricAlertRuleInput` in `ui/src/schemas/metric-alerts.ts`.
+// Effect twin: `MetricAlertRuleInput` in `api-contract/src/schemas/metric-alerts.ts`.
 export const metricAlertRuleInputSchema = metricAlertSelectorSchema.extend({
   name: z.string().trim().min(1).max(METRIC_ALERT_LIMITS.maxNameLength),
   metricKey: z.string().trim().min(1).max(METRIC_ALERT_LIMITS.maxMetricKeyLength),

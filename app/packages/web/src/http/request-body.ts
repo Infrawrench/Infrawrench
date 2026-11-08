@@ -28,8 +28,8 @@
 import { Effect, Predicate, Schema } from "effect";
 import { HttpServerRequest } from "effect/http";
 import { HttpApiError } from "effect/http-api";
-import { decodeForm, STRICT_PARSE_OPTIONS } from "@infrawrench/ui/schemas";
-import { BadRequest } from "./errors";
+import { decodeForm, STRICT_PARSE_OPTIONS } from "@infrawrench/api-contract/schemas";
+import { BadRequest } from "@infrawrench/api-contract";
 
 const parseJson = (text: string): unknown => JSON.parse(text);
 

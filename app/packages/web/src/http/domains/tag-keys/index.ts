@@ -5,19 +5,18 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { tagKeySettingsError } from "@infrawrench/client-core";
-import { TagKeySettings } from "@infrawrench/ui/schemas";
+import { TagKeySettings } from "@infrawrench/api-contract/schemas";
 import {
   getOrgTagKeySettings,
   setOrgTagKeySettings,
 } from "@infrawrench/server-core/cost/tag-key-settings";
+import { badRequest, DiscoveredTagKeys, TagKeysApi } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { discoverTagKeys } from "../../../services/tag-keys";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { DiscoveredTagKeys, TagKeysApi } from "./api";
 
 const TagKeysHandlers = HttpApiBuilder.group(TagKeysApi, "tagKeys", (handlers) =>
   handlers

@@ -22,20 +22,21 @@ import {
   getSessionRecordingSettings,
   updateSessionRecordingSettings,
 } from "@infrawrench/server-core/ssh-recording/settings";
+import {
+  badRequest,
+  notFound,
+  ok,
+  SessionRecording,
+  SessionRecordingsApi,
+  SessionRecordingSettings,
+  SessionRecordingSettingsUpdate,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
 import { readJsonOr, decodeFirstIssue } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  SessionRecording,
-  SessionRecordingSettings,
-  SessionRecordingSettingsUpdate,
-  SessionRecordingsApi,
-} from "./api";
 
 const STATUSES: readonly SessionRecordingStatus[] = [
   "recording",

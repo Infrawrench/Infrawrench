@@ -26,18 +26,17 @@ import {
 } from "@infrawrench/server-core/github/app";
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { badRequest, CONNECT_PERMISSION, GithubApi } from "@infrawrench/api-contract";
 import { safeReturnPath } from "../../../api/oauth-state";
 import { db } from "../../../db/client";
 import { githubInstallations } from "../../../db/schema";
 import { linkGithubInstallation } from "../../../services/github-installations";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { SESSION_COOKIE } from "../../session-cookie";
 import { sessionPerson } from "../../session-person";
-import { CONNECT_PERMISSION, GithubApi } from "./api";
 
 function appUrl(): string {
   return (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");

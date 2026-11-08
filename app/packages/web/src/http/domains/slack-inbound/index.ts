@@ -29,11 +29,11 @@ import {
   postToSlackResponseUrl,
   verifySlackRequestSignature,
 } from "@infrawrench/server-core/slack";
+import { SessionAuth, SlackInboundApi } from "@infrawrench/api-contract";
 import { safeReturnPath } from "../../../api/oauth-state";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy } from "../../legacy";
 import { json } from "../../middleware";
-import { SessionAuth } from "../../middleware-tags";
 import { SessionPrincipal } from "../../principal";
 import { SESSION_COOKIE } from "../../session-cookie";
 import {
@@ -46,7 +46,6 @@ import {
   setCookie,
   withSteps,
 } from "../raw-responses";
-import { SlackInboundApi } from "./api";
 import {
   appUrl,
   blockActionsPayload,

@@ -7,12 +7,12 @@
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
+import { RightsizingApi, RightsizingListResponse } from "@infrawrench/api-contract";
 import { listRightsizing } from "../../../services/rightsizing";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { RightsizingApi, RightsizingListResponse } from "./api";
 
 const RightsizingHandlers = HttpApiBuilder.group(RightsizingApi, "rightsizing", (handlers) =>
   handlers.handle("list", ({ query }) =>

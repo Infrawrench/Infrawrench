@@ -11,6 +11,14 @@
 import { Effect, Layer, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { eq } from "drizzle-orm";
+import {
+  AgentAuthApi,
+  AgentClaimLookup,
+  AgentClaimResult,
+  AgentClaimStarted,
+  AgentIdentity,
+  RegisteredAgent,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { organizations, organizationMembers } from "../../../db/schema";
 import {
@@ -38,14 +46,6 @@ import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { answeringFailures, requestHeader } from "../raw-responses";
-import {
-  AgentAuthApi,
-  AgentClaimLookup,
-  AgentClaimResult,
-  AgentClaimStarted,
-  AgentIdentity,
-  RegisteredAgent,
-} from "./api";
 import { clientIp, publicBaseUrl } from "./request-origin";
 
 /** Pull the agent's own credential off the request, or null. */

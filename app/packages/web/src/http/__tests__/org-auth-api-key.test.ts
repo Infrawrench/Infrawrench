@@ -128,10 +128,9 @@ vi.mock("@/services/object-sharing", () => ({
   runWithSharingPrincipal: (_principal: unknown, fn: () => unknown) => fn(),
 }));
 
-const { RequiredPermission } = await import("@/http/annotations");
-const { makeDomain, withApiDefaults } = await import("@/http/domain");
+const { makeDomain } = await import("@/http/domain");
 const { legacy } = await import("@/http/legacy");
-const { OrgAuth } = await import("@/http/middleware-tags");
+const { OrgAuth, RequiredPermission, withApiDefaults } = await import("@infrawrench/api-contract");
 const { MiddlewareLive } = await import("@/http/middleware-live");
 const { OrgPrincipal } = await import("@/http/principal");
 const { makeHttpApiHandler } = await import("@/http/server");

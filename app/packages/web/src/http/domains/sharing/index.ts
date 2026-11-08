@@ -20,6 +20,7 @@ import {
   type ObjectSharingInput,
   type ShareableObjectType,
 } from "@infrawrench/client-core";
+import { badRequest, ObjectSharing, ok, SharingApi } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   getObjectSharing,
@@ -27,13 +28,10 @@ import {
   resetObjectSharing,
 } from "../../../services/object-sharing";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { ObjectSharing, SharingApi } from "./api";
 
 const READ_PERMISSION: Record<ShareableObjectType, string> = {
   cost_report: "costs:read",

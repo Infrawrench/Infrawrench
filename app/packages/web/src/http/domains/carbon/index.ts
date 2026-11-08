@@ -7,12 +7,11 @@ import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { CARBON_LIMITS } from "@infrawrench/client-core";
 import { getCarbonEstimate } from "@infrawrench/server-core/cost/carbon";
+import { badRequest, CarbonApi, CarbonEstimate } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CarbonApi, CarbonEstimate } from "./api";
 
 const CarbonHandlers = HttpApiBuilder.group(CarbonApi, "carbon", (handlers) =>
   handlers.handle("estimate", ({ query }) =>

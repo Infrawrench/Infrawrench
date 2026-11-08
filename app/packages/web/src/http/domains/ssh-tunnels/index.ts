@@ -16,6 +16,18 @@ import {
   acceptSubmittedCredentials,
   type AcceptedCredentials,
 } from "@infrawrench/server-core/provider-oauth";
+import {
+  ActiveTunnel,
+  BadRequest,
+  badRequest,
+  forbidden,
+  notFound,
+  ok,
+  OpenedTunnel,
+  SshExecResponse,
+  SshTunnelCreateAccountResponse,
+  SshTunnelsApi,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { accounts, sshKeys, sshTunnelConfigs } from "../../../db/schema";
 import { buildAad, decrypt, encrypt } from "../../../services/encryption";
@@ -26,19 +38,10 @@ import { resolveSafeHost } from "../../../services/host-validation";
 import { logAudit } from "../../../services/audit";
 import { getPlugin } from "../../../plugins/loader";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, forbidden, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
 import { hostKeyTrustRefusal, hostKeyTrustRequired } from "../ssh-host-key-trust";
-import {
-  ActiveTunnel,
-  OpenedTunnel,
-  SshExecResponse,
-  SshTunnelCreateAccountResponse,
-  SshTunnelsApi,
-} from "./api";
 
 const messageOr = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;

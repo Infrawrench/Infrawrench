@@ -10,18 +10,23 @@ import { HttpApiBuilder } from "effect/http-api";
 import { v4 as uuid } from "uuid";
 import { eq, and, isNull } from "drizzle-orm";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import {
+  ApiKey,
+  ApiKeysApi,
+  BadRequest,
+  CreatedApiKey,
+  notFound,
+  ok,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { apiKeys } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { keyedHash } from "../../../services/encryption";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound } from "../../errors";
 import { readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { ApiKey, ApiKeysApi, CreatedApiKey } from "./api";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. */
 const API_KEY_HASH_DOMAIN = "api-key";

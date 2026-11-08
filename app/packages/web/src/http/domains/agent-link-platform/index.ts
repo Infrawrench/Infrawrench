@@ -43,6 +43,18 @@ import {
   type AgentLinkRow,
 } from "@infrawrench/server-core/agent-links/links";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import {
+  AgentLinkInfo,
+  AgentLinkLookup,
+  AgentLinkPlatformApi,
+  AgentLinkPoll,
+  AgentLinkRequestStarted,
+  Ok,
+  ok,
+  PlatformAgent,
+  PlatformAgentEnvelope,
+  PlatformAgentWithCredential,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { buildLinkInfo, serializeAgent, unknownProviders } from "../../../services/agent-links";
 import { rawRequest } from "../../caller-auth";
@@ -54,19 +66,8 @@ import { failureResponse, json } from "../../middleware";
 import { guardPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  AgentLinkInfo,
-  AgentLinkLookup,
-  AgentLinkPoll,
-  AgentLinkRequestStarted,
-  PlatformAgent,
-  PlatformAgentEnvelope,
-  PlatformAgentWithCredential,
-} from "../../schemas/agent-links";
-import { Ok, ok } from "../../schemas/common";
 import { clientIp, publicBaseUrl } from "../agent-auth/request-origin";
 import { answeringFailures, requestHeader } from "../raw-responses";
-import { AgentLinkPlatformApi } from "./api";
 
 /** An {@link AgentLinkError} as the contract's error body. */
 const linkRefusal = (e: unknown): HttpFailure | undefined =>

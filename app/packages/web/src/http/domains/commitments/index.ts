@@ -6,11 +6,11 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
+import { CommitmentsApi, CommitmentsFeed } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { CommitmentsApi, CommitmentsFeed } from "./api";
 
 const CommitmentsHandlers = HttpApiBuilder.group(CommitmentsApi, "commitments", (handlers) =>
   handlers.handle("feed", () =>

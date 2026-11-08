@@ -24,23 +24,25 @@ import {
   type ProbeUpdateInput,
 } from "@infrawrench/server-core/probes/store";
 import { probeMetricResourceId } from "@infrawrench/server-core/probes/metric-ids";
+import {
+  badRequest,
+  notFound,
+  ProbeMetrics,
+  ProbesApi,
+  ProbeSuggestions,
+  ServiceUnavailable,
+  SyntheticProbe,
+  SyntheticProbeList,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { resources } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { badRequest, notFound, ServiceUnavailable } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  ProbeMetrics,
-  ProbesApi,
-  ProbeSuggestions,
-  SyntheticProbe,
-  SyntheticProbeList,
-} from "./api";
 
 type Body = { readonly [key: string]: unknown };
 

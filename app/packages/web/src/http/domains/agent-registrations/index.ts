@@ -16,22 +16,25 @@ import {
   updatePlatformAgent,
   validateAgentGrant,
 } from "@infrawrench/server-core/agent-links/links";
+import {
+  AgentRegistration,
+  AgentRegistrationsApi,
+  AgentRevoked,
+  badRequest,
+  conflict,
+  notFound,
+  PlatformAgentEnvelope,
+} from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { agentAuthRegistrations, users } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { serializeAgent, unknownProviders } from "../../../services/agent-links";
 import { makeDomain } from "../../domain";
-import { badRequest, conflict, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import {
-  AgentRegistration,
-  AgentRegistrationsApi,
-  AgentRevoked,
-  PlatformAgentEnvelope,
-} from "./api";
 
 /** A refusal whose body carries more than `error` (`code`, `scopes`), sent as-is. */
 const refuse = (status: number, body: Readonly<Record<string, unknown>>) =>

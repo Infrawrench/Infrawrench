@@ -9,7 +9,7 @@
  * scope, or establishes the scope itself. A cost domain added later fails
  * here until it is classified.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
@@ -22,6 +22,8 @@ vi.hoisted(() => {
 
 const SRC = join(__dirname, "..", "..");
 const DOMAINS_DIR = join(SRC, "http", "domains");
+/** Where each domain's endpoint definitions (its groups and their middleware) live. */
+const CONTRACT_DOMAINS_DIR = join(SRC, "..", "..", "api-contract", "src", "domains");
 
 /** Imports that mean "this module reads cost data". */
 const COST_DATA = [
@@ -76,14 +78,27 @@ function readsCostData(text: string): boolean {
   return imports.some((imp) => COST_DATA.some((re) => re.test(imp)));
 }
 
-/** A domain's source: one module, or every module of its folder. */
-function domainSource(entry: string): string {
-  const path = join(DOMAINS_DIR, entry);
-  if (entry.endsWith(".ts")) return readFileSync(path, "utf8");
+/** A module, or every module of a folder. */
+function moduleSource(path: string): string {
+  if (path.endsWith(".ts")) return readFileSync(path, "utf8");
   return readdirSync(path)
     .filter((f) => f.endsWith(".ts"))
     .map((f) => readFileSync(join(path, f), "utf8"))
     .join("\n");
+}
+
+/** The contract's definitions of a domain: `domains/<name>.ts` or `domains/<name>/`. */
+function definitionSource(entry: string): string {
+  const name = entry.replace(/\.ts$/, "");
+  const file = join(CONTRACT_DOMAINS_DIR, `${name}.ts`);
+  if (existsSync(file)) return readFileSync(file, "utf8");
+  const dir = join(CONTRACT_DOMAINS_DIR, name);
+  return existsSync(dir) ? moduleSource(dir) : "";
+}
+
+/** A domain's source: its handlers (one module or a folder) and its endpoint definitions. */
+function domainSource(entry: string): string {
+  return `${moduleSource(join(DOMAINS_DIR, entry))}\n${definitionSource(entry)}`;
 }
 
 /** HttpApi domains (`http/domains/<name>.ts` or `<name>/`) that reach cost data. */
@@ -187,9 +202,9 @@ vi.mock("@/http/auth", async (importOriginal) => ({
 
 const { costScopeRouteDenial } = await import("@/auth/cost-visibility");
 const { currentCostVisibility } = await import("@infrawrench/server-core/cost/visibility-context");
-const { makeDomain, withApiDefaults } = await import("@/http/domain");
+const { makeDomain } = await import("@/http/domain");
 const { legacy } = await import("@/http/legacy");
-const { OrgAuth } = await import("@/http/middleware-tags");
+const { OrgAuth, withApiDefaults } = await import("@infrawrench/api-contract");
 const { MiddlewareLive } = await import("@/http/middleware-live");
 const { makeHttpApiHandler } = await import("@/http/server");
 

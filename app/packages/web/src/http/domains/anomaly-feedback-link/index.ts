@@ -21,6 +21,7 @@ import {
 } from "@infrawrench/client-core";
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { AnomalyFeedbackLinkApi } from "@infrawrench/api-contract";
 import { safeReturnPath } from "../../../api/oauth-state";
 import { withPrincipalCostVisibility } from "../../../auth/cost-visibility";
 import { getCostAnomalyView } from "../../../services/cost-anomalies";
@@ -34,7 +35,6 @@ import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { failureResponse, json } from "../../middleware";
 import { SESSION_COOKIE } from "../../session-cookie";
 import { sessionPerson } from "../../session-person";
-import { AnomalyFeedbackLinkApi } from "./api";
 
 const CSRF_COOKIE = "anomaly_feedback_csrf";
 const PATH = "/api/anomaly-feedback";

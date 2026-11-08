@@ -9,12 +9,16 @@
  * reaches the caller's memory. Plain `fetch` and web streams only: it runs in
  * a Worker as well as on Node.
  */
+import { PricingWarehouse } from "@infrawrench/client-core";
 
 /** The warehouse's public endpoint; the token is what grants access. */
 export const DEFAULT_WAREHOUSE_URL = "https://instances-clickhouse.infrawrench.com/";
 
-/** The most rows one API query returns (`POST /api/v1/instance-pricing/query`). */
-export const MAX_QUERY_ROWS = 10_000;
+/**
+ * The most rows one API query returns (`POST /api/v1/instance-pricing/query`).
+ * Defined in client-core, which the API contract documents it from.
+ */
+export const MAX_QUERY_ROWS = PricingWarehouse.MAX_QUERY_ROWS;
 
 export type Cell = string | number | boolean | null;
 

@@ -11,6 +11,15 @@
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { CostQueryParseError } from "@infrawrench/client-core";
+import {
+  BadRequest,
+  notFound,
+  ok,
+  SavedCostFilter,
+  SavedCostFilterNameTaken,
+  SavedCostFilterReferents,
+  SavedCostFiltersApi,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   SavedCostFilterInUseError,
@@ -23,17 +32,10 @@ import {
   updateSavedCostFilter,
 } from "../../../services/saved-cost-filters";
 import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import {
-  SavedCostFilter,
-  SavedCostFilterNameTaken,
-  SavedCostFiltersApi,
-  SavedCostFilterReferents,
-} from "./api";
 
 /** A write, its refusals mapped as the Hono route's `writeError` did. */
 const savedFilterWrite = <A>(fn: () => Promise<A>) =>

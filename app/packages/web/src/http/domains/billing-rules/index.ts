@@ -20,14 +20,21 @@ import {
   updateBillingRule,
 } from "@infrawrench/server-core/cost/billing-rules";
 import { previewPricing } from "@infrawrench/server-core/cost/pricing-preview";
+import {
+  BadRequest,
+  BillingRule,
+  BillingRulesApi,
+  Conflict,
+  notFound,
+  ok,
+  PricingPreviewResult,
+} from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, notFound } from "../../errors";
+import { HttpFailure } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { isCostScoped, OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { BillingRule, BillingRulesApi, PricingPreviewResult } from "./api";
 
 /** A write, its refusals mapped as the Hono route's `writeError` did. */
 const billingRuleWrite = <A>(fn: () => PromiseLike<A>) =>

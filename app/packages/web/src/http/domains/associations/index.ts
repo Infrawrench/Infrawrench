@@ -9,15 +9,13 @@ import {
   setLiteralSecretState,
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
+import { AssociationsApi, notFound, ok } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { associations, resources } from "../../../db/schema";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
-import { ok } from "../../schemas/common";
-import { AssociationsApi } from "./api";
 
 /** True when `resourceId` is one of the organization's resources. */
 const resourceInOrg = (organizationId: string, resourceId: string) =>

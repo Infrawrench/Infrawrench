@@ -6,11 +6,15 @@
  * one router, and the spec builder documents each, so no file has to name
  * every group in a single typed chain, and two domains converted at the same
  * time never edit the same definition.
+ *
+ * The definitions themselves (each domain's `HttpApi`, `withApiDefaults`) are
+ * `@infrawrench/api-contract`'s; this module is the server half, a domain's
+ * handlers over its definition.
  */
 import { Context, Layer, type FileSystem, type Path } from "effect";
 import type { Etag, HttpPlatform, HttpRouter } from "effect/http";
 import { HttpApi, HttpApiBuilder, OpenApi, type HttpApiGroup } from "effect/http-api";
-import { RequestErrors, type OrgAuth, type SessionAuth } from "./middleware-tags";
+import type { OrgAuth, RequestErrors, SessionAuth } from "@infrawrench/api-contract";
 
 /**
  * What a domain layer may still need once its handlers are provided: the
@@ -83,21 +87,3 @@ export const makeDomain = <
     return out;
   },
 });
-
-/**
- * The defaults every domain's `HttpApi` carries: decode reporting every issue
- * rather than the first, and {@link RequestErrors} outermost on every
- * endpoint. Call it after the groups are added, since middleware only reaches
- * the endpoints present when it is applied.
- *
- * ```ts
- * export class BudgetsApi extends withApiDefaults(HttpApi.make("budgets").add(BudgetsGroup)) {}
- * ```
- */
-export const withApiDefaults = <Id extends string, Groups extends HttpApiGroup.Constraint>(
-  api: HttpApi.HttpApi<Id, Groups>,
-) =>
-  api
-    .annotate(HttpApi.PayloadParseOptions, { errors: "all" })
-    .annotate(HttpApi.QueryParseOptions, { errors: "all" })
-    .middleware(RequestErrors);

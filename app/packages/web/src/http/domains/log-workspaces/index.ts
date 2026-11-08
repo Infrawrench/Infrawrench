@@ -18,23 +18,23 @@ import {
   type LogWorkspaceQueryCreateInput,
   type LogWorkspaceQueryUpdateInput,
 } from "@infrawrench/server-core/log-workspaces/store";
-import { logAudit } from "../../../services/audit";
-import { listLogCapableResources } from "../../../services/log-workspaces";
-import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
-import { fireAndForget, legacy } from "../../legacy";
-import { readObjectBody } from "../../request-body";
-import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  badRequest,
   LogCapableResourceList,
   LogWorkspaceQuery,
   LogWorkspaceQueryConflict,
   LogWorkspaceQueryList,
   LogWorkspaceQueryUpdateConflict,
   LogWorkspacesApi,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { listLogCapableResources } from "../../../services/log-workspaces";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy } from "../../legacy";
+import { readObjectBody } from "../../request-body";
+import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 const store: RefusalPolicy = refusalsOf(LogWorkspaceInputError, {
   logPrefix: "[log-workspaces]",

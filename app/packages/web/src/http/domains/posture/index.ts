@@ -16,14 +16,20 @@ import {
   type PostureSettingsPatch,
   type PostureSettingsRecord,
 } from "@infrawrench/server-core/posture/settings";
+import {
+  BadRequest,
+  badRequest,
+  PostureAlertSettings,
+  PostureApi,
+  PostureDismissal,
+  PostureListResponse,
+} from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
 import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { dismissFinding, restoreFinding } from "../access-review/dismissals";
-import { PostureAlertSettings, PostureApi, PostureDismissal, PostureListResponse } from "./api";
 
 function toWire(s: PostureSettingsRecord) {
   return {

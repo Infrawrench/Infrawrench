@@ -51,7 +51,7 @@ When you change behavior the user can see, update the docs in the same change:
 - **New feature or significant UX change** — update or add a page under `features/`.
 - **Auth / cloud-sync / billing change** — update the relevant page under `getting-started/`, `core-concepts/`, or `team-and-billing/`.
 - **Renamed UI string or moved menu item** — search docs for the old string (`grep -r "<old name>" app/packages/website/src/content/docs`) and update.
-- **HTTP API change** (new/changed/removed route, new auth scope, changed request/response shape) — update the endpoint definitions in the route's HttpApi domain (`app/packages/web/src/http/domains/<name>/api.ts`, which are the spec; see KNOWLEDGE.md "Web API on Effect HttpApi"), run `pnpm --filter @infrawrench/web generate:openapi` to refresh `openapi.json`, and update `app/packages/website/src/content/docs/team-and-billing/openapi.md` if the change affects auth, scopes, generation workflow, or anything else covered there.
+- **HTTP API change** (new/changed/removed route, new auth scope, changed request/response shape) — update the endpoint definitions in the route's HttpApi domain (`app/packages/api-contract/src/domains/<name>.ts`, which are the spec; see KNOWLEDGE.md "Web API on Effect HttpApi"), run `pnpm --filter @infrawrench/web generate:openapi` to refresh `openapi.json`, and update `app/packages/website/src/content/docs/team-and-billing/openapi.md` if the change affects auth, scopes, generation workflow, or anything else covered there.
 
 Screenshots are referenced inline as a one-line shorthand:
 

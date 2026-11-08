@@ -15,6 +15,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Cause, Effect } from "effect";
 import type { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import { CallbackApi } from "@infrawrench/api-contract";
 import {
   OAUTH_COOKIE_MAX_AGE,
   OAUTH_RETRY_COOKIE,
@@ -36,7 +37,6 @@ import {
   setCookie,
   withSteps,
 } from "../raw-responses";
-import { CallbackApi } from "./api";
 
 /** Constant-time string comparison; returns false if lengths differ. */
 function constantTimeEqual(a: string, b: string): boolean {

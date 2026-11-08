@@ -28,15 +28,19 @@
  */
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
-import { minLength } from "@infrawrench/ui/schemas";
+import { minLength } from "@infrawrench/api-contract/schemas";
+import {
+  BadRequest,
+  InternalRelayApi,
+  Unauthorized,
+  UnprocessableEntity,
+} from "@infrawrench/api-contract";
 import { runLocally, encodeOpResult, AppsHostError } from "../../../services/apps-headless";
 import { verifyRelaySecret } from "../../../services/replica-relay";
 import { makeDomain } from "../../domain";
-import { BadRequest, Unauthorized, UnprocessableEntity } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { legacyTry } from "../../legacy";
 import { respond } from "../../response";
-import { InternalRelayApi } from "./api";
 
 const NonEmpty = Schema.String.check(minLength(1));
 

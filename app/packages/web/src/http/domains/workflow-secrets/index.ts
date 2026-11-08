@@ -6,6 +6,7 @@
 import { Effect, Predicate, Schema } from "effect";
 import type { HttpServerRequest } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
+import { badRequest, ok, WorkflowSecret, WorkflowSecretsApi } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import {
   WorkflowSecretError,
@@ -16,15 +17,11 @@ import {
   writeWorkflowSecretValue,
 } from "../../../services/workflow-secrets";
 import { makeDomain } from "../../domain";
-import { badRequest } from "../../errors";
 import { readJsonOr } from "../../request-body";
 import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { ok } from "../../schemas/common";
-import { WorkflowSecret } from "../../schemas/workflow-secrets";
-import { WorkflowSecretsApi } from "./api";
 
 const secretRefusal: ReadRefusal = (error) =>
   error instanceof WorkflowSecretError ? error : undefined;

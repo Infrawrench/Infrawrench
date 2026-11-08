@@ -17,21 +17,22 @@ import {
   listOwnership,
   upsertOwnership,
 } from "@infrawrench/server-core/ownership/store";
-import { logAudit } from "../../../services/audit";
-import { makeDomain } from "../../domain";
-import { badRequest, notFound } from "../../errors";
-import { fireAndForget, legacy } from "../../legacy";
-import { readObjectBody } from "../../request-body";
-import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
-import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
 import {
+  badRequest,
+  notFound,
   OwnerCandidateListResponse,
   OwnershipApi,
   ResourceOwnershipEnvelope,
   ResourceOwnershipListResponse,
   SavedOwnership,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
+import { makeDomain } from "../../domain";
+import { fireAndForget, legacy } from "../../legacy";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
+import { OrgPrincipal } from "../../principal";
+import { respond } from "../../response";
 
 type Body = { readonly [key: string]: unknown };
 

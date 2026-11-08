@@ -16,36 +16,25 @@ import { HttpApiBuilder } from "effect/http-api";
 import { parseOutputRef, type OutputRefValue } from "@infrawrench/plugin-base";
 import { carbonHintFor } from "@infrawrench/server-core/cost/carbon";
 import { resourceIdBelongsToAccount } from "@infrawrench/server-core/resource-ids";
-import { maxLength, minLength } from "@infrawrench/ui/schemas";
-import { getActiveChangeFreeze, isActionDestructive } from "../../../services/change-freezes";
-import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
-import { listSshInstallAccounts, runSshInstall } from "../../../services/ssh-install";
-import { HostKeyTrustRequiredError } from "../../../services/ssh-host-keys";
-import { evaluateTagPolicyOnCreate } from "../../../services/tag-policy";
-import { runTunnelSshAttach } from "../../../services/tunnel-ssh-attach";
-import { logAudit } from "../../../services/audit";
-import { TAG_POLICY_OVERRIDE_HEADER } from "@infrawrench/client-core";
-import { requireNoChangeFreeze } from "../../change-freeze";
-import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, InternalServerError, NotFound, notFound } from "../../errors";
-import { decodeFirstIssue, readJson } from "../../request-body";
-import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { OrgPrincipal, requirePermission } from "../../principal";
-import { respond } from "../../response";
-import { hostKeyTrustRequired } from "../ssh-host-key-trust";
-import { JsonObject, ok } from "../../schemas/common";
-import { TerraformExport } from "../../schemas/terraform-export";
+import { maxLength, minLength } from "@infrawrench/api-contract/schemas";
 import {
+  BadRequest,
+  badRequest,
   CostEstimateResponse,
   CreatePricing,
   CreateResourceResponse,
   CredentialExport,
   DescribeResponse,
   FieldActionResponse,
+  InternalServerError,
+  JsonObject,
   LogsResponse,
   Manifest,
   MetricsResponse,
   NoSqlCommandResult,
+  NotFound,
+  notFound,
+  ok,
   PeerPanes,
   PickerResources,
   ResourceDetail,
@@ -56,9 +45,25 @@ import {
   SshInstallAccounts,
   SshInstallResult,
   TagPolicyBlocked,
+  TerraformExport,
   Undocumented,
   UpdateResourceResponse,
-} from "./api";
+} from "@infrawrench/api-contract";
+import { getActiveChangeFreeze, isActionDestructive } from "../../../services/change-freezes";
+import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
+import { listSshInstallAccounts, runSshInstall } from "../../../services/ssh-install";
+import { HostKeyTrustRequiredError } from "../../../services/ssh-host-keys";
+import { evaluateTagPolicyOnCreate } from "../../../services/tag-policy";
+import { runTunnelSshAttach } from "../../../services/tunnel-ssh-attach";
+import { logAudit } from "../../../services/audit";
+import { TAG_POLICY_OVERRIDE_HEADER } from "@infrawrench/client-core";
+import { requireNoChangeFreeze } from "../../change-freeze";
+import { makeDomain } from "../../domain";
+import { decodeFirstIssue, readJson } from "../../request-body";
+import { fireAndForget, legacy, legacyTry } from "../../legacy";
+import { OrgPrincipal, requirePermission } from "../../principal";
+import { respond } from "../../response";
+import { hostKeyTrustRequired } from "../ssh-host-key-trust";
 import {
   ACCOUNT_OR_PEER_NOT_FOUND,
   captureDeletion,

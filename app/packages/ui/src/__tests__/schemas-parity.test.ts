@@ -25,9 +25,9 @@ import {
   DEFAULT_METRIC_ALERT_INPUT,
   DEFAULT_RESOURCE_REPORT_CONFIG,
 } from "@infrawrench/client-core";
+import * as E from "@infrawrench/api-contract/schemas";
 import * as Z from "../cost/config.js";
 import * as MZ from "../metric-alerts/config.js";
-import * as E from "../schemas/index.js";
 
 type Outcome = { ok: true; value: unknown } | { ok: false };
 

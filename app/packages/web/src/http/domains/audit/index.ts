@@ -4,13 +4,13 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
+import { AuditApi, AuditResponse } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { apiKeys, auditLogs, users } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { AuditApi, AuditResponse } from "./api";
 
 interface AuditFilters {
   readonly page?: string | undefined;

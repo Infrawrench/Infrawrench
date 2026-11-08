@@ -5,20 +5,12 @@
  * for themselves. The org tree's own chain is `http/auth.ts`.
  */
 import { eq, and } from "drizzle-orm";
+import type { SessionPrincipalValue } from "@infrawrench/api-contract";
 import { db } from "../db/client";
 import { organizationMembers, organizations } from "../db/schema";
 
-export interface AuthSession {
-  userId: string;
-  email: string;
-  /**
-   * WorkOS session (`sid`) this request authenticated with, when there is one.
-   * Lets the account settings UI mark (and refuse to revoke) the session the
-   * user is currently browsing from. Absent only if WorkOS ever hands us a
-   * token without the claim.
-   */
-  sessionId?: string;
-}
+/** The signed-in person; the contract's shape, as the session principal carries it. */
+export type AuthSession = SessionPrincipalValue;
 
 export { ensureUserFromClaims } from "../http/auth";
 
