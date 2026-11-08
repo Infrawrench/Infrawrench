@@ -1,0 +1,28 @@
+--- a/src/walk.rs
++++ b/src/walk.rs
+@@ -379,10 +379,7 @@
+         ent: &fs::DirEntry,
+         ty: fs::FileType,
+     ) -> Result<DirEntryRaw, Error> {
+-        Err(Error::Io(io::Error::new(
+-            io::ErrorKind::Other,
+-            "unsupported platform",
+-        )))
++        Ok(DirEntryRaw { path: ent.path(), ty, follow_link: false, depth })
+     }
+ 
+     #[cfg(windows)]
+@@ -429,10 +426,9 @@
+         pb: PathBuf,
+         link: bool,
+     ) -> Result<DirEntryRaw, Error> {
+-        Err(Error::Io(io::Error::new(
+-            io::ErrorKind::Other,
+-            "unsupported platform",
+-        )))
++        let md = fs::metadata(&pb)
++            .map_err(|err| Error::Io(err).with_depth(depth).with_path(&pb))?;
++        Ok(DirEntryRaw { path: pb, ty: md.file_type(), follow_link: link, depth })
+     }
+ }
+ 

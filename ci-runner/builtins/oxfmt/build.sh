@@ -18,7 +18,16 @@
 # cargo-wasix only sets its own target features when RUSTFLAGS is unset, so
 # they are repeated here (atomics is what threads need).
 #
-# Needs: git, cargo-wasix (`cargo install cargo-wasix`; it installs the
+# The `ignore` crate's parallel walker, which oxfmt uses to walk a
+# directory, has placeholders that fail with "unsupported platform" on
+# anything but Unix and Windows, so on WASIX `oxfmt .` found no files.
+# ignore-wasi.patch fills them in (an entry from its `read_dir` entry or its
+# metadata; there is no inode to keep). The build fetches the exact version
+# Oxc locks, checks it against the lock's checksum, patches it and points
+# Cargo at the copy; the patch fails to apply if Oxc moves to a version it
+# does not fit, which is the cue to look again.
+#
+# Needs: git, curl, patch, cargo-wasix (`cargo install cargo-wasix`; it installs the
 # WASIX toolchain on first use), and on Linux `ld.lld` on PATH (the `lld`
 # package): the WASIX toolchain links host build scripts with
 # `-fuse-ld=lld` but does not ship the wrapper that flag looks for.
@@ -56,11 +65,29 @@ for crate in apps/oxfmt crates/oxc_napi; do
   mv "$manifest.new" "$manifest"
 done
 
+lock_field() { # lock_field <crate> <field>: from the first entry for <crate>
+  awk -v name="$1" -v field="$2" '
+    $0 == "name = \"" name "\"" { found = 1; next }
+    found && $1 == field { gsub(/"/, "", $3); print $3; exit }
+  ' "$src/Cargo.lock"
+}
+ignore_version="$(lock_field ignore version)"
+ignore_sha256="$(lock_field ignore checksum)"
+curl -fsSL --retry 3 -o "$SCRATCH/ignore.crate" \
+  "https://static.crates.io/crates/ignore/ignore-$ignore_version.crate"
+if [[ "$(shasum -a 256 "$SCRATCH/ignore.crate" | cut -d' ' -f1)" != "$ignore_sha256" ]]; then
+  echo "error: ignore $ignore_version does not match Oxc's Cargo.lock" >&2
+  exit 1
+fi
+tar -xzf "$SCRATCH/ignore.crate" -C "$SCRATCH"
+patch -d "$SCRATCH/ignore-$ignore_version" -p1 <"$here/oxfmt/ignore-wasi.patch"
+
 (
   cd "$src" || exit 1
   CARGO_WASIX_NO_REGISTRY_CONFIG=1 \
     RUSTFLAGS="-C target-feature=+atomics,+simd128,+relaxed-simd,+extended-const --cfg tokio_unstable" \
-    cargo wasix build --release -p oxfmt --bin oxfmt --no-default-features
+    cargo wasix build --release -p oxfmt --bin oxfmt --no-default-features \
+    --config "patch.crates-io.ignore.path=\"$SCRATCH/ignore-$ignore_version\""
 )
 cp "$src/target/wasm32-wasmer-wasi/release/oxfmt.wasm" "$out/module.wasm"
 
