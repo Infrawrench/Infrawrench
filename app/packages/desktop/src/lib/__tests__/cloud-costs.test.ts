@@ -188,23 +188,21 @@ describe("scenario models", () => {
 });
 
 describe("network flow settings", () => {
-  it("keeps the stored lookback when the toggle names none", async () => {
-    const http = answerCloudHttp((request) =>
-      request.method === "GET"
-        ? { status: 200, json: { enabled: false, initialLookbackDays: 14 } }
-        : { status: 200, json: { enabled: true, initialLookbackDays: 14 } },
-    );
+  it("leaves the lookback out when the toggle names none, which keeps the stored one", async () => {
+    const http = answerCloudHttp(() => ({
+      status: 200,
+      json: { enabled: true, initialLookbackDays: 14 },
+    }));
 
     await expect(costs.saveCloudNetworkFlowSettings(ORG, { enabled: true })).resolves.toEqual({
       enabled: true,
       initialLookbackDays: 14,
     });
     expect(http.mock.calls.map(([request]) => request)).toEqual([
-      { method: "GET", url: "/api/org/org-1/network-flows/settings" },
       {
         method: "PUT",
         url: "/api/org/org-1/network-flows/settings",
-        body: JSON.stringify({ enabled: true, initialLookbackDays: 14 }),
+        body: JSON.stringify({ enabled: true }),
       },
     ]);
   });

@@ -730,7 +730,30 @@ const TunnelSshAttachRequest = Schema.Struct({
   port: Schema.optionalKey(Schema.String),
   sshUsername: Schema.String,
   sshKeyId: Schema.optionalKey(Schema.String),
-});
+}).annotate({ identifier: "TunnelSshAttachRequest" });
+
+/**
+ * The setup's steps in order. A failed DNS record (often one that already
+ * exists) is reported and the setup carries on; any other failure ends it.
+ * The tunnel token the host is enrolled with never leaves the server.
+ */
+export const TunnelSshAttachResult = Schema.Struct({
+  steps: Schema.Array(
+    Schema.Struct({
+      label: Schema.String,
+      ok: Schema.Boolean,
+      detail: Schema.optionalKey(
+        Schema.String.annotate({ description: "The failure, or the end of the install log." }),
+      ),
+    }),
+  ),
+  connectCommand: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "How to reach the service once the setup finished: an `ssh` or `cloudflared` command, or the URL.",
+    }),
+  ),
+}).annotate({ identifier: "TunnelSshAttachResult" });
 
 /** `:pluginId` / `:typeId`, documented as the registry's enums. */
 const PluginParams = { orgId: OrgParams.orgId, pluginId: PluginId } as const;
@@ -957,11 +980,16 @@ export class ResourcesGroup extends HttpApiGroup.make("resources")
     HttpApiEndpoint.post("tunnelSshAttach", "/tunnel-ssh-attach", {
       params: OrgParams,
       payload: TunnelSshAttachRequest,
-      success: Undocumented,
+      success: TunnelSshAttachResult,
       error: BadRequest,
     })
       .annotate(RequiredPermission, "resources:write")
-      .annotate(OpenApi.Exclude, true),
+      .annotate(OpenApi.Summary, "Serve a host over a Cloudflare Tunnel")
+      .annotate(
+        OpenApi.Description,
+        "Points the tunnel's ingress at the host's service, creates the routing DNS record in `zoneId`, then connects to the host over SSH and installs and runs cloudflared. A DNS record that could not be created (one may already exist) is reported and the setup carries on; any other failed step is the last of `steps`, and `connectCommand` is only sent when every step ran.",
+      )
+      .annotate(SuccessDescription, "The steps run"),
     HttpApiEndpoint.post("exportCredential", "/:pluginId/:typeId/export-credential", {
       params: PluginTypeParams,
       payload: ExportCredentialRequest,

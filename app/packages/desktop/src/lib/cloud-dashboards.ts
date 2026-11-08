@@ -128,8 +128,7 @@ export async function validateCloudWorkspaceTabs(
   const result = await runRpc(
     dashboards().dashboards.validateTabs({ params: { orgId }, payload: { tabs } }),
   );
-  // An empty answer keeps the old reading: no ids came back.
-  return result?.validTabIds ?? [];
+  return result.validTabIds;
 }
 
 export async function pinCloudResource(

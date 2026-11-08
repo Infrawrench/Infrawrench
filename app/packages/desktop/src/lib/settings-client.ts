@@ -6,8 +6,9 @@ import {
   SeatLimitReachedClientError,
 } from "@infrawrench/client-core";
 import type { SettingsApi } from "@infrawrench/ui";
-import { Predicate } from "effect";
+import { Option } from "effect";
 import type { CloudHttpMethod, CloudHttpResponse } from "../../shared/rpc/groups/cloud-http";
+import { serverErrorSentence } from "./cloud-client";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
@@ -28,13 +29,6 @@ function send(method: CloudHttpMethod, path: string, body?: unknown): Promise<Cl
       }),
     ),
   );
-}
-
-/** The `{ error }` sentence of a JSON error body, else the body itself. */
-function errorMessage(parsed: unknown, bodyText: string): string {
-  return Predicate.hasProperty(parsed, "error") && Predicate.isString(parsed.error)
-    ? parsed.error
-    : bodyText;
 }
 
 function parseJson(bodyText: string): unknown {
@@ -63,7 +57,8 @@ async function request<T>(method: CloudHttpMethod, path: string, body?: unknown)
   if (status === 409 && isGithubPermissionRequiredResponse(parsed)) {
     throw new GithubPermissionRequiredClientError(parsed);
   }
-  const message = errorMessage(parsed, bodyText);
+  // The `{ error }` sentence of a JSON error body, else the body itself.
+  const message = Option.getOrElse(serverErrorSentence(bodyText), () => bodyText);
   if (status === 402) {
     throw new PlanRequiredClientError(message);
   }
@@ -80,7 +75,7 @@ async function request<T>(method: CloudHttpMethod, path: string, body?: unknown)
 export async function requestText(path: string): Promise<string> {
   const { status, body: bodyText } = await send("GET", path);
   if (status >= 200 && status < 300) return bodyText;
-  const message = errorMessage(parseJson(bodyText), bodyText);
+  const message = Option.getOrElse(serverErrorSentence(bodyText), () => bodyText);
   throw new Error(message || `Cloud request failed: ${status} ${path}`);
 }
 

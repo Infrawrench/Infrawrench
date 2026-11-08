@@ -499,11 +499,16 @@ func specChecks() []specCheck {
 // listed here so the gap is visible rather than merely absent, and so that
 // regenerating the spec makes this test start covering them.
 //
-// It is empty as of the 1.76.0 regeneration, which brought the paging-provider
+// It was emptied by the 1.76.0 regeneration, which brought the paging-provider
 // schemas into the document. Keeping the list and its test rather than
 // deleting them is deliberate: the next object added ahead of a spec refresh
 // goes here, and the test then says out loud when the refresh catches up.
-var schemasKnownAbsent = []string{}
+var schemasKnownAbsent = []string{
+	// The network flow settings PUT body, split from the answer when its
+	// lookback became optional (keep the stored one). Decoded by
+	// NetworkFlowSettingsInput.
+	"NetworkFlowSettingsInput",
+}
 
 func loadSpecSchemas(t *testing.T) map[string]map[string]any {
 	t.Helper()

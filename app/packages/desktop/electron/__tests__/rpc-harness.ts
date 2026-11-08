@@ -15,13 +15,38 @@
  */
 import { EventEmitter } from "node:events";
 import { ipcMain } from "electron";
-import { Effect, Layer } from "effect";
+import { afterEach } from "vitest";
+import { Effect, Fiber, Layer } from "effect";
 import { RPC_CONNECT, RPC_FRAME } from "../../shared/rpc/channels";
 import { RpcServerLive } from "../rpc/server";
 import { DesktopRpcClient } from "../../src/lib/rpc/desktop-client";
 import type { RpcBridge } from "../../src/lib/rpc/ipc-socket";
 
 let nextRendererId = 1;
+
+/**
+ * Every call still running. The fake `ipcMain` is shared by the whole file,
+ * so a call that never settles (a test that stops waiting on it) would leave
+ * its server listening and answering every later test's frames a second
+ * time. Each one is interrupted when its test ends, which closes its scope
+ * and with it the server.
+ */
+const running = new Set<Fiber.Fiber<unknown, unknown>>();
+
+afterEach(async () => {
+  const left = [...running];
+  running.clear();
+  await Promise.all(left.map((fiber) => Effect.runPromise(Fiber.interrupt(fiber))));
+});
+
+/** Run `effect` as a fiber {@link running} tracks until it ends. */
+function tracked<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+  const fiber = Effect.runFork(effect);
+  running.add(fiber);
+  return Effect.runPromise(
+    Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(() => running.delete(fiber)))),
+  );
+}
 
 /** A renderer: its `webContents` as the main process sees it, and its preload bridge. */
 export function fakeRenderer(id = nextRendererId++) {
@@ -59,7 +84,7 @@ export function callDesktopRpc<A, E>(
   effect: Effect.Effect<A, E, DesktopRpcClient>,
   { bridge } = fakeRenderer(),
 ): Promise<A> {
-  return Effect.runPromise(
+  return tracked(
     effect.pipe(
       Effect.provide(DesktopRpcClient.layer(bridge).pipe(Layer.provide(RpcServerLive))),
       Effect.scoped,
@@ -89,7 +114,7 @@ export function withSharedServer<A, E>(
     ) => Effect.Effect<X, Y>,
   ) => Effect.Effect<A, E>,
 ): Promise<A> {
-  return Effect.runPromise(
+  return tracked(
     Effect.gen(function* () {
       yield* Layer.build(RpcServerLive);
       return yield* body((renderer, effect) =>

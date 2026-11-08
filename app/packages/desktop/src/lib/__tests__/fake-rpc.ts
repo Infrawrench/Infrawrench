@@ -20,7 +20,11 @@
  */
 import { vi } from "vitest";
 import { Effect, Fiber, Predicate } from "effect";
-import type { CloudHttpRequest, CloudHttpResponse } from "../../../shared/rpc/groups/cloud-http";
+import type {
+  CloudHttpBytesResponse,
+  CloudHttpRequest,
+  CloudHttpResponse,
+} from "../../../shared/rpc/groups/cloud-http";
 
 type Operation = (...args: never[]) => unknown;
 
@@ -73,21 +77,42 @@ export const fakeRpcClientModule = {
 
 /**
  * Answer the `CloudHttp` transport with `answer(request)`: a status and a
- * JSON value (sent as its text), or a status alone for an empty body. The
- * returned mock records each request as the main process would receive it,
- * so a test can assert the method, the encoded URL and the JSON body.
+ * JSON value (sent as its text), a status and a `text` body (a CSV, the
+ * typings), or a status alone for an empty body. The returned mock records
+ * each request as the main process would receive it, so a test can assert
+ * the method, the encoded URL, the headers and the JSON body.
  */
 export function answerCloudHttp(
-  answer: (request: CloudHttpRequest) => { readonly status: number; readonly json?: unknown },
+  answer: (request: CloudHttpRequest) => {
+    readonly status: number;
+    readonly json?: unknown;
+    readonly text?: string;
+  },
 ) {
   const operation = vi.fn((request: CloudHttpRequest) => {
-    const { status, json } = answer(request);
+    const { status, json, text } = answer(request);
     const response: CloudHttpResponse = {
       status,
-      body: json === undefined ? "" : JSON.stringify(json),
+      body: text ?? (json === undefined ? "" : JSON.stringify(json)),
     };
     return Effect.succeed(response);
   });
   fakeRpc["CloudHttp"] = operation;
+  return operation;
+}
+
+/**
+ * Answer the `CloudHttpBytes` transport (an endpoint whose answer is binary:
+ * a PDF, a ZIP) with a status and the body's bytes.
+ */
+export function answerCloudHttpBytes(
+  answer: (request: CloudHttpRequest) => { readonly status: number; readonly bytes: Uint8Array },
+) {
+  const operation = vi.fn((request: CloudHttpRequest) => {
+    const { status, bytes } = answer(request);
+    const response: CloudHttpBytesResponse = { status, body: bytes };
+    return Effect.succeed(response);
+  });
+  fakeRpc["CloudHttpBytes"] = operation;
   return operation;
 }

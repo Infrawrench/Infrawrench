@@ -20,6 +20,7 @@ import { OrgAuth } from "../http/middleware-tags";
 import { IsoDateTime, OrgId, OrgParams, Uuid } from "../http/schemas/common";
 import { documentedAs, optionalRequestBody } from "../http/schemas/documented";
 import { PluginId } from "../http/schemas/plugin-registry";
+import { PostureFinding } from "../http/schemas/posture";
 import { ScorecardResult, ServiceTier } from "../http/schemas/service-catalog";
 
 const RuleKind = Schema.Literals(["tag", "virtual_tag", "name"]).annotate({
@@ -185,23 +186,6 @@ const ServiceMembersRequest = Schema.Struct({
   }),
 }).annotate({ identifier: "ServiceMembersRequest" });
 
-const ServicePostureFinding = Schema.Struct({
-  resourceId: Schema.String,
-  pluginId: Schema.String,
-  pluginName: Schema.String,
-  resourceTypeId: Schema.String,
-  resourceTypeName: Schema.String,
-  accountId: Schema.String,
-  accountName: Schema.String,
-  displayName: Schema.String,
-  externalId: Schema.NullOr(Schema.String),
-  ruleId: Schema.String,
-  title: Schema.String,
-  severity: Schema.Literals(["critical", "high", "medium", "low"]),
-  category: Schema.String,
-  reason: Schema.String,
-}).annotate({ identifier: "ServicePostureFinding" });
-
 const ShiftPerson = {
   userId: Schema.String,
   name: Schema.NullOr(Schema.String),
@@ -252,7 +236,7 @@ export const ServiceSummary = Schema.Struct({
         medium: Schema.Int,
         low: Schema.Int,
       }),
-      items: Schema.Array(ServicePostureFinding).annotate({
+      items: Schema.Array(PostureFinding).annotate({
         description: "At most 25, worst first.",
       }),
     }),

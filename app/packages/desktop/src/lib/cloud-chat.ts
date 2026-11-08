@@ -1,17 +1,17 @@
 /**
  * Desktop implementation of the shared ChatClient.
  *
- * Archiving, answering a question and handing over a secret are typed calls
- * to the contract's `chat` domain over the cloud transport
- * (`./cloud-client.ts`). The rest still goes over per-channel IPC to the main
- * process (electron/cloud-data/chat.ts), because the contract cannot carry
- * them yet: the conversation reads and the spend declare their success as
- * `Schema.Unknown`, and creating a conversation, switching its model and
- * deciding a pending action declare no payload although the routes read one.
- * The turn stream arrives as events on a per-stream channel
- * (`cloud_chat_stream_<id>`) that this client adapts into the AsyncIterable
- * the shared chat UI consumes.
+ * Every call but the turn is a typed call to the contract's `chat` domain
+ * over the cloud transport (`./cloud-client.ts`). The turn's answer is
+ * Server-Sent Events, which the buffered transport cannot carry, so it is the
+ * `CloudChatTurn` RPC stream (`shared/rpc/groups/cloud-chat.ts`): the main
+ * process sends it with the session's token and hands over each event as it
+ * arrives, and this client adapts the stream into the AsyncIterable the
+ * shared chat UI consumes. A turn that never started arrives as one `error`
+ * event, as the server's own in-band errors do; leaving the iteration early
+ * interrupts the stream, which cancels the fetch.
  */
+import { Effect, Stream } from "effect";
 import type {
   ChatClient,
   ChatConversationDetail,
@@ -20,49 +20,42 @@ import type {
   SpendStatus,
 } from "@infrawrench/ui";
 import { cloudClient } from "./cloud-client";
-import { invoke } from "./invoke";
-import { runRpc } from "./rpc/client";
+import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 
 const chat = () => cloudClient("chat").chat;
 
 export function createDesktopChatClient(orgId: string): ChatClient {
   return {
-    async listConversations() {
-      const res = await invoke<{ conversations: ConversationSummary[] }>(
-        "cloud_chat_list_conversations",
-        { orgId },
-      );
+    async listConversations(): Promise<ConversationSummary[]> {
+      const res = await runRpc(chat().listConversations({ params: { orgId } }));
       return res.conversations;
     },
     createConversation(model) {
-      return invoke<{ id: string }>("cloud_chat_create_conversation", {
-        orgId,
-        ...(model ? { model } : {}),
-      });
+      return runRpc(
+        chat().createConversation({ params: { orgId }, payload: model ? { model } : {} }),
+      );
     },
     async setConversationModel(conversationId, model) {
-      await invoke("cloud_chat_update_conversation", { orgId, conversationId, model });
+      await runRpc(
+        chat().updateConversation({ params: { orgId, conversationId }, payload: { model } }),
+      );
     },
     async archiveConversation(conversationId) {
       await runRpc(chat().archiveConversation({ params: { orgId, conversationId } }));
     },
-    getConversation(conversationId) {
-      return invoke<ChatConversationDetail>("cloud_chat_get_conversation", {
-        orgId,
-        conversationId,
-      });
+    getConversation(conversationId): Promise<ChatConversationDetail> {
+      return runRpc(chat().getConversation({ params: { orgId, conversationId } }));
     },
-    getSpend() {
-      return invoke<SpendStatus>("cloud_chat_spend", { orgId });
+    getSpend(): Promise<SpendStatus> {
+      return runRpc(chat().spend({ params: { orgId } }));
     },
     async resolvePendingAction(conversationId, pendingId, action, reason) {
-      await invoke("cloud_chat_resolve_pending", {
-        orgId,
-        conversationId,
-        pendingId,
-        action,
-        ...(reason ? { reason } : {}),
-      });
+      await runRpc(
+        chat().decidePending({
+          params: { orgId, conversationId, pendingId },
+          payload: { action, ...(reason ? { reason } : {}) },
+        }),
+      );
     },
     async submitSecretRequest(conversationId, requestId, value) {
       await runRpc(
@@ -81,27 +74,36 @@ export function createDesktopChatClient(orgId: string): ChatClient {
       );
     },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
-      const streamId = crypto.randomUUID();
-      const channel = `cloud_chat_stream_${streamId}`;
       const queue: ChatTurnEvent[] = [];
       let wake: (() => void) | null = null;
       let done = false;
+      const notify = () => wake?.();
 
-      window.electronAPI.on(channel, (ev) => {
-        queue.push(ev as ChatTurnEvent);
-        wake?.();
-      });
-
-      // The invoke resolves when the SSE stream ends; errors surface as
-      // in-band {type:"error"} events from main, so this catch is a backstop.
-      void invoke("cloud_chat_stream_start", { orgId, conversationId, streamId, body })
-        .catch((e: unknown) => {
-          queue.push({ type: "error", message: e instanceof Error ? e.message : String(e) });
-        })
-        .finally(() => {
-          done = true;
-          wake?.();
-        });
+      const stop = forkRpc(
+        Effect.gen(function* () {
+          const rpc = yield* DesktopRpcClient;
+          yield* Stream.runForEach(rpc.CloudChatTurn({ orgId, conversationId, body }), (event) =>
+            Effect.sync(() => {
+              queue.push(event);
+              notify();
+            }),
+          );
+        }).pipe(
+          // A turn that never started is the turn's error, shown like the
+          // server's own in-band `error` events.
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              queue.push({ type: "error", message: error.message });
+            }),
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              done = true;
+              notify();
+            }),
+          ),
+        ),
+      );
 
       try {
         while (true) {
@@ -113,9 +115,8 @@ export function createDesktopChatClient(orgId: string): ChatClient {
           wake = null;
         }
       } finally {
-        window.electronAPI.offAll(channel);
         // If the consumer bailed early, stop the upstream SSE fetch.
-        if (!done) void invoke("cloud_chat_stream_abort", { streamId }).catch(() => {});
+        if (!done) stop();
       }
     },
   };

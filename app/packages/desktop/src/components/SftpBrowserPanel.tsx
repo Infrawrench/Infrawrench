@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useGT } from "gt-react";
 import { FileBrowser, formatErrorMessage, toast } from "@infrawrench/ui";
-import type { StorageObject, SftpConfig } from "@infrawrench/plugin-base";
+import type { SftpConfig } from "@infrawrench/plugin-base";
 import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { planSftpDownloads } from "../lib/sftp-download-plan";
 import {
@@ -37,14 +37,14 @@ export function SftpBrowserPanel({
   const onList = useCallback(
     async (path: string) => {
       if (cloudContext) {
-        return (await cloudSftpList(cloudContext.orgId, {
+        return cloudSftpList(cloudContext.orgId, {
           accountId: cloudContext.accountId,
           ...(cloudContext.resourceId ? { resourceId: cloudContext.resourceId } : {}),
           path,
           ...(cloudContext.sshKeyId ? { sshKeyId: cloudContext.sshKeyId } : {}),
           ...(cloudContext.sshHost ? { sshHost: cloudContext.sshHost } : {}),
           ...(cloudContext.sshUsername ? { sshUsername: cloudContext.sshUsername } : {}),
-        })) as StorageObject[];
+        });
       }
       if (!sftpConfig) throw new Error("SFTP not configured");
       const config = sftpConfig;

@@ -2,7 +2,6 @@ import { useUIStore } from "@infrawrench/ui";
 import type { ResourceReportsClient } from "@infrawrench/ui/resource-reports";
 import type { ResourceReportInput, ResourceReportQueryRequest } from "@infrawrench/client-core";
 import { cloudClient } from "./cloud-client";
-import { invoke } from "./invoke";
 import { runRpc } from "./rpc/client";
 import { createCloudCostReportFolder } from "./cloud-costs";
 import { createDesktopSharingClient } from "./cost-reports-client";
@@ -68,9 +67,9 @@ export function createDesktopResourceReportsClient(): ResourceReportsClient {
       runRpc(
         reports().query({ params: { orgId: requireOrgId() }, payload: queryPayload(request) }),
       ),
-    // CSV is text, not JSON; it stays on its own channel until the transport reads text.
+    // The endpoint answers text (CSV), handed on as the server wrote it.
     exportCsv: (config, name) =>
-      invoke<string>("cloud_resource_reports_csv", { orgId: requireOrgId(), config, name }),
+      runRpc(reports().csv({ params: { orgId: requireOrgId() }, payload: { config, name } })),
     createReport: (input) =>
       runRpc(
         reports().create({ params: { orgId: requireOrgId() }, payload: reportPayload(input) }),

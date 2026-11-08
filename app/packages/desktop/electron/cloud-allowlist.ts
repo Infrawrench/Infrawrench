@@ -1,15 +1,24 @@
 /**
  * Which method+path a renderer may ask the cloud transport for
- * (`cloud-transport.ts`, the `CloudHttp` RPC). Anything else is refused
- * before a request leaves the main process: the renderer holds no token, so
- * this list is the whole of what a compromised page could do with the user's
- * session.
+ * (`cloud-transport.ts`, the `CloudHttp` and `CloudHttpBytes` RPCs), and
+ * which request headers it may send there. Anything else is refused before a
+ * request leaves the main process: the renderer holds no token, so this list
+ * is the whole of what a compromised page could do with the user's session.
  *
  * Two surfaces make it up:
  *
- * - **Every endpoint of every contract domain in `DESKTOP_CLOUD_APIS`**
- *   (`shared/cloud-apis.ts`), matched by Effect's router (`FindMyWay`, the one
- *   the server routes with) on the endpoint's own method and path template. A
+ * - **The authenticated, buffered endpoints of every contract domain in
+ *   `DESKTOP_CLOUD_APIS`** (`shared/cloud-apis.ts`), matched by Effect's
+ *   router (`FindMyWay`, the one the server routes with) on the endpoint's
+ *   own method and path template. An endpoint is on it when it runs the
+ *   contract's `OrgAuth` or `SessionAuth` middleware, because the transport
+ *   attaches the user's bearer token to every request, and a route that does
+ *   not authenticate (an inbound webhook keyed by a token in its path, a
+ *   public status page) has no business receiving it. A route that
+ *   authenticates inside its handler instead is listed by hand in
+ *   {@link HANDLER_AUTHENTICATED}, with the reason. A streaming answer (SSE,
+ *   NDJSON, an upgrade) is never on it, listed or not: the transport buffers
+ *   the whole body, so a stream would hang until the server closed it. A
  *   migrated area extends this by adding its domain there; nothing here
  *   changes.
  * - **The Settings tab's surface**, the {@link SETTINGS_RULES} below. The
@@ -21,7 +30,7 @@
  *   added here in the same change (CLAUDE.md "Settings").
  */
 import { FindMyWay } from "effect/http";
-import { DESKTOP_CLOUD_APIS } from "../shared/cloud-apis";
+import { DESKTOP_CLOUD_APIS, type DesktopCloudApiName } from "../shared/cloud-apis";
 
 const ORG = "^/api/org/[^/]+";
 
@@ -76,16 +85,45 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
 ];
 
 /**
+ * Contract endpoints that authenticate in their handler rather than through
+ * the `OrgAuth`/`SessionAuth` middleware, by `<registry name>.<group>.<endpoint>`.
+ * Each is on the allowlist although its definition runs no auth middleware.
+ * `cloud-transport.test.ts` holds every entry to a registered endpoint that
+ * still lacks the middleware, so an entry goes once the contract catches up.
+ */
+const HANDLER_AUTHENTICATED: ReadonlySet<string> =
+  new Set<`${DesktopCloudApiName}.${string}.${string}`>([
+    // The chat agent: every handler authenticates first with
+    // `asOrgRequestCaller` and its own `chat:read`/`chat:write` scope (web's
+    // `http/domains/chat/index.ts`), which the group middleware cannot express.
+    // `sendMessage` is the SSE turn stream and stays refused as a stream.
+    "chat.chat.listConversations",
+    "chat.chat.createConversation",
+    "chat.chat.updateConversation",
+    "chat.chat.getConversation",
+    "chat.chat.archiveConversation",
+    "chat.chat.spend",
+    "chat.chat.decidePending",
+    "chat.chat.answerQuestion",
+    "chat.chat.submitSecretRequest",
+  ]);
+
+/** For the test that keeps {@link HANDLER_AUTHENTICATED} honest. */
+export const handlerAuthenticatedEndpoints: ReadonlySet<string> = HANDLER_AUTHENTICATED;
+
+/**
  * The allowlist matches the path as text, but `fetch` resolves dot segments
  * (and some servers decode `%2F`/`%2E` before routing), so
  * `/api/profile/../org/x/billing/...` would match the profile rule and then
  * reach a route outside the surface. Refuse a path whose URL-normalized form
- * differs from what was matched, or that carries an encoded dot, slash or
- * backslash in the part being matched.
+ * differs from what was matched; `strict` also refuses an encoded dot, slash
+ * or backslash in the part being matched (the Settings rules, which are
+ * regexes over text and have no notion of a parameter).
  */
-function isCanonical(path: string, matched: string): boolean {
+function isCanonical(path: string, matched: string, strict: boolean): boolean {
   if (!path.startsWith("/") || path.startsWith("//")) return false;
-  if (/%2e|%2f|%5c|\\/i.test(matched)) return false;
+  if (/\\/.test(matched)) return false;
+  if (strict && /%2e|%2f|%5c/i.test(matched)) return false;
   let normalized: URL;
   try {
     normalized = new URL(path, "https://allowlist.invalid");
@@ -98,40 +136,88 @@ function isCanonical(path: string, matched: string): boolean {
 
 /** Whether `method path` is on the Settings tab's surface (the whole path, query included). */
 export function isAllowedSettingsRequest(method: string, path: string): boolean {
-  if (!isCanonical(path, path)) return false;
+  if (!isCanonical(path, path, true)) return false;
   const upper = method.toUpperCase();
   return SETTINGS_RULES.some((rule) => rule.methods.includes(upper) && rule.pattern.test(path));
 }
 
-/** Every endpoint of every registered contract domain, routed as the server routes them. */
+/** Whether a registered endpoint is on the allowlist (see the module comment). */
+function isReachable(name: string, group: string, endpoint: string, authenticated: boolean) {
+  return authenticated || HANDLER_AUTHENTICATED.has(`${name}.${group}.${endpoint}`);
+}
+
+/**
+ * Every allowlisted endpoint of every registered contract domain, routed as
+ * the server routes them, each carrying the request headers it declares.
+ */
 const contractRoutes = (() => {
-  const router = FindMyWay.make<true>();
-  const seen = new Set<string>();
-  for (const { endpoints } of Object.values(DESKTOP_CLOUD_APIS)) {
-    for (const { endpoint } of endpoints) {
+  const router = FindMyWay.make<Set<string>>();
+  const routes = new Map<string, Set<string>>();
+  for (const [name, { endpoints }] of Object.entries(DESKTOP_CLOUD_APIS)) {
+    for (const entry of endpoints) {
+      const { endpoint } = entry;
+      if (entry.answer === "stream") continue;
+      if (!isReachable(name, entry.group, endpoint.identifier, entry.authenticated)) continue;
       // The router keys a route on its template with parameter names erased
-      // (`/x/:id` and `/x/:probeId` are one route) and throws on a repeat.
+      // (`/x/:id` and `/x/:probeId` are one route) and throws on a repeat, so
+      // a repeat is registered once, with the headers either declares.
       const key = `${endpoint.method} ${endpoint.path.replace(/:\w+/g, ":")}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      router.on(endpoint.method, `/${endpoint.path.replace(/^\//, "")}`, true);
+      const known = routes.get(key);
+      if (known !== undefined) {
+        for (const header of entry.headers) known.add(header);
+        continue;
+      }
+      const headers = new Set(entry.headers);
+      routes.set(key, headers);
+      router.on(endpoint.method, `/${endpoint.path.replace(/^\//, "")}`, headers);
     }
   }
   return router;
 })();
 
 /**
- * Whether `method path` is an endpoint of a registered contract domain. Only
- * the path is held to the encoded-character rule here: a query value may
- * carry an encoded slash (a file path, a prefix) without changing the route.
+ * The request headers `method path` may carry when it is an allowlisted
+ * contract endpoint, else `undefined`.
+ *
+ * The path is held to the URL-normalization rule, but an encoded `/` or `\`
+ * may sit inside a parameter value (a resource id that is an ARN or
+ * `namespace/name`): the server routes on the raw path, as this router does,
+ * and decodes the value only after the route is chosen, so it cannot change
+ * the route. A parameter that is, or decodes to, `.` or `..` is still
+ * refused, as the renderer's client refuses it before sending.
  */
-export function isAllowedContractRequest(method: string, path: string): boolean {
+export function contractRequestHeaders(
+  method: string,
+  path: string,
+): ReadonlySet<string> | undefined {
   const [pathname = ""] = path.split("?", 1);
-  if (!isCanonical(path, pathname)) return false;
-  return contractRoutes.find(method.toUpperCase(), path) !== undefined;
+  if (!isCanonical(path, pathname, false)) return undefined;
+  const found = contractRoutes.find(method.toUpperCase(), path);
+  if (found === undefined) return undefined;
+  for (const value of Object.values(found.params)) {
+    if (value === "." || value === "..") return undefined;
+  }
+  return found.handler;
 }
 
-/** The transport's allowlist: a registered contract endpoint or the Settings surface. */
-export function isAllowedCloudRequest(method: string, path: string): boolean {
-  return isAllowedContractRequest(method, path) || isAllowedSettingsRequest(method, path);
+/** Whether `method path` is an allowlisted endpoint of a registered contract domain. */
+export function isAllowedContractRequest(method: string, path: string): boolean {
+  return contractRequestHeaders(method, path) !== undefined;
+}
+
+const NO_HEADERS: ReadonlySet<string> = new Set();
+
+/**
+ * The transport's allowlist: the request headers `method path` may carry when
+ * it is a registered contract endpoint or on the Settings surface (which
+ * declares none), else `undefined`.
+ */
+export function allowedCloudRequestHeaders(
+  method: string,
+  path: string,
+): ReadonlySet<string> | undefined {
+  return (
+    contractRequestHeaders(method, path) ??
+    (isAllowedSettingsRequest(method, path) ? NO_HEADERS : undefined)
+  );
 }

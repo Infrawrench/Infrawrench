@@ -54,7 +54,7 @@ import type {
   LeakedSecret,
   LeakedSecretListResponse,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { Effect, Predicate } from "effect";
 import { cloudClient } from "./cloud-client";
 import { definedFields } from "./cloud-payload";
 import { runRpc } from "./rpc/client";
@@ -304,12 +304,21 @@ export async function fetchCloudComplianceStatus(
 }
 
 /** The evidence pack ZIP as bytes; the caller saves it. */
-export async function loadCloudCompliancePack(
+export function loadCloudCompliancePack(
   orgId: string,
   framework: string,
   period: CompliancePeriod,
 ): Promise<Uint8Array> {
-  return invoke("cloud_compliance_pack", { orgId, framework, period });
+  return runRpc(
+    compliance().pack({
+      params: { orgId },
+      query: {
+        framework,
+        ...(period.from ? { from: period.from } : {}),
+        ...(period.to ? { to: period.to } : {}),
+      },
+    }),
+  );
 }
 
 export async function putCloudComplianceControl(
@@ -435,13 +444,27 @@ export async function restoreCloudAccessFinding(
   );
 }
 
-/** The review as a CSV or JSON evidence document, returned as text to save. */
-export async function exportCloudAccessReview(
+/**
+ * The review as a CSV or JSON evidence document, returned as the text the
+ * server wrote, to save byte for byte.
+ */
+export function exportCloudAccessReview(
   orgId: string,
   format: "csv" | "json",
   staleDays: number,
 ): Promise<string> {
-  return invoke("cloud_access_review_export", { orgId, format, staleDays });
+  return runRpc(
+    cloudClient("accessReview")
+      .accessReview.export({
+        params: { orgId },
+        query: { format, staleDays: String(staleDays) },
+      })
+      // A text endpoint answers the body as sent, its JSON form included; the
+      // object branch is the type's, never taken.
+      .pipe(
+        Effect.map((body) => (Predicate.isString(body) ? body : JSON.stringify(body, null, 2))),
+      ),
+  );
 }
 
 /**
@@ -796,7 +819,7 @@ export async function cloudTunnelSshAttach(
   steps: Array<{ label: string; ok: boolean; detail?: string }>;
   connectCommand?: string;
 }> {
-  return invoke("cloud_tunnel_ssh_attach", { orgId, body });
+  return runRpc(resources().tunnelSshAttach({ params: { orgId }, payload: body }));
 }
 
 export async function cloudListSshKeys(

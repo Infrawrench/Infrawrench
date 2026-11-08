@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn();
 const getCloudWsUrl = vi.fn();
 
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 vi.mock("../cloud-ws", () => ({ getCloudWsUrl: () => getCloudWsUrl() }));
 vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
 import { type Cause, Effect, Predicate, Queue, Stream } from "effect";
+import { CloudRequestError } from "../../../shared/rpc/errors";
 import { SshError } from "../../../shared/rpc/groups/ssh-common";
 import type { SshShellEvent } from "../../../shared/rpc/groups/ssh-shell";
 import { openSshShell } from "../ssh-dispatch";
@@ -78,7 +77,6 @@ class FakeWebSocket {
 
 beforeEach(() => {
   resetFakeRpc();
-  invoke.mockReset();
   getCloudWsUrl.mockReset();
   FakeWebSocket.instances = [];
   vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
@@ -339,7 +337,6 @@ describe("openSshShell (cloud mode) — write buffering", () => {
   async function openCloud() {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
     fakeRpc["CloudWsToken"] = () => Effect.succeed("ws-token-abc");
-    invoke.mockResolvedValue(true);
     getCloudWsUrl.mockResolvedValue("ws://localhost:3000");
     const handle = await openSshShell({
       mode: "cloud",
@@ -401,5 +398,83 @@ describe("openSshShell (cloud mode) — write buffering", () => {
     for (let i = 0; i < 300; i++) handle.write(`${i}\n`);
     ws.dispatch("message", { data: JSON.stringify({ type: "ssh:connected" }) });
     expect(dataFrames(ws)).toHaveLength(256);
+  });
+});
+
+describe("openSshShell (cloud mode): host-key trust", () => {
+  const trustFrame = {
+    type: "ssh:error",
+    code: "ssh_host_key_trust_required",
+    error: "Host key not trusted",
+    kind: "mismatch",
+    host: "bastion.example.test",
+    port: 2222,
+    presentedFingerprint: "SHA256:new",
+    storedFingerprint: "SHA256:old",
+  };
+
+  async function openCloud() {
+    vi.stubGlobal("window", { electronAPI: makeElectronApi() });
+    fakeRpc["CloudWsToken"] = () => Effect.succeed("ws-token-abc");
+    getCloudWsUrl.mockResolvedValue("ws://localhost:3000");
+    const handle = await openSshShell({
+      mode: "cloud",
+      orgId: "org1",
+      keySource: { type: "cloud", sshKeyId: "key1", name: "k" },
+      accountId: "acc",
+      host: "h",
+      username: "u",
+      cols: 80,
+      rows: 24,
+    });
+    const errors: string[] = [];
+    handle.onError((e) => errors.push(e));
+    return { errors, ws: FakeWebSocket.instances[0]! };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("asks the main process about the key and reconnects once it is trusted", async () => {
+    const trust = vi.fn((_input: unknown) => Effect.succeed(true));
+    fakeRpc["CloudSshHostKeyTrust"] = trust;
+    const { errors, ws } = await openCloud();
+
+    ws.dispatch("message", { data: JSON.stringify(trustFrame) });
+    await settle();
+
+    expect(trust).toHaveBeenCalledWith({
+      orgId: "org1",
+      host: "bastion.example.test",
+      port: 2222,
+      kind: "mismatch",
+      presentedFingerprint: "SHA256:new",
+      storedFingerprint: "SHA256:old",
+    });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(ws.closed).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it("reports the frame's error when the user declines", async () => {
+    fakeRpc["CloudSshHostKeyTrust"] = () => Effect.succeed(false);
+    const { errors, ws } = await openCloud();
+
+    ws.dispatch("message", { data: JSON.stringify(trustFrame) });
+    await settle();
+
+    expect(errors).toEqual(["Host key not trusted"]);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("reports why the trust could not be recorded", async () => {
+    fakeRpc["CloudSshHostKeyTrust"] = () =>
+      Effect.fail(new CloudRequestError({ message: "Not authenticated to Infrawrench Cloud" }));
+    const { errors, ws } = await openCloud();
+
+    ws.dispatch("message", { data: JSON.stringify(trustFrame) });
+    await settle();
+
+    expect(errors).toEqual(["Not authenticated to Infrawrench Cloud"]);
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });

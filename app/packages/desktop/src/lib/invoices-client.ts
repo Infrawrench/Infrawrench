@@ -19,7 +19,6 @@ import type {
 } from "@infrawrench/client-core";
 import { cloudClient } from "./cloud-client";
 import { definedFields } from "./cloud-payload";
-import { invoke } from "./invoke";
 import { runRpc } from "./rpc/client";
 import { listCloudAccounts } from "./cloud-accounts";
 import { listCloudCostCentresForCosts, loadCloudCostDimensionValues } from "./cloud-costs";
@@ -177,11 +176,12 @@ export function createDesktopInvoicesClient(): InvoicesClient {
       ),
 
     downloadInvoiceFile: async (invoice: ManagedInvoice, format: "csv" | "pdf") => {
-      const bytes = await invoke<Uint8Array>("cloud_invoice_file", {
-        orgId: requireOrgId(),
-        invoiceId: invoice.id,
-        format,
-      });
+      const params = { orgId: requireOrgId(), id: invoice.id };
+      // The PDF answers bytes; the CSV answers text, saved as its UTF-8 bytes.
+      const bytes =
+        format === "pdf"
+          ? await runRpc(invoices().pdf({ params }))
+          : new TextEncoder().encode(await runRpc(invoices().export({ params })));
       const name = invoice.number ?? `draft-${invoice.id.slice(0, 8)}`;
       downloadBlob(
         new Blob([new Uint8Array(bytes)], {

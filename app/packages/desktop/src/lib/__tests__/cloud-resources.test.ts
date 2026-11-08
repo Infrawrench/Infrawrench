@@ -1,16 +1,11 @@
 /**
  * The resource wrappers in `cloud-resources.ts`: what each sends over the
- * cloud transport (`CloudHttp`), and what it hands back. The tunnel attach
- * still rides its own IPC channel (its answer is undocumented in the
- * contract), so that one is asserted on `invoke`.
+ * cloud transport (`CloudHttp`), and what it hands back.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 vi.mock("../rpc/desktop-client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
-
-const invoke = vi.fn();
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 const { answerCloudHttp, resetFakeRpc } = await import("./fake-rpc");
 const {
@@ -41,8 +36,6 @@ const ok = { ok: true };
 
 beforeEach(() => {
   resetFakeRpc();
-  invoke.mockReset();
-  invoke.mockResolvedValue(undefined);
 });
 
 /** The one request the transport received, with its body parsed. */
@@ -194,7 +187,7 @@ describe("cloud-resources straightforward wrappers", () => {
   });
 
   it("cloudTunnelSshAttach", async () => {
-    invoke.mockResolvedValue({ steps: [] });
+    const http = answerCloudHttp(() => ({ status: 200, json: { steps: [] } }));
     const body = {
       tunnel: { accountId: "a", pluginId: "p", resourceId: "r" },
       host: { accountId: "a2", pluginId: "p2", resourceTypeId: "t", resourceId: "r2" },
@@ -202,8 +195,12 @@ describe("cloud-resources straightforward wrappers", () => {
       zoneId: "z",
       sshUsername: "u",
     };
-    await cloudTunnelSshAttach("org1", body);
-    expect(invoke).toHaveBeenCalledWith("cloud_tunnel_ssh_attach", { orgId: "org1", body });
+    await expect(cloudTunnelSshAttach("org1", body)).resolves.toEqual({ steps: [] });
+    expect(sent(http)).toEqual({
+      method: "POST",
+      url: `${ORG}/resources/tunnel-ssh-attach`,
+      body,
+    });
   });
 
   it("cloudListSshKeys", async () => {

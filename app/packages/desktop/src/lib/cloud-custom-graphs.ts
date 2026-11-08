@@ -18,7 +18,6 @@ import type {
   CustomGraphSummary,
 } from "@infrawrench/ui";
 import { cloudClient } from "./cloud-client";
-import { invoke } from "./invoke";
 import { runRpc } from "./rpc/client";
 
 const customGraphs = () => cloudClient("customGraphs").customGraphs;
@@ -54,6 +53,6 @@ export function createCloudCustomGraphsClient(orgId: string): CustomGraphsClient
     },
     check: (source): Promise<CustomGraphCheckResult> =>
       runRpc(customGraphs().check({ params: { orgId }, payload: { source } })),
-    typings: () => invoke<string>("cloud_custom_graph_typings", { orgId }),
+    typings: () => runRpc(customGraphs().typings({ params: { orgId } })),
   };
 }

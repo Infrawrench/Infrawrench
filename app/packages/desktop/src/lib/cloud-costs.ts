@@ -116,8 +116,7 @@ import type {
 import type { SavingsResourceOption } from "@infrawrench/ui/cost";
 import { Effect, Predicate } from "effect";
 import { cloudClient, CloudRequestEncodeError } from "./cloud-client";
-import { definedFields } from "./cloud-payload";
-import { invoke } from "./invoke";
+import { definedFields, pdfTimezoneQuery } from "./cloud-payload";
 import { runRpc } from "./rpc/client";
 
 const costs = () => cloudClient("costs").costs;
@@ -135,6 +134,7 @@ const annotations = () => cloudClient("costAnnotations").costAnnotations;
 const folders = () => cloudClient("costReportFolders").costReportFolders;
 const reportDelivery = () => cloudClient("costReportNotifications").costReportNotifications;
 const dashboardDelivery = () => cloudClient("dashboardNotifications").dashboardDelivery;
+const reportPdf = () => cloudClient("dashboardNotifications").costReportPdf;
 const savedFilters = () => cloudClient("savedCostFilters").savedCostFilters;
 const scenarios = () => cloudClient("costScenarios").costScenarios;
 const businessMetrics = () => cloudClient("businessMetrics").businessMetrics;
@@ -151,12 +151,21 @@ export function queryCloudCosts(
   return runRpc(costs().query({ params: { orgId }, payload: definedFields(request) }));
 }
 
-/** `POST /costs/focus-export`: the FOCUS CSV body as text. */
-export async function downloadCloudFocusExport(
+/**
+ * `POST /costs/focus-export`: the FOCUS CSV body as text. `filters` is
+ * stated (`[]` when absent), which is what the server's decoding default
+ * reads an absent one as.
+ */
+export function downloadCloudFocusExport(
   orgId: string,
   request: FocusExportRequest,
 ): Promise<string> {
-  return invoke("cloud_costs_focus_export", { orgId, request });
+  return runRpc(
+    costs().focusExport({
+      params: { orgId },
+      payload: definedFields({ ...request, filters: request.filters ?? [] }),
+    }),
+  );
 }
 
 export function loadCloudCostDimensionValues(
@@ -379,18 +388,15 @@ export function saveCloudNetworkFlowSettings(
   orgId: string,
   settings: { enabled: boolean; initialLookbackDays?: number },
 ): Promise<{ enabled: boolean; initialLookbackDays: number }> {
-  // The endpoint documents the whole settings object. A toggle that names no
-  // lookback keeps the stored one, which is what the handler does with an
-  // absent field, so it is read first.
+  // A toggle that names no lookback leaves it out, which keeps the stored one.
+  const { enabled, initialLookbackDays } = settings;
   return runRpc(
-    Effect.gen(function* () {
-      const initialLookbackDays =
-        settings.initialLookbackDays ??
-        (yield* networkFlows().settings({ params: { orgId } })).initialLookbackDays;
-      return yield* networkFlows().setSettings({
-        params: { orgId },
-        payload: { enabled: settings.enabled, initialLookbackDays },
-      });
+    networkFlows().setSettings({
+      params: { orgId },
+      payload: {
+        enabled,
+        ...(initialLookbackDays !== undefined ? { initialLookbackDays } : {}),
+      },
     }),
   );
 }
@@ -876,12 +882,12 @@ export function sendCloudReportNotificationNow(
 }
 
 /* ------------------------------------------------------------------ *
- * PDF export and dashboard delivery schedules. The PDFs come back as raw
- * bytes over IPC; the caller turns them into a download.
+ * PDF export and dashboard delivery schedules. The PDFs come back as bytes
+ * over the cloud transport; the caller turns them into a download.
  * ------------------------------------------------------------------ */
 
-export async function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
-  return invoke("cloud_cost_report_pdf", { orgId, reportId });
+export function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
+  return runRpc(reportPdf().pdf({ params: { orgId, id: reportId }, query: pdfTimezoneQuery() }));
 }
 
 /* Background export jobs (`/costs/exports/jobs`). */
@@ -949,18 +955,22 @@ export function deleteCloudReportAnomalyAlert(orgId: string, reportId: string): 
   );
 }
 
-export async function loadCloudCostExportJobFile(
-  orgId: string,
-  jobId: string,
-): Promise<Uint8Array> {
-  return invoke("cloud_cost_export_job_download", { orgId, jobId });
+/**
+ * A finished export job's file. The endpoint answers text (CSV or JSON
+ * lines, UTF-8), which is written back to the UTF-8 bytes the caller saves.
+ */
+export function loadCloudCostExportJobFile(orgId: string, jobId: string): Promise<Uint8Array> {
+  return runRpc(
+    exportJobs()
+      .download({ params: { orgId, jobId } })
+      .pipe(Effect.map((text) => new TextEncoder().encode(text))),
+  );
 }
 
-export async function loadCloudDashboardPdf(
-  orgId: string,
-  dashboardId: string,
-): Promise<Uint8Array> {
-  return invoke("cloud_dashboard_pdf", { orgId, dashboardId });
+export function loadCloudDashboardPdf(orgId: string, dashboardId: string): Promise<Uint8Array> {
+  return runRpc(
+    dashboardDelivery().pdf({ params: { orgId, id: dashboardId }, query: pdfTimezoneQuery() }),
+  );
 }
 
 export function listCloudDashboardNotifications(

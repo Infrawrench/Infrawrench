@@ -17,10 +17,15 @@ import {
   notFound,
   ok,
   Unauthorized,
-  Undocumented,
+  Workflow,
+  WorkflowList,
+  WorkflowMetricList,
+  WorkflowRunList,
+  WorkflowRunOutcome,
   WorkflowsApi,
   WorkflowScheduleResponse,
   WorkflowSecretAssignment,
+  WorkflowTypecheckResult,
   WorkflowTypingsResponse,
 } from "@infrawrench/api-contract";
 import {
@@ -58,9 +63,6 @@ import { respond } from "../../response";
 /** `fail(c, e)`: the service's refusals carry their status; anything else is a 500. */
 const workflowRefusal: ReadRefusal = (error) =>
   error instanceof WorkflowError || error instanceof WorkflowSecretError ? error : undefined;
-
-/** The service's value, sent exactly as `c.json(value)` did. */
-const sendAsIs = respond(Undocumented);
 
 /**
  * The body as the route cast it: `(await c.req.json()) as WorkflowBody`. Not
@@ -137,7 +139,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const rows = yield* legacy(() => listWorkflows(organizationId));
-        return yield* sendAsIs(rows.map(redactWorkflow));
+        return yield* respond(WorkflowList)(rows.map(redactWorkflow));
       }),
     )
     .handleRaw("create", ({ request }) =>
@@ -153,13 +155,13 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
         if (body.secretIds !== undefined) {
           yield* auditSecretAssignment(workflow.id, body.secretIds);
         }
-        return yield* respond(Undocumented, { status: 201 })(redactWorkflow(workflow));
+        return yield* respond(Workflow, { status: 201 })(redactWorkflow(workflow));
       }),
     )
     .handle("get", ({ params }) =>
       Effect.gen(function* () {
         const wf = yield* load(params.id);
-        return yield* sendAsIs(redactWorkflow(wf));
+        return yield* respond(Workflow)(redactWorkflow(wf));
       }),
     )
     .handleRaw("update", ({ params, request }) =>
@@ -176,7 +178,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
         if (body.secretIds !== undefined) {
           yield* auditSecretAssignment(workflow.id, body.secretIds);
         }
-        return yield* sendAsIs(redactWorkflow(workflow));
+        return yield* respond(Workflow)(redactWorkflow(workflow));
       }),
     )
     .handle("delete", ({ params }) =>
@@ -321,7 +323,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
             },
           );
         });
-        return yield* sendAsIs(result);
+        return yield* respond(WorkflowTypecheckResult)(result);
       }),
     )
     .handle("run", ({ params }) =>
@@ -345,19 +347,19 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
             interactive: false,
           }),
         );
-        return yield* sendAsIs({ runId: run.runId, result: run.result });
+        return yield* respond(WorkflowRunOutcome)({ runId: run.runId, result: run.result });
       }),
     )
     .handle("runs", ({ params }) =>
       Effect.gen(function* () {
         const wf = yield* load(params.id);
-        return yield* sendAsIs(yield* legacy(() => listWorkflowRuns(wf.id)));
+        return yield* respond(WorkflowRunList)(yield* legacy(() => listWorkflowRuns(wf.id)));
       }),
     )
     .handle("metrics", ({ params }) =>
       Effect.gen(function* () {
         const wf = yield* load(params.id);
-        return yield* sendAsIs(yield* legacy(() => listWorkflowMetrics(wf.id)));
+        return yield* respond(WorkflowMetricList)(yield* legacy(() => listWorkflowMetrics(wf.id)));
       }),
     ),
 );

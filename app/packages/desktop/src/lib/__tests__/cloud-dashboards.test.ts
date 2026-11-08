@@ -157,9 +157,13 @@ describe("cloud-dashboards wrappers", () => {
     expect(res).toEqual(["dashboard:d1"]);
   });
 
-  it("validateCloudWorkspaceTabs tolerates an empty answer", async () => {
+  it("validateCloudWorkspaceTabs fails an empty answer, which the endpoint never declares", async () => {
+    // The root route keeps every tab when validation fails, rather than
+    // reading an empty body as "none of them exist".
     answerCloudHttp(() => ({ status: 204 }));
-    expect(await validateCloudWorkspaceTabs("org1", [])).toEqual([]);
+    await expect(validateCloudWorkspaceTabs("org1", [])).rejects.toThrow(
+      "Infrawrench Cloud answered /dashboards/validate-tabs with an empty body",
+    );
   });
 
   it("getCloudEnrichedPin", async () => {

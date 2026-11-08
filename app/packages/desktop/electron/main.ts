@@ -46,7 +46,6 @@ process.on("uncaughtException", (err) => {
 // Side-effect imports register IPC handlers for each domain.
 import { shutdownIwappdSessions } from "./iwappd-host";
 import "./cloud-auth";
-import "./cloud-data";
 import "./cloud-sync";
 import "./provider-oauth/routes";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";

@@ -343,7 +343,7 @@ export const SyncResponse = Schema.Struct({
 const ResourceTypeSummary = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
-  pluralDisplayName: Schema.optionalKey(Schema.String),
+  pluralDisplayName: Schema.String,
   iconKey: Schema.optionalKey(
     Schema.String.annotate({
       description:

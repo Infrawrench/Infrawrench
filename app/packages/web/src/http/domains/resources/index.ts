@@ -46,6 +46,7 @@ import {
   SshInstallResult,
   TagPolicyBlocked,
   TerraformExport,
+  TunnelSshAttachResult,
   Undocumented,
   UpdateResourceResponse,
 } from "@infrawrench/api-contract";
@@ -621,7 +622,7 @@ const ResourcesHandlers = HttpApiBuilder.group(ResourcesApi, "resources", (handl
           () => runTunnelSshAttach({ organizationId, ...input }),
           "Tunnel SSH setup failed",
         );
-        return yield* respond(Undocumented)(result);
+        return yield* respond(TunnelSshAttachResult)(result);
       }),
     )
     .handle("exportCredential", ({ params, payload: input }) =>

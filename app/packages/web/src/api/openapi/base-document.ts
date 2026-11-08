@@ -173,9 +173,15 @@ export const TAGS: readonly OpenApiTag[] = [
   {
     name: "Workflows",
     description:
-      "Workflow (runbook) surface exposed over HTTP; the approval requests " +
-      "raised by infra.waitForApproval(...) inside runs, and the cron-schedule " +
-      "sub-resource. Full workflow CRUD is managed in the app.",
+      "Workflows (runbooks): CRUD, manual runs, run history and metric values, " +
+      "a headless type check, the cron-schedule and secret-assignment " +
+      "sub-resources, and the approval requests raised by " +
+      "infra.waitForApproval(...) inside runs.",
+  },
+  {
+    name: "GitHub",
+    description:
+      "The organization's GitHub App connection, which git-triggered workflows and agent sessions read repositories through.",
   },
   {
     name: "Chat",

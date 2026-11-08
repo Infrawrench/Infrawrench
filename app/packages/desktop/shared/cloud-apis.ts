@@ -10,8 +10,15 @@
  * `cloud-data/<area>.ts` file adds its domain here; KNOWLEDGE.md ("Desktop
  * IPC on Effect RPC") has the recipe.
  */
-import type { Context } from "effect";
-import { HttpApi, type HttpApiEndpoint, type HttpApiGroup } from "effect/http-api";
+import { Predicate, Schema, SchemaAST, type Context } from "effect";
+import {
+  HttpApi,
+  HttpApiSchema,
+  type HttpApiEndpoint,
+  type HttpApiGroup,
+  type HttpApiMiddleware,
+} from "effect/http-api";
+import { OrgAuth, SessionAuth } from "@infrawrench/api-contract";
 import {
   AccountsApi,
   AgentsApi,
@@ -60,6 +67,7 @@ import {
   CostCentresApi,
   DashboardsApi,
   DependencyGraphApi,
+  GithubApi,
   InvoicesApi,
   OnCallApi,
   ScorecardsApi,
@@ -111,13 +119,110 @@ import {
   TagPolicyApi,
 } from "@infrawrench/api-contract";
 
+/**
+ * How an endpoint answers, from the success schemas it declares:
+ *
+ * - `json`: every success is JSON (or no body); the client parses it.
+ * - `text`: a success is text (`HttpApiSchema.asText`: CSV, typings); the
+ *   client hands the body on as the server sent it, a JSON alternative
+ *   included (the access-review export answers either).
+ * - `bytes`: a success is binary (`asUint8Array`: a PDF, a ZIP); it crosses
+ *   on `CloudHttpBytes`.
+ * - `stream`: an SSE, NDJSON or byte stream, or a protocol upgrade. A
+ *   buffered transport would hold the stream until it ended, so the
+ *   allowlist refuses these and the client has no method for them.
+ */
+export type DesktopCloudAnswer = "json" | "text" | "bytes" | "stream";
+
 /** One endpoint of a registered domain, as `HttpApi.reflect` walks it. */
 export interface DesktopCloudEndpoint {
   readonly group: string;
   readonly endpoint: HttpApiEndpoint.Top;
   /** The API's, group's and endpoint's annotations merged (parse options live here). */
   readonly annotations: Context.Context<never>;
+  /**
+   * Whether the endpoint runs the contract's `OrgAuth` or `SessionAuth`
+   * middleware, so the server reads the bearer token the transport attaches
+   * as the caller's session. A webhook or a public page does not, and
+   * the allowlist refuses it unless it is listed by hand.
+   */
+  readonly authenticated: boolean;
+  readonly answer: DesktopCloudAnswer;
+  /** Whether a 2xx with no body is one of the declared answers (a 204, an empty 201). */
+  readonly empty: boolean;
+  /** The request headers the endpoint declares, lower-cased. */
+  readonly headers: ReadonlySet<string>;
 }
+
+const STREAM_SCHEMA = "~effect/http-api/HttpApiSchema/Stream";
+const UPGRADE_SCHEMA = "~effect/http-api/HttpApiSchema/Upgrade";
+
+/**
+ * A success schema's `HttpApiSchema` encoding, read from the annotation
+ * `asText`/`asUint8Array` set (the key `HttpApiSchema` itself resolves); a
+ * schema without one is JSON.
+ */
+const ResponseEncoding = Schema.Struct({
+  _tag: Schema.Literals(["Json", "FormUrlEncoded", "Uint8Array", "Text"]),
+  contentType: Schema.String,
+});
+const decodeResponseEncoding = Schema.decodeUnknownOption(ResponseEncoding);
+const encodingAnnotation = SchemaAST.resolveAt<unknown>("~httpApiEncoding");
+
+type SuccessKind = DesktopCloudAnswer | "empty";
+
+function successKind(schema: Schema.Top): SuccessKind {
+  const body = HttpApiSchema.isWithHeaders(schema) ? schema.schema : schema;
+  if (
+    Predicate.hasProperty(body, STREAM_SCHEMA) ||
+    Predicate.hasProperty(body, UPGRADE_SCHEMA) ||
+    Predicate.hasProperty(schema, UPGRADE_SCHEMA)
+  ) {
+    return "stream";
+  }
+  if (HttpApiSchema.isNoContent(body.ast)) return "empty";
+  const encoding = decodeResponseEncoding(encodingAnnotation(body.ast));
+  if (encoding._tag === "None") return "json";
+  switch (encoding.value._tag) {
+    case "Uint8Array":
+      return "bytes";
+    case "Text":
+      // The contract's SSE turn stream is text in an event-stream envelope.
+      return encoding.value.contentType.startsWith("text/event-stream") ? "stream" : "text";
+    case "FormUrlEncoded":
+      return "text";
+    case "Json":
+      return "json";
+  }
+}
+
+/** The endpoint's answer, the widest kind any of its successes is. */
+function answerOf(successes: ReadonlyMap<number, ReadonlyArray<Schema.Top>>) {
+  const kinds = new Set<SuccessKind>();
+  for (const schemas of successes.values())
+    for (const schema of schemas) kinds.add(successKind(schema));
+  const answer: DesktopCloudAnswer = kinds.has("stream")
+    ? "stream"
+    : kinds.has("bytes")
+      ? "bytes"
+      : kinds.has("text")
+        ? "text"
+        : "json";
+  return { answer, empty: kinds.has("empty") };
+}
+
+/** The names a `headers` schema declares (a struct of header names), lower-cased. */
+function headerNames(schema: Schema.Top | undefined): ReadonlySet<string> {
+  if (schema === undefined) return new Set();
+  const ast = SchemaAST.toType(schema.ast);
+  if (!SchemaAST.isObjects(ast)) return new Set();
+  return new Set(ast.propertySignatures.map((property) => String(property.name).toLowerCase()));
+}
+
+const AUTH_MIDDLEWARE: ReadonlySet<string> = new Set([OrgAuth.key, SessionAuth.key]);
+
+const isAuthenticated = (middleware: ReadonlySet<HttpApiMiddleware.AnyService>) =>
+  [...middleware].some((service) => AUTH_MIDDLEWARE.has(service.key));
 
 /**
  * A registered domain: the `HttpApi` itself, which the renderer's client type
@@ -135,8 +240,15 @@ function desktopCloudApi<Id extends string, Groups extends HttpApiGroup.Constrai
   const endpoints: Array<DesktopCloudEndpoint> = [];
   HttpApi.reflect(api, {
     onGroup() {},
-    onEndpoint({ group, endpoint, mergedAnnotations }) {
-      endpoints.push({ group: group.identifier, endpoint, annotations: mergedAnnotations });
+    onEndpoint({ group, endpoint, mergedAnnotations, middleware, successes }) {
+      endpoints.push({
+        group: group.identifier,
+        endpoint,
+        annotations: mergedAnnotations,
+        authenticated: isAuthenticated(middleware),
+        ...answerOf(successes),
+        headers: headerNames(endpoint.headers),
+      });
     },
   });
   return { api, endpoints };
@@ -196,6 +308,7 @@ export const DESKTOP_CLOUD_APIS = {
   workflowApprovals: desktopCloudApi(WorkflowApprovalsApi),
   workflowSecrets: desktopCloudApi(WorkflowSecretsApi),
   workflows: desktopCloudApi(WorkflowsApi),
+  github: desktopCloudApi(GithubApi),
   backups: desktopCloudApi(BackupsApi),
   changes: desktopCloudApi(ResourceChangesApi),
   costAnnotations: desktopCloudApi(CostAnnotationsApi),

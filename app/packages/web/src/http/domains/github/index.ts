@@ -8,7 +8,7 @@
  * installation only if `GET /user/installations` shows that GitHub user can
  * access it.
  */
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { and, eq, isNull } from "drizzle-orm";
@@ -26,7 +26,15 @@ import {
 } from "@infrawrench/server-core/github/app";
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { badRequest, CONNECT_PERMISSION, GithubApi } from "@infrawrench/api-contract";
+import {
+  badRequest,
+  CONNECT_PERMISSION,
+  GithubApi,
+  GithubAppRepos,
+  GithubAppStatus,
+  GithubInstallUrl,
+  Ok,
+} from "@infrawrench/api-contract";
 import { safeReturnPath } from "../../../api/oauth-state";
 import { db } from "../../../db/client";
 import { githubInstallations } from "../../../db/schema";
@@ -81,7 +89,7 @@ const GithubHandlers = HttpApiBuilder.group(GithubApi, "github", (h) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const installs = yield* orgInstallations(organizationId);
-        return yield* respond(Schema.Unknown)({
+        return yield* respond(GithubAppStatus)({
           configured: isGithubAppConfigured(),
           appSlug: githubAppSlug(),
           installations: installs.map((i) => ({
@@ -111,7 +119,7 @@ const GithubHandlers = HttpApiBuilder.group(GithubApi, "github", (h) =>
         const returnTo = INSTALL_RETURN_PAGES.has(returnToRaw) ? returnToRaw : "agents";
         const state = signInstallState({ organizationId, userId: session.userId, returnTo });
         const url = `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
-        return yield* respond(Schema.Unknown)({ url });
+        return yield* respond(GithubInstallUrl)({ url });
       }),
     )
     // Repos across the org's installations (with their installationId).
@@ -135,7 +143,7 @@ const GithubHandlers = HttpApiBuilder.group(GithubApi, "github", (h) =>
           return out;
         });
         repos.sort((a, b) => a.fullName.localeCompare(b.fullName));
-        return yield* respond(Schema.Unknown)({ repos });
+        return yield* respond(GithubAppRepos)({ repos });
       }),
     )
     // Drop a connection (locally; the user can also uninstall on GitHub).
@@ -154,7 +162,7 @@ const GithubHandlers = HttpApiBuilder.group(GithubApi, "github", (h) =>
               ),
             ),
         );
-        return yield* respond(Schema.Unknown)({
+        return yield* respond(Ok)({
           ok: true,
         });
       }),

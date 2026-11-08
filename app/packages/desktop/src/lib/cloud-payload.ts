@@ -35,3 +35,18 @@ export function definedFields(value: unknown): unknown {
       .map(([key, field]) => [key, definedFields(field)]),
   );
 }
+
+/**
+ * `?tz=` for a PDF export: the local IANA zone, so the document's "generated
+ * at" line reads in the user's time (client-core's `withPdfTimezone` as a
+ * query object). Empty without zone data, and the server writes UTC.
+ */
+export function pdfTimezoneQuery(): { tz?: string } {
+  let tz = "";
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    // No Intl zone data: the server writes UTC.
+  }
+  return tz ? { tz } : {};
+}

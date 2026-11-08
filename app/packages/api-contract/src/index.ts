@@ -32,6 +32,7 @@ export * from "./http/schemas/issue-status";
 export * from "./http/schemas/params";
 export * from "./http/schemas/permissions";
 export * from "./http/schemas/plugin-registry";
+export * from "./http/schemas/posture";
 export * from "./http/schemas/pricing";
 export * from "./http/schemas/query";
 export * from "./http/schemas/raw-query";

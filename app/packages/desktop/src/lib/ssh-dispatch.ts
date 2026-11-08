@@ -10,7 +10,6 @@
  */
 
 import { Cause, Effect, Exit, Predicate, Stream } from "effect";
-import { invoke } from "./invoke";
 import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 import type { KeySource } from "./ssh-key-source";
 import { getCloudWsToken } from "./cloud-auth";
@@ -252,15 +251,32 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
   // frame. Mirror the local-IPC terminal: show the native prompt, record the
   // pin in the org's cloud trust store, then reconnect on a fresh socket (the
   // proxy tears the SSH session down when the verifier rejects).
-  const handleTrustRequired = async (ws: WebSocket, msg: CloudSshErrorFrame) => {
-    const trusted = await invoke<boolean>("cloud_ssh_host_key_trust", {
-      orgId: params.orgId,
-      host: msg.host,
-      port: msg.port ?? 22,
-      kind: msg.kind ?? "unknown",
-      presentedFingerprint: msg.presentedFingerprint,
-      storedFingerprint: msg.storedFingerprint ?? null,
-    });
+  const handleTrustRequired = async (
+    ws: WebSocket,
+    msg: CloudSshErrorFrame,
+    host: string,
+    presentedFingerprint: string,
+  ) => {
+    let trusted: boolean;
+    try {
+      trusted = await runRpc(
+        DesktopRpcClient.use((rpc) =>
+          rpc.CloudSshHostKeyTrust({
+            orgId: params.orgId,
+            host,
+            port: msg.port ?? 22,
+            kind: msg.kind ?? "unknown",
+            presentedFingerprint,
+            storedFingerprint: msg.storedFingerprint ?? null,
+          }),
+        ),
+      );
+    } catch (err) {
+      // Signed out, the session expired, or the trust route unreachable.
+      if (!killed)
+        for (const cb of errorListeners) cb(err instanceof Error ? err.message : String(err));
+      return;
+    }
     if (killed) return;
     if (!trusted) {
       for (const cb of errorListeners) cb(msg.error ?? "SSH host key not trusted");
@@ -318,7 +334,7 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
           for (const cb of exitListeners) cb();
         } else if (msg.type === "ssh:error") {
           if (msg.code === "ssh_host_key_trust_required" && msg.host && msg.presentedFingerprint) {
-            void handleTrustRequired(ws, msg);
+            void handleTrustRequired(ws, msg, msg.host, msg.presentedFingerprint);
           } else {
             for (const cb of errorListeners) cb(msg.error ?? "SSH error");
           }

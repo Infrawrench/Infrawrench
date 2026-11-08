@@ -274,10 +274,22 @@ export const KubernetesNetworkSettings = Schema.Struct({
 /** The cluster's params, documented as plain strings, as they always were. */
 const AccountIdParams = { orgId: Schema.String, accountId: Schema.String } as const;
 
+const InitialLookbackDays = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30 }));
+
 export const NetworkFlowSettings = Schema.Struct({
   enabled: Schema.Boolean,
-  initialLookbackDays: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30 })),
+  initialLookbackDays: InitialLookbackDays,
 }).annotate({ identifier: "NetworkFlowSettings" });
+
+/** The PUT body: a lookback left out keeps the stored one. */
+const NetworkFlowSettingsInput = Schema.Struct({
+  enabled: Schema.Boolean,
+  initialLookbackDays: Schema.optionalKey(
+    InitialLookbackDays.annotate({
+      description: "How many days the first collection reads back. Omitted: the stored value.",
+    }),
+  ),
+}).annotate({ identifier: "NetworkFlowSettingsInput" });
 
 /* -------------------------------------------------------- saved reports -- */
 
@@ -671,7 +683,7 @@ export class NetworkFlowsGroup extends HttpApiGroup.make("networkFlows")
     // governance decision like a billing rule. Audit-logged for the same reason.
     HttpApiEndpoint.put("setSettings", "/settings", {
       params: OrgParams,
-      payload: NetworkFlowSettings,
+      payload: NetworkFlowSettingsInput,
       success: NetworkFlowSettings,
       error: [BadRequest, Forbidden],
     })

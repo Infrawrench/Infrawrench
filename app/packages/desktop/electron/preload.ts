@@ -8,50 +8,12 @@ import { RPC_CONNECT, RPC_DISCONNECT, RPC_FRAME } from "../shared/rpc/channels";
 const INVOKE_CHANNELS = [
   // shell command (`infrawrench` CLI shim)
   // what `infrawrench deploy` did on this machine (local mode's Deploy tab)
-  // cloud
-  "cloud_ssh_host_key_trust",
-  "cloud_tunnel_ssh_attach",
-  "cloud_costs_focus_export",
-  "cloud_compliance_pack",
-  "cloud_access_review_export",
-  "cloud_resource_reports_csv",
-  "cloud_invoice_file",
-  "cloud_cost_report_pdf",
-  "cloud_cost_export_job_download",
-  "cloud_cost_canvas_pdf",
-  "cloud_dashboard_pdf",
-  "cloud_custom_graph_typings",
-  "cloud_list_workflows",
-  "cloud_create_workflow",
-  "cloud_update_workflow",
-  "cloud_run_workflow",
-  "cloud_workflow_runs",
-  "cloud_workflow_metrics",
-  "cloud_github_status",
-  "cloud_github_repos",
-  "cloud_github_install_url",
-  "cloud_sftp_list",
-  "cloud_sftp_mkdir",
-  "cloud_sftp_delete",
-  "cloud_sftp_upload",
-  "cloud_sftp_download",
-  "cloud_ssh_fanout_run",
-  "cloud_ssh_fanout_snippets_list",
-  "cloud_ssh_fanout_snippets_create",
-  "cloud_ssh_fanout_snippets_delete",
-  "cloud_chat_list_conversations",
-  "cloud_chat_create_conversation",
-  "cloud_chat_update_conversation",
-  "cloud_chat_get_conversation",
-  "cloud_chat_spend",
-  "cloud_chat_resolve_pending",
-  "cloud_chat_stream_start",
-  "cloud_chat_stream_abort",
+  // cloud: none; every cloud call rides the `CloudHttp` RPC (`cloud-transport.ts`)
 ] as const;
 
 const EVENT_LITERALS = new Set<string>(["update_available_prompt", "update_error"]);
 
-const EVENT_PREFIXES: readonly string[] = ["cloud_chat_stream_"];
+const EVENT_PREFIXES: readonly string[] = [];
 
 function isAllowedEventChannel(channel: string): boolean {
   if (EVENT_LITERALS.has(channel)) return true;

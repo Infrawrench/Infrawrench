@@ -1,8 +1,8 @@
 /**
  * The 409 every SSH-backed route answers when the host's key is not trusted
  * yet (or has changed): SFTP, tunnels, connect, Linux app checks and the trust
- * route itself. Clients (the web `withTrustPrompt`, the desktop's
- * `fetchWithHostKeyPrompt`) recognise `error === "ssh_host_key_trust_required"`,
+ * route itself. Clients (the web `withTrustPrompt`, the desktop's cloud
+ * transport) recognise `error === "ssh_host_key_trust_required"`,
  * prompt with the fingerprint, `POST /ssh-host-keys/trust` and retry, so the
  * body's fields and their order are a contract: `../domains/ssh-host-key-trust.ts`
  * builds it from the service's `HostKeyTrustRequiredError`.

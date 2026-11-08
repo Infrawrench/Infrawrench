@@ -89,7 +89,7 @@ export function createDesktopChangesClient(): ChangesClient {
       const result = await runRpc(
         changes().costImpacts({ params: { orgId: requireOrg() }, payload: { changeIds } }),
       );
-      return result?.impacts ?? [];
+      return result.impacts;
     },
     annotateCostImpact: async (changeId) => {
       await runRpc(

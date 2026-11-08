@@ -15,7 +15,7 @@ import { withApiDefaults } from "../http/api-defaults";
 import { BadRequest, Conflict, NotFound } from "../http/errors";
 import { OrgAuth } from "../http/middleware-tags";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../http/schemas/common";
-import { ChangeFreezeBlocked } from "../http/schemas/change-freeze";
+import { ChangeFreezeBlocked, ChangeFreezeOverrideHeaders } from "../http/schemas/change-freeze";
 
 const TargetKind = Schema.Literals(["account", "resource"]);
 
@@ -113,6 +113,7 @@ export class SshFanoutGroup extends HttpApiGroup.make("sshFanout")
       .annotate(SuccessDescription, "Targets"),
     HttpApiEndpoint.post("run", "/run", {
       params: OrgParams,
+      headers: ChangeFreezeOverrideHeaders,
       payload: SshFanoutRunRequest,
       success: SshFanoutRunResponse,
       error: [BadRequest, ChangeFreezeBlocked],

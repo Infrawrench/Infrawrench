@@ -1,9 +1,8 @@
 /**
  * The desktop Canvases client (cloud mode): the shared cost reads from
  * {@link createDesktopCostApi}, canvas calls typed from the contract's
- * `costCanvases` domain over the cloud transport (the PDF, which is bytes,
- * over the `cloud_cost_canvas_pdf` IPC channel), sharing over the
- * allowlisted settings channel, and the desktop chat client for the side
+ * `costCanvases` domain over the cloud transport (the PDF as bytes), sharing
+ * over the allowlisted settings channel, and the desktop chat client for the side
  * conversation. Built per org (the viewport keys the panel by org), because
  * the chat client binds its org at construction.
  */
@@ -26,8 +25,7 @@ import type { CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
 import { Effect } from "effect";
 import { cloudClient } from "./cloud-client";
-import { definedFields } from "./cloud-payload";
-import { invoke } from "./invoke";
+import { definedFields, pdfTimezoneQuery } from "./cloud-payload";
 import { runRpc } from "./rpc/client";
 import { createCloudWidget, deleteCloudWidget } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
@@ -161,7 +159,9 @@ export function createDesktopCostCanvasesClient(orgId: string): CostCanvasesClie
     },
     removeCanvasPlacement: (widgetId: string) => deleteCloudWidget(orgId, widgetId),
     downloadCanvasPdf: async (canvasId: string, canvasName: string) => {
-      const bytes = await invoke<Uint8Array>("cloud_cost_canvas_pdf", { orgId, canvasId });
+      const bytes = await runRpc(
+        canvases().pdf({ params: { orgId, id: canvasId }, query: pdfTimezoneQuery() }),
+      );
       downloadPdfBytes(bytes, pdfFileName(canvasName, "canvas"));
     },
     listCanvasNotifications: (canvasId: string): Promise<CostCanvasNotification[]> =>

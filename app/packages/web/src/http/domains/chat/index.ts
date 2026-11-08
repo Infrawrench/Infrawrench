@@ -12,7 +12,7 @@
  * whether or not the client stayed, and an approval interrupted between
  * claiming its row and running the tool would leave it claimed and never run.
  */
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Predicate } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
@@ -30,10 +30,16 @@ import {
   badRequest,
   ChatApi,
   ChatAskQuestionResult,
+  ChatConversationCreated,
+  ChatConversationDetail,
+  ChatConversationList,
+  ChatPendingDecisionResult,
   ChatSecretRequestResult,
+  ChatSpendStatus,
   conflict,
   forbidden,
   notFound,
+  Ok,
 } from "@infrawrench/api-contract";
 import type { OrgAuthResult } from "../../../auth/org-request-auth";
 import { effectivePermissions } from "../../../auth/effective-permissions";
@@ -173,7 +179,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
               .orderBy(desc(chatConversations.updatedAt))
               .limit(200),
           );
-          return yield* respond(Schema.Unknown)({
+          return yield* respond(ChatConversationList)({
             conversations: rows,
           });
         }),
@@ -207,7 +213,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
                 ...(Predicate.isString(systemPrompt) && systemPrompt ? { systemPrompt } : {}),
               }),
             );
-            return yield* respond(Schema.Unknown)({ id });
+            return yield* respond(ChatConversationCreated)({ id });
           }),
         ),
       { uninterruptible: true },
@@ -230,7 +236,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
                 .returning({ id: chatConversations.id }),
             );
             if (updated.length === 0) return yield* notFound();
-            return yield* respond(Schema.Unknown)({ ok: true });
+            return yield* respond(Ok)({ ok: true });
           }),
         ),
       { uninterruptible: true },
@@ -266,7 +272,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
           );
           const [conversation] = conversationRows;
           if (!conversation) return yield* notFound();
-          return yield* respond(Schema.Unknown)({
+          return yield* respond(ChatConversationDetail)({
             conversation,
             messages,
             pendingActions: pending,
@@ -287,7 +293,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
                 .set({ archivedAt: new Date() })
                 .where(ownConversation(auth, params.conversationId)),
             );
-            return yield* respond(Schema.Unknown)({ ok: true });
+            return yield* respond(Ok)({ ok: true });
           }),
         ),
       { uninterruptible: true },
@@ -297,7 +303,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
       asChatCaller("chat:read", (auth) =>
         Effect.gen(function* () {
           const status = yield* legacy(() => getMonthlySpend(auth.organizationId));
-          return yield* respond(Schema.Unknown)(status);
+          return yield* respond(ChatSpendStatus)(status);
         }),
       ),
     )
@@ -438,7 +444,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
               const { allResolved } = yield* legacy(() =>
                 rejectPendingAction(pendingId, Predicate.isString(reason) ? reason : undefined),
               ).pipe(Effect.ensuring(noteDecided("denied")));
-              return yield* respond(Schema.Unknown)({ ok: true, allResolved });
+              return yield* respond(ChatPendingDecisionResult)({ ok: true, allResolved });
             }
 
             // Approved and claimed: execute synchronously. If execution
@@ -448,7 +454,7 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
             return yield* legacyTry(() => executePendingAction(pendingId, toolAuth), caught).pipe(
               Effect.flatMap(({ allResolved }) =>
                 noteDecided("approved").pipe(
-                  Effect.andThen(respond(Schema.Unknown)({ ok: true, allResolved })),
+                  Effect.andThen(respond(ChatPendingDecisionResult)({ ok: true, allResolved })),
                 ),
               ),
               Effect.catch(({ error }) =>

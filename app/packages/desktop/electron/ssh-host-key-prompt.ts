@@ -8,7 +8,7 @@
  * `SshHostKeyDecide`. Effect RPC has no server-to-client request, and a
  * subscription is what one looks like: the question is a stream element, the
  * answer an ordinary call. Used by ssh-host-keys.ts and the cloud host-key
- * trust flow (`cloud-data/host-key-trust.ts`, `cloud-data/shared.ts`).
+ * trust flow (`promptAndTrustHostKey` in `cloud-transport.ts`).
  */
 import * as crypto from "node:crypto";
 import { Context, Effect, Layer, Queue, Stream } from "effect";

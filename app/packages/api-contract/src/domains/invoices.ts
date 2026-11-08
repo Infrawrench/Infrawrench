@@ -66,6 +66,7 @@ import {
   invoiceDay,
 } from "../http/schemas/invoicing";
 import { PricingEffect, PricingExpressionFailure, RerateCoverage } from "../http/schemas/pricing";
+import { PdfDocument } from "../http/schemas/report-delivery";
 
 const CostBasis = Schema.Literals(COST_BASES);
 
@@ -602,9 +603,8 @@ export class InvoicesGroup extends HttpApiGroup.make("invoices")
   .add(
     HttpApiEndpoint.get("pdf", "/:id/pdf", {
       params: OrgIdParams,
-      success: Schema.String.annotate({ format: "binary" }).pipe(
-        HttpApiSchema.asText({ contentType: "application/pdf" }),
-      ),
+      // Bytes, as the handler sends them (`HttpServerResponse.uint8Array`).
+      success: PdfDocument,
       error: NotFound,
     })
       .annotate(RequiredPermission, "invoices:read")

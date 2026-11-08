@@ -7,39 +7,18 @@ import type {
   SavingsViewInput,
 } from "@infrawrench/client-core";
 import { useUIStore, type SavingsFindingsClient } from "@infrawrench/ui";
-import { Effect, Option, Predicate, Schema } from "effect";
-import { cloudClient, CloudResponseError } from "./cloud-client";
+import type { Effect } from "effect";
+import { cloudClient, withServerMessage as serverMessage } from "./cloud-client";
 import { createDesktopSharingClient } from "./cost-reports-client";
 import { runRpc, type DesktopRpcClient } from "./rpc/client";
 
-const decodeBody = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
-
 /**
- * The server's `{ error }` sentence in place of the transport's `Cloud
- * request failed: ...` message, which is what the section shows; a body
- * without one keeps the transport's message.
+ * The call run with the server's `{ error }` sentence in place of the
+ * transport's `Cloud request failed: ...` message, which is what the section
+ * shows; a body without one keeps the transport's message.
  */
 function withServerMessage<A, E>(call: Effect.Effect<A, E, DesktopRpcClient>): Promise<A> {
-  return runRpc(
-    call.pipe(
-      Effect.mapError((error) => {
-        if (!(error instanceof CloudResponseError)) return error;
-        const body = decodeBody(error.body);
-        if (
-          Option.isSome(body) &&
-          Predicate.hasProperty(body.value, "error") &&
-          Predicate.isString(body.value.error)
-        ) {
-          return new CloudResponseError({
-            message: body.value.error,
-            status: error.status,
-            body: error.body,
-          });
-        }
-        return error;
-      }),
-    ),
-  );
+  return runRpc(serverMessage(call));
 }
 
 /**

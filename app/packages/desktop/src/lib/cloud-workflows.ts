@@ -4,14 +4,12 @@
  * With an org selected, workflows come from the org rather than local SQLite:
  * the same swap accounts, dashboards, and costs already make. The isolate runs
  * server-side, so unlike `./workflow-client` there is no host to build here:
- * CRUD, typings, runs, and metrics are plain HTTP (typed calls to the
- * contract's `workflows`, `workflowSecrets` and `workflowApprovals` domains
- * over the cloud transport; the calls whose answer the contract leaves
- * undocumented, and the GitHub reads, still go through the
- * `cloud_*_workflow*` / `cloud_github_*` IPC), and a manual run opens the
- * cloud websocket so the
- * editor keeps its breakpoints, stepping, live logs, and `infra.prompt`: the
- * browser's `lib/workflow-client.ts` drives the identical `workflow:*` frames.
+ * CRUD, typings, runs, metrics and the GitHub reads for the git trigger are
+ * plain HTTP (typed calls to the contract's `workflows`, `workflowSecrets`,
+ * `workflowApprovals` and `github` domains over the cloud transport), and a
+ * debug run opens the cloud websocket so the editor keeps its breakpoints,
+ * stepping, live logs, and `infra.prompt`: the browser's
+ * `lib/workflow-client.ts` drives the identical `workflow:*` frames.
  *
  * The one desktop difference is the prompt: Electron's `window.prompt` is a
  * no-op, so prompts go through the same modal local runs use.
@@ -34,7 +32,6 @@ import type {
 
 import { Effect, Schema } from "effect";
 import { cloudClient } from "./cloud-client";
-import { invoke } from "./invoke";
 import { runRpc } from "./rpc/client";
 import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
@@ -43,9 +40,23 @@ import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 const workflows = () => cloudClient("workflows").workflows;
 const workflowSecrets = () => cloudClient("workflowSecrets").workflowSecrets;
 const workflowApprovals = () => cloudClient("workflowApprovals").workflowApprovals;
+const github = () => cloudClient("github").github;
+
+type WireWorkflow = Effect.Success<ReturnType<ReturnType<typeof workflows>["get"]>>;
+
+/**
+ * A workflow as the panel holds it. The server's row carries no secret
+ * assignment (the panel loads that separately with `getAssignedSecrets`), so
+ * it starts empty, which every reader already took an absent list to mean.
+ */
+const workflowSummary = (workflow: WireWorkflow): WorkflowSummary => ({
+  ...workflow,
+  assignedSecretIds: [],
+});
 
 export async function listCloudWorkflows(orgId: string): Promise<WorkflowSummary[]> {
-  return invoke("cloud_list_workflows", { orgId });
+  const rows = await runRpc(workflows().list({ params: { orgId } }));
+  return rows.map(workflowSummary);
 }
 
 export async function pinCloudWorkflow(
@@ -136,11 +147,12 @@ function upsertCloudWorkflowSecret(
 
 /** GitHub App connection state for the git-trigger picker. */
 export async function getCloudGithubStatus(orgId: string): Promise<{ configured: boolean }> {
-  return invoke("cloud_github_status", { orgId });
+  return runRpc(github().status({ params: { orgId } }));
 }
 
 export async function listCloudGithubRepos(orgId: string): Promise<GitRepoOption[]> {
-  return invoke("cloud_github_repos", { orgId });
+  const { repos } = await runRpc(github().repos({ params: { orgId } }));
+  return repos;
 }
 
 /**
@@ -151,7 +163,10 @@ export async function getCloudGithubInstallUrl(
   orgId: string,
   returnTo: "workflows" | "agents" = "workflows",
 ): Promise<string | null> {
-  return invoke("cloud_github_install_url", { orgId, returnTo });
+  const { url } = await runRpc(
+    github().installUrl({ params: { orgId }, query: { return: returnTo } }),
+  );
+  return url;
 }
 
 /**
@@ -270,10 +285,14 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
   };
   return {
     list: () => listCloudWorkflows(orgId),
-    create: (body: WorkflowSaveBody) =>
-      invoke<WorkflowSummary>("cloud_create_workflow", { orgId, body: workflowBody(body) }),
-    update: (id: string, body: WorkflowSaveBody) =>
-      invoke<WorkflowSummary>("cloud_update_workflow", { orgId, id, body: workflowBody(body) }),
+    create: async (body: WorkflowSaveBody) =>
+      workflowSummary(
+        await runRpc(workflows().create({ params: { orgId }, payload: workflowBody(body) })),
+      ),
+    update: async (id: string, body: WorkflowSaveBody) =>
+      workflowSummary(
+        await runRpc(workflows().update({ params: { orgId, id }, payload: workflowBody(body) })),
+      ),
     remove: async (id: string) => {
       await runRpc(workflows().delete({ params: { orgId, id } }));
     },
@@ -286,9 +305,10 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
       );
       return res.dts;
     },
-    listRuns: (id: string) => invoke<WorkflowRunRow[]>("cloud_workflow_runs", { orgId, id }),
-    listMetrics: (id: string) =>
-      invoke<WorkflowMetricRow[]>("cloud_workflow_metrics", { orgId, id }),
+    listRuns: (id: string): Promise<WorkflowRunRow[]> =>
+      runRpc(workflows().runs({ params: { orgId, id } })),
+    listMetrics: (id: string): Promise<WorkflowMetricRow[]> =>
+      runRpc(workflows().metrics({ params: { orgId, id } })),
     getAssignedSecrets: async (id: string) => {
       const { secretIds, secrets }: { secretIds: string[]; secrets: WorkflowSecretSummary[] } =
         await runRpc(workflows().getSecrets({ params: { orgId, id } }));
@@ -302,9 +322,7 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
       await runRpc(workflowSecrets().delete({ params: { orgId, id } }));
     },
     run: (id: string, debug?: DebugSession) =>
-      debug
-        ? runDebug(orgId, id, debug)
-        : invoke<{ runId: string; result: WorkflowRunResult }>("cloud_run_workflow", { orgId, id }),
+      debug ? runDebug(orgId, id, debug) : runRpc(workflows().run({ params: { orgId, id } })),
     listPendingApprovals: (workflowId: string) =>
       listCloudWorkflowApprovals(orgId, { status: "pending", workflowId }),
     decideApproval: (approvalId: string, decision: "approve" | "deny") =>

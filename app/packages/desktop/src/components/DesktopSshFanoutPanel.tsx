@@ -29,8 +29,9 @@ import {
  * Fan-out SSH on desktop: the same shared `SshFanoutView` web renders.
  * Rendered as a workspace tab (the "ssh-fanout" kind).
  *
- * Cloud mode mirrors web exactly over the `cloud_ssh_fanout_*` IPC bridge
- * (server-side exec, freeze gate, audit, org-shared snippets). Local-only mode
+ * Cloud mode mirrors web exactly over the contract's `sshFanout` domain on
+ * the cloud transport (server-side exec, freeze gate, audit, org-shared
+ * snippets). Local-only mode
  * fans out over the machine's own SSH accounts through the existing
  * `SshExecCommand` RPC (host-key prompts and 1Password/Pageant sentinels
  * included), with client-side concurrency. Local mode has no org, so snippets
