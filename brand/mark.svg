@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Infrawrench</title>
+  <defs>
+    <linearGradient id="iw-fill" x1="0" y1="512" x2="512" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ec4899"/>
+      <stop offset="0.5" stop-color="#f43f5e"/>
+      <stop offset="1" stop-color="#fb923c"/>
+    </linearGradient>
+    <mask id="iw-wrench-cut" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600">
+      <rect x="-300" y="-300" width="600" height="600" fill="#fff"/>
+      <path d="M-34 -240H34V-112Q34 -98 20 -98H-20Q-34 -98 -34 -112Z" fill="#000"/>
+      <circle cx="0" cy="128" r="22" fill="#000"/>
+    </mask>
+  </defs>
+  <g transform="translate(256 256) rotate(45) translate(0 16)">
+    <g mask="url(#iw-wrench-cut)" fill="#fff">
+      <circle cx="0" cy="-114" r="88"/>
+      <path d="M-34 100V20C-34 -10 -44 -34 -64 -60H64C44 -34 34 -10 34 20V100Z"/>
+      <circle cx="0" cy="128" r="48"/>
+    </g>
+  </g>
+</svg>
