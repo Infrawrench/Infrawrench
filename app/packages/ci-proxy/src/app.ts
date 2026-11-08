@@ -4,6 +4,7 @@
 // | Route | Does |
 // |-------|------|
 // | `GET /healthz` | `200 ok`, unauthenticated |
+// | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots, and the pool's total |
 // | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most free slots |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
@@ -19,7 +20,8 @@
 import { authorised } from "./auth";
 import { anyDue } from "./cron";
 import { identify, isId } from "./identity";
-import { parseRunId, type Pool } from "./pool";
+import { isRunnerName, isRunnerUrl, parseRunId, type Pool, type RunnerEntry } from "./pool";
+import type { RunnerList } from "./runners";
 import type { ScheduleRow, ScheduledPipeline, ScheduleStore } from "./store";
 import {
   forRun,
@@ -32,8 +34,13 @@ import {
   type ValueStore,
 } from "./values";
 
+/** The most runners the proxy keeps. */
+const MAX_RUNNERS = 64;
+
 export interface Deps {
   pool: Pool;
+  /** The stored runner list, which `pool` was built from when it has any. */
+  runnerList: RunnerList;
   values: ValueStore;
   /** From SECRETS_KEY; without it, secrets cannot be set or read. */
   secretsKey: SecretsKey | null;
@@ -89,14 +96,14 @@ async function readBody(
 }
 
 /** Passes a runner's response on, body streamed, with run ids rewritten. */
-async function relay(index: number, response: Response): Promise<Response> {
+async function relay(runner: string, response: Response): Promise<Response> {
   const type = response.headers.get("Content-Type") ?? "";
   if (!type.includes("application/json")) {
     return new Response(response.body, { status: response.status, headers: response.headers });
   }
   const body = (await response.json()) as Record<string, unknown>;
   if (typeof body.id === "string") {
-    body.id = `${index}.${body.id}`;
+    body.id = `${runner}.${body.id}`;
     if (typeof body.url === "string") body.url = `/v1/runs/${body.id}`;
   }
   const headers: Record<string, string> = {};
@@ -159,14 +166,17 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     const up = runners.filter((r) => r.up);
     return json(200, {
       runners: runners.map((r) => ({
-        index: r.index,
+        name: r.name,
         up: r.up,
+        draining: r.draining,
+        version: r.version,
         slots_total: r.slotsTotal,
         slots_free: r.slotsFree,
         runs_active: r.runsActive,
       })),
       slots_total: up.reduce((n, r) => n + r.slotsTotal, 0),
-      slots_free: up.reduce((n, r) => n + r.slotsFree, 0),
+      // A draining runner takes no new runs, so its free slots are not free.
+      slots_free: up.filter((r) => !r.draining).reduce((n, r) => n + r.slotsFree, 0),
     });
   }
 
@@ -184,7 +194,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     }
     const placed = await deps.pool.place(`${path}${url.search}`, text);
     if (!placed) return full();
-    return relay(placed.index, placed.response);
+    return relay(placed.runner, placed.response);
   }
 
   if (
@@ -195,12 +205,12 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     parts.length <= 4
   ) {
     if (parts.length === 4 && parts[3] !== "logs") return error(404, "no such route");
-    const run = parseRunId(third, deps.pool.urls.length);
+    const run = parseRunId(third, deps.pool);
     if (!run) return error(404, "no such run");
     const tail = parts.length === 4 ? "/logs" : "";
     try {
-      const response = await deps.pool.call(run.index, `/v1/runs/${run.id}${tail}${url.search}`);
-      return relay(run.index, response);
+      const response = await deps.pool.call(run.runner, `/v1/runs/${run.id}${tail}${url.search}`);
+      return relay(run.runner, response);
     } catch {
       return error(502, "the runner with that run did not answer");
     }
@@ -254,6 +264,34 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   if (method === "DELETE" && parts[0] === "v1" && parts[1] === "schedules" && parts.length === 4) {
     const removed = await deps.store.remove(third, fourth);
     return removed ? json(200, { deleted: `${third}/${fourth}` }) : error(404, "no such schedule");
+  }
+
+  if (path === "/v1/runners") {
+    if (method === "GET") {
+      return json(200, { runners: await deps.runnerList.list() });
+    }
+    if (method !== "PUT") return error(405, "read with GET, replace with PUT");
+    const body = await readBody(request);
+    if (body instanceof Response) return body;
+    const list = body.value.runners;
+    if (!Array.isArray(list) || list.length > MAX_RUNNERS) {
+      return error(400, `the body is { "runners": [{ "name", "url" }] }, up to ${MAX_RUNNERS}`);
+    }
+    const runners: RunnerEntry[] = [];
+    for (const entry of list as unknown[]) {
+      const e = entry as { name?: unknown; url?: unknown };
+      if (typeof e.name !== "string" || !isRunnerName(e.name)) {
+        return error(400, "runner names are lowercase letters, digits and `-`, up to 40");
+      }
+      if (typeof e.url !== "string" || !isRunnerUrl(e.url)) {
+        return error(400, `runner ${e.name}: the url is an http(s) base URL without a path`);
+      }
+      if (runners.some((r) => r.name === e.name))
+        return error(400, `runner ${e.name} is listed twice`);
+      runners.push({ name: e.name, url: e.url.replace(/\/+$/, "") });
+    }
+    await deps.runnerList.replace(runners, deps.now());
+    return json(200, { runners });
   }
 
   if (parts[0] === "v1" && parts[1] === "orgs") {
@@ -453,7 +491,7 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
         error?: string;
       };
       if (placed.response.ok && typeof body.id === "string") {
-        const id = `${placed.index}.${body.id}`;
+        const id = `${placed.runner}.${body.id}`;
         result.started.push(label);
         await deps.store.settleFire(row.owner, row.repoId, pipeline.file, minute, id, "started");
       } else {

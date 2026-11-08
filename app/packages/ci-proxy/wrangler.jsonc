@@ -28,9 +28,10 @@
   ],
 
   "vars": {
-    // Comma-separated base URLs of the runners (`iwci serve`). The order is
-    // part of each run id, so append new runners rather than reordering.
-    "RUNNERS": "http://127.0.0.1:8547",
+    // Only used while the `runners` table is empty: comma-separated
+    // `name=url` entries (or plain URLs, named by position). The Terraform
+    // that provisions runner hosts sets the table with `PUT /v1/runners`.
+    "RUNNERS": "local=http://127.0.0.1:8547",
   },
 
   // Secrets (wrangler secret put):

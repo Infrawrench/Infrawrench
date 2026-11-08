@@ -1,0 +1,326 @@
+//! A server's life after it starts: draining, stopping without killing
+//! jobs, and replacing itself with a newer release.
+//!
+//! - **Draining** (`POST /v1/drain`, SIGTERM, or an update) stops new runs
+//!   from being admitted (`429`, and `draining` in `/v1/capacity`, which
+//!   the proxy reads to send work elsewhere) and lets running ones finish.
+//! - **SIGTERM / SIGINT** drain, then exit 0, so `systemctl restart` or a
+//!   config change never kills a job. The unit's stop timeout has to cover
+//!   the longest job (`TimeoutStopSec`, see `deploy/`).
+//! - **Updates.** With `--update-channel`, the server reads
+//!   `releases/iwci/channels/<channel>.json` from its store every
+//!   `--update-every`. A manifest is only believed if it is signed by the
+//!   release key (`IWCI_RELEASE_PUBLIC_KEY`): the hosts' own store
+//!   credentials can write to the bucket, and an unsigned manifest would let
+//!   any one host push a native binary to all of them. When the channel
+//!   names another version, the server downloads its binary, checks its
+//!   size and sha256, checks that it runs, drains, and `exec`s it with the
+//!   same arguments: same process id, same unit, no job killed. The channel
+//!   is authoritative, so pointing it at an older version rolls back.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use base64::Engine as _;
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use super::Server;
+
+/// This build's version: the release's, or the crate's for a local build.
+pub const VERSION: &str = match option_env!("IWCI_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+/// The platform a release binary is for, as its key names it.
+pub fn target() -> String {
+    format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
+}
+
+pub fn channel_key(channel: &str) -> String {
+    format!("releases/iwci/channels/{channel}.json")
+}
+
+pub fn binary_key(version: &str, target: &str) -> String {
+    format!("releases/iwci/{version}/{target}")
+}
+
+/// What a channel points at, as signed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Release {
+    pub version: String,
+    /// Target (`x86_64-linux`) to that target's binary.
+    pub targets: BTreeMap<String, ReleaseBinary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseBinary {
+    pub sha256: String,
+    pub size: u64,
+}
+
+/// A channel manifest: the release and the release key's signature over
+/// its JSON (`serde_json::to_vec(&release)`, whose field and map order are
+/// fixed, so signer and verifier serialise the same bytes).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SignedRelease {
+    pub release: Release,
+    /// Base64 Ed25519 signature.
+    pub signature: String,
+}
+
+fn b64() -> base64::engine::GeneralPurpose {
+    base64::engine::general_purpose::STANDARD
+}
+
+/// The signing key from its base64 32-byte seed.
+pub fn signing_key(seed_b64: &str) -> Result<SigningKey, String> {
+    let seed: [u8; 32] = b64()
+        .decode(seed_b64.trim())
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or("the release signing key is 32 bytes, base64")?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+/// The verifying key from its base64 32 bytes.
+pub fn verifying_key(b64_key: &str) -> Result<VerifyingKey, String> {
+    let bytes: [u8; 32] = b64()
+        .decode(b64_key.trim())
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or("IWCI_RELEASE_PUBLIC_KEY is 32 bytes, base64")?;
+    VerifyingKey::from_bytes(&bytes).map_err(|e| format!("IWCI_RELEASE_PUBLIC_KEY: {e}"))
+}
+
+pub fn sign(release: Release, key: &SigningKey) -> SignedRelease {
+    let bytes = serde_json::to_vec(&release).expect("serialisable");
+    SignedRelease {
+        signature: b64().encode(key.sign(&bytes).to_bytes()),
+        release,
+    }
+}
+
+/// The release, if `key` signed it.
+pub fn verify(signed: &SignedRelease, key: &VerifyingKey) -> Result<Release, String> {
+    let signature: [u8; 64] = b64()
+        .decode(&signed.signature)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or("the channel's signature is not 64 bytes of base64")?;
+    let bytes = serde_json::to_vec(&signed.release).expect("serialisable");
+    key.verify(&bytes, &Signature::from_bytes(&signature))
+        .map_err(|_| "the channel is not signed by the release key".to_string())?;
+    Ok(signed.release.clone())
+}
+
+/// A new key pair: (seed, public key), both base64.
+pub fn generate_keypair() -> Result<(String, String), String> {
+    let mut seed = [0u8; 32];
+    getrandom::fill(&mut seed).map_err(|e| format!("no randomness: {e}"))?;
+    let key = SigningKey::from_bytes(&seed);
+    Ok((
+        b64().encode(seed),
+        b64().encode(key.verifying_key().to_bytes()),
+    ))
+}
+
+static STOP: AtomicBool = AtomicBool::new(false);
+
+impl Server {
+    /// Stops admitting runs. Idempotent; the first reason is kept.
+    pub(crate) fn begin_drain(&self, reason: &str) {
+        if !self.draining.swap(true, Ordering::SeqCst) {
+            *self.drain_reason.lock().unwrap() = Some(reason.to_string());
+            eprintln!("iwci serve: draining: {reason}");
+        }
+    }
+
+    fn wait_idle(&self) {
+        while self.active.load(Ordering::SeqCst) > 0 {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    /// SIGTERM and SIGINT drain, then exit 0, instead of killing jobs.
+    pub fn stop_gracefully_on_signals(self: &Arc<Self>) -> Result<(), String> {
+        for signal in [libc::SIGTERM, libc::SIGINT] {
+            // SAFETY: the action only stores to an atomic, which is
+            // async-signal-safe.
+            unsafe {
+                signal_hook_registry::register(signal, || STOP.store(true, Ordering::SeqCst))
+            }
+            .map_err(|e| format!("installing a signal handler: {e}"))?;
+        }
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-signals".into())
+            .spawn(move || {
+                while !STOP.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                server.begin_drain("stopping");
+                server.wait_idle();
+                eprintln!("iwci serve: stopped after its runs finished");
+                std::process::exit(0);
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Checks `channel` every `every`, and replaces this process with the
+    /// release it names when that is not this version.
+    pub fn keep_updated(self: &Arc<Self>, channel: String, key: VerifyingKey, every: Duration) {
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-update".into())
+            .spawn(move || {
+                loop {
+                    match server.fetch_update(&channel, &key) {
+                        Ok(None) => {}
+                        Ok(Some((version, path))) => {
+                            server.begin_drain(&format!("updating to {version}"));
+                            server.wait_idle();
+                            match replace_and_exec(&path) {
+                                // `exec` only returns on failure.
+                                Err(e) => {
+                                    eprintln!("iwci serve: the update to {version} failed: {e}; carrying on as {VERSION}");
+                                    let _ = std::fs::remove_file(&path);
+                                    server.draining.store(false, Ordering::SeqCst);
+                                    *server.drain_reason.lock().unwrap() = None;
+                                }
+                                Ok(never) => match never {},
+                            }
+                        }
+                        Err(e) => eprintln!("iwci serve: checking for updates: {e}"),
+                    }
+                    std::thread::sleep(every);
+                }
+            })
+            .expect("spawning the update thread");
+    }
+
+    /// The channel's release, downloaded, verified and ready to run, when it
+    /// is not this version.
+    fn fetch_update(
+        &self,
+        channel: &str,
+        key: &VerifyingKey,
+    ) -> Result<Option<(String, PathBuf)>, String> {
+        let store = &self.runner.store;
+        let Some(bytes) = store
+            .get(&channel_key(channel))
+            .map_err(|e| e.to_string())?
+        else {
+            return Ok(None);
+        };
+        let signed: SignedRelease =
+            serde_json::from_slice(&bytes).map_err(|e| format!("channel `{channel}`: {e}"))?;
+        let release = verify(&signed, key)?;
+        if release.version == VERSION {
+            return Ok(None);
+        }
+        let target = target();
+        let Some(binary) = release.targets.get(&target) else {
+            return Err(format!(
+                "release {} has no build for {target}",
+                release.version
+            ));
+        };
+        let bytes = store
+            .get(&binary_key(&release.version, &target))
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "release {} lists {target} but has no binary",
+                    release.version
+                )
+            })?;
+        if bytes.len() as u64 != binary.size || hex::encode(Sha256::digest(&bytes)) != binary.sha256
+        {
+            return Err(format!(
+                "release {}'s binary does not match its signed size and sha256",
+                release.version
+            ));
+        }
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let path = exe.with_file_name(format!(".iwci-{}.new", release.version));
+        write_executable(&path, &bytes)?;
+        // A binary that cannot even say its version is not worth draining for.
+        let out = std::process::Command::new(&path)
+            .arg("version")
+            .output()
+            .map_err(|e| format!("running the new binary: {e}"))?;
+        if !out.status.success() || String::from_utf8_lossy(&out.stdout).trim() != release.version {
+            let _ = std::fs::remove_file(&path);
+            return Err(format!(
+                "the new binary does not report version {}",
+                release.version
+            ));
+        }
+        Ok(Some((release.version, path)))
+    }
+}
+
+fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Moves `new` over this executable and becomes it, with the same
+/// arguments and environment. Listening sockets close on exec (Rust opens
+/// them close-on-exec), and the new process binds again at once.
+fn replace_and_exec(new: &Path) -> Result<std::convert::Infallible, String> {
+    use std::os::unix::process::CommandExt;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    std::fs::rename(new, &exe).map_err(|e| format!("replacing {}: {e}", exe.display()))?;
+    eprintln!("iwci serve: restarting as the new release");
+    let err = std::process::Command::new(&exe)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    Err(format!("exec {}: {err}", exe.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_release_verifies_only_with_its_key_and_unchanged() {
+        let (seed, public) = generate_keypair().unwrap();
+        let signing = signing_key(&seed).unwrap();
+        let verifying = verifying_key(&public).unwrap();
+        let release = Release {
+            version: "0.2.0".into(),
+            targets: BTreeMap::from([(
+                "x86_64-linux".to_string(),
+                ReleaseBinary {
+                    sha256: "ab".repeat(32),
+                    size: 10,
+                },
+            )]),
+        };
+        let signed = sign(release.clone(), &signing);
+        // Through JSON, as the store holds it.
+        let back: SignedRelease =
+            serde_json::from_slice(&serde_json::to_vec(&signed).unwrap()).unwrap();
+        assert_eq!(verify(&back, &verifying).unwrap(), release);
+
+        let mut tampered = back.clone();
+        tampered.release.version = "6.6.6".into();
+        assert!(verify(&tampered, &verifying).is_err());
+        let (_, other) = generate_keypair().unwrap();
+        assert!(verify(&back, &verifying_key(&other).unwrap()).is_err());
+        assert!(verifying_key("short").is_err());
+    }
+}

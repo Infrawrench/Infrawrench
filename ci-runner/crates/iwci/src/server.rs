@@ -32,6 +32,8 @@ use tiny_http::{Header, Method, Request, Response};
 
 use crate::adapters::caches::storage_usage;
 
+#[path = "server_lifecycle.rs"]
+pub(crate) mod lifecycle;
 #[path = "server_schedules.rs"]
 mod schedules;
 
@@ -51,6 +53,11 @@ pub struct Server {
     runner: Arc<Runner>,
     /// The last [`Runner::warm_published`], and when it finished.
     warm: Mutex<Option<(u64, crate::runner::WarmOutput)>>,
+    /// Set when the server is going away (an update, SIGTERM, `POST
+    /// /v1/drain`): no new runs, and the running ones finish.
+    draining: std::sync::atomic::AtomicBool,
+    /// Why it is draining, for `/v1/capacity`.
+    drain_reason: Mutex<Option<String>>,
     key: Vec<u8>,
     runs: Mutex<HashMap<String, RunEntry>>,
     logs: Mutex<HashMap<String, Arc<LogHub>>>,
@@ -158,6 +165,8 @@ impl Server {
         Ok(Self {
             runner: Arc::new(runner),
             warm: Mutex::default(),
+            draining: std::sync::atomic::AtomicBool::new(false),
+            drain_reason: Mutex::default(),
             key: key.into_bytes(),
             runs: Mutex::default(),
             logs: Mutex::default(),
@@ -238,6 +247,10 @@ impl Server {
                         None => error(404, "no live log for that run on this runner").boxed(),
                     }
                 }
+                (Method::Post, ["v1", "drain"]) => {
+                    self.begin_drain("asked to by POST /v1/drain");
+                    json_response(202, &self.capacity()).boxed()
+                }
                 (Method::Post, ["v1", "prepare"]) => match read_request(&mut request) {
                     Ok(req) => self.prepare(&req).boxed(),
                     Err(e) => error(400, e).boxed(),
@@ -262,6 +275,9 @@ impl Server {
     fn capacity(&self) -> serde_json::Value {
         let slots = self.runner.slots.as_ref().expect("checked in new");
         json!({
+            "version": lifecycle::VERSION,
+            "draining": self.draining.load(Ordering::SeqCst),
+            "drain_reason": self.drain_reason.lock().unwrap().clone(),
             "cpus": self.runner.cpus,
             "jobs_per_cpu": self.runner.jobs_per_cpu,
             "slots_total": slots.total(),
@@ -311,7 +327,11 @@ impl Server {
 
     fn full(&self) -> Response<std::io::Cursor<Vec<u8>>> {
         let mut body = self.capacity();
-        body["error"] = json!("this runner is at capacity; retry later or on another runner");
+        body["error"] = if self.draining.load(Ordering::SeqCst) {
+            json!("this runner is draining before an update or a stop; use another runner")
+        } else {
+            json!("this runner is at capacity; retry later or on another runner")
+        };
         json_response(429, &body).with_header(
             Header::from_bytes(&b"Retry-After"[..], RETRY_AFTER_SECS.to_string().as_bytes())
                 .expect("valid header"),
@@ -322,14 +342,22 @@ impl Server {
     /// there are slots (each run needs at least one).
     fn admit(&self) -> bool {
         let slots = self.runner.slots.as_ref().expect("checked in new");
-        if slots.free() == 0 {
+        if slots.free() == 0 || self.draining.load(Ordering::SeqCst) {
             return false;
         }
-        self.active
+        let admitted = self
+            .active
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
                 (n < slots.total()).then_some(n + 1)
             })
-            .is_ok()
+            .is_ok();
+        // A drain that started between the check and the increment must not
+        // let this run in: the drain may already be waiting for zero.
+        if admitted && self.draining.load(Ordering::SeqCst) {
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            return false;
+        }
+        admitted
     }
 
     fn start_run(

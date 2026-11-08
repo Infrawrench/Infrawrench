@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handle, tick, type Deps } from "../app";
 import { Pool } from "../pool";
+import { MemoryRunnerList } from "../runners";
 import { MemoryStore } from "../store";
 import { MemoryValues, open, secretsKey } from "../values";
 
@@ -30,6 +31,7 @@ class FakeRunner {
     problems: [],
   };
   down = false;
+  draining = false;
 
   constructor(
     readonly url: string,
@@ -50,6 +52,8 @@ class FakeRunner {
       });
     if (path === "/v1/capacity") {
       return json(200, {
+        draining: this.draining,
+        version: "1.0.0",
         slots_total: this.slotsTotal,
         slots_free: this.slotsFree,
         runs_active: this.runs.length,
@@ -89,6 +93,7 @@ async function setup(runners: FakeRunner[], now = 1_800_000_000, withKey = true)
   const values = new MemoryValues();
   const deps: Deps = {
     pool: Pool.fromList(runners.map((r) => r.url).join(","), RUNNER_KEY, fetchFn),
+    runnerList: new MemoryRunnerList(),
     store,
     values,
     secretsKey: withKey ? await secretsKey(TEST_SECRETS_KEY) : null,
@@ -330,5 +335,60 @@ describe("secrets and variables", () => {
       event: "schedule",
       secrets: { TOKEN: "nightly" },
     });
+  });
+});
+
+describe("runners", () => {
+  it("passes over draining runners and names runs after their runner", async () => {
+    const a = new FakeRunner("http://a.test", 8, 8);
+    a.draining = true;
+    const b = new FakeRunner("http://b.test", 8, 1);
+    const { call, deps } = await setup([a, b]);
+    const res = await call("POST", "/v1/runs", { repo: "r", branch: "main" });
+    expect(res.status).toBe(202);
+    expect(a.runs.length).toBe(0);
+    expect(b.runs.length).toBe(1);
+    const cap = (await (await call("GET", "/v1/capacity")).json()) as {
+      slots_free: number;
+      runners: Array<{ name: string; draining: boolean; version: string }>;
+    };
+    expect(cap.runners.map((r) => [r.name, r.draining, r.version])).toEqual([
+      ["0", true, "1.0.0"],
+      ["1", false, "1.0.0"],
+    ]);
+    // b has used its only free slot; a's eight do not count while it drains.
+    expect(cap.slots_free).toBe(0);
+    expect(deps.pool.find("1")?.url).toBe("http://b.test");
+  });
+
+  it("stores a validated runner list", async () => {
+    const { call } = await setup([new FakeRunner("http://a.test", 4, 4)]);
+    const good = { runners: [{ name: "ci-1", url: "https://ci-1.example.com/" }] };
+    expect((await call("PUT", "/v1/runners", good)).status).toBe(200);
+    const listed = (await (await call("GET", "/v1/runners")).json()) as { runners: unknown[] };
+    expect(listed.runners).toEqual([{ name: "ci-1", url: "https://ci-1.example.com" }]);
+    for (const bad of [
+      { runners: [{ name: "CI_1", url: "https://x.example" }] },
+      { runners: [{ name: "a", url: "ftp://x.example" }] },
+      { runners: [{ name: "a", url: "https://user:pw@x.example" }] },
+      { runners: [{ name: "a", url: "https://x.example/path" }] },
+      {
+        runners: [
+          { name: "a", url: "https://x.example" },
+          { name: "a", url: "https://y.example" },
+        ],
+      },
+      { nope: [] },
+    ]) {
+      expect((await call("PUT", "/v1/runners", bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+  });
+
+  it("reads named entries from RUNNERS", async () => {
+    const { parseRunnerList } = await import("../pool");
+    expect(parseRunnerList("ci-1=https://a.example/, https://b.example")).toEqual([
+      { name: "ci-1", url: "https://a.example" },
+      { name: "1", url: "https://b.example" },
+    ]);
   });
 });

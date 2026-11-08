@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Installs or reconfigures one CI runner host. Run by Terraform
+# (infra/ci-runners) as root, with its inputs in /tmp. Idempotent.
+set -euo pipefail
+
+id iwci >/dev/null 2>&1 || useradd --system --home-dir /var/lib/iwci --shell /usr/sbin/nologin iwci
+install -d -o iwci -g iwci -m 0755 /opt/iwci/bin
+install -d -o iwci -g iwci -m 0750 /var/lib/iwci /var/lib/iwci/cache
+install -d -o root -g iwci -m 0750 /etc/iwci
+
+# The binary only when there is none: after that the runner updates itself
+# from its release channel, and an older upload must not undo that.
+if [[ ! -x /opt/iwci/bin/iwci ]]; then
+  install -o iwci -g iwci -m 0755 /tmp/iwci.upload /opt/iwci/bin/iwci
+  echo "installed iwci $(/opt/iwci/bin/iwci version)"
+else
+  echo "keeping iwci $(/opt/iwci/bin/iwci version) (it updates itself)"
+fi
+rm -f /tmp/iwci.upload
+
+install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
+install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
+rm -f /tmp/iwci.env /tmp/iwci.service
+
+# An optional Cloudflare Tunnel, so the runner needs no open port.
+if [[ -s /tmp/iwci-tunnel-token ]]; then
+  if ! command -v cloudflared >/dev/null; then
+    if ! command -v apt-get >/dev/null; then
+      echo "error: installing cloudflared needs apt; install it yourself on this host" >&2
+      exit 1
+    fi
+    install -d -m 0755 /usr/share/keyrings
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \
+      >/etc/apt/sources.list.d/cloudflared.list
+    apt-get update -q
+    apt-get install -y -q cloudflared
+  fi
+  token="$(cat /tmp/iwci-tunnel-token)"
+  if ! systemctl is-enabled --quiet cloudflared 2>/dev/null; then
+    cloudflared service install "$token"
+  fi
+fi
+rm -f /tmp/iwci-tunnel-token
+
+systemctl daemon-reload
+systemctl enable iwci >/dev/null
+if systemctl is-active --quiet iwci; then
+  # A restart drains first and can take as long as the longest running job,
+  # so do not hold Terraform for it.
+  systemctl restart --no-block iwci
+  echo "iwci restarting (running jobs finish first)"
+else
+  systemctl start iwci
+  echo "iwci started"
+fi
+rm -f /tmp/iwci-install.sh

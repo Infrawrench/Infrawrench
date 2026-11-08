@@ -17,6 +17,7 @@ Every route but `/healthz` needs `Authorization: Bearer <PROXY_KEY>`.
 | Route                                            | Does                                                                           |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ |
 | `GET /healthz`                                   | `200 ok`, unauthenticated.                                                     |
+| `GET`, `PUT /v1/runners`                         | The runners runs go to (below).                                                |
 | `GET /v1/capacity`                               | Each runner's slots and whether it answered, and the pool's totals.            |
 | `POST /v1/runs[?wait=true]`                      | A run on the runner with the most free slots. `429` only when every runner is. |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`    | From the runner that has the run. Logs stream through as Server-Sent Events.   |
@@ -30,10 +31,19 @@ Every route but `/healthz` needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET`, `PUT`, `DELETE .../vars[/{name}]`         | The same for variables, whose values are listed.                               |
 
 Request bodies are the runner's (`ci-runner/README.md`, "HTTP API"). A run id
-is the runner's id prefixed with the runner's position in `RUNNERS`
-(`1.<32 hex>`), which is how a status request finds its runner without a
-table. Append new runners to `RUNNERS` rather than reordering it, or ids
-already handed out point at the wrong runner.
+is the runner's id prefixed with the runner's name (`ci-1.<32 hex>`), which
+is how a status request finds its runner without a table.
+
+## Runners
+
+The runners come from the `runners` table, which `PUT /v1/runners` replaces
+whole (`{ "runners": [{ "name": "ci-1", "url": "https://..." }] }`, up to 64).
+The Terraform that provisions runner hosts (`infra/ci-runners`) calls it
+after every change to the host list. While the table is empty, the
+`RUNNERS` variable is used instead: `name=url` entries, or plain URLs named
+by their position. `GET /v1/capacity` shows each runner's name, version and
+whether it is draining; a draining runner (stopping, or about to update
+itself) is never given a run, and its free slots do not count.
 
 ## Secrets and variables
 
@@ -99,7 +109,7 @@ loses nothing if it restarts.
 ```sh
 pnpm --filter @infrawrench/ci-proxy exec wrangler d1 create infrawrench-ci-proxy
 # put the database id in wrangler.jsonc, then:
-pnpm --filter @infrawrench/ci-proxy exec wrangler d1 migrations apply infrawrench-ci-proxy --remote
+pnpm --filter @infrawrench/ci-proxy exec wrangler d1 migrations apply infrawrench-ci-proxy --remote   # every file in migrations/
 pnpm --filter @infrawrench/ci-proxy exec wrangler secret put PROXY_KEY
 pnpm --filter @infrawrench/ci-proxy exec wrangler secret put RUNNER_KEY   # the runners' IWCI_SERVER_KEY
 head -c 32 /dev/urandom | base64 | pnpm --filter @infrawrench/ci-proxy exec wrangler secret put SECRETS_KEY
