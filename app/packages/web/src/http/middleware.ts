@@ -108,26 +108,39 @@ export function renderDefect(defect: unknown): HttpServerResponse.HttpServerResp
   return json({ error: message, correlationId }, 500);
 }
 
-export const RequestErrorsLive = Layer.succeed(RequestErrors)((httpEffect, { endpoint }) =>
-  httpEffect.pipe(
+export const RequestErrorsLive = Layer.succeed(RequestErrors)((httpEffect, { endpoint }) => {
+  // A request whose params, query, headers or payload fail their schema: the
+  // 400 every route has sent, `{ error, issues }`. Decoding runs inside the
+  // middleware stack, so it reaches here as a typed failure; a schema error
+  // raised later (the response body or headers) is a server bug and a 500.
+  const schemaErrorResponse = (error: HttpApiError.HttpApiSchemaError) =>
+    error.kind === "Body" || error.kind === "ResponseHeaders"
+      ? renderDefect(error)
+      : json(
+          {
+            error: Context.get(endpoint.annotations, InvalidRequestMessage),
+            ...formatIssues(error.cause.issue),
+          },
+          400,
+        );
+  return httpEffect.pipe(
     Effect.catchCause((cause) => {
-      // Typed failures and interruptions are the router's to encode.
-      if (Cause.hasFails(cause) || Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+      const failed = Cause.findError(cause);
+      if (failed._tag === "Success") {
+        const error: unknown = failed.success;
+        if (HttpApiError.HttpApiSchemaError.is(error)) {
+          return Effect.succeed(schemaErrorResponse(error));
+        }
+        // Every other typed failure is the endpoint's to encode.
+        return Effect.failCause(cause);
+      }
+      if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
       const found = Cause.findDefect(cause);
       const defect = found._tag === "Success" ? found.success : Cause.squash(cause);
-      if (HttpApiError.HttpApiSchemaError.is(defect) && defect.kind !== "Body") {
-        if (defect.kind === "ResponseHeaders") return Effect.succeed(renderDefect(defect));
-        return Effect.succeed(
-          json(
-            {
-              error: Context.get(endpoint.annotations, InvalidRequestMessage),
-              ...formatIssues(defect.cause.issue),
-            },
-            400,
-          ),
-        );
+      if (HttpApiError.HttpApiSchemaError.is(defect)) {
+        return Effect.succeed(schemaErrorResponse(defect));
       }
       return Effect.succeed(renderDefect(defect));
     }),
-  ),
-);
+  );
+});
