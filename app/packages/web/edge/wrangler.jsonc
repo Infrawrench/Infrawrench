@@ -34,10 +34,18 @@
   "assets": {
     "directory": "../dist/client",
     "binding": "ASSETS",
-    // Every request reaches the Worker first, so the SPA shell and assets get
-    // the same security headers and hashed-asset 404 rule as the API.
-    "run_worker_first": true,
-    "not_found_handling": "single-page-application",
+    // A request for a file that exists (`/`, `/assets/*`, `/favicon.png`) is
+    // served by the asset layer in the visitor's own data centre and never
+    // reaches the Worker: with `placement` above, running the Worker first sent
+    // every script and stylesheet to us-east-2 and back (~150 ms each from
+    // London, in series). Those responses get the security headers and the
+    // hashed assets' year-long cache from the `_headers` file the Vite build
+    // writes (`workersAssetHeadersFile`). Everything else (the API, deep links
+    // into the SPA, a missing hashed asset) matches no file, so it reaches the
+    // Worker, which answers the shell or the 404 (`serveAsset`). No
+    // `not_found_handling`: the SPA fallback would answer an API navigation
+    // (the sign-in callback) with index.html before the Worker saw it.
+    "run_worker_first": false,
   },
 
   // Every library in server-core/edge/gateway-only-modules.json resolves to the

@@ -5,6 +5,7 @@
  * - JSON parsing + error handling
  */
 
+import { takeBootResponse } from "./boot-requests";
 import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "./host-key-trust";
 import {
   REAUTHENTICATION_REQUIRED,
@@ -77,16 +78,17 @@ export class ChangeFreezeBlockedClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: "include",
-    ...init,
-    headers: {
-      ...(init?.body && typeof init.body === "string"
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init?.headers,
-    },
-  });
+  const res = await (takeBootResponse(path, init) ??
+    fetch(path, {
+      credentials: "include",
+      ...init,
+      headers: {
+        ...(init?.body && typeof init.body === "string"
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init?.headers,
+      },
+    }));
 
   if (res.status === 401) {
     // With a `return_to`, as the re-authentication path below already does.

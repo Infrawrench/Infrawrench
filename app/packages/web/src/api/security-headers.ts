@@ -18,7 +18,9 @@
  *     *before* the API, so they call this directly instead.
  *
  * The edge Worker (`edge/worker.ts`) sets the same entries on what it serves
- * and forwards. Setting identical values twice is a no-op.
+ * and forwards. Setting identical values twice is a no-op. On the edge the
+ * static assets never reach the Worker; they get the entries from the
+ * `_headers` file the Vite build writes ({@link workersAssetHeadersFile}).
  *
  * One record and several adapters rather than several lists: a header set that is
  * maintained in two places is a header set that will disagree in one of them.
@@ -91,12 +93,16 @@ const IMG_SRC = [
 ] as const;
 
 /**
+ * The header set for a production or a development server.
+ *
  * HSTS is production-only. On `http://localhost:3000` browsers ignore the
  * header over plain HTTP anyway, but a developer who once reaches the dev
  * server through a local HTTPS proxy would pin `localhost` to HTTPS for two
  * years: across every project on that machine, not just this one.
  */
-function buildHeaders(): ReadonlyArray<readonly [string, string]> {
+export function buildSecurityHeaders(
+  production: boolean,
+): ReadonlyArray<readonly [string, string]> {
   const headers: Array<readonly [string, string]> = [
     // The clickjacking fix. `frame-ancestors` is what modern browsers honour;
     // `X-Frame-Options` covers anything that predates it. This app drives SSH
@@ -112,7 +118,7 @@ function buildHeaders(): ReadonlyArray<readonly [string, string]> {
     ["x-dns-prefetch-control", "off"],
     ["x-permitted-cross-domain-policies", "none"],
   ];
-  if (process.env["NODE_ENV"] === "production") {
+  if (production) {
     headers.push(["strict-transport-security", "max-age=63072000; includeSubDomains; preload"]);
   }
   return headers;
@@ -127,7 +133,7 @@ let cached: ReadonlyArray<readonly [string, string]> | null = null;
 
 /** The header set, as lowercase name/value pairs. */
 export function securityHeaderEntries(): ReadonlyArray<readonly [string, string]> {
-  cached ??= buildHeaders();
+  cached ??= buildSecurityHeaders(process.env["NODE_ENV"] === "production");
   return cached;
 }
 
@@ -148,4 +154,32 @@ export function applySecurityHeaders(res: ServerResponse): void {
 /** Apply the headers to the (mutable) headers of a web `Response` this server builds. */
 export function setSecurityHeaders(headers: Headers): void {
   for (const [name, value] of securityHeaderEntries()) headers.set(name, value);
+}
+
+/**
+ * How long a browser may keep a hashed asset (`/assets/<name>-<hash>.js`)
+ * without asking again. The hash changes whenever the bytes do, so a URL's
+ * content never changes and a year with `immutable` is safe; the shell
+ * (`index.html`) keeps the default revalidation, so a deploy is picked up on
+ * the next load.
+ */
+export const HASHED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/**
+ * The Workers static assets `_headers` file for `dist/client`, written by the
+ * Vite build (`vite.config.ts`).
+ *
+ * The edge Worker no longer runs in front of the static assets: with the Worker
+ * placed next to the database (`placement` in `edge/wrangler.jsonc`), running
+ * it first sent every script and stylesheet across the Atlantic and back. The
+ * asset layer serves them from the visitor's own data centre, so this file is
+ * how they get the same security headers, plus the long cache for hashed
+ * assets. Responses the Worker builds (deep links, the hashed-asset 404) still
+ * get the headers from `withSecurityHeaders`.
+ */
+export function workersAssetHeadersFile(): string {
+  const lines = ["/*"];
+  for (const [name, value] of buildSecurityHeaders(true)) lines.push(`  ${name}: ${value}`);
+  lines.push("/assets/*", `  cache-control: ${HASHED_ASSET_CACHE_CONTROL}`);
+  return `${lines.join("\n")}\n`;
 }

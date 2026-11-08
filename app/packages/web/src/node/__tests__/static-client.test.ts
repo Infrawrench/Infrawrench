@@ -50,6 +50,20 @@ describe("the static client", () => {
     }
   });
 
+  it("caches hashed assets for a year and leaves everything else to revalidate", async () => {
+    const asset = await get("/assets/app-abc123.js");
+    expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    for (const path of ["/favicon.png", "/", "/org/abc/settings"]) {
+      expect((await get(path)).headers.get("cache-control"), path).toBeNull();
+    }
+  });
+
+  it("never serves the edge's _headers file", async () => {
+    writeFileSync(join(root, "_headers"), "/*\n  x-test: 1\n");
+    const res = await get("/_headers");
+    expect(await res.text()).toBe("<!doctype html><title>shell</title>");
+  });
+
   it("answers a directory with its index.html", async () => {
     const res = await get("/docs");
     expect(await res.text()).toBe("docs index");

@@ -5,6 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Infrawrench</title>
+    <script>
+      // Start the requests the shell waits on while the bundle downloads.
+      // src/lib/boot-requests.ts explains the order and how they are used.
+      (function () {
+        var path = location.pathname;
+        // Public status pages make no authenticated call (__root.tsx).
+        if (path.indexOf("/status/") === 0) return;
+        var boot = { at: Date.now(), responses: {} };
+        window.__IW_BOOT__ = boot;
+        function get(url) {
+          var pending = fetch(url, { credentials: "include" });
+          pending.catch(function () {});
+          boot.responses[url] = pending;
+          return pending;
+        }
+        get("/api/auth/me").then(
+          function (res) {
+            if (!res.ok) return;
+            get("/api/auth/orgs");
+            var org = /^\/org\/([^/]+)/.exec(path);
+            if (!org) return;
+            try {
+              get("/api/org/" + decodeURIComponent(org[1]) + "/team/me");
+            } catch (e) {}
+          },
+          function () {},
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -20,6 +20,8 @@ import { testMiddleware } from "@/http/testing";
 
 const {
   applySecurityHeaders,
+  buildSecurityHeaders,
+  workersAssetHeadersFile,
   securityHeaderEntries,
   resetSecurityHeadersCache,
   setSecurityHeaders,
@@ -149,5 +151,29 @@ describe("security headers", () => {
     const csp = new Map(securityHeaderEntries()).get("content-security-policy") ?? "";
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).not.toContain("unsafe-eval");
+  });
+
+  it("gives the edge's static assets the production set, and a year's cache only to hashed ones", () => {
+    // The Workers asset layer serves dist/client without running the Worker,
+    // so `_headers` is the only place those responses get the headers from.
+    const rules = new Map<string, Map<string, string>>();
+    let current: Map<string, string> | undefined;
+    for (const line of workersAssetHeadersFile().split("\n")) {
+      if (!line) continue;
+      if (!line.startsWith("  ")) {
+        current = new Map();
+        rules.set(line, current);
+        continue;
+      }
+      const [name, ...value] = line.trim().split(": ");
+      current!.set(name!, value.join(": "));
+      expect(line.length).toBeLessThanOrEqual(2000);
+    }
+    expect([...rules.keys()]).toEqual(["/*", "/assets/*"]);
+    expect([...rules.get("/*")!]).toEqual([...buildSecurityHeaders(true)]);
+    expect(rules.get("/*")!.has("strict-transport-security")).toBe(true);
+    expect([...rules.get("/assets/*")!]).toEqual([
+      ["cache-control", "public, max-age=31536000, immutable"],
+    ]);
   });
 });
