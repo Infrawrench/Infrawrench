@@ -11,6 +11,11 @@
 # the CLI uses a multi-threaded tokio runtime and rayon, and WASIX has
 # threads. The default `napi` feature is the Node binding and is left out.
 #
+# cargo-wasix normally swaps crates.io for Wasmer's `wasix` index of patched
+# crates, whose newest tokio (1.47) is older than Oxc requires (^1.52.3), so
+# the swap is turned off and mainline crates are used. Mainline tokio
+# refuses `rt-multi-thread` on wasm unless built with `--cfg tokio_unstable`.
+#
 # Needs: git, cargo-wasix (`cargo install cargo-wasix`; it installs the
 # WASIX toolchain on first use).
 # shellcheck source=builtins/lib.sh
@@ -30,7 +35,8 @@ out="$(out_dir builtin oxfmt "$OXFMT_VERSION")"
 
 (
   cd "$src" || exit 1
-  cargo wasix build --release -p oxfmt --bin oxfmt --no-default-features
+  CARGO_WASIX_NO_REGISTRY_CONFIG=1 RUSTFLAGS="--cfg tokio_unstable" \
+    cargo wasix build --release -p oxfmt --bin oxfmt --no-default-features
 )
 cp "$src/target/wasm32-wasmer-wasi/release/oxfmt.wasm" "$out/module.wasm"
 

@@ -158,11 +158,17 @@ for name in "$@"; do
   file="$SCRATCH/$name.yml"
   pipeline "$name" >"$file"
   echo "== $name"
-  # iwci exits non-zero when any job fails, which some jobs here must do.
+  # iwci exits non-zero when any job fails, which some jobs here must do,
+  # so its status only matters when there is no report.
+  status=0
   out="$("$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
-    --store "$SCRATCH/store" --cache "$SCRATCH/cache" || true)"
-  if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null <<<"$out"; then
-    echo "error: the pipeline did not run:" >&2
+    --store "$SCRATCH/store" --cache "$SCRATCH/cache")" || status=$?
+  if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null 2>&1 <<<"$out"; then
+    if ((status > 128)); then
+      echo "error: iwci was killed by signal $((status - 128)) before reporting" >&2
+    else
+      echo "error: the pipeline did not run (iwci exited $status):" >&2
+    fi
     printf '%s\n' "$out" >&2
     failed=1
     continue

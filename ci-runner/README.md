@@ -505,6 +505,10 @@ schedule once per runner. Its README has the routes; the short version:
 
 ## Known limitations
 
+- **`env:bash-node` does not work yet.** `iwci` (built with `--features node`)
+  is killed by a segfault in V8 as soon as a job runs `node`; bash in the
+  same environment is fine. Tracked in issue #905, and
+  `ci-runner-builtins.yml` runs it nightly so a fix shows up.
 - **Pipelines in `env:` scripts.** WASIX bash reports only the last
   command's exit status: `false | cat` succeeds even under `pipefail`, and
   `PIPESTATUS` holds one entry. A plain failing command, or one inside
