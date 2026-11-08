@@ -174,6 +174,8 @@ impl NeedsValues {
 pub struct Triggers {
     pub push: Option<TriggerFilter>,
     pub pull_request: Option<TriggerFilter>,
+    /// When scheduled runs happen, in UTC.
+    pub schedule: Vec<crate::cron::Cron>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -188,6 +190,7 @@ pub enum Event {
     #[default]
     Push,
     PullRequest,
+    Schedule,
 }
 
 impl Event {
@@ -195,6 +198,7 @@ impl Event {
         match self {
             Event::Push => "push",
             Event::PullRequest => "pull-request",
+            Event::Schedule => "schedule",
         }
     }
 }
@@ -203,10 +207,18 @@ impl Triggers {
     /// Whether an `event` on `branch` that changed `changed_paths` starts a
     /// run. `None` for the paths means they are not known (a first push, a
     /// force push), which never filters a run out.
+    /// Whether any of the pipeline's schedules falls on `minute`.
+    pub fn due(&self, minute: crate::cron::Minute) -> bool {
+        self.schedule.iter().any(|c| c.matches(minute))
+    }
+
     pub fn matches(&self, event: Event, branch: &str, changed_paths: Option<&[String]>) -> bool {
         let filter = match event {
             Event::Push => &self.push,
             Event::PullRequest => &self.pull_request,
+            // A scheduled run was started because a schedule matched; it
+            // has no branch or path filter of its own.
+            Event::Schedule => return !self.schedule.is_empty(),
         };
         let Some(filter) = filter else {
             return false;

@@ -18,6 +18,7 @@
 //! | `POST /v1/prepare` | warms the clone, installs and tools for a request, runs nothing |
 //! | `GET /v1/storage/{owner}[?quota=]` | the owner's cache storage, per repository |
 //! | `GET /v1/usage/{owner}[?month=YYYY-MM]` | the owner's billed usage for a month |
+//! | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, with their crons and text, for the proxy that fires them |
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
@@ -30,6 +31,11 @@ use serde_json::json;
 use tiny_http::{Header, Method, Request, Response};
 
 use crate::adapters::caches::storage_usage;
+
+#[path = "server_schedules.rs"]
+mod schedules;
+
+type Reply = Response<std::io::Cursor<Vec<u8>>>;
 use crate::runner::{PipelineOutput, RunRequest, Runner, Usage, now_secs};
 use crate::schedule::Status;
 
@@ -239,6 +245,11 @@ impl Server {
                 (Method::Get, ["v1", "usage", owner]) => {
                     self.usage(owner, query.get("month")).boxed()
                 }
+                (Method::Post, ["v1", "schedules", "read"]) => match read_request_any(&mut request)
+                {
+                    Ok(req) => self.read_schedules(req).boxed(),
+                    Err(e) => error(400, e).boxed(),
+                },
                 _ => error(404, format!("no route {method} {path}")).boxed(),
             }
         };
@@ -296,6 +307,27 @@ impl Server {
         if !self.admit() {
             return self.full();
         }
+        let (id, done) = self.launch(req, owner);
+        if wait {
+            return match done.recv() {
+                Ok(entry) => json_response(200, &serde_json::to_value(entry).unwrap_or_default()),
+                Err(_) => error(500, "the run ended without a result"),
+            };
+        }
+        json_response(
+            202,
+            &json!({ "id": id, "state": "running", "url": format!("/v1/runs/{id}") }),
+        )
+    }
+
+    /// Starts an admitted run on its own thread and returns its id, and a
+    /// channel that gets its entry when it ends. The admission is released
+    /// when the run finishes.
+    fn launch(
+        self: &Arc<Self>,
+        req: RunRequest,
+        owner: RepoId,
+    ) -> (String, std::sync::mpsc::Receiver<RunEntry>) {
         let id = random_id();
         let entry = RunEntry {
             id: id.clone(),
@@ -307,11 +339,9 @@ impl Server {
             result: None,
             error: None,
         };
-        self.remember(entry.clone());
+        self.remember(entry);
         let hub = Arc::new(LogHub::default());
         self.logs.lock().unwrap().insert(id.clone(), hub.clone());
-
-        // The run itself, on its own thread, so a `202` returns at once.
         let runner = self.runner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let id_for_thread = id.clone();
@@ -325,16 +355,7 @@ impl Server {
             this.active.fetch_sub(1, Ordering::SeqCst);
             let _ = done_tx.send(entry);
         });
-        if wait {
-            return match done_rx.recv() {
-                Ok(entry) => json_response(200, &serde_json::to_value(entry).unwrap_or_default()),
-                Err(_) => error(500, "the run ended without a result"),
-            };
-        }
-        json_response(
-            202,
-            &json!({ "id": id, "state": "running", "url": format!("/v1/runs/{id}") }),
-        )
+        (id, done_rx)
     }
 
     /// Records a finished run: in memory, as a report in the store, and as
@@ -693,6 +714,15 @@ impl Read for HubReader {
 }
 
 fn read_request(request: &mut Request) -> Result<RunRequest, String> {
+    let req = read_request_any(request)?;
+    if req.sha.is_none() && req.branch.is_none() {
+        return Err("give `sha`, `branch`, or both".into());
+    }
+    Ok(req)
+}
+
+/// A request body, without requiring a commit or branch.
+fn read_request_any(request: &mut Request) -> Result<RunRequest, String> {
     let mut body = Vec::new();
     request
         .as_reader()
@@ -702,11 +732,7 @@ fn read_request(request: &mut Request) -> Result<RunRequest, String> {
     if body.len() > MAX_BODY {
         return Err(format!("the body is over {MAX_BODY} bytes"));
     }
-    let req: RunRequest = serde_json::from_slice(&body).map_err(|e| format!("body: {e}"))?;
-    if req.sha.is_none() && req.branch.is_none() {
-        return Err("give `sha`, `branch`, or both".into());
-    }
-    Ok(req)
+    serde_json::from_slice(&body).map_err(|e| format!("body: {e}"))
 }
 
 #[cfg(test)]

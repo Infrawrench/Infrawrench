@@ -25,6 +25,15 @@ pub struct Triggers {
     pub push: Option<TriggerFilter>,
     #[serde(default)]
     pub pull_request: Option<TriggerFilter>,
+    /// Cron expressions (UTC); a scheduled run uses the default branch.
+    #[serde(default)]
+    pub schedule: Vec<ScheduleEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct ScheduleEntry {
+    pub cron: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

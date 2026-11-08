@@ -47,6 +47,8 @@ impl StoreCaches {
         let write_scope = match event {
             Event::Push => push_scope(branch),
             Event::PullRequest => format!("pr-{}", short_hash(branch)),
+            // A scheduled run builds the default branch's own code.
+            Event::Schedule => push_scope(branch),
         };
         let mut read_scopes = vec![write_scope.clone()];
         let default_scope = push_scope(default_branch);

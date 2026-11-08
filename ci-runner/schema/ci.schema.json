@@ -21,6 +21,22 @@
         },
         "pull-request": {
           "$ref": "#/$defs/triggerFilter"
+        },
+        "schedule": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Scheduled runs, in UTC, of the default branch. Each entry is five-field cron (minute hour day-of-month month day-of-week; ranges, steps, lists, month and weekday names) or @hourly, @daily, @weekly, @monthly, @yearly. Jobs see event == 'schedule'.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["cron"],
+            "properties": {
+              "cron": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       }
     },

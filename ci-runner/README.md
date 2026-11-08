@@ -89,12 +89,23 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key         | Meaning                                                                                             |
-| ----------- | --------------------------------------------------------------------------------------------------- |
-| `name`      | Required.                                                                                           |
-| `on`        | `push` and/or `pull-request`, each with optional `branches` and `paths` globs. Omitted: every push. |
-| `workspace` | `clone` and `deps` shared by every job unless it overrides them.                                    |
-| `jobs`      | Map of job key (lowercase, digits, `-`, `_`) to job.                                                |
+| Key         | Meaning                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `name`      | Required.                                                                                                                   |
+| `on`        | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push. |
+| `workspace` | `clone` and `deps` shared by every job unless it overrides them.                                                            |
+| `jobs`      | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                        |
+
+`on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
+in UTC: five fields (minute, hour, day of month, month, day of week) taking
+`*`, numbers, ranges, steps and lists, month and weekday names, Sunday as 0
+or 7, and `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly`. When both
+day fields are restricted, a day matching either runs, as in classic cron. A
+scheduled run checks out the default branch's head, its event is
+`schedule`, and it reads and writes the same caches as a push to that
+branch. Runners do not keep time: something outside them has to fire the
+schedule, which in this repository is the proxy Worker (see
+[Scheduled runs](#scheduled-runs)).
 
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
@@ -408,6 +419,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.          |
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                        |
+| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text. |
 
 A request body (for `runs` and `prepare`):
 
@@ -416,7 +428,7 @@ A request body (for `runs` and `prepare`):
   "repo": "https://github.com/acme/web",
   "branch": "main",
   "sha": "optional: a commit; without it, the branch's head",
-  "event": "push or pull-request",
+  "event": "push, pull-request or schedule",
   "base": "optional: commit to diff against for paths: and changed()",
   "owner": "optional: defaults to github.com-acme",
   "repo-id": "optional: defaults to web",
@@ -446,6 +458,26 @@ A request body (for `runs` and `prepare`):
 - **Quotas.** An owner's caches across all its repositories are held to its
   storage quota: the request's `storage-quota`, else the server's
   `--storage-quota` (default 10 GiB).
+
+## Scheduled runs
+
+`app/packages/ci-proxy` is a Cloudflare Worker that sits in front of the
+runners and owns schedules, because a Cron Trigger fires once for a whole
+Worker, where every runner in a pool keeping its own clock would fire each
+schedule once per runner. Its README has the routes; the short version:
+
+1. `PUT /v1/schedules` on the proxy registers a repository. The proxy asks a
+   runner (`POST /v1/schedules/read`) which pipelines on the default branch
+   have `on.schedule`, and stores their crons and text in D1. Tokens are
+   refused: a scheduled run of a private repository uses the runners'
+   `IWCI_GIT_TOKEN`.
+2. Once a minute the proxy re-reads registrations older than ten minutes
+   (twenty per minute at most), then matches every stored cron against the
+   minute. A due pipeline is claimed in D1 for that minute first, so a
+   repeated trigger fires nothing twice, and then sent as a normal run with
+   `event: schedule` and the stored text as `pipeline`.
+3. A minute that finds every runner full is recorded as `no-capacity` and
+   not retried. Billing is the runners' own usage record, as for any run.
 
 ## Known limitations
 

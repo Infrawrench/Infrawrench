@@ -12,6 +12,7 @@
 //! editors by `ci-runner/schema/ci.schema.json`; `tests/schema.rs` keeps the
 //! JSON Schema's keys in step with the structs in [`raw`].
 
+pub mod cron;
 pub mod expr;
 mod glob;
 mod interp;
@@ -449,6 +450,7 @@ impl Validator<'_> {
             return Triggers {
                 push: Some(TriggerFilter::default()),
                 pull_request: None,
+                schedule: Vec::new(),
             };
         };
         let mut filter = |name: &str, f: Option<raw::TriggerFilter>| {
@@ -468,10 +470,24 @@ impl Validator<'_> {
         };
         let push = filter("push", raw.push);
         let pull_request = filter("pull-request", raw.pull_request);
-        if push.is_none() && pull_request.is_none() {
+        let mut schedule = Vec::new();
+        if raw.schedule.len() > 16 {
+            self.error("on.schedule", "lists more than 16 schedules");
+        }
+        for (i, entry) in raw.schedule.iter().enumerate() {
+            match cron::Cron::parse(&entry.cron) {
+                Ok(c) => schedule.push(c),
+                Err(e) => self.error(format!("on.schedule[{i}].cron"), e),
+            }
+        }
+        if push.is_none() && pull_request.is_none() && raw.schedule.is_empty() {
             self.error("on", "lists no events, so the pipeline would never run");
         }
-        Triggers { push, pull_request }
+        Triggers {
+            push,
+            pull_request,
+            schedule,
+        }
     }
 
     fn workspace(

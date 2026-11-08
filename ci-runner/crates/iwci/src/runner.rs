@@ -111,7 +111,10 @@ impl RunRequest {
         match self.event.as_deref() {
             None | Some("push") => Ok(Event::Push),
             Some("pull-request") => Ok(Event::PullRequest),
-            Some(other) => Err(format!("event is `push` or `pull-request`, not `{other}`")),
+            Some("schedule") => Ok(Event::Schedule),
+            Some(other) => Err(format!(
+                "event is `push`, `pull-request` or `schedule`, not `{other}`"
+            )),
         }
     }
 
@@ -299,6 +302,16 @@ impl Runner {
         };
         let _ = req;
         (tools, executor, workspaces, committer)
+    }
+
+    /// The commit a request resolves to and its pipeline files, without
+    /// running anything; for reading a repository's schedules.
+    pub fn branch_pipelines(
+        &self,
+        req: &RunRequest,
+    ) -> Result<(String, Vec<(String, String)>), String> {
+        let r = self.resolve(req)?;
+        Ok((r.sha, r.pipelines))
     }
 
     /// Runs every pipeline of the requested commit that its event triggers.

@@ -751,3 +751,30 @@ jobs:
         "only cache absolute paths",
     );
 }
+
+#[test]
+fn schedules_trigger_scheduled_runs_only() {
+    let plan = parse("name: x\non:\n  schedule:\n    - cron: \"0 3 * * *\"\n    - cron: \"@hourly\"\njobs:\n  a:\n    using: builtin:t@1\n    if: event == 'schedule'\n", &ctx()).unwrap();
+    assert!(plan.triggers.matches(Event::Schedule, "main", None));
+    assert!(
+        !plan.triggers.matches(Event::Push, "main", None),
+        "a schedule-only pipeline is not run on push"
+    );
+    assert!(plan.triggers.due(cron::Minute::from_unix(3 * 3600)));
+    assert!(
+        plan.triggers.due(cron::Minute::from_unix(3600 * 5)),
+        "@hourly"
+    );
+    assert!(!plan.triggers.due(cron::Minute::from_unix(3600 * 5 + 60)));
+    assert_error(
+        "name: x\non:\n  schedule:\n    - cron: \"61 * * * *\"\njobs:\n  a:\n    using: builtin:t@1\n",
+        "on.schedule[0].cron: minute",
+    );
+    assert_error(
+        "name: x\non:\n  schedule:\n    - every: day\njobs:\n  a:\n    using: builtin:t@1\n",
+        "unknown field",
+    );
+    // A push pipeline is not a scheduled one.
+    let plan = parse("name: x\njobs:\n  a:\n    using: builtin:t@1\n", &ctx()).unwrap();
+    assert!(!plan.triggers.matches(Event::Schedule, "main", None));
+}
