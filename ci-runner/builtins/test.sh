@@ -7,8 +7,11 @@
 # one go, and checks the tool really does its job (gofmt finds the file that
 # is not formatted, tsc reports the type error).
 #
-#   builtins/test.sh                 gofmt and bash (the default)
+#   builtins/test.sh                 gofmt, bash and tools (the default)
 #   builtins/test.sh typescript oxfmt bash-node
+#
+# `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
+# bash earlier in the same list.
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
@@ -25,8 +28,11 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 IWCI="${IWCI:-$here/../target/debug/iwci}"
 if [[ $# -eq 0 ]]; then
-  set -- gofmt bash
+  set -- gofmt bash tools
 fi
+
+# A secret the bash pipeline reads, which must never show up in a report.
+export IWCI_SECRET_FIXTURE_TOKEN="fixture-secret-value-0451"
 
 # Build each requested builtin once, then publish everything it produced.
 built_envs=false
@@ -43,8 +49,12 @@ for name in "$@"; do
       fi
       dirs=("$dist"/environment/"$name"/*)
       ;;
+    tools)
+      # Uses what gofmt and bash published.
+      continue
+      ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, tools" >&2
       exit 2
       ;;
   esac
@@ -134,6 +144,36 @@ jobs:
     run: |
       false
       echo unreachable
+  scratch-write-passes:
+    using: env:bash@5
+    run: |
+      mkdir -p "$IWCI_SCRATCH/build"
+      echo from-write > "$IWCI_SCRATCH/build/out.txt"
+  scratch-read-passes:
+    using: env:bash@5
+    needs: [scratch-write-passes]
+    run: test "$(cat /tmp/workflow/build/out.txt)" = from-write
+  secret-passes:
+    using: env:bash@5
+    env:
+      TOKEN: ${{ secrets.FIXTURE_TOKEN }}
+    run: |
+      test "$TOKEN" = fixture-secret-value-0451
+      echo "the token is $TOKEN"
+YAML
+      ;;
+    tools)
+      cat <<'YAML'
+name: tools
+jobs:
+  gofmt-on-path-passes:
+    using: env:bash@5
+    tools: [builtin:gofmt@1.27]
+    run: test "$(gofmt -l go/dirty)" = go/dirty/main.go
+  gofmt-finds-dirty-fails:
+    using: env:bash@5
+    tools: [builtin:gofmt@1.27]
+    run: test -z "$(gofmt -l go/dirty)"
 YAML
       ;;
     bash-node)
@@ -170,7 +210,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash-node/throw-fails) echo "exited with 1" ;;
+    bash/false-fails | bash-node/throw-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
     *) echo "" ;;
   esac
@@ -213,6 +253,10 @@ for name in "$@"; do
          (if (.id | endswith("-passes")) then "passed" else "failed" end),
          (.reason // .message // "")]
       | @tsv' <<<"$out")
+  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out"; then
+    echo "  FAIL the secret's value appears in the report"
+    failed=1
+  fi
   if [[ "$failed" == 1 ]]; then
     # The whole report, for the tool's own output.
     jq '.pipelines[0].report.jobs[] | {id, status, reason, message, execution}' <<<"$out" >&2

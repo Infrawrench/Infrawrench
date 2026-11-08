@@ -67,7 +67,7 @@ jobs:
   # run`. typescript, oxfmt and bash-node need much larger toolchains and
   # are tested by ci-runner-builtins.yml.
   builtins:
-    name: Builtins (gofmt, bash)
+    name: Builtins (gofmt, bash, tools)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     defaults:
@@ -111,4 +111,4 @@ jobs:
       - name: Publish and run them through iwci
         run: |
           cargo build -p iwci
-          SKIP_BUILD=1 bash builtins/test.sh gofmt bash
+          SKIP_BUILD=1 bash builtins/test.sh gofmt bash tools

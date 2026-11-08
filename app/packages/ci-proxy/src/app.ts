@@ -12,14 +12,31 @@
 // | `PUT /v1/schedules` | registers a repository's `on.schedule` pipelines |
 // | `GET /v1/schedules/{owner}` | an owner's registered schedules |
 // | `DELETE /v1/schedules/{owner}/{repo-id}` | stops a repository's scheduled runs |
+// | `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets` | secret names and when each was set |
+// | `PUT`, `DELETE /v1/orgs/{owner}[/repos/{repo-id}]/secrets/{name}` | sets (`{ "value": ... }`) or removes one |
+// | `GET`, `PUT`, `DELETE` the same under `/vars` | variables, values included |
 
 import { authorised } from "./auth";
 import { anyDue } from "./cron";
+import { identify, isId } from "./identity";
 import { parseRunId, type Pool } from "./pool";
 import type { ScheduleRow, ScheduledPipeline, ScheduleStore } from "./store";
+import {
+  forRun,
+  isName,
+  MAX_PER_SCOPE,
+  MAX_VALUE_BYTES,
+  seal,
+  type Kind,
+  type SecretsKey,
+  type ValueStore,
+} from "./values";
 
 export interface Deps {
   pool: Pool;
+  values: ValueStore;
+  /** From SECRETS_KEY; without it, secrets cannot be set or read. */
+  secretsKey: SecretsKey | null;
   store: ScheduleStore;
   proxyKey: string;
   /** Unix seconds; injectable so tests control time. */
@@ -156,7 +173,16 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   if (method === "POST" && (path === "/v1/runs" || path === "/v1/prepare")) {
     const body = await readBody(request);
     if (body instanceof Response) return body;
-    const placed = await deps.pool.place(`${path}${url.search}`, body.text);
+    let text = body.text;
+    if (path === "/v1/runs") {
+      const withValues = await withStoredValues(deps, body.value);
+      if (withValues instanceof Response) return withValues;
+      text = JSON.stringify(withValues);
+    } else if ("trusted" in body.value) {
+      const { trusted: _, ...rest } = body.value;
+      text = JSON.stringify(rest);
+    }
+    const placed = await deps.pool.place(`${path}${url.search}`, text);
     if (!placed) return full();
     return relay(placed.index, placed.response);
   }
@@ -230,7 +256,110 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     return removed ? json(200, { deleted: `${third}/${fourth}` }) : error(404, "no such schedule");
   }
 
+  if (parts[0] === "v1" && parts[1] === "orgs") {
+    return values(request, deps, parts.slice(2));
+  }
+
   return error(404, `no route ${method} ${path}`);
+}
+
+/**
+ * A run request with the owner's and repository's variables and, unless it
+ * is a pull request the caller has not vouched for (`"trusted": true`: from
+ * the repository itself, not a fork), their secrets. Values the request
+ * carries itself win. `trusted` is the proxy's and is not passed on.
+ */
+async function withStoredValues(
+  deps: Deps,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown> | Response> {
+  const { trusted, ...rest } = body;
+  const { owner, repoId } = identify(rest);
+  if (!isId(owner) || !isId(repoId)) return rest;
+  const event = typeof rest.event === "string" ? rest.event : "push";
+  const withSecrets = event !== "pull-request" || trusted === true;
+  const stored = await forRun(deps.values, deps.secretsKey, owner, repoId, withSecrets);
+  if (stored.unreadable.length > 0) {
+    // A run that silently got an empty deploy token would be worse than
+    // one that does not start.
+    return error(
+      500,
+      `secrets ${stored.unreadable.join(", ")} could not be decrypted; was SECRETS_KEY changed? Set them again.`,
+    );
+  }
+  const own = (key: string): Record<string, string> => {
+    const value = rest[key];
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter((e): e is [string, string] => typeof e[1] === "string"),
+    );
+  };
+  const vars = { ...stored.vars, ...own("vars") };
+  const secrets = { ...stored.secrets, ...own("secrets") };
+  if (Object.keys(vars).length > 0) rest.vars = vars;
+  if (Object.keys(secrets).length > 0) rest.secrets = secrets;
+  return rest;
+}
+
+/** `/v1/orgs/{owner}[/repos/{repo-id}]/{secrets|vars}[/{name}]`. */
+async function values(request: Request, deps: Deps, parts: string[]): Promise<Response> {
+  const [owner = "", ...rest] = parts;
+  let repoId = "";
+  let tail = rest;
+  if (rest[0] === "repos") {
+    repoId = rest[1] ?? "";
+    tail = rest.slice(2);
+    if (!isId(repoId)) return error(400, "the repository id must match [A-Za-z0-9._-]{1,128}");
+  }
+  if (!isId(owner)) return error(400, "the owner must match [A-Za-z0-9._-]{1,128}");
+  const [plural = "", name, extra] = tail;
+  const kind: Kind | null = plural === "secrets" ? "secret" : plural === "vars" ? "var" : null;
+  if (kind === null || extra !== undefined) return error(404, "no such route");
+  const scope = { owner, ...(repoId ? { "repo-id": repoId } : {}) };
+  const method = request.method;
+
+  if (name === undefined) {
+    if (method !== "GET") return error(405, "list with GET; set or remove one by name");
+    const listed = await deps.values.list(kind, owner, repoId);
+    return json(200, {
+      ...scope,
+      [plural]: listed.map((v) =>
+        kind === "var"
+          ? { name: v.name, value: v.value, "updated-at": v.updatedAt }
+          : { name: v.name, "updated-at": v.updatedAt },
+      ),
+    });
+  }
+  if (!isName(name)) {
+    return error(400, "names are letters, digits and `_`, not starting with a digit, up to 128");
+  }
+  if (method === "DELETE") {
+    return (await deps.values.remove(kind, owner, repoId, name))
+      ? json(200, { ...scope, deleted: name })
+      : error(404, `no ${kind} named ${name}`);
+  }
+  if (method !== "PUT") return error(405, "set with PUT, remove with DELETE");
+  if (kind === "secret" && deps.secretsKey === null) {
+    return error(
+      503,
+      "set SECRETS_KEY (32 random bytes, base64) on the proxy before storing secrets",
+    );
+  }
+  const body = await readBody(request);
+  if (body instanceof Response) return body;
+  const value = body.value.value;
+  if (typeof value !== "string") return error(400, 'the body is { "value": "..." }');
+  if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES || value.includes("\0")) {
+    return error(400, `the value is over ${MAX_VALUE_BYTES >> 10} KiB or contains a NUL byte`);
+  }
+  const stored =
+    kind === "secret" && deps.secretsKey !== null
+      ? await seal(deps.secretsKey, owner, repoId, name, value)
+      : value;
+  if (!(await deps.values.put(kind, owner, repoId, name, stored, deps.now()))) {
+    return error(409, `this scope already has ${MAX_PER_SCOPE} ${plural}`);
+  }
+  return json(200, { ...scope, name, "updated-at": deps.now() });
 }
 
 export interface TickResult {
@@ -292,7 +421,21 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
         pipeline: pipeline.text,
       };
       if (row.storageQuota !== null) request["storage-quota"] = row.storageQuota;
-      const placed = await deps.pool.place("/v1/runs", JSON.stringify(request));
+      const withValues = await withStoredValues(deps, request);
+      if (withValues instanceof Response) {
+        result.skipped.push(label);
+        const body = (await withValues.json().catch(() => ({}))) as { error?: string };
+        await deps.store.settleFire(
+          row.owner,
+          row.repoId,
+          pipeline.file,
+          minute,
+          null,
+          `error: ${body.error ?? "secrets"}`,
+        );
+        return;
+      }
+      const placed = await deps.pool.place("/v1/runs", JSON.stringify(withValues));
       if (!placed) {
         result.skipped.push(label);
         await deps.store.settleFire(

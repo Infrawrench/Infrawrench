@@ -57,6 +57,8 @@ pub trait Tools: Send + Sync {
 pub struct Invocation<'a> {
     pub job: &'a PlannedJob,
     pub fs: &'a JobFs,
+    /// The run's shared `/tmp/workflow`, the same one for every job.
+    pub scratch: &'a JobFs,
     /// The job's own `env:` over the workspace's, over the runner's `IWCI_*`.
     pub env: Vec<(String, String)>,
     /// Receives output as it is written (`true` for stderr), when someone
@@ -114,7 +116,47 @@ fn emit_finished(options: &Options, report: &JobReport) {
 struct LineSink {
     job: String,
     logs: LogFn,
+    mask: Arc<Masker>,
     pending: Mutex<[Vec<u8>; 2]>,
+}
+
+/// The shortest secret (or line of a multi-line secret) that is masked.
+/// Shorter values would turn ordinary output into asterisks.
+pub const MIN_MASKED: usize = 3;
+
+/// Replaces the run's secret values with `***` in what a job prints, in
+/// its report and in its outputs.
+#[derive(Debug, Default)]
+pub struct Masker {
+    /// Longest first, so a secret that contains another is masked whole.
+    values: Vec<String>,
+}
+
+impl Masker {
+    pub fn new<'a>(secrets: impl IntoIterator<Item = &'a String>) -> Self {
+        let mut values: Vec<String> = Vec::new();
+        for secret in secrets {
+            let pieces = std::iter::once(secret.as_str()).chain(secret.lines().map(str::trim));
+            for piece in pieces {
+                if piece.len() >= MIN_MASKED {
+                    values.push(piece.to_string());
+                }
+            }
+        }
+        values.sort_by_key(|v| std::cmp::Reverse(v.len()));
+        values.dedup();
+        Masker { values }
+    }
+
+    pub fn mask(&self, text: &str) -> String {
+        let mut out = text.to_string();
+        for value in &self.values {
+            if out.contains(value.as_str()) {
+                out = out.replace(value.as_str(), "***");
+            }
+        }
+        out
+    }
 }
 
 impl LineSink {
@@ -147,7 +189,7 @@ impl LineSink {
         (self.logs)(LogEvent::Output {
             job: self.job.clone(),
             stream: if stderr { "stderr" } else { "stdout" },
-            line: String::from_utf8_lossy(line).into_owned(),
+            line: self.mask.mask(&String::from_utf8_lossy(line)),
         });
     }
 }
@@ -162,9 +204,12 @@ pub struct Execution {
 }
 
 pub trait Executor<T>: Send + Sync {
+    /// Runs `action` with `tool`. `path_tools` are the job's `tools:`,
+    /// resolved, for an environment to offer as commands.
     fn execute(
         &self,
         tool: &T,
+        path_tools: &[Arc<T>],
         action: &Action,
         invocation: Invocation<'_>,
     ) -> Result<Execution, String>;
@@ -224,6 +269,10 @@ pub struct JobReport {
     /// One line per `cache:` entry: what was restored and saved.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<String>,
+    /// Things the job should know that are not failures, such as a secret
+    /// it reads that the run does not have.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
     pub duration_ms: u64,
     /// The memory the job reserved while it ran (its `memory:`), for
     /// billing; 0 for a job that never ran.
@@ -270,6 +319,9 @@ pub struct Options {
     /// Job slots shared with every other run in this process (the server's
     /// `--cpus` times `--jobs-per-cpu`); `None` limits only by `parallelism`.
     pub slots: Option<Arc<Slots>>,
+    /// The run's secrets, for `env:` values that read
+    /// `${{ secrets.<name> }}`, and masked wherever a job's output goes.
+    pub secrets: BTreeMap<String, String>,
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -581,6 +633,20 @@ pub fn run<T: Tools>(
     });
     let wake = Condvar::new();
     activate(&mut state.lock().unwrap(), plan, options);
+    // One scratch directory for the whole run, held to `scratch:` as a
+    // job's files are held to its `memory:`.
+    let scratch = iwci_vfs::SnapshotBuilder::new()
+        .freeze()
+        .fork_limited(Arc::new(JobBudget {
+            cap: plan.scratch_bytes,
+            used: AtomicU64::new(0),
+            refused: AtomicBool::new(false),
+        }));
+    let mask = Arc::new(Masker::new(options.secrets.values()));
+    let shared = RunShared {
+        scratch: &scratch,
+        mask: &mask,
+    };
 
     std::thread::scope(|scope| {
         for _ in 0..options.parallelism.max(1) {
@@ -631,8 +697,9 @@ pub fn run<T: Tools>(
                     let slot = options.slots.as_ref().map(|s| s.acquire());
                     let workspace = built[job.workspace]
                         .get_or_init(|| workspaces.build(&plan.workspaces[job.workspace]));
-                    let report =
-                        run_job(&job, plan, workspace, tools, executor, committer, options);
+                    let report = run_job(
+                        &job, plan, workspace, tools, executor, committer, options, &shared,
+                    );
                     drop(slot);
                     emit_finished(options, &report);
                     if let Some(budget) = &options.memory {
@@ -842,12 +909,20 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         commit: None,
         outputs: BTreeMap::new(),
         caches: Vec::new(),
+        notes: Vec::new(),
         memory_mib: 0,
         duration_ms: 0,
         blocks,
     }
 }
 
+/// What every job of one run shares.
+struct RunShared<'a> {
+    scratch: &'a JobFs,
+    mask: &'a Arc<Masker>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_job<T: Tools>(
     job: &PlannedJob,
     plan: &Plan,
@@ -856,6 +931,7 @@ fn run_job<T: Tools>(
     executor: &dyn Executor<T::Tool>,
     committer: &dyn Committer,
     options: &Options,
+    shared: &RunShared<'_>,
 ) -> JobReport {
     let started = Instant::now();
     let workspace = match workspace {
@@ -872,6 +948,13 @@ fn run_job<T: Tools>(
         Ok(t) => t,
         Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
     };
+    let mut path_tools = Vec::with_capacity(job.tools.len());
+    for t in &job.tools {
+        match tools.resolve(t) {
+            Ok(resolved) => path_tools.push(resolved),
+            Err(e) => return errored(job, format!("tools: {t}: {e}"), started.elapsed()),
+        }
+    }
 
     // The job's files live in memory, so its writes are held to its
     // `memory:` too (and to the runner's budget), or a job could write its
@@ -948,8 +1031,24 @@ fn run_job<T: Tools>(
     let mut env = options.base_env.clone();
     env.push(("IWCI_JOB".into(), job.id.clone()));
     env.push(("IWCI_OUTPUT".into(), OUTPUT_PATH.into()));
+    env.push(("IWCI_SCRATCH".into(), iwci_spec::SCRATCH_PATH.into()));
     merge_env(&mut env, &workspace.env);
     merge_env(&mut env, &job.env);
+    // Secrets last, read now so they are never part of the plan. A secret
+    // the run does not have reads as empty, and the report says which.
+    let mut notes = Vec::new();
+    let mut secret_vars = Vec::new();
+    for entry in &job.secret_env {
+        let (value, missing) = entry.fill(|name| options.secrets.get(name).cloned());
+        for name in missing {
+            notes.push(format!(
+                "secret `{name}` is not set for this run, so `{}` has it empty",
+                entry.key
+            ));
+        }
+        secret_vars.push((entry.key.clone(), value));
+    }
+    merge_env(&mut env, &secret_vars);
 
     let line_sink = options.logs.as_ref().map(|logs| {
         logs(LogEvent::JobStarted {
@@ -959,6 +1058,7 @@ fn run_job<T: Tools>(
         Arc::new(LineSink {
             job: job.id.clone(),
             logs: logs.clone(),
+            mask: shared.mask.clone(),
             pending: Mutex::default(),
         })
     });
@@ -968,10 +1068,12 @@ fn run_job<T: Tools>(
     });
     let executed = executor.execute(
         &tool,
+        &path_tools,
         &job.action,
         Invocation {
             job,
             fs: &fs,
+            scratch: shared.scratch,
             env,
             log,
         },
@@ -980,8 +1082,12 @@ fn run_job<T: Tools>(
         sink.flush();
     }
     let execution = match executed {
-        Ok(e) => e,
-        Err(e) => return errored(job, e, started.elapsed()),
+        Ok(mut e) => {
+            e.stdout = shared.mask.mask(&e.stdout);
+            e.stderr = shared.mask.mask(&e.stderr);
+            e
+        }
+        Err(e) => return errored(job, shared.mask.mask(&e), started.elapsed()),
     };
 
     // What is under a cache path is the cache's, not a change to the
@@ -1020,7 +1126,15 @@ fn run_job<T: Tools>(
     let outputs = fs
         .read(OUTPUT_PATH)
         .map_err(|e| e.to_string())
-        .and_then(|bytes| parse_outputs(&bytes, &job.outputs));
+        .and_then(|bytes| parse_outputs(&bytes, &job.outputs))
+        // An output carrying a secret would pass it on to other jobs and
+        // into the report, so it is masked like the job's output.
+        .map(|outputs| {
+            outputs
+                .into_iter()
+                .map(|(k, v)| (k, shared.mask.mask(&v)))
+                .collect()
+        });
 
     let mut commit = None;
     let status = if execution.timed_out {
@@ -1114,6 +1228,7 @@ fn run_job<T: Tools>(
         commit,
         outputs: outputs.unwrap_or_default(),
         caches: cache_lines,
+        notes,
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(started.elapsed()),
         blocks,
@@ -1194,6 +1309,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         commit: None,
         outputs: BTreeMap::new(),
         caches: Vec::new(),
+        notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(elapsed),
         blocks: true,

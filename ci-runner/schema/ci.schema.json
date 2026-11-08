@@ -53,6 +53,10 @@
         }
       }
     },
+    "scratch": {
+      "type": "string",
+      "description": "The most the run's shared /tmp/workflow directory may hold, as a size such as `2GiB` (16MiB to 16GiB, default 1GiB). Every job of the run sees the same directory; it is memory, and it is gone when the run ends."
+    },
     "jobs": {
       "type": "object",
       "minProperties": 1,
@@ -346,6 +350,15 @@
               }
             }
           ]
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^(builtin|repo):[a-z0-9_-]{1,64}@[0-9][0-9A-Za-z.-]*$"
+          },
+          "description": "Tools an `env:` job's script can run by name, such as `builtin:gofmt@1.27`. Each becomes a command named after the tool, first on PATH. Tools with the tsc-host ABI (`builtin:typescript`) cannot run as commands."
         }
       }
     },

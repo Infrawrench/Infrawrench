@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use iwci_runtime::{Invocation as RtInvocation, Limits, Runtime, WasmModule, WebcPackage};
+use iwci_runtime::{
+    Invocation as RtInvocation, Limits, PathCommand, Runtime, WasmModule, WebcPackage,
+};
 use iwci_spec::{Action, ToolRef};
 use iwci_store::{Abi, Catalog, RepoId, Resolved};
 
@@ -45,6 +47,7 @@ impl Executor<Resolved> for RuntimeExecutor {
     fn execute(
         &self,
         tool: &Resolved,
+        path_tools: &[Arc<Resolved>],
         action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
@@ -65,6 +68,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             env.retain(|(existing, _)| *existing != k);
             env.push((k, v));
         }
+        let commands = path_commands(path_tools, inv.fs, &mut env)?;
         let mut invocation = RtInvocation {
             args: Vec::new(),
             env,
@@ -77,6 +81,8 @@ impl Executor<Resolved> for RuntimeExecutor {
                 });
                 log
             }),
+            scratch: Some(inv.scratch.as_dyn()),
+            commands,
         };
 
         let outcome = match (tool, action) {
@@ -174,6 +180,58 @@ impl Executor<Resolved> for RuntimeExecutor {
         };
         Ok(outcome)
     }
+}
+
+/// The job's `tools:` as commands for its script: each tool's module,
+/// named after the tool. A tool's data files are written as they would be
+/// for a job of its own, and its default environment fills in variables the
+/// job does not set.
+fn path_commands(
+    tools: &[Arc<Resolved>],
+    fs: &iwci_vfs::JobFs,
+    env: &mut Vec<(String, String)>,
+) -> Result<Vec<PathCommand>, String> {
+    let mut commands = Vec::with_capacity(tools.len());
+    for tool in tools {
+        let Resolved::Tool {
+            manifest,
+            module,
+            files,
+            ..
+        } = tool.as_ref()
+        else {
+            return Err("`tools:` takes tools, not environments".into());
+        };
+        if manifest.abi == Abi::TscHost {
+            return Err(format!(
+                "`{}` reads files through the tsc-host ABI, so it only runs as a job of its own (`using:`), not as a command in a script",
+                manifest.name
+            ));
+        }
+        if !manifest.args.is_empty() {
+            return Err(format!(
+                "`{}` has default arguments, which a command on PATH cannot carry; run it as a job of its own",
+                manifest.name
+            ));
+        }
+        for (path, blob) in files {
+            fs.write(path, &blob.bytes).map_err(|e| e.to_string())?;
+        }
+        for (k, v) in &manifest.env {
+            if !env.iter().any(|(existing, _)| existing == k) {
+                env.push((k.clone(), v.clone()));
+            }
+        }
+        commands.push(PathCommand {
+            name: manifest.name.clone(),
+            module: WasmModule::with_sha256(
+                manifest.name.clone(),
+                sha256_bytes(&module.sha256)?,
+                module.bytes.clone(),
+            ),
+        });
+    }
+    Ok(commands)
 }
 
 fn lossy(bytes: &[u8]) -> String {

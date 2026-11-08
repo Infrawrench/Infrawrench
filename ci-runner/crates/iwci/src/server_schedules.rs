@@ -33,6 +33,9 @@ impl Server {
             branch: branch.clone(),
             repo_id: repo_id.as_str().to_string(),
             event: Event::Schedule,
+            // Variables only decide what a run does, not which pipelines
+            // have schedules.
+            vars: Default::default(),
         };
         let mut pipelines = Vec::new();
         let mut problems = Vec::new();

@@ -9,6 +9,7 @@ import type {
 import { handle, tick, type Deps } from "./app";
 import { Pool } from "./pool";
 import { D1Store } from "./store";
+import { D1Values, secretsKey } from "./values";
 
 export interface Env {
   DB: D1Database;
@@ -18,12 +19,16 @@ export interface Env {
   PROXY_KEY: string;
   /** The key the runners accept, their IWCI_SERVER_KEY (a secret). */
   RUNNER_KEY: string;
+  /** 32 random bytes, base64: seals stored secrets (a secret; optional). */
+  SECRETS_KEY?: string;
 }
 
-function deps(env: Env): Deps {
+async function deps(env: Env): Promise<Deps> {
   return {
     pool: Pool.fromList(env.RUNNERS, env.RUNNER_KEY, (input, init) => fetch(input, init)),
     store: new D1Store(env.DB),
+    values: new D1Values(env.DB),
+    secretsKey: await secretsKey(env.SECRETS_KEY),
     proxyKey: env.PROXY_KEY,
     now: () => Math.floor(Date.now() / 1000),
   };
@@ -35,7 +40,7 @@ export default {
     // cast only reconciles the two type libraries (as web/edge/worker.ts).
     const request = incoming as unknown as Request;
     try {
-      return await handle(request, deps(env));
+      return await handle(request, await deps(env));
     } catch (e) {
       console.error(
         JSON.stringify({ event: "error", message: e instanceof Error ? e.message : String(e) }),
@@ -48,7 +53,7 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    const result = await tick(deps(env), Math.floor(controller.scheduledTime / 1000));
+    const result = await tick(await deps(env), Math.floor(controller.scheduledTime / 1000));
     console.log(JSON.stringify({ event: "tick", cron: controller.cron, ...result }));
   },
 };

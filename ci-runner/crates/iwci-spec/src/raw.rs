@@ -15,6 +15,9 @@ pub struct Pipeline {
     /// them. Jobs with the same effective workspace share one snapshot.
     #[serde(default)]
     pub workspace: Option<Workspace>,
+    /// The most the run's shared `/tmp/workflow` may hold, such as `2GiB`.
+    #[serde(default)]
+    pub scratch: Option<String>,
     pub jobs: IndexMap<String, Job>,
 }
 
@@ -144,6 +147,9 @@ pub struct Job {
     /// passes. One entry, or a list.
     #[serde(default)]
     pub cache: Option<OneOrMany<CacheEntry>>,
+    /// Tools (`builtin:`, `repo:`) an `env:` job's script can run by name.
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 /// One value or a list of them. Deserialised by hand rather than as an

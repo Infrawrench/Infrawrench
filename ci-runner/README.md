@@ -94,6 +94,7 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 | `name`      | Required.                                                                                                                   |
 | `on`        | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push. |
 | `workspace` | `clone` and `deps` shared by every job unless it overrides them.                                                            |
+| `scratch`   | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.            |
 | `jobs`      | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                        |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
@@ -159,14 +160,52 @@ everything through.
 | `timeout` | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
 | `memory`  | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
 | `cache`   | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
+| `tools`   | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
 `${{ needs.<job>.result }}`, `${{ commit.sha }}`, `${{ commit.short-sha }}`,
-`${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`. Each is one name;
+`${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`, `${{ vars.<name> }}`,
+and, in `env:` values only, `${{ secrets.<name> }}` (see
+[Secrets and variables](#secrets-and-variables)). Each is one name;
 operators belong in `if:`. Every name is checked when the file is parsed:
 reading a job that is not in `needs:`, or an output that job does not
 declare, is an error at push time rather than an empty string at run time.
+
+### Secrets and variables
+
+Variables and secrets are set per organisation or per repository through
+the proxy (`app/packages/ci-proxy`, "Secrets and variables"), the
+repository's overriding the organisation's of the same name, and arrive
+with each run.
+
+- `${{ vars.<name> }}` works anywhere an expression does and is filled in
+  when the file is parsed. A variable that is not set reads as empty.
+  Variables are not secret.
+- `${{ secrets.<name> }}` only works in an `env:` value
+  (`TOKEN: ${{ secrets.NPM_TOKEN }}`, or inside text, `AUTH: "Bearer
+${{ secrets.API_KEY }}"`). The parser keeps it as a name, so a secret is
+  never part of a plan or a report; it is read when the job starts. One the
+  run does not have is empty, and the job's report says so.
+- Every secret's value is replaced with `***` in the live log, the job's
+  captured output, its error messages and its outputs (`$IWCI_OUTPUT`),
+  including each line of a multi-line secret. Values shorter than three
+  characters are not masked.
+- A pull request gets variables but no secrets, unless whoever starts the
+  run says it comes from the repository itself rather than a fork
+  (`"trusted": true` on the proxy).
+- `iwci run` reads secrets from `IWCI_SECRET_<NAME>` environment variables
+  and variables from `--var NAME=value`.
+
+### The run's scratch directory
+
+Every job of a run sees the same writable `/tmp/workflow`
+(`$IWCI_SCRATCH`), whatever its tool: one job can leave a build there and a
+later job (`needs:`) pick it up without a cache or an output. It starts
+empty, it is gone when the run ends, it is held in memory and capped by the
+top-level `scratch:` (default 1 GiB), and nothing under it counts as a
+change to the repository. Jobs running at the same time share it as they
+would share a disk, so give them different paths.
 
 ### Outputs, dynamic matrices and `if:`
 
@@ -286,6 +325,28 @@ it. Every package and source is pinned to a tag or a content hash.
 
 [tsc-rs]: https://github.com/pingdotgg/ts-rust
 [`wasmer-napi`]: https://crates.io/crates/wasmer-napi
+
+### Tools in a script
+
+`tools:` makes builtins and repository tools commands an `env:` script can
+run by name:
+
+```yaml
+lint:
+  using: env:bash@5
+  tools: [builtin:gofmt@1.27, repo:licence-check@2]
+  run: |
+    test -z "$(gofmt -l .)"
+    licence-check --strict
+```
+
+Each tool's module is written to `/usr/local/bin/<name>`, first on the
+default `PATH`, and runs as a WASI or WASIX process inside the job, sharing
+its compiled code with jobs that use the tool directly. A tool's data files
+and default environment come with it. Two kinds cannot be commands and are
+refused when the job starts: tools that use the tsc-host ABI
+(`builtin:typescript`, which reads files through its own host interface;
+run it as a job of its own) and tools whose manifest has default arguments.
 
 ### Go and Rust
 
@@ -466,7 +527,9 @@ A request body (for `runs` and `prepare`):
   "default-branch": "main",
   "storage-quota": "10GiB, or bytes; overrides the server's --storage-quota",
   "pipeline": "optional: a pipeline file's text, run instead of the repository's",
-  "token": "optional: for a private repository; never stored or echoed"
+  "token": "optional: for a private repository; never stored or echoed",
+  "secrets": { "NPM_TOKEN": "optional: never stored or echoed, masked in output" },
+  "vars": { "REGION": "optional: for ${{ vars.<name> }}" }
 }
 ```
 
@@ -489,6 +552,18 @@ A request body (for `runs` and `prepare`):
 - **Quotas.** An owner's caches across all its repositories are held to its
   storage quota: the request's `storage-quota`, else the server's
   `--storage-quota` (default 10 GiB).
+
+### Warm builtins
+
+`iwci serve` downloads and compiles every published builtin and environment
+when it starts, then again every `--warm-every` (default `10m`), so a job
+never waits on a cold tool: the newest release of each `major.minor`,
+which covers every pin a pipeline can write. Blobs stay in the disk cache
+in front of R2 (`<cache>/objects`) and compiled code in the module cache
+(`<cache>/modules-*`, and in memory); neither is ever evicted, so give the
+cache directory a persistent disk. Repository tools warm on first use.
+`/v1/capacity` reports the last round under `warm`. `--no-warm` turns it
+off.
 
 ## Scheduled runs
 

@@ -36,6 +36,10 @@ pub struct Context {
     pub branch: String,
     pub repo_id: String,
     pub event: Event,
+    /// The repository's variables (organisation ones overridden by the
+    /// repository's), for `${{ vars.<name> }}`. Not secret: they are
+    /// substituted into the plan like any other name.
+    pub vars: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +77,12 @@ pub const MAX_MATRIX_ENTRIES: usize = 64;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 10 * 60;
 pub const MAX_TIMEOUT_SECS: u64 = 60 * 60;
 pub const DEFAULT_MEMORY: u64 = 2 << 30;
+/// What the run's shared `/tmp/workflow` holds unless `scratch:` says.
+pub const DEFAULT_SCRATCH: u64 = 1 << 30;
+/// Where every job of a run finds the scratch directory they share.
+pub const SCRATCH_PATH: &str = "/tmp/workflow";
+/// The most `tools:` one job may list.
+pub const MAX_TOOLS: usize = 16;
 pub const MIN_MEMORY: u64 = 16 << 20;
 pub const MAX_MEMORY: u64 = 16 << 30;
 pub const DEFAULT_CLONE_INTO: &str = "/app";
@@ -103,6 +113,11 @@ pub fn expand_hash_files(
 /// `512MiB`, `4GiB` and the like, as `memory:` takes them.
 pub fn parse_size(text: &str) -> Option<u64> {
     units::parse_bytes(text)
+}
+
+/// A duration such as `90s`, `10m` or `1h`, in seconds.
+pub fn parse_duration_secs(text: &str) -> Option<u64> {
+    units::parse_duration_secs(text)
 }
 
 /// Parses and validates a pipeline file for one commit.
@@ -233,6 +248,7 @@ struct Validator<'a> {
 /// jobs' outputs, checked once.
 struct JobStatic {
     tool: Option<ToolRef>,
+    tools: Vec<ToolRef>,
     timeout: u64,
     memory: u64,
     changes: ChangePolicy,
@@ -408,6 +424,7 @@ impl Validator<'_> {
             let st = self.job_static(&path, &job, &workspaces[ws_index]);
             let (instances, deferred) =
                 self.instances(&key, &job, &st, ws_index, &workspaces, None);
+            let path_tools = st.tools.clone();
             let Some(tool) = st.tool else { continue };
             jobs.push(JobTemplate {
                 key: key.clone(),
@@ -418,6 +435,7 @@ impl Validator<'_> {
                 workspace: ws_index,
                 paths: job.paths.clone(),
                 tool,
+                tools: path_tools,
                 instances: (!deferred).then_some(instances),
                 raw: deferred.then(|| job.clone()),
             });
@@ -433,11 +451,30 @@ impl Validator<'_> {
             );
         }
 
+        let scratch_bytes = match &raw.scratch {
+            None => DEFAULT_SCRATCH,
+            Some(text) => match units::parse_bytes(text) {
+                Some(b) if (MIN_MEMORY..=MAX_MEMORY).contains(&b) => b,
+                Some(_) => {
+                    self.error("scratch", "must be between 16MiB and 16GiB");
+                    DEFAULT_SCRATCH
+                }
+                None => {
+                    self.error(
+                        "scratch",
+                        format!("`{text}` is not a size; use e.g. `512MiB` or `4GiB`"),
+                    );
+                    DEFAULT_SCRATCH
+                }
+            },
+        };
+
         Plan {
             name: raw.name,
             triggers,
             workspaces,
             jobs,
+            scratch_bytes,
             decls: self.decls.clone(),
             ctx: self.ctx.clone(),
         }
@@ -960,8 +997,45 @@ impl Validator<'_> {
                 );
             }
         }
+        let mut tools: Vec<ToolRef> = Vec::new();
+        if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
+            self.error(
+                format!("{path}.tools"),
+                "puts tools on an environment's PATH, so it needs `using: env:...`",
+            );
+        }
+        if job.tools.len() > MAX_TOOLS {
+            self.error(
+                format!("{path}.tools"),
+                format!("lists {} tools; the limit is {MAX_TOOLS}", job.tools.len()),
+            );
+        }
+        for text in &job.tools {
+            match parse_tool(text) {
+                Ok(t) if t.is_env() => self.error(
+                    format!("{path}.tools"),
+                    format!(
+                        "`{text}` is an environment; `tools:` takes `builtin:` and `repo:` tools"
+                    ),
+                ),
+                Ok(t) => {
+                    if tools.iter().any(|o| o.name() == t.name()) {
+                        self.error(
+                            format!("{path}.tools"),
+                            format!(
+                                "lists two tools named `{}`; each becomes a command of that name",
+                                t.name()
+                            ),
+                        );
+                    }
+                    tools.push(t);
+                }
+                Err(e) => self.error(format!("{path}.tools"), e),
+            }
+        }
         JobStatic {
             tool,
+            tools,
             timeout,
             memory,
             changes,
@@ -1063,11 +1137,25 @@ impl Validator<'_> {
                 }
                 (None, None) => Action::Args { args: Vec::new() },
             };
-            let env: Vec<(String, String)> = job
-                .env
-                .iter()
-                .map(|(k, v)| (k.clone(), sub(&format!("env.{k}"), v)))
-                .collect();
+            let mut env: Vec<(String, String)> = Vec::new();
+            let mut secret_env: Vec<SecretEnv> = Vec::new();
+            for (k, v) in &job.env {
+                let field = format!("env.{k}");
+                match interp::secret_parts(v) {
+                    Ok(None) => env.push((k.clone(), sub(&field, v))),
+                    Ok(Some(parts)) => secret_env.push(SecretEnv {
+                        key: k.clone(),
+                        parts: parts
+                            .into_iter()
+                            .map(|p| match p {
+                                interp::RawPart::Text(t) => SecretPart::Text(sub(&field, &t)),
+                                interp::RawPart::Secret(name) => SecretPart::Secret(name),
+                            })
+                            .collect(),
+                    }),
+                    Err(e) => report(&field, e),
+                }
+            }
             let clone_root = workspace.clone.as_ref().map(|c| c.into.clone());
             let caches: Vec<CacheSpec> = job
                 .cache
@@ -1164,6 +1252,8 @@ impl Validator<'_> {
                     action,
                     cwd,
                     env,
+                    secret_env,
+                    tools: st.tools.clone(),
                     workspace: ws_index,
                     changes: st.changes.clone(),
                     outputs: job.outputs.clone(),

@@ -65,6 +65,63 @@ pub(crate) fn hash_files_globs(text: &str) -> Result<Vec<String>, String> {
     Ok(globs)
 }
 
+/// A piece of an `env:` value that reads secrets.
+pub(crate) enum RawPart {
+    Text(String),
+    Secret(String),
+}
+
+fn secret_name(text: &str) -> Option<&str> {
+    text.strip_prefix("secrets.")
+}
+
+fn check_ref_name(kind: &str, name: &str) -> Result<(), String> {
+    let ok = !name.is_empty()
+        && name.len() <= 128
+        && (name.as_bytes()[0].is_ascii_alphabetic() || name.as_bytes()[0] == b'_')
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "`{kind}.{name}` is not a valid name (letters, digits and `_`, not starting with a digit, up to 128)"
+        ))
+    }
+}
+
+/// Splits `text` around its `${{ secrets.<name> }}` references, or `None`
+/// when it has none. The text between them is substituted as usual by the
+/// caller; secrets are kept by name and filled in when the job starts.
+pub(crate) fn secret_parts(text: &str) -> Result<Option<Vec<RawPart>>, String> {
+    let mut parts = Vec::new();
+    let mut found = false;
+    let mut text_start = 0;
+    let mut search = 0;
+    while let Some(rel) = text[search..].find("${{") {
+        let start = search + rel;
+        let after = start + 3;
+        let Some(end_rel) = text[after..].find("}}") else {
+            return Err("`${{` is never closed with `}}`".into());
+        };
+        let inner = text[after..after + end_rel].trim();
+        let end = after + end_rel + 2;
+        if let Some(name) = secret_name(inner) {
+            check_ref_name("secrets", name)?;
+            found = true;
+            if text_start < start {
+                parts.push(RawPart::Text(text[text_start..start].to_string()));
+            }
+            parts.push(RawPart::Secret(name.to_string()));
+            text_start = end;
+        }
+        search = end;
+    }
+    if text_start < text.len() {
+        parts.push(RawPart::Text(text[text_start..].to_string()));
+    }
+    Ok(found.then_some(parts))
+}
+
 /// Checks a name against the job's `needs:` and the needed job's
 /// `outputs:`.
 pub(crate) fn check_name(
@@ -108,9 +165,21 @@ impl Scope<'_> {
         if text == "matrix" || text.starts_with("matrix.") {
             return self.matrix_value(text);
         }
+        if let Some(name) = text.strip_prefix("vars.") {
+            check_ref_name("vars", name)?;
+            // A variable that is not set reads as empty, as an unset
+            // environment variable would.
+            return Ok(self.ctx.vars.get(name).cloned().unwrap_or_default());
+        }
+        if secret_name(text).is_some() {
+            return Err(
+                "secrets can only be used in `env:` values, so they never appear in arguments, scripts or names; set one there and read the variable"
+                    .into(),
+            );
+        }
         let name = expr::parse_name(text).map_err(|_| {
             format!(
-                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`"
+                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `vars.<name>`, `secrets.<name>` (in `env:`)"
             )
         })?;
         check_name(&name, self.needs_list, self.decls)?;
