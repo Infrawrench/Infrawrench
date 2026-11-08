@@ -203,6 +203,27 @@ impl Catalog {
         }
     }
 
+    /// Every name published as a builtin or an environment, sorted. Repository
+    /// tools are not listed: their namespace belongs to one repository.
+    pub fn names(&self, kind: ToolKind) -> Result<Vec<String>, Error> {
+        let prefix = match kind {
+            ToolKind::Builtin => Namespace::Builtin.prefix(),
+            ToolKind::Env => Namespace::Environment.prefix(),
+            ToolKind::Repo => return Ok(Vec::new()),
+        };
+        let mut names: Vec<String> = self
+            .store
+            .list(&prefix)?
+            .iter()
+            .filter_map(|key| {
+                let (name, file) = key.strip_prefix(&prefix)?.split_once('/')?;
+                (file.ends_with(MANIFEST_SUFFIX) && !file.contains('/')).then(|| name.to_owned())
+            })
+            .collect();
+        names.dedup();
+        Ok(names)
+    }
+
     /// Every published version of a name, highest first, prereleases
     /// included.
     pub fn versions(

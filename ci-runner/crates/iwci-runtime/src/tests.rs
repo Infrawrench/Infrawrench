@@ -74,6 +74,8 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
             memory_bytes: 64 << 20,
         },
         log: None,
+        scratch: None,
+        commands: Vec::new(),
     }
 }
 
@@ -945,5 +947,79 @@ fn output_is_handed_to_the_log_sink_as_it_is_written() {
     assert_eq!(
         streamed, outcome.stdout,
         "the sink sees what the capture keeps"
+    );
+}
+
+/// The run's scratch is one file system mounted into every job, inside the
+/// job's own `/tmp`, and it outlives each job.
+#[test]
+fn a_scratch_directory_is_shared_between_separate_runs() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let scratch = SnapshotBuilder::new().freeze().fork();
+    let first = snapshot(&[]).fork();
+    let mut inv = invocation(first.as_dyn(), &[]);
+    inv.scratch = Some(scratch.as_dyn());
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "mkdir -p /tmp/workflow/dist && echo built > /tmp/workflow/dist/out.txt && echo private > /tmp/mine.txt",
+            inv,
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert_eq!(scratch.read("/dist/out.txt").unwrap(), b"built\n");
+    // The scratch is not the job's change, and the job's own /tmp is not
+    // shared.
+    assert!(first.changes("/").is_empty(), "{:?}", first.changes("/"));
+
+    let second = snapshot(&[]).fork();
+    let mut inv = invocation(second.as_dyn(), &[]);
+    inv.scratch = Some(scratch.as_dyn());
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "cat /tmp/workflow/dist/out.txt; test ! -e /tmp/mine.txt",
+            inv,
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert_eq!(outcome.stdout, b"built\n");
+}
+
+/// `tools:`: a WASI command on PATH, run by name from a script.
+#[test]
+fn a_script_runs_a_tool_on_path_by_name() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let Some(path) = fixture("IWCI_TEST_GOFMT_WASM", "a gofmt built for wasip1") else {
+        return;
+    };
+    let bytes = std::fs::read(&path).unwrap();
+    let rt = runtime();
+    let job = snapshot(&[(
+        "/work/bad.go",
+        "package main\nfunc main(){\nprintln( 1 )}\n",
+    )])
+    .fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.memory_bytes = 1 << 30;
+    inv.commands = vec![PathCommand {
+        name: "gofmt".into(),
+        module: WasmModule::new("gofmt", bytes),
+    }];
+    let outcome = rt
+        .run_script(&packages, "bash", "command -v gofmt\ngofmt -l .", inv)
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "/usr/local/bin/gofmt\nbad.go\n"
     );
 }

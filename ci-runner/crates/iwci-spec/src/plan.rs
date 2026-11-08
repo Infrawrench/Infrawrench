@@ -18,6 +18,8 @@ pub struct Plan {
     pub workspaces: Vec<WorkspaceSpec>,
     /// In file order.
     pub jobs: Vec<JobTemplate>,
+    /// The most the run's shared `/tmp/workflow` holds (`scratch:`).
+    pub scratch_bytes: u64,
     /// What every job declares, for expanding deferred jobs later.
     #[serde(skip)]
     pub(crate) decls: HashMap<String, crate::JobDecl>,
@@ -110,6 +112,8 @@ pub struct JobTemplate {
     pub workspace: usize,
     pub paths: Vec<String>,
     pub tool: ToolRef,
+    /// `tools:`, the same for every expanded job.
+    pub tools: Vec<ToolRef>,
     /// The expanded jobs, or `None` when they depend on `needs` outputs.
     pub instances: Option<Vec<PlannedJob>>,
     #[serde(skip)]
@@ -307,6 +311,11 @@ pub struct PlannedJob {
     pub action: Action,
     pub cwd: String,
     pub env: Vec<(String, String)>,
+    /// `env:` values that read `${{ secrets.<name> }}`, filled in when the
+    /// job starts so a secret never enters the plan or its report.
+    pub secret_env: Vec<SecretEnv>,
+    /// `tools:`: run by name from an `env:` job's script.
+    pub tools: Vec<ToolRef>,
     /// Index into [`Plan::workspaces`].
     pub workspace: usize,
     pub changes: ChangePolicy,
@@ -317,6 +326,40 @@ pub struct PlannedJob {
     pub memory_bytes: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
+}
+
+/// An `env:` value with secrets in it: text (already substituted) and
+/// secret names, joined when the job starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SecretEnv {
+    pub key: String,
+    pub parts: Vec<SecretPart>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SecretPart {
+    Text(String),
+    Secret(String),
+}
+
+impl SecretEnv {
+    /// The value, with each secret looked up by `secret`; a missing one is
+    /// empty and its name is returned too.
+    pub fn fill(&self, secret: impl Fn(&str) -> Option<String>) -> (String, Vec<String>) {
+        let mut value = String::new();
+        let mut missing = Vec::new();
+        for part in &self.parts {
+            match part {
+                SecretPart::Text(t) => value.push_str(t),
+                SecretPart::Secret(name) => match secret(name) {
+                    Some(v) => value.push_str(&v),
+                    None => missing.push(name.clone()),
+                },
+            }
+        }
+        (value, missing)
+    }
 }
 
 /// One `cache:` entry of a job, with every expression substituted except
@@ -350,6 +393,14 @@ pub enum ToolRef {
 impl ToolRef {
     pub fn is_env(&self) -> bool {
         matches!(self, ToolRef::Env { .. })
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            ToolRef::Builtin { name, .. }
+            | ToolRef::Repo { name, .. }
+            | ToolRef::Env { name, .. } => name,
+        }
     }
 }
 

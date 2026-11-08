@@ -5,6 +5,7 @@
 //! store, the job slots and memory budget); a [`RunRequest`] says which
 //! commit to run and for whom.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -80,6 +81,56 @@ pub struct RunRequest {
     /// A token for a private repository. Never stored or echoed.
     #[serde(default)]
     pub token: Option<String>,
+    /// Secrets for `env:` values that read `${{ secrets.<name> }}`. Never
+    /// stored, echoed or put in a plan; masked in output and reports.
+    #[serde(default)]
+    pub secrets: Secrets,
+    /// Variables for `${{ vars.<name> }}`. Not secret.
+    #[serde(default)]
+    pub vars: BTreeMap<String, String>,
+}
+
+/// A run's secrets. Its `Debug` lists names only, so logging a request
+/// cannot print a value.
+#[derive(Clone, Default, Deserialize)]
+#[serde(transparent)]
+pub struct Secrets(pub BTreeMap<String, String>);
+
+impl std::fmt::Debug for Secrets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.keys()).finish()
+    }
+}
+
+/// The most secrets, or variables, one run may carry.
+pub const MAX_NAMED_VALUES: usize = 200;
+/// The largest one secret or variable may be.
+pub const MAX_NAMED_VALUE_BYTES: usize = 48 << 10;
+
+/// Checks the names and sizes of a request's secrets or variables.
+fn check_named(kind: &str, values: &BTreeMap<String, String>) -> Result<(), String> {
+    if values.len() > MAX_NAMED_VALUES {
+        return Err(format!(
+            "{} {kind}; the limit is {MAX_NAMED_VALUES}",
+            values.len()
+        ));
+    }
+    for (name, value) in values {
+        let ok = !name.is_empty()
+            && name.len() <= 128
+            && (name.as_bytes()[0].is_ascii_alphabetic() || name.as_bytes()[0] == b'_')
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        if !ok {
+            return Err(format!("`{name}` is not a valid name for {kind}"));
+        }
+        if value.len() > MAX_NAMED_VALUE_BYTES || value.contains('\0') {
+            return Err(format!(
+                "{kind} `{name}` is over {} KiB or contains a NUL byte",
+                MAX_NAMED_VALUE_BYTES >> 10
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A size given as a number of bytes or as text such as `10GiB`.
@@ -226,6 +277,8 @@ struct Target {
 
 impl Runner {
     fn resolve(&self, req: &RunRequest) -> Result<Target, String> {
+        check_named("secrets", &req.secrets.0)?;
+        check_named("vars", &req.vars)?;
         let event = req.event()?;
         let owner = req.owner()?;
         let repo_id = req.repo_id()?;
@@ -345,6 +398,7 @@ impl Runner {
             branch: r.branch.clone(),
             repo_id: r.repo_id.as_str().to_string(),
             event: r.event,
+            vars: req.vars.clone(),
         };
         let (tools, executor, workspaces, committer) = self.parts(&r, req);
         let default_branch = req
@@ -363,6 +417,7 @@ impl Runner {
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),
             ],
             memory: self.memory.clone(),
+            secrets: req.secrets.0.clone(),
             caches: Some(Arc::new(StoreCaches::new(
                 self.store.clone(),
                 &r.owner,
@@ -451,6 +506,7 @@ impl Runner {
             branch: r.branch.clone(),
             repo_id: r.repo_id.as_str().to_string(),
             event: r.event,
+            vars: req.vars.clone(),
         };
         let (tools, _, workspaces, _) = self.parts(&r, req);
         let mut out = PrepareOutput {
@@ -484,55 +540,121 @@ impl Runner {
                 }
             }
             for template in &plan.jobs {
-                let name = template.tool.to_string();
-                if !seen_tools.insert(name.clone()) {
-                    continue;
-                }
-                let prepared =
-                    tools
-                        .resolve(&template.tool)
-                        .and_then(|resolved| match resolved.as_ref() {
-                            Resolved::Tool {
-                                manifest, module, ..
-                            } => {
-                                let sha: [u8; 32] = hex::decode(&module.sha256)
-                                    .ok()
-                                    .and_then(|b| b.try_into().ok())
-                                    .ok_or("bad module hash")?;
-                                let module = iwci_runtime::WasmModule::with_sha256(
-                                    manifest.name.clone(),
-                                    sha,
-                                    module.bytes.clone(),
-                                );
-                                self.runtime.prepare(&module).map_err(|e| e.to_string())
-                            }
-                            Resolved::Env {
-                                manifest, packages, ..
-                            } => {
-                                let webcs: Vec<_> = manifest
-                                    .packages
-                                    .iter()
-                                    .zip(packages)
-                                    .map(|(p, b)| {
-                                        iwci_runtime::WebcPackage::new(
-                                            p.name.clone(),
-                                            p.version.to_string(),
-                                            b.bytes.clone(),
-                                        )
-                                    })
-                                    .collect();
-                                self.runtime
-                                    .prepare_environment(&webcs)
-                                    .map_err(|e| e.to_string())
-                            }
-                        });
-                match prepared {
-                    Ok(()) => out.tools.push(name),
-                    Err(e) => out.problems.push(format!("{name}: {e}")),
+                for tool in std::iter::once(&template.tool).chain(&template.tools) {
+                    let name = tool.to_string();
+                    if !seen_tools.insert(name.clone()) {
+                        continue;
+                    }
+                    match tools.resolve(tool).and_then(|r| self.warm(&r)) {
+                        Ok(()) => out.tools.push(name),
+                        Err(e) => out.problems.push(format!("{name}: {e}")),
+                    }
                 }
             }
         }
         Ok(out)
+    }
+}
+
+/// What [`Runner::warm_published`] warmed, and what it could not.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WarmOutput {
+    pub warmed: Vec<String>,
+    pub problems: Vec<String>,
+}
+
+impl Runner {
+    /// Downloads and compiles every published builtin and environment, so
+    /// no job pays for it: the newest release of each `major.minor` (which
+    /// covers every pin a pipeline can write, `@1`, `@1.27` or `@1.27.3`
+    /// of the newest patch). Blobs land in the store's disk cache and
+    /// compiled code in the module cache, on disk and in memory. A fresh
+    /// catalog each time, so a newly published version is seen.
+    /// Repository tools are left to their first use: there can be any
+    /// number, and each belongs to one repository.
+    pub fn warm_published(&self) -> WarmOutput {
+        let mut out = WarmOutput::default();
+        let catalog = iwci_store::Catalog::new(self.store.clone());
+        let repo = RepoId::new("warm").expect("a valid id");
+        for (kind, label) in [
+            (iwci_store::ToolKind::Builtin, "builtin"),
+            (iwci_store::ToolKind::Env, "env"),
+        ] {
+            let names = match catalog.names(kind) {
+                Ok(names) => names,
+                Err(e) => {
+                    out.problems.push(format!("listing {label}s: {e}"));
+                    continue;
+                }
+            };
+            for name in names {
+                let versions = match catalog.versions(kind, &name, &repo) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        out.problems.push(format!("{label}:{name}: {e}"));
+                        continue;
+                    }
+                };
+                let mut seen = std::collections::HashSet::new();
+                for version in versions.iter().filter(|v| v.pre.is_empty()) {
+                    if !seen.insert((version.major, version.minor)) {
+                        continue;
+                    }
+                    let reference = format!("{label}:{name}@{version}");
+                    let warmed = reference
+                        .parse::<iwci_store::ToolRef>()
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| catalog.resolve(&r, &repo).map_err(|e| e.to_string()))
+                        .and_then(|resolved| self.warm(&resolved));
+                    match warmed {
+                        Ok(()) => out.warmed.push(reference),
+                        Err(e) => out.problems.push(format!("{reference}: {e}")),
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Compiles a resolved tool (or every command of an environment) into
+    /// the module cache, in memory and on disk; its bytes are already in the
+    /// store's disk cache by the time it resolves.
+    pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
+        match resolved {
+            Resolved::Tool {
+                manifest, module, ..
+            } => {
+                let sha: [u8; 32] = hex::decode(&module.sha256)
+                    .ok()
+                    .and_then(|b| b.try_into().ok())
+                    .ok_or("bad module hash")?;
+                let module = iwci_runtime::WasmModule::with_sha256(
+                    manifest.name.clone(),
+                    sha,
+                    module.bytes.clone(),
+                );
+                self.runtime.prepare(&module).map_err(|e| e.to_string())
+            }
+            Resolved::Env {
+                manifest, packages, ..
+            } => {
+                let webcs: Vec<_> = manifest
+                    .packages
+                    .iter()
+                    .zip(packages)
+                    .map(|(p, b)| {
+                        iwci_runtime::WebcPackage::new(
+                            p.name.clone(),
+                            p.version.to_string(),
+                            b.bytes.clone(),
+                        )
+                    })
+                    .collect();
+                self.runtime
+                    .prepare_environment(&webcs)
+                    .map_err(|e| e.to_string())
+            }
+        }
     }
 }
 

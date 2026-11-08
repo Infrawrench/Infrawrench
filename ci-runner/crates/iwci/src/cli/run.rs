@@ -6,9 +6,12 @@
 //!          [--pipeline <file.yml>] [--cpus <n>] [--memory <size>] [--json]
 //!          [--default-branch main]
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
+//!          [--var NAME=value]...
 //! ```
 //!
-//! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag.
+//! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
+//! and so do secrets: `IWCI_SECRET_<NAME>` becomes `${{ secrets.<NAME> }}`,
+//! so a value never lands in shell history or a process listing.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -150,6 +153,25 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
         storage_quota: None,
         // From the environment only, never a flag (see `Runner::resolve`).
         token: None,
+        secrets: crate::runner::Secrets(
+            std::env::vars()
+                .filter_map(|(k, v)| {
+                    k.strip_prefix("IWCI_SECRET_")
+                        .filter(|name| !name.is_empty())
+                        .map(|name| (name.to_string(), v))
+                })
+                .collect(),
+        ),
+        vars: {
+            let mut vars = std::collections::BTreeMap::new();
+            while let Some(pair) = args.value("--var")? {
+                let (name, value) = pair
+                    .split_once('=')
+                    .ok_or_else(|| format!("--var takes NAME=value, not `{pair}`"))?;
+                vars.insert(name.to_string(), value.to_string());
+            }
+            vars
+        },
     };
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());

@@ -138,7 +138,7 @@ pub(crate) fn run(
         &mut store,
         TscEnv {
             memory: None,
-            fs: inv.fs.clone(),
+            fs: with_scratch(inv.fs.clone(), inv.scratch.clone())?,
             staged: Vec::new(),
             environ: inv
                 .env
@@ -725,4 +725,18 @@ fn chtimes(
         Ok(()) => Reply::Ok(Vec::new()),
         Err(e) => Reply::Error(format!("chtimes {path}: {}", errno_text(&e))),
     }
+}
+
+/// The compiler reads files straight from the job's file system, not
+/// through wasmer-wasix's root, so the run's scratch is mounted here too.
+fn with_scratch(fs: crate::DynFs, scratch: Option<crate::DynFs>) -> crate::Result<crate::DynFs> {
+    let Some(scratch) = scratch else {
+        return Ok(fs);
+    };
+    let root = virtual_fs::MountFileSystem::new();
+    let err = |e| crate::Error::Setup(format!("mounting the job file system: {e}"));
+    root.mount(Path::new("/"), fs).map_err(err)?;
+    root.mount(Path::new(crate::SCRATCH_MOUNT), scratch)
+        .map_err(err)?;
+    Ok(std::sync::Arc::new(root))
 }

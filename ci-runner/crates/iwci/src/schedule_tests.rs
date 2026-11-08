@@ -43,6 +43,7 @@ impl Tools for FakeTools {
 /// tool records the env it saw.
 struct FakeExecutor {
     seen_env: Mutex<HashMap<String, Vec<(String, String)>>>,
+    seen_tools: Mutex<HashMap<String, Vec<String>>>,
     order: Mutex<Vec<String>>,
     running: AtomicUsize,
     most_at_once: AtomicUsize,
@@ -52,10 +53,15 @@ impl Executor<String> for FakeExecutor {
     fn execute(
         &self,
         tool: &String,
+        path_tools: &[Arc<String>],
         _action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
         self.order.lock().unwrap().push(inv.job.id.clone());
+        self.seen_tools.lock().unwrap().insert(
+            inv.job.id.clone(),
+            path_tools.iter().map(|t| t.to_string()).collect(),
+        );
         let now = self.running.fetch_add(1, Ordering::SeqCst) + 1;
         self.most_at_once.fetch_max(now, Ordering::SeqCst);
         struct Done<'a>(&'a AtomicUsize);
@@ -98,8 +104,26 @@ impl Executor<String> for FakeExecutor {
                 inv.fs.write(&path, args.join("\n").as_bytes()).unwrap();
             }
         }
+        let mut stdout = String::new();
+        if tool.contains(":print@") {
+            for (k, v) in &inv.env {
+                stdout.push_str(&format!("{k}={v}\n"));
+            }
+        }
+        if tool.contains(":scratch-write@") {
+            inv.scratch
+                .write("/shared.txt", inv.job.id.as_bytes())
+                .unwrap();
+        }
+        if tool.contains(":scratch-read@") {
+            match inv.scratch.read("/shared.txt") {
+                Ok(bytes) => stdout.push_str(&String::from_utf8_lossy(&bytes)),
+                Err(_) => exit_code = 1,
+            }
+        }
         Ok(Execution {
             exit_code,
+            stdout,
             ..Default::default()
         })
     }
@@ -148,12 +172,24 @@ fn run_with(
     memory: Option<Arc<MemoryBudget>>,
     caches: Option<Arc<dyn Caches>>,
 ) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
+    run_full(plan, changed, fail_ws, memory, caches, BTreeMap::new())
+}
+
+fn run_full(
+    plan: &Plan,
+    changed: Option<Vec<String>>,
+    fail_ws: bool,
+    memory: Option<Arc<MemoryBudget>>,
+    caches: Option<Arc<dyn Caches>>,
+    secrets: BTreeMap<String, String>,
+) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         fail: fail_ws,
     };
     let exec = FakeExecutor {
         seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
         order: Mutex::default(),
         running: AtomicUsize::new(0),
         most_at_once: AtomicUsize::new(0),
@@ -170,6 +206,7 @@ fn run_with(
         caches,
         logs: None,
         slots: None,
+        secrets,
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -552,6 +589,7 @@ fn runs_share_the_runners_slots() {
     let p = plan("name: x\njobs:\n  t:\n    using: builtin:slow@1\n    matrix: [a, b, c, d]\n");
     let exec = FakeExecutor {
         seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
         order: Mutex::default(),
         running: AtomicUsize::new(0),
         most_at_once: AtomicUsize::new(0),
@@ -569,6 +607,7 @@ fn runs_share_the_runners_slots() {
         caches: None,
         logs: None,
         slots: Some(slots.clone()),
+        secrets: BTreeMap::new(),
     };
     // Two runs at once, each wanting four jobs in parallel: together they
     // never exceed the two slots.
@@ -592,6 +631,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         fn execute(
             &self,
             _tool: &String,
+            _path_tools: &[Arc<String>],
             _action: &Action,
             inv: Invocation<'_>,
         ) -> Result<Execution, String> {
@@ -616,6 +656,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         caches: None,
         logs: Some(Arc::new(move |e| sink.lock().unwrap().push(e))),
         slots: None,
+        secrets: BTreeMap::new(),
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -652,5 +693,77 @@ fn logs_stream_lines_and_job_events_in_order() {
     assert!(
         text.contains(r#""event":"job-finished","job":"b","status":"skipped""#),
         "a skipped job is reported too: {text}"
+    );
+}
+
+#[test]
+fn secrets_are_filled_late_and_masked_everywhere_output_goes() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:print@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n      AUTH: \"Bearer ${{ secrets.TOKEN }}\"\n      MISSING: ${{ secrets.NOPE }}\n",
+    );
+    // Nothing secret is in the plan.
+    assert!(!serde_json::to_string(&p).unwrap().contains("hunter2-value"));
+    let secrets = BTreeMap::from([("TOKEN".to_string(), "hunter2-value".to_string())]);
+    let (report, exec, _, _) = run_full(&p, None, false, None, None, secrets);
+    let env = exec.seen_env.lock().unwrap()["a"].clone();
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    assert_eq!(get("TOKEN").as_deref(), Some("hunter2-value"));
+    assert_eq!(get("AUTH").as_deref(), Some("Bearer hunter2-value"));
+    assert_eq!(get("MISSING").as_deref(), Some(""));
+    let job = &report.jobs[0];
+    let stdout = &job.execution.as_ref().unwrap().stdout;
+    assert!(
+        stdout.contains("TOKEN=***") && stdout.contains("AUTH=Bearer ***"),
+        "{stdout}"
+    );
+    assert!(
+        !serde_json::to_string(&report)
+            .unwrap()
+            .contains("hunter2-value")
+    );
+    assert_eq!(job.notes.len(), 1, "{:?}", job.notes);
+    assert!(job.notes[0].contains("`NOPE`"));
+}
+
+#[test]
+fn masking_covers_lines_of_multiline_secrets_and_skips_tiny_ones() {
+    let mask = Masker::new(&[
+        "line-one\nline-two".to_string(),
+        "ab".to_string(),
+        "abc-and-more".to_string(),
+    ]);
+    assert_eq!(mask.mask("x line-two y"), "x *** y");
+    assert_eq!(mask.mask("ab abc-and-more"), "ab ***");
+    assert_eq!(mask.mask("line-one\nline-two"), "***");
+}
+
+#[test]
+fn every_job_of_a_run_shares_one_scratch() {
+    let p = plan(
+        "name: x\njobs:\n  w:\n    using: builtin:scratch-write@1\n  r:\n    using: builtin:scratch-read@1\n    needs: [w]\n",
+    );
+    let (report, exec, _, _) = run_plan(&p, None, false);
+    assert!(matches!(status(&report, "r"), Status::Passed), "{report:?}");
+    assert_eq!(report.jobs[1].execution.as_ref().unwrap().stdout, "w");
+    let env = exec.seen_env.lock().unwrap()["r"].clone();
+    assert!(env.contains(&("IWCI_SCRATCH".to_string(), "/tmp/workflow".to_string())));
+    // A second run starts with an empty scratch.
+    let p = plan("name: x\njobs:\n  r:\n    using: builtin:scratch-read@1\n");
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(matches!(status(&report, "r"), Status::Failed { .. }));
+}
+
+#[test]
+fn tools_are_resolved_and_handed_to_the_executor() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    tools: [builtin:gofmt@1, repo:lint@2]\n    run: gofmt\n  b:\n    using: env:bash@5\n    tools: [repo:missing@1]\n    run: x\n",
+    );
+    let (report, exec, _, _) = run_plan(&p, None, false);
+    assert_eq!(
+        exec.seen_tools.lock().unwrap()["a"],
+        vec!["builtin:gofmt@1".to_string(), "repo:lint@2".to_string()]
+    );
+    assert!(
+        matches!(status(&report, "b"), Status::Error { message } if message.contains("repo:missing@1"))
     );
 }

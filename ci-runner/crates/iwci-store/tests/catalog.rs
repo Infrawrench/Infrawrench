@@ -549,3 +549,18 @@ fn tool_ref_round_trip() {
         assert!(bad.parse::<ToolRef>().is_err(), "{bad}");
     }
 }
+
+#[test]
+fn names_lists_builtins_and_environments_but_not_repository_tools() {
+    let f = fixture();
+    f.publish(&Namespace::Builtin, "gofmt", &["1.27.3", "1.26.1"]);
+    f.publish(&Namespace::Builtin, "typescript", &["7.1.0"]);
+    f.publish(&Namespace::Repo(repo("web")), "lint", &["1.0.0"]);
+    let catalog = f.catalog();
+    assert_eq!(
+        catalog.names(ToolKind::Builtin).unwrap(),
+        vec!["gofmt".to_string(), "typescript".to_string()]
+    );
+    assert!(catalog.names(ToolKind::Env).unwrap().is_empty());
+    assert!(catalog.names(ToolKind::Repo).unwrap().is_empty());
+}

@@ -6,6 +6,7 @@ fn ctx() -> Context {
         branch: "main".into(),
         repo_id: "repo_1".into(),
         event: Event::Push,
+        vars: Default::default(),
     }
 }
 
@@ -259,7 +260,7 @@ fn expressions() {
     );
     assert_error(
         "name: x\njobs:\n  t:\n    using: builtin:t@1\n    args: [\"${{ secrets.TOKEN }}\"]\n",
-        "unknown expression `secrets.TOKEN`",
+        "secrets can only be used in `env:` values",
     );
     assert_error(
         "name: x\njobs:\n  t:\n    using: builtin:t@1\n    args: [\"${{ commit.sha\"]\n",
@@ -818,4 +819,130 @@ fn schedules_trigger_scheduled_runs_only() {
     // A push pipeline is not a scheduled one.
     let plan = parse("name: x\njobs:\n  a:\n    using: builtin:t@1\n", &ctx()).unwrap();
     assert!(!plan.triggers.matches(Event::Schedule, "main", None));
+}
+
+#[test]
+fn tools_go_on_an_environment_path() {
+    let plan = parse(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    tools: [builtin:gofmt@1.27, repo:lint@2]\n    run: gofmt -l .\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        first(&plan).tools,
+        vec![
+            ToolRef::Builtin {
+                name: "gofmt".into(),
+                version: "1.27".into()
+            },
+            ToolRef::Repo {
+                name: "lint".into(),
+                version: "2".into()
+            },
+        ]
+    );
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: builtin:gofmt@1\n    tools: [builtin:oxfmt@1]\n",
+        "needs `using: env:...`",
+    );
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    tools: [env:bash-node@24]\n    run: x\n",
+        "is an environment",
+    );
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    tools: [builtin:gofmt@1, repo:gofmt@2]\n    run: x\n",
+        "two tools named `gofmt`",
+    );
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    tools: [gofmt]\n    run: x\n",
+        "not a tool reference",
+    );
+}
+
+#[test]
+fn secrets_stay_names_and_only_live_in_env() {
+    let plan = parse(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    env:\n      TOKEN: ${{ secrets.NPM_TOKEN }}\n      AUTH: \"Bearer ${{secrets.API_KEY}} on ${{ commit.branch }}\"\n      PLAIN: ${{ commit.branch }}\n    run: x\n",
+        &ctx(),
+    )
+    .unwrap();
+    let job = first(&plan);
+    assert_eq!(job.env, vec![("PLAIN".to_string(), "main".to_string())]);
+    assert_eq!(job.secret_env.len(), 2);
+    assert_eq!(
+        job.secret_env[0].parts,
+        vec![SecretPart::Secret("NPM_TOKEN".into())]
+    );
+    assert_eq!(
+        job.secret_env[1].parts,
+        vec![
+            SecretPart::Text("Bearer ".into()),
+            SecretPart::Secret("API_KEY".into()),
+            SecretPart::Text(" on main".into()),
+        ]
+    );
+    let (value, missing) =
+        job.secret_env[1].fill(|n| (n == "API_KEY").then(|| "s3cr3t".to_string()));
+    assert_eq!(value, "Bearer s3cr3t on main");
+    assert!(missing.is_empty());
+    let (value, missing) = job.secret_env[0].fill(|_| None);
+    assert_eq!(
+        (value.as_str(), missing),
+        ("", vec!["NPM_TOKEN".to_string()])
+    );
+    // The plan itself never holds a value.
+    let json = serde_json::to_string(&plan).unwrap();
+    assert!(!json.contains("s3cr3t"));
+
+    for (field, yaml) in [
+        (
+            "args",
+            "using: builtin:t@1\n    args: [\"${{ secrets.X }}\"]",
+        ),
+        ("run", "using: env:bash@5\n    run: echo ${{ secrets.X }}"),
+        ("name", "using: builtin:t@1\n    name: ${{ secrets.X }}"),
+    ] {
+        let yaml = format!("name: x\njobs:\n  a:\n    {yaml}\n");
+        assert_error(&yaml, "only be used in `env:` values");
+        let _ = field;
+    }
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    env: { T: \"${{ secrets.9bad }}\" }\n    run: x\n",
+        "not a valid name",
+    );
+}
+
+#[test]
+fn vars_are_substituted_anywhere_and_unset_ones_are_empty() {
+    let mut context = ctx();
+    context.vars.insert("REGION".into(), "eu-west-1".into());
+    let plan = parse(
+        "name: x\njobs:\n  a:\n    name: deploy ${{ vars.REGION }}\n    using: builtin:t@1\n    args: [\"--region=${{ vars.REGION }}\", \"x${{ vars.UNSET }}\"]\n",
+        &context,
+    )
+    .unwrap();
+    let job = first(&plan);
+    assert_eq!(job.display_name, "deploy eu-west-1");
+    assert_eq!(
+        job.action,
+        Action::Args {
+            args: vec!["--region=eu-west-1".into(), "x".into()]
+        }
+    );
+}
+
+#[test]
+fn scratch_has_a_default_and_a_bound() {
+    let plan = parse("name: x\njobs:\n  a:\n    using: builtin:t@1\n", &ctx()).unwrap();
+    assert_eq!(plan.scratch_bytes, DEFAULT_SCRATCH);
+    let plan = parse(
+        "name: x\nscratch: 4GiB\njobs:\n  a:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(plan.scratch_bytes, 4 << 30);
+    assert_error(
+        "name: x\nscratch: 64GiB\njobs:\n  a:\n    using: builtin:t@1\n",
+        "between 16MiB and 16GiB",
+    );
 }

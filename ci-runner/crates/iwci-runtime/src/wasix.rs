@@ -379,7 +379,11 @@ fn parse_package(
 
 /// The root file system of a job: the job's own file system at `/`, with
 /// scratch mounts that keep WASIX's own files out of `JobFs::changes`.
-fn job_root(fs: crate::DynFs) -> Result<MountFileSystem> {
+fn job_root(
+    fs: crate::DynFs,
+    scratch: Option<crate::DynFs>,
+    commands: &[crate::PathCommand],
+) -> Result<MountFileSystem> {
     let root = MountFileSystem::new();
     let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
     root.mount(Path::new("/"), fs).map_err(mount_err)?;
@@ -397,7 +401,37 @@ fn job_root(fs: crate::DynFs) -> Result<MountFileSystem> {
         .map_err(mount_err)?;
     root.mount(Path::new("/usr/bin"), Arc::new(TmpFileSystem::new()))
         .map_err(mount_err)?;
+    if let Some(scratch) = scratch {
+        root.mount(Path::new(crate::SCRATCH_MOUNT), scratch)
+            .map_err(mount_err)?;
+    }
+    if !commands.is_empty() {
+        let bin = TmpFileSystem::new();
+        for command in commands {
+            write_command(&bin, &command.name, &command.module.bytes)?;
+        }
+        root.mount(Path::new("/usr/local/bin"), Arc::new(bin))
+            .map_err(mount_err)?;
+    }
     Ok(root)
+}
+
+/// Writes `bytes` as the executable file `/<name>` of `fs`.
+fn write_command(fs: &TmpFileSystem, name: &str, bytes: &[u8]) -> Result<()> {
+    use virtual_fs::AsyncWriteExt;
+    let err = |e: &dyn std::fmt::Display| Error::Setup(format!("writing command `{name}`: {e}"));
+    let mut file = fs
+        .new_open_options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(Path::new("/").join(name))
+        .map_err(|e| err(&e))?;
+    futures::executor::block_on(async {
+        file.write_all(bytes).await?;
+        file.flush().await
+    })
+    .map_err(|e| err(&e))
 }
 
 /// The engine clone and tunables of one job.
@@ -497,7 +531,11 @@ pub(crate) fn run(
         builder.add_env("PWD", inv.cwd.clone());
     }
     builder.set_runtime(runtime.clone());
-    builder.set_mount_fs(job_root(inv.fs.clone())?);
+    builder.set_mount_fs(job_root(
+        inv.fs.clone(),
+        inv.scratch.clone(),
+        &inv.commands,
+    )?);
     builder.set_current_dir(&inv.cwd);
     builder
         .add_preopen_dir("/")

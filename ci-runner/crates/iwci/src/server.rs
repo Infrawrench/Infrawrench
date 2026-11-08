@@ -49,6 +49,8 @@ const KEEP_FINISHED: usize = 1000;
 
 pub struct Server {
     runner: Arc<Runner>,
+    /// The last [`Runner::warm_published`], and when it finished.
+    warm: Mutex<Option<(u64, crate::runner::WarmOutput)>>,
     key: Vec<u8>,
     runs: Mutex<HashMap<String, RunEntry>>,
     logs: Mutex<HashMap<String, Arc<LogHub>>>,
@@ -155,6 +157,7 @@ impl Server {
         }
         Ok(Self {
             runner: Arc::new(runner),
+            warm: Mutex::default(),
             key: key.into_bytes(),
             runs: Mutex::default(),
             logs: Mutex::default(),
@@ -266,7 +269,44 @@ impl Server {
             "runs_active": self.active.load(Ordering::SeqCst),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
             "memory_used": self.runner.memory.as_ref().map(|m| m.used()),
+            "warm": self.warm.lock().unwrap().as_ref().map(|(at, w)| json!({
+                "finished_at": at,
+                "tools": w.warmed.len(),
+                "problems": w.problems,
+            })),
         })
+    }
+
+    /// Keeps every published builtin and environment downloaded and
+    /// compiled: once now, then every `every`, in the background. Warming
+    /// takes no job slot; it competes for the CPU like any other work, which
+    /// is why it runs once per interval rather than continuously.
+    pub fn keep_warm(self: &Arc<Self>, every: std::time::Duration) {
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-warm".into())
+            .spawn(move || {
+                loop {
+                    let started = std::time::Instant::now();
+                    let out = server.runner.warm_published();
+                    eprintln!(
+                        "iwci serve: warmed {} builtins and environments in {:.1}s{}",
+                        out.warmed.len(),
+                        started.elapsed().as_secs_f64(),
+                        if out.problems.is_empty() {
+                            String::new()
+                        } else {
+                            format!("; problems: {}", out.problems.join("; "))
+                        }
+                    );
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs());
+                    *server.warm.lock().unwrap() = Some((now, out));
+                    std::thread::sleep(every);
+                }
+            })
+            .expect("spawning the warming thread");
     }
 
     fn full(&self) -> Response<std::io::Cursor<Vec<u8>>> {

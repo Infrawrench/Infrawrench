@@ -162,6 +162,25 @@ pub struct Invocation {
     /// Receives output as the program writes it, for live logs. The
     /// [`Outcome`] still carries the captured output either way.
     pub log: Option<LogSink>,
+    /// The run's shared scratch directory, mounted at
+    /// [`SCRATCH_MOUNT`] for every ABI.
+    pub scratch: Option<DynFs>,
+    /// Wasm commands a script can run by name, written to `/usr/local/bin`
+    /// (first on the default `PATH`). Only scripts use them.
+    pub commands: Vec<PathCommand>,
+}
+
+/// Where [`Invocation::scratch`] is mounted.
+pub const SCRATCH_MOUNT: &str = "/tmp/workflow";
+
+/// A WASI or WASIX command module a script runs by `name` (`tools:`). The
+/// shell finds it on `PATH` as a file and wasmer-wasix runs it like any
+/// other program; its compiled form is shared with the module cache, so a
+/// tool compiled for a builtin job is already warm here.
+#[derive(Clone)]
+pub struct PathCommand {
+    pub name: String,
+    pub module: WasmModule,
 }
 
 impl std::fmt::Debug for Invocation {
@@ -171,6 +190,15 @@ impl std::fmt::Debug for Invocation {
             .field("cwd", &self.cwd)
             .field("limits", &self.limits)
             .field("log", &self.log.is_some())
+            .field("scratch", &self.scratch.is_some())
+            .field(
+                "commands",
+                &self
+                    .commands
+                    .iter()
+                    .map(|c| &c.module.name)
+                    .collect::<Vec<_>>(),
+            )
             .finish_non_exhaustive()
     }
 }

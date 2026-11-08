@@ -103,6 +103,7 @@ fn placeholder_context() -> Context {
         branch: "main".into(),
         repo_id: "local".into(),
         event: iwci_spec::Event::Push,
+        vars: Default::default(),
     }
 }
 
