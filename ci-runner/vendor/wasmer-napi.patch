@@ -1,0 +1,75 @@
+--- a/src/ctx.rs
++++ b/src/ctx.rs
+@@ -95,7 +95,7 @@
+         let envs = self.envs.lock().expect("poisoned N-API env registry");
+         for env in envs.iter().copied() {
+             unsafe {
+-                crate::snapi::snapi_bridge_unofficial_terminate_execution(
++                crate::snapi::snapi_bridge_host_terminate_execution(
+                     env as crate::snapi::SnapiEnv,
+                 );
+             }
+--- a/src/env.rs
++++ b/src/env.rs
+@@ -288,7 +288,7 @@
+             if self.host_stopped.load(Ordering::Acquire) {
+                 // SAFETY: `env` is the isolate just created and is still live.
+                 unsafe {
+-                    crate::snapi::snapi_bridge_unofficial_terminate_execution(env);
++                    crate::snapi::snapi_bridge_host_terminate_execution(env);
+                 }
+             }
+         }
+--- a/src/napi_bridge_init.cc
++++ b/src/napi_bridge_init.cc
+@@ -3291,6 +3291,23 @@
+   return unofficial_napi_terminate_execution(env);
+ }
+ 
++// iwci patch: termination from the host, without `g_mu`.
++//
++// Every bridge call that runs JavaScript (`contextify_run_script`,
++// `module_wrap_evaluate`, ...) holds the process-wide `g_mu` for as long as
++// the script runs, and `snapi_bridge_unofficial_terminate_execution` takes it
++// too, so a script stuck in a loop could never be terminated: the caller
++// blocked on the lock the loop held. V8 explicitly allows TerminateExecution
++// from another thread, and the host callers (`NapiRuntimeControl::
++// terminate_all`, `NapiEnv::commit_isolate`) hold the Rust env registry lock,
++// which env release takes before anything is freed, so the env is alive here.
++// wasmerio/napi main fixed this by reworking `g_mu`; drop this patch with the
++// first release that includes that.
++extern "C" int snapi_bridge_host_terminate_execution(SnapiEnvState* env_state) {
++  if (env_state == nullptr || env_state->env == nullptr) return napi_invalid_arg;
++  return unofficial_napi_terminate_execution(env_state->env);
++}
++
+ extern "C" int snapi_bridge_unofficial_cancel_terminate_execution(
+     SnapiEnvState* env_state) {
+   auto* bridge_state = RequireEnvState(env_state);
+--- a/src/snapi.rs
++++ b/src/snapi.rs
+@@ -181,6 +181,9 @@
+         accepted_hooks_out: *mut u64,
+     ) -> i32;
+     pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
++    /// iwci patch: see `snapi_bridge_host_terminate_execution` in
++    /// napi_bridge_init.cc. Only for callers holding the env registry lock.
++    pub fn snapi_bridge_host_terminate_execution(env: SnapiEnv) -> i32;
+     pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
+     pub fn snapi_bridge_unofficial_set_promise_reject_callback(
+         env: SnapiEnv,
+--- a/src/snapi_js.rs
++++ b/src/snapi_js.rs
+@@ -3561,7 +3561,12 @@
+     let _ = env;
+     NAPI_GENERIC_FAILURE
+ }
++// iwci patch: the host terminate entry point, as in napi_bridge_init.cc.
+ #[unsafe(no_mangle)]
++pub unsafe extern "C" fn snapi_bridge_host_terminate_execution(env: SnapiEnv) -> i32 {
++    unsafe { snapi_bridge_unofficial_terminate_execution(env) }
++}
++#[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_unofficial_enqueue_microtask(
+     env: SnapiEnv,
+     callback_id: u32,

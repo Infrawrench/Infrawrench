@@ -22,7 +22,7 @@ import { Agent, type Dispatcher } from "undici";
 import type { WebSocket as WsWebSocket } from "ws";
 import { BastionStreamOpenError } from "./errors.js";
 import { PUBLIC_ONLY_PREFIX, type BastionMessage } from "./protocol.js";
-import { isPublicAddress, looksLikeIpAddress } from "./public-address.js";
+import { isPublicAddress, looksLikeIpAddress, matchesPublicOnlyEntry } from "./public-address.js";
 
 const WS_BUFFER_HIGH_WATERMARK = 1 * 1024 * 1024; // 1 MiB
 const WS_BUFFER_LOW_WATERMARK = 256 * 1024; // 256 KiB
@@ -55,7 +55,10 @@ export class BastionAgentConnection {
   private allowlist: Set<string> = new Set();
   /** Wildcard suffixes like `.amazonaws.com` (without the leading `*`). */
   private allowlistSuffixes: string[] = [];
-  /** Hosts accounts' users typed, which the agent only opens to public addresses. */
+  /**
+   * Hosts accounts' users typed, which the agent only opens to public addresses: exact,
+   * or `*.<host>` for one label under it (`matchesPublicOnlyEntry`).
+   */
   private publicOnly: Set<string> = new Set();
   /**
    * Read the allowlist again, for a connection that does not hear about changes: another
@@ -231,14 +234,24 @@ export class BastionAgentConnection {
     for (const suffix of this.allowlistSuffixes) {
       if (lower.endsWith(suffix)) return true;
     }
-    if (!this.publicOnly.has(lower)) return false;
+    if (!this.isPublicOnly(lower)) return false;
     return !looksLikeIpAddress(lower) || isPublicAddress(lower);
   }
 
-  /** An agent from before `public:` entries refuses them, and only an update fixes that. */
+  private isPublicOnly(host: string): boolean {
+    for (const entry of this.publicOnly) {
+      if (matchesPublicOnlyEntry(host, entry)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * An agent from before `public:` entries refuses them, one from before 0.3.0 refuses a
+   * name under a `public:*.` entry, and only an update fixes either.
+   */
   private explainRefusal(host: string, err: unknown): unknown {
     const outdated =
-      this.publicOnly.has(host.toLowerCase()) &&
+      this.isPublicOnly(host.toLowerCase()) &&
       err instanceof Error &&
       err.message.includes("destination not allowlisted");
     if (!outdated) return err;

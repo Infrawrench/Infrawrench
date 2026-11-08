@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JfrogApiError, normaliseBaseUrl } from "../api.js";
 import { JfrogClient, tokenIdFromJwt } from "../client.js";
 import { parseBuildRunId, parsePercent, parseSize, violationId } from "../mappers.js";
@@ -367,6 +367,87 @@ describe("tokens, users, builds, xray", () => {
     expect(calls[0]!.body).toMatchObject({
       pagination: { order_by: "created", direction: "desc", limit: 100 },
     });
+  });
+});
+
+describe("violations past v1's database limit (#849)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("global fetch must not be used");
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const row = { issue_id: "XRAY-1", severity: "High", watch_name: "w" };
+  const paths = (calls: Call[]) => calls.map((c) => c.url.pathname);
+
+  it("never asks the cursor route while v1 answers", async () => {
+    const { c, calls } = client(() => ({
+      violations: [{ ...row, violation_details_url: "https://x/v/abc" }],
+    }));
+    await c.listResources("jfrog-xray-violation", ACCOUNT);
+    expect(paths(calls)).toEqual(["/xray/api/v1/violations"]);
+  });
+
+  it("reads the newest through the cursor route when v1 answers 429, keyed the same", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/xray/api/v1/violations"
+        ? { status: 429, body: { error: "A database query limitation was reached" } }
+        : {
+            violations: [{ ...row, violation_details_url: "https://x/v/abc" }],
+            page_info: { has_more: true, next_cursor: "n1", page_size: 100 },
+          },
+    );
+    const v = await c.listResources("jfrog-xray-violation", ACCOUNT);
+    expect(v.map((r) => r.externalId)).toEqual(["abc"]);
+    expect(paths(calls)).toEqual(["/xray/api/v1/violations", "/xray/api/v2/violations"]);
+    expect(calls[1]!.method).toBe("POST");
+    expect(calls[1]!.body).toEqual({
+      filters: {},
+      pagination: { order_by: "updated", direction: "desc", limit: 100, include_details: "full" },
+    });
+  });
+
+  it.each([404, 403, 429, 500])(
+    "fails with v1's 429 and how to fix it when the cursor route answers %i",
+    async (status) => {
+      const { c } = client((call) =>
+        call.url.pathname === "/xray/api/v1/violations"
+          ? { status: 429, body: { error: "limit" } }
+          : { status, body: { error: "no" } },
+      );
+      const failure = await c
+        .listResources("jfrog-xray-violation", ACCOUNT)
+        .catch((err: unknown) => err);
+      expect(failure).toBeInstanceOf(JfrogApiError);
+      expect(failure).toMatchObject({ status: 429 });
+      expect((failure as Error).message).toContain("server.api.v2.violations.enabled");
+    },
+  );
+
+  it("refuses a cursor page that is not a list", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/xray/api/v1/violations"
+        ? { status: 429, body: { error: "limit" } }
+        : { items: [] },
+    );
+    await expect(c.listResources("jfrog-xray-violation", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([401, 500])("does not ask the cursor route after a v1 %i", async (status) => {
+    const { c, calls } = client(() => ({ status, body: { error: "no" } }));
+    await expect(c.listResources("jfrog-xray-violation", ACCOUNT)).rejects.toMatchObject({
+      status,
+    });
+    expect(paths(calls)).toEqual(["/xray/api/v1/violations"]);
+  });
+
+  it("still reads no Xray as none", async () => {
+    const { c, calls } = client(() => ({ status: 404, body: { error: "not found" } }));
+    await expect(c.listResources("jfrog-xray-violation", ACCOUNT)).resolves.toEqual([]);
+    expect(paths(calls)).toEqual(["/xray/api/v1/violations"]);
   });
 });
 

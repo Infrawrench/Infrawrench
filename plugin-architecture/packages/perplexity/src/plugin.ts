@@ -57,25 +57,6 @@ export const RouterModelType = rt({
   iconKey: "cpu",
 });
 
-export const AsyncRequestType = rt({
-  name: "Async Sonar Request",
-  id: "perplexity-async-request",
-  description: "An asynchronous Sonar completion, typically a deep-research report",
-  fields: [
-    f("requestId", "Request ID"),
-    f("model", "Model", { showcase: true, required: false }),
-    f("status", "Status", { showcase: true, required: false }),
-    f("errorMessage", "Error", { required: false }),
-    f("cost", "Cost (USD)", { kind: "number", required: false }),
-    f("createdAt", "Created", { showcase: true, required: false }),
-    f("completedAt", "Completed", { required: false }),
-  ],
-  outputs: [o("requestId", "Request ID")],
-  dependsOn: [{ fieldKey: "model", targetTypeId: "perplexity-sonar-model", label: "runs on" }],
-  supportsCreate: true,
-  iconKey: "clock",
-});
-
 export const SkillType = rt({
   name: "Skill",
   id: "perplexity-skill",
@@ -97,7 +78,6 @@ export const RESOURCE_TYPES: ResourceTypeDefinition[] = [
   SonarModelType,
   AgentModelType,
   RouterModelType,
-  AsyncRequestType,
   SkillType,
 ];
 
@@ -105,8 +85,7 @@ export const manifest = {
   id: "perplexity",
   egressHosts: ["api.perplexity.ai"],
   displayName: "Perplexity",
-  description:
-    "Sonar, Agent API and Router models with Playgrounds, asynchronous deep-research requests and Agent API skills.",
+  description: "Sonar, Agent API and Router models with Playgrounds, and Agent API skills.",
   logoSvg: LOGO,
   credentialFields: defineCredentials([
     {

@@ -76,6 +76,7 @@ let unread: UnreadListPart[];
 beforeEach(() => {
   vi.clearAllMocks();
   for (const fn of Object.values(api)) fn.mockReset();
+  api.getCurrentUserOrganizations.mockResolvedValue(wrap({ organizations: [] }));
   unread = [];
   Reflect.set(globalThis, UNREAD_HOOK, (part: UnreadListPart) => unread.push(part));
 });
@@ -155,6 +156,118 @@ describe("listing projects", () => {
       response: { status },
     });
     expect(unread).toEqual([]);
+  });
+});
+
+describe("listing projects per organization (#784)", () => {
+  const byOrg = (sets: Record<string, string[] | number>) =>
+    api.listProjects.mockImplementation(async (query: { org_id?: string }) => {
+      const set = sets[query.org_id ?? ""];
+      if (typeof set === "number") throw httpError(set);
+      return projects(...(set ?? []));
+    });
+  const orgs = (...ids: string[]) =>
+    api.getCurrentUserOrganizations.mockResolvedValue(
+      wrap({ organizations: ids.map((id) => ({ id, name: id })) }),
+    );
+  const ids = (rows: { externalId?: string }[]) => rows.map((r) => r.externalId);
+
+  it("adds every organization's projects to the read without org_id, once each", async () => {
+    orgs("org-a", "org-b");
+    byOrg({ "": ["p1"], "org-a": ["p1", "p2"], "org-b": ["p3"] });
+    const rows = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(ids(rows)).toEqual(["p1", "p2", "p3"]);
+    expect(api.listProjects).toHaveBeenCalledWith({ limit: 400 });
+    expect(api.listProjects).toHaveBeenCalledWith({ limit: 400, org_id: "org-a" });
+    expect(api.listProjects).toHaveBeenCalledWith({ limit: 400, org_id: "org-b" });
+  });
+
+  it("follows each organization's cursor with its org_id", async () => {
+    orgs("org-a");
+    api.listProjects.mockImplementation(async (query: { org_id?: string; cursor?: string }) => {
+      if (!query.org_id) return projects();
+      if (!query.cursor) return wrap({ projects: [project("p1")], pagination: { cursor: "c1" } });
+      return wrap({ projects: [], pagination: { cursor: "c2" } });
+    });
+    const rows = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(ids(rows)).toEqual(["p1"]);
+    expect(api.listProjects).toHaveBeenCalledWith({ limit: 400, org_id: "org-a", cursor: "c1" });
+  });
+
+  it("reads as it always has where the key is refused the organization list", async () => {
+    api.getCurrentUserOrganizations.mockRejectedValue(httpError(403));
+    byOrg({ "": ["p1", "p2"] });
+    const rows = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(ids(rows)).toEqual(["p1", "p2"]);
+    expect(api.listProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([429, 500])(
+    "fails on a %i from the organization list rather than losing projects",
+    async (status) => {
+      api.getCurrentUserOrganizations.mockRejectedValue(httpError(status));
+      byOrg({ "": ["p1"] });
+      await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toMatchObject({
+        response: { status },
+      });
+      expect(unread).toEqual([]);
+    },
+  );
+
+  it("refuses an organization list that is not a list", async () => {
+    api.getCurrentUserOrganizations.mockResolvedValue(wrap({ items: [] }));
+    byOrg({ "": ["p1"] });
+    await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("skips an organization that refuses its projects, keeping the rest", async () => {
+    orgs("org-a", "org-b");
+    byOrg({ "": ["p1"], "org-a": 403, "org-b": ["p3"] });
+    const rows = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(ids(rows)).toEqual(["p1", "p3"]);
+  });
+
+  it.each([429, 500])("fails on a %i from one organization's projects", async (status) => {
+    orgs("org-a", "org-b");
+    byOrg({ "": ["p1"], "org-a": ["p2"], "org-b": status });
+    await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toMatchObject({
+      response: { status },
+    });
+  });
+
+  it("reads the organizations alone where the read without org_id is refused", async () => {
+    orgs("org-a", "org-b");
+    byOrg({ "": 400, "org-a": ["p1"], "org-b": ["p2"] });
+    const rows = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(ids(rows)).toEqual(["p1", "p2"]);
+  });
+
+  it("keeps the refusal where an organization also went unread", async () => {
+    orgs("org-a", "org-b");
+    byOrg({ "": 400, "org-a": ["p1"], "org-b": 403 });
+    await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toMatchObject({
+      response: { status: 400 },
+    });
+  });
+
+  it.each([429, 500])(
+    "keeps the old refusal where the organizations then answer %i",
+    async (status) => {
+      api.getCurrentUserOrganizations.mockRejectedValue(httpError(status));
+      byOrg({ "": 403 });
+      await expect(makeClient().listResources("neon-project", ACCOUNT)).resolves.toEqual([]);
+      expect(unread).toEqual([{ idPrefixes: [""] }]);
+    },
+  );
+
+  it("never fans a project's children out twice", async () => {
+    orgs("org-a");
+    byOrg({ "": ["p1"], "org-a": ["p1"] });
+    api.listProjectEndpoints.mockResolvedValue(wrap({ endpoints: [] }));
+    await makeClient().listResources("neon-endpoint", ACCOUNT);
+    expect(api.listProjectEndpoints).toHaveBeenCalledTimes(1);
   });
 });
 

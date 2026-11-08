@@ -137,6 +137,15 @@ describe("renderDetail — job", () => {
     expect(panel?.defaultModel).toBe("enhanced");
   });
 
+  it("narrows the language picker to multi for melia-1 and leaves the others open", () => {
+    const panel = client().renderDetail(job({ status: "done" })).speechPanel;
+    const languageIds = (id: string) => panel?.models?.find((m) => m.id === id)?.languageIds;
+    expect(languageIds("melia-1")).toEqual(["multi"]);
+    expect(languageIds("enhanced")).toBeUndefined();
+    expect(languageIds("standard")).toBeUndefined();
+    expect(panel?.languages?.some((l) => l.id === "multi")).toBe(true);
+  });
+
   it("falls back to a built-in language list when discovery was not stashed", () => {
     const panel = client().renderDetail(job({ status: "done" })).speechPanel;
     expect(panel?.languages?.some((l) => l.id === "en")).toBe(true);
@@ -156,6 +165,26 @@ describe("renderDetail — job", () => {
     ).speechPanel;
     expect(panel?.languages?.map((l) => l.id)).toEqual(["en", "cy"]);
     expect(panel?.models?.map((m) => m.id)).toEqual(["enhanced"]);
+  });
+
+  it("lays melia-1's language restriction over a stash written before it existed", () => {
+    const stash = JSON.stringify({
+      languages: [
+        { id: "en", label: "English (en)" },
+        { id: "multi", label: "Multilingual (multi)" },
+      ],
+      models: [
+        { id: "enhanced", label: "Enhanced" },
+        { id: "melia-1", label: "Melia-1" },
+      ],
+    });
+    const panel = client().renderDetail(
+      job({ status: "done" }, { __discovery__: stash }),
+    ).speechPanel;
+    expect(panel?.models).toEqual([
+      { id: "enhanced", label: "Enhanced" },
+      { id: "melia-1", label: "Melia-1", languageIds: ["multi"] },
+    ]);
   });
 
   it("surfaces the regional transcript URL and the 7-day retention note", () => {

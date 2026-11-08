@@ -304,19 +304,27 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Speechmatics accepts 1 GB; our tran
  * called operating point)". Discovery does not enumerate these, so they come
  * from the OpenAPI enum.
  */
+/**
+ * melia-1 is documented as requiring `"language": "multi"`, verified 2026-11-08
+ * against https://docs.speechmatics.com/speech-to-text/models: "Melia 1 does
+ * not support the `auto` language value, which returns an error. Set
+ * `language` to `multi`."
+ */
+const MELIA_MODEL = "melia-1";
+const MULTILINGUAL_LANGUAGE = "multi";
+
 const MODEL_OPTIONS: SpeechPanelOption[] = [
   { id: "enhanced", label: "Enhanced", description: "Highest accuracy. The usual default." },
   { id: "standard", label: "Standard", description: "Faster and cheaper, lower accuracy." },
   {
-    id: "melia-1",
+    id: MELIA_MODEL,
     label: "Melia-1",
     description: 'Batch only, and requires the "Multilingual" language.',
+    // The picker shows only "multi" while melia-1 is selected; the request
+    // forces it either way, so this keeps the panel honest about what is sent.
+    languageIds: [MULTILINGUAL_LANGUAGE],
   },
 ];
-
-/** melia-1 is documented as requiring `"language": "multi"`. */
-const MELIA_MODEL = "melia-1";
-const MULTILINGUAL_LANGUAGE = "multi";
 
 /** Fallback picker contents when live discovery is unavailable (offline, mock). */
 const FALLBACK_LANGUAGES: SpeechPanelOption[] = [
@@ -1804,7 +1812,12 @@ export class SpeechmaticsClient implements PluginClient {
       languages: discovery.languages,
       defaultLanguage: "en",
       languageLabel: "Language pack",
-      models: discovery.models,
+      // A stash written before melia-1 carried `languageIds` lacks it until the
+      // resource syncs again, so the current entry's restriction is laid over it.
+      models: discovery.models.map((model) => {
+        const languageIds = MODEL_OPTIONS.find((known) => known.id === model.id)?.languageIds;
+        return languageIds && !model.languageIds ? { ...model, languageIds } : model;
+      }),
       defaultModel: "enhanced",
       modelLabel: "Model",
       acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,

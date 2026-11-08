@@ -1,6 +1,6 @@
 /**
  * Credential preflight. An API key carries its service account's roles
- * (ORG_ADMIN, CLUSTER_ADMIN, CLUSTER_OPERATOR_WRITER, BILLING_VIEWER…), and
+ * (ORG_ADMIN, CLUSTER_ADMIN, CLUSTER_OPERATOR_WRITER, BILLING_COORDINATOR…), and
  * the API has no "what can I do" call, so each capability is one read and a
  * 401/403 reads as missing.
  */
@@ -22,7 +22,12 @@ const P = {
     id: "CLUSTER_ADMIN",
     label: "CLUSTER_ADMIN or CLUSTER_OPERATOR_WRITER (organization or folder scope)",
   },
-  billing: { id: "BILLING_VIEWER", label: "BILLING_VIEWER or BILLING_COORDINATOR" },
+  // The API reference names only these two for GET /api/v1/invoices. Billing
+  // Viewer sees invoices in the console, which is not the same grant (#583).
+  billing: {
+    id: "BILLING_COORDINATOR",
+    label: "BILLING_COORDINATOR or CLUSTER_ADMIN (organization scope)",
+  },
   org: { id: "ORG_ADMIN", label: "ORG_ADMIN" },
 } satisfies Record<string, PreflightPermission>;
 

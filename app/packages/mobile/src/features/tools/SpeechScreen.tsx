@@ -32,6 +32,8 @@ import {
   describeSynthesis,
   describeTranscript,
   formatAudioBytes,
+  resolveSpeechLanguage,
+  speechLanguagesForModel,
   speechTextError,
   type CloudFetch,
 } from "@infrawrench/client-core";
@@ -190,6 +192,25 @@ function SpeechBody({
   const [model, setModel] = useState(
     () => capability.defaultModel ?? capability.models?.[0]?.id ?? "",
   );
+  // Held here, not in the STT half, for the same reason as the web panel: a
+  // model can narrow the languages it takes (`SpeechPanelOption.languageIds`),
+  // and changing the model is what moves a selection the new one refuses.
+  const [language, setLanguage] = useState(() =>
+    resolveSpeechLanguage(
+      capability,
+      model,
+      capability.defaultLanguage ?? capability.languages?.[0]?.id ?? "",
+    ),
+  );
+  const changeModel = useCallback(
+    (next: string) => {
+      setModel(next);
+      setLanguage((current) => resolveSpeechLanguage(capability, next, current));
+    },
+    [capability],
+  );
+  const languages = speechLanguagesForModel(capability, model);
+  const effectiveLanguage = resolveSpeechLanguage(capability, model, language);
 
   // iOS mutes ordinary playback when the ringer switch is off; a speech test
   // that produces silence looks like a broken provider call.
@@ -222,7 +243,7 @@ function SpeechBody({
                   label={capability.modelLabel ?? "Model"}
                   options={capability.models}
                   value={model}
-                  onChange={setModel}
+                  onChange={changeModel}
                 />
               </Card>
             ) : null}
@@ -241,6 +262,9 @@ function SpeechBody({
               <TranscribeSection
                 capability={capability}
                 model={model}
+                languages={languages}
+                language={effectiveLanguage}
+                onLanguageChange={setLanguage}
                 target={target}
                 api={api}
                 orgId={orgId}
@@ -408,19 +432,23 @@ function releaseRecording(): Promise<void> {
 function TranscribeSection({
   capability,
   model,
+  languages,
+  language,
+  onLanguageChange,
   target,
   api,
   orgId,
 }: {
   capability: SpeechPanelCapability;
   model: string;
+  /** The language options the selected model accepts. */
+  languages: SpeechPanelOption[];
+  language: string;
+  onLanguageChange: (language: string) => void;
   target: SpeechTarget;
   api: CloudFetch;
   orgId: string;
 }) {
-  const [language, setLanguage] = useState(
-    () => capability.defaultLanguage ?? capability.languages?.[0]?.id ?? "",
-  );
   const [audio, setAudio] = useState<PendingAudio | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -575,12 +603,12 @@ function TranscribeSection({
     <Card>
       <Text style={styles.sectionTitle}>Speech to text</Text>
 
-      {capability.languages && capability.languages.length > 0 ? (
+      {languages.length > 0 ? (
         <OptionPicker
           label={capability.languageLabel ?? "Language"}
-          options={capability.languages}
+          options={languages}
           value={language}
-          onChange={setLanguage}
+          onChange={onLanguageChange}
         />
       ) : null}
 

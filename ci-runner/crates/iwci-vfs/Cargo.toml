@@ -1,0 +1,17 @@
+[package]
+name = "iwci-vfs"
+description = "The in-memory file systems a CI run builds once and every job overlays"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+virtual-fs.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+# What virtual-fs uses for read-only file contents, so a cached layer is
+# replayed by sharing buffers rather than copying them.
+shared-buffer = "0.1.4"

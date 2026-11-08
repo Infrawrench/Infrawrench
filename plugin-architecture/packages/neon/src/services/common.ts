@@ -115,14 +115,99 @@ export function hasStringFields(value: unknown, keys: readonly string[]): boolea
   return keys.every((key) => typeof readProp(value, key) === "string");
 }
 
-/** Every project the key can see. A project past the cap or not fetched in time throws. */
-export async function listAllProjects(api: Api<unknown>): Promise<ProjectListItem[]> {
-  const path = "/projects";
+/**
+ * Every project the key can see. A project past the cap or not fetched in time throws.
+ *
+ * The document says a personal key names its organization with `org_id`, and an
+ * organization key has it inferred. What `GET /projects` answers a personal key without
+ * one is not documented (#784), so this keeps that read, which is what works for the
+ * accounts connected today, and adds `GET /projects?org_id=` for every organization
+ * `GET /users/me/organizations` names (one, the owner, for an organization key). The
+ * union by project id is never smaller than the read alone. A settled refusal of the
+ * new calls falls back to the read alone; a throttle, a 5xx or a page that is not a list
+ * throws, since falling back would read the other organizations' projects as gone. Where
+ * the read alone was refused, any failure of the new calls fails with that refusal, as
+ * the list always did.
+ *
+ * `knownOrgIds` skips the organization list, for a caller that has already read it or
+ * been refused it.
+ */
+export async function listAllProjects(
+  api: Api<unknown>,
+  knownOrgIds?: readonly string[],
+): Promise<ProjectListItem[]> {
+  let unscoped: ProjectListItem[];
+  try {
+    unscoped = await listProjectsPages(api, undefined);
+  } catch (err) {
+    // Only a settled refusal can be the missing `org_id`; anything else fails as before.
+    if (!isSettledRefusal(err)) throw err;
+    // The organizations stand in for the refused read only when every one of them was
+    // read; otherwise the refusal is what the list fails with, as it always was.
+    const byOrg = await readEveryOrganization(api, knownOrgIds).catch(() => undefined);
+    if (!byOrg || byOrg.orgCount === 0 || !byOrg.everyOrgRead) throw err;
+    return byOrg.rows;
+  }
+  const byOrg = await readEveryOrganization(api, knownOrgIds, unscoped);
+  return byOrg.rows;
+}
+
+/**
+ * `GET /projects?org_id=` for each organization, added to `seed` by project id. A settled
+ * refusal skips that organization and says so; anything else throws.
+ */
+async function readEveryOrganization(
+  api: Api<unknown>,
+  knownOrgIds: readonly string[] | undefined,
+  seed: readonly ProjectListItem[] = [],
+): Promise<{ rows: ProjectListItem[]; orgCount: number; everyOrgRead: boolean }> {
+  const orgIds = knownOrgIds ?? (await listOrganizationIds(api));
+  const byId = new Map<string, ProjectListItem>();
+  for (const p of seed) byId.set(p.id, p);
+  let everyOrgRead = true;
+  for (const orgId of orgIds) {
+    let rows: ProjectListItem[];
+    try {
+      rows = await listProjectsPages(api, orgId);
+    } catch (err) {
+      if (!isSettledRefusal(err)) throw err;
+      everyOrgRead = false;
+      continue;
+    }
+    for (const p of rows) if (!byId.has(p.id)) byId.set(p.id, p);
+  }
+  return { rows: [...byId.values()], orgCount: orgIds.length, everyOrgRead };
+}
+
+/** The ids of the organizations the key belongs to, or none where it is refused the list. */
+async function listOrganizationIds(api: Api<unknown>): Promise<string[]> {
+  const path = "/users/me/organizations";
+  try {
+    const resp = await api.getCurrentUserOrganizations();
+    const rows = requireValidRows(
+      resp.data.organizations,
+      (org) => typeof org.id === "string" && org.id !== "",
+      { vendor: VENDOR, path, key: "organizations" },
+    );
+    return [...new Set(rows.map((org) => org.id))];
+  } catch (err) {
+    if (isSettledRefusal(err)) return [];
+    throw err;
+  }
+}
+
+/** Every page of `GET /projects`, for one organization or for whatever the key infers. */
+async function listProjectsPages(
+  api: Api<unknown>,
+  orgId: string | undefined,
+): Promise<ProjectListItem[]> {
+  const path = orgId === undefined ? "/projects" : `/projects?org_id=${orgId}`;
   const results: ProjectListItem[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_PROJECT_PAGES; page++) {
     const resp = await api.listProjects({
       limit: PROJECT_PAGE_SIZE,
+      ...(orgId !== undefined ? { org_id: orgId } : {}),
       ...(cursor ? { cursor } : {}),
     });
     const rows = requireListPage(resp.data.projects, { vendor: VENDOR, path, key: "projects" });

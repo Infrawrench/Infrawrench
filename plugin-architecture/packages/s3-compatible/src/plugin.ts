@@ -8,7 +8,8 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 
 export const manifest = {
   id: "s3-compatible",
-  // No fixed host: a bastion allows the `endpoint` the user typed, through `providerHost`.
+  // No fixed host: a bastion allows the `endpoint` the user typed, through `providerHost`, and
+  // the `<bucket>.<endpoint>` names of virtual-hosted addressing, through `providerHostSubdomains`.
   egressHosts: [],
   displayName: "S3-Compatible Storage",
   description:
@@ -18,6 +19,7 @@ export const manifest = {
     {
       key: "endpoint",
       providerHost: true,
+      providerHostSubdomains: true,
       label: "Endpoint URL",
       description:
         "The S3 API address of your server, with the port if it is not 443: for MinIO usually https://minio.example.com:9000 (the API port, not the console port), for Ceph the RADOS Gateway URL.",

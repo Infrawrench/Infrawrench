@@ -5,19 +5,16 @@ import type {
   ActionNode,
   ChatMessage,
   ChatStreamEvent,
-  CreateResourceConfig,
   DetailViewSchema,
   HostServices,
   HttpHostServices,
   PluginClient,
   ResourceInstance,
-  ResourceStatus,
   SchemaNode,
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
-  ListTruncatedError,
   hostFetch,
   joinSubtitle,
   pathEncode,
@@ -30,9 +27,7 @@ import {
   MAX_SKILL_ROWS,
   createPerplexityApis,
   statusErrors,
-  type AsyncRequest,
   type ListedModel,
-  type MessageContent,
   type PlatformApi,
   type RouterApi,
   type Skill,
@@ -50,7 +45,7 @@ export const SONAR_MODELS: Array<{ id: string; description: string }> = [
   { id: "sonar-reasoning-pro", description: "Multi-step reasoning with search" },
   {
     id: "sonar-deep-research",
-    description: "Long-running research reports (best run asynchronously)",
+    description: "Long-running research reports",
   },
 ];
 
@@ -60,28 +55,6 @@ export const SONAR_MODELS: Array<{ id: string; description: string }> = [
  * their own limit.
  */
 const ANTHROPIC_MAX_OUTPUT_TOKENS = 8192;
-
-/**
- * The document gives no page size, so this holds 10,000 rows at as few as 20 a page.
- * Requests only live for 7 days, so a list this long is already unusual.
- */
-const ASYNC_MAX_PAGES = 500;
-
-/**
- * Perplexity's docs say asynchronous Sonar requests are no longer supported since
- * September 27, 2026, with no reformulation, yet its document still lists the routes. A
- * route that is gone answers one of these.
- */
-const RETIRED_ROUTE = new Set([404, 405, 410]);
-
-function retiredRoute(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    "status" in err &&
-    typeof err.status === "number" &&
-    RETIRED_ROUTE.has(err.status)
-  );
-}
 
 function s(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
@@ -119,20 +92,6 @@ const REFRESH: ActionNode = {
   action: { type: "refresh-resource" },
 };
 
-export function asyncStatus(status: string): ResourceStatus {
-  switch (status) {
-    case "COMPLETED":
-      return "healthy";
-    case "FAILED":
-      return "error";
-    case "CREATED":
-    case "IN_PROGRESS":
-      return "provisioning";
-    default:
-      return "info";
-  }
-}
-
 /** What this reads of an Agent API output item, which is one of a dozen kinds. */
 interface AgentOutputItem {
   type?: string;
@@ -149,16 +108,11 @@ export function agentOutputText(output: AgentOutputItem[] | undefined): string {
   return parts.join("");
 }
 
-/** The text of a completion's message. Image, file and video chunks have none to show. */
-function messageText(content: MessageContent | undefined): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.flatMap((chunk) => (chunk.type === "text" ? [chunk.text] : [])).join("");
-}
-
 /**
  * Perplexity API platform: Sonar, Agent API and Router models with
- * Playgrounds, asynchronous Sonar requests, and Agent API skills.
+ * Playgrounds, and Agent API skills. Asynchronous Sonar requests are not
+ * listed: Perplexity retired them, and the Agent API's background responses
+ * that replace them have no list route.
  * Perplexity publishes no API-usage or billing endpoint and no way to list
  * API keys.
  */
@@ -251,8 +205,6 @@ export class PerplexityClient implements PluginClient {
             .filter((m) => m.id)
             .map((m) => this.mapListed(accountId, typeId, m, "/router/v1/chat/completions"));
         }
-        case "perplexity-async-request":
-          return this.listAsync(accountId);
         case "perplexity-skill":
           return this.listSkills(accountId);
         default:
@@ -284,86 +236,6 @@ export class PerplexityClient implements PluginClient {
         created: iso(m.created),
       },
       { modelId: id, endpoint: `${API_BASE}${path}` },
-    );
-  }
-
-  /**
-   * `GET /v1/async/sonar`. The response carries a `next_token`, but the document names
-   * no parameter to send it back in, so it goes back under its own name. A page with
-   * nothing new means that was not taken, so the rest cannot be read: an error rather
-   * than the end of the list, because a sync prunes what a list leaves out.
-   */
-  private async listAsync(accountId: string): Promise<ResourceInstance[]> {
-    const path = "/v1/async/sonar";
-    const seen = new Set<string>();
-    const out: ResourceInstance[] = [];
-    let token = "";
-    for (let page = 0; page < ASYNC_MAX_PAGES; page++) {
-      const res = await statusErrors(
-        this.api.get(path, token ? { query: { next_token: token } } : {}),
-      ).catch((err: unknown) => {
-        // A retired list route has nothing to read, and a request only lived for 7 days,
-        // so every one made before the retirement is gone too. A later page's 404 is a
-        // list cut short, not a retired route.
-        if (page === 0 && retiredRoute(err)) return null;
-        throw err;
-      });
-      if (res === null) return out;
-      const rows = requireListPage(res.requests, {
-        vendor: "Perplexity",
-        path,
-        key: "requests",
-        page: res,
-      });
-      const before = seen.size;
-      for (const row of rows) {
-        if (!row.id || seen.has(row.id)) continue;
-        seen.add(row.id);
-        out.push(this.mapAsync(accountId, row));
-      }
-      if (!res.next_token || rows.length === 0) return out;
-      if (seen.size === before) {
-        throw new ListTruncatedError({
-          vendor: "Perplexity",
-          path,
-          items: out.length,
-          maxPages: page + 1,
-        });
-      }
-      token = res.next_token;
-    }
-    throw new ListTruncatedError({
-      vendor: "Perplexity",
-      path,
-      items: out.length,
-      maxPages: ASYNC_MAX_PAGES,
-    });
-  }
-
-  private mapAsync(accountId: string, r: AsyncRequest): ResourceInstance {
-    const id = s(r.id);
-    const answer = messageText(r.response?.choices?.[0]?.message?.content);
-    return this.instance(
-      accountId,
-      "perplexity-async-request",
-      id,
-      `${s(r.model)} · ${id.slice(0, 8)}`,
-      {
-        requestId: id,
-        model: s(r.model),
-        status: s(r.status),
-        createdAt: iso(r.created_at),
-        startedAt: iso(r.started_at),
-        completedAt: iso(r.completed_at),
-        failedAt: iso(r.failed_at),
-        errorMessage: s(r.error_message),
-        ...(answer ? { answer } : {}),
-        ...(r.response?.citations?.length ? { citations: r.response.citations.join("\n") } : {}),
-        ...(typeof r.response?.usage?.cost?.total_cost === "number"
-          ? { cost: r.response.usage.cost.total_cost }
-          : {}),
-      },
-      { requestId: id },
     );
   }
 
@@ -400,12 +272,6 @@ export class PerplexityClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId, accountId, typeId);
-      if (typeId === "perplexity-async-request") {
-        return this.mapAsync(
-          accountId,
-          await statusErrors(this.api.get(`/v1/async/sonar/${pathEncode(id)}`)),
-        );
-      }
       if (typeId === "perplexity-skill") {
         return this.mapSkill(
           accountId,
@@ -478,86 +344,7 @@ export class PerplexityClient implements PluginClient {
     });
   }
 
-  // ------------------------------------------------------- create/delete
-
-  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
-    return attempt(async () => {
-      if (typeId !== "perplexity-async-request")
-        throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
-      return {
-        fields: [
-          {
-            key: "model",
-            label: "Model",
-            kind: "select",
-            required: true,
-            defaultValue: "sonar-deep-research",
-            options: SONAR_MODELS.map((m) => ({
-              id: m.id,
-              label: m.id,
-              description: m.description,
-            })),
-          },
-          {
-            key: "prompt",
-            label: "Question",
-            kind: "text",
-            multiline: true,
-            required: true,
-            placeholder: "Compare the latest open-weight coding models and their licences.",
-          },
-          {
-            key: "searchRecency",
-            label: "Search Recency",
-            kind: "select",
-            required: false,
-            defaultValue: "",
-            options: [
-              { id: "", label: "Any time" },
-              { id: "day", label: "Past day" },
-              { id: "week", label: "Past week" },
-              { id: "month", label: "Past month" },
-              { id: "year", label: "Past year" },
-            ],
-          },
-        ],
-      };
-    });
-  }
-
-  /** `POST /v1/async/sonar {request: {model, messages, …}}` */
-  createResource(
-    typeId: string,
-    accountId: string,
-    fields: Record<string, string>,
-  ): PluginEffect<ResourceInstance> {
-    return attempt(async () => {
-      if (typeId !== "perplexity-async-request")
-        throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
-      const prompt = (fields["prompt"] ?? "").trim();
-      if (!prompt) throw new Error("Perplexity plugin: a question is required");
-      const created = await statusErrors(
-        this.api.post("/v1/async/sonar", {
-          body: {
-            request: {
-              model: fields["model"] || "sonar-deep-research",
-              messages: [{ role: "user", content: prompt }],
-              ...(fields["searchRecency"]
-                ? { search_recency_filter: fields["searchRecency"] }
-                : {}),
-            },
-          },
-        }),
-      ).catch((err: unknown) => {
-        if (!retiredRoute(err)) throw err;
-        throw new Error(
-          "Perplexity no longer accepts asynchronous Sonar requests: it retired them on September 27, 2026. Ask the question from an Agent API model's Playground instead.",
-          { cause: err },
-        );
-      });
-      return this.mapAsync(accountId, created);
-    });
-  }
+  // -------------------------------------------------------------- delete
 
   /** `DELETE /v1/skills/{id}?expected_revision=` guarded by the latest revision. */
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
@@ -686,11 +473,11 @@ export class PerplexityClient implements PluginClient {
   // -------------------------------------------------------------- render
 
   renderSidebarItem(r: ResourceInstance): SidebarItemSchema {
-    const status: ResourceStatus =
-      r.resourceTypeId === "perplexity-async-request"
-        ? asyncStatus(s(r.fields["status"]))
-        : "healthy";
-    return { id: r.id, label: r.displayName || r.id, status: { kind: "status-dot", status } };
+    return {
+      id: r.id,
+      label: r.displayName || r.id,
+      status: { kind: "status-dot", status: "healthy" },
+    };
   }
 
   renderDetail(r: ResourceInstance): DetailViewSchema {
@@ -755,46 +542,6 @@ export class PerplexityClient implements PluginClient {
                 ? `${id} through the Agent API (replies arrive whole)`
                 : `${id} on api.perplexity.ai`,
           },
-        };
-      }
-      case "perplexity-async-request": {
-        const st = s(f["status"]);
-        return {
-          title: r.displayName,
-          subtitle: joinSubtitle("Async Sonar Request", s(f["model"])),
-          status: { kind: "status-dot", status: asyncStatus(st), label: st || "unknown" },
-          sections: [
-            section("Request", [
-              kv(
-                [
-                  ["Request ID", f["requestId"]],
-                  ["Model", f["model"]],
-                  ["Status", st],
-                  ["Error", f["errorMessage"]],
-                  ["Cost", s(f["cost"]) !== "" ? `$${Number(f["cost"]).toFixed(4)}` : ""],
-                  ["Created", f["createdAt"]],
-                  ["Started", f["startedAt"]],
-                  ["Completed", f["completedAt"] || f["failedAt"]],
-                ],
-                ["Request ID"],
-              ),
-            ]),
-            ...(s(f["answer"])
-              ? [
-                  section("Answer", [
-                    { kind: "text", variant: "body", copyable: true, content: s(f["answer"]) },
-                  ]),
-                ]
-              : []),
-            ...(s(f["citations"])
-              ? [
-                  section("Citations", [
-                    { kind: "text", variant: "mono", content: s(f["citations"]) },
-                  ]),
-                ]
-              : []),
-          ],
-          headerActions: [REFRESH],
         };
       }
       case "perplexity-skill": {

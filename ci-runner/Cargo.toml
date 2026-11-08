@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/iwci-spec",
+  "crates/iwci-vfs",
+  "crates/iwci-store",
+  "crates/iwci-git",
+  "crates/iwci-deps",
+  "crates/iwci-runtime",
+  "crates/iwci",
+]
+# The builtin tools build for wasm32-wasip1 with their own lockfiles, and
+# vendor/ holds patched third-party crates (vendor/README.md).
+exclude = ["builtins", "vendor"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "BUSL-1.1"
+publish = false
+
+[workspace.dependencies]
+iwci-spec = { path = "crates/iwci-spec" }
+iwci-vfs = { path = "crates/iwci-vfs" }
+iwci-store = { path = "crates/iwci-store" }
+iwci-git = { path = "crates/iwci-git" }
+iwci-deps = { path = "crates/iwci-deps" }
+iwci-runtime = { path = "crates/iwci-runtime" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+indexmap = { version = "2", features = ["serde"] }
+thiserror = "2"
+sha2 = "0.11"
+hex = "0.4"
+globset = "0.4"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
+
+# The isolate. `sys` + cranelift compiles each module once; the compiled
+# artifact is cached on disk by the runtime crate. `host-reqwest` and
+# `host-vnet` are left off: jobs get no network, so neither is linked.
+wasmer = { version = "7.5.0", default-features = false, features = ["sys", "cranelift"] }
+wasmer-wasix = { version = "0.705.0", default-features = false, features = ["sys-minimal", "sys-thread", "time", "logging"] }
+virtual-fs = { version = "0.705.0", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Debug builds of the compiler are painfully slow at compiling the 4 MB
+# TypeScript module; optimise dependencies even in dev.
+[profile.dev.package."*"]
+opt-level = 2
+
+# wasmer-napi 0.705.0 with vendor/wasmer-napi.patch: terminating a job's V8
+# isolates no longer waits for a lock the running script holds, so a job
+# timeout stops a spinning `node`. See vendor/README.md for when to remove it.
+[patch.crates-io]
+wasmer-napi = { path = "vendor/wasmer-napi" }

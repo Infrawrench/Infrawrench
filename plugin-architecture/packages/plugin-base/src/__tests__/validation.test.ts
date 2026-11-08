@@ -933,6 +933,31 @@ describe("detailViewSchema", () => {
     ).toBe(false);
   });
 
+  it("keeps a speech model's languageIds, which the panel filters the language picker by", () => {
+    const speechPanel = {
+      modes: ["stt"],
+      models: [
+        { id: "wide", label: "Wide" },
+        { id: "narrow", label: "Narrow", languageIds: ["en", "fr"] },
+      ],
+      languages: [
+        { id: "auto", label: "Auto-detect" },
+        { id: "en", label: "English" },
+        { id: "fr", label: "French" },
+      ],
+    };
+    const result = validate(detailViewSchema, { title: "x", sections: [], speechPanel });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.speechPanel).toEqual(speechPanel);
+    expect(
+      validate(detailViewSchema, {
+        title: "x",
+        sections: [],
+        speechPanel: { modes: ["stt"], models: [{ id: "m", label: "M", languageIds: "en" }] },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts minimal detail view", () => {
     expect(
       validate(detailViewSchema, {

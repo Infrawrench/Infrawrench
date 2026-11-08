@@ -1,0 +1,25 @@
+[package]
+name = "iwci-store"
+description = "Content-addressed tool and environment storage on R2: manifests, version resolution, verified blob fetch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+# SigV4 is hand-rolled on top of these two (see `r2/sigv4.rs` for why).
+hmac = "0.13"
+zeroize = "1"
+# Blocking client, rustls with ring and the webpki root set. Defaults are off
+# so gzip is not linked: objects are wasm and webc, already compressed, and an
+# Accept-Encoding header would only invite a transformed body we then hash.
+ureq = { version = "3.5", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,64 @@
+# The pipeline file lives in the repository at `.infrawrench/ci/<name>.yml`.
+# This one is the original sketch, reworked; see ../README.md for every key.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull-request: {}
+
+# Built once per commit, then shared by every job: each job starts in its own
+# isolate over a copy-on-write view of it, so it does not clone or install.
+workspace:
+  clone:
+    depth: 1
+    into: /app
+  deps:
+    - pnpm
+
+jobs:
+  typescript:
+    name: TypeScript (${{ matrix }})
+    matrix: [web, mobile]
+    using: builtin:typescript@7.1
+    cwd: /app/app/packages/${{ matrix }}
+    args: [--noEmit]
+    paths: ["app/packages/**", "pnpm-lock.yaml"]
+
+  format:
+    name: Format
+    using: builtin:oxfmt@0.69
+    args: [--write, .]
+    # Formatting needs the sources, not node_modules.
+    deps: false
+    changes:
+      commit: "style: format"
+
+  gofmt:
+    name: gofmt
+    using: builtin:gofmt@1.27
+    cwd: /app/terraform-provider-infrawrench
+    args: [-l, -w, .]
+    deps: false
+    changes: fail
+    paths: ["terraform-provider-infrawrench/**"]
+
+  go-modules:
+    name: Go modules resolve offline
+    using: env:bash@5
+    deps:
+      - go: { dir: terraform-provider-infrawrench }
+    run: |
+      test -d "$GOMODCACHE/cache/download"
+
+  lint:
+    name: Lint (${{ matrix.package }})
+    matrix:
+      package: [web, desktop]
+    using: env:bash-node@24
+    cwd: /app/app/packages/${{ matrix.package }}
+    run: |
+      pnpm run lint
+    needs: [typescript]
+    timeout: 15m
+    memory: 4GiB

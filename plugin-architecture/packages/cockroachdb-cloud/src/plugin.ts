@@ -20,7 +20,7 @@ export const manifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A service account API key. In CockroachDB Cloud open Organization > Access Management > Service Accounts, create a service account with the roles Infrawrench should have (CLUSTER_ADMIN to manage clusters, BILLING_VIEWER for costs, ORG_ADMIN to manage service accounts), then create an API key for it and copy the secret.",
+        "A service account API key. In CockroachDB Cloud open Organization > Access Management > Service Accounts, create a service account with the roles Infrawrench should have (CLUSTER_ADMIN to manage clusters, BILLING_COORDINATOR for costs, ORG_ADMIN to manage service accounts), then create an API key for it and copy the secret.",
       sensitive: true,
       placeholder: "CCDB1_…",
       helpLink: { label: "Service accounts", url: "https://cockroachlabs.cloud/access" },

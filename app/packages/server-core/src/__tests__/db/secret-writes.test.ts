@@ -169,6 +169,9 @@ describe.skipIf(!configured)("a stored secret and its resource's row", () => {
   });
 
   it("moves a resource an edit gave a new id, and retires the old row", async () => {
+    const { eq } = await import("drizzle-orm");
+    const { db } = await import("../../db/client");
+    const { dashboards, dashboardPins } = await import("../../db/schema");
     const { upsertCreatedResource, supersedeResource } = await import("../../created-resource");
     const before = newId();
     const after = newId();
@@ -179,6 +182,10 @@ describe.skipIf(!configured)("a stored secret and its resource's row", () => {
       accountId,
       resource: instance(before),
     });
+    const dashboardId = randomUUID();
+    const pinId = randomUUID();
+    await db.insert(dashboards).values({ id: dashboardId, organizationId: orgId, name: "Main" });
+    await db.insert(dashboardPins).values({ id: pinId, dashboardId, resourceId: before });
 
     await supersedeResource({
       organizationId: orgId,
@@ -191,5 +198,8 @@ describe.skipIf(!configured)("a stored secret and its resource's row", () => {
 
     expect((await rowOf(before))?.deletedAt).toBeInstanceOf(Date);
     expect(await rowOf(after)).toMatchObject({ displayName: "Second version", deletedAt: null });
+    // A pin is something a person attached, so it follows the edit.
+    const [pin] = await db.select().from(dashboardPins).where(eq(dashboardPins.id, pinId));
+    expect(pin?.resourceId).toBe(after);
   });
 });

@@ -75,6 +75,14 @@ export interface CredentialField {
    * this on a `sensitive` field.
    */
   providerHost?: boolean;
+  /**
+   * With `providerHost`: the provider also answers on names one label under that host, as
+   * an S3 store does for a virtual-hosted bucket at `<bucket>.<host>`. A bastion then also
+   * allows any name exactly one label under it, each held to public addresses on every
+   * dial like the host itself. Only a DNS name of three labels or more widens, so an IP
+   * address, `example.com` or `co.uk` stays exact. Ignored without `providerHost`.
+   */
+  providerHostSubdomains?: boolean;
 }
 
 /**

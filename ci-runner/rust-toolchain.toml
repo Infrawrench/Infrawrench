@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned so a laptop and CI agree on what `cargo fmt` and clippy produce.
+# Wasmer 7.5 needs 1.96. wasm32-wasip1 is for the builtin tools in `builtins/`,
+# which build as WebAssembly; the runner itself builds for the host.
+channel = "1.98"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-wasip1"]

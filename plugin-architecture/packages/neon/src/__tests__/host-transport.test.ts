@@ -21,8 +21,13 @@ const json = (status: number, value: unknown) => ({
   rawBody: new TextEncoder().encode(JSON.stringify(value)),
 });
 
+/** A host answering `answer`, where the key belongs to no organization unless it says so. */
 function hostHttp(answer: (req: HostRequest) => ReturnType<typeof json>) {
-  return vi.fn(async (req: HostRequest) => answer(req));
+  return vi.fn(async (req: HostRequest) =>
+    new URL(req.url).pathname.endsWith("/users/me/organizations")
+      ? json(200, { organizations: [] })
+      : answer(req),
+  );
 }
 
 function makeClient(request: ReturnType<typeof hostHttp>) {
@@ -62,7 +67,8 @@ describe("Neon API calls through the host's HTTP service", () => {
 
     await makeClient(request).listResources("neon-project", "acct");
 
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(new URL(request.mock.calls[2]![0].url).pathname).toBe("/api/v2/users/me/organizations");
     const req = request.mock.calls[1]![0];
     const url = new URL(req.url);
     expect(url.origin + url.pathname).toBe("https://console.neon.tech/api/v2/projects");
@@ -70,6 +76,31 @@ describe("Neon API calls through the host's HTTP service", () => {
     expect(req.method).toBe("GET");
     expect(req.headers["authorization"] ?? req.headers["Authorization"]).toBe("Bearer neon_test");
     expect(req).not.toHaveProperty("caCert");
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("reads each organization's projects with its org_id, keeping one row per project", async () => {
+    const request = vi.fn(async (req: HostRequest) => {
+      const url = new URL(req.url);
+      if (url.pathname.endsWith("/users/me/organizations")) {
+        return json(200, { organizations: [{ id: "org-a" }, { id: "org-b" }] });
+      }
+      const ids = {
+        "": ["p1"],
+        "org-a": ["p1", "p2"],
+        "org-b": ["p3"],
+      }[url.searchParams.get("org_id") ?? ""];
+      return json(200, {
+        projects: (ids ?? []).map((id) => ({ id, name: id })),
+        pagination: {},
+      });
+    });
+
+    const rows = await makeClient(request).listResources("neon-project", "acct");
+
+    expect(rows.map((r) => r.externalId)).toEqual(["p1", "p2", "p3"]);
+    const orgIds = request.mock.calls.map(([r]) => new URL(r.url).searchParams.get("org_id"));
+    expect(orgIds).toEqual([null, null, "org-a", "org-b"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 

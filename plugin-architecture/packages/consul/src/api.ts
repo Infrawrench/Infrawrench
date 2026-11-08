@@ -104,12 +104,34 @@ function buildQuery(ctx: ConsulContext, opts: RequestOptions): string {
   return qs ? `?${qs}` : "";
 }
 
+/**
+ * The header Consul sets, as of 1.11, on a list it answered with some rows left out
+ * because the token may not read them. It is only sent for a request carrying a real,
+ * non-anonymous token, and only when rows were left out, so its absence says nothing
+ * for a request with no token.
+ * https://developer.hashicorp.com/consul/api-docs/api-structure#results-filtered-by-acls
+ */
+const FILTERED_BY_ACLS = "x-consul-results-filtered-by-acls";
+
+/** What {@link consulRequest} answers: the body, and what the response headers said about it. */
+export interface ConsulResponse<T> {
+  body: T;
+  /** Consul left rows out of this list because the token's ACLs do not cover them. */
+  filteredByAcls: boolean;
+}
+
+/** Response header names are case-insensitive, and Consul's own example writes `...-Acls`. */
+function headerIn(headers: Record<string, string>, name: string): string | undefined {
+  for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === name) return value;
+  return undefined;
+}
+
 /** One request; JSON parsed unless `text`. Consul errors are plain-text bodies. */
-export async function consulFetch<T>(
+export async function consulRequest<T>(
   ctx: ConsulContext,
   path: string,
   opts: RequestOptions = {},
-): Promise<T> {
+): Promise<ConsulResponse<T>> {
   const url = `${ctx.address}/v1${path}${buildQuery(ctx, opts)}`;
   const method = opts.method ?? "GET";
   const body =
@@ -127,6 +149,7 @@ export async function consulFetch<T>(
   };
   let status: number;
   let text: string;
+  let filtered: string | undefined;
   if (ctx.http) {
     const res = await ctx.http.request({
       url,
@@ -137,10 +160,12 @@ export async function consulFetch<T>(
     });
     status = res.status;
     text = res.body;
+    filtered = headerIn(res.headers ?? {}, FILTERED_BY_ACLS);
   } else {
     const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
     status = res.status;
     text = await res.text();
+    filtered = res.headers.get(FILTERED_BY_ACLS) ?? undefined;
   }
   if (status < 200 || status >= 300) {
     const hint =
@@ -154,13 +179,23 @@ export async function consulFetch<T>(
       `Consul API error ${status} for ${method} ${path}: ${text.trim().slice(0, 500)}${hint}`,
     );
   }
-  if (opts.text) return text as unknown as T;
-  if (!text) return undefined as T;
+  const filteredByAcls = filtered?.trim().toLowerCase() === "true";
+  if (opts.text) return { body: text as unknown as T, filteredByAcls };
+  if (!text) return { body: undefined as T, filteredByAcls };
   try {
-    return JSON.parse(text) as T;
+    return { body: JSON.parse(text) as T, filteredByAcls };
   } catch {
-    return text as unknown as T;
+    return { body: text as unknown as T, filteredByAcls };
   }
+}
+
+/** {@link consulRequest} for a caller that only wants the body. */
+export async function consulFetch<T>(
+  ctx: ConsulContext,
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
+  return (await consulRequest<T>(ctx, path, opts)).body;
 }
 
 export function joinId(...parts: string[]): string {

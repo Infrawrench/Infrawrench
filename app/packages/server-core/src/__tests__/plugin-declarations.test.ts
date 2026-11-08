@@ -82,6 +82,15 @@ describe("what plugins declare for the hosts", () => {
     ]);
   });
 
+  it("widens only fields that are a provider's host to one label under it", () => {
+    const declared = manifests().flatMap((m) =>
+      m.credentialFields
+        .filter((f) => f.providerHostSubdomains)
+        .map((f) => `${m.id}.${f.key}${f.providerHost ? "" : " (not providerHost)"}`),
+    );
+    expect(declared).toEqual(["s3-compatible.endpoint"]);
+  });
+
   it("never marks a sensitive field as a host, which would put a secret on the allowlist", () => {
     const marked = manifests().flatMap((m) =>
       m.credentialFields.filter((f) => f.providerHost && f.sensitive).map((f) => f.key),

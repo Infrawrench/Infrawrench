@@ -43,6 +43,7 @@ import {
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { fetchScalewayCostData } from "./cost-data.js";
 import { everyPage, fanOut, isDenied, isRefusal, PAGE_SIZE, ScalewayHttpError } from "./lists.js";
+import { SCW_BLOCK_ZONES, SCW_ZONES } from "./locations.js";
 import * as products from "./products.js";
 import type { ScwRest } from "./products.js";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
@@ -91,6 +92,10 @@ export class ScalewayClient implements PluginClient {
   private static readonly DEFAULT_REGION: Region = "fr-par";
   private static readonly DEFAULT_ZONE: Zone = "fr-par-1";
 
+  /**
+   * What to show for a zone. Which zones a product is read in comes from
+   * `locations.ts`, since that differs per product.
+   */
   private static readonly ZONE_INFO: Record<
     string,
     { region: string; location: string; flag: string }
@@ -117,6 +122,8 @@ export class ScalewayClient implements PluginClient {
     "pl-waw-2": { region: "pl-waw", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
     "pl-waw-3": { region: "pl-waw", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
     "it-mil-1": { region: "it-mil", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
+    "it-mil-2": { region: "it-mil", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
+    "it-mil-3": { region: "it-mil", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
   };
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
@@ -233,21 +240,20 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
+  /** The zones of the Instance API (instances, flexible IPs) and load balancers. */
   private zones(): string[] {
-    return Object.keys(ScalewayClient.ZONE_INFO);
+    return [...SCW_ZONES];
   }
 
   private regions(): string[] {
     return Object.keys(ScalewayClient.REGION_INFO);
   }
 
-  private zoneOptions() {
-    return Object.entries(ScalewayClient.ZONE_INFO).map(([id, info]) => ({
-      id,
-      label: id,
-      location: info.location,
-      flag: info.flag,
-    }));
+  private zoneOptions(zones: readonly string[] = SCW_ZONES) {
+    return zones.map((id) => {
+      const info = ScalewayClient.ZONE_INFO[id];
+      return { id, label: id, ...(info ? { location: info.location, flag: info.flag } : {}) };
+    });
   }
 
   private regionOptions() {
@@ -614,12 +620,7 @@ export class ScalewayClient implements PluginClient {
               label: "Zone",
               kind: "region-picker",
               required: true,
-              regions: Object.entries(ScalewayClient.ZONE_INFO).map(([id, info]) => ({
-                id,
-                label: id,
-                location: info.location,
-                flag: info.flag,
-              })),
+              regions: this.zoneOptions(SCW_BLOCK_ZONES),
               defaultValue: "fr-par-1",
             },
             {
@@ -1913,7 +1914,7 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async listBlockVolumes(accountId: string): Promise<ResourceInstance[]> {
-    const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
+    const zones = SCW_BLOCK_ZONES as Zone[];
     const api = this.blockApi();
     return fanOut(zones, "block volumes", async (zone) => {
       const volumes = await everyPage(
@@ -1956,7 +1957,7 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
-    const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
+    const zones = this.zones() as Zone[];
     const api = this.instanceApi();
     return fanOut(zones, "instances", async (zone) => {
       const servers = await everyPage(
@@ -2007,16 +2008,7 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async getInstanceCreateConfig(): Promise<CreateResourceConfig> {
-    const zones = Object.keys(ScalewayClient.ZONE_INFO);
-
-    const regionOptions = zones.map((zone) => {
-      const info = ScalewayClient.ZONE_INFO[zone];
-      return {
-        id: zone,
-        label: zone,
-        ...(info ? { location: info.location, flag: info.flag } : {}),
-      };
-    });
+    const regionOptions = this.zoneOptions();
 
     const api = this.instanceApi();
 

@@ -187,7 +187,7 @@ describe("handshake & heartbeat", () => {
   it("sends agent-info on open and starts the heartbeat", async () => {
     const ws = await loadAgent();
     ws.emit("open");
-    expect(ws.lastSent).toEqual({ op: "agent-info", agentVersion: "0.2.0" });
+    expect(ws.lastSent).toEqual({ op: "agent-info", agentVersion: "0.3.0" });
     // heartbeat ping fires after 10s
     ws.sent.length = 0;
     vi.advanceTimersByTime(10_000);
@@ -388,6 +388,65 @@ describe("message handling", () => {
       );
       expect(FakeSocket.instances).toHaveLength(0);
       expect(ws.lastSent).toMatchObject({ op: "open-failed" });
+    });
+
+    describe("a name one label under it, for a field marked providerHostSubdomains", () => {
+      async function openUnder(entry: string, host: string) {
+        const ws = await loadAgent();
+        helloFor(ws, [`public:${entry}`]);
+        ws.emit("message", JSON.stringify({ op: "open", streamId: 1, host, port: 443 }));
+        return ws;
+      }
+
+      it("dials a bucket's name through the resolver that checks it", async () => {
+        await openUnder("*.s3.acme.example", "my-bucket.s3.acme.example");
+        expect(FakeSocket.instances).toHaveLength(1);
+        expect(FakeSocket.instances[0]!.connectArgs).toMatchObject({
+          host: "my-bucket.s3.acme.example",
+          port: 443,
+        });
+        expect(FakeSocket.instances[0]!.connectArgs).toHaveProperty("lookup");
+      });
+
+      it("matches regardless of case", async () => {
+        await openUnder("*.S3.Acme.Example", "My-Bucket.s3.ACME.example");
+        expect(FakeSocket.instances).toHaveLength(1);
+      });
+
+      it.each(["169.254.169.254", "10.0.0.5", "127.0.0.1", "fd00:ec2::254"])(
+        "fails the dial when the bucket's name resolves to %s",
+        async (address) => {
+          await openUnder("*.s3.acme.example", "rebind.s3.acme.example");
+          dnsAnswers(address);
+          const callback = vi.fn();
+          lookupOf(FakeSocket.instances[0]!)("rebind.s3.acme.example", { all: true }, callback);
+          expect((callback.mock.calls[0]![0] as Error).message).toMatch(/non-public address/);
+        },
+      );
+
+      it.each([
+        ["two labels deep", "*.s3.acme.example", "a.b.s3.acme.example"],
+        ["the host itself, which needs its own entry", "*.s3.acme.example", "s3.acme.example"],
+        ["a sibling", "*.s3.acme.example", "bucket.s4.acme.example"],
+        ["a name that only ends the same way", "*.s3.acme.example", "bucket.evils3.acme.example"],
+        ["an empty label", "*.s3.acme.example", ".s3.acme.example"],
+        ["a label that is not a hostname label", "*.s3.acme.example", "a*b.s3.acme.example"],
+        ["a two-label base", "*.acme.example", "bucket.acme.example"],
+        ["a public suffix", "*.co.uk", "acme.co.uk"],
+        ["an IPv4 base", "*.93.184.216.34", "1.93.184.216.34"],
+        ["a base ending in a number", "*.2.3.4", "1.2.3.4"],
+        ["a base ending in a hex number", "*.a.b.0x10", "c.a.b.0x10"],
+        ["an IPv6 base", "*.2606:4700::1111", "a.2606:4700::1111"],
+        ["a wildcard inside the base", "*.*.acme.example", "a.b.acme.example"],
+      ])("refuses %s", async (_label, entry, host) => {
+        const ws = await openUnder(entry, host);
+        expect(FakeSocket.instances).toHaveLength(0);
+        expect(ws.lastSent).toEqual({
+          op: "open-failed",
+          streamId: 1,
+          reason: `destination not allowlisted: ${host}`,
+        });
+      });
     });
 
     it("leaves a host the plugin declared to the system resolver, as before", async () => {

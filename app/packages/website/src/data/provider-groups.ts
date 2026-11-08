@@ -1832,14 +1832,8 @@ export const providerGroups: ProviderGroup[] = [
       },
       {
         name: "Perplexity",
-        detail: "5 resource types",
-        resources: [
-          "Sonar Model",
-          "Agent API Model",
-          "Router Model",
-          "Async Sonar Request",
-          "Skill",
-        ],
+        detail: "4 resource types",
+        resources: ["Sonar Model", "Agent API Model", "Router Model", "Skill"],
       },
       {
         name: "fal",

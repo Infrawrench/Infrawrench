@@ -908,6 +908,18 @@ export interface SpeechPanelOption {
   label: string;
   /** Optional second line: accent, gender, price tier, etc. */
   description?: string;
+  /**
+   * Model entries only: the `languages` ids this model accepts. While this
+   * model is selected the panel offers only these in the language picker, and
+   * moves a selection outside them to `defaultLanguage` when that is allowed,
+   * else to the first allowed entry. An auto-detect entry is just another
+   * language id, so a model that needs one named language leaves it out.
+   * Omit to allow every language. Ignored on voices and languages.
+   *
+   * This only shapes the picker. The API and workflows reach the plugin
+   * without it, so a plugin that knows a pair fails still refuses it itself.
+   */
+  languageIds?: readonly string[];
 }
 
 /**

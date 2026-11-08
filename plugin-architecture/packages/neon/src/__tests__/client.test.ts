@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // --- Mock the Neon SDK ----------------------------------------------------
 const api = {
   listProjects: vi.fn(),
+  getCurrentUserOrganizations: vi.fn(),
   listProjectBranches: vi.fn(),
   listProjectEndpoints: vi.fn(),
   listProjectBranchDatabases: vi.fn(),
@@ -79,6 +80,8 @@ const notFound = () => Object.assign(new Error("not found"), { response: { statu
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A key that belongs to no organization reads projects the way it always has.
+  api.getCurrentUserOrganizations.mockResolvedValue(wrap({ organizations: [] }));
 });
 
 describe("constructor", () => {

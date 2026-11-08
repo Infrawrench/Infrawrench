@@ -39,6 +39,7 @@ import {
   mapSimple,
   mapSource,
   mapStatusPage,
+  parseMemberExternalId,
   resourceIdFor,
 } from "./mappers.js";
 import { verifyBetterStackCredentials } from "./preflight.js";
@@ -60,6 +61,17 @@ const SQL_SECRET_FIELD = "sqlConnection";
 const PICKER: Paging = { maxPages: 50, partial: true };
 
 const opt = (id: string, label = id) => ({ id, label });
+
+/**
+ * The 422 the team member routes document for a global token that covers several teams
+ * and named none: "This token has access to multiple teams. Please use the 'team_name'
+ * parameter to specify the team."
+ */
+function needsTeamName(err: unknown): boolean {
+  return (
+    statusOf(err) === 422 && err instanceof Error && /multiple teams|team_name/i.test(err.message)
+  );
+}
 
 function trimmed(fields: Record<string, string>, key: string): string {
   return (fields[key] ?? "").trim();
@@ -216,12 +228,45 @@ export class BetterStackClient implements PluginClient {
           case "telemetry-alert":
             return (await this.collection(typeId)).data.map((x) => mapAlert(accountId, x));
           case "team-member":
-            return (await this.collection(typeId)).data.map((x) => mapMember(accountId, x));
+            return this.listMembers(accountId);
           default:
             throw new Error(`Better Stack plugin: unknown resource type "${typeId}"`);
         }
       });
     });
+  }
+
+  /**
+   * Team members. A global token covering several teams gets a documented 422 without
+   * `team_name` (#822), so only then are they read per team, by the names the other
+   * objects carry. No documented route lists teams, and a team nothing names goes unread,
+   * so the type is reported unread as a whole: the members read are stored, and nothing
+   * stored is pruned while the token covers several teams. A token with one team reads
+   * exactly as before.
+   */
+  private async listMembers(accountId: string): Promise<ResourceInstance[]> {
+    try {
+      return (await this.collection("team-member")).data.map((x) => mapMember(accountId, x));
+    } catch (err) {
+      if (!needsTeamName(err)) throw err;
+      const teams = await this.teams();
+      // Nothing names a team, or nobody keeps what goes unread: the 422 stands.
+      if (teams.length === 0 || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      const perTeam = await mapPooled(teams, POOL, async (team) => {
+        try {
+          return (await this.collection("team-member", { team_name: team })).data.map((x) =>
+            mapMember(accountId, x, team),
+          );
+        } catch (teamErr) {
+          // A name the token does not reach. Its members stay as stored, like those of a
+          // team nothing names; a throttle, a 5xx or a dead token still fails the type.
+          const status = statusOf(teamErr);
+          if (status === 403 || status === 404 || status === 422) return [];
+          throw teamErr;
+        }
+      });
+      return perTeam.flat();
+    }
   }
 
   private async listPageChildren(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -261,12 +306,13 @@ export class BetterStackClient implements PluginClient {
   private async one(
     typeId: string,
     id: string,
+    query: Record<string, string> = {},
   ): Promise<{ item: JsonApiItem<Attrs>; included: JsonApiItem[] }> {
     const c = COLLECTIONS[typeId];
     if (!c) throw new Error(`Better Stack plugin: unknown resource type "${typeId}"`);
     const res = await bsFetch<
       { data?: JsonApiItem<Attrs>; included?: JsonApiItem[] } | JsonApiItem<Attrs>
-    >(this.ctx, c.host, `${c.path}/${encodeURIComponent(id)}`);
+    >(this.ctx, c.host, `${c.path}/${encodeURIComponent(id)}`, { query });
     // Telemetry single reads return the resource without a `data` wrapper.
     const item = "data" in res && res.data ? res.data : (res as JsonApiItem<Attrs>);
     return { item, included: ("included" in res && res.included) || [] };
@@ -323,6 +369,15 @@ export class BetterStackClient implements PluginClient {
         const found = children.find((r) => r.externalId === id);
         if (!found) throw new Error(`Better Stack plugin: resource ${typeId}/${id} not found`);
         return found;
+      }
+      if (typeId === "team-member") {
+        // A member read for one team is fetched for that team, as the document asks of a
+        // global token.
+        const { userId, team } = parseMemberExternalId(id);
+        if (team !== undefined) {
+          const { item } = await this.one(typeId, userId, { team_name: team });
+          return mapMember(accountId, item, team);
+        }
       }
       const { item, included } = await this.one(typeId, id);
       return this.mapOne(typeId, accountId, item, included);
@@ -1497,6 +1552,17 @@ export class BetterStackClient implements PluginClient {
       const c = COLLECTIONS[typeId];
       if (!c)
         throw new Error(`Better Stack plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      if (typeId === "team-member") {
+        // The document asks a global token for `team_name` on removal too.
+        const { userId, team } = parseMemberExternalId(id);
+        if (team !== undefined) {
+          await bsFetch<unknown>(this.ctx, c.host, `${c.path}/${encodeURIComponent(userId)}`, {
+            method: "DELETE",
+            query: { team_name: team },
+          });
+          return;
+        }
+      }
       await del(c.host, `${c.path}/${encodeURIComponent(id)}`);
     });
   }

@@ -4,11 +4,15 @@
  * and this reads it.
  *
  * What comes out is safe to hand a bastion agent: it is one exact name or a public IP
- * literal per entry, never a wildcard, never a private, loopback or link-local literal,
- * never a name with no dot, which only a private resolver could answer. A name can still
- * resolve to something private, and only the agent can see that, so it checks on dial.
+ * literal per entry, never a private, loopback or link-local literal, never a name with
+ * no dot, which only a private resolver could answer. The one wildcard is `*.<host>` for
+ * a field also marked `providerHostSubdomains`, and only on a DNS name of three labels or
+ * more, so an address, `example.com` or `co.uk` never becomes one; the dispatcher and the
+ * agent match it as exactly one extra label. A name can still resolve to something
+ * private, and only the agent can see that, so it checks on every dial.
  */
 import type { CredentialField } from "@infrawrench/plugin-base";
+import { PUBLIC_ONLY_PREFIX } from "./protocol.js";
 import { isPublicAddress, looksLikeIpAddress } from "./public-address.js";
 
 const DNS_NAME = /^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)+\.?$/;
@@ -31,7 +35,16 @@ function hostOf(written: string): string | null {
   return host;
 }
 
-/** The allowable hosts in `credentials`, from the fields marked `providerHost`. */
+/** The names one label under `host`, as an entry, or null when `host` must stay exact. */
+function subdomainsOf(host: string): string | null {
+  if (looksLikeIpAddress(host)) return null;
+  return host.replace(/\.$/, "").split(".").length >= 3 ? `*.${host}` : null;
+}
+
+/**
+ * The allowable hosts in `credentials`, from the fields marked `providerHost`, plus
+ * `*.<host>` for a field also marked `providerHostSubdomains`.
+ */
 export function providerHostsOf(
   fields: readonly CredentialField[],
   credentials: Readonly<Record<string, string | undefined>>,
@@ -41,13 +54,20 @@ export function providerHostsOf(
     if (!field.providerHost || field.sensitive) continue;
     for (const written of (credentials[field.key] ?? "").split(",")) {
       const host = written.trim() ? hostOf(written.trim()) : null;
-      if (host) hosts.add(host);
+      if (!host) continue;
+      hosts.add(host);
+      const subdomains = field.providerHostSubdomains ? subdomainsOf(host) : null;
+      if (subdomains) hosts.add(subdomains);
     }
   }
   return [...hosts];
 }
 
-/** Every host this account's calls may reach through a bastion, as allowlist patterns. */
+/**
+ * Every host this account's calls may reach through a bastion, as allowlist patterns: the
+ * account's own under `public:`, as the agent gets them, so `hostMatches` reads a
+ * `*.<host>` of its own as one label deep rather than as a manifest wildcard.
+ */
 export function accountEgressHosts(
   manifest: {
     readonly egressHosts: readonly string[];
@@ -55,5 +75,10 @@ export function accountEgressHosts(
   },
   credentials: Readonly<Record<string, string | undefined>>,
 ): string[] {
-  return [...manifest.egressHosts, ...providerHostsOf(manifest.credentialFields, credentials)];
+  return [
+    ...manifest.egressHosts,
+    ...providerHostsOf(manifest.credentialFields, credentials).map(
+      (host) => `${PUBLIC_ONLY_PREFIX}${host}`,
+    ),
+  ];
 }

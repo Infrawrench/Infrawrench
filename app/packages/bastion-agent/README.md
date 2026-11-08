@@ -25,6 +25,7 @@ The token cannot be recovered after the modal closes — copy it now. To rotate,
 
 - ✅ Opens TCP streams **only to hostnames the backend allowlists** at handshake time. The allowlist is derived from the plugins of accounts bound to this bastion, and from the hosts those accounts configured, such as a self-hosted Vault's address.
 - ✅ Refuses a configured host unless every address it resolves to on the agent's network is public, checked on the connection it dials. Loopback, link-local (cloud metadata) and private addresses are not reachable that way.
+- ✅ A configured host is exact, or for a field that asks for it (an S3-compatible endpoint, whose virtual-hosted buckets are `<bucket>.<endpoint>`), also the names exactly one label under it, and only under a name of three labels or more. Those names are held to public addresses the same way. Agents before 0.3.0 refuse them.
 - ✅ Forwards bytes; lets the backend handle TLS to the cloud API.
 - ✅ Reconnects with exponential backoff if the WebSocket drops.
 - ❌ Does not accept inbound connections.

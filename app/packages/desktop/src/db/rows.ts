@@ -82,22 +82,80 @@ export async function mergeResourceRow(
 }
 
 /**
- * Write what an edit answered, merged as `mergeResourceRow` does.
+ * Write what an edit answered, merged as `mergeResourceRow` does, and answer the id to
+ * keep editing by.
  *
  * Where the answer has a different id, as a provider that makes each edit a new version
- * gives, the new id gets the row with the old row's fields, and the old one is soft
- * deleted. Mirrors `supersedeResource` in server-core, which says why stored secrets do
- * not move.
+ * gives, the new id gets the row with the old row's fields, the old one is soft deleted,
+ * and what was attached to it moves (`carryResourceReferences`). Mirrors
+ * `supersedeResource` in server-core, which says why stored secrets do not move. An
+ * answer outside `accountId` is a plugin bug: it moves nothing, and the edit's own id is
+ * kept, as the cloud's update route does.
  */
 export async function mirrorEditedResourceRow(
   db: DbClient,
   editedId: string,
   row: ResourceRow,
-): Promise<void> {
-  await mergeResourceRow(db, row, editedId);
-  if (row.id !== editedId) {
-    await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [editedId]);
+  accountId: string,
+): Promise<string> {
+  if (row.id === editedId) {
+    await mergeResourceRow(db, row);
+    return editedId;
   }
+  if (!accountId || !row.id.startsWith(`${accountId}:`)) {
+    console.error(`[resources] ${row.pluginId} answered an edit with an id outside the account`);
+    await mergeResourceRow(db, { ...row, id: editedId, accountId });
+    return editedId;
+  }
+  await mergeResourceRow(db, row, editedId);
+  await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [editedId]);
+  await carryResourceReferences(db, editedId, row.id, row.displayName);
+  return row.id;
+}
+
+/**
+ * Point what people attached to a resource at the id it now goes by: its dashboard pins,
+ * its metric pings, and the output references other resources resolve from it. A record
+ * of what happened (posture dismissals among them) stays with the old id. The same rule
+ * as `carryResourceReferences` in server-core, over the tables the desktop has. A pin or
+ * ping the new id already has wins over the old one's.
+ */
+export async function carryResourceReferences(
+  db: DbClient,
+  previousId: string,
+  nextId: string,
+  displayName: string,
+): Promise<void> {
+  if (previousId === nextId) return;
+  // `electron/db.ts` turns every `$n` into a positional `?`, so each placeholder appears
+  // once and in order, and a value used twice is passed twice.
+  await db.execute(
+    `UPDATE dashboard_pins SET resource_id = $1
+     WHERE resource_id = $2
+       AND NOT EXISTS (
+         SELECT 1 FROM dashboard_pins other
+         WHERE other.dashboard_id = dashboard_pins.dashboard_id AND other.resource_id = $3
+       )`,
+    [nextId, previousId, nextId],
+  );
+  await db.execute(
+    `UPDATE metric_pings SET resource_id = $1, resource_display_name = $2
+     WHERE resource_id = $3
+       AND NOT EXISTS (
+         SELECT 1 FROM metric_pings other
+         WHERE other.resource_id = $4 AND other.metric_label = metric_pings.metric_label
+       )`,
+    [nextId, displayName, previousId, nextId],
+  );
+  await db.execute(
+    "UPDATE associations SET provider_resource_id = $1 WHERE provider_resource_id = $2",
+    [nextId, previousId],
+  );
+  await db.execute(
+    `UPDATE secret_field_states SET source_resource_id = $1, updated_at = datetime('now')
+     WHERE resolution_kind = 'output-ref' AND source_resource_id = $2`,
+    [nextId, previousId],
+  );
 }
 
 /** A resource's stored `fields_json` with an answer's fields laid over it. */
