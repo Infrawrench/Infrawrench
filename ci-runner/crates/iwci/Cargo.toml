@@ -1,0 +1,28 @@
+[package]
+name = "iwci"
+description = "The CI runner: plans a commit's pipelines and runs every job in a Wasmer isolate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iwci-spec.workspace = true
+iwci-vfs.workspace = true
+iwci-store.workspace = true
+iwci-runtime.workspace = true
+iwci-git.workspace = true
+iwci-deps.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+sha2.workspace = true
+globset.workspace = true
+# Only to size the global pool Wasmer compiles on (`--cpus`).
+rayon = "1"
+# `iwci serve`: a small synchronous HTTP server; each request gets a thread,
+# as runs already do.
+tiny_http = "0.12"
+# Job caches are stored as one zstd stream each.
+zstd = { version = "0.13", default-features = false }

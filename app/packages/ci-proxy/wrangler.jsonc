@@ -1,0 +1,39 @@
+// The CI proxy: the one public front of the iwci runner pool. It
+// authenticates callers, places runs on the runner with the most free
+// slots, routes status and log requests back to the runner that has the
+// run, and fires `on.schedule` pipelines from a once-a-minute Cron Trigger.
+// See README.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "infrawrench-ci-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+
+  // Once a minute: the proxy decides which registered schedules are due.
+  // Cron Triggers fire once for the whole Worker, which is what makes a
+  // pool of runners fire each schedule once.
+  "triggers": { "crons": ["* * * * *"] },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "infrawrench-ci-proxy",
+      // Set when the database is created: `wrangler d1 create infrawrench-ci-proxy`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+
+  "vars": {
+    // Comma-separated base URLs of the runners (`iwci serve`). The order is
+    // part of each run id, so append new runners rather than reordering.
+    "RUNNERS": "http://127.0.0.1:8547",
+  },
+
+  // Secrets (wrangler secret put):
+  //   PROXY_KEY   the bearer key callers send to this Worker
+  //   RUNNER_KEY  the IWCI_SERVER_KEY the runners were started with
+}

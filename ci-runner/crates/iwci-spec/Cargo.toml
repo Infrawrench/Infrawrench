@@ -1,0 +1,18 @@
+[package]
+name = "iwci-spec"
+description = "The CI pipeline file: parsing, validation, matrix expansion and interpolation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+globset.workspace = true

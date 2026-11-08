@@ -1,0 +1,31 @@
+[package]
+name = "iwci-git"
+description = "A persistent per-remote git object cache, fetch by sha, and checkout straight into the in-memory snapshot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iwci-vfs.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+# No default features: those bring in status, blame, merge, diff, mailmap,
+# worktree checkout and attribute handling, none of which a bare cache that
+# reads trees by hand needs. `max-performance` is threaded pack indexing
+# and delta caches, which is where fetch and checkout spend their time.
+# The HTTP transport is the blocking reqwest one, with its TLS chosen below.
+gix = { version = "0.90", default-features = false, features = [
+  "sha1",
+  "max-performance",
+  "blocking-http-transport-reqwest",
+] }
+# reqwest's `rustls` feature would pin aws-lc-rs, a C library with a heavy
+# build. `rustls-no-provider` plus ring (installed process-wide in
+# `GitCache::new`) is the same TLS stack on a smaller, pure-build crypto
+# backend. These two entries exist only to select those features.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
