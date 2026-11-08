@@ -303,6 +303,19 @@ pub struct PlannedJob {
     #[serde(with = "duration_secs")]
     pub timeout: Duration,
     pub memory_bytes: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub caches: Vec<CacheSpec>,
+}
+
+/// One `cache:` entry of a job, with every expression substituted except
+/// `${{ hashFiles(...) }}`, which reads the commit and is filled in by
+/// [`crate::expand_hash_files`] when the job runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CacheSpec {
+    pub key: String,
+    pub restore_keys: Vec<String>,
+    /// Absolute, normalised guest paths.
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

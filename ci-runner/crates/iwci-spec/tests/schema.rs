@@ -61,6 +61,10 @@ fn schema_matches_the_structs() {
             "name: x\non:\n  push: { zzz: 1 }\njobs: {}\n",
             "/$defs/triggerFilter",
         ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    cache: { zzz: 1 }\n",
+            "/$defs/cacheEntry",
+        ),
     ];
     for (yaml, pointer) in cases {
         assert_eq!(

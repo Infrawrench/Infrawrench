@@ -73,6 +73,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
             timeout: Duration::from_secs(30),
             memory_bytes: 64 << 20,
         },
+        log: None,
     }
 }
 
@@ -323,7 +324,7 @@ fn find(dir: &Path, suffix: &str) -> PathBuf {
 }
 
 #[test]
-fn jobs_have_no_network() {
+fn jobs_get_a_private_loopback_and_nothing_else() {
     let rt = runtime();
     let (engine, _) = wasix::job_engine(rt.store.engine(), 1 << 20, 1 << 20);
     let job = wasix::JobRuntime::for_tests(&rt.wasix, engine);
@@ -331,8 +332,13 @@ fn jobs_have_no_network() {
     let net = job.networking();
     let addr: std::net::SocketAddr = "127.0.0.1:80".parse().unwrap();
     let local: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
+    // Nothing listens yet, so the job's own loopback refuses; the host's is
+    // never consulted.
     assert!(futures::executor::block_on(net.connect_tcp(local, addr)).is_err());
-    assert!(futures::executor::block_on(net.listen_tcp(local, false, false, false)).is_err());
+    let outside: std::net::SocketAddr = "93.184.216.34:443".parse().unwrap();
+    assert!(futures::executor::block_on(net.connect_tcp(local, outside)).is_err());
+    let _listener = futures::executor::block_on(net.listen_tcp(addr, false, false, false)).unwrap();
+    assert!(futures::executor::block_on(net.connect_tcp(local, addr)).is_ok());
     assert!(futures::executor::block_on(net.resolve("example.com", None, None)).is_err());
     assert!(job.http_client().is_none());
     let query: wasmer_config::package::PackageSource = "wasmer/bash".parse().unwrap();
@@ -889,5 +895,31 @@ fn real_tsc_reports_diagnostics_as_json_and_emits() {
     assert_eq!(
         job.read("/p/out/a.js").unwrap(),
         b"export const n = 'one';\n"
+    );
+}
+
+#[test]
+fn output_is_handed_to_the_log_sink_as_it_is_written() {
+    let rt = runtime();
+    let module = wat_module("hello", HELLO);
+    let job = snapshot(&[]).fork();
+    type Chunks = Vec<(Stream, Vec<u8>)>;
+    let seen: Arc<std::sync::Mutex<Chunks>> = Arc::default();
+    let sink_seen = seen.clone();
+    let mut inv = invocation(job.as_dyn(), &["a"]);
+    inv.log = Some(Arc::new(move |stream, data: &[u8]| {
+        sink_seen.lock().unwrap().push((stream, data.to_vec()))
+    }));
+    let outcome = rt.run_command(&module, inv).unwrap();
+    let seen = seen.lock().unwrap();
+    let streamed: Vec<u8> = seen
+        .iter()
+        .filter(|(s, _)| *s == Stream::Stdout)
+        .flat_map(|(_, d)| d.clone())
+        .collect();
+    assert!(!streamed.is_empty());
+    assert_eq!(
+        streamed, outcome.stdout,
+        "the sink sees what the capture keeps"
     );
 }

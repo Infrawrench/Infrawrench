@@ -11,7 +11,35 @@ use crate::error::StoreError;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ListPage {
     pub keys: Vec<String>,
+    /// Per key, in the same order: its `<Size>` and `<LastModified>`.
+    pub sizes: Vec<Option<u64>>,
+    pub modified: Vec<Option<u64>>,
     pub next_token: Option<String>,
+}
+
+/// Seconds since the epoch for an S3 timestamp such as
+/// `2026-11-01T12:34:56.000Z`. `None` for anything else.
+pub(crate) fn parse_timestamp(text: &str) -> Option<u64> {
+    let t = text.trim();
+    let num = |s: &str| s.parse::<i64>().ok();
+    let (y, mo, d) = (num(t.get(0..4)?)?, num(t.get(5..7)?)?, num(t.get(8..10)?)?);
+    let (h, mi, s) = (
+        num(t.get(11..13)?)?,
+        num(t.get(14..16)?)?,
+        num(t.get(17..19)?)?,
+    );
+    if t.get(4..5)? != "-" || t.get(10..11)? != "T" || !t.ends_with('Z') {
+        return None;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + h * 3600 + mi * 60 + s).ok()
 }
 
 fn bad(what: impl Into<String>) -> StoreError {
@@ -155,6 +183,8 @@ fn url_decode(value: &str) -> Result<String, StoreError> {
 pub(crate) fn parse_list(doc: &str) -> Result<ListPage, StoreError> {
     let mut root = None;
     let mut raw_keys = Vec::new();
+    let mut sizes: Vec<Option<u64>> = Vec::new();
+    let mut modified: Vec<Option<u64>> = Vec::new();
     let mut truncated = None;
     let mut token = None;
     let mut encoding = None;
@@ -163,7 +193,21 @@ pub(crate) fn parse_list(doc: &str) -> Result<ListPage, StoreError> {
             root = path.first().map(|s| s.to_string());
         }
         match path {
-            ["ListBucketResult", "Contents", "Key"] => raw_keys.push(text),
+            ["ListBucketResult", "Contents", "Key"] => {
+                raw_keys.push(text);
+                sizes.push(None);
+                modified.push(None);
+            }
+            ["ListBucketResult", "Contents", "Size"] => {
+                if let Some(last) = sizes.last_mut() {
+                    *last = text.trim().parse().ok();
+                }
+            }
+            ["ListBucketResult", "Contents", "LastModified"] => {
+                if let Some(last) = modified.last_mut() {
+                    *last = parse_timestamp(&text);
+                }
+            }
             ["ListBucketResult", "IsTruncated"] => truncated = Some(text),
             ["ListBucketResult", "NextContinuationToken"] => token = Some(text),
             ["ListBucketResult", "EncodingType"] => encoding = Some(text),
@@ -191,7 +235,12 @@ pub(crate) fn parse_list(doc: &str) -> Result<ListPage, StoreError> {
         Some("false") | None => None,
         Some(other) => return Err(bad(format!("IsTruncated is {other:?}"))),
     };
-    Ok(ListPage { keys, next_token })
+    Ok(ListPage {
+        keys,
+        sizes,
+        modified,
+        next_token,
+    })
 }
 
 /// The `<Code>` of an S3 `<Error>` body, if the body is one.
@@ -209,6 +258,21 @@ pub(crate) fn error_code(doc: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamps_and_sizes_come_with_their_keys() {
+        assert_eq!(parse_timestamp("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(
+            parse_timestamp("2026-11-01T00:00:00.000Z"),
+            Some(1_793_491_200)
+        );
+        assert_eq!(parse_timestamp("2026-11-01 00:00:00"), None);
+        let page = parse_list(PAGE_1).unwrap();
+        assert_eq!(page.sizes.len(), page.keys.len());
+        assert_eq!(page.sizes[0], Some(300));
+        assert_eq!(page.modified[0], Some(1_793_491_200));
+        assert_eq!(page.modified[1], None);
+    }
 
     const PAGE_1: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">

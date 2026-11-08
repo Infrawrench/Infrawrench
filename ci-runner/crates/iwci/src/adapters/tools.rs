@@ -71,6 +71,12 @@ impl Executor<Resolved> for RuntimeExecutor {
             cwd: inv.job.cwd.clone(),
             fs: inv.fs.as_dyn(),
             limits,
+            log: inv.log.map(|sink| {
+                let log: iwci_runtime::LogSink = Arc::new(move |stream, data: &[u8]| {
+                    sink(stream == iwci_runtime::Stream::Stderr, data)
+                });
+                log
+            }),
         };
 
         let outcome = match (tool, action) {

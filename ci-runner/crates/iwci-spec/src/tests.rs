@@ -691,3 +691,63 @@ fn the_dynamic_example_parses() {
     );
     assert!(plan.template("docs").unwrap().condition.is_some());
 }
+
+#[test]
+fn caches_resolve_paths_and_keep_hash_files_for_the_run() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  t:
+    matrix: [web]
+    using: builtin:t@1
+    cache:
+      key: tsc-${{ matrix }}-${{ hashFiles('pnpm-lock.yaml', 'app/**/*.ts') }}
+      restore-keys: ["tsc-${{ matrix }}-"]
+      paths: [app/packages/web/.tsbuildinfo, /root/.cache/go-build]
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let job = plan.job("t[web]").unwrap();
+    assert_eq!(
+        job.caches,
+        vec![CacheSpec {
+            key: "tsc-web-${{ hashFiles('pnpm-lock.yaml', 'app/**/*.ts') }}".into(),
+            restore_keys: vec!["tsc-web-".into()],
+            paths: vec![
+                "/app/app/packages/web/.tsbuildinfo".into(),
+                "/root/.cache/go-build".into()
+            ],
+        }]
+    );
+    let key = expand_hash_files(&job.caches[0].key, |globs| format!("h{}", globs.len())).unwrap();
+    assert_eq!(key, "tsc-web-h2");
+
+    let job =
+        |cache: &str| format!("name: x\njobs:\n  t:\n    using: builtin:t@1\n    cache: {cache}\n");
+    assert_error(&job("{ key: k, paths: [../x] }"), "without `..`");
+    assert_error(
+        &job("{ key: k, paths: [/iwci/output] }"),
+        "not a path a job can cache",
+    );
+    assert_error(&job("{ key: k, paths: [] }"), "1 to 64 paths");
+    assert_error(&job("{ key: \"\", paths: [a] }"), "1 to 512");
+    assert_error(
+        &job("{ key: \"${{ hashFiles(a) }}\", paths: [a] }"),
+        "quoted globs",
+    );
+    assert_error(
+        &job("{ key: \"${{ hashFiles('/etc/x') }}\", paths: [a] }"),
+        "relative to the clone",
+    );
+    assert_error(&job("{ key: k, paths: [a], extra: 1 }"), "unknown field");
+    assert_error(
+        "name: x\njobs:\n  t:\n    using: builtin:t@1\n    args: [\"${{ hashFiles('a') }}\"]\n",
+        "only works in a cache",
+    );
+    assert_error(
+        "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    cache: { key: k, paths: [rel] }\n",
+        "only cache absolute paths",
+    );
+}

@@ -654,3 +654,47 @@ fn too_many_packs_starts_the_remote_over() {
     assert!(packs <= 2, "{packs} packs");
     assert!(remote.has_commit(shas.last().unwrap()).unwrap());
 }
+
+#[test]
+fn a_branch_resolves_to_its_current_head() {
+    let Some(()) = git_or_skip("a_branch_resolves_to_its_current_head") else {
+        return;
+    };
+    let (mut f, _first, second) = sample();
+    let (_dir, cache) = cache();
+    let remote = cache.remote(&f.url()).unwrap();
+    let branch = f
+        .git(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .trim()
+        .to_string();
+    let fetched = remote
+        .fetch_branch(&branch, Depth::Shallow(1), None)
+        .unwrap();
+    assert_eq!(fetched.commit, second);
+    assert!(remote.has_commit(&second).unwrap());
+
+    // The branch moves; the next fetch follows it.
+    f.write("README.md", b"third\n");
+    let third = f.commit("third");
+    assert_eq!(
+        remote
+            .fetch_branch(&branch, Depth::Shallow(1), None)
+            .unwrap()
+            .commit,
+        third
+    );
+
+    // A missing branch and a malformed name are errors, not a fetch of
+    // something else.
+    assert!(
+        remote
+            .fetch_branch("no-such-branch", Depth::Shallow(1), None)
+            .is_err()
+    );
+    for bad in ["main:evil", "*", "../x", "+main", "a b"] {
+        assert!(
+            remote.fetch_branch(bad, Depth::Shallow(1), None).is_err(),
+            "{bad}"
+        );
+    }
+}

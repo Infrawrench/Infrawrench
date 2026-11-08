@@ -76,6 +76,29 @@ pub const MIN_MEMORY: u64 = 16 << 20;
 pub const MAX_MEMORY: u64 = 16 << 30;
 pub const DEFAULT_CLONE_INTO: &str = "/app";
 
+/// The most `cache:` entries one job may have.
+pub const MAX_CACHES: usize = 16;
+
+/// Fills in every `${{ hashFiles('glob', ...) }}` left in a cache key, with
+/// `hash` turning a list of globs (relative to the clone) into a digest.
+pub fn expand_hash_files(
+    key: &str,
+    mut hash: impl FnMut(&[String]) -> String,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(key.len());
+    let mut rest = key;
+    while let Some(start) = rest.find("${{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        let end = after.find("}}").ok_or("`${{` is never closed with `}}`")?;
+        let globs = interp::hash_files_globs(after[..end].trim())?;
+        out.push_str(&hash(&globs));
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
 /// `512MiB`, `4GiB` and the like, as `memory:` takes them.
 pub fn parse_size(text: &str) -> Option<u64> {
     units::parse_bytes(text)
@@ -891,6 +914,36 @@ impl Validator<'_> {
             }
             _ => {}
         }
+        let caches = job.cache.as_ref().map(|c| c.as_slice()).unwrap_or_default();
+        if caches.len() > MAX_CACHES {
+            self.error(
+                format!("{path}.cache"),
+                format!("lists {} caches; the limit is {MAX_CACHES}", caches.len()),
+            );
+        }
+        for (i, entry) in caches.iter().enumerate() {
+            let at = format!("{path}.cache[{i}]");
+            if entry.key.trim().is_empty() || entry.key.len() > 512 {
+                self.error(format!("{at}.key"), "needs a key of 1 to 512 characters");
+            }
+            if entry.restore_keys.len() > 8
+                || entry.restore_keys.iter().any(|k| k.trim().is_empty())
+            {
+                self.error(
+                    format!("{at}.restore-keys"),
+                    "takes up to 8 non-empty prefixes",
+                );
+            }
+            if entry.paths.is_empty() || entry.paths.len() > 64 {
+                self.error(format!("{at}.paths"), "needs 1 to 64 paths");
+            }
+            if workspace.clone.is_none() && entry.paths.iter().any(|p| !p.starts_with('/')) {
+                self.error(
+                    format!("{at}.paths"),
+                    "a job without a clone can only cache absolute paths",
+                );
+            }
+        }
         JobStatic {
             tool,
             timeout,
@@ -918,6 +971,7 @@ impl Validator<'_> {
             decls: self.decls,
             needs,
             deferred: std::cell::Cell::new(false),
+            hash_files: std::cell::Cell::new(false),
         };
         let (entries, shape) = self.matrix(&path, job.matrix.as_ref(), &matrix_scope);
         let mut deferred = matrix_scope.deferred.get();
@@ -942,6 +996,7 @@ impl Validator<'_> {
                 decls: self.decls,
                 needs,
                 deferred: std::cell::Cell::new(false),
+                hash_files: std::cell::Cell::new(false),
             };
             // Errors from this entry, gathered locally because `sub` borrows
             // them while the rest of the loop also reports.
@@ -996,6 +1051,52 @@ impl Validator<'_> {
                 .env
                 .iter()
                 .map(|(k, v)| (k.clone(), sub(&format!("env.{k}"), v)))
+                .collect();
+            let clone_root = workspace.clone.as_ref().map(|c| c.into.clone());
+            let caches: Vec<CacheSpec> = job
+                .cache
+                .as_ref()
+                .map(|c| c.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| {
+                    scope.hash_files.set(true);
+                    let key = sub(&format!("cache[{i}].key"), &entry.key);
+                    let restore_keys = entry
+                        .restore_keys
+                        .iter()
+                        .map(|k| sub(&format!("cache[{i}].restore-keys"), k))
+                        .collect();
+                    scope.hash_files.set(false);
+                    let paths = entry
+                        .paths
+                        .iter()
+                        .filter_map(|p| {
+                            let p = sub(&format!("cache[{i}].paths"), p);
+                            let resolved = if p.starts_with('/') {
+                                normalise_abs(&p)
+                            } else {
+                                clone_root.as_deref().and_then(|root| join_relative(root, &p))
+                            };
+                            match resolved {
+                                Some(r) if r == "/" || r.starts_with("/iwci") || r == "/dev" || r.starts_with("/dev/") => {
+                                    report(&format!("cache[{i}].paths"), format!("`{p}` is not a path a job can cache"));
+                                    None
+                                }
+                                Some(r) => Some(r),
+                                None => {
+                                    report(
+                                        &format!("cache[{i}].paths"),
+                                        format!("`{p}` must be relative to the clone or absolute, without `..`"),
+                                    );
+                                    None
+                                }
+                            }
+                        })
+                        .collect();
+                    CacheSpec { key, restore_keys, paths }
+                })
                 .collect();
             deferred |= scope.deferred.get();
             let cwd = match cwd_raw {
@@ -1052,6 +1153,7 @@ impl Validator<'_> {
                     outputs: job.outputs.clone(),
                     timeout: std::time::Duration::from_secs(st.timeout),
                     memory_bytes: st.memory,
+                    caches,
                 });
             }
         }

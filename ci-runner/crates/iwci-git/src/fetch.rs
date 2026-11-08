@@ -212,6 +212,46 @@ pub(crate) fn fetch_commit(
     })
 }
 
+/// Where a fetched branch head is kept, so its commit can be read back.
+const BRANCH_REFS: &str = "refs/iwci/b/";
+
+/// Fetches `branch`'s head at `depth` and returns it as [`fetch_commit`]
+/// would, so a caller can run "the branch as it is now" without knowing a
+/// commit id. Always asks the remote: a branch moves.
+pub(crate) fn fetch_branch(
+    cache: &RemoteCache,
+    branch: &str,
+    depth: Depth,
+    auth: Option<&Auth>,
+) -> Result<Fetched> {
+    let source = format!("refs/heads/{branch}");
+    validate_hint(&source)?;
+    let mut repo = init_repo(cache)?;
+    if pack_count(&cache.git_dir) > cache.max_packs {
+        std::fs::remove_dir_all(&cache.git_dir).map_err(io_err(&cache.git_dir))?;
+        repo = init_repo(cache)?;
+    }
+    let shallow = match depth {
+        Depth::Shallow(n) => Shallow::DepthAtRemote(NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN)),
+        Depth::Full if repo.is_shallow()? => Shallow::undo(),
+        Depth::Full => Shallow::NoChange,
+    };
+    let local = format!("{BRANCH_REFS}{branch}");
+    let received = transfer(&repo, cache, &format!("+{source}:{local}"), shallow, auth)?;
+    let repo = open_repo(&cache.git_dir)?;
+    let head = repo
+        .find_reference(local.as_str())
+        .map_err(|_| GitError::BadRefHint(source.clone()))?
+        .peel_to_id()
+        .map_err(|_| GitError::BadRefHint(source.clone()))?
+        .detach();
+    // The commit is here now; the usual path records it and checks depth.
+    let mut fetched = fetch_commit(cache, head, depth, auth, Some(&source))?;
+    fetched.from_network = true;
+    fetched.objects_received += received;
+    Ok(fetched)
+}
+
 fn fetch_through_hint(
     repo: &gix::Repository,
     cache: &RemoteCache,

@@ -4,6 +4,7 @@
 mod plan;
 mod publish;
 mod run;
+mod serve;
 mod store;
 pub mod style;
 
@@ -19,6 +20,8 @@ usage:
                                          run a commit's pipelines
                                          [--cpus <n>] [--memory <size>] limit the runner
                                          (also IWCI_CPUS and IWCI_MEMORY)
+  iwci serve [--listen <addr>] [options]  run pipelines over HTTP (key: IWCI_SERVER_KEY)
+                                         [--jobs-per-cpu 4] [--storage-quota 10GiB]
   iwci publish <dist-dir>...             upload builtins/*/build.sh output
   iwci help                              this text";
 
@@ -34,6 +37,7 @@ pub fn main() -> ExitCode {
         "validate" => plan::validate(args),
         "plan" => plan::plan(args),
         "run" => run::run(args),
+        "serve" => serve::serve(args),
         "publish" => publish::publish(args),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");

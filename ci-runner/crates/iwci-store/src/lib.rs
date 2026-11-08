@@ -22,6 +22,13 @@
 //! | `builtins/<name>/<version>.json` | [`ToolManifest`] | never |
 //! | `environments/<name>/<version>.json` | [`EnvManifest`] | never |
 //! | `repos/<repo_id>/tools/<name>/<version>.json` | [`ToolManifest`] | never |
+//! | `caches/<repo_id>/<scope>/entries/<hash>.zst` | a job cache: zstd stream of `iwci_vfs::archive` entries | yes, by the runner |
+//! | `caches/<repo_id>/<scope>/prefixes/<hash>` | the newest key saved under a `restore-keys` prefix | yes, by the runner |
+//!
+//! Job caches (written by `iwci`, not this crate) are scoped by branch:
+//! `<scope>` is `b-<hash>` for pushes to a branch and `pr-<hash>` for pull
+//! requests, so a pull request can never write where the default branch
+//! reads. `<hash>` is hex of a SHA-256 prefix of the branch, key or prefix.
 //!
 //! Rules, each enforced on read by this crate:
 //!
@@ -136,5 +143,5 @@ pub use publish::{
     publish_tool,
 };
 pub use r2::{Credentials, R2Options, R2Store, RetryPolicy, UrlStyle, account_endpoint};
-pub use store::{LayeredStore, LocalStore, MAX_OBJECT_SIZE, ObjectMeta, ObjectStore};
+pub use store::{LayeredStore, LocalStore, MAX_OBJECT_SIZE, ObjectInfo, ObjectMeta, ObjectStore};
 pub use version::{PreId, Version, VersionError, VersionReq};

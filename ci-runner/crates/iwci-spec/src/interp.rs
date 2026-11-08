@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use crate::expr::{self, Name};
 use crate::{Context, JobDecl, NeedsValues};
 
+#[derive(Clone, Copy)]
 pub(crate) enum MatrixScope<'a> {
     None,
     /// The list shorthand: `${{ matrix }}`.
@@ -34,6 +35,34 @@ pub(crate) struct Scope<'a> {
     pub decls: &'a HashMap<String, JobDecl>,
     pub needs: Option<&'a NeedsValues>,
     pub deferred: Cell<bool>,
+    /// Set while substituting a cache key: `hashFiles()` is only meaningful
+    /// there, and is left in place for the run to fill in.
+    pub hash_files: Cell<bool>,
+}
+
+/// The globs of a `hashFiles('a', 'b')` expression, or why it is malformed.
+pub(crate) fn hash_files_globs(text: &str) -> Result<Vec<String>, String> {
+    let inner = text
+        .strip_prefix("hashFiles(")
+        .and_then(|t| t.strip_suffix(')'))
+        .ok_or_else(|| format!("`{text}` is not `hashFiles('glob', ...)`"))?;
+    let mut globs = Vec::new();
+    for part in inner.split(',') {
+        let part = part.trim();
+        let glob = part
+            .strip_prefix('\'')
+            .and_then(|p| p.strip_suffix('\''))
+            .or_else(|| part.strip_prefix('"').and_then(|p| p.strip_suffix('"')))
+            .ok_or_else(|| format!("`hashFiles()` takes quoted globs, not `{part}`"))?;
+        if glob.is_empty() || glob.starts_with('/') || glob.split('/').any(|c| c == "..") {
+            return Err(format!(
+                "`{glob}` must be a glob relative to the clone, without `..`"
+            ));
+        }
+        crate::glob::compile(glob).map_err(|e| format!("`{glob}`: {e}"))?;
+        globs.push(glob.to_string());
+    }
+    Ok(globs)
 }
 
 /// Checks a name against the job's `needs:` and the needed job's
@@ -67,6 +96,15 @@ pub(crate) fn check_name(
 
 impl Scope<'_> {
     fn lookup(&self, text: &str) -> Result<String, String> {
+        if text.starts_with("hashFiles(") {
+            if !self.hash_files.get() {
+                return Err(
+                    "`hashFiles()` only works in a cache's `key:` and `restore-keys:`".into(),
+                );
+            }
+            hash_files_globs(text)?;
+            return Ok(format!("${{{{ {text} }}}}"));
+        }
         if text == "matrix" || text.starts_with("matrix.") {
             return self.matrix_value(text);
         }

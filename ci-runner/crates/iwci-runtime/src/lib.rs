@@ -21,6 +21,7 @@
 mod cache;
 mod capture;
 mod limits;
+mod network;
 mod node;
 pub mod tsc;
 mod wasix;
@@ -148,7 +149,7 @@ impl Default for Limits {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Invocation {
     /// Arguments after `argv[0]`. For a script they become `$1` onwards.
     pub args: Vec<String>,
@@ -158,7 +159,31 @@ pub struct Invocation {
     /// The job's file system (`JobFs::as_dyn`).
     pub fs: DynFs,
     pub limits: Limits,
+    /// Receives output as the program writes it, for live logs. The
+    /// [`Outcome`] still carries the captured output either way.
+    pub log: Option<LogSink>,
 }
+
+impl std::fmt::Debug for Invocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Invocation")
+            .field("args", &self.args)
+            .field("cwd", &self.cwd)
+            .field("limits", &self.limits)
+            .field("log", &self.log.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Which stream a chunk of output was written to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// Called with each chunk a program writes, from whichever thread wrote it.
+pub type LogSink = Arc<dyn Fn(Stream, &[u8]) + Send + Sync>;
 
 #[derive(Debug, Clone)]
 pub struct Outcome {

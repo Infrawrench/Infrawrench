@@ -138,6 +138,16 @@ fn run_limited(
     fail_ws: bool,
     memory: Option<Arc<MemoryBudget>>,
 ) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
+    run_with(plan, changed, fail_ws, memory, None)
+}
+
+fn run_with(
+    plan: &Plan,
+    changed: Option<Vec<String>>,
+    fail_ws: bool,
+    memory: Option<Arc<MemoryBudget>>,
+    caches: Option<Arc<dyn Caches>>,
+) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         fail: fail_ws,
@@ -157,6 +167,9 @@ fn run_limited(
             ("FROM_WS".into(), "base".into()),
         ],
         memory,
+        caches,
+        logs: None,
+        slots: None,
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -438,6 +451,206 @@ fn a_job_cannot_write_past_its_memory_and_its_bytes_are_given_back() {
     // Without a runner budget the job's own limit still holds.
     let (report, _, _, _) = run_plan(&p, None, false);
     assert!(
-        matches!(status(&report, "w"), Status::Failed { reason } if reason.contains("its own 16 MiB memory limit"))
+        matches!(status(&report, "w"), Status::Failed { reason } if reason.contains("its 16 MiB memory limit"))
+    );
+}
+
+/// Caches in memory: key to entries, plus what was saved, in order.
+#[derive(Default)]
+struct MemoryCaches {
+    entries: Mutex<HashMap<String, Vec<iwci_vfs::Entry>>>,
+    saved: Mutex<Vec<String>>,
+}
+
+impl Caches for MemoryCaches {
+    fn restore(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        _max: u64,
+    ) -> Result<Option<Restored>, String> {
+        let entries = self.entries.lock().unwrap();
+        if let Some(e) = entries.get(key) {
+            return Ok(Some(Restored {
+                key: key.into(),
+                exact: true,
+                entries: e.clone(),
+            }));
+        }
+        for prefix in restore_keys {
+            if let Some((k, e)) = entries.iter().find(|(k, _)| k.starts_with(prefix.as_str())) {
+                return Ok(Some(Restored {
+                    key: k.clone(),
+                    exact: false,
+                    entries: e.clone(),
+                }));
+            }
+        }
+        Ok(None)
+    }
+    fn save(
+        &self,
+        key: &str,
+        _restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+    ) -> Result<(), String> {
+        self.entries
+            .lock()
+            .unwrap()
+            .insert(key.into(), entries.to_vec());
+        self.saved.lock().unwrap().push(key.into());
+        Ok(())
+    }
+}
+
+#[test]
+fn caches_restore_before_a_job_and_save_after_it_passes() {
+    // `write` writes /app/src/a.ts; caching /app/src means the restored
+    // and rewritten file is the cache's, not a change to the repository.
+    let p = plan(
+        "name: x\njobs:\n  w:\n    using: builtin:write@1\n    changes: fail\n    cache: { key: \"k-${{ hashFiles('src/**') }}\", restore-keys: [k-], paths: [src] }\n",
+    );
+    let store: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert_eq!(job.status, Status::Passed, "{:?}", job.caches);
+    assert!(
+        job.caches.iter().any(|l| l.contains("miss"))
+            && job.caches.iter().any(|l| l.contains("saved")),
+        "{:?}",
+        job.caches
+    );
+    let saved = store.saved.lock().unwrap().clone();
+    assert_eq!(saved.len(), 1);
+    assert!(
+        saved[0].starts_with("k-") && saved[0].len() == 2 + 32,
+        "the hash is filled in: {saved:?}"
+    );
+
+    // The second run is an exact hit: restored, not saved again.
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert_eq!(job.status, Status::Passed);
+    assert!(
+        job.caches.iter().any(|l| l.ends_with("restored")),
+        "{:?}",
+        job.caches
+    );
+    assert_eq!(store.saved.lock().unwrap().len(), 1);
+
+    // A failing job saves nothing.
+    let failing = plan(
+        "name: x\njobs:\n  f:\n    using: builtin:fail@1\n    cache: { key: other, paths: [src] }\n",
+    );
+    run_with(&failing, None, false, None, Some(store.clone()));
+    assert_eq!(store.saved.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn runs_share_the_runners_slots() {
+    let slots = Arc::new(Slots::new(2));
+    let p = plan("name: x\njobs:\n  t:\n    using: builtin:slow@1\n    matrix: [a, b, c, d]\n");
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        fail: false,
+    };
+    let commits = FakeCommitter(Mutex::default());
+    let options = Options {
+        parallelism: 8,
+        changed_paths: None,
+        base_env: vec![],
+        memory: None,
+        caches: None,
+        logs: None,
+        slots: Some(slots.clone()),
+    };
+    // Two runs at once, each wanting four jobs in parallel: together they
+    // never exceed the two slots.
+    std::thread::scope(|scope| {
+        scope.spawn(|| run(&p, &ws, &FakeTools, &exec, &commits, &options));
+        scope.spawn(|| run(&p, &ws, &FakeTools, &exec, &commits, &options));
+    });
+    assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
+    assert_eq!(slots.in_use(), 0);
+    let held = slots.try_acquire().unwrap();
+    let _second = slots.try_acquire().unwrap();
+    assert!(slots.try_acquire().is_none(), "full is full");
+    drop(held);
+    assert_eq!(slots.free(), 1);
+}
+
+#[test]
+fn logs_stream_lines_and_job_events_in_order() {
+    struct Printing;
+    impl Executor<String> for Printing {
+        fn execute(
+            &self,
+            _tool: &String,
+            _action: &Action,
+            inv: Invocation<'_>,
+        ) -> Result<Execution, String> {
+            let log = inv.log.expect("a log sink when logs are followed");
+            log(false, b"hel");
+            log(false, b"lo\nwor");
+            log(true, b"oops\n");
+            log(false, b"ld");
+            Ok(Execution::default())
+        }
+    }
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n  b:\n    using: builtin:ok@1\n    if: false\n",
+    );
+    let events: Arc<Mutex<Vec<LogEvent>>> = Arc::default();
+    let sink = events.clone();
+    let options = Options {
+        parallelism: 1,
+        changed_paths: None,
+        base_env: vec![],
+        memory: None,
+        caches: None,
+        logs: Some(Arc::new(move |e| sink.lock().unwrap().push(e))),
+        slots: None,
+    };
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        fail: false,
+    };
+    run(
+        &p,
+        &ws,
+        &FakeTools,
+        &Printing,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    let lines: Vec<String> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|e| serde_json::to_string(e).unwrap())
+        .collect();
+    let text = lines.join("\n");
+    let expected = [
+        r#"{"event":"job-started","job":"a","name":"a"}"#,
+        r#"{"event":"output","job":"a","stream":"stdout","line":"hello"}"#,
+        r#"{"event":"output","job":"a","stream":"stderr","line":"oops"}"#,
+        r#"{"event":"output","job":"a","stream":"stdout","line":"world"}"#,
+    ];
+    for want in expected {
+        assert!(text.contains(want), "missing {want} in\n{text}");
+    }
+    assert!(
+        text.contains(r#""event":"job-finished","job":"a","status":"passed""#),
+        "{text}"
+    );
+    assert!(
+        text.contains(r#""event":"job-finished","job":"b","status":"skipped""#),
+        "a skipped job is reported too: {text}"
     );
 }

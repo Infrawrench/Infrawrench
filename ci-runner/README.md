@@ -34,8 +34,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
    and content-addressed blobs in R2, verified by sha256.
 5. **Run** (`iwci-runtime`). Jobs run in parallel as soon as their `needs`
-   finish and their `paths:` and `if:` allow it, each in a fresh Wasmer instance with no network and no host file
-   system, under a timeout and a memory limit. Compiled modules are cached
+   finish and their `paths:` and `if:` allow it, each in a fresh Wasmer instance with no host file system and
+   only a private loopback for a network (see [Networking](#networking)), under a timeout and a memory limit. Compiled modules are cached
    on disk, so a tool is compiled once per runner, not once per job.
 6. **Changes.** What a job wrote is read back from its overlay layer.
    `changes: fail` fails the job if it changed anything; `changes: commit`
@@ -123,6 +123,7 @@ to install just those importers' closure.
 | `paths`   | Skip the job unless the commit touches one of these globs. A skipped job does not block its dependents.                                                                        |
 | `timeout` | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
 | `memory`  | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
+| `cache`   | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
@@ -255,16 +256,70 @@ command, and `cargo test` needs rustc, which has no WebAssembly build that
 can host itself. WASIX's process spawning is the path to the Go toolchain;
 for now, jobs that must compile Go or Rust belong on a conventional runner.
 
+## Job caches
+
+A job can keep files between runs, for what the dependency installers do
+not cover (`.tsbuildinfo`, `.turbo`, Go's build cache, a downloaded fixture):
+
+```yaml
+jobs:
+  typecheck:
+    cache:
+      key: tsc-${{ matrix }}-${{ hashFiles('pnpm-lock.yaml', 'app/packages/web/**/*.ts') }}
+      restore-keys: ["tsc-${{ matrix }}-"]
+      paths: [app/packages/web/.tsbuildinfo, /root/.cache/go-build]
+```
+
+- Before the job runs, the exact `key` is restored, or else the newest
+  cache saved under the first `restore-keys` prefix that has one.
+- After the job passes, `paths` are saved under `key`, unless it started
+  from an exact hit. A failed job saves nothing.
+- `hashFiles('glob', ...)` hashes the matching files (relative to the
+  clone) as the commit has them, by path and content. It only works in
+  `key` and `restore-keys`. In a `[...]` list, quote anything with `${{`.
+- `paths` are relative to the clone or absolute. Restored files belong to
+  the cache, not the repository: they never count as changes for
+  `changes: fail` or `changes: commit`.
+- Restored files count against the job's `memory:` like any other write.
+- **Scoped by branch, so a pull request cannot poison the default
+  branch.** A push saves into its branch's scope and reads that, then the
+  default branch's (`--default-branch`, default `main`). A pull request
+  saves into a scope of its own, which nothing on the default branch reads.
+- **Counted against the owner's storage quota** (see below). A save that
+  would pass the quota evicts the owner's oldest caches first; one larger
+  than the whole quota is refused.
+
+Caches live in the object store beside the tools, so on R2 every runner
+shares them.
+
+## Networking
+
+Each job has a network of its own: an in-memory loopback, shared by that
+job's processes and nothing else. A test suite can start a server on
+`127.0.0.1` (or `0.0.0.0`, which means the same here) and connect to it;
+`localhost` resolves to it. Nothing else is reachable: connections to any
+other address fail as an unreachable network, a closed port refuses rather
+than reaching some other listener, there is no DNS beyond `localhost`, and
+UDP is not offered. No host socket is ever opened, so a job cannot reach
+anything on the runner's own localhost, nothing a job listens on appears on
+the host, and two jobs never see each other's ports.
+
 ## The `iwci` command
 
 ```sh
 iwci validate .infrawrench/ci/*.yml [--json]      # check files, all errors at once
 iwci plan .infrawrench/ci/tests.yml [--json]      # the expanded jobs
-iwci run --repo https://github.com/org/repo --sha <commit> --repo-id <id> \
-         [--branch main] [--event push|pull-request] [--base <sha>] \
-         [--pipeline <file>] [--cpus <n>] [--memory <size>] [--json] [--store <dir>]
+iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
+         [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
+         [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
+         [--memory <size>] [--storage-quota <size>] [--json] [--store <dir>]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
+
+Without `--sha`, `--branch` runs that branch's head as it is now. The owner
+(who storage and usage count against) defaults to the GitHub organisation
+or user in the URL, as `github.com-<org>`; the repository id to its name.
 
 `--store <dir>` uses a local directory laid out like the bucket; without
 it, R2 comes from `IWCI_R2_ACCOUNT_ID`, `IWCI_R2_BUCKET`,
@@ -310,26 +365,87 @@ first compilation) and came from the cache in 0.25 s for the whole pipeline.
 
 ## Limits
 
-`iwci run --cpus <n> --memory <size>` (or `IWCI_CPUS` and `IWCI_MEMORY`)
-limits the whole runner:
+`--cpus <n> --jobs-per-cpu <k> --memory <size>` (or `IWCI_CPUS`,
+`IWCI_JOBS_PER_CPU` and `IWCI_MEMORY`; flags win) limit the whole runner:
 
-- **`--cpus`** is how many jobs run at once, and also sizes the runtime's
-  threads, the pool Wasmer compiles modules on, and the installers'
-  download and unpack threads. A WASIX program's own threads and
-  subprocesses (bash running `sed`) are not capped, because a script waiting
-  on its child would deadlock if they were. Default: the machine's cores.
-- **`--memory`** is a hard budget across running jobs. A job reserves its
-  `memory:` for its program before it starts and only starts when that
-  fits, and every byte it then writes to its in-memory file system is
-  charged as it is written. Jobs that do not fit together wait their turn,
-  and a job asking for more than the whole budget is an error rather than a
-  hang. The frozen workspace snapshots are not counted: they are built once
-  and shared. Default: no budget.
+- **Slots.** The runner has `cpus × jobs-per-cpu` job slots, shared by
+  every run it is doing, whatever repository or owner each is for. Four
+  jobs share a vCPU by default: CI work waits on its subprocesses and its
+  files often enough that a core interleaves several jobs better than it
+  runs one, and the operating system time-slices them. `--cpus` also sizes
+  the runtime's threads, the pool Wasmer compiles on and the installers'
+  threads. A WASIX program's own threads and subprocesses (bash running
+  `sed`) are not capped, because a script waiting on its child would
+  deadlock. Default: the machine's cores.
+- **`--memory`** is a budget across running jobs. A job reserves its
+  `memory:` before it starts and waits until that fits; a job asking for
+  more than the whole budget is an error, not a hang. The reservation
+  stands for the job's program and its files together. The frozen workspace
+  snapshots are not counted: they are built once and shared. Default: no
+  budget.
 
-A job's `memory:` holds both its program memory and what it writes. The
-files a job writes live in memory, so without that a job could write past
-any limit. A write over either limit is refused before any of it lands; the
-job's report says which limit it hit.
+Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
+limit) and, separately, the files it writes, which live in memory: without
+that a job could write past any limit. A write over it is refused before
+any of it lands, and the job's report says so.
+
+## HTTP API (`iwci serve`)
+
+`iwci serve` runs the same runner as a service. Every route but `/healthz`
+needs `Authorization: Bearer <key>`, with the key from `IWCI_SERVER_KEY`
+(at least 32 characters). It listens on loopback unless `--listen` says
+otherwise. Runners are meant to sit behind a plain load balancer: reports,
+billing records and caches go to the shared object store, so any runner can
+answer for any owner, and a full runner says so instead of queueing.
+
+| Route                                   | Does                                                                                   |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `GET /healthz`                          | `200 ok`, unauthenticated.                                                             |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved.                                     |
+| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.    |
+| `GET /v1/runs/{id}[?owner=]`            | A run's state and report; `?owner=` reads it from the store when this runner lacks it. |
+| `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.       |
+| `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.          |
+| `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                |
+| `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                        |
+
+A request body (for `runs` and `prepare`):
+
+```json
+{
+  "repo": "https://github.com/acme/web",
+  "branch": "main",
+  "sha": "optional: a commit; without it, the branch's head",
+  "event": "push or pull-request",
+  "base": "optional: commit to diff against for paths: and changed()",
+  "owner": "optional: defaults to github.com-acme",
+  "repo-id": "optional: defaults to web",
+  "default-branch": "main",
+  "storage-quota": "10GiB, or bytes; overrides the server's --storage-quota",
+  "pipeline": "optional: a pipeline file's text, run instead of the repository's",
+  "token": "optional: for a private repository; never stored or echoed"
+}
+```
+
+- **Capacity.** A run is admitted when a slot is free and fewer runs are
+  active than there are slots; otherwise `429` with `Retry-After` and the
+  current capacity, so the balancer can try another runner. `prepare` takes
+  a slot while it works and is refused the same way.
+- **Logs.** `job-started`, `output` (one line, with its stream) and
+  `job-finished` events, then `run-finished`. A client that connects late
+  gets the backlog first. Up to 8 MiB of output is kept per run; past that a
+  `truncated` event says so and job events still flow. A comment every 15 s
+  keeps idle connections open through proxies.
+- **Billing.** Each run writes a record to
+  `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`: the run, its jobs, and
+  its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU
+  (`vcpu_seconds`) and the memory it reserved over that time
+  (`memory_gib_seconds`). Failed and errored runs are recorded too, with no
+  usage. Storage is read from `GET /v1/storage/{owner}`, for billing by
+  GB-month.
+- **Quotas.** An owner's caches across all its repositories are held to its
+  storage quota: the request's `storage-quota`, else the server's
+  `--storage-quota` (default 10 GiB).
 
 ## Known limitations
 
@@ -347,8 +463,18 @@ job's report says which limit it hit.
   The job's report names the limit.
 - **Not run end to end yet:** the real TypeScript module (the runtime's
   `tsc-host` tests use a module written to the same ABI), oxfmt for WASIX,
-  the `node` feature (implemented, never compiled here), real R2 and a real
+  the `node` feature (implemented, never compiled here), real R2 (including
+  its `DELETE` and listed sizes, which quota eviction uses) and a real
   HTTPS git remote with a token.
+- **Quotas are enforced per save**, by listing the owner's caches; two
+  runners saving for one owner at the same moment can overshoot by one
+  entry until the next save.
+- **The server keeps live state in memory**: active runs and log hubs. A
+  restarted runner forgets them; finished reports and records are in the
+  store.
+- **Runner-local caches** (git, downloads, installs, compiled modules)
+  are not evicted yet and count against no owner; give the cache directory
+  its own disk.
 - **The in-memory file system has no mode bits**, so executables are
   checked out as plain files; a commit keeps the original mode.
 - **Submodules** are skipped with a warning, and Cargo `git` dependencies
@@ -365,7 +491,9 @@ the short version is that everything executable is content-addressed under
 live under their own prefixes, and a repository's uploaded tools live under
 `repos/<repo-id>/tools/`, which is the only place a `repo:` reference looks.
 Uploading is not implemented: the layout is the contract the upload API
-will write to.
+will write to. Job caches are under `caches/<owner>/<repo-id>/<scope>/`,
+billing records under `usage/<owner>/`, and run reports under
+`runs/<owner>/`.
 
 ## Crates
 

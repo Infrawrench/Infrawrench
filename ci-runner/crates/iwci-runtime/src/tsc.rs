@@ -132,8 +132,8 @@ pub(crate) fn run(
     let mut store = Store::new(engine);
     let interrupter = store.interrupter();
 
-    let stdout = Capture::new(output_bytes);
-    let stderr = Capture::new(output_bytes);
+    let stdout = Capture::new(output_bytes).with_sink(inv.log.clone(), crate::Stream::Stdout);
+    let stderr = Capture::new(output_bytes).with_sink(inv.log.clone(), crate::Stream::Stderr);
     let env = FunctionEnv::new(
         &mut store,
         TscEnv {

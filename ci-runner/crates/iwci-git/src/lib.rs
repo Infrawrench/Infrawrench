@@ -264,6 +264,15 @@ impl RemoteCache {
     }
 
     /// Whether the cache holds `commit_sha`, without any network.
+    /// Fetches `branch` (a name such as `main`, not `refs/heads/main`) at
+    /// `depth` and returns its head commit, for running a branch as it is
+    /// now. A branch that does not exist is [`GitError::BadRefHint`].
+    pub fn fetch_branch(&self, branch: &str, depth: Depth, auth: Option<&Auth>) -> Result<Fetched> {
+        let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Exclusive)?;
+        let auth = auth.or(self.remote.url_auth.as_ref());
+        fetch::fetch_branch(self, branch, depth, auth)
+    }
+
     pub fn has_commit(&self, commit_sha: &str) -> Result<bool> {
         let id = parse_oid(commit_sha)?;
         let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Shared)?;

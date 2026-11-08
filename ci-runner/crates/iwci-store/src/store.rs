@@ -20,6 +20,15 @@ pub struct ObjectMeta {
     pub size: u64,
 }
 
+/// One object of a detailed listing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectInfo {
+    pub key: String,
+    pub size: u64,
+    /// Last modified, in seconds since the Unix epoch, when the store says.
+    pub modified: Option<u64>,
+}
+
 /// A flat key-value store of immutable-ish objects, shaped like S3.
 ///
 /// Every method validates its key with [`crate::keys::validate_key`] (or
@@ -48,6 +57,27 @@ pub trait ObjectStore: Send + Sync {
     /// Every key starting with `prefix`, sorted, following pagination to the
     /// end.
     fn list(&self, prefix: &str) -> Result<Vec<String>, StoreError>;
+
+    /// Removes the object. A key that is already gone is not an error.
+    /// Only mutable objects (job caches) are ever deleted: the immutable
+    /// namespaces have no delete path anywhere in the runner.
+    fn delete(&self, key: &str) -> Result<(), StoreError>;
+
+    /// [`ObjectStore::list`] with each object's size and age, for quotas.
+    /// The default asks `head` per key; stores that list sizes override it.
+    fn list_detailed(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        let mut out = Vec::new();
+        for key in self.list(prefix)? {
+            if let Some(meta) = self.head(&key)? {
+                out.push(ObjectInfo {
+                    key,
+                    size: meta.size,
+                    modified: None,
+                });
+            }
+        }
+        Ok(out)
+    }
 }
 
 impl<S: ObjectStore + ?Sized> ObjectStore for std::sync::Arc<S> {
@@ -70,6 +100,12 @@ impl<S: ObjectStore + ?Sized> ObjectStore for std::sync::Arc<S> {
     }
     fn list(&self, prefix: &str) -> Result<Vec<String>, StoreError> {
         (**self).list(prefix)
+    }
+    fn delete(&self, key: &str) -> Result<(), StoreError> {
+        (**self).delete(key)
+    }
+    fn list_detailed(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        (**self).list_detailed(prefix)
     }
 }
 
@@ -276,6 +312,40 @@ impl ObjectStore for LocalStore {
         out.sort();
         Ok(out)
     }
+
+    fn delete(&self, key: &str) -> Result<(), StoreError> {
+        let path = self.path(key)?;
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(source) => Err(StoreError::Io {
+                op: "remove",
+                path,
+                source,
+            }),
+        }
+    }
+
+    fn list_detailed(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        let mut out = Vec::new();
+        for key in self.list(prefix)? {
+            let path = self.path(&key)?;
+            let Ok(meta) = fs::metadata(&path) else {
+                continue;
+            };
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            out.push(ObjectInfo {
+                key,
+                size: meta.len(),
+                modified,
+            });
+        }
+        Ok(out)
+    }
 }
 
 /// A local cache in front of a remote store, for blobs only.
@@ -360,6 +430,15 @@ impl<C: ObjectStore, R: ObjectStore> ObjectStore for LayeredStore<C, R> {
 
     fn list(&self, prefix: &str) -> Result<Vec<String>, StoreError> {
         self.remote.list(prefix)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), StoreError> {
+        self.remote.delete(key)?;
+        self.cache.delete(key)
+    }
+
+    fn list_detailed(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        self.remote.list_detailed(prefix)
     }
 }
 
@@ -473,6 +552,31 @@ mod tests {
         fn list(&self, prefix: &str) -> Result<Vec<String>, StoreError> {
             self.inner.list(prefix)
         }
+        fn delete(&self, key: &str) -> Result<(), StoreError> {
+            self.inner.delete(key)
+        }
+    }
+
+    #[test]
+    fn local_delete_and_detailed_listing() {
+        let (_dir, store) = store();
+        store
+            .put("caches/o/r/s/entries/a.zst", b"12345", "x")
+            .unwrap();
+        store.put("caches/o/r/s/entries/b.zst", b"1", "x").unwrap();
+        let listed = store.list_detailed("caches/o/").unwrap();
+        assert_eq!(
+            listed.iter().map(|o| o.size).collect::<Vec<_>>(),
+            vec![5, 1]
+        );
+        assert!(listed.iter().all(|o| o.modified.is_some()));
+        store.delete("caches/o/r/s/entries/a.zst").unwrap();
+        store.delete("caches/o/r/s/entries/a.zst").unwrap();
+        assert_eq!(
+            store.list("caches/o/").unwrap(),
+            vec!["caches/o/r/s/entries/b.zst".to_string()]
+        );
+        assert!(store.delete("../x").is_err());
     }
 
     #[test]

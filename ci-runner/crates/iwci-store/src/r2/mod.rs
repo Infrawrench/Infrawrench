@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 
 use crate::error::StoreError;
 use crate::keys::{sha256_hex, validate_key, validate_prefix};
-use crate::store::{MAX_OBJECT_SIZE, ObjectMeta, ObjectStore, check_size};
+use crate::store::{MAX_OBJECT_SIZE, ObjectInfo, ObjectMeta, ObjectStore, check_size};
 
 /// An R2 API token's S3 credentials.
 ///
@@ -509,6 +509,46 @@ impl R2Store {
     }
 }
 
+impl R2Store {
+    /// Every object under `prefix`, following pagination to the end.
+    fn list_all(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        validate_prefix(prefix)?;
+        let mut out: Vec<ObjectInfo> = Vec::new();
+        let mut token: Option<String> = None;
+        for _ in 0..MAX_LIST_PAGES {
+            let page = self.list_page(prefix, token.as_deref())?;
+            // Only keys in our grammar and under the asked prefix count; a
+            // server that answers with anything else does not get to steer
+            // the catalog outside the namespace it listed.
+            for (i, key) in page.keys.into_iter().enumerate() {
+                if key.starts_with(prefix) && validate_key(&key).is_ok() {
+                    out.push(ObjectInfo {
+                        key,
+                        size: page.sizes.get(i).copied().flatten().unwrap_or(0),
+                        modified: page.modified.get(i).copied().flatten(),
+                    });
+                }
+            }
+            match page.next_token {
+                None => {
+                    out.sort_by(|a, b| a.key.cmp(&b.key));
+                    out.dedup_by(|a, b| a.key == b.key);
+                    return Ok(out);
+                }
+                Some(next) if token.as_deref() == Some(next.as_str()) => {
+                    return Err(StoreError::InvalidResponse {
+                        what: format!("listing {prefix}: continuation token did not advance"),
+                    });
+                }
+                Some(next) => token = Some(next),
+            }
+        }
+        Err(StoreError::InvalidResponse {
+            what: format!("listing {prefix}: more than {MAX_LIST_PAGES} pages"),
+        })
+    }
+}
+
 impl ObjectStore for R2Store {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
         validate_key(key)?;
@@ -594,36 +634,21 @@ impl ObjectStore for R2Store {
     }
 
     fn list(&self, prefix: &str) -> Result<Vec<String>, StoreError> {
-        validate_prefix(prefix)?;
-        let mut keys = Vec::new();
-        let mut token: Option<String> = None;
-        for _ in 0..MAX_LIST_PAGES {
-            let page = self.list_page(prefix, token.as_deref())?;
-            // Only keys in our grammar and under the asked prefix count; a
-            // server that answers with anything else does not get to steer
-            // the catalog outside the namespace it listed.
-            keys.extend(
-                page.keys
-                    .into_iter()
-                    .filter(|k| k.starts_with(prefix) && validate_key(k).is_ok()),
-            );
-            match page.next_token {
-                None => {
-                    keys.sort();
-                    keys.dedup();
-                    return Ok(keys);
-                }
-                Some(next) if token.as_deref() == Some(next.as_str()) => {
-                    return Err(StoreError::InvalidResponse {
-                        what: format!("listing {prefix}: continuation token did not advance"),
-                    });
-                }
-                Some(next) => token = Some(next),
-            }
+        Ok(self.list_all(prefix)?.into_iter().map(|o| o.key).collect())
+    }
+
+    fn list_detailed(&self, prefix: &str) -> Result<Vec<ObjectInfo>, StoreError> {
+        self.list_all(prefix)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), StoreError> {
+        validate_key(key)?;
+        let x = self.request("DELETE", key, Some(key), "", None, &[], 0)?;
+        match x.status {
+            // S3 answers 204 whether or not the key existed.
+            200 | 204 | 404 => Ok(()),
+            _ => Err(Self::http_error("DELETE", key, &x)),
         }
-        Err(StoreError::InvalidResponse {
-            what: format!("listing {prefix}: more than {MAX_LIST_PAGES} pages"),
-        })
     }
 }
 

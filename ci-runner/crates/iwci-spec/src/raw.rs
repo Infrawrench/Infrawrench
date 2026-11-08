@@ -131,6 +131,56 @@ pub struct Job {
     pub timeout: Option<String>,
     #[serde(default)]
     pub memory: Option<String>,
+    /// Files kept between runs: restored before the job, saved after it
+    /// passes. One entry, or a list.
+    #[serde(default)]
+    pub cache: Option<OneOrMany<CacheEntry>>,
+}
+
+/// One value or a list of them. Deserialised by hand rather than as an
+/// untagged enum, whose only error is "did not match any variant": this
+/// passes on the real one, such as an unknown field inside an entry.
+#[derive(Debug, Clone)]
+pub enum OneOrMany<T> {
+    One(T),
+    Many(Vec<T>),
+}
+
+impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for OneOrMany<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        if value.is_sequence() {
+            serde_yaml_ng::from_value(value)
+                .map(OneOrMany::Many)
+                .map_err(serde::de::Error::custom)
+        } else {
+            serde_yaml_ng::from_value(value)
+                .map(OneOrMany::One)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
+impl<T> OneOrMany<T> {
+    pub fn as_slice(&self) -> &[T] {
+        match self {
+            OneOrMany::One(t) => std::slice::from_ref(t),
+            OneOrMany::Many(v) => v,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct CacheEntry {
+    /// The exact key to restore and save under. May use
+    /// `${{ hashFiles('glob', ...) }}`.
+    pub key: String,
+    /// Key prefixes to fall back on, in order, when `key` misses.
+    #[serde(default)]
+    pub restore_keys: Vec<String>,
+    /// What to keep: paths relative to the clone, or absolute.
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

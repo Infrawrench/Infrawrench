@@ -481,6 +481,9 @@ impl ObjectStore for CountingStore {
         self.lists.fetch_add(1, Ordering::SeqCst);
         self.inner.list(prefix)
     }
+    fn delete(&self, key: &str) -> Result<(), StoreError> {
+        self.inner.delete(key)
+    }
 }
 
 #[test]

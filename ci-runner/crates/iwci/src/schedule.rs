@@ -14,7 +14,7 @@
 //! their own.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -59,6 +59,97 @@ pub struct Invocation<'a> {
     pub fs: &'a JobFs,
     /// The job's own `env:` over the workspace's, over the runner's `IWCI_*`.
     pub env: Vec<(String, String)>,
+    /// Receives output as it is written (`true` for stderr), when someone
+    /// is following the run's logs.
+    pub log: Option<OutputSink>,
+}
+
+/// Called with each chunk of a job's output; `true` means stderr.
+pub type OutputSink = Arc<dyn Fn(bool, &[u8]) + Send + Sync>;
+
+/// What a run's live log carries, in order.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "event", rename_all = "kebab-case")]
+pub enum LogEvent {
+    JobStarted {
+        job: String,
+        name: String,
+    },
+    /// One line of output, without its newline.
+    Output {
+        job: String,
+        stream: &'static str,
+        line: String,
+    },
+    JobFinished {
+        job: String,
+        status: String,
+        duration_ms: u64,
+    },
+}
+
+pub type LogFn = Arc<dyn Fn(LogEvent) + Send + Sync>;
+
+fn status_word(status: &Status) -> &'static str {
+    match status {
+        Status::Passed => "passed",
+        Status::Failed { .. } => "failed",
+        Status::Skipped { .. } => "skipped",
+        Status::Error { .. } => "error",
+    }
+}
+
+fn emit_finished(options: &Options, report: &JobReport) {
+    if let Some(logs) = &options.logs {
+        logs(LogEvent::JobFinished {
+            job: report.id.clone(),
+            status: status_word(&report.status).to_string(),
+            duration_ms: report.duration_ms,
+        });
+    }
+}
+
+/// Splits a job's output into lines for the log, per stream, so a line
+/// written in two chunks arrives as one event.
+struct LineSink {
+    job: String,
+    logs: LogFn,
+    pending: Mutex<[Vec<u8>; 2]>,
+}
+
+impl LineSink {
+    fn push(&self, stderr: bool, data: &[u8]) {
+        let mut pending = self.pending.lock().unwrap();
+        let buf = &mut pending[usize::from(stderr)];
+        buf.extend_from_slice(data);
+        while let Some(end) = buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=end).collect();
+            self.emit(stderr, &line[..line.len() - 1]);
+        }
+        // A program that never prints a newline still shows up, in pieces.
+        if buf.len() > 16 << 10 {
+            let line = std::mem::take(buf);
+            self.emit(stderr, &line);
+        }
+    }
+
+    fn flush(&self) {
+        let mut pending = self.pending.lock().unwrap();
+        for stderr in [false, true] {
+            let line = std::mem::take(&mut pending[usize::from(stderr)]);
+            if !line.is_empty() {
+                self.emit(stderr, &line);
+            }
+        }
+    }
+
+    fn emit(&self, stderr: bool, line: &[u8]) {
+        (self.logs)(LogEvent::Output {
+            job: self.job.clone(),
+            stream: if stderr { "stderr" } else { "stdout" },
+            line: String::from_utf8_lossy(line).into_owned(),
+        });
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -130,7 +221,13 @@ pub struct JobReport {
     pub commit: Option<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub outputs: BTreeMap<String, String>,
+    /// One line per `cache:` entry: what was restored and saved.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub caches: Vec<String>,
     pub duration_ms: u64,
+    /// The memory the job reserved while it ran (its `memory:`), for
+    /// billing; 0 for a job that never ran.
+    pub memory_mib: u64,
     /// Whether jobs that need this one are held back by it: true for a
     /// failure and for a skip caused by a failure upstream, false for a
     /// skip by `paths:` or a false `if:`.
@@ -166,14 +263,151 @@ pub struct Options {
     /// The memory every running job together may use, when the runner is
     /// given a limit (`--memory`). See [`MemoryBudget`].
     pub memory: Option<Arc<MemoryBudget>>,
+    /// Where `cache:` entries are kept; `None` runs every job cold.
+    pub caches: Option<Arc<dyn Caches>>,
+    /// Where live log events go; `None` when nobody follows the run.
+    pub logs: Option<LogFn>,
+    /// Job slots shared with every other run in this process (the server's
+    /// `--cpus` times `--jobs-per-cpu`); `None` limits only by `parallelism`.
+    pub slots: Option<Arc<Slots>>,
+}
+
+/// The runner's job slots: how many jobs may run at once across every run.
+///
+/// A vCPU is shared by `jobs_per_cpu` jobs. Most CI work is not CPU-bound
+/// all the way through (a job waits on its own subprocesses, reads its
+/// snapshot, starts up), so a core interleaves several jobs better than it
+/// runs one; the operating system time-slices them. Billing charges each
+/// job its share, `1 / jobs_per_cpu` of a vCPU for its wall time.
+#[derive(Debug)]
+pub struct Slots {
+    total: usize,
+    used: Mutex<usize>,
+    freed: Condvar,
+}
+
+impl Slots {
+    pub fn new(total: usize) -> Self {
+        Self {
+            total: total.max(1),
+            used: Mutex::new(0),
+            freed: Condvar::new(),
+        }
+    }
+
+    pub fn total(&self) -> usize {
+        self.total
+    }
+
+    pub fn in_use(&self) -> usize {
+        *self.used.lock().unwrap()
+    }
+
+    pub fn free(&self) -> usize {
+        self.total - self.in_use()
+    }
+
+    /// Waits for a slot.
+    pub fn acquire(self: &Arc<Self>) -> SlotGuard {
+        let mut used = self.used.lock().unwrap();
+        while *used >= self.total {
+            used = self.freed.wait(used).unwrap();
+        }
+        *used += 1;
+        SlotGuard(self.clone())
+    }
+
+    /// A slot if one is free now.
+    pub fn try_acquire(self: &Arc<Self>) -> Option<SlotGuard> {
+        let mut used = self.used.lock().unwrap();
+        if *used >= self.total {
+            return None;
+        }
+        *used += 1;
+        Some(SlotGuard(self.clone()))
+    }
+}
+
+/// A held slot, given back on drop.
+#[derive(Debug)]
+pub struct SlotGuard(Arc<Slots>);
+
+impl Drop for SlotGuard {
+    fn drop(&mut self) {
+        *self.0.used.lock().unwrap() -= 1;
+        self.0.freed.notify_one();
+    }
+}
+
+/// What a cache lookup found.
+#[derive(Debug)]
+pub struct Restored {
+    /// The key that matched.
+    pub key: String,
+    /// Whether it was the job's own `key` rather than a `restore-keys`
+    /// prefix; an exact hit is not saved again.
+    pub exact: bool,
+    pub entries: Vec<iwci_vfs::Entry>,
+}
+
+/// The store behind `cache:`. An implementation decides where entries live
+/// and which a job may read and write (the run's repository and branch).
+pub trait Caches: Send + Sync {
+    /// The entry under `key`, or else the newest one saved under each of
+    /// `restore_keys` in turn. `max_bytes` bounds what may be loaded.
+    fn restore(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        max_bytes: u64,
+    ) -> Result<Option<Restored>, String>;
+    fn save(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+    ) -> Result<(), String>;
+}
+
+/// `hashFiles()`: a digest of the files under the clone matching `globs`,
+/// by path and content, as the commit has them (before the job runs).
+fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> String {
+    use sha2::Digest;
+    let mut hash = sha2::Sha256::new();
+    if let Some(root) = root {
+        let matchers: Vec<globset::GlobMatcher> = globs
+            .iter()
+            .filter_map(|g| {
+                globset::GlobBuilder::new(g)
+                    .literal_separator(true)
+                    .build()
+                    .ok()
+            })
+            .map(|g| g.compile_matcher())
+            .collect();
+        let prefix = format!("{}/", root.trim_end_matches('/'));
+        for path in snapshot.list_files(root) {
+            let text = path.display().to_string();
+            let Some(rel) = text.strip_prefix(&prefix) else {
+                continue;
+            };
+            if matchers.iter().any(|m| m.is_match(rel)) {
+                let content = snapshot.read(&path).unwrap_or_default();
+                hash.update(rel.as_bytes());
+                hash.update([0]);
+                hash.update(sha2::Sha256::digest(&content));
+            }
+        }
+    }
+    hex::encode(&hash.finalize()[..16])
 }
 
 /// The runner's memory limit, shared by every job.
 ///
-/// A job reserves its `memory:` for its program before it starts, and only
-/// starts when that fits; the bytes it then writes to its in-memory file
-/// system are charged here as they are written, on top of the reservation.
-/// So the jobs' program memory plus their files never exceed the total.
+/// A job reserves its `memory:` before it starts, and only starts when
+/// that fits. The reservation stands for the job's program and its files
+/// together; each is also held to `memory:` inside the job (the program by
+/// its linear memory limit, the files by its write budget).
 /// The frozen workspace snapshots are not counted: they are built once
 /// and shared, and their size depends only on the repository.
 #[derive(Debug)]
@@ -216,60 +450,40 @@ impl MemoryBudget {
     }
 }
 
-/// One job's file writes: held to its own `memory:` and charged to the
-/// runner's budget, if there is one. Whatever is still charged when the job
-/// is over goes back to the runner.
+/// One job's file writes, held to its own `memory:`.
+///
+/// They are not charged to the runner's budget as well: the job already
+/// reserved its `memory:` there before it started, and that reservation is
+/// the job's whole footprint as far as admission goes. Charging its files
+/// on top would count them twice, and a runner whose reservations filled
+/// the budget would refuse every job's first write.
 #[derive(Debug)]
 struct JobBudget {
     cap: u64,
     used: AtomicU64,
-    /// Which limit refused a write, if one did: [`REFUSED_BY_JOB`] or
-    /// [`REFUSED_BY_RUNNER`].
-    refused: AtomicU8,
-    runner: Option<Arc<MemoryBudget>>,
+    refused: AtomicBool,
 }
-
-const REFUSED_BY_JOB: u8 = 1;
-const REFUSED_BY_RUNNER: u8 = 2;
 
 impl WriteBudget for JobBudget {
     fn take(&self, bytes: u64) -> bool {
-        let mine = self
+        let ok = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 used.checked_add(bytes).filter(|&next| next <= self.cap)
             })
             .is_ok();
-        if !mine {
-            self.refused.store(REFUSED_BY_JOB, Ordering::SeqCst);
-            return false;
+        if !ok {
+            self.refused.store(true, Ordering::SeqCst);
         }
-        if self.runner.as_ref().is_some_and(|r| !r.try_take(bytes)) {
-            self.used.fetch_sub(bytes, Ordering::SeqCst);
-            self.refused.store(REFUSED_BY_RUNNER, Ordering::SeqCst);
-            return false;
-        }
-        true
+        ok
     }
 
     fn give(&self, bytes: u64) {
-        let given = self
+        let _ = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
-            })
-            .map_or(0, |before| before.min(bytes));
-        if let Some(runner) = &self.runner {
-            runner.give(given);
-        }
-    }
-}
-
-impl Drop for JobBudget {
-    fn drop(&mut self) {
-        if let Some(runner) = &self.runner {
-            runner.give(*self.used.get_mut());
-        }
+            });
     }
 }
 
@@ -410,10 +624,15 @@ pub fn run<T: Tools>(
                             s = wake.wait(s).unwrap();
                         }
                     };
+                    // A slot shared with every other run on this runner;
+                    // held for the job's workspace build and its run.
+                    let slot = options.slots.as_ref().map(|s| s.acquire());
                     let workspace = built[job.workspace]
                         .get_or_init(|| workspaces.build(&plan.workspaces[job.workspace]));
                     let report =
                         run_job(&job, plan, workspace, tools, executor, committer, options);
+                    drop(slot);
+                    emit_finished(options, &report);
                     if let Some(budget) = &options.memory {
                         budget.give(job.memory_bytes);
                     }
@@ -496,6 +715,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
         };
         if let Some((reason, blocks)) = skip {
             let report = key_report(template, Status::Skipped { reason }, blocks);
+            emit_finished(options, &report);
             finish(s, template, vec![report]);
             continue;
         }
@@ -521,6 +741,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     },
                     true,
                 );
+                emit_finished(options, &report);
                 finish(s, template, vec![report]);
             }
             Ok(jobs) if jobs.is_empty() => {
@@ -531,6 +752,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     },
                     false,
                 );
+                emit_finished(options, &report);
                 finish(s, template, vec![report]);
             }
             Ok(jobs)
@@ -547,6 +769,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     total >> 20
                 );
                 let report = key_report(template, Status::Error { message }, true);
+                emit_finished(options, &report);
                 finish(s, template, vec![report]);
             }
             Ok(jobs) => {
@@ -616,6 +839,8 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         changes: Vec::new(),
         commit: None,
         outputs: BTreeMap::new(),
+        caches: Vec::new(),
+        memory_mib: 0,
         duration_ms: 0,
         blocks,
     }
@@ -652,8 +877,7 @@ fn run_job<T: Tools>(
     let write_budget = Arc::new(JobBudget {
         cap: job.memory_bytes,
         used: AtomicU64::new(0),
-        refused: AtomicU8::new(0),
-        runner: options.memory.clone(),
+        refused: AtomicBool::new(false),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
     if let Err(e) = fs.write(OUTPUT_PATH, b"") {
@@ -663,23 +887,120 @@ fn run_job<T: Tools>(
             started.elapsed(),
         );
     }
+    let root = plan.workspaces[job.workspace]
+        .clone
+        .as_ref()
+        .map(|c| c.into.clone());
+
+    // Restore caches before the job runs. A miss, or a store that cannot be
+    // read, is a cold start, never a failure.
+    let mut cache_lines = Vec::new();
+    let mut cache_keys = Vec::new();
+    for cache in &job.caches {
+        let hash = |globs: &[String]| hash_files(&workspace.snapshot, root.as_deref(), globs);
+        let key = match iwci_spec::expand_hash_files(&cache.key, hash) {
+            Ok(k) => k,
+            Err(e) => return errored(job, format!("cache key: {e}"), started.elapsed()),
+        };
+        let restore_keys: Vec<String> = match cache
+            .restore_keys
+            .iter()
+            .map(|k| {
+                iwci_spec::expand_hash_files(k, |g| {
+                    hash_files(&workspace.snapshot, root.as_deref(), g)
+                })
+            })
+            .collect()
+        {
+            Ok(keys) => keys,
+            Err(e) => return errored(job, format!("cache restore-keys: {e}"), started.elapsed()),
+        };
+        let mut exact = false;
+        match options
+            .caches
+            .as_ref()
+            .map(|c| c.restore(&key, &restore_keys, job.memory_bytes))
+        {
+            None => {}
+            Some(Ok(Some(restored))) => match fs.apply(&restored.entries) {
+                Ok(()) => {
+                    exact = restored.exact;
+                    cache_lines.push(if restored.exact {
+                        format!("cache `{key}`: restored")
+                    } else {
+                        format!("cache `{key}`: restored `{}`", restored.key)
+                    });
+                }
+                Err(e) => cache_lines.push(format!(
+                    "cache `{key}`: could not restore ({e}); starting cold"
+                )),
+            },
+            Some(Ok(None)) => cache_lines.push(format!("cache `{key}`: miss")),
+            Some(Err(e)) => cache_lines.push(format!(
+                "cache `{key}`: could not read the cache ({e}); starting cold"
+            )),
+        }
+        cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
+    }
+
     let mut env = options.base_env.clone();
     env.push(("IWCI_JOB".into(), job.id.clone()));
     env.push(("IWCI_OUTPUT".into(), OUTPUT_PATH.into()));
     merge_env(&mut env, &workspace.env);
     merge_env(&mut env, &job.env);
 
-    let execution = match executor.execute(&tool, &job.action, Invocation { job, fs: &fs, env }) {
+    let line_sink = options.logs.as_ref().map(|logs| {
+        logs(LogEvent::JobStarted {
+            job: job.id.clone(),
+            name: job.display_name.clone(),
+        });
+        Arc::new(LineSink {
+            job: job.id.clone(),
+            logs: logs.clone(),
+            pending: Mutex::default(),
+        })
+    });
+    let log: Option<OutputSink> = line_sink.clone().map(|sink| {
+        let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
+        sink
+    });
+    let executed = executor.execute(
+        &tool,
+        &job.action,
+        Invocation {
+            job,
+            fs: &fs,
+            env,
+            log,
+        },
+    );
+    if let Some(sink) = &line_sink {
+        sink.flush();
+    }
+    let execution = match executed {
         Ok(e) => e,
         Err(e) => return errored(job, e, started.elapsed()),
     };
 
-    let root = plan.workspaces[job.workspace]
-        .clone
-        .as_ref()
-        .map(|c| c.into.clone());
-    let changes = match &root {
-        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => fs.changes(root),
+    // What is under a cache path is the cache's, not a change to the
+    // repository: restoring `.tsbuildinfo` must not fail `changes: fail` or
+    // land in a `changes: commit`.
+    let cached: Vec<&str> = job
+        .caches
+        .iter()
+        .flat_map(|c| c.paths.iter().map(String::as_str))
+        .collect();
+    let under_cache = |path: &std::path::Path| {
+        cached
+            .iter()
+            .any(|c| path == std::path::Path::new(c) || path.starts_with(c))
+    };
+    let changes: Vec<Change> = match &root {
+        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => fs
+            .changes(root)
+            .into_iter()
+            .filter(|c| !under_cache(c.path()))
+            .collect(),
         _ => Vec::new(),
     };
     let changed: Vec<ChangedFile> = changes
@@ -708,16 +1029,12 @@ fn run_job<T: Tools>(
         Status::Failed {
             reason: format!("ran out of its {} MiB of memory", job.memory_bytes >> 20),
         }
-    } else if execution.exit_code != 0 && write_budget.refused.load(Ordering::SeqCst) != 0 {
-        let whose = if write_budget.refused.load(Ordering::SeqCst) == REFUSED_BY_JOB {
-            format!("its own {} MiB memory limit", job.memory_bytes >> 20)
-        } else {
-            "the runner's memory limit (--memory)".to_string()
-        };
+    } else if execution.exit_code != 0 && write_budget.refused.load(Ordering::SeqCst) {
         Status::Failed {
             reason: format!(
-                "exited with {} after a write was refused: the files it wrote used up {whose}",
-                execution.exit_code
+                "exited with {} after a write was refused: the files it wrote used up its {} MiB memory limit",
+                execution.exit_code,
+                job.memory_bytes >> 20
             ),
         }
     } else if execution.exit_code != 0 {
@@ -751,6 +1068,39 @@ fn run_job<T: Tools>(
         }
     };
 
+    // Save caches only after a pass, and only when the job did not start
+    // from an exact hit (that entry is already what it would save).
+    if status == Status::Passed
+        && let Some(store) = &options.caches
+    {
+        for (key, restore_keys, exact, paths) in &cache_keys {
+            if *exact {
+                continue;
+            }
+            let entries = fs.entries_under(paths);
+            if !entries
+                .iter()
+                .any(|e| matches!(e, iwci_vfs::Entry::File { .. }))
+            {
+                cache_lines.push(format!("cache `{key}`: nothing to save"));
+                continue;
+            }
+            let bytes: usize = entries
+                .iter()
+                .map(|e| match e {
+                    iwci_vfs::Entry::File { data, .. } => data.len(),
+                    _ => 0,
+                })
+                .sum();
+            match store.save(key, restore_keys, &entries) {
+                Ok(()) => {
+                    cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
+                }
+                Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
+            }
+        }
+    }
+
     let blocks = !status.is_success();
     JobReport {
         id: job.id.clone(),
@@ -761,6 +1111,8 @@ fn run_job<T: Tools>(
         changes: changed,
         commit,
         outputs: outputs.unwrap_or_default(),
+        caches: cache_lines,
+        memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(started.elapsed()),
         blocks,
     }
@@ -839,6 +1191,8 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         changes: Vec::new(),
         commit: None,
         outputs: BTreeMap::new(),
+        caches: Vec::new(),
+        memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(elapsed),
         blocks: true,
     }

@@ -16,10 +16,21 @@ pub(crate) struct Captured {
     pub(crate) truncated: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Capture {
     inner: Arc<Mutex<Captured>>,
     cap: usize,
+    /// Where output also goes as it is written, for live logs.
+    sink: Option<(crate::Stream, crate::LogSink)>,
+}
+
+impl std::fmt::Debug for Capture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Capture")
+            .field("cap", &self.cap)
+            .field("live", &self.sink.is_some())
+            .finish()
+    }
 }
 
 impl Capture {
@@ -27,10 +38,21 @@ impl Capture {
         Self {
             inner: Arc::default(),
             cap,
+            sink: None,
         }
     }
 
+    /// Also hands every chunk to `sink` as it arrives. The sink sees all of
+    /// it, past the capture's cap too: what to keep is its decision.
+    pub(crate) fn with_sink(mut self, sink: Option<crate::LogSink>, stream: crate::Stream) -> Self {
+        self.sink = sink.map(|s| (stream, s));
+        self
+    }
+
     pub(crate) fn push(&self, data: &[u8]) {
+        if let Some((stream, sink)) = &self.sink {
+            sink(*stream, data);
+        }
         let mut captured = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let room = self.cap.saturating_sub(captured.bytes.len());
         if data.len() > room {

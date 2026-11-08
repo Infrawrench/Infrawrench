@@ -5,8 +5,10 @@
 //! Each job gets a [`JobRuntime`], wasmer-wasix's `Runtime` with everything
 //! that could reach outside the job replaced:
 //!
-//! - networking is `UnsupportedVirtualNetworking`, so every socket call
-//!   fails, whatever features some other crate turns on in wasmer-wasix;
+//! - networking is the job's own in-memory loopback (`crate::network`):
+//!   its processes can listen on and connect to `127.0.0.1` among
+//!   themselves, but no host socket is ever opened, so the host's localhost
+//!   is out of reach and nothing a job listens on appears on the host;
 //! - there is no HTTP client, the package source is an in-memory list of the
 //!   packages the caller supplied and the package loader only serves those,
 //!   so a command that is not provided fails instead of being fetched from
@@ -40,7 +42,7 @@ use wasmer_wasix::runtime::resolver::{
 };
 use wasmer_wasix::runtime::task_manager::VirtualTaskManager;
 use wasmer_wasix::runtime::{InstantiationState, ModuleInput, PluggableRuntime, TaintReason};
-use wasmer_wasix::virtual_net::{DynVirtualNetworking, UnsupportedVirtualNetworking};
+use wasmer_wasix::virtual_net::DynVirtualNetworking;
 use wasmer_wasix::wasmer_wasix_types::wasi::{ExitCode, Signal};
 use wasmer_wasix::{Runtime as WasixRuntime, WasiEnvBuilder, WasiProcessId};
 use webc::Container;
@@ -142,7 +144,8 @@ impl JobRuntime {
     ) -> Self {
         let mut inner = PluggableRuntime::new(shared.tasks.clone());
         inner.set_engine(engine);
-        inner.set_networking_implementation(UnsupportedVirtualNetworking::default());
+        // One loopback per job, shared by all of its processes.
+        inner.set_networking_implementation(crate::network::JobNetwork::new());
         inner.http_client = None;
         inner.set_module_cache(WasixCache(shared.store.clone()));
         let packages = packages.cloned().unwrap_or_default();
@@ -472,8 +475,8 @@ pub(crate) fn run(
         None => Vec::new(),
     };
 
-    let stdout = Capture::new(caps.output_bytes);
-    let stderr = Capture::new(caps.output_bytes);
+    let stdout = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stdout);
+    let stderr = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stderr);
 
     let mut builder = WasiEnvBuilder::new(program);
     builder.add_args(inv.args.iter());

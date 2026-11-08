@@ -24,6 +24,7 @@ use virtual_fs::{
 
 pub use virtual_fs;
 
+pub mod archive;
 mod limit;
 pub use limit::WriteBudget;
 
@@ -624,6 +625,68 @@ impl JobFs {
     pub fn create_dir(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = normalise(path)?;
         self.overlay.create_dir(&path).map_err(fs_err(&path))
+    }
+
+    /// Everything at and under `paths` as the job sees it now (its own
+    /// writes over the snapshot), parents first, symlinks not followed.
+    /// Missing paths are skipped: a cache path a job never created is not
+    /// an error.
+    pub fn entries_under(&self, paths: &[impl AsRef<Path>]) -> Vec<Entry> {
+        let fs = self.overlay.as_ref();
+        let mut out = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for root in paths {
+            let Ok(root) = normalise(root) else { continue };
+            let Ok(meta) = fs.symlink_metadata(&root) else {
+                continue;
+            };
+            let mut todo = vec![(root.clone(), meta)];
+            if todo[0].1.is_dir() {
+                todo.extend(walk_no_follow(fs, &root));
+            }
+            for (path, meta) in todo {
+                if !seen.insert(path.clone()) {
+                    continue;
+                }
+                let ft = meta.file_type();
+                if ft.is_symlink() {
+                    if let Ok(target) = fs.readlink(&path) {
+                        out.push(Entry::Symlink { path, target });
+                    }
+                } else if ft.is_dir() {
+                    out.push(Entry::Dir { path });
+                } else if let Ok(bytes) = read_file(fs, &path) {
+                    out.push(Entry::File {
+                        path,
+                        data: bytes.into(),
+                    });
+                }
+            }
+        }
+        out.sort_by_key(|e| match e {
+            Entry::Dir { path } | Entry::File { path, .. } | Entry::Symlink { path, .. } => {
+                path.components().count()
+            }
+        });
+        out
+    }
+
+    /// Writes `entries` into the job, as the job's own writes: they count
+    /// against its write budget and show up in [`JobFs::changes`].
+    pub fn apply(&self, entries: &[Entry]) -> Result<()> {
+        let fs = self.overlay.as_ref();
+        for entry in entries {
+            match entry {
+                Entry::Dir { path } => create_dir_all(fs, path)?,
+                Entry::File { path, data } => write_file(fs, path, data)?,
+                Entry::Symlink { path, target } => {
+                    let path = normalise(path)?;
+                    let _ = fs.remove_file(&path);
+                    symlink(fs, &path, target)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Every file the job added, changed or deleted under `root`, sorted by
@@ -1305,6 +1368,52 @@ mod tests {
         futures::executor::block_on(f.write_all(b"E")).unwrap();
         drop(f);
         assert_eq!(cap.used.load(Ordering::SeqCst), before);
+    }
+
+    #[test]
+    fn a_jobs_paths_capture_encode_and_restore_into_another_job() {
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/src/a.ts", b"a").unwrap();
+        let snap = builder.freeze();
+        let job = snap.fork();
+        job.write("/app/.cache/tsc/web.tsbuildinfo", b"{\"v\":1}")
+            .unwrap();
+        job.write("/app/.cache/tsc/deep/x", b"x").unwrap();
+        symlink(job.as_dyn().as_ref(), "/app/.cache/link", "tsc").unwrap();
+        job.write("/root/.cache/go-build/ab/cd", b"go").unwrap();
+        let entries = job.entries_under(&["/app/.cache", "/root/.cache/go-build", "/app/missing"]);
+        assert!(entries.iter().any(|e| matches!(e, Entry::Symlink { .. })));
+
+        let mut buf = Vec::new();
+        archive::encode(&mut buf, &entries).unwrap();
+        let decoded = archive::decode(&mut buf.as_slice(), 1 << 20).unwrap();
+        assert_eq!(decoded, entries);
+        assert!(
+            archive::decode(&mut buf.as_slice(), 2).is_err(),
+            "the size bound holds"
+        );
+
+        let next = snap.fork();
+        next.apply(&decoded).unwrap();
+        assert_eq!(
+            next.read("/app/.cache/tsc/web.tsbuildinfo").unwrap(),
+            b"{\"v\":1}"
+        );
+        assert_eq!(next.read("/app/.cache/link/deep/x").unwrap(), b"x");
+        assert_eq!(next.read("/root/.cache/go-build/ab/cd").unwrap(), b"go");
+    }
+
+    #[test]
+    fn a_stored_entry_cannot_climb_out() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"IWCIENTS");
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&1u64.to_le_bytes());
+        buf.push(0);
+        let evil = "/app/../etc";
+        buf.extend_from_slice(&(evil.len() as u32).to_le_bytes());
+        buf.extend_from_slice(evil.as_bytes());
+        assert!(archive::decode(&mut buf.as_slice(), 1 << 20).is_err());
     }
 
     #[test]
