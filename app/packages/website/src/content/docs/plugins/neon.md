@@ -26,6 +26,8 @@ In the Neon console, go to **Account > API keys > New API key**, then paste the 
 
 ![Neon Add-account form with API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/neon/add-account.png)
 
+A personal API key lists the projects of every organization you belong to. An organization API key lists that organization's projects.
+
 ## Projects and branches
 
 - **Create a project**: pick a region from the ones Neon currently offers, a Postgres version (18 by default), and optionally the restore window. **Edit** renames a project or changes its restore window (how far back branches can be restored; your plan caps it).

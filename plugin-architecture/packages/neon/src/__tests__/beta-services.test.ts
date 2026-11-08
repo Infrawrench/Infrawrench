@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // --- Mock the Neon SDK ----------------------------------------------------
 const api = {
   listProjects: vi.fn(),
+  getCurrentUserOrganizations: vi.fn(),
   listProjectBranches: vi.fn(),
   listSnapshots: vi.fn(),
   createSnapshot: vi.fn(),
@@ -71,6 +72,7 @@ function makeClient() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.getCurrentUserOrganizations.mockResolvedValue(wrap({ organizations: [] }));
   api.listProjects.mockResolvedValue(wrap({ projects: [{ id: "p1", name: "proj" }] }));
   api.listProjectBranches.mockResolvedValue(
     wrap({ branches: [{ id: "b1", name: "main", project_id: "p1" }] }),

@@ -113,8 +113,10 @@ async function resolveOrganizations(api: Api<unknown>): Promise<Organization[]> 
     if (!isSettledRefusal(err)) throw err;
   }
 
+  // The organization list was refused or empty, so the projects come from the read
+  // that infers the organization, as they always have.
   const orgIds = new Set<string>();
-  for (const p of await listAllProjects(api)) {
+  for (const p of await listAllProjects(api, [])) {
     if (p.org_id) orgIds.add(p.org_id);
   }
 
