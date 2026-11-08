@@ -991,9 +991,9 @@ export function ResourcePanel({
       changedFields,
     );
     const db = await getDb();
-    await mirrorEditedResourceRow(db, resource.id, updated);
+    const nextId = await mirrorEditedResourceRow(db, resource.id, updated, accountId);
     toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
-    followEditedResource(updated.id);
+    followEditedResource(nextId);
   }
 
   /** A provider's edit can answer with a new id, which every later edit has to go to. */
@@ -1107,7 +1107,7 @@ export function ResourcePanel({
         changedFields,
       );
       const db = await getDb();
-      await mirrorEditedResourceRow(db, child.id, updated);
+      await mirrorEditedResourceRow(db, child.id, updated, child.accountId || accountId);
     }
     dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
     setRefreshVersion((v) => v + 1);
