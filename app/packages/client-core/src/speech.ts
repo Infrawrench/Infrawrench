@@ -1,4 +1,8 @@
-import type { TranscribeAudioResult } from "@infrawrench/plugin-base";
+import type {
+  SpeechPanelCapability,
+  SpeechPanelOption,
+  TranscribeAudioResult,
+} from "@infrawrench/plugin-base";
 
 /**
  * Pure helpers behind the Speech test surface (`DetailViewSchema.speechPanel`).
@@ -144,4 +148,44 @@ export function describeTranscript(result: TranscribeAudioResult): string {
   if (result.language) parts.push(result.language);
   if (result.confidence != null) parts.push(`${Math.round(result.confidence * 100)}% confidence`);
   return parts.join(" · ");
+}
+
+/**
+ * The language options the picker offers while `modelId` is selected.
+ *
+ * A model entry with `languageIds` narrows the list to those ids (an
+ * auto-detect entry is just another id, so leaving it out is how a model says
+ * it needs a named language). A model without it, an unknown model, or a list
+ * that would come out empty all leave every language on offer: hiding the
+ * picker over a plugin's typo would be worse than an error from the provider.
+ */
+export function speechLanguagesForModel(
+  capability: Pick<SpeechPanelCapability, "languages" | "models">,
+  modelId: string,
+): SpeechPanelOption[] {
+  const languages = capability.languages ?? [];
+  const allowed = capability.models?.find((model) => model.id === modelId)?.languageIds;
+  if (!allowed) return languages;
+  const narrowed = languages.filter((language) => allowed.includes(language.id));
+  return narrowed.length > 0 ? narrowed : languages;
+}
+
+/**
+ * The language to keep selected once `modelId` is picked: `current` when the
+ * model still offers it, otherwise `defaultLanguage` when that is offered,
+ * otherwise the first language offered. Without a language list `current`
+ * comes back unchanged.
+ */
+export function resolveSpeechLanguage(
+  capability: Pick<SpeechPanelCapability, "languages" | "models" | "defaultLanguage">,
+  modelId: string,
+  current: string,
+): string {
+  const offered = speechLanguagesForModel(capability, modelId);
+  if (offered.some((language) => language.id === current)) return current;
+  const fallback = capability.defaultLanguage;
+  if (fallback !== undefined && offered.some((language) => language.id === fallback)) {
+    return fallback;
+  }
+  return offered[0]?.id ?? current;
 }

@@ -134,6 +134,17 @@ export const GLADIA_LANGUAGE_OPTIONS: SpeechPanelOption[] = [
 ];
 
 /**
+ * The languages Solaria-3 takes, verified 2026-11-08: the Solaria-3 column of
+ * https://docs.gladia.io/chapters/language/supported-languages marks exactly
+ * these five, and https://docs.gladia.io/api-reference/v2/pre-recorded/init
+ * calls it single language only, with exactly one entry in
+ * `language_config.languages`, so auto-detect is not among them.
+ */
+export const SOLARIA_3_LANGUAGE_IDS: readonly string[] = ["en", "fr", "de", "it", "es"];
+
+const SOLARIA_3_LANGUAGES = new Set(SOLARIA_3_LANGUAGE_IDS);
+
+/**
  * Transcription models, verified 2026-10-03 against the request schema of
  * https://docs.gladia.io/api-reference/v2/pre-recorded/init: the served
  * OpenAPI document has historically omitted `model` even though the endpoint
@@ -150,6 +161,9 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
     label: "Solaria-3",
     description:
       "Latest generation, pre-recorded only. One language at a time: English, French, German, Spanish or Italian",
+    // Narrows the Speech panel's language picker while Solaria-3 is selected;
+    // `solaria3LanguageError` refuses the same pairs for callers without it.
+    languageIds: SOLARIA_3_LANGUAGE_IDS,
   },
   {
     id: "solaria-fusion",
@@ -161,16 +175,30 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
 export const GLADIA_DEFAULT_MODEL = "solaria-1";
 
 /**
- * https://docs.gladia.io/chapters/language/supported-languages marks these five for Solaria-3,
- * and https://docs.gladia.io/api-reference/v2/pre-recorded/init says "pass exactly one".
+ * Refuse a Solaria-3 request Gladia documents as unsupported, before anything is uploaded.
+ *
+ * The Speech panel already hides these pairs through `languageIds`, but the HTTP API and other
+ * callers reach `transcribeAudio` without the picker, and failing here costs no upload and no
+ * job. An empty or missing language is auto-detect, which Solaria-3 does not do.
  */
-const SOLARIA_3_LANGUAGES = new Set(["en", "fr", "de", "it", "es"]);
+export function solaria3LanguageError(model: string, language: string | undefined) {
+  if (model !== "solaria-3") return undefined;
+  if (language && SOLARIA_3_LANGUAGES.has(language)) return undefined;
+  const asked =
+    !language || language === GLADIA_AUTO_LANGUAGE ? "auto-detect" : `language "${language}"`;
+  return (
+    "Gladia plugin: Solaria-3 transcribes one named language, English (en), French (fr), " +
+    `German (de), Italian (it) or Spanish (es), and does not support ${asked}. ` +
+    "Pick one of those five, or use Solaria-1 for auto-detect and other languages."
+  );
+}
 
 /**
  * What to tell the user when a model and language pair falls outside what Gladia documents.
  *
- * The request still goes out: no live call has shown Gladia refuses these, so refusing here could
- * break a pair that works today. This only explains the answer that comes back.
+ * `solaria3LanguageError` refuses these pairs before upload today, so this note is reached only
+ * if that refusal is relaxed, which is what #679 asks for should a live call show Gladia accepts
+ * a pair. It is kept so the explanation is already wired for that case.
  */
 export function undocumentedLanguageNote(model: string, language: string | undefined) {
   if (model !== "solaria-3") return undefined;

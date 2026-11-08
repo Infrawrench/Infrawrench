@@ -88,7 +88,7 @@ Use the graph to see the shape of your spend, and the Speechmatics Portal for th
 - **Deleting a running job stops it and removes it.**
 - **Uploads are capped at 1 GB** by Speechmatics, and at 25 MB in the Speech tab.
 - **Pick the transcript format with a query parameter.** Add `?format=txt`, `?format=srt` or `?format=json-v2` to the transcript URL. The detail page shows the URL with a note about this.
-- **Melia-1 is multilingual only.** Picking it sets the language to `multi`.
+- **Melia-1 is multilingual only.** Picking it sets the language to `multi`, and the language picker shows only **Multilingual** while it's selected.
 - **A `rejected` job was accepted and then failed to process.** That's different from a failed submission. The job's Logs tab usually explains why.
 - **A new API key is shown once**, when you create it. Copy it then. Listed keys only show their details.
 - **Only a project's name can change after you create it.** Set the description when you create the project.

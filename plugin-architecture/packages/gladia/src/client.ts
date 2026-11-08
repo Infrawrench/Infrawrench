@@ -41,6 +41,7 @@ import {
   GLADIA_DEFAULT_MODEL,
   GLADIA_LANGUAGE_OPTIONS,
   GLADIA_MODEL_OPTIONS,
+  solaria3LanguageError,
   undocumentedLanguageNote,
 } from "./languages.js";
 
@@ -340,6 +341,12 @@ export class GladiaClient implements PluginClient {
         throw new Error(`Gladia plugin: cannot transcribe audio for type "${typeId}"`);
       }
 
+      const model =
+        payload.modelId && payload.modelId.length > 0 ? payload.modelId : GLADIA_DEFAULT_MODEL;
+      // Before the upload, so a pair Gladia documents as unsupported costs nothing.
+      const refusal = solaria3LanguageError(model, payload.language);
+      if (refusal) throw new Error(refusal);
+
       const bytes = base64ToBytes(payload.audioBase64);
       if (bytes.byteLength === 0) throw new Error("Gladia plugin: empty audio payload");
       if (bytes.byteLength > MAX_AUDIO_BYTES) {
@@ -353,8 +360,6 @@ export class GladiaClient implements PluginClient {
       const audioUrl = str(upload.audio_url);
       if (!audioUrl) throw new Error("Gladia plugin: /v2/upload returned no audio_url");
 
-      const model =
-        payload.modelId && payload.modelId.length > 0 ? payload.modelId : GLADIA_DEFAULT_MODEL;
       const body: InitTranscriptionBody = {
         audio_url: audioUrl,
         diarization: true,

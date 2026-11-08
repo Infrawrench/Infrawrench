@@ -7,6 +7,8 @@ import {
   describeSynthesis,
   describeTranscript,
   formatAudioBytes,
+  resolveSpeechLanguage,
+  speechLanguagesForModel,
   speechTextError,
 } from "../speech";
 
@@ -102,5 +104,51 @@ describe("describeTranscript", () => {
 
   it("is empty when the provider reported nothing", () => {
     expect(describeTranscript({ text: "hello" })).toBe("");
+  });
+});
+
+describe("speechLanguagesForModel / resolveSpeechLanguage", () => {
+  const capability = {
+    languages: [
+      { id: "auto", label: "Auto-detect" },
+      { id: "en", label: "English" },
+      { id: "fr", label: "French" },
+      { id: "ja", label: "Japanese" },
+    ],
+    models: [
+      { id: "wide", label: "Wide" },
+      { id: "narrow", label: "Narrow", languageIds: ["fr", "en"] },
+      { id: "typo", label: "Typo", languageIds: ["xx"] },
+    ],
+    defaultLanguage: "auto",
+  };
+
+  it("narrows to the model's languageIds in the plugin's own order", () => {
+    expect(speechLanguagesForModel(capability, "narrow").map((l) => l.id)).toEqual(["en", "fr"]);
+  });
+
+  it("offers everything for a model without languageIds, an unknown model or an empty match", () => {
+    expect(speechLanguagesForModel(capability, "wide")).toHaveLength(4);
+    expect(speechLanguagesForModel(capability, "missing")).toHaveLength(4);
+    expect(speechLanguagesForModel(capability, "typo")).toHaveLength(4);
+    expect(speechLanguagesForModel({ models: capability.models }, "narrow")).toEqual([]);
+  });
+
+  it("keeps a selection the model still offers", () => {
+    expect(resolveSpeechLanguage(capability, "narrow", "fr")).toBe("fr");
+    expect(resolveSpeechLanguage(capability, "wide", "ja")).toBe("ja");
+  });
+
+  it("moves an invalid selection to the default when offered, else the first offered", () => {
+    expect(resolveSpeechLanguage(capability, "narrow", "auto")).toBe("en");
+    expect(resolveSpeechLanguage(capability, "narrow", "ja")).toBe("en");
+    expect(resolveSpeechLanguage({ ...capability, defaultLanguage: "fr" }, "narrow", "ja")).toBe(
+      "fr",
+    );
+    expect(resolveSpeechLanguage(capability, "wide", "gone")).toBe("auto");
+  });
+
+  it("leaves the value alone when there is no language list", () => {
+    expect(resolveSpeechLanguage({ models: capability.models }, "narrow", "")).toBe("");
   });
 });

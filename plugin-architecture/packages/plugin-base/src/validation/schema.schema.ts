@@ -276,6 +276,7 @@ const speechPanelOptionSchema = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
   description: Schema.optional(Schema.String),
+  languageIds: Schema.optional(Schema.Array(Schema.String)),
 });
 
 const valueLabelSchema = Schema.Struct({ value: Schema.String, label: Schema.String });

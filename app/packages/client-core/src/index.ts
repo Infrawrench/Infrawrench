@@ -875,6 +875,8 @@ export {
   audioSizeError,
   describeSynthesis,
   describeTranscript,
+  speechLanguagesForModel,
+  resolveSpeechLanguage,
 } from "./speech";
 export { evaluateShowWhen, buildDefaultFields, type ShowWhenRuleLike } from "./create-fields";
 export {

@@ -19,6 +19,8 @@ import {
   describeSynthesis,
   describeTranscript,
   formatAudioBytes as formatBytes,
+  resolveSpeechLanguage,
+  speechLanguagesForModel,
   speechTextError,
 } from "@infrawrench/client-core";
 
@@ -44,6 +46,27 @@ export function SpeechPanel({ capability, onSynthesize, onTranscribe }: Props) {
   const [model, setModel] = useState(
     () => capability.defaultModel ?? capability.models?.[0]?.id ?? "",
   );
+  // Language lives here rather than in the STT half because a model can
+  // narrow the languages it takes (`SpeechPanelOption.languageIds`), and the
+  // model change is what has to move a selection the new model refuses.
+  const [language, setLanguage] = useState(() =>
+    resolveSpeechLanguage(
+      capability,
+      model,
+      capability.defaultLanguage ?? capability.languages?.[0]?.id ?? "",
+    ),
+  );
+  const changeModel = useCallback(
+    (next: string) => {
+      setModel(next);
+      setLanguage((current) => resolveSpeechLanguage(capability, next, current));
+    },
+    [capability],
+  );
+  // Re-resolved on every render too, so a capability that changes under the
+  // panel (a refreshed resource) can never submit a pair it no longer offers.
+  const languages = speechLanguagesForModel(capability, model);
+  const effectiveLanguage = resolveSpeechLanguage(capability, model, language);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -77,7 +100,7 @@ export function SpeechPanel({ capability, onSynthesize, onTranscribe }: Props) {
                   label={capability.modelLabel ? gtData(capability.modelLabel) : gt("Model")}
                   options={capability.models}
                   value={model}
-                  onChange={setModel}
+                  onChange={changeModel}
                 />
               </div>
             )}
@@ -96,6 +119,9 @@ export function SpeechPanel({ capability, onSynthesize, onTranscribe }: Props) {
               <TranscribeSection
                 capability={capability}
                 model={model}
+                languages={languages}
+                language={effectiveLanguage}
+                onLanguageChange={setLanguage}
                 onTranscribe={onTranscribe!}
               />
             )}
@@ -269,6 +295,10 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
 interface TranscribeSectionProps {
   capability: SpeechPanelCapability;
   model: string;
+  /** The language options the selected model accepts. */
+  languages: SpeechPanelOption[];
+  language: string;
+  onLanguageChange: (language: string) => void;
   onTranscribe: (payload: TranscribeAudioPayload) => Promise<TranscribeAudioResult>;
 }
 
@@ -279,12 +309,16 @@ interface PendingAudio {
   url: string;
 }
 
-function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectionProps) {
+function TranscribeSection({
+  capability,
+  model,
+  languages,
+  language,
+  onLanguageChange,
+  onTranscribe,
+}: TranscribeSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
-  const [language, setLanguage] = useState(
-    () => capability.defaultLanguage ?? capability.languages?.[0]?.id ?? "",
-  );
   const [audio, setAudio] = useState<PendingAudio | null>(null);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -420,13 +454,13 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
         {gt("Speech to text")}
       </h3>
 
-      {capability.languages && capability.languages.length > 0 && (
+      {languages.length > 0 && (
         <div className="max-w-sm">
           <OptionSelect
             label={capability.languageLabel ? gtData(capability.languageLabel) : gt("Language")}
-            options={capability.languages}
+            options={languages}
             value={language}
-            onChange={setLanguage}
+            onChange={onLanguageChange}
           />
         </div>
       )}

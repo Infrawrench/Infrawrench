@@ -237,3 +237,71 @@ describe("SpeechPanel — mode gating", () => {
     expect(screen.queryByRole("button", { name: "Synthesize" })).not.toBeInTheDocument();
   });
 });
+
+describe("SpeechPanel: languages a model accepts", () => {
+  // Shaped like Gladia: auto-detect is the default language, and one model
+  // takes a single named language out of a short list.
+  const NARROWING: SpeechPanelCapability = {
+    modes: ["stt"],
+    models: [
+      { id: "wide", label: "Wide" },
+      { id: "narrow", label: "Narrow", languageIds: ["en", "fr"] },
+    ],
+    defaultModel: "wide",
+    languages: [
+      { id: "auto", label: "Auto-detect" },
+      { id: "en", label: "English" },
+      { id: "fr", label: "French" },
+      { id: "ja", label: "Japanese" },
+    ],
+    defaultLanguage: "auto",
+    maxAudioBytes: 64,
+  };
+
+  const languageOptions = () =>
+    Array.from(
+      (screen.getByLabelText(/Language/) as HTMLSelectElement).options,
+      (option) => option.value,
+    );
+
+  it("offers every language for a model without languageIds and narrows for one with them", () => {
+    render(<SpeechPanel capability={NARROWING} onTranscribe={vi.fn()} />);
+    expect(languageOptions()).toEqual(["auto", "en", "fr", "ja"]);
+
+    fireEvent.change(screen.getByLabelText(/Model/), { target: { value: "narrow" } });
+    expect(languageOptions()).toEqual(["en", "fr"]);
+  });
+
+  it("moves a selection the new model refuses and keeps one it accepts", () => {
+    render(<SpeechPanel capability={NARROWING} onTranscribe={vi.fn()} />);
+    const language = () => screen.getByLabelText(/Language/) as HTMLSelectElement;
+
+    fireEvent.change(language(), { target: { value: "ja" } });
+    fireEvent.change(screen.getByLabelText(/Model/), { target: { value: "narrow" } });
+    expect(language().value).toBe("en");
+
+    fireEvent.change(language(), { target: { value: "fr" } });
+    fireEvent.change(screen.getByLabelText(/Model/), { target: { value: "wide" } });
+    expect(language().value).toBe("fr");
+  });
+
+  it("starts on an allowed language when the default model narrows the list", async () => {
+    const onTranscribe = vi.fn().mockResolvedValue({ text: "bonjour" });
+    render(
+      <SpeechPanel
+        capability={{ ...NARROWING, defaultModel: "narrow" }}
+        onTranscribe={onTranscribe}
+      />,
+    );
+    expect((screen.getByLabelText(/Language/) as HTMLSelectElement).value).toBe("en");
+
+    fireEvent.change(screen.getByLabelText("Audio file to transcribe"), {
+      target: { files: [new File(["hi"], "clip.wav", { type: "audio/wav" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Transcribe" }));
+    await waitFor(() => expect(onTranscribe).toHaveBeenCalledTimes(1));
+    expect(onTranscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: "narrow", language: "en" }),
+    );
+  });
+});

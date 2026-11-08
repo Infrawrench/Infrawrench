@@ -36,6 +36,8 @@ Get audio in one of two ways:
 
 Play it back if you want, then press **Transcribe**.
 
+Some models only take certain languages. When you pick one of those, the language picker lists just the languages it takes, and a language it doesn't take switches to one it does. Gladia's Solaria-3 is an example: it needs one of five named languages and can't auto-detect.
+
 The transcript shows up below, with the detected language, clip length and confidence when the provider reports them. If the provider returns word timings, **Show word timings** opens a table of every word with its start, end and speaker label.
 
 ![The speech-to-text half after a recording, showing the transcript and the expanded word-timings table with speaker labels](https://agent-assets.infrawrench.com/docs-screenshots/features/speech-testing/stt-word-timings.png)
@@ -44,7 +46,7 @@ The transcript shows up below, with the detected language, clip length and confi
 
 The [mobile app](./mobile-app.md) has the same features on their own screen. Tap **Speech** on the resource page.
 
-- Voice, model and language pickers open as sheets.
+- Voice, model and language pickers open as sheets. The language list follows the model, as on desktop and web.
 - The character counter has the same limit.
 - Clips play inline. **Save** opens the share sheet instead of downloading.
 - Speech to text records from the phone's microphone (iOS and Android ask for permission the first time) or takes a clip from the file picker.

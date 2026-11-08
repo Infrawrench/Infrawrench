@@ -24,6 +24,8 @@ Open the workspace and go to the **Speech** tab. It does transcription only. See
 
 One click uploads your clip, starts a job and waits up to two minutes for the result. Speaker labels appear in the word table. You can pick from three models: **Solaria-1** (the default, 100+ languages), **Solaria-3** (latest generation, pre-recorded only) and **Solaria Fusion** (pre-recorded only).
 
+Solaria-3 takes one named language out of English, French, German, Italian and Spanish, and it can't auto-detect. With Solaria-3 selected, the language picker lists only those five. If **Auto-detect** or another language was selected, it switches to one of the five.
+
 ![Gladia Speech tab on the workspace, showing the Solaria model picker and a diarised transcript with speaker labels](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gladia/speech-tab-solaria.png)
 
 ## Metrics
@@ -35,6 +37,7 @@ The **Workspace** has a **Metrics** tab that charts, per day: pre-recorded trans
 - **No usage or quota figures.** Gladia doesn't report usage, so the workspace's activity panel adds up your most recent jobs and sessions. That's a **minimum**, not a billing figure, and the panel says so. Infrawrench doesn't chart Gladia spend.
 - **Billed time and audio duration are different numbers**, and every job shows both. Billed time is the one that costs money.
 - **The Speech tab caps clips at 25 MB**, well below what Gladia itself accepts (135 minutes and 1,000 MB). Send anything larger through Gladia's own API.
+- **Solaria-3 requests outside its five languages are refused before upload.** That covers auto-detect too, and it applies whether the request comes from the Speech tab or straight from the API. The error names the five languages and points you to Solaria-1. Nothing is uploaded and no job is created, so nothing is billed.
 - **The Speech tab gives up after two minutes.** Submit long recordings from Gladia's dashboard and read them back from the Transcriptions list here.
 - **Lists show no total count**, because Gladia doesn't report one.
 - **Deleted transcriptions and sessions may linger for a moment** before the next refresh clears them. You can't delete a session that is still streaming (`403`).
