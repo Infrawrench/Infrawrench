@@ -65,19 +65,23 @@ import {
  * schema) costs several hundred ms of CPU, past what Workers allow a script's
  * startup; inside a request it is a one-off per isolate, and requests for the
  * SPA never pay it. The specifiers are literal, so it is still one bundle.
+ *
+ * The API is `edgeApi`, which imports each domain on its first request rather
+ * than all of them here (`src/api/edge.ts`): the dynamic imports keep each
+ * domain's modules unevaluated until a request needs them.
  */
 let server: Promise<{
-  api: (typeof import("../src/api/index"))["api"];
+  api: (typeof import("../src/api/edge"))["edgeApi"];
   withEdgeInvocation: (typeof import("@infrawrench/server-core/runtime/edge-invocation"))["withEdgeInvocation"];
   accounts: typeof import("@infrawrench/server-core/runtime/account-runtime");
 }> | null = null;
 function loadServer() {
   server ??= Promise.all([
-    import("../src/api/index"),
+    import("../src/api/edge"),
     import("@infrawrench/server-core/runtime/edge-invocation"),
     import("@infrawrench/server-core/runtime/account-runtime"),
   ]).then(([apiModule, invocation, accounts]) => ({
-    api: apiModule.api,
+    api: apiModule.edgeApi,
     withEdgeInvocation: invocation.withEdgeInvocation,
     accounts,
   }));

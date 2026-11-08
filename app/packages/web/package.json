@@ -19,6 +19,7 @@
     "test": "vitest run",
     "generate:plugin-strings": "tsx scripts/generate-plugin-strings.ts",
     "generate:mcp-views": "tsx scripts/generate-mcp-views.ts",
+    "generate:domain-routes": "tsx scripts/generate-domain-routes.ts",
     "translations:status": "node scripts/translation-status.mjs",
     "translations:audit": "node scripts/translation-audit.mjs",
     "build:client": "vite build",
