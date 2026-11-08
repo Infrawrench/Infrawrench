@@ -1055,7 +1055,8 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 - Auth: `X-Auth-Token` header against `https://api.scaleway.com`
 - Credentials: `accessKey` (SCW...), `secretKey` (UUID), `defaultProjectId` (UUID)
 - Resource types: `instance`, `kapsule-cluster`, `rdb-instance`, `object-storage-bucket`, `block-volume`
-- Instance API is zone-scoped (`/instance/v1/zones/{zone}/servers`); all 9 zones (fr-par-1/2/3, nl-ams-1/2/3, pl-waw-1/2/3) are polled in parallel
+- Instance API is zone-scoped (`/instance/v1/zones/{zone}/servers`); its zones (fr-par-1/2/3, nl-ams-1/2/3, pl-waw-1/2/3, it-mil-1) are polled in parallel
+- **Zones are per product** (`src/locations.ts`, #771): each zonal product reads the zones its own SDK API lists in `LOCALITY` (`packages_generated/<product>/src/<version>/api.gen.ts` on scaleway-sdk-js main). `SCW_BLOCK_ZONES` adds `it-mil-2`/`it-mil-3` (opened October 2026) for Block Storage, list and create picker and the `zone` enum; `SCW_ZONES` stays the Instance API's list for instances, flexible IPs, load balancers and the price catalog. `ZONE_INFO` in `client.ts` is only what to show for a zone. Add a zone to a product only once its SDK list has it: what an API answers in a zone it does not serve is undocumented, and a 5xx there fails the type for everyone. Scaleway's changelog says Instances are in MIL-2/MIL-3 too, so the Instance API's list is the one to watch. The zoned LB API's list has neither `fr-par-3` nor `it-mil-1` but load balancers are still asked there, since dropping a zone would prune anything that really is there.
 - Kapsule and RDB APIs are region-scoped (`/k8s/v1/regions/{region}/clusters`, `/rdb/v1/regions/{region}/instances`); all 3 regions polled in parallel
 - Resource ID format: `{accountId}:{typeId}:{zone_or_region}/{providerId}`
 - Instance delete uses `terminate` action (also releases IP); Kapsule delete passes `with_additional_resources: true`

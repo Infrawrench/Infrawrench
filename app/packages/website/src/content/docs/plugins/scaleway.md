@@ -20,7 +20,7 @@ sidebar_order: 6
 - DNS zones and records (Scaleway Domains and DNS)
 - Secret Manager secrets (names, paths and version counts only; secret values are never read)
 
-Every region and zone is covered, including Milan (`it-mil`, zone `it-mil-1`), which opened in March 2026. Products Scaleway doesn't offer in a location are skipped there.
+Every region and zone is covered, including Milan (`it-mil`). Its first zone, `it-mil-1`, opened in March 2026 and is read for every product. Block Storage volumes are also read and can be created in `it-mil-2` and `it-mil-3`, which opened in October 2026. Instances and flexible IPs follow once Scaleway's Instance API lists those zones. Products Scaleway doesn't offer in a location are skipped there.
 
 ## Connect your account
 
