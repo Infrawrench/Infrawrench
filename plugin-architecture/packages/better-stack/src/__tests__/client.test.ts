@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { BetterStackApiError } from "../api.js";
@@ -326,6 +326,143 @@ describe("a token refused for a whole type", () => {
     await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(String(status));
     expect(calls).toHaveLength(1);
     expect(unread).not.toHaveBeenCalled();
+  });
+});
+
+describe("team members for a global token over several teams (#822)", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const multiTeam = {
+    status: 422,
+    body: {
+      errors:
+        "This token has access to multiple teams. Please use the 'team_name' parameter to specify the team.",
+    },
+  };
+  const page = (data: unknown[]) => ({ body: { data, pagination: { next: null } } });
+  const member = (id: string, email: string, role = "member") => ({
+    id,
+    type: "team_member",
+    attributes: { email, first_name: null, last_name: null, role },
+  });
+  /** Monitors name "Ops" and "Dev/QA"; a source names "Ops" again; the rest name nothing. */
+  const namingObjects = (url: URL) => {
+    if (url.pathname === "/api/v2/monitors") {
+      return page([
+        { id: "m1", attributes: { team_name: "Ops" } },
+        { id: "m2", attributes: { team_name: "Dev/QA" } },
+      ]);
+    }
+    if (url.pathname === "/api/v2/sources")
+      return page([{ id: "s1", attributes: { team_name: "Ops" } }]);
+    return page([]);
+  };
+  let unread: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    vi.stubGlobal("fetch", () => {
+      throw new Error("global fetch must not be used");
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    vi.unstubAllGlobals();
+  });
+
+  it("reads a token with one team exactly as before", async () => {
+    const { c, calls } = client(() => page([member("7", "a@x.io")]));
+    const rows = await c.listResources("team-member", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["7"]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url.searchParams.has("team_name")).toBe(false);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("reads each named team on the 422, one row per team a member is in", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname !== "/api/v2/team-members") return namingObjects(url);
+      const team = url.searchParams.get("team_name");
+      if (team === "Ops") return page([member("7", "a@x.io", "admin"), member("8", "b@x.io")]);
+      if (team === "Dev/QA") return page([member("7", "a@x.io", "member")]);
+      return multiTeam;
+    });
+    const rows = await c.listResources("team-member", ACCOUNT);
+    expect(rows.map((r) => [r.externalId, r.fields["team"], r.fields["role"]])).toEqual([
+      ["Dev%2FQA/7", "Dev/QA", "member"],
+      ["Ops/7", "Ops", "admin"],
+      ["Ops/8", "Ops", "member"],
+    ]);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(3);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    const asked = calls
+      .filter((x) => x.url.pathname === "/api/v2/team-members")
+      .map((x) => x.url.searchParams.get("team_name"));
+    expect(asked).toEqual([null, "Dev/QA", "Ops"]);
+  });
+
+  it("skips a team the token does not reach, keeping what is stored", async () => {
+    const { c } = client((url) => {
+      if (url.pathname !== "/api/v2/team-members") return namingObjects(url);
+      const team = url.searchParams.get("team_name");
+      if (team === "Ops") return page([member("8", "b@x.io")]);
+      if (team === "Dev/QA") return { status: 404, body: { errors: "No team with this name" } };
+      return multiTeam;
+    });
+    const rows = await c.listResources("team-member", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["Ops/8"]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it.each([429, 500])("fails the type on a %i from one team", async (status) => {
+    const { c } = client((url) => {
+      if (url.pathname !== "/api/v2/team-members") return namingObjects(url);
+      const team = url.searchParams.get("team_name");
+      if (team === "Ops") return { status, body: { errors: "no" } };
+      if (team === "Dev/QA") return page([]);
+      return multiTeam;
+    });
+    await expect(c.listResources("team-member", ACCOUNT)).rejects.toMatchObject({ status });
+  });
+
+  it("keeps the 422 where nothing names a team", async () => {
+    const { c } = client((url) => (url.pathname === "/api/v2/team-members" ? multiTeam : page([])));
+    await expect(c.listResources("team-member", ACCOUNT)).rejects.toMatchObject({ status: 422 });
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("keeps the 422 where nobody keeps what goes unread", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { c, calls } = client((url) =>
+      url.pathname === "/api/v2/team-members" ? multiTeam : namingObjects(url),
+    );
+    await expect(c.listResources("team-member", ACCOUNT)).rejects.toMatchObject({ status: 422 });
+    expect(calls.filter((x) => x.url.searchParams.has("team_name"))).toEqual([]);
+  });
+
+  it("does not read another 422 as the multi-team one", async () => {
+    const { c } = client(() => ({ status: 422, body: { errors: "Something else" } }));
+    await expect(c.listResources("team-member", ACCOUNT)).rejects.toMatchObject({ status: 422 });
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("reads and removes a team's member with its team_name, and a bare id without one", async () => {
+    const { c, calls } = client((url, method) => {
+      if (method === "DELETE") return { status: 204 };
+      return { body: { data: member("7", "a@x.io", "admin") } };
+    });
+    const got = await c.getResource("team-member", `${ACCOUNT}:team-member:Dev%2FQA/7`, ACCOUNT);
+    expect(got.externalId).toBe("Dev%2FQA/7");
+    expect(got.fields["team"]).toBe("Dev/QA");
+    await c.deleteResource("team-member", `${ACCOUNT}:team-member:Dev%2FQA/7`);
+    await c.deleteResource("team-member", `${ACCOUNT}:team-member:7`);
+    expect(
+      calls.map((x) => [x.method, x.url.pathname, x.url.searchParams.get("team_name")]),
+    ).toEqual([
+      ["GET", "/api/v2/team-members/7", "Dev/QA"],
+      ["DELETE", "/api/v2/team-members/7", "Dev/QA"],
+      ["DELETE", "/api/v2/team-members/7", null],
+    ]);
   });
 });
 

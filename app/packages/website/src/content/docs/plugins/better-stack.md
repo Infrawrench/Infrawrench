@@ -26,7 +26,7 @@ Connect a Better Stack organization to manage uptime monitoring, incidents, stat
 
 **Organization**
 
-- **Team members** with their role. You can remove members from here.
+- **Team members** with their role. You can remove members from here. When a global token covers several teams, members are listed per team, for the teams your monitors, heartbeats, on-call calendars and sources belong to, and someone in two teams appears once for each. Members of a team none of those belong to aren't listed, and members removed in Better Stack stay listed here until the token covers a single team again.
 
 <insert [Better Stack monitor detail page showing the Pause button, 30-day availability and the Metrics tab with response times per region] here>
 

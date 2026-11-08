@@ -354,21 +354,46 @@ export function mapAlert(accountId: string, x: JsonApiItem<Attrs>): ResourceInst
   });
 }
 
-export function mapMember(accountId: string, x: JsonApiItem<Attrs>): ResourceInstance {
+/**
+ * A team member. `team` is set where the member was read for one named team, because the
+ * token covers several (#822): a member's id is their user id, the same in every team,
+ * so that row's external id is `<encoded team>/<user id>`. Without it the id is the
+ * user id alone, as it has always been for a token with one team.
+ */
+export function mapMember(
+  accountId: string,
+  x: JsonApiItem<Attrs>,
+  team?: string,
+): ResourceInstance {
   const a = x.attributes ?? {};
   const name =
     [s(a["first_name"]), s(a["last_name"])].filter(Boolean).join(" ") || s(a["email"]) || x.id;
   return instance(
     accountId,
     "team-member",
-    x.id,
+    team === undefined ? x.id : memberExternalId(team, x.id),
     name,
     {
       name,
       email: s(a["email"]),
       role: s(a["role"]) ?? s(a["role_name"]),
-      team: s(a["team_name"]),
+      team: team ?? s(a["team_name"]),
     },
     { resolvedOutputs: s(a["email"]) ? { email: String(a["email"]) } : {} },
   );
+}
+
+/** `<encoded team>/<user id>`; the encoding keeps a `/` in a team name out of the split. */
+export function memberExternalId(team: string, userId: string): string {
+  return `${encodeURIComponent(team)}/${userId}`;
+}
+
+/** A member row's user id, and its team where it was read for one. */
+export function parseMemberExternalId(externalId: string): { userId: string; team?: string } {
+  const slash = externalId.indexOf("/");
+  if (slash < 0) return { userId: externalId };
+  return {
+    team: decodeURIComponent(externalId.slice(0, slash)),
+    userId: externalId.slice(slash + 1),
+  };
 }
