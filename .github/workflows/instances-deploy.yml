@@ -11,6 +11,8 @@ on:
       - "app/packages/server-core/src/aws-pricing-warehouse/**"
       - "app/packages/server-core/src/email.ts"
       - "app/packages/server-core/src/email-html.ts"
+      # The warehouse code above takes its shared constants from client-core.
+      - "app/packages/client-core/src/**"
       - "pnpm-lock.yaml"
 
 concurrency:
@@ -40,6 +42,11 @@ jobs:
       - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
+
+      # The warehouse schema and query code in server-core import
+      # @infrawrench/client-core, which resolves through its built dist.
+      - name: Build workspace dependencies
+        run: pnpm exec turbo run build --filter=@infrawrench/client-core
 
       - name: Test
         run: pnpm --filter @infrawrench/instances test
