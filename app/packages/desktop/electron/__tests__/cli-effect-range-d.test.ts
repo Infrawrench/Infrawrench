@@ -41,6 +41,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const pretty = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
@@ -240,9 +241,17 @@ describe("savings", () => {
       "GET /savings/realized": REALIZED,
       "GET /savings/realized?from=2026-01-01&to=2026-06-30": REALIZED,
     });
+    // `savings` formats money in the machine's locale (en-GB writes US$, and
+    // the columns are padded to the result), so pin one.
+    const NumberFormat = Intl.NumberFormat;
+    vi.spyOn(Intl, "NumberFormat").mockImplementation(function (
+      locales?: Intl.LocalesArgument,
+      options?: Intl.NumberFormatOptions,
+    ) {
+      return new NumberFormat(locales ?? "en-US", options);
+    });
     expect(await run("savings")).toBe(0);
-    // `savings` formats money in the machine's locale; en-GB writes US$.
-    expect(out.stdout.replaceAll("US$", "$")).toMatchInlineSnapshot(`
+    expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · realized savings 2025-11-01 → 2026-11-07 · horizon 12 months
 
       $380 realized of $500 projected (76%)
@@ -253,8 +262,8 @@ describe("savings", () => {
       2026-10 ██████████████████████████████ $200 / $260
 
       SINCE       ACTION            TYPE            PROJECTED/MO  REALIZED      BASIS       NOTE               
-      2026-09-01  Resize api        right-sizing    $120        $180        billing     active             
-      2026-09-01  Delete old disks  orphan cleanup  $120        $180        estimate    grew back          
+      2026-09-01  Resize api        right-sizing    $120          $180          billing     active             
+      2026-09-01  Delete old disks  orphan cleanup  $120          $180          estimate    grew back          
       2026-09-01  CDN contract      manual          —             not measured  unmeasured  short of projection
 
       1 action(s) realizing less than projected.
