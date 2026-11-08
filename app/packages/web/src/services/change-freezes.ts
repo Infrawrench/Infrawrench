@@ -1,6 +1,5 @@
 import { v4 as uuid } from "uuid";
 import { and, desc, eq } from "drizzle-orm";
-import type { Context } from "hono";
 import type { HostPluginClient } from "@infrawrench/plugin-base";
 import { db } from "@/db/client";
 import { changeFreezes } from "@/db/schema";
@@ -14,14 +13,15 @@ import { logAudit } from "./audit";
  * A freeze is "in effect" when it is active, has started, and has not passed
  * its end time. While one is in effect, the destructive mutation paths
  * (resource delete, destructive plugin actions, secret-version destroy,
- * deployment rollback) call {@link checkChangeFreeze} before touching the
- * provider. Callers holding `freezes:override` can bypass a freeze by sending
+ * deployment rollback) call {@link evaluateChangeFreeze} (through
+ * `http/change-freeze.ts` on the API) before touching the provider. Callers holding `freezes:override` can bypass a freeze by sending
  * the `x-change-freeze-override: true` header; both blocks and overrides are
  * written to the audit trail.
  */
 
-const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
-const CHANGE_FREEZE_ACTIVE_CODE = "change_freeze_active";
+/** The request header a `freezes:override` holder sends to proceed anyway. */
+export const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
+const CHANGE_FREEZE_ACTIVE_CODE: "change_freeze_active" = "change_freeze_active";
 
 export interface ChangeFreezeRow {
   id: string;
@@ -73,7 +73,7 @@ export function freezeBlockedPayload(freeze: ChangeFreezeRow) {
   };
 }
 
-interface FreezeAuditTarget {
+export interface FreezeAuditTarget {
   /** The destructive action being attempted, e.g. "resource.delete". */
   action: string;
   entityType: string;
@@ -81,25 +81,30 @@ interface FreezeAuditTarget {
   metadata?: Record<string, unknown> | undefined;
 }
 
+/** Who is attempting a destructive mutation, for {@link evaluateChangeFreeze}. */
+export interface FreezeCaller {
+  readonly organizationId: string;
+  readonly userId: string | undefined;
+  readonly permissions: readonly string[];
+  /** The raw `x-change-freeze-override` request header, if sent. */
+  readonly overrideHeader: string | undefined;
+}
+
 /**
- * Enforce the org's change freeze on a destructive HTTP mutation.
- *
- * Returns null when the request may proceed (no freeze, or an authorized
- * explicit override: the override itself is audit-logged). Returns a 423
- * `Response` describing the freeze when the request must be blocked; the block
- * is audit-logged too. Call it after resolving/authorizing the target and
+ * Enforce the org's change freeze on a destructive mutation: null when the
+ * caller may proceed (no freeze, or an authorized explicit override, itself
+ * audit-logged), otherwise the 423 body describing the freeze (the block is
+ * audit-logged too). Call it after resolving and authorizing the target and
  * before performing the provider mutation.
  */
-export async function checkChangeFreeze(
-  c: Context,
+export async function evaluateChangeFreeze(
+  caller: FreezeCaller,
   target: FreezeAuditTarget,
-): Promise<Response | null> {
-  const organizationId = c.get("organizationId");
+): Promise<ReturnType<typeof freezeBlockedPayload> | null> {
+  const { organizationId, userId } = caller;
   const freeze = await getActiveChangeFreeze(organizationId);
   if (!freeze) return null;
 
-  const session = c.get("session") as { userId?: string } | undefined;
-  const userId = session?.userId;
   const baseMeta = {
     ...target.metadata,
     freezeId: freeze.id,
@@ -107,9 +112,9 @@ export async function checkChangeFreeze(
     attemptedAction: target.action,
   };
 
-  const overrideRequested = c.req.header(CHANGE_FREEZE_OVERRIDE_HEADER)?.toLowerCase() === "true";
+  const overrideRequested = caller.overrideHeader?.toLowerCase() === "true";
   if (overrideRequested) {
-    const granted = (c.get("permissions") ?? []) as readonly string[];
+    const granted = caller.permissions;
     if (hasPermission(granted, "freezes:override")) {
       void logAudit({
         organizationId,
@@ -132,7 +137,7 @@ export async function checkChangeFreeze(
     entityId: target.entityId,
     metadata: { ...baseMeta, overrideRequested },
   });
-  return c.json(freezeBlockedPayload(freeze), 423);
+  return freezeBlockedPayload(freeze);
 }
 
 /**

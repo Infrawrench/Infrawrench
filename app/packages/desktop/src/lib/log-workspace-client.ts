@@ -13,7 +13,9 @@ import type {
   LogWorkspaceClient,
   LogWorkspaceSavedQueriesClient,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { definedFields } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPeerPluginClient, createPluginClient } from "./plugin-client";
@@ -25,8 +27,8 @@ import { createPeerPluginClient, createPluginClient } from "./plugin-client";
  * active-organization key (`key={activeCloudOrgId ?? "local"}`), which picks
  * up the cached client for the new mode.
  *
- * - **Cloud mode**: discovery and saved queries over the cloud API via IPC;
- *   stream fetches ride the existing `cloud_get_logs` path.
+ * - **Cloud mode**: discovery and saved queries over the cloud transport;
+ *   stream fetches call the resources domain's `logs` endpoint.
  * - **Local mode**: discovery scans the local resource table and asks each
  *   account's in-renderer plugin client (`getLogs` + `renderDetail`, never a
  *   hardcoded provider list); stream fetches call `client.getLogs` directly.
@@ -171,22 +173,24 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
   return out;
 }
 
+const logWorkspaces = () => cloudClient("logWorkspaces").logWorkspaces;
+
 function cloudSavedQueries(orgId: string): LogWorkspaceSavedQueriesClient {
   return {
     async list(): Promise<LogWorkspaceQuery[]> {
-      const res = await invoke<LogWorkspaceQueryListResponse>("cloud_log_workspaces_list", {
-        orgId,
-      });
+      const res: LogWorkspaceQueryListResponse = await runRpc(
+        logWorkspaces().list({ params: { orgId } }),
+      );
       return res.queries;
     },
     create(input: LogWorkspaceQueryCreate): Promise<LogWorkspaceQuery> {
-      return invoke<LogWorkspaceQuery>("cloud_log_workspaces_create", { orgId, body: input });
+      return runRpc(logWorkspaces().create({ params: { orgId }, payload: input }));
     },
     update(queryId: string, patch: LogWorkspaceQueryPatch): Promise<LogWorkspaceQuery> {
-      return invoke<LogWorkspaceQuery>("cloud_log_workspaces_update", { orgId, queryId, patch });
+      return runRpc(logWorkspaces().update({ params: { orgId, queryId }, payload: patch }));
     },
     async remove(queryId: string): Promise<void> {
-      await invoke("cloud_log_workspaces_delete", { orgId, queryId });
+      await runRpc(logWorkspaces().delete({ params: { orgId, queryId } }));
     },
   };
 }
@@ -235,24 +239,24 @@ export function createDesktopLogWorkspaceClient(orgId: string | null): LogWorksp
   }
   return {
     async listLogResources(): Promise<LogResourceOption[]> {
-      const res = await invoke<{ resources: LogResourceOption[] }>(
-        "cloud_log_workspaces_resources",
-        { orgId },
-      );
-      return res.resources;
+      const res = await runRpc(logWorkspaces().resources({ params: { orgId } }));
+      const resources: LogResourceOption[] = res.resources;
+      return resources;
     },
     fetchLogs(selector: LogStreamSelector, params: LogsFetchParams): Promise<LogsFetchResult> {
-      return invoke<LogsFetchResult>("cloud_get_logs", {
-        orgId,
-        pluginId: selector.pluginId,
-        resourceTypeId: selector.resourceTypeId,
-        resourceId: selector.resourceId,
-        accountId: selector.accountId,
-        // Sidecar streams route the cloud logs endpoint through the peer
-        // client built from this parent (the IPC already forwards it).
-        ...(selector.parentResourceId ? { parentResourceId: selector.parentResourceId } : {}),
-        ...params,
-      });
+      return runRpc(
+        cloudClient("resources").resources.logs({
+          params: { orgId, pluginId: selector.pluginId, typeId: selector.resourceTypeId },
+          payload: {
+            accountId: selector.accountId,
+            resourceId: selector.resourceId,
+            // Sidecar streams route the cloud logs endpoint through the peer
+            // client built from this parent.
+            ...(selector.parentResourceId ? { parentResourceId: selector.parentResourceId } : {}),
+            ...definedFields(params),
+          },
+        }),
+      );
     },
     savedQueries: cloudSavedQueries(orgId),
   };

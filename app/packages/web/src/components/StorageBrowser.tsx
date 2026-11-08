@@ -4,7 +4,7 @@ import type { StorageObject } from "@infrawrench/plugin-base";
 import { apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 
-/** Mirrors `MAX_BULK_KEYS` in `api/routes/storage.ts`, which rejects above it. */
+/** Mirrors `MAX_BULK_KEYS` in `http/domains/storage-transfers/`, which rejects above it. */
 const MAX_BULK_DOWNLOAD_KEYS = 100;
 
 export function StorageBrowser({
@@ -71,7 +71,7 @@ export function StorageBrowser({
       // takes `keys` as a JSON array, not a singular `key` per window, but it
       // also lives under `/v1/storage` (`api/index.ts`), where only
       // list/mkdir/delete are also served unversioned from
-      // `connection-features.ts`. So the old request 404'd before it could
+      // `http/domains/connection-features/`. So the old request 404'd before it could
       // even 400, and fixing the payload alone would not have helped.
       //
       // Chunked at MAX_BULK_KEYS: the server rejects a larger selection

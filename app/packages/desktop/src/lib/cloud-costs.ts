@@ -2,8 +2,16 @@
  * Cloud cost graphs, budgets, and dashboard widgets. Cloud-mode only: cost
  * data has no local-SQLite equivalent (it lives in the cloud ClickHouse
  * store), so these are never called when activeCloudOrgId is unset.
+ *
+ * Typed calls to the contract's cost domains over the cloud transport
+ * (`./cloud-client.ts`), as in `cloud-probes.ts`: each answer is the server's
+ * JSON, handed on as the client-core or ui type the panels use, so a contract
+ * change the desktop's types disagree with fails here at compile time. The
+ * answers that are not JSON (the FOCUS CSV, the export job file and the two
+ * PDFs) still ride their own IPC channels (`electron/cloud-data/costs.ts`).
  */
 import type {
+  CostCentre,
   CostExportJob,
   CostExportJobRequest,
   CostReportAnomalyAlert,
@@ -94,6 +102,7 @@ import type {
   CostAnomalySuppression,
   CostAnomalySuppressionInput,
   AlertEmailOptions,
+  DashboardWidgetKind,
 } from "@infrawrench/client-core";
 import type {
   DashboardKpiResult,
@@ -105,453 +114,634 @@ import type {
   SavingsEventInput,
 } from "@infrawrench/client-core";
 import type { SavingsResourceOption } from "@infrawrench/ui/cost";
-import { invoke } from "./invoke";
+import { Effect, Predicate } from "effect";
+import { cloudClient, CloudRequestEncodeError } from "./cloud-client";
+import { definedFields, pdfTimezoneQuery } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
 
-export async function queryCloudCosts(
+const costs = () => cloudClient("costs").costs;
+const exportJobs = () => cloudClient("costExportJobs").costExportJobs;
+const reportAnomalyAlerts = () => cloudClient("costReportAnomalyAlerts");
+const anomalyFeedback = () => cloudClient("costAnomalyFeedback").costAnomalyFeedback;
+const budgets = () => cloudClient("budgets").budgets;
+const networkFlows = () => cloudClient("networkFlows").networkFlows;
+const savings = () => cloudClient("savings").savings;
+const costAlerts = () => cloudClient("costAlerts").costAlerts;
+const widgets = () => cloudClient("dashboards").dashboardWidgets;
+const costReports = () => cloudClient("costReports").costReports;
+const costForecasts = () => cloudClient("costReports").costForecasts;
+const annotations = () => cloudClient("costAnnotations").costAnnotations;
+const folders = () => cloudClient("costReportFolders").costReportFolders;
+const reportDelivery = () => cloudClient("costReportNotifications").costReportNotifications;
+const dashboardDelivery = () => cloudClient("dashboardNotifications").dashboardDelivery;
+const reportPdf = () => cloudClient("dashboardNotifications").costReportPdf;
+const savedFilters = () => cloudClient("savedCostFilters").savedCostFilters;
+const scenarios = () => cloudClient("costScenarios").costScenarios;
+const businessMetrics = () => cloudClient("businessMetrics").businessMetrics;
+
+/** `?from=&to=`, each only when set (the handlers dropped an empty one). */
+function range(from?: string, to?: string) {
+  return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+}
+
+export function queryCloudCosts(
   orgId: string,
   request: CostQueryRequest,
 ): Promise<CostQueryResponse> {
-  return invoke("cloud_costs_query", { orgId, request });
+  return runRpc(costs().query({ params: { orgId }, payload: definedFields(request) }));
 }
 
-/** `POST /costs/focus-export`: the FOCUS CSV body as text. */
-export async function downloadCloudFocusExport(
+/**
+ * `POST /costs/focus-export`: the FOCUS CSV body as text. `filters` is
+ * stated (`[]` when absent), which is what the server's decoding default
+ * reads an absent one as.
+ */
+export function downloadCloudFocusExport(
   orgId: string,
   request: FocusExportRequest,
 ): Promise<string> {
-  return invoke("cloud_costs_focus_export", { orgId, request });
+  return runRpc(
+    costs().focusExport({
+      params: { orgId },
+      payload: definedFields({ ...request, filters: request.filters ?? [] }),
+    }),
+  );
 }
 
-export async function loadCloudCostDimensionValues(
+export function loadCloudCostDimensionValues(
   orgId: string,
   dimension: string,
   tagKey?: string,
 ): Promise<CostDimensionOption[]> {
-  const res = await invoke<{ values: Array<string | CostDimensionOption> }>(
-    "cloud_costs_dimensions",
-    { orgId, dimension, ...(tagKey ? { tagKey } : {}) },
+  return runRpc(
+    costs()
+      .dimensions({ params: { orgId }, query: { dimension, ...(tagKey ? { tagKey } : {}) } })
+      .pipe(
+        Effect.map((res) =>
+          res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v)),
+        ),
+      ),
   );
-  return (res?.values ?? []).map((v) => (typeof v === "string" ? { value: v, label: v } : v));
 }
 
-export async function loadCloudCarbonEstimate(
+export function loadCloudCarbonEstimate(
   orgId: string,
   windowDays?: number,
 ): Promise<CarbonEstimate> {
-  return invoke<CarbonEstimate>("cloud_carbon_estimate", {
-    orgId,
-    ...(windowDays ? { windowDays } : {}),
-  });
+  return runRpc(
+    cloudClient("carbon").carbon.estimate({
+      params: { orgId },
+      query: windowDays ? { windowDays: String(windowDays) } : {},
+    }),
+  );
 }
 
-export async function loadCloudCostStatus(orgId: string): Promise<CostAccountStatus[]> {
-  const res = await invoke<{ accounts: CostAccountStatus[] }>("cloud_costs_status", { orgId });
-  return res?.accounts ?? [];
+export function loadCloudCostStatus(orgId: string): Promise<CostAccountStatus[]> {
+  return runRpc(
+    costs()
+      .status({ params: { orgId } })
+      .pipe(Effect.map((res) => res.accounts)),
+  );
 }
 
-export async function listCloudCostAnomalies(orgId: string, days = 30): Promise<CostAnomaly[]> {
-  const res = await invoke<{ anomalies: CostAnomaly[] }>("cloud_costs_anomalies", { orgId, days });
-  return res?.anomalies ?? [];
+export function listCloudCostAnomalies(orgId: string, days = 30): Promise<CostAnomaly[]> {
+  return runRpc(
+    costs()
+      .anomalies({ params: { orgId }, query: days ? { days: String(days) } : {} })
+      .pipe(Effect.map((res) => res.anomalies)),
+  );
 }
 
 /**
  * Explain a detected anomaly: records the sentence on the finding and puts it
  * on every cost chart covering the day as an annotation (`costs:write`).
  */
-export async function acknowledgeCloudCostAnomaly(
+export function acknowledgeCloudCostAnomaly(
   orgId: string,
   anomalyId: string,
   explanation: string,
 ): Promise<CostAnomaly> {
-  return invoke("cloud_costs_acknowledge_anomaly", { orgId, anomalyId, explanation });
+  return runRpc(
+    costs().acknowledgeAnomaly({ params: { orgId, anomalyId }, payload: { explanation } }),
+  );
 }
 
 /** A budget's alert history, each firing with its note. */
-export async function listCloudBudgetAlertEvents(
+export function listCloudBudgetAlertEvents(
   orgId: string,
   budgetId: string,
 ): Promise<BudgetAlertEvent[]> {
-  return (await invoke<BudgetAlertEvent[]>("cloud_budget_alert_events", { orgId, budgetId })) ?? [];
+  return runRpc(budgets().events({ params: { orgId, id: budgetId } }));
 }
 
 /** Explain one firing; the server dates the chart marker and posts the follow-up. */
-export async function annotateCloudBudgetAlert(
+export function annotateCloudBudgetAlert(
   orgId: string,
   budgetId: string,
   eventId: string,
   note: string,
 ): Promise<BudgetAlertNoteResult> {
-  return invoke("cloud_budget_alert_note", { orgId, budgetId, eventId, note });
+  return runRpc(budgets().note({ params: { orgId, id: budgetId, eventId }, payload: { note } }));
 }
 
-export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettingsView> {
-  return invoke("cloud_costs_anomaly_settings", { orgId });
+export function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettingsView> {
+  return runRpc(costs().anomalySettings({ params: { orgId } }));
 }
 
-export async function saveCloudAnomalySettings(
+export function saveCloudAnomalySettings(
   orgId: string,
   settings: CostAnomalySettings,
 ): Promise<CostAnomalySettingsView> {
-  return invoke("cloud_costs_update_anomaly_settings", { orgId, settings });
+  return runRpc(
+    costs().updateAnomalySettings({ params: { orgId }, payload: definedFields(settings) }),
+  );
 }
 
-export async function submitCloudAnomalyFeedback(
+export function submitCloudAnomalyFeedback(
   orgId: string,
   anomalyId: string,
   input: CostAnomalyFeedbackInput,
 ): Promise<CostAnomalyFeedbackResult> {
-  return invoke("cloud_costs_anomaly_feedback", { orgId, anomalyId, input });
-}
-
-export async function clearCloudAnomalyFeedback(
-  orgId: string,
-  anomalyId: string,
-): Promise<CostAnomaly> {
-  return invoke("cloud_costs_clear_anomaly_feedback", { orgId, anomalyId });
-}
-
-export async function listCloudAnomalySuppressions(
-  orgId: string,
-): Promise<CostAnomalySuppression[]> {
-  const res = await invoke<{ suppressions: CostAnomalySuppression[] }>(
-    "cloud_costs_anomaly_suppressions",
-    { orgId },
+  return runRpc(
+    anomalyFeedback().submitFeedback({
+      params: { orgId, anomalyId },
+      payload: definedFields(input),
+    }),
   );
-  return res?.suppressions ?? [];
 }
 
-export async function createCloudAnomalySuppression(
+export function clearCloudAnomalyFeedback(orgId: string, anomalyId: string): Promise<CostAnomaly> {
+  return runRpc(anomalyFeedback().clearFeedback({ params: { orgId, anomalyId } }));
+}
+
+export function listCloudAnomalySuppressions(orgId: string): Promise<CostAnomalySuppression[]> {
+  return runRpc(
+    anomalyFeedback()
+      .listSuppressions({ params: { orgId } })
+      .pipe(Effect.map((res) => res.suppressions)),
+  );
+}
+
+export function createCloudAnomalySuppression(
   orgId: string,
   input: CostAnomalySuppressionInput,
 ): Promise<CostAnomalySuppression> {
-  return invoke("cloud_costs_create_anomaly_suppression", { orgId, input });
+  return runRpc(
+    anomalyFeedback().createSuppression({ params: { orgId }, payload: definedFields(input) }),
+  );
 }
 
-export async function updateCloudAnomalySuppression(
+export function updateCloudAnomalySuppression(
   orgId: string,
   suppressionId: string,
   input: CostAnomalySuppressionInput,
 ): Promise<CostAnomalySuppression> {
-  return invoke("cloud_costs_update_anomaly_suppression", { orgId, suppressionId, input });
+  return runRpc(
+    anomalyFeedback().updateSuppression({
+      params: { orgId, suppressionId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function deleteCloudAnomalySuppression(
-  orgId: string,
-  suppressionId: string,
-): Promise<void> {
-  await invoke("cloud_costs_delete_anomaly_suppression", { orgId, suppressionId });
+export function deleteCloudAnomalySuppression(orgId: string, suppressionId: string): Promise<void> {
+  return runRpc(
+    anomalyFeedback().deleteSuppression({ params: { orgId, suppressionId } }).pipe(Effect.asVoid),
+  );
 }
 
-export async function loadCloudAnomalySensitivity(orgId: string): Promise<CostAnomalySensitivity> {
-  return invoke("cloud_costs_anomaly_sensitivity", { orgId });
+export function loadCloudAnomalySensitivity(orgId: string): Promise<CostAnomalySensitivity> {
+  return runRpc(anomalyFeedback().sensitivity({ params: { orgId } }));
 }
 
-export async function loadCloudAnomalyPrecision(
+export function loadCloudAnomalyPrecision(
   orgId: string,
   months?: number,
 ): Promise<CostAnomalyPrecisionReport> {
-  return invoke("cloud_costs_anomaly_precision", { orgId, months });
-}
-
-export async function listCloudCostCentresForCosts(
-  orgId: string,
-): Promise<Array<{ id: string; name: string }>> {
-  return (
-    (await invoke<Array<{ id: string; name: string }>>("cloud_list_cost_centres", { orgId })) ?? []
+  return runRpc(
+    anomalyFeedback().precision({
+      params: { orgId },
+      query: months !== undefined && Number.isInteger(months) ? { months: String(months) } : {},
+    }),
   );
 }
 
-export async function loadCloudTagPolicy(orgId: string): Promise<TagPolicy> {
-  return invoke("cloud_tag_policy", { orgId });
+/** The org's cost centres: the costs panels' pickers and the invoice scope picker share it. */
+export function listCloudCostCentresForCosts(orgId: string): Promise<CostCentre[]> {
+  return runRpc(cloudClient("costCentres").costCentres.list({ params: { orgId } }));
 }
 
-export async function loadCloudTagCompliance(orgId: string): Promise<TagComplianceReport> {
-  return invoke("cloud_tag_compliance", { orgId });
+export function loadCloudTagPolicy(orgId: string): Promise<TagPolicy> {
+  return runRpc(cloudClient("tagPolicy").tagPolicy.get({ params: { orgId } }));
 }
 
-export async function loadCloudUntaggedSpend(
+export function loadCloudTagCompliance(orgId: string): Promise<TagComplianceReport> {
+  return runRpc(cloudClient("tagPolicy").tagPolicy.compliance({ params: { orgId } }));
+}
+
+export function loadCloudUntaggedSpend(
   orgId: string,
   from?: string,
   to?: string,
 ): Promise<UntaggedSpendReport> {
-  return invoke("cloud_costs_untagged", {
-    orgId,
-    ...(from ? { from } : {}),
-    ...(to ? { to } : {}),
-  });
+  return runRpc(costs().untagged({ params: { orgId }, query: range(from, to) }));
 }
 
-export async function loadCloudShowback(
+export function loadCloudShowback(
   orgId: string,
   from?: string,
   to?: string,
 ): Promise<ShowbackReport> {
-  return invoke("cloud_costs_showback", {
-    orgId,
-    ...(from ? { from } : {}),
-    ...(to ? { to } : {}),
-  });
+  return runRpc(costs().showback({ params: { orgId }, query: range(from, to) }));
 }
 
 /** The org's billing rules, read-only: see `CostsClient.listBillingRules`. */
-export async function loadCloudBillingRules(orgId: string): Promise<BillingRule[]> {
-  return invoke("cloud_billing_rules", { orgId });
+export function loadCloudBillingRules(orgId: string): Promise<BillingRule[]> {
+  return runRpc(cloudClient("billingRules").billingRules.list({ params: { orgId } }));
 }
 
-export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurndown> {
-  return invoke("cloud_credit_burndown", { orgId });
+export function loadCloudCreditBurndown(orgId: string): Promise<CreditBurndown> {
+  return runRpc(cloudClient("credits").credits.burndown({ params: { orgId } }));
 }
 
-export async function loadCloudCommitments(orgId: string): Promise<CommitmentsFeed> {
-  return invoke("cloud_commitments", { orgId });
+export function loadCloudCommitments(orgId: string): Promise<CommitmentsFeed> {
+  return runRpc(cloudClient("commitments").commitments.feed({ params: { orgId } }));
 }
 
-export async function loadCloudNetworkFlows(
+export function loadCloudNetworkFlows(
   orgId: string,
   options?: { from?: string; to?: string; scope?: string; limit?: number },
 ): Promise<NetworkFlowFeed> {
-  return invoke("cloud_network_flows", { orgId, ...(options ? { options } : {}) });
+  return runRpc(
+    networkFlows().feed({
+      params: { orgId },
+      query: {
+        ...range(options?.from, options?.to),
+        ...(options?.scope ? { scope: options.scope } : {}),
+        ...(options?.limit !== undefined ? { limit: String(options.limit) } : {}),
+      },
+    }),
+  );
 }
 
-export async function saveCloudNetworkFlowSettings(
+export function saveCloudNetworkFlowSettings(
   orgId: string,
   settings: { enabled: boolean; initialLookbackDays?: number },
 ): Promise<{ enabled: boolean; initialLookbackDays: number }> {
-  return invoke("cloud_network_flow_settings_update", { orgId, settings });
+  // A toggle that names no lookback leaves it out, which keeps the stored one.
+  const { enabled, initialLookbackDays } = settings;
+  return runRpc(
+    networkFlows().setSettings({
+      params: { orgId },
+      payload: {
+        enabled,
+        ...(initialLookbackDays !== undefined ? { initialLookbackDays } : {}),
+      },
+    }),
+  );
 }
 
-export async function loadCloudKubernetesNetwork(
+export function loadCloudKubernetesNetwork(
   orgId: string,
   accountId: string,
   options?: { from?: string; to?: string; limit?: number },
 ): Promise<KubernetesNetworkReport> {
-  return invoke("cloud_kubernetes_network", { orgId, accountId, ...(options ? { options } : {}) });
+  return runRpc(
+    networkFlows().kubernetes({
+      params: { orgId, accountId },
+      query: {
+        ...range(options?.from, options?.to),
+        ...(options?.limit !== undefined ? { limit: String(options.limit) } : {}),
+      },
+    }),
+  );
 }
 
-export async function saveCloudKubernetesNetworkSettings(
+export function saveCloudKubernetesNetworkSettings(
   orgId: string,
   accountId: string,
   settings: { billedQuery: string | null },
 ): Promise<KubernetesNetworkSettings> {
-  return invoke("cloud_kubernetes_network_settings_update", { orgId, accountId, settings });
+  return runRpc(
+    networkFlows().setKubernetesSettings({
+      params: { orgId, accountId },
+      payload: definedFields(settings),
+    }),
+  );
 }
 
-export async function loadCloudRealizedSavings(
+export function loadCloudRealizedSavings(
   orgId: string,
-  range: { from?: string; to?: string } = {},
+  window: { from?: string; to?: string } = {},
 ): Promise<RealizedSavingsReport> {
-  return invoke("cloud_realized_savings", { orgId, ...range });
+  return runRpc(savings().realized({ params: { orgId }, query: range(window.from, window.to) }));
 }
 
-export async function createCloudSavingsEvent(
+export function createCloudSavingsEvent(
   orgId: string,
   input: SavingsEventInput,
 ): Promise<SavingsEvent> {
-  return invoke("cloud_create_savings_event", { orgId, input });
+  return runRpc(savings().createEvent({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudSavingsEvent(
+export function updateCloudSavingsEvent(
   orgId: string,
   eventId: string,
   input: SavingsEventInput,
 ): Promise<SavingsEvent> {
-  return invoke("cloud_update_savings_event", { orgId, eventId, input });
+  return runRpc(
+    savings().updateEvent({ params: { orgId, id: eventId }, payload: definedFields(input) }),
+  );
 }
 
-export async function annotateCloudSavingsEvent(
+export function annotateCloudSavingsEvent(
   orgId: string,
   eventId: string,
   input: SavingsEventAnnotationInput,
 ): Promise<SavingsEvent> {
-  return invoke("cloud_annotate_savings_event", { orgId, eventId, input });
+  return runRpc(
+    savings().annotateEvent({ params: { orgId, id: eventId }, payload: definedFields(input) }),
+  );
 }
 
-export async function deleteCloudSavingsEvent(orgId: string, eventId: string): Promise<void> {
-  await invoke("cloud_delete_savings_event", { orgId, eventId });
+export function deleteCloudSavingsEvent(orgId: string, eventId: string): Promise<void> {
+  return runRpc(
+    savings()
+      .deleteEvent({ params: { orgId, id: eventId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function saveCloudSavingsSettings(
+export function saveCloudSavingsSettings(
   orgId: string,
   settings: RealizedSavingsSettings,
 ): Promise<RealizedSavingsSettings> {
-  return invoke("cloud_update_savings_settings", { orgId, settings });
+  return runRpc(savings().updateSettings({ params: { orgId }, payload: definedFields(settings) }));
 }
 
-export async function searchCloudSavingsResources(
+/**
+ * The spotlight index (`GET /search`), resources only: the manual-entry
+ * picker, and the service editor's member picker (`cloud-services.ts`).
+ */
+export function searchCloudResourceIndex(orgId: string, query: string) {
+  return cloudClient("search")
+    .search.search({ params: { orgId }, query: { q: query } })
+    .pipe(Effect.map((rows) => rows.filter((r) => r.pluginId !== "__workflows__")));
+}
+
+export function searchCloudSavingsResources(
   orgId: string,
   query: string,
 ): Promise<SavingsResourceOption[]> {
-  const rows = await invoke<Array<SavingsResourceOption & { pluginId: string }>>(
-    "cloud_savings_search_resources",
-    { orgId, query },
-  );
   // The spotlight index also returns workflows; only resources can be linked.
-  return (rows ?? []).filter((r) => r.pluginId !== "__workflows__");
+  return runRpc(searchCloudResourceIndex(orgId, query));
 }
 
-export async function loadCloudEfficiencyAlerts(
+export function loadCloudEfficiencyAlerts(
   orgId: string,
   options: { kind?: EfficiencyAlertKind; limit?: number } = {},
 ): Promise<EfficiencyAlertEvent[]> {
-  const res = await invoke<{ events: EfficiencyAlertEvent[] }>("cloud_costs_efficiency_alerts", {
-    orgId,
-    ...(options.kind ? { kind: options.kind } : {}),
-    ...(options.limit !== undefined ? { limit: options.limit } : {}),
-  });
-  return res?.events ?? [];
+  return runRpc(
+    costs()
+      .efficiencyAlerts({
+        params: { orgId },
+        query: {
+          ...(options.kind ? { kind: options.kind } : {}),
+          ...(options.limit ? { limit: String(options.limit) } : {}),
+        },
+      })
+      .pipe(Effect.map((res) => res.events)),
+  );
 }
 
-export async function loadCloudEfficiencySettings(orgId: string): Promise<CostEfficiencySettings> {
-  return invoke("cloud_costs_efficiency_settings", { orgId });
+export function loadCloudEfficiencySettings(orgId: string): Promise<CostEfficiencySettings> {
+  return runRpc(costs().efficiencyAlertSettings({ params: { orgId } }));
 }
 
 /** Members, policy and availability for the alert email recipients field. */
-export async function loadCloudAlertEmailOptions(orgId: string): Promise<AlertEmailOptions> {
-  return invoke("cloud_alert_email_options", { orgId });
+export function loadCloudAlertEmailOptions(orgId: string): Promise<AlertEmailOptions> {
+  return runRpc(cloudClient("alertEmail").alertEmail.options({ params: { orgId } }));
 }
 
-export async function saveCloudEfficiencySettings(
+export function saveCloudEfficiencySettings(
   orgId: string,
   settings: CostEfficiencySettings,
 ): Promise<CostEfficiencySettings> {
-  return invoke("cloud_costs_update_efficiency_settings", { orgId, settings });
+  return runRpc(
+    costs().updateEfficiencyAlertSettings({ params: { orgId }, payload: definedFields(settings) }),
+  );
 }
 
-export async function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {
-  return invoke("cloud_list_budgets", { orgId });
+export function listCloudBudgets(orgId: string): Promise<BudgetWithStatus[]> {
+  return runRpc(budgets().list({ params: { orgId } }));
 }
 
-export async function createCloudBudget(
-  orgId: string,
-  input: BudgetInput,
-): Promise<{ id: string }> {
-  return invoke("cloud_create_budget", { orgId, input });
+export function createCloudBudget(orgId: string, input: BudgetInput): Promise<{ id: string }> {
+  return runRpc(budgets().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudBudget(
+export function updateCloudBudget(
   orgId: string,
   budgetId: string,
   input: BudgetInput,
 ): Promise<void> {
-  await invoke("cloud_update_budget", { orgId, budgetId, input });
+  return runRpc(
+    budgets()
+      .update({ params: { orgId, id: budgetId }, payload: definedFields(input) })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function deleteCloudBudget(orgId: string, budgetId: string): Promise<void> {
-  await invoke("cloud_delete_budget", { orgId, budgetId });
+export function deleteCloudBudget(orgId: string, budgetId: string): Promise<void> {
+  return runRpc(
+    budgets()
+      .delete({ params: { orgId, id: budgetId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
 /* ------------------------------------------------------------------ *
  * Change-based cost alerts: configured relative change on a scope.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostAlerts(orgId: string): Promise<CostAlert[]> {
-  const res = await invoke<{ alerts: CostAlert[] }>("cloud_list_cost_alerts", { orgId });
-  return res?.alerts ?? [];
+export function listCloudCostAlerts(orgId: string): Promise<CostAlert[]> {
+  return runRpc(
+    costAlerts()
+      .list({ params: { orgId } })
+      .pipe(Effect.map((res) => res.alerts)),
+  );
 }
 
-export async function listCloudCostAlertEvents(
+export function listCloudCostAlertEvents(
   orgId: string,
   options: { alertId?: string; limit?: number } = {},
 ): Promise<CostAlertEvent[]> {
-  const res = await invoke<{ events: CostAlertEvent[] }>("cloud_list_cost_alert_events", {
-    orgId,
-    ...(options.alertId ? { alertId: options.alertId } : {}),
-    ...(options.limit !== undefined ? { limit: options.limit } : {}),
-  });
-  return res?.events ?? [];
+  return runRpc(
+    costAlerts()
+      .events({
+        params: { orgId },
+        query: {
+          ...(options.alertId ? { alertId: options.alertId } : {}),
+          ...(options.limit !== undefined ? { limit: String(options.limit) } : {}),
+        },
+      })
+      .pipe(Effect.map((res) => res.events)),
+  );
 }
 
-export async function createCloudCostAlert(
-  orgId: string,
-  input: CostAlertInput,
-): Promise<CostAlert> {
-  return invoke("cloud_create_cost_alert", { orgId, input });
+export function createCloudCostAlert(orgId: string, input: CostAlertInput): Promise<CostAlert> {
+  return runRpc(costAlerts().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudCostAlert(
+export function updateCloudCostAlert(
   orgId: string,
   alertId: string,
   input: CostAlertInput,
 ): Promise<CostAlert> {
-  return invoke("cloud_update_cost_alert", { orgId, alertId, input });
+  return runRpc(
+    costAlerts().update({ params: { orgId, id: alertId }, payload: definedFields(input) }),
+  );
 }
 
-export async function deleteCloudCostAlert(orgId: string, alertId: string): Promise<void> {
-  await invoke("cloud_delete_cost_alert", { orgId, alertId });
+export function deleteCloudCostAlert(orgId: string, alertId: string): Promise<void> {
+  return runRpc(
+    costAlerts()
+      .delete({ params: { orgId, id: alertId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function createCloudWidget(
+export function createCloudWidget(
   orgId: string,
-  request: { dashboardId: string; kind: string; title?: string; config: unknown },
+  request: { dashboardId: string; kind: DashboardWidgetKind; title?: string; config: unknown },
 ): Promise<DashboardWidget> {
-  return invoke("cloud_create_widget", { orgId, request });
+  const { config } = request;
+  if (!Predicate.isObject(config)) return Promise.reject(widgetConfigRefused());
+  const payload = {
+    dashboardId: request.dashboardId,
+    kind: request.kind,
+    ...(request.title !== undefined ? { title: request.title } : {}),
+    config,
+  };
+  return runRpc(widgets().create({ params: { orgId }, payload }));
 }
 
-export async function updateCloudWidget(
+export function updateCloudWidget(
   orgId: string,
   widgetId: string,
   request: { title?: string; config?: unknown; gridW?: number; gridH?: number },
 ): Promise<DashboardWidget> {
-  return invoke("cloud_update_widget", { orgId, widgetId, request });
+  const { config } = request;
+  if (config !== undefined && !Predicate.isObject(config)) {
+    return Promise.reject(widgetConfigRefused());
+  }
+  const payload = {
+    ...(request.title !== undefined ? { title: request.title } : {}),
+    ...(config !== undefined ? { config } : {}),
+    ...(request.gridW !== undefined ? { gridW: request.gridW } : {}),
+    ...(request.gridH !== undefined ? { gridH: request.gridH } : {}),
+  };
+  return runRpc(widgets().update({ params: { orgId, widgetId }, payload }));
+}
+
+/** A widget's config is a JSON object (the endpoint's `JsonObject`); anything else is refused unsent. */
+function widgetConfigRefused(): CloudRequestEncodeError {
+  return new CloudRequestEncodeError({ message: "A widget config must be a JSON object" });
 }
 
 /** Copy a card in place: the server opens the slot after the original. */
-export async function duplicateCloudWidget(
-  orgId: string,
-  widgetId: string,
-): Promise<DashboardWidget> {
-  return invoke("cloud_duplicate_widget", { orgId, widgetId });
+export function duplicateCloudWidget(orgId: string, widgetId: string): Promise<DashboardWidget> {
+  return runRpc(widgets().duplicate({ params: { orgId, widgetId } }));
 }
 
 /** Answer one KPI card's config (`POST /dashboards/kpi`). */
-export async function evaluateCloudDashboardKpi(
+export function evaluateCloudDashboardKpi(
   orgId: string,
   config: KpiWidgetConfig,
 ): Promise<DashboardKpiResult> {
-  return invoke("cloud_evaluate_dashboard_kpi", { orgId, config });
+  return runRpc(widgets().kpi({ params: { orgId }, payload: definedFields({ config }) }));
 }
 
-export async function deleteCloudWidget(orgId: string, widgetId: string): Promise<void> {
-  await invoke("cloud_delete_widget", { orgId, widgetId });
+export function deleteCloudWidget(orgId: string, widgetId: string): Promise<void> {
+  return runRpc(widgets().delete({ params: { orgId, widgetId } }).pipe(Effect.asVoid));
 }
 
 /* ------------------------------------------------------------------ *
  * Cost reports: the named, saved form of a cost graph.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostReports(orgId: string): Promise<CostReport[]> {
-  return (await invoke<CostReport[]>("cloud_list_cost_reports", { orgId })) ?? [];
+/** A report as the endpoints answer it. */
+type CostReportWire = Effect.Success<ReturnType<ReturnType<typeof costReports>["get"]>>;
+
+/**
+ * A report as the panels hold it. The contract fills four absent `config`
+ * keys in when it decodes (`withDecodingDefaultKey`), so its wire type leaves
+ * them optional; the same defaults are applied here.
+ */
+function withReportDefaults(report: CostReportWire): CostReport {
+  const { config } = report;
+  return {
+    ...report,
+    config: {
+      ...config,
+      filters: config.filters ?? [],
+      topN: config.topN ?? 5,
+      comparePreviousPeriod: config.comparePreviousPeriod ?? false,
+      showForecast: config.showForecast ?? false,
+    },
+  };
 }
 
-export async function getCloudCostReport(orgId: string, reportId: string): Promise<CostReport> {
-  return invoke("cloud_get_cost_report", { orgId, reportId });
+export function listCloudCostReports(orgId: string): Promise<CostReport[]> {
+  return runRpc(
+    costReports()
+      .list({ params: { orgId } })
+      .pipe(Effect.map((rows) => rows.map(withReportDefaults))),
+  );
 }
 
-export async function createCloudCostReport(
-  orgId: string,
-  input: CostReportInput,
-): Promise<CostReport> {
-  return invoke("cloud_create_cost_report", { orgId, input });
+export function getCloudCostReport(orgId: string, reportId: string): Promise<CostReport> {
+  return runRpc(
+    costReports()
+      .get({ params: { orgId, id: reportId } })
+      .pipe(Effect.map(withReportDefaults)),
+  );
 }
 
-export async function updateCloudCostReport(
+export function createCloudCostReport(orgId: string, input: CostReportInput): Promise<CostReport> {
+  return runRpc(
+    costReports()
+      .create({ params: { orgId }, payload: definedFields(input) })
+      .pipe(Effect.map(withReportDefaults)),
+  );
+}
+
+export function updateCloudCostReport(
   orgId: string,
   reportId: string,
   input: CostReportInput,
 ): Promise<CostReport> {
-  return invoke("cloud_update_cost_report", { orgId, reportId, input });
+  return runRpc(
+    costReports()
+      .update({ params: { orgId, id: reportId }, payload: definedFields(input) })
+      .pipe(Effect.map(withReportDefaults)),
+  );
 }
 
-export async function deleteCloudCostReport(orgId: string, reportId: string): Promise<void> {
-  await invoke("cloud_delete_cost_report", { orgId, reportId });
+export function deleteCloudCostReport(orgId: string, reportId: string): Promise<void> {
+  return runRpc(
+    costReports()
+      .delete({ params: { orgId, id: reportId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
 /** Move or delete many reports and folders at once; all or nothing server-side. */
-export async function bulkUpdateCloudCostReports(
+export function bulkUpdateCloudCostReports(
   orgId: string,
   request: CostReportBulkRequest,
 ): Promise<CostReportBulkResult> {
-  return invoke("cloud_bulk_cost_reports", { orgId, request });
+  return runRpc(costReports().bulk({ params: { orgId }, payload: definedFields(request) }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -559,64 +749,73 @@ export async function bulkUpdateCloudCostReports(
  * scoped to a report, which is why these are not report sub-calls.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostAnnotations(
+export function listCloudCostAnnotations(
   orgId: string,
   reportId?: string,
 ): Promise<CostAnnotation[]> {
-  const res = await invoke<{ annotations: CostAnnotation[] }>("cloud_list_cost_annotations", {
-    orgId,
-    ...(reportId ? { reportId } : {}),
-  });
-  return res?.annotations ?? [];
+  return runRpc(
+    annotations()
+      .list({ params: { orgId }, query: reportId ? { reportId } : {} })
+      .pipe(Effect.map((res) => res.annotations)),
+  );
 }
 
-export async function createCloudCostAnnotation(
+export function createCloudCostAnnotation(
   orgId: string,
   input: CostAnnotationInput,
 ): Promise<CostAnnotation> {
-  return invoke("cloud_create_cost_annotation", { orgId, input });
+  return runRpc(annotations().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudCostAnnotation(
+export function updateCloudCostAnnotation(
   orgId: string,
   annotationId: string,
   input: CostAnnotationInput,
 ): Promise<CostAnnotation> {
-  return invoke("cloud_update_cost_annotation", { orgId, annotationId, input });
+  return runRpc(
+    annotations().update({ params: { orgId, id: annotationId }, payload: definedFields(input) }),
+  );
 }
 
-export async function deleteCloudCostAnnotation(
-  orgId: string,
-  annotationId: string,
-): Promise<void> {
-  await invoke("cloud_delete_cost_annotation", { orgId, annotationId });
+export function deleteCloudCostAnnotation(orgId: string, annotationId: string): Promise<void> {
+  return runRpc(
+    annotations()
+      .delete({ params: { orgId, id: annotationId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
 /* ------------------------------------------------------------------ *
  * Cost-report folders: the tree the Reports list groups by.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostReportFolders(orgId: string): Promise<CostReportFolder[]> {
-  return (await invoke<CostReportFolder[]>("cloud_list_cost_report_folders", { orgId })) ?? [];
+export function listCloudCostReportFolders(orgId: string): Promise<CostReportFolder[]> {
+  return runRpc(folders().list({ params: { orgId } }));
 }
 
-export async function createCloudCostReportFolder(
+export function createCloudCostReportFolder(
   orgId: string,
   input: CostReportFolderInput,
 ): Promise<CostReportFolder> {
-  return invoke("cloud_create_cost_report_folder", { orgId, input });
+  return runRpc(folders().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudCostReportFolder(
+export function updateCloudCostReportFolder(
   orgId: string,
   folderId: string,
   input: CostReportFolderInput,
 ): Promise<CostReportFolder> {
-  return invoke("cloud_update_cost_report_folder", { orgId, folderId, input });
+  return runRpc(
+    folders().update({ params: { orgId, id: folderId }, payload: definedFields(input) }),
+  );
 }
 
-export async function deleteCloudCostReportFolder(orgId: string, folderId: string): Promise<void> {
-  await invoke("cloud_delete_cost_report_folder", { orgId, folderId });
+export function deleteCloudCostReportFolder(orgId: string, folderId: string): Promise<void> {
+  return runRpc(
+    folders()
+      .delete({ params: { orgId, id: folderId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -624,193 +823,215 @@ export async function deleteCloudCostReportFolder(orgId: string, folderId: strin
  * Slack/Teams/email. Cloud-only like everything else here.
  * ------------------------------------------------------------------ */
 
-export async function listCloudReportNotifications(
+export function listCloudReportNotifications(
   orgId: string,
   reportId: string,
 ): Promise<ReportNotification[]> {
-  return (
-    (await invoke<ReportNotification[]>("cloud_list_report_notifications", { orgId, reportId })) ??
-    []
-  );
+  return runRpc(reportDelivery().list({ params: { orgId, id: reportId } }));
 }
 
-export async function loadCloudReportDeliveryTargets(
+export function loadCloudReportDeliveryTargets(
   orgId: string,
   reportId: string,
 ): Promise<ReportDeliveryTargets> {
-  return invoke("cloud_report_delivery_targets", { orgId, reportId });
+  return runRpc(reportDelivery().targets({ params: { orgId, id: reportId } }));
 }
 
-export async function createCloudReportNotification(
+export function createCloudReportNotification(
   orgId: string,
   reportId: string,
   input: ReportNotificationInput,
 ): Promise<ReportNotification> {
-  return invoke("cloud_create_report_notification", { orgId, reportId, input });
+  return runRpc(
+    reportDelivery().create({ params: { orgId, id: reportId }, payload: definedFields(input) }),
+  );
 }
 
-export async function updateCloudReportNotification(
+export function updateCloudReportNotification(
   orgId: string,
   reportId: string,
   notificationId: string,
   input: ReportNotificationInput,
 ): Promise<ReportNotification> {
-  return invoke("cloud_update_report_notification", { orgId, reportId, notificationId, input });
+  return runRpc(
+    reportDelivery().update({
+      params: { orgId, id: reportId, notificationId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function deleteCloudReportNotification(
+export function deleteCloudReportNotification(
   orgId: string,
   reportId: string,
   notificationId: string,
 ): Promise<void> {
-  await invoke("cloud_delete_report_notification", { orgId, reportId, notificationId });
+  return runRpc(
+    reportDelivery()
+      .delete({ params: { orgId, id: reportId, notificationId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function sendCloudReportNotificationNow(
+export function sendCloudReportNotificationNow(
   orgId: string,
   reportId: string,
   notificationId: string,
 ): Promise<ReportNotificationSendResult> {
-  return invoke("cloud_send_report_notification", { orgId, reportId, notificationId });
+  return runRpc(reportDelivery().send({ params: { orgId, id: reportId, notificationId } }));
 }
 
 /* ------------------------------------------------------------------ *
- * PDF export and dashboard delivery schedules. The PDFs come back as raw
- * bytes over IPC; the caller turns them into a download.
+ * PDF export and dashboard delivery schedules. The PDFs come back as bytes
+ * over the cloud transport; the caller turns them into a download.
  * ------------------------------------------------------------------ */
 
-export async function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
-  return invoke("cloud_cost_report_pdf", { orgId, reportId });
+export function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
+  return runRpc(reportPdf().pdf({ params: { orgId, id: reportId }, query: pdfTimezoneQuery() }));
 }
 
 /* Background export jobs (`/costs/exports/jobs`). */
 
-export async function createCloudCostExportJob(
+export function createCloudCostExportJob(
   orgId: string,
   request: CostExportJobRequest,
 ): Promise<CostExportJob> {
-  return invoke("cloud_cost_export_job_create", { orgId, request });
+  return runRpc(exportJobs().create({ params: { orgId }, payload: definedFields(request) }));
 }
 
-export async function getCloudCostExportJob(orgId: string, jobId: string): Promise<CostExportJob> {
-  return invoke("cloud_cost_export_job_get", { orgId, jobId });
+export function getCloudCostExportJob(orgId: string, jobId: string): Promise<CostExportJob> {
+  return runRpc(exportJobs().get({ params: { orgId, jobId } }));
 }
 
-export async function listCloudCostExportJobs(orgId: string): Promise<CostExportJob[]> {
-  const res = await invoke<{ jobs: CostExportJob[] }>("cloud_cost_export_jobs_list", { orgId });
-  return res.jobs;
+export function listCloudCostExportJobs(orgId: string): Promise<CostExportJob[]> {
+  return runRpc(
+    exportJobs()
+      .list({ params: { orgId } })
+      .pipe(Effect.map((res) => res.jobs)),
+  );
 }
 
-export async function cancelCloudCostExportJob(
-  orgId: string,
-  jobId: string,
-): Promise<CostExportJob> {
-  return invoke("cloud_cost_export_job_cancel", { orgId, jobId });
+export function cancelCloudCostExportJob(orgId: string, jobId: string): Promise<CostExportJob> {
+  return runRpc(exportJobs().cancel({ params: { orgId, jobId } }));
 }
 
 /* A report's own anomaly alert (`/cost-reports/{id}/anomaly-alert`). */
 
-export async function listCloudReportAnomalyAlerts(
-  orgId: string,
-): Promise<CostReportAnomalyAlert[]> {
-  const res = await invoke<{ alerts: CostReportAnomalyAlert[] }>(
-    "cloud_report_anomaly_alerts_list",
-    { orgId },
+export function listCloudReportAnomalyAlerts(orgId: string): Promise<CostReportAnomalyAlert[]> {
+  return runRpc(
+    reportAnomalyAlerts()
+      .orgReportAnomalyAlerts.list({ params: { orgId } })
+      .pipe(Effect.map((res) => res.alerts)),
   );
-  return res.alerts;
 }
 
-export async function loadCloudReportAnomalyAlertTargets(
+export function loadCloudReportAnomalyAlertTargets(
   orgId: string,
   reportId: string,
 ): Promise<DestinationCatalog> {
-  return invoke("cloud_report_anomaly_alert_targets", { orgId, reportId });
+  return runRpc(
+    reportAnomalyAlerts().costReportAnomalyAlerts.targets({ params: { orgId, id: reportId } }),
+  );
 }
 
-export async function saveCloudReportAnomalyAlert(
+export function saveCloudReportAnomalyAlert(
   orgId: string,
   reportId: string,
   input: CostReportAnomalyAlertInput,
 ): Promise<CostReportAnomalyAlert> {
-  return invoke("cloud_report_anomaly_alert_save", { orgId, reportId, input });
-}
-
-export async function deleteCloudReportAnomalyAlert(
-  orgId: string,
-  reportId: string,
-): Promise<void> {
-  await invoke("cloud_report_anomaly_alert_delete", { orgId, reportId });
-}
-
-export async function loadCloudCostExportJobFile(
-  orgId: string,
-  jobId: string,
-): Promise<Uint8Array> {
-  return invoke("cloud_cost_export_job_download", { orgId, jobId });
-}
-
-export async function loadCloudDashboardPdf(
-  orgId: string,
-  dashboardId: string,
-): Promise<Uint8Array> {
-  return invoke("cloud_dashboard_pdf", { orgId, dashboardId });
-}
-
-export async function listCloudDashboardNotifications(
-  orgId: string,
-  dashboardId: string,
-): Promise<DashboardNotification[]> {
-  return (
-    (await invoke<DashboardNotification[]>("cloud_list_dashboard_notifications", {
-      orgId,
-      dashboardId,
-    })) ?? []
+  return runRpc(
+    reportAnomalyAlerts().costReportAnomalyAlerts.put({
+      params: { orgId, id: reportId },
+      payload: definedFields(input),
+    }),
   );
 }
 
-export async function loadCloudDashboardDeliveryTargets(
+export function deleteCloudReportAnomalyAlert(orgId: string, reportId: string): Promise<void> {
+  return runRpc(
+    reportAnomalyAlerts()
+      .costReportAnomalyAlerts.delete({ params: { orgId, id: reportId } })
+      .pipe(Effect.asVoid),
+  );
+}
+
+/**
+ * A finished export job's file. The endpoint answers text (CSV or JSON
+ * lines, UTF-8), which is written back to the UTF-8 bytes the caller saves.
+ */
+export function loadCloudCostExportJobFile(orgId: string, jobId: string): Promise<Uint8Array> {
+  return runRpc(
+    exportJobs()
+      .download({ params: { orgId, jobId } })
+      .pipe(Effect.map((text) => new TextEncoder().encode(text))),
+  );
+}
+
+export function loadCloudDashboardPdf(orgId: string, dashboardId: string): Promise<Uint8Array> {
+  return runRpc(
+    dashboardDelivery().pdf({ params: { orgId, id: dashboardId }, query: pdfTimezoneQuery() }),
+  );
+}
+
+export function listCloudDashboardNotifications(
+  orgId: string,
+  dashboardId: string,
+): Promise<DashboardNotification[]> {
+  return runRpc(dashboardDelivery().list({ params: { orgId, id: dashboardId } }));
+}
+
+export function loadCloudDashboardDeliveryTargets(
   orgId: string,
   dashboardId: string,
 ): Promise<ReportDeliveryTargets> {
-  return invoke("cloud_dashboard_delivery_targets", { orgId, dashboardId });
+  return runRpc(dashboardDelivery().targets({ params: { orgId, id: dashboardId } }));
 }
 
-export async function createCloudDashboardNotification(
+export function createCloudDashboardNotification(
   orgId: string,
   dashboardId: string,
   input: DashboardNotificationInput,
 ): Promise<DashboardNotification> {
-  return invoke("cloud_create_dashboard_notification", { orgId, dashboardId, input });
+  return runRpc(
+    dashboardDelivery().create({
+      params: { orgId, id: dashboardId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function updateCloudDashboardNotification(
+export function updateCloudDashboardNotification(
   orgId: string,
   dashboardId: string,
   notificationId: string,
   input: DashboardNotificationInput,
 ): Promise<DashboardNotification> {
-  return invoke("cloud_update_dashboard_notification", {
-    orgId,
-    dashboardId,
-    notificationId,
-    input,
-  });
+  return runRpc(
+    dashboardDelivery().update({
+      params: { orgId, id: dashboardId, notificationId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function deleteCloudDashboardNotification(
+export function deleteCloudDashboardNotification(
   orgId: string,
   dashboardId: string,
   notificationId: string,
 ): Promise<void> {
-  await invoke("cloud_delete_dashboard_notification", { orgId, dashboardId, notificationId });
+  return runRpc(
+    dashboardDelivery()
+      .delete({ params: { orgId, id: dashboardId, notificationId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function sendCloudDashboardNotificationNow(
+export function sendCloudDashboardNotificationNow(
   orgId: string,
   dashboardId: string,
   notificationId: string,
 ): Promise<DashboardNotificationSendResult> {
-  return invoke("cloud_send_dashboard_notification", { orgId, dashboardId, notificationId });
+  return runRpc(dashboardDelivery().send({ params: { orgId, id: dashboardId, notificationId } }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -818,42 +1039,45 @@ export async function sendCloudDashboardNotificationNow(
  * only, and resolved server-side at query time like every other surface.
  * ------------------------------------------------------------------ */
 
-export async function listCloudSavedCostFilters(orgId: string): Promise<SavedCostFilter[]> {
-  return (await invoke<SavedCostFilter[]>("cloud_list_saved_cost_filters", { orgId })) ?? [];
+export function listCloudSavedCostFilters(orgId: string): Promise<SavedCostFilter[]> {
+  return runRpc(savedFilters().list({ params: { orgId } }));
 }
 
-export async function createCloudSavedCostFilter(
+export function createCloudSavedCostFilter(
   orgId: string,
   input: SavedCostFilterInput,
 ): Promise<SavedCostFilter> {
-  return invoke("cloud_create_saved_cost_filter", { orgId, input });
+  return runRpc(savedFilters().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudSavedCostFilter(
+export function updateCloudSavedCostFilter(
   orgId: string,
   savedFilterId: string,
   input: SavedCostFilterInput,
 ): Promise<SavedCostFilter> {
-  return invoke("cloud_update_saved_cost_filter", { orgId, savedFilterId, input });
+  return runRpc(
+    savedFilters().update({ params: { orgId, id: savedFilterId }, payload: definedFields(input) }),
+  );
 }
 
 /** Rejects with the server's 409 message (naming referents) while referenced. */
-export async function deleteCloudSavedCostFilter(
-  orgId: string,
-  savedFilterId: string,
-): Promise<void> {
-  await invoke("cloud_delete_saved_cost_filter", { orgId, savedFilterId });
+export function deleteCloudSavedCostFilter(orgId: string, savedFilterId: string): Promise<void> {
+  return runRpc(
+    savedFilters()
+      .delete({ params: { orgId, id: savedFilterId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function listCloudSavedCostFilterReferents(
+export function listCloudSavedCostFilterReferents(
   orgId: string,
   savedFilterId: string,
 ): Promise<SavedCostFilterReferent[]> {
-  const res = await invoke<{ referents: SavedCostFilterReferent[] }>(
-    "cloud_saved_cost_filter_referents",
-    { orgId, savedFilterId },
+  return runRpc(
+    savedFilters()
+      .referents({ params: { orgId, id: savedFilterId } })
+      .pipe(Effect.map((res) => res.referents)),
   );
-  return res?.referents ?? [];
 }
 
 /* ------------------------------------------------------------------ *
@@ -861,39 +1085,79 @@ export async function listCloudSavedCostFilterReferents(
  * Cloud-mode only, and resolved server-side at query time like saved filters.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostScenarioModels(orgId: string): Promise<CostScenarioModel[]> {
-  return (await invoke<CostScenarioModel[]>("cloud_list_cost_scenarios", { orgId })) ?? [];
+/** A scenario model as the endpoints answer it. */
+type CostScenarioModelWire = Effect.Success<ReturnType<ReturnType<typeof scenarios>["get"]>>;
+
+/**
+ * A scenario model as the panels hold it. The contract decodes an absent
+ * adjustment field to `null` (`scope` to `[]`) with `withDecodingDefaultKey`,
+ * so its wire type leaves those keys optional; the same defaults are applied
+ * here.
+ */
+function withAdjustmentDefaults(model: CostScenarioModelWire): CostScenarioModel {
+  return {
+    ...model,
+    adjustments: model.adjustments.map((adjustment) => ({
+      ...adjustment,
+      endDate: adjustment.endDate ?? null,
+      amountCents: adjustment.amountCents ?? null,
+      currency: adjustment.currency ?? null,
+      period: adjustment.period ?? null,
+      percent: adjustment.percent ?? null,
+      scope: adjustment.scope ?? [],
+    })),
+  };
 }
 
-export async function createCloudCostScenarioModel(
+export function listCloudCostScenarioModels(orgId: string): Promise<CostScenarioModel[]> {
+  return runRpc(
+    scenarios()
+      .list({ params: { orgId } })
+      .pipe(Effect.map((res) => res.models.map(withAdjustmentDefaults))),
+  );
+}
+
+export function createCloudCostScenarioModel(
   orgId: string,
   input: CostScenarioModelInput,
 ): Promise<CostScenarioModel> {
-  return invoke("cloud_create_cost_scenario", { orgId, input });
+  return runRpc(
+    scenarios()
+      .create({ params: { orgId }, payload: definedFields(input) })
+      .pipe(Effect.map(withAdjustmentDefaults)),
+  );
 }
 
-export async function updateCloudCostScenarioModel(
+export function updateCloudCostScenarioModel(
   orgId: string,
   modelId: string,
   input: CostScenarioModelInput,
 ): Promise<CostScenarioModel> {
-  return invoke("cloud_update_cost_scenario", { orgId, modelId, input });
+  return runRpc(
+    scenarios()
+      .update({ params: { orgId, id: modelId }, payload: definedFields(input) })
+      .pipe(Effect.map(withAdjustmentDefaults)),
+  );
 }
 
 /** Rejects with the server's 409 message (naming referents) while referenced. */
-export async function deleteCloudCostScenarioModel(orgId: string, modelId: string): Promise<void> {
-  await invoke("cloud_delete_cost_scenario", { orgId, modelId });
+export function deleteCloudCostScenarioModel(orgId: string, modelId: string): Promise<void> {
+  return runRpc(
+    scenarios()
+      .delete({ params: { orgId, id: modelId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function listCloudCostScenarioReferents(
+export function listCloudCostScenarioReferents(
   orgId: string,
   modelId: string,
 ): Promise<CostScenarioReferent[]> {
-  const res = await invoke<{ referents: CostScenarioReferent[] }>("cloud_cost_scenario_referents", {
-    orgId,
-    modelId,
-  });
-  return res?.referents ?? [];
+  return runRpc(
+    scenarios()
+      .referents({ params: { orgId, id: modelId } })
+      .pipe(Effect.map((res) => res.referents)),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -902,230 +1166,288 @@ export async function listCloudCostScenarioReferents(
  * local-SQLite equivalent to fall back to.
  * ------------------------------------------------------------------ */
 
-export async function listCloudBusinessMetrics(orgId: string): Promise<BusinessMetric[]> {
-  return (await invoke<BusinessMetric[]>("cloud_list_business_metrics", { orgId })) ?? [];
+export function listCloudBusinessMetrics(orgId: string): Promise<BusinessMetric[]> {
+  return runRpc(
+    businessMetrics()
+      .list({ params: { orgId } })
+      .pipe(Effect.map((res) => res.metrics)),
+  );
 }
 
-export async function createCloudBusinessMetric(
+export function createCloudBusinessMetric(
   orgId: string,
   input: BusinessMetricInput,
 ): Promise<BusinessMetric> {
-  return invoke("cloud_create_business_metric", { orgId, input });
+  return runRpc(businessMetrics().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudBusinessMetric(
+export function updateCloudBusinessMetric(
   orgId: string,
   metricId: string,
   input: BusinessMetricInput,
 ): Promise<BusinessMetric> {
-  return invoke("cloud_update_business_metric", { orgId, metricId, input });
+  return runRpc(
+    businessMetrics().update({ params: { orgId, id: metricId }, payload: definedFields(input) }),
+  );
 }
 
-export async function deleteCloudBusinessMetric(orgId: string, metricId: string): Promise<void> {
-  await invoke("cloud_delete_business_metric", { orgId, metricId });
+export function deleteCloudBusinessMetric(orgId: string, metricId: string): Promise<void> {
+  return runRpc(
+    businessMetrics()
+      .delete({ params: { orgId, id: metricId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function listCloudBusinessMetricValues(
+export function listCloudBusinessMetricValues(
   orgId: string,
   metricId: string,
   limit?: number,
 ): Promise<BusinessMetricValue[]> {
-  return (
-    (await invoke<BusinessMetricValue[]>("cloud_list_business_metric_values", {
-      orgId,
-      metricId,
-      limit,
-    })) ?? []
+  return runRpc(
+    businessMetrics()
+      .values({ params: { orgId, id: metricId }, query: { limit: String(limit ?? 90) } })
+      .pipe(Effect.map((res) => res.values)),
   );
 }
 
-export async function writeCloudBusinessMetricValues(
+export function writeCloudBusinessMetricValues(
   orgId: string,
   metricId: string,
   values: BusinessMetricValueInput[],
 ): Promise<BusinessMetricWriteResult> {
-  return invoke("cloud_write_business_metric_values", { orgId, metricId, values });
-}
-
-export async function listCloudBusinessMetricForecastValues(
-  orgId: string,
-  metricId: string,
-): Promise<BusinessMetricForecastValue[]> {
-  return (
-    (await invoke<BusinessMetricForecastValue[]>("cloud_list_business_metric_forecast_values", {
-      orgId,
-      metricId,
-    })) ?? []
+  return runRpc(
+    businessMetrics().writeValues({
+      params: { orgId, id: metricId },
+      payload: definedFields({ values }),
+    }),
   );
 }
 
-export async function writeCloudBusinessMetricForecastValues(
+export function listCloudBusinessMetricForecastValues(
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricForecastValue[]> {
+  return runRpc(
+    businessMetrics()
+      .forecastValues({ params: { orgId, id: metricId }, query: {} })
+      .pipe(Effect.map((res) => res.values)),
+  );
+}
+
+export function writeCloudBusinessMetricForecastValues(
   orgId: string,
   metricId: string,
   values: BusinessMetricForecastValueInput[],
 ): Promise<{ written: number }> {
-  return invoke("cloud_write_business_metric_forecast_values", { orgId, metricId, values });
+  return runRpc(
+    businessMetrics().writeForecastValues({
+      params: { orgId, id: metricId },
+      payload: definedFields({ values }),
+    }),
+  );
 }
 
-export async function deleteCloudBusinessMetricForecastValues(
+export function deleteCloudBusinessMetricForecastValues(
   orgId: string,
   metricId: string,
-  range: { from?: string; to?: string },
+  window: { from?: string; to?: string },
 ): Promise<{ deleted: number }> {
-  return invoke("cloud_delete_business_metric_forecast_values", { orgId, metricId, ...range });
+  return runRpc(
+    businessMetrics().deleteForecastValues({
+      params: { orgId, id: metricId },
+      query: range(window.from, window.to),
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ *
  * Named forecasts on a cost report.
  * ------------------------------------------------------------------ */
 
-export async function listCloudCostForecasts(
-  orgId: string,
-  reportId: string,
-): Promise<CostForecast[]> {
-  return (await invoke<CostForecast[]>("cloud_list_cost_forecasts", { orgId, reportId })) ?? [];
+export function listCloudCostForecasts(orgId: string, reportId: string): Promise<CostForecast[]> {
+  return runRpc(
+    costForecasts()
+      .list({ params: { orgId, id: reportId } })
+      .pipe(Effect.map((res) => res.forecasts)),
+  );
 }
 
-export async function runCloudCostForecast(
+export function runCloudCostForecast(
   orgId: string,
   reportId: string,
   request: CostForecastRunRequest,
 ): Promise<CostForecastResult> {
-  return invoke("cloud_run_cost_forecast", { orgId, reportId, request });
+  return runRpc(
+    costForecasts().forecastedCosts({
+      params: { orgId, id: reportId },
+      payload: definedFields(request),
+    }),
+  );
 }
 
-export async function createCloudCostForecast(
+export function createCloudCostForecast(
   orgId: string,
   reportId: string,
   input: CostForecastInput,
 ): Promise<CostForecast> {
-  return invoke("cloud_create_cost_forecast", { orgId, reportId, input });
+  return runRpc(
+    costForecasts().create({ params: { orgId, id: reportId }, payload: definedFields(input) }),
+  );
 }
 
-export async function updateCloudCostForecast(
+export function updateCloudCostForecast(
   orgId: string,
   reportId: string,
   forecastId: string,
   input: CostForecastInput,
 ): Promise<CostForecast> {
-  return invoke("cloud_update_cost_forecast", { orgId, reportId, forecastId, input });
+  return runRpc(
+    costForecasts().update({
+      params: { orgId, id: reportId, forecastId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function deleteCloudCostForecast(
+export function deleteCloudCostForecast(
   orgId: string,
   reportId: string,
   forecastId: string,
 ): Promise<void> {
-  await invoke("cloud_delete_cost_forecast", { orgId, reportId, forecastId });
-}
-
-export async function listCloudBusinessMetricSources(
-  orgId: string,
-): Promise<BusinessMetricSourceAccount[]> {
-  return (
-    (await invoke<BusinessMetricSourceAccount[]>("cloud_list_business_metric_sources", {
-      orgId,
-    })) ?? []
+  return runRpc(
+    costForecasts()
+      .delete({ params: { orgId, id: reportId, forecastId } })
+      .pipe(Effect.asVoid),
   );
 }
 
-export async function listCloudBusinessMetricSourceOptions(
+export function listCloudBusinessMetricSources(
+  orgId: string,
+): Promise<BusinessMetricSourceAccount[]> {
+  return runRpc(
+    businessMetrics()
+      .importerSources({ params: { orgId } })
+      .pipe(Effect.map((res) => res.sources)),
+  );
+}
+
+export function listCloudBusinessMetricSourceOptions(
   orgId: string,
   request: BusinessMetricSourceOptionsRequest,
 ): Promise<BusinessMetricSourceOption[]> {
-  return (
-    (await invoke<BusinessMetricSourceOption[]>("cloud_list_business_metric_source_options", {
-      orgId,
-      request,
-    })) ?? []
+  return runRpc(
+    businessMetrics()
+      .importerOptions({ params: { orgId }, payload: definedFields(request) })
+      .pipe(Effect.map((res) => res.options)),
   );
 }
 
-export async function previewCloudBusinessMetricImport(
+export function previewCloudBusinessMetricImport(
   orgId: string,
   request: BusinessMetricImportPreviewRequest,
 ): Promise<BusinessMetricImportPreview> {
-  return invoke("cloud_preview_business_metric_import", { orgId, request });
-}
-
-export async function getCloudBusinessMetricImporter(
-  orgId: string,
-  metricId: string,
-): Promise<BusinessMetricImporter | null> {
-  return (
-    (await invoke<BusinessMetricImporter | null>("cloud_get_business_metric_importer", {
-      orgId,
-      metricId,
-    })) ?? null
+  return runRpc(
+    businessMetrics().importerPreview({ params: { orgId }, payload: definedFields(request) }),
   );
 }
 
-export async function saveCloudBusinessMetricImporter(
+export function getCloudBusinessMetricImporter(
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricImporter | null> {
+  return runRpc(
+    businessMetrics()
+      .importer({ params: { orgId, id: metricId } })
+      .pipe(Effect.map((res) => res.importer ?? null)),
+  );
+}
+
+export function saveCloudBusinessMetricImporter(
   orgId: string,
   metricId: string,
   input: BusinessMetricImporterInput,
 ): Promise<BusinessMetricImporter> {
-  return invoke("cloud_save_business_metric_importer", { orgId, metricId, input });
+  return runRpc(
+    businessMetrics().saveImporter({
+      params: { orgId, id: metricId },
+      payload: definedFields(input),
+    }),
+  );
 }
 
-export async function deleteCloudBusinessMetricImporter(
-  orgId: string,
-  metricId: string,
-): Promise<void> {
-  await invoke("cloud_delete_business_metric_importer", { orgId, metricId });
+export function deleteCloudBusinessMetricImporter(orgId: string, metricId: string): Promise<void> {
+  return runRpc(
+    businessMetrics()
+      .deleteImporter({ params: { orgId, id: metricId } })
+      .pipe(Effect.asVoid),
+  );
 }
 
-export async function runCloudBusinessMetricImporter(
+export function runCloudBusinessMetricImporter(
   orgId: string,
   metricId: string,
   request?: BusinessMetricImportRunRequest,
 ): Promise<BusinessMetricImportRun> {
-  return invoke("cloud_run_business_metric_importer", { orgId, metricId, request });
+  return runRpc(
+    businessMetrics().runImporter({
+      params: { orgId, id: metricId },
+      payload: definedFields(request ?? {}),
+    }),
+  );
 }
 
-export async function listCloudBusinessMetricImportRuns(
+export function listCloudBusinessMetricImportRuns(
   orgId: string,
   metricId: string,
   limit?: number,
 ): Promise<BusinessMetricImportRun[]> {
-  return (
-    (await invoke<BusinessMetricImportRun[]>("cloud_list_business_metric_import_runs", {
-      orgId,
-      metricId,
-      limit,
-    })) ?? []
+  return runRpc(
+    businessMetrics()
+      .importRuns({ params: { orgId, id: metricId }, query: { limit: String(limit ?? 20) } })
+      .pipe(Effect.map((res) => res.runs)),
   );
 }
 
-export async function queryCloudUnitCosts(
+export function queryCloudUnitCosts(
   orgId: string,
   metricId: string,
   request: UnitCostQueryRequest,
 ): Promise<UnitCostQueryResponse> {
-  return invoke("cloud_query_unit_costs", { orgId, metricId, request });
+  return runRpc(
+    businessMetrics().unitCosts({
+      params: { orgId, id: metricId },
+      payload: definedFields(request),
+    }),
+  );
 }
 
-export async function queryCloudUsageUnitCosts(
+export function queryCloudUsageUnitCosts(
   orgId: string,
   request: UnitCostQueryRequest,
 ): Promise<UnitCostQueryResponse> {
-  return invoke("cloud_query_usage_unit_costs", { orgId, request });
+  return runRpc(
+    businessMetrics().usageUnitCosts({ params: { orgId }, payload: definedFields(request) }),
+  );
 }
 
-export async function listCloudUsageUnits(
+export function listCloudUsageUnits(
   orgId: string,
 ): Promise<Array<{ unit: string; usage: number; services: string[] }>> {
-  return (await invoke("cloud_list_usage_units", { orgId })) ?? [];
+  return runRpc(
+    businessMetrics()
+      .usageUnits({ params: { orgId } })
+      .pipe(Effect.map((res) => res.units)),
+  );
 }
 
-export async function listCloudBusinessMetricLabels(
+export function listCloudBusinessMetricLabels(
   orgId: string,
   metricId: string,
 ): Promise<BusinessMetricLabelSummary[]> {
-  return (
-    (await invoke<BusinessMetricLabelSummary[]>("cloud_list_business_metric_labels", {
-      orgId,
-      metricId,
-    })) ?? []
+  return runRpc(
+    businessMetrics()
+      .labels({ params: { orgId, id: metricId } })
+      .pipe(Effect.map((res) => res.labels)),
   );
 }

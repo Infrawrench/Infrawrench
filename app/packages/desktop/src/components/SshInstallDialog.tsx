@@ -8,12 +8,9 @@ import {
   pickQuickConnectKeyId,
   useUIStore,
 } from "@infrawrench/ui";
-import type {
-  SshInstallAccount,
-  SshInstallInput,
-  SshInstallResult,
-} from "@infrawrench/plugin-base";
-import { invoke } from "../lib/invoke";
+import type { SshInstallAccount, SshInstallInput } from "@infrawrench/plugin-base";
+import { cloudListSshKeys } from "../lib/cloud-resources";
+import { listCloudSshInstallAccounts, runCloudSshInstall } from "../lib/cloud-ssh-install";
 import { listLocalSshInstallAccounts, runLocalSshInstall } from "../lib/ssh-install";
 import { SshKeyPicker } from "./SshKeyPicker";
 
@@ -50,12 +47,8 @@ export function SshInstallDialog({
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      orgId
-        ? invoke<SshInstallAccount[]>("cloud_ssh_install_accounts", { orgId })
-        : listLocalSshInstallAccounts(),
-      orgId && !nativeConnection
-        ? invoke<CloudSshKey[]>("cloud_list_ssh_keys", { orgId })
-        : Promise.resolve([]),
+      orgId ? listCloudSshInstallAccounts(orgId) : listLocalSshInstallAccounts(),
+      orgId && !nativeConnection ? cloudListSshKeys(orgId) : Promise.resolve<CloudSshKey[]>([]),
     ])
       .then(([a, k]) => {
         if (!cancelled) {
@@ -138,9 +131,7 @@ export function SshInstallDialog({
             ? { username: username.trim(), port, ...(keyId ? { sshKeyId: keyId } : {}) }
             : {}),
         };
-        return orgId
-          ? invoke<SshInstallResult>("cloud_ssh_install", { orgId, body })
-          : runLocalSshInstall(body, privateKey);
+        return orgId ? runCloudSshInstall(orgId, body) : runLocalSshInstall(body, privateKey);
       }}
       onClose={onClose}
     />

@@ -2,7 +2,7 @@ import type { CloudFetch } from "./fetch";
 
 /**
  * Microsoft Teams connection management. Server contract: org-scoped
- * `/api/org/:orgId/msteams/*` routes (see web `api/routes/msteams.ts`).
+ * `/api/org/:orgId/msteams/*` routes (see web `http/domains/msteams/`).
  *
  * A webhook is a *destination*, not a policy. Which alerts reach it is decided
  * by the org's routing rules (`alert-routing.ts`), which reference this row by

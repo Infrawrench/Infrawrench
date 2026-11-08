@@ -1,0 +1,41 @@
+{
+  "name": "@infrawrench/api-contract",
+  "version": "0.1.0",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "description": "The Infrawrench HTTP API as Effect HttpApi definitions: endpoints, request and response schemas, errors and annotations. No handlers and no server code, so the web server, the desktop app and other clients share one definition.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "import": "./dist/schemas.js",
+      "require": "./dist/schemas.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.10"
+  }
+}

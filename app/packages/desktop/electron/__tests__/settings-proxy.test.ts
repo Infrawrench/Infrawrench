@@ -1,12 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { isAllowedSettingsRequest } from "../cloud-data/settings";
-
-// Hoisted above the import: the module registers its IPC handler on load.
-vi.mock("electron", () => ({ ipcMain: { handle: vi.fn() } }));
-vi.mock("../cloud-auth", () => ({
-  getAccessToken: vi.fn(),
-  forceRefreshAccessToken: vi.fn(),
-}));
+import { describe, expect, it } from "vitest";
+import { isAllowedSettingsRequest } from "../cloud-allowlist";
 
 describe("isAllowedSettingsRequest", () => {
   it("allows settings routes", () => {

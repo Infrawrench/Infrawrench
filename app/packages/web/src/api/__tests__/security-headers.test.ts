@@ -1,18 +1,50 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { Hono } from "hono";
+import { Effect, Schema } from "effect";
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
+import { withApiDefaults } from "@infrawrench/api-contract";
+import { makeDomain } from "@/http/domain";
+import { makeHttpApiHandler } from "@/http/server";
+import { testMiddleware } from "@/http/testing";
 
 /**
- * The header set and its two adapters.
+ * The header set and its adapters.
  *
- * The property that matters is that both adapters emit the *same* set: the
- * Hono middleware covers responses that go through Hono, `applySecurityHeaders`
- * covers `/api/mcp` and `/healthz`, which `server.ts` answers at the Node HTTP
- * level ahead of the Hono listener. Two lists that drift is exactly the failure
- * this module's shape exists to prevent, so it is asserted rather than assumed.
+ * The property that matters is that every adapter emits the *same* set: the
+ * API router's global middleware covers every response `api` sends,
+ * `setSecurityHeaders` the SPA and static files `server.ts` serves itself in
+ * production, `applySecurityHeaders` `/api/mcp` and `/healthz`, which
+ * `server.ts` answers at the Node HTTP level ahead of the API. Lists that
+ * drift is exactly the failure this module's shape exists to prevent, so it
+ * is asserted rather than assumed.
  */
 
-const { securityHeaders, applySecurityHeaders, securityHeaderEntries, resetSecurityHeadersCache } =
-  await import("@/api/security-headers");
+const {
+  applySecurityHeaders,
+  securityHeaderEntries,
+  resetSecurityHeadersCache,
+  setSecurityHeaders,
+} = await import("@/api/security-headers");
+
+const Group = HttpApiGroup.make("headers").add(
+  HttpApiEndpoint.get("hi", "/hi", { success: Schema.String }),
+  HttpApiEndpoint.get("boom", "/boom", { success: Schema.String }),
+);
+class HeadersApi extends withApiDefaults(HttpApi.make("headers").add(Group)) {}
+const handler = makeHttpApiHandler(
+  [
+    makeDomain(
+      "headers",
+      HeadersApi,
+      HttpApiBuilder.group(HeadersApi, "headers", (h) =>
+        h
+          .handle("hi", () => Effect.succeed("hi"))
+          .handle("boom", () => Effect.die(new Error("boom"))),
+      ),
+    ),
+  ],
+  testMiddleware(),
+);
+const request = (path: string) => handler.handle(new Request(`http://localhost${path}`));
 
 /** Minimal stand-in for a `node:http` ServerResponse. */
 function makeRes() {
@@ -38,11 +70,7 @@ afterEach(() => {
 
 describe("security headers", () => {
   it("sends the framing, sniffing and referrer defences", async () => {
-    const app = new Hono();
-    app.use("*", securityHeaders());
-    app.get("/", (c) => c.text("hi"));
-
-    const res = await app.request("/");
+    const res = await request("/hi");
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -51,30 +79,29 @@ describe("security headers", () => {
 
   it("applies to error responses too", async () => {
     // A 500 that skips the headers is a 500 that can be framed.
-    const app = new Hono();
-    app.use("*", securityHeaders());
-    app.get("/", () => {
-      throw new Error("boom");
-    });
-    app.onError((_e, c) => c.json({ error: "Internal server error" }, 500));
-
-    const res = await app.request("/");
+    const res = await request("/boom");
     expect(res.status).toBe(500);
     expect(res.headers.get("x-frame-options")).toBe("DENY");
   });
 
-  it("gives the raw-response adapter the same set as the middleware", async () => {
-    const app = new Hono();
-    app.use("*", securityHeaders());
-    app.get("/", (c) => c.text("hi"));
-    const viaHono = await app.request("/");
+  it("applies to the 404 for a path nothing routes", async () => {
+    const res = await request("/nowhere");
+    expect(res.status).toBe(404);
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+  });
+
+  it("gives every adapter the same set as the router", async () => {
+    const viaRouter = await request("/hi");
 
     const res = makeRes();
     applySecurityHeaders(res as never);
+    const web = new Headers();
+    setSecurityHeaders(web);
 
     for (const [name, value] of securityHeaderEntries()) {
       expect(res.headers[name], `${name} via applySecurityHeaders`).toBe(value);
-      expect(viaHono.headers.get(name), `${name} via middleware`).toBe(value);
+      expect(web.get(name), `${name} via setSecurityHeaders`).toBe(value);
+      expect(viaRouter.headers.get(name), `${name} via the router`).toBe(value);
     }
   });
 

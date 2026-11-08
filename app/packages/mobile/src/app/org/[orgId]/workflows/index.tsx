@@ -16,7 +16,7 @@ import { colors } from "@/lib/theme";
 
 /**
  * Read-only workflows list (GET /api/org/:orgId/workflows: see
- * app/packages/web/src/api/routes/workflows.ts). Editing stays on web/desktop.
+ * app/packages/web/src/http/domains/workflows/). Editing stays on web/desktop.
  */
 
 interface WorkflowSummary {

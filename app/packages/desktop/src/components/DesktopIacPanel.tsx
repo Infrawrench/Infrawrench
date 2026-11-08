@@ -7,7 +7,7 @@ import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tab
 
 /**
  * Infrastructure as Code on desktop: the same panel web renders, over the
- * `cloud_iac_*` IPC. Rendered as a workspace tab (the "iac" kind).
+ * cloud transport (`lib/iac-client.ts`). Rendered as a workspace tab (the "iac" kind).
  *
  * Cloud-only: the reconciliation classifies the org's synced inventory, which
  * local-only mode does not have. The guard keeps a restored tab (or signing

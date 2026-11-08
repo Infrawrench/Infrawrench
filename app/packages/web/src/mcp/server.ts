@@ -5,7 +5,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall, runToolHandler, toolUsableWith } from "../tools/permissions";
 import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
-import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
+import { hasMembership, listUserOrganizations } from "../auth/users";
 import type { ToolAuthContext } from "../tools/types";
 import type { McpAuthContext } from "./auth";
 import { registerMcpViews, toolViewMeta } from "./app-views";

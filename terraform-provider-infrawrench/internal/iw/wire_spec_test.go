@@ -412,6 +412,7 @@ func specChecks() []specCheck {
 		{schema: "SessionRecordingUsage", value: SessionRecordingUsage{}},
 
 		{schema: "NetworkFlowSettings", value: NetworkFlowSettings{}},
+		{schema: "NetworkFlowSettingsInput", value: NetworkFlowSettingsInput{}},
 		{schema: "KubernetesNetworkSettings", value: KubernetesNetworkSettings{}},
 		{schema: "NetworkFlowReport", value: NetworkFlowReport{}},
 		{schema: "NetworkFlowReportInput", value: NetworkFlowReportInput{}},
@@ -499,8 +500,9 @@ func specChecks() []specCheck {
 // listed here so the gap is visible rather than merely absent, and so that
 // regenerating the spec makes this test start covering them.
 //
-// It is empty as of the 1.76.0 regeneration, which brought the paging-provider
-// schemas into the document. Keeping the list and its test rather than
+// It was emptied by the 1.76.0 regeneration, which brought the paging-provider
+// schemas into the document, and again by 1.99.0, which brought in
+// NetworkFlowSettingsInput. Keeping the list and its test rather than
 // deleting them is deliberate: the next object added ahead of a spec refresh
 // goes here, and the test then says out loud when the refresh catches up.
 var schemasKnownAbsent = []string{}

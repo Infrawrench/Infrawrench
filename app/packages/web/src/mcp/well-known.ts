@@ -1,7 +1,9 @@
-import { Hono } from "hono";
-import type { Context } from "hono";
-import { probeClientRegistrationSupport } from "./registration-probe";
-import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+/**
+ * OAuth discovery for the MCP endpoint: what `/.well-known/*` answers. The
+ * routes themselves are an HttpApi domain (`http/domains/discovery/`); this
+ * module holds the documents, and {@link buildResourceMetadataUrl} for the
+ * `WWW-Authenticate` challenge `mcp/http-handler.ts` sends.
+ */
 
 /**
  * The AuthKit authorization server URL used for OAuth discovery. This must be
@@ -11,7 +13,7 @@ import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
  * *not* serve that document, so there is deliberately no fallback here: an
  * unset value fails loudly rather than advertising a dead authorization server.
  */
-function getAuthorizationServerUrl(): string | null {
+export function getAuthorizationServerUrl(): string | null {
   const explicit = process.env["WORKOS_AUTHKIT_DOMAIN"] ?? process.env["WORKOS_ISSUER"];
   if (!explicit) return null;
   return explicit.replace(/\/$/, "");
@@ -24,7 +26,7 @@ function getAuthorizationServerUrl(): string | null {
  * wrong makes the advertised `resource` mismatch the URL the client connected
  * to, which MCP clients reject.
  */
-function getPublicBaseUrl(reqUrl: string, forwardedProto?: string | null): string {
+export function getPublicBaseUrl(reqUrl: string, forwardedProto?: string | null): string {
   const fromEnv = process.env["PUBLIC_BASE_URL"] ?? process.env["APP_URL"];
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   const u = new URL(reqUrl);
@@ -36,7 +38,15 @@ export function buildResourceMetadataUrl(reqUrl: string): string {
   return `${getPublicBaseUrl(reqUrl)}/.well-known/oauth-protected-resource/api/mcp`;
 }
 
-const app = new Hono();
+/**
+ * The 500 every discovery document answers while no authorization server is
+ * configured: an unset value fails loudly rather than advertising a dead one.
+ */
+export const DISCOVERY_UNCONFIGURED = {
+  error: "server_error",
+  error_description:
+    "WORKOS_AUTHKIT_DOMAIN (or WORKOS_ISSUER) is not configured; MCP OAuth discovery is unavailable.",
+} as const;
 
 /**
  * RFC 9728: OAuth 2.0 Protected Resource Metadata. MCP clients fetch this
@@ -48,24 +58,8 @@ const app = new Hono();
  * latter for resources that live under a path, and clients derive it from the
  * MCP endpoint URL rather than reading the challenge header.
  */
-function protectedResourceMetadata(c: Context) {
-  const baseUrl = getPublicBaseUrl(c.req.url, c.req.header("x-forwarded-proto"));
-  const authServer = getAuthorizationServerUrl();
-  if (!authServer) {
-    return c.json(
-      {
-        error: "server_error",
-        error_description:
-          "WORKOS_AUTHKIT_DOMAIN (or WORKOS_ISSUER) is not configured; MCP OAuth discovery is unavailable.",
-      },
-      500,
-    );
-  }
-  // A client fetching this document is about to register with the AS; make
-  // sure the AS actually offers a registration mechanism (CIMD or the
-  // deprecated-but-supported DCR) and say so in the logs if it doesn't.
-  void keepAlive(probeClientRegistrationSupport(authServer));
-  return c.json({
+export function protectedResourceMetadata(baseUrl: string, authServer: string) {
+  return {
     resource: `${baseUrl}/api/mcp`,
     authorization_servers: [authServer],
     // Must be scopes the AuthKit authorization server actually grants:
@@ -79,7 +73,7 @@ function protectedResourceMetadata(c: Context) {
     // should still use the interactive flow above, and this is for the one that
     // has nobody to send to a browser.
     agent_auth: agentAuthMetadata(baseUrl),
-  });
+  };
 }
 
 /**
@@ -98,29 +92,3 @@ function agentAuthMetadata(baseUrl: string) {
     skill: `${baseUrl}/auth.md`,
   };
 }
-
-app.get("/oauth-protected-resource", protectedResourceMetadata);
-app.get("/oauth-protected-resource/api/mcp", protectedResourceMetadata);
-
-/**
- * Convenience proxy for clients that look for authorization-server metadata
- * on the resource host. Returns a redirect to the AuthKit-hosted document so
- * we don't have to keep the metadata in sync ourselves.
- */
-app.get("/oauth-authorization-server", (c) => {
-  const authServer = getAuthorizationServerUrl();
-  if (!authServer) {
-    return c.json(
-      {
-        error: "server_error",
-        error_description:
-          "WORKOS_AUTHKIT_DOMAIN (or WORKOS_ISSUER) is not configured; MCP OAuth discovery is unavailable.",
-      },
-      500,
-    );
-  }
-  void keepAlive(probeClientRegistrationSupport(authServer));
-  return c.redirect(`${authServer}/.well-known/oauth-authorization-server`, 302);
-});
-
-export { app as wellKnownRoutes };

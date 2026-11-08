@@ -413,4 +413,18 @@
 // a sync refused to prune because their list could not be read whole. Additive.
 // 1.97.0: `LeakedSecretScanner` gains `lastPartial`, set when the last scan read only part
 // of the scanner's findings. Additive.
-export const API_VERSION = "1.98.0";
+// 1.99.0: the API is served by Effect HttpApi and this document is generated from its
+// endpoint definitions (`@infrawrench/api-contract`) instead of hand-written Zod paths.
+// Additive: chat (list, create, get, update, archive, spend, decide-pending), workflows
+// (list, create, get, update, delete, check, run, runs, metrics), the GitHub reads and
+// `resources/tunnel-ssh-attach` are documented for the first time; the SSH fan-out run
+// documents its `x-change-freeze-override` header; `NetworkFlowSettings` PUT takes
+// `initialLookbackDays` optionally (the server always kept the stored value); service
+// summaries reuse `PostureFinding`; `AccountDetail.pluralDisplayName` is required (it was
+// always sent). About 200 corrections where the hand-written document disagreed with what
+// the server accepted or sent (nullability, `required`, enums, `additionalProperties`,
+// formats), none changing the wire. Error bodies that changed: a permission refusal and a
+// Hono `HTTPException` are JSON `{ error }` instead of plain text, a schema refusal is
+// `{ error, issues }`, a trailing slash routes like the path without one, and an unknown
+// `/api/...` path on a Node pod answers 404 rather than the SPA shell, as the edge did.
+export const API_VERSION = "1.99.0";

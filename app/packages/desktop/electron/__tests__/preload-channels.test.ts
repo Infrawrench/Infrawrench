@@ -43,22 +43,4 @@ describe("preload INVOKE_CHANNELS", () => {
       .map(([channel, file]) => `${channel} (cloud-data/${file})`);
     expect(missing).toEqual([]);
   });
-
-  it("covers the agents-mode channels", () => {
-    const exposed = preloadChannels();
-    for (const channel of [
-      "cloud_agents_accounts",
-      "cloud_agents_get_settings",
-      "cloud_agents_link_scopes",
-      "cloud_agents_save_settings",
-      "cloud_agents_apply_t3_policy",
-      "cloud_agents_list_sessions",
-      "cloud_agents_create_session",
-      "cloud_agents_open_session",
-      "cloud_agents_reconcile_session",
-      "cloud_agents_delete_session",
-    ]) {
-      expect(exposed).toContain(channel);
-    }
-  });
 });

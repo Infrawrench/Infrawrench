@@ -6,49 +6,59 @@ import {
   SeatLimitReachedClientError,
 } from "@infrawrench/client-core";
 import type { SettingsApi } from "@infrawrench/ui";
-import { invoke } from "./invoke";
-
-interface SettingsRequestResult {
-  status: number;
-  bodyText: string;
-}
+import { Option } from "effect";
+import type { CloudHttpMethod, CloudHttpResponse } from "../../shared/rpc/groups/cloud-http";
+import { serverErrorSentence } from "./cloud-client";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
  * Desktop implementation of the shared settings sections' transport: every
- * call rides the single `cloud_settings_request` IPC channel, whose
- * main-process handler allowlists the settings API surface and attaches the
- * cloud tokens. Errors are rebuilt here as the same typed classes the web
- * fetch throws, so the shared sections cannot tell the transports apart.
+ * call rides the cloud transport (the `CloudHttp` RPC), whose main-process
+ * end holds the session and allowlists the settings API surface
+ * (`electron/cloud-allowlist.ts`, `SETTINGS_RULES`). Errors are rebuilt here
+ * as the same typed classes the web fetch throws, so the shared sections
+ * cannot tell the transports apart.
  */
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const { status, bodyText } = await invoke<SettingsRequestResult>("cloud_settings_request", {
-    method,
-    path,
-    ...(body !== undefined ? { body } : {}),
-  });
+function send(method: CloudHttpMethod, path: string, body?: unknown): Promise<CloudHttpResponse> {
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.CloudHttp({
+        method,
+        url: path,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      }),
+    ),
+  );
+}
+
+function parseJson(bodyText: string): unknown {
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+}
+
+async function request<T>(method: CloudHttpMethod, path: string, body?: unknown): Promise<T> {
+  const { status, body: bodyText } = await send(method, path, body);
 
   if (status >= 200 && status < 300) {
-    if (!bodyText) return undefined as T;
-    return JSON.parse(bodyText) as T;
+    const value: unknown = bodyText ? JSON.parse(bodyText) : undefined;
+    // `SettingsApi` is `get<T>(path)`: the sections name the answer's type
+    // at a raw path with no endpoint definition, so the body is handed back
+    // as the type they asked for, unchecked, exactly as the web fetch does.
+    return value as T;
   }
 
-  let parsed: unknown = null;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    /* not JSON */
-  }
+  const parsed = parseJson(bodyText);
   if (status === 409 && isSeatLimitResponse(parsed)) {
     throw new SeatLimitReachedClientError(parsed);
   }
   if (status === 409 && isGithubPermissionRequiredResponse(parsed)) {
     throw new GithubPermissionRequiredClientError(parsed);
   }
-  let message = bodyText;
-  if (parsed && typeof parsed === "object" && "error" in parsed) {
-    const errField = (parsed as { error?: unknown }).error;
-    if (typeof errField === "string") message = errField;
-  }
+  // The `{ error }` sentence of a JSON error body, else the body itself.
+  const message = Option.getOrElse(serverErrorSentence(bodyText), () => bodyText);
   if (status === 402) {
     throw new PlanRequiredClientError(message);
   }
@@ -58,23 +68,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 /**
  * GET a settings endpoint whose body is a document, not a JSON payload.
  *
- * Same channel and same allowlist as {@link request}; it only skips the parse.
- * The one caller is the session-recording player: an asciicast is
+ * Same transport and same allowlist as {@link request}; it only skips the
+ * parse. The one caller is the session-recording player: an asciicast is
  * newline-delimited JSON, so `JSON.parse` fails on its header line alone.
  */
 export async function requestText(path: string): Promise<string> {
-  const { status, bodyText } = await invoke<SettingsRequestResult>("cloud_settings_request", {
-    method: "GET",
-    path,
-  });
+  const { status, body: bodyText } = await send("GET", path);
   if (status >= 200 && status < 300) return bodyText;
-  let message = bodyText;
-  try {
-    const parsed = JSON.parse(bodyText) as { error?: unknown };
-    if (typeof parsed.error === "string") message = parsed.error;
-  } catch {
-    /* not a JSON error envelope */
-  }
+  const message = Option.getOrElse(serverErrorSentence(bodyText), () => bodyText);
   throw new Error(message || `Cloud request failed: ${status} ${path}`);
 }
 

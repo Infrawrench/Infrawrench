@@ -2,6 +2,7 @@ import { downloadBlob, useUIStore } from "@infrawrench/ui";
 import type { InvoiceScopeAccount, InvoicesClient } from "@infrawrench/ui/invoices";
 import type {
   BillingProfile,
+  BillingRuleInput,
   BillingProfileInput,
   ManagedAccountAssignmentInput,
   ManagedAccountAssignmentPreview,
@@ -16,15 +17,20 @@ import type {
   PricingPreviewRequest,
   PricingPreviewResult,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { definedFields } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
 import { listCloudAccounts } from "./cloud-accounts";
-import { loadCloudCostDimensionValues } from "./cloud-costs";
+import { listCloudCostCentresForCosts, loadCloudCostDimensionValues } from "./cloud-costs";
 
 /**
  * Invoices are cloud-only for the same reason cost reports are: the spend they
  * bill for is collected server-side, so a desktop app in local mode has nothing
  * to invoice. Every call resolves the active org at call time rather than
  * closing over it: the org can change under a mounted panel.
+ *
+ * Typed calls to the contract's `invoices`, `billingProfiles` and
+ * `billingRules` domains over the cloud transport (`./cloud-client.ts`).
  *
  * `invoiceExportUrl` and `invoicePdfUrl` are deliberately **not** implemented
  * here: the cloud endpoints need a Bearer header, which an `<a download>`
@@ -37,19 +43,62 @@ function requireOrgId(): string {
   return orgId;
 }
 
-export function createDesktopInvoicesClient(): InvoicesClient {
+const managedAccounts = () => cloudClient("invoices").managedAccounts;
+const invoices = () => cloudClient("invoices").invoices;
+const billingProfiles = () => cloudClient("billingProfiles").billingProfiles;
+
+/**
+ * A candidate rule as the preview endpoint takes it. client-core's
+ * `BillingRuleInput` leaves `description` and every adjustment field but
+ * `kind` optional; the contract's decoded type (what a request is written
+ * in) requires them, because the server fills an absent one with null. The
+ * same nulls are filled here.
+ */
+function ruleInput(rule: BillingRuleInput) {
+  const { adjustment, managedAccountIds } = rule;
   return {
-    listManagedAccounts: async () =>
-      (await invoke<ManagedAccount[]>("cloud_list_managed_accounts", {
-        orgId: requireOrgId(),
-      })) ?? [],
-    listInvoices: async () =>
-      (await invoke<ManagedInvoiceSummary[]>("cloud_list_invoices", { orgId: requireOrgId() })) ??
-      [],
-    getInvoice: (invoiceId: string) =>
-      invoke<ManagedInvoice>("cloud_get_invoice", { orgId: requireOrgId(), invoiceId }),
-    listCostCentres: async () =>
-      (await invoke<CostCentre[]>("cloud_list_cost_centres", { orgId: requireOrgId() })) ?? [],
+    name: rule.name,
+    description: rule.description ?? null,
+    enabled: rule.enabled,
+    priority: rule.priority,
+    match: definedFields(rule.match),
+    adjustment: {
+      kind: adjustment.kind,
+      percent: adjustment.percent ?? null,
+      amount: adjustment.amount ?? null,
+      currency: adjustment.currency ?? null,
+      period: adjustment.period ?? null,
+      targetKind: adjustment.targetKind ?? null,
+      targetId: adjustment.targetId ?? null,
+      tiers: adjustment.tiers ? definedFields(adjustment.tiers) : null,
+      tierMode: adjustment.tierMode ?? null,
+      tierScope: adjustment.tierScope ?? null,
+      expression: adjustment.expression ?? null,
+    },
+    ...(managedAccountIds !== undefined ? { managedAccountIds } : {}),
+  };
+}
+
+function previewPayload(request: PricingPreviewRequest) {
+  const { rule, ...rest } = request;
+  return {
+    ...definedFields(rest),
+    ...(rule !== undefined ? { rule: rule === null ? null : ruleInput(rule) } : {}),
+  };
+}
+
+export function createDesktopInvoicesClient(): InvoicesClient {
+  // Every method is async so a missing org rejects rather than throwing
+  // synchronously: a caller chaining `.catch()` off one would miss a throw.
+  return {
+    listManagedAccounts: async (): Promise<ManagedAccount[]> =>
+      runRpc(managedAccounts().list({ params: { orgId: requireOrgId() } })),
+    listInvoices: async (): Promise<ManagedInvoiceSummary[]> =>
+      runRpc(invoices().list({ params: { orgId: requireOrgId() }, query: {} })),
+    getInvoice: async (invoiceId: string): Promise<ManagedInvoice> =>
+      runRpc(invoices().get({ params: { orgId: requireOrgId(), id: invoiceId } })),
+    listCostCentres: async (): Promise<CostCentre[]> =>
+      listCloudCostCentresForCosts(requireOrgId()),
     listAccounts: async () => {
       const rows = await listCloudAccounts(requireOrgId());
       return (rows ?? []).map((a): InvoiceScopeAccount => ({
@@ -58,42 +107,81 @@ export function createDesktopInvoicesClient(): InvoicesClient {
         pluginId: a.pluginId,
       }));
     },
-    listCostDimension: (dimension: "provider" | "service") =>
+    listCostDimension: async (dimension: "provider" | "service") =>
       loadCloudCostDimensionValues(requireOrgId(), dimension),
-    previewPricing: (request: PricingPreviewRequest) =>
-      invoke<PricingPreviewResult>("cloud_preview_pricing", { orgId: requireOrgId(), request }),
+    previewPricing: async (request: PricingPreviewRequest): Promise<PricingPreviewResult> =>
+      runRpc(
+        cloudClient("billingRules").billingRules.preview({
+          params: { orgId: requireOrgId() },
+          payload: previewPayload(request),
+        }),
+      ),
 
-    createManagedAccount: (input: ManagedAccountInput) =>
-      invoke<ManagedAccount>("cloud_create_managed_account", { orgId: requireOrgId(), input }),
-    updateManagedAccount: (id: string, input: ManagedAccountInput) =>
-      invoke<ManagedAccount>("cloud_update_managed_account", { orgId: requireOrgId(), id, input }),
+    createManagedAccount: async (input: ManagedAccountInput): Promise<ManagedAccount> =>
+      runRpc(
+        managedAccounts().create({
+          params: { orgId: requireOrgId() },
+          payload: definedFields(input),
+        }),
+      ),
+    updateManagedAccount: async (id: string, input: ManagedAccountInput): Promise<ManagedAccount> =>
+      runRpc(
+        managedAccounts().update({
+          params: { orgId: requireOrgId(), id },
+          payload: definedFields(input),
+        }),
+      ),
     deleteManagedAccount: async (id: string) => {
-      await invoke("cloud_delete_managed_account", { orgId: requireOrgId(), id });
+      await runRpc(managedAccounts().delete({ params: { orgId: requireOrgId(), id } }));
     },
-    createInvoice: (input: ManagedInvoiceInput) =>
-      invoke<ManagedInvoice>("cloud_create_invoice", { orgId: requireOrgId(), input }),
-    updateInvoice: (invoiceId: string, input: ManagedInvoiceUpdate) =>
-      invoke<ManagedInvoice>("cloud_update_invoice", { orgId: requireOrgId(), invoiceId, input }),
+    createInvoice: async (input: ManagedInvoiceInput): Promise<ManagedInvoice> =>
+      runRpc(
+        invoices().create({ params: { orgId: requireOrgId() }, payload: definedFields(input) }),
+      ),
+    updateInvoice: async (
+      invoiceId: string,
+      input: ManagedInvoiceUpdate,
+    ): Promise<ManagedInvoice> =>
+      runRpc(
+        invoices().update({
+          params: { orgId: requireOrgId(), id: invoiceId },
+          payload: definedFields(input),
+        }),
+      ),
     deleteInvoice: async (invoiceId: string) => {
-      await invoke("cloud_delete_invoice", { orgId: requireOrgId(), invoiceId });
+      await runRpc(invoices().delete({ params: { orgId: requireOrgId(), id: invoiceId } }));
     },
 
-    approveInvoice: (invoiceId: string) =>
-      invoke<ManagedInvoice>("cloud_approve_invoice", { orgId: requireOrgId(), invoiceId }),
-    sendInvoice: (invoiceId: string, resend = false) =>
-      invoke<ManagedInvoice>("cloud_send_invoice", { orgId: requireOrgId(), invoiceId, resend }),
-    voidInvoice: (invoiceId: string, reason: string, supersede: boolean) =>
-      invoke<{ invoice: ManagedInvoice; replacement: ManagedInvoice | null }>(
-        "cloud_void_invoice",
-        { orgId: requireOrgId(), invoiceId, reason, supersede },
+    approveInvoice: async (invoiceId: string): Promise<ManagedInvoice> =>
+      runRpc(invoices().approve({ params: { orgId: requireOrgId(), id: invoiceId } })),
+    sendInvoice: async (invoiceId: string, resend = false): Promise<ManagedInvoice> =>
+      runRpc(
+        invoices().send({
+          params: { orgId: requireOrgId(), id: invoiceId },
+          // `resend` is the deliberate second copy; the server refuses one
+          // without it once a delivery has landed.
+          payload: { resend },
+        }),
+      ),
+    voidInvoice: async (
+      invoiceId: string,
+      reason: string,
+      supersede: boolean,
+    ): Promise<{ invoice: ManagedInvoice; replacement: ManagedInvoice | null }> =>
+      runRpc(
+        invoices().void({
+          params: { orgId: requireOrgId(), id: invoiceId },
+          payload: { reason, supersede },
+        }),
       ),
 
     downloadInvoiceFile: async (invoice: ManagedInvoice, format: "csv" | "pdf") => {
-      const bytes = await invoke<Uint8Array>("cloud_invoice_file", {
-        orgId: requireOrgId(),
-        invoiceId: invoice.id,
-        format,
-      });
+      const params = { orgId: requireOrgId(), id: invoice.id };
+      // The PDF answers bytes; the CSV answers text, saved as its UTF-8 bytes.
+      const bytes =
+        format === "pdf"
+          ? await runRpc(invoices().pdf({ params }))
+          : new TextEncoder().encode(await runRpc(invoices().export({ params })));
       const name = invoice.number ?? `draft-${invoice.id.slice(0, 8)}`;
       downloadBlob(
         new Blob([new Uint8Array(bytes)], {
@@ -103,30 +191,53 @@ export function createDesktopInvoicesClient(): InvoicesClient {
       );
     },
 
-    listBillingProfiles: async () =>
-      (await invoke<BillingProfile[]>("cloud_list_billing_profiles", { orgId: requireOrgId() })) ??
-      [],
-    createBillingProfile: (input: BillingProfileInput) =>
-      invoke<BillingProfile>("cloud_create_billing_profile", { orgId: requireOrgId(), input }),
-    updateBillingProfile: (id: string, input: BillingProfileInput) =>
-      invoke<BillingProfile>("cloud_update_billing_profile", { orgId: requireOrgId(), id, input }),
+    listBillingProfiles: async (): Promise<BillingProfile[]> =>
+      runRpc(billingProfiles().list({ params: { orgId: requireOrgId() } })),
+    createBillingProfile: async (input: BillingProfileInput): Promise<BillingProfile> =>
+      runRpc(
+        billingProfiles().create({
+          params: { orgId: requireOrgId() },
+          payload: definedFields(input),
+        }),
+      ),
+    updateBillingProfile: async (id: string, input: BillingProfileInput): Promise<BillingProfile> =>
+      runRpc(
+        billingProfiles().update({
+          params: { orgId: requireOrgId(), id },
+          payload: definedFields(input),
+        }),
+      ),
     deleteBillingProfile: async (id: string) => {
-      await invoke("cloud_delete_billing_profile", { orgId: requireOrgId(), id });
+      await runRpc(billingProfiles().delete({ params: { orgId: requireOrgId(), id } }));
     },
 
-    findUnassignedSpend: (period?: { from: string; to: string }) =>
-      invoke<UnassignedSpendReport>("cloud_unassigned_spend", { orgId: requireOrgId(), period }),
-    previewAssignment: (
+    findUnassignedSpend: async (period?: {
+      from: string;
+      to: string;
+    }): Promise<UnassignedSpendReport> =>
+      runRpc(
+        managedAccounts().unassigned({
+          params: { orgId: requireOrgId() },
+          query: period ? { from: period.from, to: period.to } : {},
+        }),
+      ),
+    previewAssignment: async (
       input: ManagedAccountAssignmentInput & { periodFrom?: string; periodTo?: string },
-    ) =>
-      invoke<ManagedAccountAssignmentPreview>("cloud_preview_managed_account_assignment", {
-        orgId: requireOrgId(),
-        input,
-      }),
-    assignScope: (input: ManagedAccountAssignmentInput) =>
-      invoke<{ accounts: ManagedAccount[] }>("cloud_assign_managed_account_scope", {
-        orgId: requireOrgId(),
-        input,
-      }),
+    ): Promise<ManagedAccountAssignmentPreview> =>
+      runRpc(
+        managedAccounts().previewAssignment({
+          params: { orgId: requireOrgId() },
+          payload: input,
+        }),
+      ),
+    assignScope: async (
+      input: ManagedAccountAssignmentInput,
+    ): Promise<{ accounts: ManagedAccount[] }> =>
+      runRpc(
+        managedAccounts().assign({
+          params: { orgId: requireOrgId() },
+          payload: definedFields(input),
+        }),
+      ),
   };
 }

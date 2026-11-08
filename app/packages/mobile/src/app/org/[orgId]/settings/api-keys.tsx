@@ -4,7 +4,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
 import { colors } from "@/lib/theme";
 
-/** Shape of GET /api/org/:orgId/api-keys (web api/routes/api-keys.ts). */
+/** Shape of GET /api/org/:orgId/api-keys (web http/domains/api-keys/). */
 interface ApiKey {
   id: string;
   name: string;

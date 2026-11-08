@@ -1,6 +1,6 @@
 /**
  * Org-scoped cost-report-folder CRUD: shared by the HTTP routes
- * (api/routes/cost-report-folders.ts) and the report services/tools that need
+ * (http/domains/cost-report-folders) and the report services/tools that need
  * to check a folder id, mirroring services/cost-reports.ts.
  *
  * Folders organize the Reports list and nothing else: a report's identity,

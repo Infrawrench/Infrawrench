@@ -1,14 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-// `cli/args` reaches `cli/context` for CliError, which pulls the Electron app
-// object and the plugin host at import time. None of it runs here.
+// `cli/format` reaches `cli/context`, which pulls the Electron app object and
+// the plugin host at import time. None of it runs here.
 vi.mock("electron", () => ({
   app: { getPath: () => "/tmp" },
   ipcMain: { handle: () => {} },
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-import { parseCliArgs } from "../cli/args";
 import {
   formatAgo,
   formatKevFreshness,
@@ -23,70 +22,6 @@ import {
 import { setColorEnabled } from "../cli/output";
 
 beforeAll(() => setColorEnabled(false));
-
-describe("parseCliArgs: vulns", () => {
-  it("collects the list filters", () => {
-    const parsed = parseCliArgs([
-      "vulns",
-      "--severity",
-      "critical,high",
-      "--running",
-      "--fix-available",
-      "--kev",
-      "--plugin",
-      "aws",
-      "-a",
-      "Prod",
-      "--search",
-      "openssl",
-      "--include-dismissed",
-      "--limit",
-      "20",
-    ]);
-    expect(parsed.positionals).toEqual(["vulns"]);
-    expect(parsed.vulns).toEqual({
-      severity: "critical,high",
-      running: true,
-      fixAvailable: true,
-      kev: true,
-      plugin: "aws",
-      search: "openssl",
-      includeDismissed: true,
-    });
-    expect(parsed.flags.account).toBe("Prod");
-    expect(parsed.range.limit).toBe(20);
-  });
-
-  it("takes --service and the shared --resource", () => {
-    const parsed = parseCliArgs(["vulns", "--service", "checkout", "--resource", "r-1"]);
-    expect(parsed.vulns.service).toBe("checkout");
-    expect(parsed.range.resource).toBe("r-1");
-  });
-
-  it("reads --not-running as running: false, and neither as both", () => {
-    expect(parseCliArgs(["vulns", "--not-running"]).vulns.running).toBe(false);
-    expect(parseCliArgs(["vulns"]).vulns.running).toBeUndefined();
-  });
-
-  it("rejects --running with --not-running", () => {
-    expect(() => parseCliArgs(["vulns", "--running", "--not-running"])).toThrow(
-      /mutually exclusive/,
-    );
-  });
-
-  it("takes dismiss positionals and the shared --reason", () => {
-    const parsed = parseCliArgs([
-      "vulns",
-      "dismiss",
-      "CVE-2024-3094",
-      "*",
-      "--reason",
-      "not reachable",
-    ]);
-    expect(parsed.positionals).toEqual(["vulns", "dismiss", "CVE-2024-3094", "*"]);
-    expect(parsed.flags.reason).toBe("not reachable");
-  });
-});
 
 describe("vulns formatting", () => {
   it("parses --severity, accepting unscored and naming the rest", () => {

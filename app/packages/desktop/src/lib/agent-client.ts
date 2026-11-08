@@ -58,7 +58,7 @@ import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";
 import { mergeResourceRow, mergeStoredFields, upsertResourceRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
-import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { createPluginClient } from "./plugin-client";
 import {
   installLocalAgentServices,
@@ -68,6 +68,8 @@ import {
   type StoredServiceInstall,
 } from "./agent-services";
 import { listLocalSshInstallAccounts } from "./ssh-install";
+import { showOpenDialog } from "./app-shell";
+import { ensureAgentSshKey, getLocalSshPrivateKey } from "./local-secrets";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -329,13 +331,10 @@ export function createDesktopAgentClient(): AgentClient {
       return { ...settings, serviceAccountIds: services.accountIds, t3Access, t3Policy };
     },
     async pickLocalRepoPath(): Promise<string | null> {
-      const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
-        "show_open_dialog",
-        {
-          properties: ["openDirectory"],
-          title: "Choose local repository",
-        },
-      );
+      const result = await showOpenDialog({
+        properties: ["openDirectory"],
+        title: "Choose local repository",
+      });
       if (result.canceled) return null;
       return result.filePaths?.[0] ?? null;
     },
@@ -614,10 +613,10 @@ export function createDesktopAgentClient(): AgentClient {
         };
       }
       const agentKey = await ensureAgentSshKey();
-      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+      const privateKey = await getLocalSshPrivateKey(agentKey.id);
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
-      const result = await invoke<{ message: string }>("agent_reconcile_fetch", {
+      const reconcile = {
         config: {
           sshHost: target.host,
           sshPort: target.port,
@@ -627,7 +626,10 @@ export function createDesktopAgentClient(): AgentClient {
         workspaceName: workspaceNameForRow(row),
         branchName: row.branch_name,
         repoPath: row.repo,
-      });
+      };
+      const result = await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.AgentReconcileFetch(reconcile)),
+      );
       return { branchName: row.branch_name, message: result.message };
     },
     async applyT3Policy(request: AgentT3PolicyApplyRequest) {
@@ -724,16 +726,10 @@ async function withAgentSshKey(
   if (!keyField) return fields;
   if (fields[keyField]?.trim()) return fields;
 
-  const key = await invoke<{ id: string; name: string; publicKey: string }>(
-    "ssh_key_ensure_agent_key",
-  );
+  const key = await ensureAgentSshKey();
   const publicKey = key.publicKey.trim();
   if (!publicKey) throw new Error(`Agent SSH key "${AGENT_SSH_KEY_NAME}" has no public key`);
   return { ...fields, [keyField]: publicKey };
-}
-
-async function ensureAgentSshKey() {
-  return invoke<{ id: string; name: string; publicKey: string }>("ssh_key_ensure_agent_key");
 }
 
 async function createAgentSetupPlan(
@@ -763,11 +759,9 @@ async function createAgentSetupPlan(
     };
   }
 
-  return invoke<AgentSetupPlan>("agent_plan_setup", {
-    repoPath: repo,
-    tool,
-    workspaceName,
-  });
+  return runRpc(
+    DesktopRpcClient.use((rpc) => rpc.AgentPlanSetup({ repoPath: repo, tool, workspaceName })),
+  );
 }
 
 function setupPlanLogLines(plan: AgentSetupPlan): string[] {
@@ -864,7 +858,7 @@ async function ensureAgentVmSetup(
     "setting-up",
   );
 
-  const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+  const privateKey = await getLocalSshPrivateKey(agentKey.id);
   const target = await waitForAgentSshTarget(row);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
   const remoteHome = await resolveAgentRemoteHome(target, privateKey);
@@ -998,7 +992,7 @@ async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
   const resource = await loadAgentVmResource(row);
   const target = await resolveAgentSshTarget(row, resource);
   const agentKey = await ensureAgentSshKey();
-  const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+  const privateKey = await getLocalSshPrivateKey(agentKey.id);
   await agentSshExecCommand(
     {
       sshHost: target.host,
@@ -1058,7 +1052,7 @@ async function applyLocalT3Policy(
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
       const agentKey = await ensureAgentSshKey();
-      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+      const privateKey = await getLocalSshPrivateKey(agentKey.id);
       const result = await agentSshExecCommand(
         { sshHost: target.host, sshPort: target.port, sshUser: target.username, privateKey },
         buildT3CodePolicyApplyCommand({ policy, restart: request.restart }),
@@ -1216,7 +1210,7 @@ async function syncAgentFiles(
   remoteHome: string,
   opts?: { syncLocalRepo?: boolean },
 ): Promise<AgentSyncFilesResult> {
-  return invoke<AgentSyncFilesResult>("agent_sync_files", {
+  const sync = {
     config: {
       sshHost: target.host,
       sshPort: target.port,
@@ -1227,7 +1221,9 @@ async function syncAgentFiles(
     remoteHome,
     projectDir: `${remoteHome}/${workspaceNameForRow(row)}`,
     ...(opts?.syncLocalRepo && !isCloneableGitRepo(row.repo) ? { repoPath: row.repo } : {}),
-  });
+  };
+  const result = await runRpc(DesktopRpcClient.use((rpc) => rpc.AgentSyncFiles(sync)));
+  return { ...result, warnings: [...result.warnings] };
 }
 
 /**
@@ -1339,11 +1335,12 @@ async function uploadAgentEnvFile(
     `mkdir -p "$HOME/.infrawrench-agent" && chmod 700 "$HOME/.infrawrench-agent"`,
   );
   if (mkdir.code !== 0) throw new Error(formatCommandFailure(mkdir));
-  await invoke("sftp_upload", {
+  const upload = {
     config: { host: target.host, port: target.port, username: target.username, privateKey },
     remotePath,
     data: new TextEncoder().encode(buildAgentEnvFile(env)),
-  });
+  };
+  await runRpc(DesktopRpcClient.use((rpc) => rpc.SftpUpload(upload)));
   const chmod = await agentSshExecCommand(config, `chmod 600 ${shellQuote(remotePath)}`);
   if (chmod.code !== 0) throw new Error(formatCommandFailure(chmod));
 }
@@ -1429,15 +1426,9 @@ async function agentSshExecCommand(
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
-  const result = await invoke<{
-    stdoutBase64: string;
-    stderrBase64: string;
-    code: number;
-  }>("workflow_ssh_exec", {
-    config,
-    command,
-    skipHostKeyCheck: true,
-  });
+  const result = await runRpc(
+    DesktopRpcClient.use((rpc) => rpc.WorkflowSshExec({ config, command, skipHostKeyCheck: true })),
+  );
   return {
     stdout: decodeBase64(result.stdoutBase64),
     stderr: decodeBase64(result.stderrBase64),
@@ -1451,22 +1442,20 @@ async function agentSshStreamCommand(
   logger: AgentSetupOutputLogger,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   let streamId: string | null = null;
-  const started = await invoke<{ streamId: string }>("workflow_ssh_stream_start", {
-    config,
-    command,
-    skipHostKeyCheck: true,
-  });
+  const started = await runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.WorkflowSshStreamStart({ config, command, skipHostKeyCheck: true }),
+    ),
+  );
   streamId = started.streamId;
   let stdout = "";
   let stderr = "";
   try {
     for (;;) {
-      const chunk = await invoke<{
-        stdoutBase64?: string;
-        stderrBase64?: string;
-        done: boolean;
-        code?: number;
-      }>("workflow_ssh_stream_read", { streamId });
+      const id = streamId;
+      const chunk = await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamRead({ streamId: id })),
+      );
       if (chunk.stdoutBase64) {
         const text = decodeBase64(chunk.stdoutBase64);
         stdout += text;
@@ -1484,7 +1473,10 @@ async function agentSshStreamCommand(
     }
   } finally {
     if (streamId) {
-      await invoke("workflow_ssh_stream_close", { streamId }).catch(() => undefined);
+      const id = streamId;
+      await runRpc(
+        DesktopRpcClient.use((rpc) => rpc.WorkflowSshStreamClose({ streamId: id })),
+      ).catch(() => undefined);
     }
   }
 }

@@ -10,41 +10,70 @@
 import type { IdleFindingsOverview } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Effect, Schema } from "effect";
+import { Command } from "effect/cli";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { spreadBody, wire } from "../effect/wire";
 import { formatIdleValue } from "../format";
-import { orgFetch, resolveOrg, type CliContext } from "../context";
-import { c, printJson, println, printTable, safe } from "../output";
+import { c, safe } from "../output";
 
-export async function cmdIdleRules(ctx: CliContext, verb: string | undefined): Promise<void> {
-  const org = await resolveOrg(ctx);
+const PATH = "/idle-findings";
 
-  if (verb === "rescan") {
-    await orgFetch<{ ok: true }>(org.id, "/idle-findings/rescan", { method: "POST" });
-    if (ctx.flags.output === "json") {
-      printJson({ org: org.id, ok: true });
-      return;
-    }
-    println("Every account is due for an idle collection on the next poller tick.");
-    return;
+const Overview = wire<IdleFindingsOverview>()(
+  Schema.Struct({
+    settings: Schema.Struct({ enabled: Schema.Boolean, lookbackDays: Schema.Finite }),
+    rules: Schema.Array(
+      Schema.Struct({
+        label: Schema.String,
+        pluginName: Schema.String,
+        enabled: Schema.Boolean,
+        thresholds: Schema.Array(
+          Schema.Struct({
+            label: Schema.String,
+            unit: Schema.String,
+            default: Schema.Finite,
+            value: Schema.Finite,
+          }),
+        ),
+      }),
+    ),
+    accounts: Schema.Array(
+      Schema.Struct({
+        accountName: Schema.String,
+        pluginName: Schema.String,
+        lastPolledAt: Schema.NullOr(Schema.String),
+        findingCount: Schema.Finite,
+        lastError: Schema.NullOr(Schema.String),
+        helpUrl: Schema.NullOr(Schema.String),
+      }),
+    ),
+  }),
+);
+
+const list = Effect.fn("idle-rules")(function* () {
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  const org = yield* currentOrg;
+  const body = yield* api.json(org.id, PATH);
+
+  if (session.output === "json") {
+    return yield* Print.json(yield* spreadBody({ org: org.id }, body, PATH));
   }
-
-  const overview = await orgFetch<IdleFindingsOverview>(org.id, "/idle-findings");
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...overview });
-    return;
-  }
+  const overview = yield* decodeBody(Overview, PATH)(body);
 
   const { settings } = overview;
-  println(
+  yield* Print.line(
     `${c.bold(org.displayName)} ${c.dim(
       `· idle rules ${settings.enabled ? "on" : "off"} · ${settings.lookbackDays}-day lookback`,
     )}`,
   );
   if (overview.rules.length === 0) {
-    println(c.dim("None of the loaded providers declare idle rules."));
-    return;
+    return yield* Print.line(c.dim("None of the loaded providers declare idle rules."));
   }
 
-  printTable(overview.rules, [
+  yield* Print.table(overview.rules, [
     { header: "rule", value: (r) => safe(r.label) },
     { header: "provider", value: (r) => c.dim(safe(r.pluginName)) },
     {
@@ -69,9 +98,9 @@ export async function cmdIdleRules(ctx: CliContext, verb: string | undefined): P
   ]);
 
   if (overview.accounts.length > 0) {
-    println();
-    println(c.bold("Collection"));
-    printTable(overview.accounts, [
+    yield* Print.line();
+    yield* Print.line(c.bold("Collection"));
+    yield* Print.table(overview.accounts, [
       { header: "account", value: (a) => safe(a.accountName) },
       { header: "provider", value: (a) => c.dim(safe(a.pluginName)) },
       {
@@ -89,10 +118,31 @@ export async function cmdIdleRules(ctx: CliContext, verb: string | undefined): P
       },
     ]);
   }
-  println();
-  println(
+  yield* Print.line();
+  yield* Print.line(
     c.dim(
       "Findings appear in `infrawrench orphans`. `infrawrench idle-rules rescan` re-reads now.",
     ),
   );
-}
+});
+
+const rescan = Command.make(
+  "rescan",
+  {},
+  Effect.fn("idle-rules.rescan")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    // The answer is `{ ok: true }`, which says nothing a 2xx did not.
+    yield* api.json(org.id, "/idle-findings/rescan", { method: "POST" });
+    if (session.output === "json") return yield* Print.json({ org: org.id, ok: true });
+    yield* Print.line("Every account is due for an idle collection on the next poller tick.");
+  }),
+).pipe(Command.withDescription("Make every account due for an idle collection now"));
+
+export const idleRules = Command.make("idle-rules", {}, list).pipe(
+  Command.withDescription(
+    "The metric-based idle rules, the org's thresholds and lookback, and each account's last collection",
+  ),
+  Command.withSubcommands([rescan]),
+);

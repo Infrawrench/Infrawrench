@@ -12,15 +12,17 @@
  * The only thing that crosses into main is the sandbox itself; all data access
  * (resources, metrics, storage, prompts) stays renderer-side.
  *
- * Protocol:
- *   renderer  --invoke "workflow_run" {source, interactive, runToken}-->  main
- *   main      --send   "workflow_host_call" {runToken, callId, method, args}-->  renderer
- *   renderer  --invoke "workflow_host_reply" {callId, ok, value|error}-->  main
- *   main      --returns RunResult-->  renderer (resolves the original invoke)
+ * Protocol (`shared/rpc/groups/workflows.ts`):
+ *   renderer  --stream "WorkflowRun" {source, interactive, runToken, ...}-->  main
+ *   main      --element HostCall {callId, method, args}-->  renderer
+ *   renderer  --call   "WorkflowHostReply" {callId, Ok value | Failed error}-->  main
+ *   main      --element Log {entry}, then Done {result}, then ends-->  renderer
  *
  * See src/lib/workflow-runner.ts for the renderer half.
  */
-import { ipcMain, type WebContents } from "electron";
+import { Context, Effect, Layer, Queue, Stream } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { WorkflowRunError, type WorkflowRunEvent } from "../shared/rpc/groups/workflows";
 import { workflowFetch } from "./workflow-fetch";
 import { loadLocalWorkflowSecretValuesForWorkflow } from "./workflow-secrets";
 // The runtime is ESM-only (its package exports raw .ts), so this CommonJS main
@@ -45,9 +47,14 @@ import type {
   WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime" with { "resolution-mode": "import" };
 
+// Method syntax on purpose: a host call's `resolve` takes the method's own
+// result type, and the renderer answers with exactly what its `WorkflowHost`
+// method returned, so the bivariant method check is the honest type here.
 interface PendingCall {
-  resolve: (value: unknown) => void;
-  reject: (err: unknown) => void;
+  resolve(value: unknown): void;
+  reject(err: unknown): void;
+  /** The run that made the call, so a run's end fails only its own calls. */
+  runToken: string;
 }
 
 // callId -> host call awaiting a renderer reply. Global across runs; callIds
@@ -56,30 +63,30 @@ const pending = new Map<number, PendingCall>();
 let nextCallId = 1;
 
 /** Rebuild an Error from the {message, stack} the renderer serialized. */
-function rendererError(raw: unknown): Error {
-  if (raw && typeof raw === "object" && "message" in raw) {
-    const e = raw as { message?: unknown; stack?: unknown };
-    const err = new Error(typeof e.message === "string" ? e.message : "Workflow host error");
-    if (typeof e.stack === "string") err.stack = e.stack;
-    return err;
-  }
-  return new Error(String(raw));
+function rendererError(raw: { readonly message: string; readonly stack?: string }): Error {
+  const err = new Error(raw.message);
+  if (raw.stack !== undefined) err.stack = raw.stack;
+  return err;
 }
 
 /**
- * A WorkflowHost whose every method round-trips to the renderer that owns
- * `runToken`. The renderer holds the real host (plugin clients + DB + prompt);
- * each call here just forwards the method name and positional args.
+ * A WorkflowHost whose every method round-trips to the renderer running the
+ * workflow. The renderer holds the real host (plugin clients + DB + prompt);
+ * each call here just forwards the method name and positional args, through
+ * `emit` onto the run's stream; the renderer's answer settles the promise.
  */
-function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost {
+function createBridgedHost(
+  runToken: string,
+  emit: (event: WorkflowRunEvent) => boolean,
+): WorkflowHost {
   const call = <T>(method: string, args: unknown[]): Promise<T> => {
-    if (sender.isDestroyed()) {
-      return Promise.reject(new Error("The window was closed before the workflow finished."));
-    }
     const callId = nextCallId++;
     return new Promise<T>((resolve, reject) => {
-      pending.set(callId, { resolve: resolve as (v: unknown) => void, reject });
-      sender.send("workflow_host_call", { runToken, callId, method, args });
+      pending.set(callId, { resolve, reject, runToken });
+      if (!emit({ _tag: "HostCall", callId, method, args })) {
+        pending.delete(callId);
+        reject(new Error("The window was closed before the workflow finished."));
+      }
     });
   };
 
@@ -201,62 +208,94 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
 // isn't currently paused at a breakpoint (the interrupt handler reads the signal).
 const runAborts = new Map<string, AbortController>();
 
-ipcMain.handle(
-  "workflow_run",
-  async (
-    event,
-    {
-      source,
-      interactive,
-      runToken,
-      debug,
-      workflowId,
-    }: {
-      source: string;
-      interactive: boolean;
-      runToken: string;
-      debug?: boolean;
-      workflowId: string;
-    },
-  ) => {
-    const host = createBridgedHost(event.sender, runToken);
-    const controller = new AbortController();
-    runAborts.set(runToken, controller);
-    const { runWorkflow } = await import("@infrawrench/workflow-runtime");
-    try {
-      return await runWorkflow({
-        source,
-        host,
-        secrets: await loadLocalWorkflowSecretValuesForWorkflow(workflowId),
-        interactive,
-        ...(debug ? { debug: true } : {}),
-        signal: controller.signal,
-        // Stream log entries to the renderer live (logs are handled by the run
-        // context in main, not via the bridged host).
-        onLog: (entry) => {
-          if (!event.sender.isDestroyed()) event.sender.send("workflow_log", { runToken, entry });
-        },
-      });
-    } finally {
-      runAborts.delete(runToken);
-    }
-  },
-);
+export interface WorkflowRunRequest {
+  readonly runToken: string;
+  readonly source: string;
+  readonly interactive: boolean;
+  readonly workflowId: string;
+  readonly debug?: boolean;
+}
 
-ipcMain.handle("workflow_stop", (_event, { runToken }: { runToken: string }) => {
-  runAborts.get(runToken)?.abort();
-});
+export type WorkflowHostReply =
+  | { readonly _tag: "Ok"; readonly callId: number; readonly value: unknown }
+  | {
+      readonly _tag: "Failed";
+      readonly callId: number;
+      readonly error: { readonly message: string; readonly stack?: string };
+    };
 
-ipcMain.handle(
-  "workflow_host_reply",
-  (
-    _event,
-    { callId, ok, value, error }: { callId: number; ok: boolean; value?: unknown; error?: unknown },
-  ) => {
-    const entry = pending.get(callId);
-    if (!entry) return;
+/** Fail the host calls a run still has waiting: its stream is gone. */
+function abandonCalls(runToken: string): void {
+  for (const [callId, entry] of pending) {
+    if (entry.runToken !== runToken) continue;
     pending.delete(callId);
-    if (ok) entry.resolve(value);
-    else entry.reject(rendererError(error));
-  },
-);
+    entry.reject(new Error("The window was closed before the workflow finished."));
+  }
+}
+
+const runOne = (request: WorkflowRunRequest) =>
+  Stream.callback<WorkflowRunEvent, WorkflowRunError>((queue) =>
+    Effect.gen(function* () {
+      const { runToken } = request;
+      const controller = new AbortController();
+      yield* Effect.acquireRelease(
+        Effect.sync(() => runAborts.set(runToken, controller)),
+        () =>
+          Effect.sync(() => {
+            if (runAborts.get(runToken) === controller) runAborts.delete(runToken);
+            controller.abort();
+            abandonCalls(runToken);
+          }),
+      );
+      const emit = (event: WorkflowRunEvent) => Queue.offerUnsafe(queue, event);
+      const host = createBridgedHost(runToken, emit);
+      const result = yield* Effect.tryPromise({
+        try: async () => {
+          const { runWorkflow } = await import("@infrawrench/workflow-runtime");
+          return runWorkflow({
+            source: request.source,
+            host,
+            secrets: await loadLocalWorkflowSecretValuesForWorkflow(request.workflowId),
+            interactive: request.interactive,
+            ...(request.debug ? { debug: true } : {}),
+            signal: controller.signal,
+            // Stream log entries to the renderer live (logs are handled by the
+            // run context in main, not via the bridged host).
+            onLog: (entry) => {
+              emit({ _tag: "Log", entry });
+            },
+          });
+        },
+        catch: (cause) => new WorkflowRunError({ message: errorMessage(cause) }),
+      });
+      emit({ _tag: "Done", result });
+      Queue.endUnsafe(queue);
+    }),
+  );
+
+/** Runs local workflows in the main-process sandbox (`shared/rpc/groups/workflows.ts`). */
+export class WorkflowRunner extends Context.Service<
+  WorkflowRunner,
+  {
+    readonly run: (
+      request: WorkflowRunRequest,
+    ) => Stream.Stream<WorkflowRunEvent, WorkflowRunError>;
+    readonly stop: (runToken: string) => Effect.Effect<void>;
+    readonly reply: (reply: WorkflowHostReply) => Effect.Effect<void>;
+  }
+>()("infrawrench/desktop/WorkflowRunner") {
+  static readonly layer = Layer.succeed(WorkflowRunner)(
+    WorkflowRunner.of({
+      run: runOne,
+      stop: (runToken) => Effect.sync(() => runAborts.get(runToken)?.abort()),
+      reply: (reply) =>
+        Effect.sync(() => {
+          const entry = pending.get(reply.callId);
+          if (!entry) return;
+          pending.delete(reply.callId);
+          if (reply._tag === "Ok") entry.resolve(reply.value);
+          else entry.reject(rendererError(reply.error));
+        }),
+    }),
+  );
+}

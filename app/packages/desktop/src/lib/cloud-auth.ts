@@ -1,5 +1,5 @@
 import type { OrgEntry } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
  * A cloud-managed organization visible to the desktop user.
@@ -12,13 +12,21 @@ export async function getCloudAuthStatus(): Promise<{
   authenticated: boolean;
   email?: string;
 }> {
-  return invoke("cloud_auth_status");
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.CloudAuthStatus()));
 }
 
 export async function startCloudAuth(): Promise<void> {
-  await invoke("cloud_auth_start");
+  await runRpc(DesktopRpcClient.use((rpc) => rpc.CloudAuthStart()));
 }
 
 export async function getCloudOrgs(): Promise<CloudOrg[]> {
-  return invoke("cloud_auth_orgs");
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.CloudAuthOrgs()));
+}
+
+/**
+ * A short-lived single-use token for `?token=` on a cloud WebSocket upgrade,
+ * minted by the main process with its session. Null when signed out.
+ */
+export function getCloudWsToken(orgId: string): Promise<string | null> {
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.CloudWsToken({ orgId })));
 }

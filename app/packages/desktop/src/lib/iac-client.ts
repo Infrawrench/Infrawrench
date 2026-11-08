@@ -9,8 +9,12 @@ import type {
   IacReconciliationResponse,
   IacStateSummary,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
 import { listCloudAccounts } from "./cloud-accounts";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const iac = () => cloudClient("iac").iac;
 
 /**
  * IaC reconciliation is cloud-only: it classifies the org's *synced*
@@ -29,27 +33,49 @@ export function createDesktopIacClient(): IacClient {
 
   return {
     listStates: async () => {
-      const res = await invoke<{ states: IacStateSummary[] }>("cloud_iac_states", {
-        orgId: requireOrg(),
-      });
-      return res.states;
+      const res = await runRpc(iac().listStates({ params: { orgId: requireOrg() } }));
+      const states: IacStateSummary[] = res.states;
+      return states;
     },
     uploadState: async (upload: IacStateUpload) => {
-      const res = await invoke<{ state: IacStateSummary }>("cloud_iac_upload_state", {
-        orgId: requireOrg(),
-        label: upload.label,
-        accountId: upload.accountId,
-        document: upload.document,
-      });
-      return res.state;
+      const res = await runRpc(
+        iac().uploadState({
+          params: { orgId: requireOrg() },
+          payload: {
+            label: upload.label,
+            accountId: upload.accountId,
+            document: upload.document,
+          },
+        }),
+      );
+      const state: IacStateSummary = res.state;
+      return state;
     },
     deleteState: async (stateId: string) => {
-      await invoke("cloud_iac_delete_state", { orgId: requireOrg(), stateId });
+      await runRpc(iac().deleteState({ params: { orgId: requireOrg(), stateId } }));
     },
-    reconcile: (stateId: string) =>
-      invoke<IacReconciliationResponse>("cloud_iac_reconcile", { orgId: requireOrg(), stateId }),
-    buildImportPlan: (resourceIds: string[]) =>
-      invoke<IacImportPlanResponse>("cloud_iac_import_plan", { orgId: requireOrg(), resourceIds }),
+    reconcile: (stateId: string): Promise<IacReconciliationResponse> =>
+      runRpc(
+        iac()
+          .reconciliation({ params: { orgId: requireOrg() }, query: { stateId } })
+          .pipe(
+            Effect.map((response) => ({
+              ...response,
+              resources: response.resources.map((resource) => ({
+                ...resource,
+                // client-core types a drifted field's values as always
+                // present; the wire leaves an `undefined` one out.
+                drift: resource.drift.map((change) => ({
+                  ...change,
+                  from: change.from,
+                  to: change.to,
+                })),
+              })),
+            })),
+          ),
+      ),
+    buildImportPlan: (resourceIds: string[]): Promise<IacImportPlanResponse> =>
+      runRpc(iac().importPlan({ params: { orgId: requireOrg() }, payload: { resourceIds } })),
     listAccounts: async (): Promise<IacAccountOption[]> => {
       const rows = await listCloudAccounts(requireOrg());
       return rows.map((a) => ({ id: a.id, displayName: a.displayName }));

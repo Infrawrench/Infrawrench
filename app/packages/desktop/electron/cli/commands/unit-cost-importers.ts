@@ -9,60 +9,168 @@
  * and lists what each source accepts under `sources`.
  */
 import { readFileSync } from "node:fs";
-
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import { Effect, Option, Schema } from "effect";
+import { Argument, Command, Flag } from "effect/cli";
 import type {
   BusinessMetricImporter,
   BusinessMetricImporterInput,
   BusinessMetricImportRun,
   BusinessMetricSourceAccount,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable } from "../output";
-
-/** Flags `importer` reads, gathered by main.ts from the shared parse. */
-export interface ImporterFlags {
-  file?: string | undefined;
-  set: string[];
-  from?: string | undefined;
-  to?: string | undefined;
-}
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure, CliUsageError } from "../effect/errors";
+import { file as fileFlag } from "../effect/file-flags";
+import * as Print from "../effect/print";
+import { from as fromFlag, to as toFlag } from "../effect/range-flags";
+import { CliSession } from "../effect/session";
+import { wire } from "../effect/wire";
+import { c, safe } from "../output";
 
 const HOST_KEYS = new Set(["schedule", "backfillDays", "timezone", "aggregation", "enabled"]);
+const SOURCES_PATH = "/business-metrics/importer-sources";
 
-function requireCloud(ctx: CliContext): void {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Business metric importers run in Infrawrench Cloud, next to the spend they divide.",
-    );
-  }
-}
+const usage = (message: string) => new CliUsageError({ message });
+
+const refuseLocal = CliSession.use((session) =>
+  session.local
+    ? Effect.fail(
+        new CliFailure({
+          message:
+            "Business metric importers run in Infrawrench Cloud, next to the spend they divide.",
+        }),
+      )
+    : Effect.void,
+);
+
+const Importer = wire<BusinessMetricImporter>()(
+  Schema.Struct({
+    accountId: Schema.String,
+    accountName: Schema.NullOr(Schema.String),
+    sourceLabel: Schema.NullOr(Schema.String),
+    params: Schema.Record(Schema.String, Schema.String),
+    schedule: Schema.String,
+    backfillDays: Schema.Finite,
+    timezone: Schema.String,
+    aggregation: Schema.String,
+    enabled: Schema.Boolean,
+    nextRunAt: Schema.NullOr(Schema.String),
+    lastRunAt: Schema.NullOr(Schema.String),
+    lastStatus: Schema.NullOr(Schema.String),
+    lastError: Schema.NullOr(Schema.String),
+    consecutiveFailures: Schema.Finite,
+  }),
+);
+type Importer = typeof Importer.Type;
+
+const Run = wire<BusinessMetricImportRun>()(
+  Schema.Struct({
+    trigger: Schema.String,
+    status: Schema.String,
+    from: Schema.String,
+    to: Schema.String,
+    pointsRead: Schema.Finite,
+    daysWritten: Schema.Finite,
+    error: Schema.NullOr(Schema.String),
+    notes: Schema.Array(Schema.String),
+    startedAt: Schema.String,
+    durationMs: Schema.NullOr(Schema.Finite),
+  }),
+);
+type Run = typeof Run.Type;
+
+const Sources = wire<{ sources: BusinessMetricSourceAccount[] }>()(
+  Schema.Struct({
+    sources: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          accountId: Schema.String,
+          accountName: Schema.String,
+          source: Schema.Struct({
+            label: Schema.String,
+            readOnly: Schema.optional(Schema.String),
+            fields: Schema.Array(
+              Schema.Struct({
+                key: Schema.String,
+                label: Schema.String,
+                type: Schema.String,
+                required: Schema.optional(Schema.Boolean),
+                dependsOn: Schema.optional(Schema.Array(Schema.String)),
+              }),
+            ),
+          }),
+        }),
+      ),
+    ),
+  }),
+);
 
 /** `key=value`, with `@path` reading the value from a file (a SQL statement, usually). */
-function parseSet(entry: string): [string, string] {
+const parseSet = (entry: string): Effect.Effect<[string, string], CliUsageError> => {
   const eq = entry.indexOf("=");
-  if (eq <= 0) throw new CliError(`--set expects key=value, got "${entry}".`, 2);
+  if (eq <= 0) return Effect.fail(usage(`--set expects key=value, got "${entry}".`));
   const key = entry.slice(0, eq).trim();
-  let value = entry.slice(eq + 1);
-  if (value.startsWith("@")) {
-    try {
-      value = readFileSync(value.slice(1), "utf8");
-    } catch (e) {
-      throw new CliError(`Couldn't read ${value.slice(1)}: ${(e as Error).message}`, 2);
-    }
-  }
-  return [key, value];
+  const value = entry.slice(eq + 1);
+  if (!value.startsWith("@")) return Effect.succeed([key, value]);
+  const path = value.slice(1);
+  return Effect.try({
+    try: (): [string, string] => [key, readFileSync(path, "utf8")],
+    catch: (e) => usage(`Couldn't read ${path}: ${e instanceof Error ? e.message : String(e)}`),
+  });
+};
+
+/**
+ * The PUT body: `BusinessMetricImporterInput`, whose schedule and aggregation
+ * the server validates (a `--set schedule=…` is sent as typed, and a bad one
+ * answers a 400 naming the values). Keys from a `--file` the CLI does not
+ * read are sent through as written.
+ */
+interface ImporterBody {
+  accountId: string;
+  params: Record<string, string>;
+  [key: string]: unknown;
 }
 
-function readBody(file: string): unknown {
-  const text = file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw new CliError(`${file} is not valid JSON: ${(e as Error).message}`, 2);
-  }
-}
+const FileBody = Schema.Struct({
+  accountId: Schema.optional(Schema.String),
+  params: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
 
-function statusLabel(importer: BusinessMetricImporter): string {
+/** `--file <path>` (`-` for stdin): an importer document, as JSON. */
+const readBody = Effect.fnUntraced(function* (file: string) {
+  const text = yield* Effect.try({
+    try: () => (file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8")),
+    catch: (e) => usage(`Couldn't read ${file}: ${e instanceof Error ? e.message : String(e)}`),
+  });
+  const parsed = yield* Effect.try({
+    try: (): unknown => JSON.parse(text),
+    catch: (e) => usage(`${file} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`),
+  });
+  const whole = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
+    parsed,
+  ).pipe(Effect.mapError(() => usage(`${file} is not an importer document (a JSON object).`)));
+  const typed = yield* Schema.decodeEffect(FileBody)(whole).pipe(
+    Effect.mapError((e) => usage(`${file}: ${e.message}`)),
+  );
+  const body: ImporterBody = {
+    ...whole,
+    accountId: typed.accountId ?? "",
+    params: { ...typed.params },
+  };
+  return body;
+});
+
+/** The saved importer as the PUT body that would save it again. */
+const asInput = (importer: Importer): ImporterBody => ({
+  accountId: importer.accountId,
+  params: { ...importer.params },
+  schedule: importer.schedule,
+  backfillDays: importer.backfillDays,
+  timezone: importer.timezone,
+  aggregation: importer.aggregation,
+  enabled: importer.enabled,
+});
+
+function statusLabel(importer: Importer): string {
   if (!importer.enabled) return c.dim("paused");
   if (importer.lastStatus === "error") return c.red(`failing (${importer.consecutiveFailures}×)`);
   if (!importer.lastRunAt) return c.yellow("first run pending");
@@ -70,282 +178,304 @@ function statusLabel(importer: BusinessMetricImporter): string {
 }
 
 /** `infrawrench unit-costs sources`: accounts that can feed a metric, and their fields. */
-export async function cmdBusinessMetricSources(ctx: CliContext): Promise<void> {
-  requireCloud(ctx);
-  const org = await resolveOrg(ctx);
-  const res = await orgFetch<{ sources: BusinessMetricSourceAccount[] }>(
-    org.id,
-    "/business-metrics/importer-sources",
-  );
-  const sources = res.sources ?? [];
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, sources });
-    return;
-  }
-  println(`${c.bold(org.displayName)} ${c.dim("· business metric importer sources")}`);
-  println();
-  if (sources.length === 0) {
-    println(
+export const sources = Command.make(
+  "sources",
+  {},
+  Effect.fn("unit-costs.sources")(function* () {
+    yield* refuseLocal;
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    const body = yield* api.decode(
+      Schema.Struct({ sources: Schema.optional(Schema.Unknown) }),
+      org.id,
+      SOURCES_PATH,
+    );
+    if (session.output === "json") {
+      return yield* Print.json({ org: org.id, sources: body.sources ?? [] });
+    }
+    const list =
+      (yield* decodeBody(Sources, SOURCES_PATH)({ sources: body.sources ?? [] })).sources ?? [];
+    yield* Print.line(
+      `${c.bold(safe(org.displayName))} ${c.dim("· business metric importer sources")}`,
+    );
+    yield* Print.line();
+    if (list.length === 0) {
+      return yield* Print.line(
+        c.dim(
+          "No connected account can feed a business metric yet. Connect AWS, GCP, Snowflake, " +
+            "ClickHouse, PostgreSQL, MySQL or Metronome.",
+        ),
+      );
+    }
+    for (const s of list) {
+      const readOnly =
+        s.source.readOnly === "enforced"
+          ? "read-only enforced"
+          : s.source.readOnly === "validated"
+            ? "SELECT/WITH only"
+            : "";
+      yield* Print.line(
+        `${c.bold(safe(s.accountName))} ${c.dim(`(${safe(s.accountId)})`)}  ${safe(s.source.label)}  ${c.dim(readOnly)}`,
+      );
+      for (const f of s.source.fields) {
+        const extra = [
+          safe(f.type),
+          f.required ? "required" : "optional",
+          f.dependsOn?.length ? `after ${f.dependsOn.map(safe).join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        yield* Print.line(`  ${safe(f.key).padEnd(16)} ${safe(f.label)} ${c.dim(`[${extra}]`)}`);
+      }
+      yield* Print.line();
+    }
+    yield* Print.line(
       c.dim(
-        "No connected account can feed a business metric yet. Connect AWS, GCP, Snowflake, " +
-          "ClickHouse, PostgreSQL, MySQL or Metronome.",
+        "Configure one with `infrawrench unit-costs importer <metric> set --account <id> " +
+          "--set <field>=<value>` (`--set sql=@query.sql` reads a file).",
       ),
     );
-    return;
-  }
-  for (const s of sources) {
-    const readOnly =
-      s.source.readOnly === "enforced"
-        ? "read-only enforced"
-        : s.source.readOnly === "validated"
-          ? "SELECT/WITH only"
-          : "";
-    println(
-      `${c.bold(s.accountName)} ${c.dim(`(${s.accountId})`)}  ${s.source.label}  ${c.dim(readOnly)}`,
-    );
-    for (const f of s.source.fields) {
-      const extra = [
-        f.type,
-        f.required ? "required" : "optional",
-        f.dependsOn?.length ? `after ${f.dependsOn.join(", ")}` : "",
-      ]
-        .filter(Boolean)
-        .join(", ");
-      println(`  ${f.key.padEnd(16)} ${f.label} ${c.dim(`[${extra}]`)}`);
-    }
-    println();
-  }
-  println(
-    c.dim(
-      "Configure one with `infrawrench unit-costs importer <metric> set --account <id> " +
-        "--set <field>=<value>` (`--set sql=@query.sql` reads a file).",
-    ),
-  );
-}
+  }),
+).pipe(
+  Command.withDescription(
+    "Accounts that can feed a business metric on a schedule, and the fields each importer takes",
+  ),
+);
 
-function printImporter(importer: BusinessMetricImporter): void {
+const printImporter = Effect.fnUntraced(function* (importer: Importer) {
   const rows: Array<[string, string]> = [
     [
       "source",
-      `${importer.sourceLabel ?? "?"} · ${importer.accountName ?? c.yellow("removed account")}`,
+      `${safe(importer.sourceLabel ?? "?")} · ${importer.accountName !== null ? safe(importer.accountName) : c.yellow("removed account")}`,
     ],
     ["status", statusLabel(importer)],
-    ["schedule", `${importer.schedule}, restating ${importer.backfillDays} day(s)`],
-    ["timezone", importer.timezone],
-    ["aggregation", importer.aggregation],
-    ["last run", importer.lastRunAt ?? c.dim("never")],
-    ["next run", importer.nextRunAt ?? c.dim("—")],
+    ["schedule", `${safe(importer.schedule)}, restating ${importer.backfillDays} day(s)`],
+    ["timezone", safe(importer.timezone)],
+    ["aggregation", safe(importer.aggregation)],
+    ["last run", importer.lastRunAt !== null ? safe(importer.lastRunAt) : c.dim("never")],
+    ["next run", importer.nextRunAt !== null ? safe(importer.nextRunAt) : c.dim("—")],
   ];
-  for (const [k, v] of rows) println(`${c.dim(k.padEnd(12))} ${v}`);
-  if (importer.lastError) println(`${c.dim("last error".padEnd(12))} ${c.red(importer.lastError)}`);
+  for (const [k, v] of rows) yield* Print.line(`${c.dim(k.padEnd(12))} ${v}`);
+  if (importer.lastError) {
+    yield* Print.line(`${c.dim("last error".padEnd(12))} ${c.red(safe(importer.lastError))}`);
+  }
   for (const [k, v] of Object.entries(importer.params)) {
     const shown = v.includes("\n") ? `\n${v.replace(/^/gm, "    ")}` : v;
-    println(`${c.dim(`param ${k}`.padEnd(12))} ${shown}`);
+    yield* Print.line(`${c.dim(`param ${k}`.padEnd(12))} ${shown}`);
   }
-}
+});
 
-function printRuns(runs: BusinessMetricImportRun[]): void {
-  if (runs.length === 0) {
-    println(c.dim("No runs yet."));
-    return;
-  }
-  printTable(runs, [
-    { header: "started", value: (r) => r.startedAt.replace("T", " ").slice(0, 19) },
-    { header: "trigger", value: (r) => r.trigger },
-    {
-      header: "status",
-      value: (r) =>
-        r.status === "error"
-          ? c.red("error")
-          : r.status === "running"
-            ? c.dim("running")
-            : c.green("ok"),
-    },
-    { header: "window", value: (r) => `${r.from} → ${r.to}` },
-    { header: "days", align: "right", value: (r) => String(r.daysWritten) },
-    { header: "points", align: "right", value: (r) => String(r.pointsRead) },
-    { header: "error", value: (r) => (r.error ? c.red(r.error.slice(0, 80)) : "") },
-  ]);
-}
+const printRuns = (runs: ReadonlyArray<Run>) =>
+  runs.length === 0
+    ? Print.line(c.dim("No runs yet."))
+    : Print.table(runs, [
+        { header: "started", value: (r) => safe(r.startedAt.replace("T", " ").slice(0, 19)) },
+        { header: "trigger", value: (r) => safe(r.trigger) },
+        {
+          header: "status",
+          value: (r) =>
+            r.status === "error"
+              ? c.red("error")
+              : r.status === "running"
+                ? c.dim("running")
+                : c.green("ok"),
+        },
+        { header: "window", value: (r) => `${safe(r.from)} → ${safe(r.to)}` },
+        { header: "days", align: "right", value: (r) => String(r.daysWritten) },
+        { header: "points", align: "right", value: (r) => String(r.pointsRead) },
+        { header: "error", value: (r) => (r.error ? c.red(safe(r.error.slice(0, 80))) : "") },
+      ]);
+
+const IMPORTER_VERBS = ["show", "runs", "run", "set", "enable", "disable", "delete"] as const;
 
 /**
  * `infrawrench unit-costs importer <metric> [show|runs|run|set|enable|disable|delete]`.
  */
-export async function cmdBusinessMetricImporter(
-  ctx: CliContext,
-  metric: string,
-  action: string | undefined,
-  flags: ImporterFlags,
-): Promise<void> {
-  requireCloud(ctx);
-  const org = await resolveOrg(ctx);
-  const base = `/business-metrics/${encodeURIComponent(metric)}/importer`;
-  const json = ctx.flags.output === "json";
-  const verb = action ?? "show";
+export const importer = Command.make(
+  "importer",
+  {
+    metric: Argument.String("metric").pipe(
+      Argument.withDescription("The business metric's key"),
+      Argument.optional,
+    ),
+    action: Argument.String(IMPORTER_VERBS.join("|")).pipe(
+      Argument.withDescription("What to do (default show)"),
+      Argument.optional,
+    ),
+    file: fileFlag.pipe(
+      Flag.withDescription("set: the whole importer as a JSON document (- for stdin)"),
+    ),
+    set: Flag.String("set").pipe(
+      Flag.withMetavar("field=value"),
+      Flag.withDescription(
+        "set: one field (schedule, backfillDays, timezone, aggregation, enabled, or a source param); @file reads a value; repeatable",
+      ),
+      Flag.atLeast(0),
+    ),
+    from: fromFlag.pipe(Flag.withDescription("run: backfill from this day")),
+    to: toFlag.pipe(Flag.withDescription("run: backfill to this day")),
+  },
+  Effect.fn("unit-costs.importer")(function* (input) {
+    if (Option.isNone(input.metric)) {
+      return yield* usage("Usage: infrawrench unit-costs importer <metric> [action]");
+    }
+    const metric = input.metric.value;
+    yield* refuseLocal;
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    const base = `/business-metrics/${encodeURIComponent(metric)}/importer`;
+    const json = session.output === "json";
+    const verb = Option.getOrElse(input.action, () => "show");
+    const shownMetric = safe(metric);
 
-  const current = async () =>
-    (await orgFetch<{ importer: BusinessMetricImporter | null }>(org.id, base)).importer;
-
-  switch (verb) {
-    case "show": {
-      const importer = await current();
-      const runs = importer
-        ? ((await orgFetch<{ runs: BusinessMetricImportRun[] }>(org.id, `${base}/runs?limit=10`))
-            .runs ?? [])
-        : [];
-      if (json) {
-        printJson({ org: org.id, metric, importer, runs });
-        return;
-      }
-      if (!importer) {
-        println(
-          c.dim(
-            `${metric} has no importer; its values are only pushed. See \`infrawrench unit-costs sources\`.`,
-          ),
-        );
-        return;
-      }
-      println(`${c.bold(metric)} ${c.dim("· importer")}`);
-      println();
-      printImporter(importer);
-      println();
-      printRuns(runs);
-      return;
-    }
-    case "runs": {
-      const res = await orgFetch<{ runs: BusinessMetricImportRun[] }>(
-        org.id,
-        `${base}/runs?limit=50`,
-      );
-      if (json) {
-        printJson({ org: org.id, metric, runs: res.runs ?? [] });
-        return;
-      }
-      printRuns(res.runs ?? []);
-      return;
-    }
-    case "run": {
-      const body: Record<string, string> = {};
-      if (flags.from) body["from"] = flags.from;
-      if (flags.to) body["to"] = flags.to;
-      const run = await orgFetch<BusinessMetricImportRun>(org.id, `${base}/run`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      if (json) {
-        printJson({ org: org.id, metric, run });
-      } else if (run.status === "success") {
-        println(
-          `${c.green("✓")} ${run.daysWritten} day(s) written, ${run.from} → ${run.to} ${c.dim(`(${run.pointsRead} points, ${run.durationMs ?? 0} ms)`)}`,
-        );
-        for (const note of run.notes) println(c.dim(`  ${note}`));
-      } else {
-        println(`${c.red("✗")} ${run.error ?? "the run failed"}`);
-      }
-      if (run.status === "error") throw new CliError("The import run failed.", 1);
-      return;
-    }
-    case "enable":
-    case "disable": {
-      const importer = await current();
-      if (!importer) throw new CliError(`${metric} has no importer to ${verb}.`);
-      const input: BusinessMetricImporterInput = {
-        accountId: importer.accountId,
-        params: importer.params,
-        schedule: importer.schedule,
-        backfillDays: importer.backfillDays,
-        timezone: importer.timezone,
-        aggregation: importer.aggregation,
-        enabled: verb === "enable",
+    const current = Effect.gen(function* () {
+      const body = yield* api.decode(Schema.Struct({ importer: Schema.Unknown }), org.id, base);
+      return {
+        raw: body.importer,
+        importer: body.importer === null ? null : yield* decodeBody(Importer, base)(body.importer),
       };
-      const saved = await orgFetch<BusinessMetricImporter>(org.id, base, {
-        method: "PUT",
-        body: JSON.stringify(input),
-      });
-      if (json) printJson({ org: org.id, metric, importer: saved });
-      else println(`${metric}: importer ${verb === "enable" ? "enabled" : "paused"}.`);
-      return;
-    }
-    case "set": {
-      let input: BusinessMetricImporterInput;
-      if (flags.file) {
-        input = readBody(flags.file) as BusinessMetricImporterInput;
-      } else {
-        // Edit in place: start from what is saved, so `--set schedule=weekly`
-        // changes one thing rather than resetting the rest to defaults.
-        const existing = await current();
-        input = existing
-          ? {
-              accountId: existing.accountId,
-              params: { ...existing.params },
-              schedule: existing.schedule,
-              backfillDays: existing.backfillDays,
-              timezone: existing.timezone,
-              aggregation: existing.aggregation,
-              enabled: existing.enabled,
-            }
-          : { accountId: "", params: {} };
-      }
-      if (ctx.flags.account) {
-        const sources =
-          (
-            await orgFetch<{ sources: BusinessMetricSourceAccount[] }>(
-              org.id,
-              "/business-metrics/importer-sources",
-            )
-          ).sources ?? [];
-        const needle = ctx.flags.account.toLowerCase();
-        const match = sources.find(
-          (s) => s.accountId === ctx.flags.account || s.accountName.toLowerCase() === needle,
-        );
-        if (!match) {
-          throw new CliError(
-            `No importer source called "${ctx.flags.account}". Run \`infrawrench unit-costs sources\`.`,
+    });
+    const runs = Effect.fnUntraced(function* (limit: number) {
+      const path = `${base}/runs?limit=${limit}`;
+      const body = yield* api.decode(
+        Schema.Struct({ runs: Schema.optional(Schema.Unknown) }),
+        org.id,
+        path,
+      );
+      const raw = body.runs ?? [];
+      return { raw, runs: yield* decodeBody(Schema.Array(Run), path)(raw) };
+    });
+
+    switch (verb) {
+      case "show": {
+        const { raw, importer: saved } = yield* current;
+        const recent = saved ? yield* runs(10) : { raw: [], runs: [] };
+        if (json) {
+          return yield* Print.json({ org: org.id, metric, importer: raw, runs: recent.raw });
+        }
+        if (!saved) {
+          return yield* Print.line(
+            c.dim(
+              `${shownMetric} has no importer; its values are only pushed. See \`infrawrench unit-costs sources\`.`,
+            ),
           );
         }
-        if (match.accountId !== input.accountId) input.params = {};
-        input.accountId = match.accountId;
+        yield* Print.line(`${c.bold(shownMetric)} ${c.dim("· importer")}`);
+        yield* Print.line();
+        yield* printImporter(saved);
+        yield* Print.line();
+        return yield* printRuns(recent.runs);
       }
-      for (const entry of flags.set) {
-        const [key, value] = parseSet(entry);
-        if (!HOST_KEYS.has(key)) {
-          input.params[key] = value;
-          continue;
+      case "runs": {
+        const recent = yield* runs(50);
+        if (json) return yield* Print.json({ org: org.id, metric, runs: recent.raw });
+        return yield* printRuns(recent.runs);
+      }
+      case "run": {
+        const body: Record<string, string> = {};
+        if (Option.isSome(input.from) && input.from.value) body["from"] = input.from.value;
+        if (Option.isSome(input.to) && input.to.value) body["to"] = input.to.value;
+        const path = `${base}/run`;
+        const runBody = yield* api.json(org.id, path, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        const run = yield* decodeBody(Run, path)(runBody);
+        if (json) {
+          yield* Print.json({ org: org.id, metric, run: runBody });
+        } else if (run.status === "success") {
+          yield* Print.line(
+            `${c.green("✓")} ${run.daysWritten} day(s) written, ${safe(run.from)} → ${safe(run.to)} ${c.dim(`(${run.pointsRead} points, ${run.durationMs ?? 0} ms)`)}`,
+          );
+          for (const note of run.notes) yield* Print.line(c.dim(`  ${safe(note)}`));
+        } else {
+          yield* Print.line(`${c.red("✗")} ${safe(run.error ?? "the run failed")}`);
         }
-        if (key === "backfillDays") input.backfillDays = Number(value);
-        else if (key === "enabled") input.enabled = value === "true" || value === "1";
-        else if (key === "schedule")
-          input.schedule = value as BusinessMetricImporterInput["schedule"];
-        else if (key === "aggregation") {
-          input.aggregation = value as BusinessMetricImporterInput["aggregation"];
-        } else input.timezone = value;
-      }
-      if (!input.accountId) {
-        throw new CliError("Pick a source account with --account (see `unit-costs sources`).", 2);
-      }
-      const saved = await orgFetch<BusinessMetricImporter>(org.id, base, {
-        method: "PUT",
-        body: JSON.stringify(input),
-      });
-      if (json) {
-        printJson({ org: org.id, metric, importer: saved });
+        if (run.status === "error") {
+          return yield* new CliFailure({ message: "The import run failed." });
+        }
         return;
       }
-      println(`${c.green("✓")} importer saved for ${metric}. The first run is due now.`);
-      println();
-      printImporter(saved);
-      return;
+      case "enable":
+      case "disable": {
+        const { importer: saved } = yield* current;
+        if (!saved) {
+          return yield* new CliFailure({ message: `${metric} has no importer to ${verb}.` });
+        }
+        const next: BusinessMetricImporterInput["enabled"] = verb === "enable";
+        const savedBody = yield* api.json(org.id, base, {
+          method: "PUT",
+          body: JSON.stringify({ ...asInput(saved), enabled: next }),
+        });
+        if (json) return yield* Print.json({ org: org.id, metric, importer: savedBody });
+        return yield* Print.line(
+          `${shownMetric}: importer ${verb === "enable" ? "enabled" : "paused"}.`,
+        );
+      }
+      case "set": {
+        // Edit in place: start from what is saved, so `--set schedule=weekly`
+        // changes one thing rather than resetting the rest to defaults.
+        let body: ImporterBody;
+        if (Option.isSome(input.file)) {
+          body = yield* readBody(input.file.value);
+        } else {
+          const { importer: saved } = yield* current;
+          body = saved ? asInput(saved) : { accountId: "", params: {} };
+        }
+        if (session.account) {
+          const wanted = session.account;
+          const list = (yield* api.decode(Sources, org.id, SOURCES_PATH)).sources ?? [];
+          const needle = wanted.toLowerCase();
+          const match = list.find(
+            (s) => s.accountId === wanted || s.accountName.toLowerCase() === needle,
+          );
+          if (!match) {
+            return yield* new CliFailure({
+              message: `No importer source called "${wanted}". Run \`infrawrench unit-costs sources\`.`,
+            });
+          }
+          if (match.accountId !== body.accountId) body.params = {};
+          body.accountId = match.accountId;
+        }
+        for (const entry of input.set) {
+          const [key, value] = yield* parseSet(entry);
+          if (!HOST_KEYS.has(key)) {
+            body.params[key] = value;
+            continue;
+          }
+          if (key === "backfillDays") body[key] = Number(value);
+          else if (key === "enabled") body[key] = value === "true" || value === "1";
+          else body[key] = value;
+        }
+        if (!body.accountId) {
+          return yield* usage("Pick a source account with --account (see `unit-costs sources`).");
+        }
+        const savedBody = yield* api.json(org.id, base, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+        if (json) return yield* Print.json({ org: org.id, metric, importer: savedBody });
+        yield* Print.line(
+          `${c.green("✓")} importer saved for ${shownMetric}. The first run is due now.`,
+        );
+        yield* Print.line();
+        return yield* printImporter(yield* decodeBody(Importer, base)(savedBody));
+      }
+      case "delete": {
+        yield* api.json(org.id, base, { method: "DELETE" });
+        if (json) return yield* Print.json({ org: org.id, metric, deleted: true });
+        return yield* Print.line(`${shownMetric}: importer removed. Imported values stay.`);
+      }
+      default:
+        return yield* usage(
+          `Unknown importer action "${verb}". Use show, runs, run, set, enable, disable or delete.`,
+        );
     }
-    case "delete": {
-      await orgFetch(org.id, base, { method: "DELETE" });
-      if (json) printJson({ org: org.id, metric, deleted: true });
-      else println(`${metric}: importer removed. Imported values stay.`);
-      return;
-    }
-    default:
-      throw new CliError(
-        `Unknown importer action "${verb}". Use show, runs, run, set, enable, disable or delete.`,
-        2,
-      );
-  }
-}
+  }),
+).pipe(
+  Command.withDescription(
+    "A metric's scheduled importer: config and recent runs, run now (--from/--to backfill), set, enable, disable, delete",
+  ),
+);

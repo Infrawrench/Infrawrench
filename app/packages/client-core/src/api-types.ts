@@ -1,9 +1,9 @@
 /**
  * Shared HTTP wire-format types for the Infrawrench Cloud API.
  *
- * These mirror the shapes produced by the server routes under
- * `app/packages/web/src/api/routes/*` (and described by the Zod schemas in
- * `app/packages/web/src/api/openapi/paths/*`).
+ * These mirror the shapes produced by the server routes, the HttpApi domains
+ * under `app/packages/web/src/http/domains/*` (whose endpoint schemas are the
+ * OpenAPI document).
  *
  * They live here rather than in `@infrawrench/ui` because mobile doesn't
  * depend on that package, and every client that talks to the cloud API has to
@@ -11,8 +11,9 @@
  * web and desktop keep importing them from there.
  *
  * If you change a response shape on the server, update the corresponding type
- * here too (and update the Zod schema in `web/src/api/openapi/paths/` to keep
- * the OpenAPI doc honest).
+ * here too (and the response schema in the route's
+ * `api-contract/src/domains/<name>.ts`, which `respond` checks route tests
+ * against).
  */
 
 import type { AttachTarget, PeerPaneSchema, ShowcaseField } from "@infrawrench/plugin-base";

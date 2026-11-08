@@ -17,6 +17,10 @@ import {
 import type { SftpConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { SshError } from "../shared/rpc/groups/ssh-common";
+import { resolveBlessedDownloadPath } from "./main-utils";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
@@ -150,5 +154,63 @@ export async function sftpDownloadToBuffer(
   return withMismatchRethrow(
     () => sftpDownloadToBufferImpl(config, remotePath, options),
     hostKeyErrorRef,
+  );
+}
+
+const attempt = <A>(run: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) => new SshError({ message: errorMessage(cause) }),
+  });
+
+/** SFTP over the desktop's host-key pins, as the RPC handlers call it. */
+export class Sftp extends Context.Service<
+  Sftp,
+  {
+    readonly list: (config: SftpConfig, path: string) => Effect.Effect<SftpEntry[], SshError>;
+    readonly mkdir: (config: SftpConfig, path: string) => Effect.Effect<void, SshError>;
+    readonly remove: (
+      config: SftpConfig,
+      path: string,
+      isDir: boolean,
+    ) => Effect.Effect<void, SshError>;
+    readonly upload: (
+      config: SftpConfig,
+      remotePath: string,
+      data: Uint8Array,
+    ) => Effect.Effect<void, SshError>;
+    /** Into `destFolder/relativePath`, where `destFolder` came from a folder dialog. */
+    readonly download: (
+      config: SftpConfig,
+      remotePath: string,
+      destFolder: string,
+      relativePath: string,
+    ) => Effect.Effect<void, SshError>;
+    readonly read: (config: SftpConfig, path: string) => Effect.Effect<Buffer, SshError>;
+  }
+>()("infrawrench/desktop/Sftp") {
+  static readonly layer = Layer.succeed(Sftp)(
+    Sftp.of({
+      list: (config, path) => attempt(() => sftpList(config, path)),
+      mkdir: (config, path) => attempt(() => sftpMkdir(config, path)),
+      remove: (config, path, isDir) => attempt(() => sftpDelete(config, path, isDir)),
+      upload: (config, remotePath, data) =>
+        attempt(() =>
+          sftpUpload(
+            config,
+            remotePath,
+            Buffer.from(data.buffer, data.byteOffset, data.byteLength),
+          ),
+        ),
+      download: (config, remotePath, destFolder, relativePath) =>
+        attempt(async () =>
+          sftpDownload(
+            config,
+            remotePath,
+            await resolveBlessedDownloadPath(destFolder, relativePath),
+          ),
+        ),
+      read: (config, path) => attempt(() => sftpDownloadToBuffer(config, path)),
+    }),
   );
 }

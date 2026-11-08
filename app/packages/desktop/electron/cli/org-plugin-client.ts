@@ -2,8 +2,10 @@
  * A plugin client for one ORG (cloud) account, backed entirely by the org's
  * HTTP API. The counterpart of `infrafile/plugin-host.ts`: that one decrypts
  * local credentials and calls the provider directly, this one never sees a
- * credential; the server holds them, and every operation is an `orgFetch`
- * against a route the web app already exposes.
+ * credential; the server holds them, and every operation is a request
+ * against a route the web app already exposes, made through the
+ * {@link OrgTransport} its caller hands it (the deploy's Effect runtime, over
+ * `CloudApi`).
  *
  * The surface implemented here is exactly what `buildWorkflowHost` dispatches
  * to (list/get/outputs/create/update/delete). Capabilities with no org route
@@ -17,15 +19,41 @@ import type {
   ResourceInstance,
 } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
 
-import {
-  CliError,
-  listCloudResources,
-  orgFetch,
-  syncCloudAccount,
-  type ResourceRow,
-} from "./context";
+import { Schema } from "effect";
+import { CliError, parseJsonObject, type ResourceRow } from "./context";
 import { createPluginClientFromCredentials } from "../infrafile/plugin-host";
 import { c, printErr } from "./output";
+
+/**
+ * The cloud calls an org client makes, run by whoever built it. A plugin
+ * client is Promise code the workflow runtime drives, so these answer
+ * Promises; a failure rejects with the typed error's sentence as `message`.
+ */
+export interface OrgTransport {
+  /** An org-scoped JSON endpoint, unparsed past `JSON.parse`. */
+  readonly json: (orgId: string, path: string, init?: RequestInit) => Promise<unknown>;
+  /** The account's cached resources (`GET /accounts/:id/resources`). */
+  readonly resources: (orgId: string, accountId: string) => Promise<ResourceRow[]>;
+  /** Re-list the account from the provider (`POST /accounts/:id/sync`). */
+  readonly sync: (orgId: string, accountId: string) => Promise<number>;
+}
+
+const Credentials = Schema.Record(Schema.String, Schema.String);
+const SyncTypeRows = Schema.Array(
+  Schema.Struct({ id: Schema.String, outputsJson: Schema.Unknown }),
+);
+const Created = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  warnings: Schema.optional(
+    Schema.Array(Schema.Struct({ code: Schema.String, message: Schema.String })),
+  ),
+});
+const Updated = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  fields: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
 
 /**
  * Preferred path for an org account: fetch its credentials over the org API
@@ -40,6 +68,7 @@ import { c, printErr } from "./output";
 const credentialedClients = new Map<string, Promise<HostPluginClient>>();
 
 export function createOrgClient(
+  transport: OrgTransport,
   orgId: string,
   accountId: string,
   pluginId: string,
@@ -48,11 +77,10 @@ export function createOrgClient(
   if (!client) {
     client = (async () => {
       try {
-        const credentials = await orgFetch<Record<string, string>>(
-          orgId,
-          `/accounts/${encodeURIComponent(accountId)}/credentials`,
+        const credentials = Schema.decodeUnknownSync(Credentials)(
+          await transport.json(orgId, `/accounts/${encodeURIComponent(accountId)}/credentials`),
         );
-        return await createPluginClientFromCredentials(pluginId, credentials);
+        return await createPluginClientFromCredentials(pluginId, { ...credentials });
       } catch (e) {
         printErr(
           c.dim(
@@ -61,7 +89,7 @@ export function createOrgClient(
             }). Using the org's cached rows instead`,
           ),
         );
-        return createOrgPluginClient(orgId, accountId, pluginId);
+        return createOrgPluginClient(transport, orgId, accountId, pluginId);
       }
     })();
     credentialedClients.set(accountId, client);
@@ -79,11 +107,11 @@ const SYNC_WAIT_MS = 60_000;
  */
 const syncWaits = new Map<string, Promise<void>>();
 
-function ensureSynced(orgId: string, accountId: string): Promise<void> {
+function ensureSynced(transport: OrgTransport, orgId: string, accountId: string): Promise<void> {
   let wait = syncWaits.get(accountId);
   if (!wait) {
     wait = (async () => {
-      const sync = syncCloudAccount(orgId, accountId).then(() => true as const);
+      const sync = transport.sync(orgId, accountId).then((): true => true);
       // The sync may outlive the race below; a late failure must not surface
       // as an unhandled rejection.
       sync.catch(() => {});
@@ -154,18 +182,6 @@ function toInstance(row: ResourceRow): ResourceInstance {
   };
 }
 
-/** The shape POST /accounts/:id/sync-type/:typeId answers with. */
-interface SyncTypeRow {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  displayName: string;
-  externalId: string | null;
-  fieldsJson: unknown;
-  outputsJson: unknown;
-  parentResourceId: string | null;
-}
-
 function notAvailable(what: string): CliError {
   return new CliError(
     `${what} is not available for cloud accounts from the CLI: use the web app, or a local account.`,
@@ -174,13 +190,14 @@ function notAvailable(what: string): CliError {
 }
 
 function createOrgPluginClient(
+  transport: OrgTransport,
   orgId: string,
   accountId: string,
   pluginId: string,
 ): HostPluginClient {
   const rowsForType = async (typeId: string): Promise<ResourceRow[]> => {
-    await ensureSynced(orgId, accountId);
-    const rows = await listCloudResources(orgId, accountId);
+    await ensureSynced(transport, orgId, accountId);
+    const rows = await transport.resources(orgId, accountId);
     return rows.filter((r) => r.resourceTypeId === typeId);
   };
 
@@ -206,17 +223,15 @@ function createOrgPluginClient(
 
       // Not cached: re-list just this type live through the server, which
       // also refreshes the org's rows as a side effect.
-      const fresh = await orgFetch<SyncTypeRow[]>(
-        orgId,
-        `/accounts/${encodeURIComponent(accountId)}/sync-type/${encodeURIComponent(typeId)}`,
-        { method: "POST" },
+      const fresh = Schema.decodeUnknownSync(SyncTypeRows)(
+        await transport.json(
+          orgId,
+          `/accounts/${encodeURIComponent(accountId)}/sync-type/${encodeURIComponent(typeId)}`,
+          { method: "POST" },
+        ),
       );
       const row = fresh.find((r) => r.id === resourceId);
-      const outputs =
-        row && typeof row.outputsJson === "object" && row.outputsJson !== null
-          ? (row.outputsJson as Record<string, unknown>)
-          : {};
-      const value = outputs[outputKey];
+      const value = parseJsonObject(row?.outputsJson)[outputKey];
       if (value != null && value !== "") return outputString(value);
       throw new CliError(
         `Output "${outputKey}" of ${resourceId} is not resolvable through the org API: ` +
@@ -231,26 +246,23 @@ function createOrgPluginClient(
       fields: Record<string, string>,
       parentResourceId?: string,
     ): Promise<ResourceCreateReturn> {
-      const created = await orgFetch<{
-        id: string;
-        displayName: string;
-        warnings?: Array<{ code: string; message: string }>;
-        error?: string;
-      }>(orgId, "/resources/create", {
-        method: "POST",
-        body: JSON.stringify({
-          accountId,
-          pluginId,
-          resourceTypeId: typeId,
-          fields,
-          ...(parentResourceId ? { parentResourceId } : {}),
+      const created = Schema.decodeUnknownSync(Created)(
+        await transport.json(orgId, "/resources/create", {
+          method: "POST",
+          body: JSON.stringify({
+            accountId,
+            pluginId,
+            resourceTypeId: typeId,
+            fields,
+            ...(parentResourceId ? { parentResourceId } : {}),
+          }),
         }),
-      });
+      );
 
       // The route persists the new row before answering, so a plain re-read
       // usually yields the full instance (externalId, outputs). If it does
       // not, the id and display name from the response still carry the deploy.
-      const row = (await listCloudResources(orgId, accountId)).find((r) => r.id === created.id);
+      const row = (await transport.resources(orgId, accountId)).find((r) => r.id === created.id);
       const prefix = `${accountId}:${typeId}:`;
       const resource: ResourceInstance = row
         ? toInstance(row)
@@ -270,7 +282,7 @@ function createOrgPluginClient(
             createdAt: "",
             updatedAt: "",
           };
-      return { resource, warnings: created.warnings ?? [] };
+      return { resource, warnings: [...(created.warnings ?? [])] };
     },
 
     async updateResource(
@@ -279,21 +291,19 @@ function createOrgPluginClient(
       _accountId: string,
       fields: Record<string, string>,
     ): Promise<ResourceInstance> {
-      const updated = await orgFetch<{
-        id: string;
-        displayName: string;
-        fields: Record<string, unknown>;
-      }>(orgId, "/resources/update", {
-        method: "POST",
-        body: JSON.stringify({
-          accountId,
-          pluginId,
-          resourceTypeId: typeId,
-          resourceId,
-          fields,
+      const updated = Schema.decodeUnknownSync(Updated)(
+        await transport.json(orgId, "/resources/update", {
+          method: "POST",
+          body: JSON.stringify({
+            accountId,
+            pluginId,
+            resourceTypeId: typeId,
+            resourceId,
+            fields,
+          }),
         }),
-      });
-      const row = (await listCloudResources(orgId, accountId)).find((r) => r.id === updated.id);
+      );
+      const row = (await transport.resources(orgId, accountId)).find((r) => r.id === updated.id);
       if (row) return toInstance({ ...row, displayName: updated.displayName });
       return toInstance({
         id: updated.id,
@@ -302,7 +312,7 @@ function createOrgPluginClient(
         accountId,
         displayName: updated.displayName,
         externalId: "",
-        fields: updated.fields ?? {},
+        fields: { ...updated.fields },
         outputs: {},
         parentResourceId: null,
       });
@@ -310,7 +320,7 @@ function createOrgPluginClient(
 
     async deleteResource(typeId: string, resourceId: string): Promise<void> {
       const query = new URLSearchParams({ resourceId, accountId });
-      await orgFetch(
+      await transport.json(
         orgId,
         `/resources/${encodeURIComponent(pluginId)}/${encodeURIComponent(typeId)}?${query}`,
         { method: "DELETE" },

@@ -1,7 +1,7 @@
 /**
  * The viewer's effective permissions in an organization, for Bearer hosts.
  *
- * Server contract: `GET /api/org/:orgId/team/me` (web `api/routes/team.ts`),
+ * Server contract: `GET /api/org/:orgId/team/me` (web `http/domains/team/`),
  * which every member may call; it reports the caller's own role and the
  * permission strings that role resolves to.
  *

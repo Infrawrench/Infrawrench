@@ -2,57 +2,27 @@ import * as crypto from "node:crypto";
 import type { Readable } from "node:stream";
 import { Client as SshClient } from "ssh2";
 import type { ClientChannel } from "ssh2";
-import type { WebContents } from "electron";
+import { type Cause, Context, Effect, Layer, Queue, Stream } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { SshError, type SshShellConfig } from "../shared/rpc/groups/ssh-common";
+import type { SshShellEvent } from "../shared/rpc/groups/ssh-shell";
 import { forwardOutHop } from "@infrawrench/ssh-tunnel-core/chain";
 import { CLOUD_KEY_SENTINEL, ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
 import { get1PasswordAgentPath } from "./onepassword-agent";
 import { buildInProcessAgent } from "./ssh-shell-agent";
-import { buildCloudKeyAgent, type CloudKeyRef } from "./cloud-key-agent";
+// Type only: the cloud-key agent pulls in the cloud session (and its IPC
+// registrations), so it is loaded on first use, not with the RPC server.
+import type { buildCloudKeyAgent } from "./cloud-key-agent";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
   HostKeyMismatchError,
 } from "./ssh-host-keys";
 
-/** A single hop in a jumpbox chain. */
-interface SshShellJumpHop {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
-}
+export type { SshShellConfig };
 
-export interface SshShellConfig {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
-  cols: number;
-  rows: number;
-  agentForward?: boolean;
-  /**
-   * Set when `privateKey` is `CLOUD_KEY_SENTINEL`: the org key to authenticate
-   * with. Its private half stays in Infrawrench Cloud: auth goes through a
-   * remote signing agent, so only signatures cross the cloud while the
-   * connection itself stays between this machine and the host.
-   */
-  cloudKey?: CloudKeyRef;
-  /**
-   * Optional intermediate jump hops (outermost-first). When present, the host
-   * dials each in turn (chaining `forwardOut` → `sock`) and then dials the
-   * `host`/`port`/`username`/`privateKey` target through the last hop.
-   * Each hop's host key is verified independently against the local TOFU cache.
-   */
-  jumpHops?: SshShellJumpHop[];
-}
-
-interface ShellRecord {
-  stream: ClientChannel;
-  client: SshClient;
-  webContents: WeakRef<WebContents>;
-}
-
-const shells = new Map<string, ShellRecord>();
+/** What a connection dials: a shell's config without the PTY size (the Linux app server's too). */
+export type SshConnectConfig = Omit<SshShellConfig, "cols" | "rows">;
 
 /**
  * Open one hop. The hop is dialled either directly (when `sock` is undefined)
@@ -128,7 +98,7 @@ function connectOneHop(opts: {
  * cannot drift apart.
  */
 export async function connectSshChain(
-  config: SshShellConfig,
+  config: SshConnectConfig,
 ): Promise<{ client: SshClient; intermediates: SshClient[] }> {
   await ensureHostKeyCacheLoaded();
 
@@ -141,6 +111,7 @@ export async function connectSshChain(
     if (!config.cloudKey) {
       throw new Error("A cloud SSH key was selected but the config does not say which one.");
     }
+    const { buildCloudKeyAgent } = await import("./cloud-key-agent");
     connectAgent = buildCloudKeyAgent(config.cloudKey, {
       host: config.host,
       username: config.username,
@@ -248,114 +219,162 @@ export function endSshChain(client: SshClient, intermediates: SshClient[]): void
   }
 }
 
-export async function spawnSshShell(
-  webContents: WebContents,
+const toSshError = (cause: unknown) => new SshError({ message: errorMessage(cause) });
+
+/**
+ * The whole chain as a scoped resource: dialled on acquire, every hop ended
+ * (innermost first) when the scope closes.
+ */
+export const acquireSshChain = (config: SshConnectConfig) =>
+  Effect.acquireRelease(
+    Effect.tryPromise({ try: () => connectSshChain(config), catch: toSshError }),
+    ({ client, intermediates }) => Effect.sync(() => endSshChain(client, intermediates)),
+  );
+
+/**
+ * How long a closing shell gets to finish its channel teardown before the
+ * connection is ended. With compression negotiated, ending the client inside
+ * the channel's "close" event destroys the zlib writers before the channel's
+ * readable-end tick writes its final packet, which crashes ssh2 with an
+ * uncaught "Invalid Zlib instance".
+ */
+const CHANNEL_TEARDOWN_MS = 100;
+/** A wedged connection whose channel never reports "close" is ended after this. */
+const CHANNEL_CLOSE_TIMEOUT_MS = 3_000;
+
+interface ShellRecord {
+  readonly channel: ClientChannel;
+  readonly client: SshClient;
+  /** The RPC client (renderer connection) that opened it; only it may write. */
+  readonly owner: number;
+}
+
+const shells = new Map<string, ShellRecord>();
+
+/**
+ * Open the PTY on a connected client as a scoped resource. `Opened` goes
+ * into `output` before any data can, and the channel's listeners are
+ * attached in ssh2's callback itself, so nothing the shell prints first is
+ * lost. Releasing it ends the channel, waits for its "close", then lets the
+ * teardown ticks run before the chain's own release ends the connection.
+ */
+const acquireShell = (
+  client: SshClient,
   config: SshShellConfig,
-): Promise<string> {
-  const { client, intermediates } = await connectSshChain(config);
-
-  return new Promise<string>((resolve, reject) => {
-    client.shell(
-      { term: "xterm-256color", cols: config.cols, rows: config.rows },
-      (err, stream) => {
-        if (err) {
-          client.end();
-          for (const c of intermediates) {
-            try {
-              c.end();
-            } catch {
-              /* ignore */
-            }
+  owner: number,
+  output: Queue.Queue<SshShellEvent, SshError | Cause.Done>,
+) => {
+  let closed = false;
+  const shellId = crypto.randomUUID();
+  return Effect.acquireRelease(
+    Effect.callback<ClientChannel, SshError>((resume) => {
+      client.shell(
+        { term: "xterm-256color", cols: config.cols, rows: config.rows },
+        (err, channel) => {
+          if (err) {
+            resume(Effect.fail(toSshError(err)));
+            return;
           }
-          reject(err);
-          return;
+          shells.set(shellId, { channel, client, owner });
+          Queue.offerUnsafe(output, { _tag: "Opened", shellId });
+          const send = (data: Buffer | string) => {
+            Queue.offerUnsafe(output, {
+              _tag: "Data",
+              data: typeof data === "string" ? Buffer.from(data, "utf8") : data,
+            });
+          };
+          channel.on("data", send);
+          channel.stderr?.on("data", send);
+          channel.once("close", () => {
+            closed = true;
+            shells.delete(shellId);
+            Queue.endUnsafe(output);
+          });
+          resume(Effect.succeed(channel));
+        },
+      );
+    }),
+    (channel) =>
+      Effect.gen(function* () {
+        shells.delete(shellId);
+        if (!closed) {
+          yield* Effect.callback<void>((resume) => {
+            channel.once("close", () => resume(Effect.void));
+            try {
+              channel.end();
+            } catch {
+              resume(Effect.void);
+            }
+          }).pipe(Effect.timeoutOption(CHANNEL_CLOSE_TIMEOUT_MS));
         }
+        yield* Effect.sleep(CHANNEL_TEARDOWN_MS);
+      }),
+  );
+};
 
-        const shellId = crypto.randomUUID();
-        shells.set(shellId, { stream, client, webContents: new WeakRef(webContents) });
-
-        const send = (data: Buffer | string) => {
-          const wc = shells.get(shellId)?.webContents.deref();
-          if (wc && !wc.isDestroyed()) {
-            wc.send(
-              `ssh_shell_data_${shellId}`,
-              typeof data === "string" ? Buffer.from(data, "utf8") : data,
-            );
-          }
-        };
-
-        stream.on("data", send);
-        stream.stderr?.on("data", send);
-
-        stream.once("close", () => {
-          const wc = shells.get(shellId)?.webContents.deref();
-          if (wc && !wc.isDestroyed()) {
-            wc.send(`ssh_shell_exit_${shellId}`);
-          }
-          shells.delete(shellId);
-          // Defer ending the connections past the channel's remaining
-          // teardown ticks: with compression negotiated, ending the client
-          // inside the "close" event destroys the zlib writers before the
-          // channel's readable-end tick writes its final packet, which
-          // crashes ssh2 with an uncaught "Invalid Zlib instance".
-          setTimeout(() => {
-            try {
-              client.end();
-            } catch {
-              /* ignore */
-            }
-            for (const c of intermediates) {
-              try {
-                c.end();
-              } catch {
-                /* ignore */
-              }
-            }
-          }, 100).unref?.();
-        });
-
-        resolve(shellId);
-      },
-    );
-  });
-}
-
-export function writeSshShell(shellId: string, data: string): void {
-  shells.get(shellId)?.stream?.write(data);
-}
-
-export function resizeSshShell(shellId: string, cols: number, rows: number): void {
-  shells.get(shellId)?.stream?.setWindow?.(rows, cols, 0, 0);
-}
-
-export function killSshShell(shellId: string): void {
-  const s = shells.get(shellId);
-  if (!s) return;
-  // Only close the channel here; the stream's "close" handler ends the
-  // client. Ending the client synchronously destroys the protocol's zlib
-  // writers while the channel is still finalizing, and with compression
-  // negotiated the channel-close packet then throws "Invalid Zlib instance"
-  // as an uncaught exception inside ssh2 (the write happens on a later tick,
-  // outside any try/catch of ours).
-  try {
-    s.stream?.end?.();
-  } catch {
-    /* ignore */
+/**
+ * Interactive shells. A shell is a stream: subscribing dials the chain and
+ * opens the PTY, the shell's output flows until it exits, and the stream's
+ * scope owns the channel and every hop, so interrupting the stream (the
+ * terminal closing, the renderer reloading or going away) is what ends them.
+ */
+export class SshShells extends Context.Service<
+  SshShells,
+  {
+    readonly open: (
+      config: SshShellConfig,
+      owner: number,
+    ) => Stream.Stream<SshShellEvent, SshError>;
+    readonly write: (shellId: string, owner: number, data: string) => Effect.Effect<void>;
+    readonly resize: (
+      shellId: string,
+      owner: number,
+      cols: number,
+      rows: number,
+    ) => Effect.Effect<void>;
   }
-  // Fallback: if the connection is wedged and "close" never fires, force the
-  // client shut and drop the map entry. By then any channel teardown has
-  // long settled.
-  const client = s.client;
-  setTimeout(() => {
-    shells.delete(shellId);
-    try {
-      client.end();
-    } catch {
-      /* ignore */
-    }
-  }, 3000).unref?.();
+>()("infrawrench/desktop/SshShells") {
+  static readonly layer = Layer.succeed(SshShells)(
+    SshShells.of({
+      open: (config, owner) =>
+        Stream.callback<SshShellEvent, SshError>((output) =>
+          Effect.gen(function* () {
+            const { client } = yield* acquireSshChain(config);
+            yield* acquireShell(client, config, owner, output);
+          }),
+        ),
+      write: (shellId, owner, data) =>
+        Effect.sync(() => {
+          const shell = shells.get(shellId);
+          if (shell?.owner === owner) shell.channel.write(data);
+        }),
+      resize: (shellId, owner, cols, rows) =>
+        Effect.sync(() => {
+          const shell = shells.get(shellId);
+          if (shell?.owner === owner) shell.channel.setWindow(rows, cols, 0, 0);
+        }),
+    }),
+  );
 }
 
+/**
+ * On quit: close every shell's channel. Its "close" ends the stream, whose
+ * scope then ends the connection; a connection that never reports "close" is
+ * ended outright after {@link CHANNEL_CLOSE_TIMEOUT_MS}.
+ */
 export function killAllSshShells(): void {
-  for (const id of [...shells.keys()]) killSshShell(id);
+  for (const shell of shells.values()) {
+    try {
+      shell.channel.end();
+    } catch {
+      /* already closing */
+    }
+    setTimeout(() => {
+      try {
+        shell.client.end();
+      } catch {
+        /* already gone */
+      }
+    }, CHANNEL_CLOSE_TIMEOUT_MS).unref?.();
+  }
 }

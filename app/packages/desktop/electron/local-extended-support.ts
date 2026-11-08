@@ -1,6 +1,6 @@
 /**
- * Local-mode extended-support findings, for the `local_extended_support_list`
- * IPC channel and the CLI's `infrawrench extended-support --local`.
+ * Local-mode extended-support findings, for the `LocalExtendedSupportList` RPC
+ * ({@link LocalExtendedSupport}) and the CLI's `infrawrench extended-support --local`.
  *
  * The same computation the cloud runs (client-core's `computeExtendedSupport`
  * over the plugins' declared support calendars) against this machine's SQLite
@@ -18,6 +18,8 @@
 import type { ExtendedSupportListResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { LocalWorkspaceError } from "../shared/rpc/errors";
 import { getDb } from "./main-utils";
 import { loadPlugins } from "../src/plugins/loader";
 
@@ -82,5 +84,23 @@ export async function listLocalExtendedSupport(
       })),
     },
     opts.leadDays !== undefined ? { leadDays: opts.leadDays } : {},
+  );
+}
+
+/**
+ * The extended-support scan as an Effect service, for Costs over RPC. The
+ * renderer always asks with the default lead time.
+ */
+export class LocalExtendedSupport extends Context.Service<
+  LocalExtendedSupport,
+  { readonly list: Effect.Effect<ExtendedSupportListResponse, LocalWorkspaceError> }
+>()("infrawrench/desktop/LocalExtendedSupport") {
+  static readonly layer = Layer.succeed(LocalExtendedSupport)(
+    LocalExtendedSupport.of({
+      list: Effect.tryPromise({
+        try: () => listLocalExtendedSupport(),
+        catch: LocalWorkspaceError.fromCause,
+      }),
+    }),
   );
 }

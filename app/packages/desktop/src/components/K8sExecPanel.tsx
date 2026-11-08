@@ -11,7 +11,7 @@ import {
   getXtermTerminalOptions,
 } from "@infrawrench/ui";
 import { openK8sExec, type K8sSessionHandle } from "../lib/k8s-dispatch";
-import { invoke } from "../lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 interface K8sExecCloudContext {
   orgId: string;
@@ -43,7 +43,7 @@ export function K8sExecPanel({
 
     // Same link policy as the SSH terminal: a pod shell prints URLs too.
     const linkHandler = createTerminalLinkHandler({
-      openExternal: (url) => void invoke("open_external_url", { url }),
+      openExternal: (url) => void openExternalUrl(url),
     });
     const term = new Terminal({ ...getXtermTerminalOptions(), linkHandler });
 

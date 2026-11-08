@@ -1,26 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { describeLanding } from "../cli/commands/dashboards";
+import { describe, expect, it, vi } from "vitest";
 
-const base = {
-  dashboardId: "d1",
-  dashboardName: "Finance",
-  userDefaultDashboardId: null,
-  roleDefault: null,
-  orgDefaultDashboardId: "home",
-  skipped: [],
-} as const;
+vi.mock("electron", () => ({
+  app: { getPath: () => "/tmp" },
+  ipcMain: { handle: () => {} },
+  safeStorage: { isEncryptionAvailable: () => false },
+}));
+
+import { describeLanding } from "../cli/commands/dashboards";
 
 describe("dashboards CLI: your default", () => {
   it("says which layer the default came from", () => {
-    expect(describeLanding({ ...base, source: "user", skipped: [] })).toBe("your choice");
-    expect(
-      describeLanding({
-        ...base,
-        source: "role",
-        roleDefault: { roleId: "r", roleName: "Finance", dashboardId: "d1" },
-        skipped: [],
-      }),
-    ).toBe("default for the Finance role");
-    expect(describeLanding({ ...base, source: "org", skipped: [] })).toBe("organization default");
+    expect(describeLanding({ source: "user", roleDefault: null })).toBe("your choice");
+    expect(describeLanding({ source: "role", roleDefault: { roleName: "Finance" } })).toBe(
+      "default for the Finance role",
+    );
+    expect(describeLanding({ source: "org", roleDefault: null })).toBe("organization default");
   });
 });

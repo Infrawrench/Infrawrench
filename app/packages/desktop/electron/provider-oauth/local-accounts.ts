@@ -1,7 +1,7 @@
 /**
  * Decrypting a local account's credentials, with provider OAuth applied: the
  * one path every main-process decrypt site goes through (the
- * `account_get_credentials` IPC, `plugin-runtime.ts`, the CLI's
+ * `LocalAccountCredentials` RPC, `plugin-runtime.ts`, the CLI's
  * `infrafile/plugin-host.ts`). An OAuth-connected account comes back with a
  * valid access token, refreshed and written back here when it was about to
  * expire; a pasted credential comes back exactly as stored.

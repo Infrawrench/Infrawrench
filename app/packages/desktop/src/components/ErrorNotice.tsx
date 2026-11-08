@@ -1,5 +1,5 @@
 import { ErrorNotice as SharedErrorNotice } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 interface ErrorNoticeProps {
   message: string;
@@ -9,7 +9,7 @@ interface ErrorNoticeProps {
 
 async function handleOpenLink(url: string) {
   try {
-    await invoke("open_external_url", { url });
+    await openExternalUrl(url);
   } catch {
     window.open(url, "_blank", "noopener,noreferrer");
   }

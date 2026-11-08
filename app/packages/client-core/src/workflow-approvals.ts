@@ -4,7 +4,7 @@
  * A run that calls `infra.waitForApproval(...)` suspends and writes a pending
  * `workflow_approvals` row; these are the reads and writes that land the
  * decision. Server contract: `/api/org/:orgId/workflow-approvals` (web
- * `api/routes/workflow-approvals.ts`); listing takes `workflows:read`,
+ * `http/domains/workflow-approvals/`); listing takes `workflows:read`,
  * approving or denying takes `workflows:approve`, which is deliberately not
  * `workflows:write`.
  *

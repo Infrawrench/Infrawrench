@@ -5,7 +5,7 @@
  * renderer IPC, so it never imports this.
  *
  * Which credentials count is decided by key name, not by the account's
- * `plugin_id`: the renderer can rewrite that column through `db_execute`, so
+ * `plugin_id`: the renderer can rewrite that column through `LocalDbExecute`, so
  * binding to it would let a value saved under an unguarded plugin be rebound
  * to the Kubernetes or Docker plugin afterwards. Any key that some bundled
  * manifest declares as its Kubernetes or Docker driver credential is gated on

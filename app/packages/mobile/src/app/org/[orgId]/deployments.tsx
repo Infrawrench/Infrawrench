@@ -23,7 +23,7 @@ import { colors } from "@/lib/theme";
 
 /**
  * Read-only deploy history (GET /api/org/:orgId/deployments/runs: see
- * app/packages/web/src/api/routes/deployments.ts).
+ * app/packages/web/src/http/domains/deployments/).
  *
  * Deploying stays on web and the CLI. It is a deliberate omission rather than a
  * gap: a deploy asks questions through `select(...)`, streams build output for

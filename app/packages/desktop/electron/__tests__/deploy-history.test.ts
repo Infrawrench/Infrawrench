@@ -54,6 +54,17 @@ describe("deploy-history", () => {
     expect(readLocalDeploys()).toEqual([]);
   });
 
+  it("keeps a run written before created resources were recorded", () => {
+    // Lines from before 2026-07-30 have no `createdResources` key.
+    const { createdResources: _dropped, ...older } = run({ id: "before-ledger" });
+    fs.writeFileSync(
+      path.join(tmpRoot, "deploy-history.jsonl"),
+      `${JSON.stringify(older)}\n`,
+      "utf8",
+    );
+    expect(readLocalDeploys()).toEqual([{ ...older, createdResources: [] }]);
+  });
+
   it("reads runs back newest first", () => {
     recordLocalDeploy(run({ id: "older" }));
     recordLocalDeploy(run({ id: "newer" }));

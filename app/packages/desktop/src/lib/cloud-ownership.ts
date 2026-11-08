@@ -1,41 +1,46 @@
 /**
- * Resource ownership: cloud-mode only. One wrapper per allowlisted IPC
- * channel, matching `cloud-probes.ts`.
+ * Resource ownership: cloud-mode only. Typed calls to the contract's
+ * `ownership` domain over the cloud transport (`./cloud-client.ts`),
+ * matching `cloud-probes.ts`.
  */
 import type {
   OwnerCandidate,
   ResourceOwnership,
   ResourceOwnershipPatch,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudOwnerCandidates(orgId: string): Promise<OwnerCandidate[]> {
-  const res = await invoke<{ members: OwnerCandidate[] }>("cloud_ownership_members", { orgId });
-  return res.members;
+const ownership = () => cloudClient("ownership").ownership;
+
+export function listCloudOwnerCandidates(orgId: string): Promise<OwnerCandidate[]> {
+  return runRpc(
+    ownership()
+      .members({ params: { orgId } })
+      .pipe(Effect.map((res) => res.members)),
+  );
 }
 
-export async function fetchCloudResourceOwnership(
+export function fetchCloudResourceOwnership(
   orgId: string,
   resourceId: string,
 ): Promise<ResourceOwnership | null> {
-  const res = await invoke<{ ownership: ResourceOwnership | null }>("cloud_ownership_get", {
-    orgId,
-    resourceId,
-  });
-  return res.ownership;
+  return runRpc(
+    ownership()
+      .resource({ params: { orgId }, query: { resourceId } })
+      .pipe(Effect.map((res) => res.ownership)),
+  );
 }
 
 /** Answers null when the patch left nothing to record: the row is dropped. */
-export async function saveCloudResourceOwnership(
+export function saveCloudResourceOwnership(
   orgId: string,
   patch: ResourceOwnershipPatch,
 ): Promise<ResourceOwnership | null> {
-  return invoke("cloud_ownership_save", { orgId, patch });
+  return runRpc(ownership().set({ params: { orgId }, payload: patch }));
 }
 
-export async function clearCloudResourceOwnership(
-  orgId: string,
-  resourceId: string,
-): Promise<void> {
-  await invoke("cloud_ownership_clear", { orgId, resourceId });
+export function clearCloudResourceOwnership(orgId: string, resourceId: string): Promise<void> {
+  return runRpc(ownership().clear({ params: { orgId }, query: { resourceId } }));
 }

@@ -9,10 +9,14 @@
  * hosts, agent forwarding and the TOFU host-key check behave identically to a
  * terminal. Everything above the connection is `@infrawrench/appstream-host`,
  * shared with the web server.
+ *
+ * Served as the `Apps*` RPCs (`shared/rpc/groups/linux-apps.ts`): a session
+ * and an install are each one stream whose scope owns the connection.
  */
 
 import * as crypto from "node:crypto";
-import { ipcMain, type WebContents } from "electron";
+import type { Client as SshClient } from "ssh2";
+import { Context, Effect, Layer, Queue, Schema, Stream } from "effect";
 import {
   checkHost,
   installRequirements,
@@ -21,21 +25,24 @@ import {
   probeHost,
   startAppServer,
   type AppServerSession,
-  type HostRequirementsCheck,
-  type InstallOutcome,
   type RequirementId,
 } from "@infrawrench/appstream-host";
 
-import { connectSshChain, endSshChain, type SshShellConfig } from "./ssh-shell";
+import { errorMessage } from "../shared/rpc/errors";
+import {
+  AppEntry,
+  LinuxAppsError,
+  type AppsInstallEvent,
+  type AppsSessionEvent,
+  type HostRequirementsCheck,
+} from "../shared/rpc/groups/linux-apps";
+import { acquireSshChain, type SshConnectConfig } from "./ssh-shell";
 import { getArm64GzBinary, getx86_64GzBinary } from "./iwappd-archive";
 
-type SshClient = Awaited<ReturnType<typeof connectSshChain>>["client"];
-
 interface SessionRecord {
-  session: AppServerSession;
-  client: SshClient;
-  intermediates: SshClient[];
-  webContents: WeakRef<WebContents>;
+  readonly session: AppServerSession;
+  /** The RPC client (renderer connection) that opened it; only it may write. */
+  readonly owner: number;
 }
 
 const sessions = new Map<string, SessionRecord>();
@@ -44,87 +51,103 @@ const sessions = new Map<string, SessionRecord>();
 const binaryForArch = (arch: "x86_64" | "aarch64") =>
   arch === "x86_64" ? getx86_64GzBinary() : getArm64GzBinary();
 
-function send(sessionId: string, channel: string, payload?: unknown): void {
-  const target = sessions.get(sessionId)?.webContents.deref();
-  if (target && !target.isDestroyed()) target.send(channel, payload);
-}
+const toAppsError = (cause: unknown) => new LinuxAppsError({ message: errorMessage(cause) });
+
+/** The connection as a scoped resource, failing with this group's error. */
+const connect = (config: SshConnectConfig) =>
+  acquireSshChain(config).pipe(
+    Effect.mapError((error) => new LinuxAppsError({ message: error.message })),
+  );
 
 /**
- * Open a session: connect, stage the binary in RAM, exec it, and start
- * forwarding frames. Returns the id the renderer addresses it by.
+ * Start the app server on a connected client as a scoped resource: releasing
+ * it closes the server (the chain's own release then ends the connection).
  */
-async function openSession(
-  webContents: WebContents,
-  config: SshShellConfig,
-): Promise<{ sessionId: string }> {
-  const { client, intermediates } = await connectSshChain(config);
-  const sessionId = crypto.randomUUID();
+const acquireSession = (
+  client: SshClient,
+  sessionId: string,
+  owner: number,
+  emit: (event: AppsSessionEvent) => void,
+) =>
+  Effect.acquireRelease(
+    Effect.tryPromise({
+      try: () =>
+        startAppServer(client, {
+          sessionId,
+          binaryForArch,
+          // The host outlives a dropped connection by design, but not for long:
+          // nobody should discover a forgotten compositor on their VM next week.
+          idleTimeoutSecs: 30 * 60,
+          onProgress: (stage) => emit({ _tag: "Progress", stage }),
+          onStderr: (line) => {
+            console.warn(`[iwappd ${sessionId.slice(0, 8)}] ${line}`);
+            emit({ _tag: "Stderr", line });
+          },
+        }),
+      catch: toAppsError,
+    }),
+    (session) =>
+      Effect.sync(() => {
+        sessions.delete(sessionId);
+        try {
+          session.close();
+        } catch {
+          /* already gone */
+        }
+      }),
+  ).pipe(Effect.tap((session) => Effect.sync(() => sessions.set(sessionId, { session, owner }))));
 
-  try {
-    const session = await startAppServer(client, {
-      sessionId,
-      binaryForArch,
-      // The host outlives a dropped connection by design, but not for long:
-      // nobody should discover a forgotten compositor on their VM next week.
-      idleTimeoutSecs: 30 * 60,
-      onProgress: (stage) => send(sessionId, `apps_progress_${sessionId}`, stage),
-      onStderr: (line) => {
-        console.warn(`[iwappd ${sessionId.slice(0, 8)}] ${line}`);
-        send(sessionId, `apps_stderr_${sessionId}`, line);
-      },
-    });
+/**
+ * Open a session: connect, stage the binary in RAM, exec it, and forward
+ * frames until the app server exits.
+ */
+const openSession = (config: SshConnectConfig, owner: number) =>
+  Stream.callback<AppsSessionEvent, LinuxAppsError>((queue) =>
+    Effect.gen(function* () {
+      const emit = (event: AppsSessionEvent) => {
+        Queue.offerUnsafe(queue, event);
+      };
+      const { client } = yield* connect(config);
+      const sessionId = crypto.randomUUID();
+      const session = yield* acquireSession(client, sessionId, owner, emit);
+      // A copy, because ssh2 reuses its read buffers.
+      session.onData((chunk) => emit({ _tag: "Data", data: new Uint8Array(chunk) }));
+      session.onClose(() => {
+        sessions.delete(sessionId);
+        Queue.endUnsafe(queue);
+      });
+      emit({ _tag: "Opened", sessionId });
+    }),
+  );
 
-    sessions.set(sessionId, {
-      session,
-      client,
-      intermediates,
-      webContents: new WeakRef(webContents),
-    });
-
-    session.onData((chunk) => {
-      // A copy, because the renderer gets a structured clone and ssh2 reuses
-      // its read buffers.
-      send(sessionId, `apps_data_${sessionId}`, new Uint8Array(chunk));
-    });
-    session.onClose((code) => {
-      send(sessionId, `apps_exit_${sessionId}`, code);
-      closeSession(sessionId);
-    });
-
-    return { sessionId };
-  } catch (err) {
-    endSshChain(client, intermediates);
-    throw err;
-  }
-}
-
-function closeSession(sessionId: string): void {
-  const record = sessions.get(sessionId);
-  if (!record) return;
-  sessions.delete(sessionId);
-  try {
-    record.session.close();
-  } catch {
-    /* already gone */
-  }
-  endSshChain(record.client, record.intermediates);
-}
+const decodeApps = Schema.decodeUnknownEffect(Schema.mutable(Schema.Array(AppEntry)));
 
 /**
  * The host's applications without opening a session: one exec that uploads,
  * lists and deletes. What the launcher paints first.
  */
-async function listHostApps(config: SshShellConfig, iconSize?: number): Promise<unknown[]> {
-  const { client, intermediates } = await connectSshChain(config);
-  try {
-    return await listApps(client, {
-      binaryForArch,
-      ...(iconSize !== undefined ? { iconSize } : {}),
-    });
-  } finally {
-    endSshChain(client, intermediates);
-  }
-}
+const listHostApps = (config: SshConnectConfig, iconSize: number | undefined) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { client } = yield* connect(config);
+      const raw = yield* Effect.tryPromise({
+        try: () =>
+          listApps(client, {
+            binaryForArch,
+            ...(iconSize !== undefined ? { iconSize } : {}),
+          }),
+        catch: toAppsError,
+      });
+      return yield* decodeApps(raw).pipe(
+        Effect.mapError(
+          (issue) =>
+            new LinuxAppsError({
+              message: `The app server listed its apps oddly: ${issue.message}`,
+            }),
+        ),
+      );
+    }),
+  );
 
 /**
  * What the host is missing, before anything is uploaded.
@@ -133,14 +156,13 @@ async function listHostApps(config: SshShellConfig, iconSize?: number): Promise<
  * answer on a host where starting a session would fail: no `gunzip` and the
  * staging step cannot even unpack the binary.
  */
-async function preflightHost(config: SshShellConfig): Promise<HostRequirementsCheck> {
-  const { client, intermediates } = await connectSshChain(config);
-  try {
-    return await checkHost(client);
-  } finally {
-    endSshChain(client, intermediates);
-  }
-}
+const preflightHost = (config: SshConnectConfig) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { client } = yield* connect(config);
+      return yield* Effect.tryPromise({ try: () => checkHost(client), catch: toAppsError });
+    }),
+  );
 
 /**
  * Install what the host is missing, streaming the package manager's output
@@ -151,70 +173,74 @@ async function preflightHost(config: SshShellConfig): Promise<HostRequirementsCh
  * commands that then run are ours. A renderer that could hand over a command
  * line would be an arbitrary-root-command channel wearing a helpful hat.
  */
-async function installOnHost(
-  webContents: WebContents,
-  installId: string,
-  config: SshShellConfig,
-  include: RequirementId[] | undefined,
-): Promise<InstallOutcome> {
-  const { client, intermediates } = await connectSshChain(config);
-  try {
-    const preflight = await probeHost(client);
-    const plan = planInstall(preflight, include ? { include } : {});
-    if (!plan) return { log: [], failed: [], preflight };
+const installOnHost = (config: SshConnectConfig, include: readonly RequirementId[] | undefined) =>
+  Stream.callback<AppsInstallEvent, LinuxAppsError>((queue) =>
+    Effect.gen(function* () {
+      const { client } = yield* connect(config);
+      const emit = (line: string) => {
+        Queue.offerUnsafe(queue, { _tag: "Output", line });
+      };
+      const outcome = yield* Effect.tryPromise({
+        try: async () => {
+          const preflight = await probeHost(client);
+          const plan = planInstall(preflight, include ? { include: [...include] } : {});
+          if (!plan) return { log: [], failed: [], preflight };
+          for (const command of plan.commands) emit(`$ ${command}`);
+          return await installRequirements(client, plan, { onOutput: emit });
+        },
+        catch: toAppsError,
+      });
+      Queue.offerUnsafe(queue, { _tag: "Done", outcome });
+      Queue.endUnsafe(queue);
+    }),
+  );
 
-    const emit = (line: string) => {
-      if (!webContents.isDestroyed()) webContents.send(`apps_install_${installId}`, line);
-    };
-    for (const command of plan.commands) emit(`$ ${command}`);
-    return await installRequirements(client, plan, { onOutput: emit });
-  } finally {
-    endSshChain(client, intermediates);
+export class LinuxApps extends Context.Service<
+  LinuxApps,
+  {
+    readonly open: (
+      config: SshConnectConfig,
+      owner: number,
+    ) => Stream.Stream<AppsSessionEvent, LinuxAppsError>;
+    readonly write: (sessionId: string, owner: number, data: Uint8Array) => Effect.Effect<void>;
+    readonly list: (
+      config: SshConnectConfig,
+      iconSize: number | undefined,
+    ) => Effect.Effect<Array<typeof AppEntry.Type>, LinuxAppsError>;
+    readonly preflight: (
+      config: SshConnectConfig,
+    ) => Effect.Effect<HostRequirementsCheck, LinuxAppsError>;
+    readonly install: (
+      config: SshConnectConfig,
+      include: readonly RequirementId[] | undefined,
+    ) => Stream.Stream<AppsInstallEvent, LinuxAppsError>;
   }
-}
-
-export function registerIwappdHandlers(): void {
-  ipcMain.handle("apps_session_open", (event, config: SshShellConfig) =>
-    openSession(event.sender, config),
-  );
-
-  ipcMain.handle(
-    "apps_session_write",
-    (_event, { sessionId, data }: { sessionId: string; data: Uint8Array }) => {
-      const record = sessions.get(sessionId);
-      if (!record) return;
-      record.session.write(Buffer.from(data));
-    },
-  );
-
-  ipcMain.handle("apps_session_close", (_event, { sessionId }: { sessionId: string }) => {
-    closeSession(sessionId);
-  });
-
-  ipcMain.handle(
-    "apps_list",
-    (_event, { config, iconSize }: { config: SshShellConfig; iconSize?: number }) =>
-      listHostApps(config, iconSize),
-  );
-
-  ipcMain.handle("apps_preflight", (_event, { config }: { config: SshShellConfig }) =>
-    preflightHost(config),
-  );
-
-  ipcMain.handle(
-    "apps_install",
-    (
-      event,
-      {
-        config,
-        installId,
-        include,
-      }: { config: SshShellConfig; installId: string; include?: RequirementId[] },
-    ) => installOnHost(event.sender, installId, config, include),
+>()("infrawrench/desktop/LinuxApps") {
+  static readonly layer = Layer.succeed(LinuxApps)(
+    LinuxApps.of({
+      open: openSession,
+      write: (sessionId, owner, data) =>
+        Effect.sync(() => {
+          const record = sessions.get(sessionId);
+          if (record?.owner === owner) record.session.write(Buffer.from(data));
+        }),
+      list: listHostApps,
+      preflight: preflightHost,
+      install: installOnHost,
+    }),
   );
 }
 
-/** Close every session: called when the app quits. */
+/**
+ * Close every session: called when the app quits. Each close ends its
+ * stream, whose scope then ends the connection.
+ */
 export function shutdownIwappdSessions(): void {
-  for (const sessionId of [...sessions.keys()]) closeSession(sessionId);
+  for (const { session } of [...sessions.values()]) {
+    try {
+      session.close();
+    } catch {
+      /* already gone */
+    }
+  }
 }

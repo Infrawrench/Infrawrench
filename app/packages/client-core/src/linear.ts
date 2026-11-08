@@ -9,7 +9,7 @@ import type {
 
 /**
  * Linear issue tracking for findings. Server contract: org-scoped
- * `/api/org/:orgId/linear/*` routes (see web `api/routes/linear.ts`).
+ * `/api/org/:orgId/linear/*` routes (see web `http/domains/linear/`).
  *
  * The second tracker next to Jira (`jira.ts`), covering the same six finding
  * kinds. The source-kind union is shared with Jira on purpose: a finding is

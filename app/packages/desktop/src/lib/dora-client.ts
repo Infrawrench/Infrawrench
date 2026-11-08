@@ -1,13 +1,28 @@
 import { useUIStore } from "@infrawrench/ui";
 import type { DoraClient } from "@infrawrench/ui/dora";
-import {
-  doraQueryString,
-  type DoraChangesResponse,
-  type DoraReport,
-  type DoraRestoresResponse,
-  type DoraSettingsView,
+import type {
+  DoraChangesResponse,
+  DoraQuery,
+  DoraReport,
+  DoraRestoresResponse,
+  DoraSettingsView,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const dora = () => cloudClient("dora").dora;
+
+/**
+ * The window and scope filter every DORA read takes, as `doraQueryString`
+ * builds them: `value` only alongside `dimension`.
+ */
+function windowQuery(q: DoraQuery) {
+  return {
+    from: q.from,
+    to: q.to,
+    ...(q.dimension ? { dimension: q.dimension, ...(q.value ? { value: q.value } : {}) } : {}),
+  };
+}
 
 /**
  * Delivery (DORA metrics) is cloud-only: the deploy events and incidents live
@@ -23,21 +38,29 @@ function requireOrgId(): string {
 
 export function createDesktopDoraClient(): DoraClient {
   return {
-    getReport: (q) =>
-      invoke<DoraReport>("cloud_dora_report", { orgId: requireOrgId(), qs: doraQueryString(q) }),
-    listChanges: (q) =>
-      invoke<DoraChangesResponse>("cloud_dora_changes", {
-        orgId: requireOrgId(),
-        qs: doraQueryString(q),
-      }),
-    listRestores: (q) =>
-      invoke<DoraRestoresResponse>("cloud_dora_restores", {
-        orgId: requireOrgId(),
-        qs: doraQueryString(q),
-      }),
-    getSettings: () =>
-      invoke<DoraSettingsView>("cloud_dora_settings_get", { orgId: requireOrgId() }),
-    updateSettings: (patch) =>
-      invoke<DoraSettingsView>("cloud_dora_settings_update", { orgId: requireOrgId(), patch }),
+    getReport: (q): Promise<DoraReport> =>
+      runRpc(
+        dora().report({
+          params: { orgId: requireOrgId() },
+          query: {
+            ...windowQuery(q),
+            ...(q.groupBy ? { groupBy: q.groupBy } : {}),
+            ...(q.bucket ? { bucket: q.bucket } : {}),
+          },
+        }),
+      ),
+    listChanges: (q): Promise<DoraChangesResponse> =>
+      runRpc(
+        dora().changes({
+          params: { orgId: requireOrgId() },
+          query: { ...windowQuery(q), ...(q.failedOnly ? { failedOnly: "true" } : {}) },
+        }),
+      ),
+    listRestores: (q): Promise<DoraRestoresResponse> =>
+      runRpc(dora().restores({ params: { orgId: requireOrgId() }, query: windowQuery(q) })),
+    getSettings: (): Promise<DoraSettingsView> =>
+      runRpc(dora().settings({ params: { orgId: requireOrgId() } })),
+    updateSettings: (patch): Promise<DoraSettingsView> =>
+      runRpc(dora().updateSettings({ params: { orgId: requireOrgId() }, payload: patch })),
   };
 }

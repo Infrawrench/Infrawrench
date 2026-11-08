@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Effect, Exit, Option } from "effect";
 
 // `cli/args` reaches `cli/context` for CliError, which pulls the Electron app
 // object and the plugin host at import time. None of it runs here.
@@ -8,100 +9,9 @@ vi.mock("electron", () => ({
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-import {
-  buildAnomalyFeedbackInput,
-  isIsoDay,
-  parseCliArgs,
-  parseLastDays,
-  resolveDayWindow,
-  resolvePrecisionMonths,
-} from "../cli/args";
-
-describe("parseCliArgs — exports create", () => {
-  it("collects repeatable --target pairs and the schedule flags", () => {
-    const parsed = parseCliArgs([
-      "exports",
-      "create",
-      "--name",
-      "Finance",
-      "--plugin",
-      "snowflake",
-      "--target",
-      "database=ANALYTICS",
-      "--target",
-      "table=COSTS",
-      "--hour",
-      "6",
-      "--restatement-days",
-      "14",
-    ]);
-    expect(parsed.exports).toMatchObject({
-      name: "Finance",
-      plugin: "snowflake",
-      target: ["database=ANALYTICS", "table=COSTS"],
-      hour: 6,
-      restatementDays: 14,
-    });
-  });
-
-  it("rejects an out-of-range hour", () => {
-    expect(() => parseCliArgs(["exports", "create", "--hour", "24"])).toThrow(/0 to 23/);
-  });
-});
-
-describe("parseCliArgs — flags for changes / graph / anomalies", () => {
-  it("reads --anomalies as a costs modifier, not a command", () => {
-    const parsed = parseCliArgs(["costs", "--anomalies"]);
-    expect(parsed.positionals).toEqual(["costs"]);
-    expect(parsed.anomalies).toBe(true);
-  });
-
-  it("defaults --anomalies off", () => {
-    expect(parseCliArgs(["costs"]).anomalies).toBe(false);
-  });
-
-  it("parses the numeric window flags as numbers", () => {
-    const { range } = parseCliArgs(["changes", "--days", "14", "--limit", "20"]);
-    expect(range.days).toBe(14);
-    expect(range.limit).toBe(20);
-  });
-
-  it("rejects a non-integer window with exit code 2", () => {
-    expect(() => parseCliArgs(["changes", "--days", "2.5"])).toThrow(/whole number/);
-    try {
-      parseCliArgs(["changes", "--limit", "0"]);
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect((e as { exitCode?: number }).exitCode).toBe(2);
-    }
-  });
-
-  it("carries --kind and --resource through unparsed", () => {
-    const { range } = parseCliArgs([
-      "changes",
-      "--kind",
-      "updated",
-      "--resource",
-      "acct:droplet:123",
-    ]);
-    expect(range.kind).toBe("updated");
-    expect(range.resource).toBe("acct:droplet:123");
-  });
-
-  it("leaves the new flags undefined when absent", () => {
-    const { range } = parseCliArgs(["graph"]);
-    expect(range.days).toBeUndefined();
-    expect(range.limit).toBeUndefined();
-    expect(range.kind).toBeUndefined();
-    expect(range.resource).toBeUndefined();
-  });
-
-  it("passes everything after -- through as positionals (ssh-fanout's escape hatch)", () => {
-    const parsed = parseCliArgs(["ssh-fanout", "-y", "--", "uptime", "-p", "--since"]);
-    expect(parsed.positionals).toEqual(["ssh-fanout", "uptime", "-p", "--since"]);
-    expect(parsed.fanout.yes).toBe(true);
-  });
-});
+import { parseLastDays } from "../cli/args";
+import { resolveDayWindow } from "../cli/effect/range-flags";
+import { type FeedbackFlags, feedbackRequest, isIsoDay } from "../cli/commands/anomaly-feedback";
 
 describe("parseLastDays", () => {
   it("converts days, weeks and months", () => {
@@ -116,242 +26,101 @@ describe("parseLastDays", () => {
 });
 
 describe("resolveDayWindow", () => {
+  const window = (days: number | undefined, last: number | undefined) =>
+    Effect.runSyncExit(
+      resolveDayWindow(
+        { days: Option.fromUndefinedOr(days), last: Option.fromUndefinedOr(last) },
+        30,
+        90,
+      ),
+    );
+
   it("falls back to the caller's default", () => {
-    expect(resolveDayWindow({}, 30, 90)).toBe(30);
+    expect(window(undefined, undefined)).toEqual(Exit.succeed(30));
   });
 
   it("prefers an explicit --days over --last", () => {
-    expect(resolveDayWindow({ days: 7, last: "30d" }, 30, 90)).toBe(7);
+    expect(window(7, 30)).toEqual(Exit.succeed(7));
   });
 
   it("converts --last", () => {
-    expect(resolveDayWindow({ last: "2w" }, 30, 90)).toBe(14);
+    expect(window(undefined, 14)).toEqual(Exit.succeed(14));
   });
 
   it("refuses a window the endpoint would reject, before the round trip", () => {
-    expect(() => resolveDayWindow({ days: 120 }, 30, 90)).toThrow(/at most 90 days/);
-  });
-});
-
-describe("unit-costs flags", () => {
-  it("defaults --margin off so a request never carries the mode it didn't ask for", () => {
-    expect(parseCliArgs(["unit-costs", "active-customers"]).margin).toBe(false);
-  });
-
-  it("parses --margin", () => {
-    const parsed = parseCliArgs(["unit-costs", "active-customers", "--margin"]);
-    expect(parsed.margin).toBe(true);
-    expect(parsed.positionals).toEqual(["unit-costs", "active-customers"]);
-  });
-
-  it("leaves the shared range flags available to the command", () => {
-    const parsed = parseCliArgs([
-      "unit-costs",
-      "active-customers",
-      "--last",
-      "90d",
-      "--group-by",
-      "weekly",
-      "--basis",
-      "amortized",
-    ]);
-    expect(parsed.range.last).toBe("90d");
-    expect(parsed.range.groupBy).toBe("weekly");
-    expect(parsed.range.basis).toBe("amortized");
-  });
-});
-
-describe("parseCliArgs — reports move/delete and budgets annotate", () => {
-  it("keeps one positional per item and reads the destination", () => {
-    const parsed = parseCliArgs([
-      "reports",
-      "move",
-      "Monthly spend",
-      "folder:Finance / Q3",
-      "--folder",
-      "Archive",
-    ]);
-    expect(parsed.positionals).toEqual(["reports", "move", "Monthly spend", "folder:Finance / Q3"]);
-    expect(parsed.bulk.folder).toBe("Archive");
-    expect(parsed.bulk.yes).toBe(false);
-  });
-
-  it("reads -y for a bulk delete", () => {
-    expect(parseCliArgs(["reports", "delete", "Old", "-y"]).bulk.yes).toBe(true);
-  });
-
-  it("reads the note and the event for budgets annotate", () => {
-    const { bulk } = parseCliArgs([
-      "budgets",
-      "annotate",
-      "Prod",
-      "--note",
-      "Load test",
-      "--event",
-      "evt-1",
-    ]);
-    expect(bulk.note).toBe("Load test");
-    expect(bulk.event).toBe("evt-1");
+    const refused = window(120, undefined);
+    expect(Exit.isFailure(refused) && String(refused.cause)).toMatch(/at most 90 days/);
   });
 });
 
 describe("costs --anomalies feedback flags", () => {
-  const build = (argv: string[]) => {
-    const parsed = parseCliArgs(argv);
-    return buildAnomalyFeedbackInput(parsed.anomalyFeedback, parsed.flags.reason);
-  };
-
-  it("keeps the verb and id as positionals", () => {
-    const parsed = parseCliArgs(["costs", "--anomalies", "feedback", "abcd1234", "--expected"]);
-    expect(parsed.positionals).toEqual(["costs", "feedback", "abcd1234"]);
-    expect(parsed.anomalies).toBe(true);
-    expect(parsed.anomalyFeedback.expected).toBe(true);
+  const flags = (over: Partial<FeedbackFlags>): FeedbackFlags => ({
+    expected: false,
+    unexpected: false,
+    clear: false,
+    reason: Option.none(),
+    note: Option.none(),
+    recurrence: Option.none(),
+    expires: Option.none(),
+    explain: false,
+    ...over,
   });
+  const build = (over: Partial<FeedbackFlags>) => Effect.runSyncExit(feedbackRequest(flags(over)));
 
   it("builds a full expected verdict with a suppression", () => {
     expect(
-      build([
-        "costs",
-        "--anomalies",
-        "feedback",
-        "a1",
-        "--expected",
-        "--reason",
-        "planned_launch",
-        "--note",
-        "  launch week  ",
-        "--explain",
-        "--recurrence",
-        "weekly",
-        "--expires",
-        "2026-12-31",
-      ]),
-    ).toEqual({
-      clear: false,
-      input: {
-        verdict: "expected",
-        reason: "planned_launch",
-        note: "launch week",
+      build({
+        expected: true,
+        reason: Option.some("planned_launch"),
+        note: Option.some("  launch week  "),
         explain: true,
-        suppress: { recurrence: "weekly", expiresOn: "2026-12-31" },
-      },
-    });
+        recurrence: Option.some("weekly"),
+        expires: Option.some("2026-12-31"),
+      }),
+    ).toEqual(
+      Exit.succeed({
+        clear: false,
+        input: {
+          verdict: "expected",
+          reason: "planned_launch",
+          note: "launch week",
+          explain: true,
+          suppress: { recurrence: "weekly", expiresOn: "2026-12-31" },
+        },
+      }),
+    );
   });
 
   it("builds a bare unexpected verdict and a clear", () => {
-    expect(build(["costs", "feedback", "a1", "--unexpected"])).toEqual({
-      clear: false,
-      input: { verdict: "unexpected" },
-    });
-    expect(build(["costs", "feedback", "a1", "--clear"])).toEqual({ clear: true });
+    expect(build({ unexpected: true })).toEqual(
+      Exit.succeed({ clear: false, input: { verdict: "unexpected" } }),
+    );
+    expect(build({ clear: true })).toEqual(Exit.succeed({ clear: true }));
   });
 
   it.each([
-    [[], /--expected .* or --unexpected/],
-    [["--expected", "--unexpected"], /mutually exclusive/],
-    [["--clear", "--expected"], /--clear withdraws/],
-    [["--expected", "--reason", "vibes"], /--reason must be one of/],
-    [["--unexpected", "--recurrence", "weekly"], /only makes sense for an --expected/],
-    [["--expected", "--recurrence", "daily"], /--recurrence must be one of/],
-    [["--expected", "--expires", "2026-12-31"], /add --recurrence/],
-    [["--expected", "--recurrence", "one_off", "--expires", "2026-02-30"], /YYYY-MM-DD/],
-    [["--expected", "--explain"], /add --note/],
-    [["--expected", "--note", "x".repeat(501)], /at most 500/],
-  ])("rejects %j with exit code 2", (extra, message) => {
-    let error: unknown;
-    try {
-      build(["costs", "feedback", "a1", ...extra]);
-    } catch (e) {
-      error = e;
-    }
-    expect((error as Error).message).toMatch(message);
-    expect((error as { exitCode: number }).exitCode).toBe(2);
+    [{}, /--expected .* or --unexpected/],
+    [{ expected: true, unexpected: true }, /mutually exclusive/],
+    [{ clear: true, expected: true }, /--clear withdraws/],
+    [{ expected: true, reason: Option.some("vibes") }, /--reason must be one of/],
+    [{ unexpected: true, recurrence: Option.some("weekly") }, /only makes sense for an --expected/],
+    [{ expected: true, recurrence: Option.some("daily") }, /--recurrence must be one of/],
+    [{ expected: true, expires: Option.some("2026-12-31") }, /add --recurrence/],
+    [
+      { expected: true, recurrence: Option.some("one_off"), expires: Option.some("2026-02-30") },
+      /YYYY-MM-DD/,
+    ],
+    [{ expected: true, explain: true }, /add --note/],
+    [{ expected: true, note: Option.some("x".repeat(501)) }, /at most 500/],
+  ])("rejects %j with exit code 2", (over: Partial<FeedbackFlags>, message) => {
+    const error = Effect.runSync(Effect.flip(feedbackRequest(flags(over))));
+    expect(error.message).toMatch(message);
+    expect(error.exitCode).toBe(2);
   });
 
   it("validates real calendar days", () => {
     expect(isIsoDay("2024-02-29")).toBe(true);
     expect(isIsoDay("2026-02-29")).toBe(false);
     expect(isIsoDay("2026-1-01")).toBe(false);
-  });
-
-  it("bounds --months for the precision report", () => {
-    expect(resolvePrecisionMonths(undefined)).toBe(6);
-    expect(resolvePrecisionMonths(12)).toBe(12);
-    expect(() => resolvePrecisionMonths(25)).toThrow(/at most 24/);
-    expect(parseCliArgs(["costs", "--months", "3"]).anomalyFeedback.months).toBe(3);
-    expect(() => parseCliArgs(["costs", "--months", "0"])).toThrow(/at least 1/);
-  });
-});
-
-describe("parseCliArgs: leaks", () => {
-  it("reads the leak flags, defaulting to closing the finding upstream", () => {
-    const bare = parseCliArgs(["leaks", "rotate", "abc"]);
-    expect(bare.positionals).toEqual(["leaks", "rotate", "abc"]);
-    expect(bare.leaks).toEqual({
-      status: undefined,
-      comment: undefined,
-      valueStdin: false,
-      keepUpstreamOpen: false,
-    });
-    const full = parseCliArgs([
-      "leaks",
-      "dismiss",
-      "abc",
-      "--reason",
-      "used-in-tests",
-      "--comment",
-      "fixture key",
-      "--keep-upstream-open",
-      "--status",
-      "all",
-      "--value-stdin",
-    ]);
-    expect(full.flags.reason).toBe("used-in-tests");
-    expect(full.leaks).toEqual({
-      status: "all",
-      comment: "fixture key",
-      valueStdin: true,
-      keepUpstreamOpen: true,
-    });
-  });
-});
-
-describe("parseCliArgs: costs forecast", () => {
-  it("reads the forecast name, comma-separated narrowing, level and --all", () => {
-    const parsed = parseCliArgs([
-      "costs",
-      "forecast",
-      "Platform spend",
-      "--forecast",
-      "EU launch",
-      "--provider",
-      "aws, gcp",
-      "--service",
-      "Amazon EC2",
-      "--level",
-      "95",
-      "--to",
-      "2026-12-31",
-      "--all",
-    ]);
-    expect(parsed.positionals).toEqual(["costs", "forecast", "Platform spend"]);
-    expect(parsed.forecast).toEqual({
-      name: "EU launch",
-      providers: ["aws", "gcp"],
-      services: ["Amazon EC2"],
-      level: "95",
-      all: true,
-    });
-    expect(parsed.range.to).toBe("2026-12-31");
-  });
-
-  it("defaults to no narrowing", () => {
-    expect(parseCliArgs(["costs", "forecast", "r"]).forecast).toEqual({
-      name: undefined,
-      providers: [],
-      services: [],
-      level: undefined,
-      all: false,
-    });
   });
 });

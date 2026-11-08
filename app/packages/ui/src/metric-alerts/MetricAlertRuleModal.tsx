@@ -1,11 +1,14 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { T, Var, useGT } from "gt-react";
+import {
+  MetricAlertRuleInput as MetricAlertRuleInputSchema,
+  decodeForm,
+} from "@infrawrench/api-contract/schemas";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   DEFAULT_METRIC_ALERT_INPUT,
   METRIC_ALERT_COMPARATORS,
   METRIC_ALERT_LIMITS,
-  metricAlertRuleInputSchema,
   type MetricAlertComparator,
   type MetricAlertRuleInput,
   type MetricAlertSelectorOptions,
@@ -137,9 +140,9 @@ export function MetricAlertRuleModal({
       setError(gt("Enter a numeric threshold"));
       return;
     }
-    const parsed = metricAlertRuleInputSchema.safeParse({ ...input, threshold });
+    const parsed = decodeForm(MetricAlertRuleInputSchema, { ...input, threshold });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid rule"));
+      setError(parsed.message || gt("Invalid rule"));
       return;
     }
     setSaving(true);

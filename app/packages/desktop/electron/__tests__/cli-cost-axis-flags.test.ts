@@ -1,33 +1,57 @@
 import { describe, expect, it } from "vitest";
+import { Effect, Exit, Option } from "effect";
 
-import { parseCliArgs } from "../cli/args";
-import { parseDisplayFlags, withPreviousTotal } from "../cli/commands/costs";
+import {
+  type DisplayFlagValues,
+  parseDisplayFlags,
+  withPreviousTotal,
+} from "../cli/commands/costs";
+
+const flags = (over: Partial<DisplayFlagValues>): DisplayFlagValues => ({
+  measure: Option.none(),
+  bin: Option.none(),
+  unit: Option.none(),
+  cumulative: false,
+  xAxis: Option.none(),
+  ...over,
+});
+
+const parse = (over: Partial<DisplayFlagValues>) =>
+  Effect.runSyncExit(parseDisplayFlags(flags(over)));
 
 describe("costs/reports axis flags", () => {
-  it("parses --x-axis in the --group-by spelling, --segment-by-date and --compare", () => {
-    const parsed = parseCliArgs([
-      "costs",
-      "--x-axis",
-      "tag:team",
-      "--segment-by-date",
-      "--compare",
-    ]);
-    expect(parsed.range.xAxis).toBe("tag:team");
-    expect(parsed.range.segmentByDate).toBe(true);
-    expect(parsed.range.compare).toBe(true);
-    expect(parseDisplayFlags(parsed.range)).toEqual({ xAxis: "tag", xAxisTagKey: "team" });
+  it("parses --x-axis in the --group-by spelling", () => {
+    expect(parse({ xAxis: Option.some("tag:team") })).toEqual(
+      Exit.succeed({ xAxis: "tag", xAxisTagKey: "team" }),
+    );
   });
 
   it("reads date and none as the date bins, and names the flag in errors", () => {
-    expect(parseDisplayFlags(parseCliArgs(["reports", "x", "--x-axis", "date"]).range)).toEqual({
-      xAxis: "date",
-    });
-    expect(parseDisplayFlags(parseCliArgs(["costs", "--x-axis", "none"]).range)).toEqual({
-      xAxis: "date",
-    });
-    expect(() => parseDisplayFlags(parseCliArgs(["costs", "--x-axis", "galaxy"]).range)).toThrow(
-      /--x-axis/,
+    expect(parse({ xAxis: Option.some("date") })).toEqual(Exit.succeed({ xAxis: "date" }));
+    expect(parse({ xAxis: Option.some("none") })).toEqual(Exit.succeed({ xAxis: "date" }));
+    const galaxy = parse({ xAxis: Option.some("galaxy") });
+    expect(Exit.isFailure(galaxy) && String(galaxy.cause)).toMatch(/--x-axis/);
+  });
+
+  it("parses the display options, each omitted unless given", () => {
+    expect(parse({})).toEqual(Exit.succeed({}));
+    expect(
+      parse({
+        measure: Option.some("usage"),
+        bin: Option.some("Quarter"),
+        unit: Option.some(" Hrs "),
+        cumulative: true,
+      }),
+    ).toEqual(
+      Exit.succeed({
+        measure: "usage",
+        binning: "quarterly",
+        usageUnit: "Hrs",
+        cumulative: true,
+      }),
     );
+    const bin = parse({ bin: Option.some("fortnight") });
+    expect(Exit.isFailure(bin) && String(bin.cause)).toMatch(/--bin must be one of/);
   });
 
   it("puts the previous period beside the headline total", () => {

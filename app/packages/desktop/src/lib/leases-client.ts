@@ -6,7 +6,10 @@ import {
   type ResourceLeaseListResponse,
   type ResourceLeasePatch,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const leases = () => cloudClient("leases").leases;
 
 /**
  * Resource lease data access: cloud-mode only (the rows live server-side
@@ -22,22 +25,22 @@ export function createDesktopLeasesClient(): LeasesClient {
   };
   return {
     getResourceLease: async (resourceId: string) => {
-      const res = await invoke<{ lease: ResourceLease | null }>("cloud_leases_get_resource", {
-        orgId: requireOrgId(),
-        resourceId,
-      });
-      return res.lease;
+      const res = await runRpc(
+        leases().resource({ params: { orgId: requireOrgId() }, query: { resourceId } }),
+      );
+      const lease: ResourceLease | null = res.lease;
+      return lease;
     },
-    listLeases: () =>
-      invoke<ResourceLeaseListResponse>("cloud_leases_list", { orgId: requireOrgId() }),
-    createLease: (body: ResourceLeaseCreate) =>
-      invoke<ResourceLease>("cloud_leases_create", { orgId: requireOrgId(), body }),
-    updateLease: (leaseId: string, patch: ResourceLeasePatch) =>
-      invoke<ResourceLease>("cloud_leases_update", { orgId: requireOrgId(), leaseId, patch }),
-    cancelLease: (leaseId: string) =>
-      invoke<ResourceLease>("cloud_leases_cancel", { orgId: requireOrgId(), leaseId }),
+    listLeases: (): Promise<ResourceLeaseListResponse> =>
+      runRpc(leases().list({ params: { orgId: requireOrgId() } })),
+    createLease: (body: ResourceLeaseCreate): Promise<ResourceLease> =>
+      runRpc(leases().create({ params: { orgId: requireOrgId() }, payload: body })),
+    updateLease: (leaseId: string, patch: ResourceLeasePatch): Promise<ResourceLease> =>
+      runRpc(leases().update({ params: { orgId: requireOrgId(), leaseId }, payload: patch })),
+    cancelLease: (leaseId: string): Promise<ResourceLease> =>
+      runRpc(leases().cancel({ params: { orgId: requireOrgId(), leaseId } })),
     deleteLease: async (leaseId: string) => {
-      await invoke("cloud_leases_delete", { orgId: requireOrgId(), leaseId });
+      await runRpc(leases().delete({ params: { orgId: requireOrgId(), leaseId } }));
     },
   };
 }

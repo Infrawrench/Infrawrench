@@ -9,7 +9,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 
 /**
  * Read-only workflow detail: GET /workflows/:id and GET /workflows/:id/runs
- * (app/packages/web/src/api/routes/workflows.ts). Manual runs use the plain
+ * (app/packages/web/src/http/domains/workflows/). Manual runs use the plain
  * HTTP POST /workflows/:id/run endpoint (non-interactive; interactive
  * debugging stays on web/desktop over the workflow:* WS frames).
  */

@@ -9,7 +9,9 @@ import {
   type ResourcePickerCallbacks,
   type FieldActionCallbacks,
 } from "@infrawrench/ui";
-import { invoke } from "../../lib/invoke";
+import { getCloudAuthStatus, startCloudAuth } from "../../lib/cloud-auth";
+import { createCloudSshKey, deleteCloudSshKey, listCloudSshKeys } from "../../lib/cloud-ssh-keys";
+import { list1PasswordKeys, listSystemKeys, readSystemKey } from "../../lib/ssh-keys";
 
 export function FieldRenderer({
   field,
@@ -35,7 +37,7 @@ export function FieldRenderer({
     if (field.kind !== "ssh-key-picker") return;
     let cancelled = false;
 
-    invoke<{ authenticated: boolean }>("cloud_auth_status")
+    getCloudAuthStatus()
       .then((status) => {
         if (!cancelled) setCloudAuthed(status.authenticated);
       })
@@ -45,12 +47,12 @@ export function FieldRenderer({
 
     async function loadSystemKeys() {
       try {
-        const sysKeys = await invoke<{ name: string }[]>("ssh_list_system_keys");
+        const sysKeys = await listSystemKeys();
         const entries: SystemSshKey[] = [];
         await Promise.all(
           sysKeys.map(async ({ name }) => {
             try {
-              const pub = await invoke<string>("ssh_read_system_key", { name: `${name}.pub` });
+              const pub = await readSystemKey(`${name}.pub`);
               if (!cancelled && pub.trim()) {
                 entries.push({ name, publicKey: pub.trim() });
               }
@@ -68,7 +70,7 @@ export function FieldRenderer({
 
     async function loadOnePasswordKeys() {
       try {
-        const keys = await invoke<AgentSshKey[]>("ssh_list_1password_keys");
+        const keys = await list1PasswordKeys();
         if (!cancelled) setOnePasswordKeys(keys);
       } catch {
         /* agent unavailable */
@@ -84,7 +86,7 @@ export function FieldRenderer({
   const loadKeys = useCallback(async (): Promise<SshKeyEntry[]> => {
     if (!cloudAuthed || !activeCloudOrgId) return [];
     try {
-      return await invoke<SshKeyEntry[]>("cloud_ssh_keys_list", { orgId: activeCloudOrgId });
+      return await listCloudSshKeys(activeCloudOrgId);
     } catch {
       return [];
     }
@@ -93,10 +95,7 @@ export function FieldRenderer({
   const generateKey = useCallback(
     async (name: string): Promise<SshKeyEntry & { privateKey?: string }> => {
       if (!activeCloudOrgId) throw new Error("No active cloud workspace");
-      return invoke<SshKeyEntry & { privateKey?: string }>("cloud_ssh_keys_create", {
-        orgId: activeCloudOrgId,
-        name,
-      });
+      return createCloudSshKey(activeCloudOrgId, name);
     },
     [activeCloudOrgId],
   );
@@ -104,7 +103,7 @@ export function FieldRenderer({
   const deleteKey = useCallback(
     async (id: string): Promise<void> => {
       if (!activeCloudOrgId) throw new Error("No active cloud workspace");
-      await invoke<void>("cloud_ssh_keys_delete", { orgId: activeCloudOrgId, id });
+      await deleteCloudSshKey(activeCloudOrgId, id);
     },
     [activeCloudOrgId],
   );
@@ -123,12 +122,12 @@ export function FieldRenderer({
         cloudEnabled: cloudAuthed && activeCloudOrgId !== null,
         showCloudSection: activeCloudOrgId !== null,
         onCloudSignIn: () => {
-          void invoke("cloud_auth_start").then(() => {
+          void startCloudAuth().then(() => {
             // Sign-in happens in a separate browser tab, so there's no
             // callback to await: poll the token store until it lands.
             const poll = setInterval(async () => {
               try {
-                const status = await invoke<{ authenticated: boolean }>("cloud_auth_status");
+                const status = await getCloudAuthStatus();
                 if (status.authenticated) {
                   clearInterval(poll);
                   setCloudAuthed(true);

@@ -1100,7 +1100,7 @@ func (c *Client) GetNetworkFlowSettings(ctx context.Context) (*NetworkFlowSettin
 	return &out, nil
 }
 
-func (c *Client) PutNetworkFlowSettings(ctx context.Context, in NetworkFlowSettings) (*NetworkFlowSettings, error) {
+func (c *Client) PutNetworkFlowSettings(ctx context.Context, in NetworkFlowSettingsInput) (*NetworkFlowSettings, error) {
 	var out NetworkFlowSettings
 	if err := c.Put(ctx, "/network-flows/settings", in, &out); err != nil {
 		return nil, err

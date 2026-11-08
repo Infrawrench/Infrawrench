@@ -8,7 +8,6 @@ import type { CostCanvasWidgetConfig } from "@infrawrench/client-core";
 import { useNavigate } from "@tanstack/react-router";
 import { T, Var, useGT } from "gt-react";
 import { SpotlightSearch } from "./SpotlightSearch";
-import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
@@ -123,6 +122,8 @@ import {
 } from "@infrawrench/ui/cost-reports";
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
+import { openExternalUrl } from "../lib/app-shell";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 /**
  * A pinned workflow. Cloud pins arrive with the card's contents already joined
@@ -621,9 +622,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       await Promise.all(
         accountIds.map(async (accountId) => {
           try {
-            const creds = await invoke<Record<string, string>>("account_get_credentials", {
-              accountId,
-            });
+            const creds = await getLocalAccountCredentials(accountId);
             credsByAccount.set(accountId, creds);
           } catch {
             /* skip this account */
@@ -1299,7 +1298,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       <div className="flex-1 overflow-auto px-8 py-6">
         <CostCollectionNotice
           statuses={costStatus}
-          onOpenExternal={(url) => void invoke("open_external_url", { url })}
+          onOpenExternal={(url) => void openExternalUrl(url)}
         />
         {pinned.length === 0 && workflowPins.length === 0 && widgets.length === 0 ? (
           <div className="relative">

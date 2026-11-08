@@ -5,7 +5,10 @@ import {
   type OrphanListResponse,
   type OrphansClient,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
+import { withoutNullRemediation } from "./cloud-remediation";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
  * Potential savings data access. The same declarative orphan rules classify
@@ -15,7 +18,7 @@ import { invoke } from "./invoke";
  * - cloud: the server scans the org's synced rows and annotates each match
  *   with trailing spend from the collected billing data.
  * - local: the main process scans this machine's SQLite workspace
- *   (`local_orphans_list`). No billing data exists locally, so the response
+ *   (the `LocalOrphansList` RPC). No billing data exists locally, so the response
  *   comes back with `costBasis: "unavailable"` and the section drops the cost
  *   column rather than implying every flagged resource is free.
  *
@@ -29,8 +32,20 @@ export function createDesktopOrphansClient({
   const client: OrphansClient = {
     listOrphans: () => {
       const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return invoke<OrphanListResponse>("local_orphans_list");
-      return invoke<OrphanListResponse>("cloud_orphans_list", { orgId });
+      if (!orgId) return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalOrphansList()));
+      return runRpc(
+        cloudClient("orphans")
+          .orphans.list({ params: { orgId } })
+          .pipe(
+            Effect.map((res): OrphanListResponse => ({
+              ...res,
+              accounts: res.accounts.map((account) => ({
+                ...account,
+                resources: account.resources.map(withoutNullRemediation),
+              })),
+            })),
+          ),
+      );
     },
   };
   // Idle rules are a cloud feature (the poller reads the metrics): the
@@ -40,14 +55,23 @@ export function createDesktopOrphansClient({
   return {
     ...client,
     idleFindings: {
-      overview: () =>
-        invoke<IdleFindingsOverview>("cloud_idle_findings_overview", { orgId: requireOrg() }),
-      save: (settings) =>
-        invoke<IdleFindingSettings>("cloud_idle_findings_save", { orgId: requireOrg(), settings }),
-      rescan: () => invoke<void>("cloud_idle_findings_rescan", { orgId: requireOrg() }),
+      overview: (): Promise<IdleFindingsOverview> =>
+        runRpc(idleFindings().overview({ params: { orgId: requireOrg() } })),
+      save: (settings): Promise<IdleFindingSettings> =>
+        runRpc(
+          idleFindings().updateSettings({ params: { orgId: requireOrg() }, payload: settings }),
+        ),
+      rescan: () =>
+        runRpc(
+          idleFindings()
+            .rescan({ params: { orgId: requireOrg() } })
+            .pipe(Effect.asVoid),
+        ),
     },
   };
 }
+
+const idleFindings = () => cloudClient("idleFindings").idleFindings;
 
 function requireOrg(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;

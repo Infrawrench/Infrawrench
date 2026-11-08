@@ -92,6 +92,10 @@ export default defineConfig(({ command }) => ({
     plugins: [
       externalizeDepsPlugin({
         exclude: [
+          // ESM-only, and the main bundle is CommonJS: bundled rather than left as
+          // a runtime require (it reached main through plugin-base before
+          // desktop depended on it directly).
+          "effect",
           "@infrawrench/plugin-anthropic",
           "@infrawrench/plugin-anyscale",
           "@infrawrench/plugin-assemblyai",
@@ -263,6 +267,9 @@ export default defineConfig(({ command }) => ({
           // one, so it needs naming here too: missing it shipped 1.24.0 with
           // a main process that threw before it ever created a window.
           "@infrawrench/appstream-core",
+          // The HTTP API's HttpApi definitions, for typed clients of the cloud
+          // API. `@infrawrench/ui` imports its `/schemas` entry too.
+          "@infrawrench/api-contract",
           // The shared SSH agents and tunnel core, imported by `ssh-shell-agent.ts`,
           // `ssh-tunnel.ts`, `ssh-host-keys.ts` and `cloud-key-agent.ts`.
           "@infrawrench/ssh-tunnel-core",

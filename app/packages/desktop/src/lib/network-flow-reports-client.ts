@@ -9,41 +9,38 @@ import type {
 import { listCloudCostReportFolders } from "./cloud-costs";
 import { requireCloudOrgId as requireOrgId } from "./cost-api";
 import { createDesktopSharingClient } from "./cost-reports-client";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const networkFlows = () => cloudClient("networkFlows").networkFlows;
 
 /**
- * Saved network flow reports over the allowlisted `cloud_network_flow_report*`
- * channels (cloud mode only). The org is resolved per call, like every other
+ * Saved network flow reports over the cloud transport (cloud mode only). The org is resolved per call, like every other
  * desktop cost client, so a sign-out mid-session fails loudly rather than
  * reading the previous org.
  */
 export function createDesktopNetworkFlowReportsClient(): NetworkFlowReportsClient {
   return {
-    listReports: () =>
-      invoke<NetworkFlowReport[]>("cloud_network_flow_reports", { orgId: requireOrgId() }),
-    runReport: (reportId: string) =>
-      invoke<NetworkFlowReportRunResult>("cloud_network_flow_report_run", {
-        orgId: requireOrgId(),
-        reportId,
-      }),
-    getOptions: () =>
-      invoke<NetworkFlowReportOptions>("cloud_network_flow_report_options", {
-        orgId: requireOrgId(),
-      }),
+    listReports: (): Promise<NetworkFlowReport[]> =>
+      runRpc(networkFlows().listReports({ params: { orgId: requireOrgId() } })),
+    runReport: (reportId: string): Promise<NetworkFlowReportRunResult> =>
+      runRpc(networkFlows().runReport({ params: { orgId: requireOrgId(), id: reportId } })),
+    getOptions: (): Promise<NetworkFlowReportOptions> =>
+      runRpc(networkFlows().reportOptions({ params: { orgId: requireOrgId() } })),
     listFolders: () => listCloudCostReportFolders(requireOrgId()),
-    createReport: (input: NetworkFlowReportInput) =>
-      invoke<NetworkFlowReport>("cloud_network_flow_report_create", {
-        orgId: requireOrgId(),
-        input,
-      }),
-    updateReport: (reportId: string, input: NetworkFlowReportInput) =>
-      invoke<NetworkFlowReport>("cloud_network_flow_report_update", {
-        orgId: requireOrgId(),
-        reportId,
-        input,
-      }),
+    createReport: (input: NetworkFlowReportInput): Promise<NetworkFlowReport> =>
+      runRpc(networkFlows().createReport({ params: { orgId: requireOrgId() }, payload: input })),
+    updateReport: (reportId: string, input: NetworkFlowReportInput): Promise<NetworkFlowReport> =>
+      runRpc(
+        networkFlows().updateReport({
+          params: { orgId: requireOrgId(), id: reportId },
+          payload: input,
+        }),
+      ),
     deleteReport: async (reportId: string) => {
-      await invoke("cloud_network_flow_report_delete", { orgId: requireOrgId(), reportId });
+      await runRpc(
+        networkFlows().deleteReport({ params: { orgId: requireOrgId(), id: reportId } }),
+      );
     },
     sharing: createDesktopSharingClient(),
   };

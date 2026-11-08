@@ -259,8 +259,7 @@ export function createDesktopCostsClient(): CostsClient {
       annotateCloudSavingsEvent(requireOrgId(), eventId, input),
     deleteSavingsEvent: (eventId) => deleteCloudSavingsEvent(requireOrgId(), eventId),
     updateSavingsSettings: (settings) => saveCloudSavingsSettings(requireOrgId(), settings),
-    listSavingsCostCentres: async () =>
-      (await invoke<CostCentre[]>("cloud_list_cost_centres", { orgId: requireOrgId() })) ?? [],
+    listSavingsCostCentres: () => listCloudCostCentresForCosts(requireOrgId()),
     searchSavingsResources: (query) => searchCloudSavingsResources(requireOrgId(), query),
   };
 }

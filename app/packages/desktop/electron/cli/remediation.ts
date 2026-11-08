@@ -8,11 +8,31 @@
 import type { FindingRemediation } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Schema } from "effect";
+import { wire } from "./effect/wire";
 import { c, println, safe } from "./output";
 
+const Command = Schema.Struct({
+  command: Schema.String,
+  description: Schema.String,
+  destructive: Schema.Boolean,
+});
+
+/**
+ * The part of a row's `remediation` this section prints, for a migrated
+ * command's response schema: `remediation: Schema.optional(Schema.NullOr(Remediation))`.
+ */
+export const Remediation = wire<FindingRemediation>()(
+  Schema.Struct({
+    commands: Schema.Array(Command),
+    placeholders: Schema.Array(Schema.Struct({ name: Schema.String, description: Schema.String })),
+    iac: Schema.NullOr(Schema.Struct({ address: Schema.String, commands: Schema.Array(Command) })),
+  }),
+);
+
 export interface RemediationRow {
-  displayName: string;
-  remediation?: FindingRemediation | null | undefined;
+  readonly displayName: string;
+  readonly remediation?: typeof Remediation.Type | null | undefined;
 }
 
 /** True when at least one row has a command or a Terraform hint. */

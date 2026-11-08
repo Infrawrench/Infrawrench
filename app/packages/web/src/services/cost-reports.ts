@@ -1,6 +1,6 @@
 /**
  * Org-scoped cost-report CRUD and execution: shared by the HTTP routes
- * (api/routes/cost-reports.ts) and the tool registry (tools/cost-reports.ts),
+ * (http/domains/cost-reports) and the tool registry (tools/cost-reports.ts),
  * mirroring services/budgets.ts.
  *
  * A report is the named, addressable form of a cost graph: the ad-hoc

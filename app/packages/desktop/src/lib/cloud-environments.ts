@@ -1,3 +1,9 @@
+/**
+ * Ephemeral environments: cloud-mode only. Typed calls to the contract's
+ * `environments` domain over the cloud transport (`./cloud-client.ts`); each
+ * answer is handed on as the client-core type the panel uses, so a contract
+ * change the desktop's types disagree with fails here at compile time.
+ */
 import type {
   CaptureDraft,
   EnvironmentCostEstimate,
@@ -10,50 +16,53 @@ import type {
   EnvironmentTemplateListResponse,
 } from "@infrawrench/client-core";
 import type { EnvironmentCaptureSelector } from "@infrawrench/ui/environments";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const environments = () => cloudClient("environments").environments;
 
 export async function listCloudEnvironmentTemplates(
   orgId: string,
 ): Promise<EnvironmentTemplateListResponse> {
-  return invoke("cloud_environments_templates", { orgId });
+  return runRpc(environments().listTemplates({ params: { orgId } }));
 }
 
 export async function listCloudEnvironmentInstances(
   orgId: string,
 ): Promise<EnvironmentInstanceListResponse> {
-  return invoke("cloud_environments_instances", { orgId });
+  return runRpc(environments().listInstances({ params: { orgId } }));
 }
 
 export async function fetchCloudEnvironmentSettings(orgId: string): Promise<EnvironmentSettings> {
-  return invoke("cloud_environments_settings", { orgId });
+  return runRpc(environments().getSettings({ params: { orgId } }));
 }
 
 export async function updateCloudEnvironmentSettings(
   orgId: string,
   settings: EnvironmentSettings,
 ): Promise<EnvironmentSettings> {
-  return invoke("cloud_environments_settings_update", { orgId, settings });
+  return runRpc(environments().setSettings({ params: { orgId }, payload: settings }));
 }
 
 export async function captureCloudEnvironmentDraft(
   orgId: string,
   selector: EnvironmentCaptureSelector,
 ): Promise<CaptureDraft> {
-  return invoke("cloud_environments_capture", { orgId, selector });
+  return runRpc(environments().capture({ params: { orgId }, payload: selector }));
 }
 
 export async function createCloudEnvironmentTemplate(
   orgId: string,
   input: EnvironmentTemplateInput,
 ): Promise<EnvironmentTemplate> {
-  return invoke("cloud_environments_template_create", { orgId, input });
+  return runRpc(environments().createTemplate({ params: { orgId }, payload: input }));
 }
 
 export async function deleteCloudEnvironmentTemplate(
   orgId: string,
   templateId: string,
 ): Promise<void> {
-  await invoke("cloud_environments_template_delete", { orgId, templateId });
+  await runRpc(environments().deleteTemplate({ params: { orgId, templateId } }));
 }
 
 export async function estimateCloudEnvironment(
@@ -61,7 +70,7 @@ export async function estimateCloudEnvironment(
   templateId: string,
   body: { parameters?: Record<string, string> },
 ): Promise<EnvironmentCostEstimate> {
-  return invoke("cloud_environments_estimate", { orgId, templateId, body });
+  return runRpc(environments().estimate({ params: { orgId, templateId }, payload: body }));
 }
 
 export async function instantiateCloudEnvironment(
@@ -69,16 +78,16 @@ export async function instantiateCloudEnvironment(
   templateId: string,
   body: EnvironmentInstantiateInput,
 ): Promise<EnvironmentInstance> {
-  return invoke("cloud_environments_instantiate", { orgId, templateId, body });
+  return runRpc(environments().instantiate({ params: { orgId, templateId }, payload: body }));
 }
 
 export async function tearDownCloudEnvironment(
   orgId: string,
   instanceId: string,
 ): Promise<EnvironmentInstance> {
-  return invoke("cloud_environments_teardown", { orgId, instanceId });
+  return runRpc(environments().teardown({ params: { orgId, instanceId } }));
 }
 
 export async function forgetCloudEnvironment(orgId: string, instanceId: string): Promise<void> {
-  await invoke("cloud_environments_forget", { orgId, instanceId });
+  await runRpc(environments().deleteInstance({ params: { orgId, instanceId } }));
 }

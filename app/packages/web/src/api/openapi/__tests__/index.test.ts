@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-// Path modules transitively import server-core (permissions resolver → db
+// The domains transitively import server-core (permissions resolver → db
 // client), which throws at import unless these are set. The spec build never
 // actually opens a connection.
 process.env["DATABASE_URL"] = "postgres://localhost/test";
@@ -33,13 +33,17 @@ vi.mock("@/plugins/loader", () => ({
   ]),
 }));
 
-// Building the whole spec is genuinely expensive (every path module, every
+// Building the whole spec is genuinely expensive (every domain, every
 // schema, and a plugin-enum pass) and it grows with the API. The default 5s
 // per-test budget was never sized for several full builds under a loaded
 // parallel run.
 vi.setConfig({ testTimeout: 30_000 });
 
 const { buildOpenApiDocument, getPublicOpenApiDocument } = await import("@/api/openapi/index");
+const { TAGS } = await import("@/api/openapi/base-document");
+const { DOMAINS } = await import("@/http/domains");
+const { mergeOpenApiFragment, requiredPermissionIndex } = await import("@/http/openapi");
+const { eventSchemaName, listEventTypes } = await import("@infrawrench/client-core");
 
 /**
  * The default document, built once and shared.
@@ -145,6 +149,77 @@ describe("buildOpenApiDocument", () => {
     }
   });
 
+  it("lists the plugin registry's ids as the PluginId and ResourceTypeId enums", async () => {
+    const doc = await fullDocument();
+    expect(doc.components.schemas["PluginId"]).toEqual({
+      type: "string",
+      enum: ["aws", "google-cloud"],
+      description: "Manifest id of an installed plugin.",
+      example: "aws",
+    });
+    expect(doc.components.schemas["ResourceTypeId"]).toMatchObject({
+      type: "string",
+      enum: ["ec2-instance", "gce-instance"],
+      example: "ec2-instance",
+    });
+  });
+
+  it("documents one webhook per event type, with its envelope and data components", async () => {
+    const doc = await fullDocument();
+    const types = listEventTypes({ includeInternal: true });
+    expect(Object.keys(doc.webhooks)).toEqual(types.map((t) => t.type));
+    for (const def of types) {
+      const envelope = `Event_${def.type.replace(/\./g, "_")}_v${def.version}`;
+      const post = doc.webhooks[def.type]?.["post"];
+      expect(post, def.type).toMatchObject({
+        tags: ["Event subscriptions"],
+        summary: def.label,
+        requestBody: {
+          content: { "application/json": { schema: { $ref: `#/components/schemas/${envelope}` } } },
+        },
+        responses: { "200": { description: "Any 2xx acknowledges the delivery." } },
+      });
+      expect(doc.components.schemas[envelope], envelope).toMatchObject({
+        additionalProperties: false,
+        properties: {
+          severity: { $ref: "#/components/schemas/EventSeverity" },
+          type: { enum: [def.type] },
+          data: { $ref: `#/components/schemas/${eventSchemaName(def)}` },
+        },
+      });
+      expect(doc.components.schemas[eventSchemaName(def)], def.type).toMatchObject({
+        type: "object",
+        required: Object.keys(def.fields),
+      });
+    }
+    expect(doc.components.schemas["EventSeverity"]).toEqual({
+      type: "string",
+      enum: ["info", "warning", "critical"],
+    });
+  });
+
+  it("states exactly the gates the endpoints carry", async () => {
+    const doc = await fullDocument();
+    const gates = requiredPermissionIndex(DOMAINS);
+    for (const { path, method, op } of operations(doc)) {
+      if (!path.startsWith("/api/org/{orgId}")) continue;
+      const key = `${method.toUpperCase()} ${path.replace(/^\/api\/org\/\{orgId\}/, "") || "/"}`;
+      expect(op["x-required-permission"], key).toBe(gates[key]);
+    }
+  });
+
+  it("files every operation under a listed tag, base tags first and none twice", async () => {
+    const doc = await fullDocument();
+    const names = doc.tags.map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.slice(0, TAGS.length)).toEqual(TAGS.map((t) => t.name));
+    for (const { path, op } of operations(doc)) {
+      for (const tag of (op["tags"] as string[] | undefined) ?? []) {
+        expect(names, `${path}: ${tag}`).toContain(tag);
+      }
+    }
+  });
+
   it("marks internal routes with x-internal but keeps them in the full document", async () => {
     const doc = await fullDocument();
     expect(doc.paths?.["/api/admin/organizations"]).toBeDefined();
@@ -230,5 +305,56 @@ describe("getPublicOpenApiDocument", () => {
     const full = await buildOpenApiDocument();
     expect(pub.paths?.["/api/admin/organizations"]).toBeUndefined();
     expect(full.paths?.["/api/admin/organizations"]).toBeDefined();
+  });
+});
+
+describe("mergeOpenApiFragment", () => {
+  const base = () => ({
+    paths: { "/a": { get: { summary: "base" } } },
+    components: { schemas: { Shared: { type: "string" } } } as { schemas: Record<string, unknown> },
+    tags: [{ name: "A" }],
+  });
+  const fragment = (overrides: Partial<Parameters<typeof mergeOpenApiFragment>[1]> = {}) => ({
+    paths: {},
+    schemas: {},
+    tags: [],
+    conflicts: [],
+    ...overrides,
+  });
+
+  it("adds operations, components and new tags", () => {
+    const doc = base();
+    mergeOpenApiFragment(
+      doc,
+      fragment({
+        paths: { "/b": { post: { summary: "b" } } },
+        schemas: { Shared: { type: "string" }, Other: { type: "integer" } },
+        tags: [{ name: "A" }, { name: "B", description: "Bees." }],
+      }),
+    );
+    expect(Object.keys(doc.paths)).toEqual(["/a", "/b"]);
+    expect(doc.components.schemas).toEqual({
+      Shared: { type: "string" },
+      Other: { type: "integer" },
+    });
+    expect(doc.tags).toEqual([{ name: "A" }, { name: "B", description: "Bees." }]);
+  });
+
+  it("refuses a component the base defines differently", () => {
+    expect(() =>
+      mergeOpenApiFragment(base(), fragment({ schemas: { Shared: { type: "integer" } } })),
+    ).toThrow(/schema Shared differs/);
+  });
+
+  it("refuses an operation the base already has", () => {
+    expect(() =>
+      mergeOpenApiFragment(base(), fragment({ paths: { "/a": { get: { summary: "again" } } } })),
+    ).toThrow(/operation get \/a/);
+  });
+
+  it("refuses a fragment whose domains disagree", () => {
+    expect(() => mergeOpenApiFragment(base(), fragment({ conflicts: ["schema X"] }))).toThrow(
+      /schema X/,
+    );
   });
 });

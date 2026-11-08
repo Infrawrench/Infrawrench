@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { parseCliArgs } from "../cli/args";
 import {
   formatUnitCostRatio,
   parseUnitCostLabelFlag,
@@ -10,27 +9,12 @@ import {
 } from "../cli/format";
 
 describe("unit-costs calculation flags", () => {
-  it("parses --label, --split, --scale, --mode and the usage forms", () => {
-    const parsed = parseCliArgs([
-      "unit-costs",
-      "revenue",
-      "--label",
-      "plan=pro,enterprise",
-      "--label",
-      "region!=eu",
-      "--split",
-      "customer",
-      "--scale",
-      "1k",
-      "--mode",
-      "raw",
-    ]);
-    expect(parsed.unitCost.labels).toEqual(["plan=pro,enterprise", "region!=eu"]);
-    expect(parsed.unitCost.split).toBe("customer");
-    expect(parseUnitCostScaleFlag(parsed.unitCost.scale)).toBe(1000);
-    expect(parseUnitCostModeFlag(parsed.unitCost.mode)).toBe("raw_metric");
-    expect(parseCliArgs(["unit-costs", "--usage-units"]).unitCost.listUsageUnits).toBe(true);
-    expect(parseCliArgs(["unit-costs", "--usage-unit", "GB-Mo"]).unitCost.usageUnit).toBe("GB-Mo");
+  it("parses --scale and --mode in their short and long spellings", () => {
+    expect(parseUnitCostScaleFlag("1k")).toBe(1000);
+    expect(parseUnitCostScaleFlag("1000000")).toBe(1_000_000);
+    expect(parseUnitCostModeFlag("raw")).toBe("raw_metric");
+    expect(parseUnitCostModeFlag("usage-unit-cost")).toBe("usage_unit_cost");
+    expect(parseUnitCostModeFlag(undefined)).toBeNull();
   });
 
   it("reads key=values as `in` and key!=values as `not_in`", () => {

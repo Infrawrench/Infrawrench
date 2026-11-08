@@ -4,18 +4,17 @@
 // (`infrawrench cli install`), so both stay in sync.
 import { app } from "electron";
 import { execFile } from "node:child_process";
+import { Context, Effect, Layer } from "effect";
+import {
+  ShellCommandError,
+  type ShellCommandInstallResult,
+  type ShellCommandStatus,
+} from "../shared/rpc/groups/shell-command";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const SHELL_COMMAND_NAME = "infrawrench";
-
-export interface ShellCommandStatus {
-  installed: boolean;
-  path: string | null;
-  /** Non-empty when installed but pointing at a different app binary. */
-  stale: boolean;
-}
 
 /** The binary the shim should exec. In dev this is the electron binary. */
 function appBinaryPath(): string {
@@ -45,7 +44,7 @@ function windowsBinDir(): string {
   return path.join(app.getPath("userData"), "bin");
 }
 
-export function getShellCommandStatus(): ShellCommandStatus {
+function readShellCommandStatus(): ShellCommandStatus {
   const targets =
     process.platform === "win32"
       ? [path.join(windowsBinDir(), `${SHELL_COMMAND_NAME}.cmd`)]
@@ -71,18 +70,12 @@ function isDirWritable(dir: string): boolean {
   }
 }
 
-export interface InstallResult {
-  path: string;
-  /** Follow-up the user still has to do (add dir to PATH, restart shell…). */
-  note: string | null;
-}
-
 /**
  * Write the shim. POSIX: prefer /usr/local/bin, fall back to ~/.local/bin
  * (created if missing) when /usr/local/bin isn't writable; no privilege
  * escalation, ever. Windows: userData\bin plus a user-level PATH append.
  */
-export async function installShellCommand(): Promise<InstallResult> {
+async function writeShellCommand(): Promise<ShellCommandInstallResult> {
   if (process.platform === "win32") {
     const dir = windowsBinDir();
     fs.mkdirSync(dir, { recursive: true });
@@ -122,8 +115,8 @@ export async function installShellCommand(): Promise<InstallResult> {
   );
 }
 
-export async function uninstallShellCommand(): Promise<string | null> {
-  const status = getShellCommandStatus();
+function removeShellCommand(): string | null {
+  const status = readShellCommandStatus();
   if (!status.installed || !status.path) return null;
   fs.unlinkSync(status.path);
   return status.path;
@@ -137,4 +130,30 @@ function addToWindowsUserPath(dir: string): Promise<boolean> {
       resolve(!err);
     });
   });
+}
+
+const shellCommandError = (cause: unknown) =>
+  new ShellCommandError({ message: cause instanceof Error ? cause.message : String(cause) });
+
+/**
+ * The `infrawrench` shim on the user's PATH. File-system work runs on Node's
+ * own `fs` (the desktop takes no Effect platform package), wrapped so a
+ * refusal (an unrelated binary in the way, no writable directory) is a typed
+ * `ShellCommandError` the renderer can show.
+ */
+export class ShellCommand extends Context.Service<
+  ShellCommand,
+  {
+    readonly status: Effect.Effect<ShellCommandStatus>;
+    readonly install: Effect.Effect<ShellCommandInstallResult, ShellCommandError>;
+    readonly uninstall: Effect.Effect<string | null, ShellCommandError>;
+  }
+>()("infrawrench/desktop/ShellCommand") {
+  static readonly layer = Layer.succeed(ShellCommand)(
+    ShellCommand.of({
+      status: Effect.sync(readShellCommandStatus),
+      install: Effect.tryPromise({ try: writeShellCommand, catch: shellCommandError }),
+      uninstall: Effect.try({ try: removeShellCommand, catch: shellCommandError }),
+    }),
+  );
 }

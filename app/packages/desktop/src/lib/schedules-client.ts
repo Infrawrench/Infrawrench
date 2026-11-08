@@ -8,7 +8,20 @@ import {
   type SleepScheduleListResponse,
   type SleepSchedulePatch,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { Effect } from "effect";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const schedules = () => cloudClient("schedules").schedules;
+
+/**
+ * client-core types `remediation` as present or absent; the server sends
+ * `null` when the plugin has nothing to offer, which reads as absent here.
+ */
+function withoutNullRemediation<Row extends { readonly remediation?: unknown }>(row: Row) {
+  const { remediation, ...rest } = row;
+  return remediation === null || remediation === undefined ? rest : { ...rest, remediation };
+}
 
 /**
  * Sleep/wake schedule data access: cloud-mode only (the rows live
@@ -23,16 +36,33 @@ export function createDesktopSchedulesClient(): SchedulesClient {
     return orgId;
   };
   return {
-    listSchedules: () =>
-      invoke<SleepScheduleListResponse>("cloud_schedules_list", { orgId: requireOrgId() }),
-    createSchedule: (body: SleepScheduleCreate) =>
-      invoke<SleepSchedule>("cloud_schedules_create", { orgId: requireOrgId(), body }),
-    updateSchedule: (scheduleId: string, patch: SleepSchedulePatch) =>
-      invoke<SleepSchedule>("cloud_schedules_update", { orgId: requireOrgId(), scheduleId, patch }),
+    listSchedules: (): Promise<SleepScheduleListResponse> =>
+      runRpc(
+        schedules()
+          .list({ params: { orgId: requireOrgId() } })
+          .pipe(
+            Effect.map((response) => ({
+              ...response,
+              schedules: response.schedules.map(withoutNullRemediation),
+            })),
+          ),
+      ),
+    createSchedule: (body: SleepScheduleCreate): Promise<SleepSchedule> =>
+      runRpc(
+        schedules()
+          .create({ params: { orgId: requireOrgId() }, payload: body })
+          .pipe(Effect.map(withoutNullRemediation)),
+      ),
+    updateSchedule: (scheduleId: string, patch: SleepSchedulePatch): Promise<SleepSchedule> =>
+      runRpc(
+        schedules()
+          .update({ params: { orgId: requireOrgId(), scheduleId }, payload: patch })
+          .pipe(Effect.map(withoutNullRemediation)),
+      ),
     deleteSchedule: async (scheduleId: string) => {
-      await invoke("cloud_schedules_delete", { orgId: requireOrgId(), scheduleId });
+      await runRpc(schedules().delete({ params: { orgId: requireOrgId(), scheduleId } }));
     },
-    previewSchedule: (body: SchedulePreviewRequest) =>
-      invoke<SchedulePreview>("cloud_schedules_preview", { orgId: requireOrgId(), body }),
+    previewSchedule: (body: SchedulePreviewRequest): Promise<SchedulePreview> =>
+      runRpc(schedules().preview({ params: { orgId: requireOrgId() }, payload: body })),
   };
 }

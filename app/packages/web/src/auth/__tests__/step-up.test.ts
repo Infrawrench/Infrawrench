@@ -6,25 +6,31 @@ vi.mock("../workos", () => ({
   clientId: "client-1",
 }));
 
-const { requireRecentAuthentication, STEP_UP_MAX_AGE_MS, REAUTHENTICATION_REQUIRED } =
-  await import("../step-up");
+const {
+  requireRecentAuthentication,
+  ReauthenticationRequiredError,
+  STEP_UP_MAX_AGE_MS,
+  REAUTHENTICATION_REQUIRED,
+} = await import("../step-up");
 
-/** Minimal Hono context stand-in carrying just the session variable. */
-function ctx(session: { userId: string; email?: string; sessionId?: string }) {
-  return { get: (k: string) => (k === "session" ? session : undefined) } as never;
+/** The session as the auth middleware hands it over. */
+function ctx(session: { userId: string; email: string; sessionId?: string }) {
+  return session;
 }
 
 const SESSION = { userId: "u1", email: "u@e.com", sessionId: "sess_1" };
 
-/** Reads the JSON body off the HTTPException the helper throws. */
+/**
+ * The refusal the helper throws, as the route answers it: a 403 whose body is
+ * `{ error, code }` (the profile domain's `ReauthenticationRequired`).
+ */
 async function denialOf(promise: Promise<unknown>): Promise<{ status: number; body: unknown }> {
   try {
     await promise;
     throw new Error("expected requireRecentAuthentication to throw");
   } catch (e) {
-    const res = (e as { getResponse?: () => Response }).getResponse?.();
-    if (!res) throw e;
-    return { status: res.status, body: await res.json() };
+    if (!(e instanceof ReauthenticationRequiredError)) throw e;
+    return { status: 403, body: { error: e.message, code: e.code } };
   }
 }
 

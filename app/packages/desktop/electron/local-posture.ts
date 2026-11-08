@@ -1,5 +1,6 @@
 /**
- * Local-mode posture findings for the CLI.
+ * Local-mode posture findings, for the renderer's Posture tab (over RPC) and
+ * the CLI.
  *
  * The cloud path (`GET /api/org/:orgId/posture`) computes the findings
  * server-side over an organization's synced rows. This is the same
@@ -16,9 +17,8 @@
  * `posture_dismissals` table: accepting a finding on a workspace that has never
  * seen the cloud must not require an account.
  *
- * The renderer has its own twin (src/lib/local-posture.ts) because the GUI's
- * DB access goes over IPC; this one exists for the CLI, which has no
- * renderer.
+ * One implementation for both callers: the renderer reaches it through the
+ * `LocalPosture*` RPCs ({@link LocalPosture}), the CLI calls it directly.
  *
  * The client-core import is dynamic because this module graph is CommonJS and
  * client-core ships ESM (the same CJS→ESM bridge as local-expiring.ts);
@@ -32,6 +32,8 @@ import { randomUUID } from "node:crypto";
 import type { PostureDismissal, PostureListResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { LocalWorkspaceError } from "../shared/rpc/errors";
 import { getDb } from "./main-utils";
 import { localScanRows } from "./local-dns";
 
@@ -122,4 +124,43 @@ export async function restoreLocalPostureFinding(
     ruleId,
   ]);
   return true;
+}
+
+/**
+ * Local posture as an Effect service, for the renderer's Posture tab over
+ * RPC: the findings, and recording or undoing a dismissal in the workspace.
+ */
+export class LocalPosture extends Context.Service<
+  LocalPosture,
+  {
+    readonly list: Effect.Effect<PostureListResponse, LocalWorkspaceError>;
+    readonly dismiss: (
+      resourceId: string,
+      ruleId: string,
+      reason: string | null,
+    ) => Effect.Effect<string | null, LocalWorkspaceError>;
+    readonly restore: (
+      resourceId: string,
+      ruleId: string,
+    ) => Effect.Effect<boolean, LocalWorkspaceError>;
+  }
+>()("infrawrench/desktop/LocalPosture") {
+  static readonly layer = Layer.succeed(LocalPosture)(
+    LocalPosture.of({
+      list: Effect.tryPromise({
+        try: () => listLocalPosture(),
+        catch: LocalWorkspaceError.fromCause,
+      }),
+      dismiss: (resourceId, ruleId, reason) =>
+        Effect.tryPromise({
+          try: () => dismissLocalPostureFinding(resourceId, ruleId, reason),
+          catch: LocalWorkspaceError.fromCause,
+        }),
+      restore: (resourceId, ruleId) =>
+        Effect.tryPromise({
+          try: () => restoreLocalPostureFinding(resourceId, ruleId),
+          catch: LocalWorkspaceError.fromCause,
+        }),
+    }),
+  );
 }

@@ -6,13 +6,13 @@
  * them. Each tick finds enabled cron workflows, runs the ones whose `next_run_at`
  * is due (non-interactively, trigger_source "cron"), and reschedules them from
  * the cron expression. It also reports the enabled-cron count to the main
- * process (`set_crons_active`) so (like active metric pings) the app stays
+ * process (`setCronsActive`) so (like active metric pings) the app stays
  * alive in the background after the window is closed and keeps firing them.
  */
 import { nextCronOccurrence } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
 import { getDb } from "../db/client";
 import { runWorkflowById, WORKFLOWS_CHANGED_EVENT } from "./workflow-client";
+import { setCronsActive } from "./app-shell";
 
 interface CronWorkflowRow {
   id: string;
@@ -71,7 +71,7 @@ async function tick(): Promise<void> {
     });
 
     // Keep the app alive in the background while any cron is enabled.
-    await invoke("set_crons_active", { count: crons.length }).catch(() => undefined);
+    await setCronsActive(crons.length).catch(() => undefined);
 
     const now = Date.now();
     for (const { row, expression, timezone } of crons) {

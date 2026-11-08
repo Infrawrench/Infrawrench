@@ -7,35 +7,35 @@
  * nothing here to talk to: see `LocalDeploymentsPanel`, which reads what
  * `infrawrench deploy` did on this machine instead.
  *
- * Same split as workflows: one-shot calls are proxied HTTP over IPC, and the
+ * Same split as workflows: one-shot calls are typed calls to the contract's
+ * `deployments` domain over the cloud transport (`./cloud-client.ts`), and the
  * interactive deploy opens the cloud websocket so `select(...)` can prompt and
  * the build streams. The browser's `lib/deployment-client.ts` drives the
  * identical `deploy:*` frames.
  */
 import { useUIStore } from "@infrawrench/ui";
-import type { DeploymentCostImpact } from "@infrawrench/client-core";
 import type {
-  DeployEnvs,
-  DeployRepo,
   DeployRunResult,
   DeploySession,
   DeployStage,
   DeployStartOptions,
   DeploymentClient,
-  DeploymentRunRow,
-  DeployTrigger,
   DeployTriggerInput,
 } from "@infrawrench/ui";
 import type { PromptSpec } from "@infrawrench/workflow-runtime/client";
 import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
 
 /**
  * Resolved per call rather than closed over: the org can change under a mounted
  * panel when the user switches org, exactly as it can for costs.
  */
+const deployments = () => cloudClient("deployments").deployments;
+
 function requireOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;
   if (!orgId) {
@@ -50,7 +50,7 @@ async function deploy(
   session: DeploySession,
 ): Promise<{ runId: string; result: DeployRunResult }> {
   const orgId = requireOrgId();
-  const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId });
+  const token = await getCloudWsToken(orgId);
   if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
   const wsUrl = await getCloudWsUrl();
   const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(token)}`);
@@ -127,44 +127,36 @@ async function deploy(
 
 export function createDesktopDeploymentClient(): DeploymentClient {
   return {
-    listRepos: () => invoke<DeployRepo[]>("cloud_deploy_repos", { orgId: requireOrgId() }),
+    listRepos: () => runRpc(deployments().repos({ params: { orgId: requireOrgId() } })),
     listEnvs: (repo, branch) =>
-      invoke<DeployEnvs>("cloud_deploy_envs", { orgId: requireOrgId(), repo, branch }),
+      runRpc(deployments().envs({ params: { orgId: requireOrgId() }, payload: { repo, branch } })),
     plan: (opts) =>
-      invoke<{ runId: string; result: DeployRunResult }>("cloud_deploy_plan", {
-        orgId: requireOrgId(),
-        opts,
-      }),
+      runRpc(deployments().plan({ params: { orgId: requireOrgId() }, payload: opts })),
     deploy,
     listRuns: (env) =>
-      invoke<DeploymentRunRow[]>("cloud_deploy_runs", {
-        orgId: requireOrgId(),
-        ...(env ? { env } : {}),
-      }),
+      runRpc(deployments().runs({ params: { orgId: requireOrgId() }, query: env ? { env } : {} })),
     costImpact: (runId) =>
-      invoke<DeploymentCostImpact | null>("cloud_deploy_cost_impact", {
-        orgId: requireOrgId(),
-        runId,
-      }),
+      runRpc(deployments().costImpact({ params: { orgId: requireOrgId(), id: runId }, query: {} })),
     annotateCostImpact: async (runId) => {
-      await invoke("cloud_cost_impact_annotate", {
-        orgId: requireOrgId(),
-        subjectKind: "deployment",
-        subjectId: runId,
-      });
+      await runRpc(
+        cloudClient("costAnnotations").changeImpactAnnotations.pin({
+          params: { orgId: requireOrgId() },
+          payload: { subjectKind: "deployment", subjectId: runId },
+        }),
+      );
     },
+    // The route takes an optional `deleteCreated`; the Deploy tab never sets it.
     rollback: (runId) =>
-      invoke<{ runId: string; result: DeployRunResult }>("cloud_deploy_rollback", {
-        orgId: requireOrgId(),
-        runId,
-      }),
-    listTriggers: () => invoke<DeployTrigger[]>("cloud_deploy_triggers", { orgId: requireOrgId() }),
+      runRpc(deployments().rollback({ params: { orgId: requireOrgId(), id: runId }, payload: {} })),
+    listTriggers: () => runRpc(deployments().triggers({ params: { orgId: requireOrgId() } })),
     createTrigger: (input: DeployTriggerInput) =>
-      invoke<DeployTrigger>("cloud_deploy_create_trigger", { orgId: requireOrgId(), input }),
+      runRpc(deployments().upsertTrigger({ params: { orgId: requireOrgId() }, payload: input })),
     updateTrigger: (id: string, input: { enabled: boolean }) =>
-      invoke<DeployTrigger>("cloud_deploy_update_trigger", { orgId: requireOrgId(), id, input }),
+      runRpc(
+        deployments().setTriggerEnabled({ params: { orgId: requireOrgId(), id }, payload: input }),
+      ),
     deleteTrigger: async (id: string) => {
-      await invoke("cloud_deploy_delete_trigger", { orgId: requireOrgId(), id });
+      await runRpc(deployments().deleteTrigger({ params: { orgId: requireOrgId(), id } }));
     },
   };
 }

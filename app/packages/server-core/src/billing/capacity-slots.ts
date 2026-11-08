@@ -22,7 +22,7 @@
  *
  * Deliberately free of Stripe: server-core has no `stripe` dependency (same
  * reason as `build-meter.ts`). The purchase flow lives in
- * `web/src/api/routes/billing.ts` and hands the settled numbers to
+ * `web/src/http/domains/billing/` and hands the settled numbers to
  * {@link recordCapacitySlotPurchase}.
  */
 import { randomUUID } from "node:crypto";

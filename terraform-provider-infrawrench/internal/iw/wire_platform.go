@@ -1336,14 +1336,19 @@ type SessionRecordingSettings struct {
 /* ------------------------------ network flows ------------------------------ */
 
 // NetworkFlowSettings is the org singleton authorising priced source→
-// destination flow collection.
-//
-// Both fields are required on PUT, so neither is a pointer. The route reads an
-// omitted InitialLookbackDays as "keep the stored one", but the provider always
-// sends both: a Terraform attribute with a value is a value.
+// destination flow collection, as the server answers it: both fields always.
 type NetworkFlowSettings struct {
 	Enabled             bool  `json:"enabled"`
 	InitialLookbackDays int64 `json:"initialLookbackDays"`
+}
+
+// NetworkFlowSettingsInput is the PUT body. A nil InitialLookbackDays is left
+// out, which the route reads as "keep the stored one", so an omitted Terraform
+// attribute and turning collection off both leave the lookback alone without
+// reading it first.
+type NetworkFlowSettingsInput struct {
+	Enabled             bool   `json:"enabled"`
+	InitialLookbackDays *int64 `json:"initialLookbackDays,omitempty"`
 }
 
 // KubernetesNetworkSettings is one Kubernetes account's network cost settings:

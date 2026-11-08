@@ -15,10 +15,12 @@
  * append to a file of its own is safe from either process.
  */
 import { app } from "electron";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import fs from "node:fs";
 import path from "node:path";
 
 import type { LocalDeployRun } from "../src/lib/deploy-history-types";
+import { StoredLocalDeployRun } from "../shared/rpc/groups/deploy-history";
 
 export type { LocalDeployRun };
 
@@ -57,18 +59,18 @@ export function readLocalDeploys(limit = MAX_ENTRIES): LocalDeployRun[] {
     return []; // nothing deployed locally yet
   }
   const runs: LocalDeployRun[] = [];
-  // Parse per line so one truncated write (a machine that lost power mid-append)
-  // costs that entry rather than the whole history.
+  // Decode per line so one truncated write (a machine that lost power
+  // mid-append), or a line some other build wrote in another shape, costs that
+  // entry rather than the whole history.
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
-    try {
-      runs.push(JSON.parse(line) as LocalDeployRun);
-    } catch {
-      continue;
-    }
+    const run = decodeRunLine(line);
+    if (Option.isSome(run)) runs.push(run.value);
   }
   return runs.reverse().slice(0, limit);
 }
+
+const decodeRunLine = Schema.decodeUnknownOption(Schema.fromJsonString(StoredLocalDeployRun));
 
 function trim(file: string): void {
   const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
@@ -76,4 +78,17 @@ function trim(file: string): void {
   // rewriting the file on every single run.
   if (lines.length <= MAX_ENTRIES * 2) return;
   fs.writeFileSync(file, `${lines.slice(-MAX_ENTRIES).join("\n")}\n`, "utf8");
+}
+
+/**
+ * The history as an Effect service, for the renderer's Deploy tab over RPC.
+ * Reading never fails: a missing or unreadable file is an empty history.
+ */
+export class LocalDeployHistory extends Context.Service<
+  LocalDeployHistory,
+  { readonly list: Effect.Effect<LocalDeployRun[]> }
+>()("infrawrench/desktop/LocalDeployHistory") {
+  static readonly layer = Layer.succeed(LocalDeployHistory)(
+    LocalDeployHistory.of({ list: Effect.sync(() => readLocalDeploys()) }),
+  );
 }

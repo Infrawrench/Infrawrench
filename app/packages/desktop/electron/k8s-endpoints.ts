@@ -1,5 +1,5 @@
 /**
- * SSRF allowlist for `k8s_api_request` (see k8s-host.ts).
+ * SSRF allowlist for `K8sApiRequest` (see k8s-api-request.ts).
  *
  * The channel proxies plugin HTTP through the main process (Node) so we can
  * supply per-cluster CA certs. That also means a compromised renderer could

@@ -1,6 +1,6 @@
 /**
  * Org-scoped custom-graph CRUD, rendering, typings, and source checking:
- * shared by the HTTP routes (api/routes/custom-graphs.ts) and the tool
+ * shared by the HTTP routes (http/domains/custom-graphs/) and the tool
  * registry (tools/custom-graphs.ts), mirroring services/workflows.ts.
  *
  * Custom graphs are a paid-plan feature: writes and renders call

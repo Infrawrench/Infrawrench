@@ -1,14 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-// `cli/args` reaches `cli/context` for CliError, which pulls the Electron app
-// object and the plugin host at import time. None of it runs here.
+// `cli/compliance-format` reaches `cli/output` only, but the module graph the
+// test runner loads around it pulls the Electron app object. None of it runs here.
 vi.mock("electron", () => ({
   app: { getPath: () => "/tmp" },
   ipcMain: { handle: () => {} },
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-import { parseCliArgs } from "../cli/args";
 import {
   complianceQueryString,
   compliancePackFileName,
@@ -37,36 +36,6 @@ let shared: {
 };
 beforeAll(async () => {
   shared = await import("@infrawrench/client-core");
-});
-
-describe("parseCliArgs: compliance", () => {
-  it("collects the framework, gaps and period", () => {
-    const parsed = parseCliArgs([
-      "compliance",
-      "--framework",
-      "iso27001",
-      "--gaps",
-      "--from",
-      "2026-07-01",
-      "--to",
-      "2026-09-30",
-    ]);
-    expect(parsed.positionals).toEqual(["compliance"]);
-    expect(parsed.compliance).toEqual({ framework: "iso27001", gaps: true });
-    expect(parsed.range.from).toBe("2026-07-01");
-    expect(parsed.range.to).toBe("2026-09-30");
-  });
-
-  it("defaults to no framework and no gaps filter", () => {
-    expect(parseCliArgs(["compliance"]).compliance).toEqual({ framework: undefined, gaps: false });
-  });
-
-  it("reads the export destination from --out", () => {
-    const parsed = parseCliArgs(["compliance", "export", "--out", "pack.zip", "--json"]);
-    expect(parsed.positionals).toEqual(["compliance", "export"]);
-    expect(parsed.config.out).toBe("pack.zip");
-    expect(parsed.flags.output).toBe("json");
-  });
 });
 
 describe("compliance flags", () => {

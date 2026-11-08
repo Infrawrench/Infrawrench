@@ -2,7 +2,7 @@
  * Org config as code: export the organization's configuration as one JSON
  * document, and apply a document back.
  *
- * Shared by the HTTP routes (`api/routes/org-config.ts`) and anything else that
+ * Shared by the HTTP routes (`http/domains/org-config/`) and anything else that
  * wants the same code path, the way `services/budgets.ts` backs both its route
  * and the tool registry. Everything here is transport-agnostic: it takes an
  * organizationId, returns plain data, and reports user-correctable problems as

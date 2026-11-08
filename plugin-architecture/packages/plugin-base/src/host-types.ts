@@ -110,10 +110,10 @@ export interface CredentialRewriter {
 export type HostKeyPromptKind = "first-connect" | "mismatch";
 
 /**
- * Payload sent over the `ssh_host_key_prompt` IPC channel from the desktop
- * Electron main process to the renderer, asking the user to accept or deny
- * an unknown or changed SSH host key. The renderer replies on the
- * `ssh_host_key_decide` channel keyed by `requestId`.
+ * A prompt the desktop Electron main process streams to the renderer
+ * (`SshHostKeyPrompts` RPC), asking the user to accept or deny an unknown or
+ * changed SSH host key. The renderer replies with `SshHostKeyDecide`, keyed
+ * by `requestId`.
  */
 export interface HostKeyPromptPayload {
   requestId: string;

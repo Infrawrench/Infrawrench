@@ -1,6 +1,7 @@
 /**
- * Services and scorecards: cloud-mode only. One wrapper per allowlisted IPC
- * channel, matching `cloud-slos.ts`.
+ * Services and scorecards: cloud-mode only. Typed calls to the contract's
+ * `services`, `scorecards`, `onCall`, `tagKeys` and `virtualTags` domains
+ * over the cloud transport (`./cloud-client.ts`), matching `cloud-slos.ts`.
  */
 import type {
   DiscoveredTagKeysResponse,
@@ -19,156 +20,229 @@ import type {
   ServicesForResourcesResponse,
   ServiceSummaryResponse,
   VirtualTag,
+  VirtualTagRule,
 } from "@infrawrench/client-core";
+import type { PostureCategory } from "@infrawrench/plugin-base";
 import type { ServiceResourceOption } from "@infrawrench/ui/services";
-import { invoke } from "./invoke";
+import { Schema } from "effect";
+import { searchCloudResourceIndex } from "./cloud-costs";
+import { cloudClient } from "./cloud-client";
+import { definedFields } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudServices(orgId: string): Promise<ServiceListResponse> {
-  return invoke("cloud_services_list", { orgId });
+const services = () => cloudClient("services").services;
+const scorecards = () => cloudClient("scorecards").scorecards;
+
+export function listCloudServices(orgId: string): Promise<ServiceListResponse> {
+  return runRpc(services().list({ params: { orgId } }));
 }
 
-export async function getCloudService(
-  orgId: string,
-  serviceId: string,
-): Promise<ServiceDetailResponse> {
-  return invoke("cloud_services_get", { orgId, serviceId });
+export function getCloudService(orgId: string, serviceId: string): Promise<ServiceDetailResponse> {
+  return runRpc(services().get({ params: { orgId, serviceId } }));
 }
 
+const POSTURE_CATEGORIES = [
+  "public-exposure",
+  "encryption",
+  "credential-age",
+  "data-protection",
+  "other",
+] as const satisfies ReadonlyArray<PostureCategory>;
+const isPostureCategory = Schema.is(Schema.Literals(POSTURE_CATEGORIES));
+
+/**
+ * The summary, its posture findings' `category` read as client-core's
+ * bucket. The contract types that field as any string here (the posture
+ * domain itself lists the buckets), so one this build does not know reads
+ * as `other`, the bucket the panel already has a label for.
+ */
 export async function getCloudServiceSummary(
   orgId: string,
   serviceId: string,
 ): Promise<ServiceSummaryResponse> {
-  return invoke("cloud_services_summary", { orgId, serviceId });
+  const summary = await runRpc(services().summary({ params: { orgId, serviceId } }));
+  const { posture } = summary.findings;
+  return {
+    ...summary,
+    findings: {
+      ...summary.findings,
+      posture: {
+        ...posture,
+        items: posture.items.map((finding) => ({
+          ...finding,
+          category: isPostureCategory(finding.category) ? finding.category : "other",
+        })),
+      },
+    },
+  };
 }
 
-export async function getCloudServiceScorecards(
+export function getCloudServiceScorecards(
   orgId: string,
   serviceId: string,
 ): Promise<ServiceScorecardsResponse> {
-  return invoke("cloud_services_scorecards", { orgId, serviceId });
+  return runRpc(services().scorecards({ params: { orgId, serviceId } }));
 }
 
-export async function createCloudService(orgId: string, input: ServiceInput): Promise<Service> {
-  return invoke("cloud_services_create", { orgId, input });
+export function createCloudService(orgId: string, input: ServiceInput): Promise<Service> {
+  return runRpc(services().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudService(
+export function updateCloudService(
   orgId: string,
   serviceId: string,
   patch: Partial<ServiceInput>,
 ): Promise<Service> {
-  return invoke("cloud_services_update", { orgId, serviceId, patch });
+  return runRpc(services().update({ params: { orgId, serviceId }, payload: definedFields(patch) }));
 }
 
 export async function deleteCloudService(orgId: string, serviceId: string): Promise<void> {
-  await invoke("cloud_services_delete", { orgId, serviceId });
+  await runRpc(services().delete({ params: { orgId, serviceId } }));
 }
 
-export async function addCloudServiceMembers(
+export function addCloudServiceMembers(
   orgId: string,
   serviceId: string,
   resourceIds: string[],
 ): Promise<ServiceDetailResponse> {
-  return invoke("cloud_services_add_members", { orgId, serviceId, resourceIds });
+  return runRpc(services().addMembers({ params: { orgId, serviceId }, payload: { resourceIds } }));
 }
 
-export async function removeCloudServiceMember(
+export function removeCloudServiceMember(
   orgId: string,
   serviceId: string,
   resourceId: string,
 ): Promise<ServiceDetailResponse> {
-  return invoke("cloud_services_remove_member", { orgId, serviceId, resourceId });
+  return runRpc(services().removeMember({ params: { orgId, serviceId, resourceId }, query: {} }));
 }
 
-export async function restoreCloudServiceMember(
+export function restoreCloudServiceMember(
   orgId: string,
   serviceId: string,
   resourceId: string,
 ): Promise<ServiceDetailResponse> {
-  return invoke("cloud_services_restore_member", { orgId, serviceId, resourceId });
+  return runRpc(
+    services().removeMember({
+      params: { orgId, serviceId, resourceId },
+      query: { restore: "1" },
+    }),
+  );
 }
 
-export async function getCloudServicesForResources(
+/**
+ * `ids` is one comma-separated value. The query encoder escapes the commas
+ * as well as the ids (the old handler left the separators raw); the server
+ * decodes the value before it splits, so both read the same list.
+ */
+export function getCloudServicesForResources(
   orgId: string,
   resourceIds: string[],
 ): Promise<ServicesForResourcesResponse> {
-  return invoke("cloud_services_for_resources", { orgId, resourceIds });
+  return runRpc(
+    services().forResources({ params: { orgId }, query: { ids: resourceIds.join(",") } }),
+  );
 }
 
 export async function listCloudOnCallSchedules(orgId: string): Promise<OnCallSchedule[]> {
-  const res = await invoke<{ schedules: OnCallSchedule[] }>("cloud_services_oncall_schedules", {
-    orgId,
-  });
-  return res?.schedules ?? [];
+  const res = await runRpc(cloudClient("onCall").onCall.listSchedules({ params: { orgId } }));
+  return res.schedules;
 }
 
-export async function listCloudTagKeys(orgId: string): Promise<DiscoveredTagKeysResponse> {
-  return invoke("cloud_services_tag_keys", { orgId });
+export function listCloudTagKeys(orgId: string): Promise<DiscoveredTagKeysResponse> {
+  return runRpc(cloudClient("tagKeys").tagKeys.list({ params: { orgId } }));
 }
 
+/**
+ * The org's virtual tags, each stored rule with every field present, as
+ * client-core types it. The contract's `VirtualTag` answer reuses the rule's
+ * request schema, whose encoded side leaves every field but `kind` optional
+ * (the server fills an absent one on the way in); a stored rule carries them
+ * all, and one that did not would read as the default the server fills.
+ */
 export async function listCloudVirtualTags(orgId: string): Promise<VirtualTag[]> {
-  return (await invoke<VirtualTag[] | null>("cloud_services_virtual_tags", { orgId })) ?? [];
+  const tags = await runRpc(cloudClient("virtualTags").virtualTags.list({ params: { orgId } }));
+  return tags.map((tag) => ({
+    ...tag,
+    rules: tag.rules.map((rule): VirtualTagRule => ({
+      query: rule.query ?? "",
+      description: rule.description ?? null,
+      startsOn: rule.startsOn ?? null,
+      endsOn: rule.endsOn ?? null,
+      kind: rule.kind,
+      value: rule.value ?? null,
+      sources: (rule.sources ?? []).map((source) => ({
+        tagKey: source.tagKey,
+        valuePrefix: source.valuePrefix ?? null,
+        query: source.query ?? null,
+      })),
+      valueTransform: rule.valueTransform ?? "none",
+      allocations: (rule.allocations ?? []).map((allocation) => ({
+        value: allocation.value,
+        percent: allocation.percent ?? null,
+        metricId: allocation.metricId ?? null,
+      })),
+    })),
+  }));
 }
 
-export async function listCloudScorecards(orgId: string): Promise<ScorecardListResponse> {
-  return invoke("cloud_scorecards_list", { orgId });
+export function listCloudScorecards(orgId: string): Promise<ScorecardListResponse> {
+  return runRpc(scorecards().list({ params: { orgId } }));
 }
 
-export async function getCloudScorecardOverview(orgId: string): Promise<ScorecardOverviewResponse> {
-  return invoke("cloud_scorecards_overview", { orgId });
+export function getCloudScorecardOverview(orgId: string): Promise<ScorecardOverviewResponse> {
+  return runRpc(scorecards().overview({ params: { orgId } }));
 }
 
 /** The org grade above the matrix: seven pillars, the overall and 90 days of history. */
-export async function getCloudOrgScorecard(orgId: string): Promise<OrgScorecardResponse> {
-  return invoke("cloud_scorecards_org", { orgId });
+export function getCloudOrgScorecard(orgId: string): Promise<OrgScorecardResponse> {
+  return runRpc(scorecards().org({ params: { orgId } }));
 }
 
 /** The org grade's stored readings alone, oldest first. */
-export async function getCloudOrgScorecardHistory(
+export function getCloudOrgScorecardHistory(
   orgId: string,
   days?: number,
 ): Promise<OrgScorecardHistoryResponse> {
-  return invoke("cloud_scorecards_org_history", { orgId, days });
+  return runRpc(
+    scorecards().orgHistory({
+      params: { orgId },
+      query: typeof days === "number" ? { days: String(days) } : {},
+    }),
+  );
 }
 
-export async function createCloudScorecard(
-  orgId: string,
-  input: ScorecardInput,
-): Promise<Scorecard> {
-  return invoke("cloud_scorecards_create", { orgId, input });
+export function createCloudScorecard(orgId: string, input: ScorecardInput): Promise<Scorecard> {
+  return runRpc(scorecards().create({ params: { orgId }, payload: definedFields(input) }));
 }
 
-export async function updateCloudScorecard(
+export function updateCloudScorecard(
   orgId: string,
   scorecardId: string,
   patch: Partial<ScorecardInput>,
 ): Promise<Scorecard> {
-  return invoke("cloud_scorecards_update", { orgId, scorecardId, patch });
+  return runRpc(
+    scorecards().update({ params: { orgId, scorecardId }, payload: definedFields(patch) }),
+  );
 }
 
 export async function deleteCloudScorecard(orgId: string, scorecardId: string): Promise<void> {
-  await invoke("cloud_scorecards_delete", { orgId, scorecardId });
+  await runRpc(scorecards().delete({ params: { orgId, scorecardId } }));
 }
 
-export async function evaluateCloudScorecard(
+export function evaluateCloudScorecard(
   orgId: string,
   scorecardId: string,
 ): Promise<ScorecardOverviewResponse> {
-  return invoke("cloud_scorecards_evaluate", { orgId, scorecardId });
+  return runRpc(scorecards().evaluate({ params: { orgId, scorecardId } }));
 }
 
 /**
- * The spotlight resource index, through the channel the savings log already
- * uses rather than a second one onto the same `GET /search`. The index also
- * returns workflows; only resources can be members.
+ * The spotlight resource index, through the call the savings log already
+ * makes (`GET /search`, workflows left out: only resources can be members).
  */
-export async function searchCloudServiceResources(
+export function searchCloudServiceResources(
   orgId: string,
   query: string,
 ): Promise<ServiceResourceOption[]> {
-  const rows = await invoke<ServiceResourceOption[] | null>("cloud_savings_search_resources", {
-    orgId,
-    query,
-  });
-  return (rows ?? []).filter((r) => r.pluginId !== "__workflows__");
+  return runRpc(searchCloudResourceIndex(orgId, query));
 }

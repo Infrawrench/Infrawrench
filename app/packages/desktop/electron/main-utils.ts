@@ -213,8 +213,8 @@ export async function getDb() {
   return _getDb();
 }
 
-// Dialog-blessed paths. Renderer-initiated file reads/writes (sftp_download,
-// sftp_upload, storage_download_batch) must supply a path that the user just
+// Dialog-blessed paths. Renderer-initiated file reads/writes (`SftpDownload`,
+// `StorageDownloadBatch`) must supply a path that the user just
 // picked via showOpenDialog / showSaveDialog. main.ts registers returned paths
 // here; consumers check `isDialogBlessedPath(p)` before touching the FS.
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { CliUsageError } from "../cli/effect/errors";
 import { tail4, unassignedQuery } from "../cli/commands/invoices";
+
+const refusal = (value: string | CliUsageError) =>
+  value instanceof CliUsageError ? value.message : null;
 
 describe("invoices CLI helpers", () => {
   it("masks account numbers to their last four characters", () => {
@@ -13,8 +17,8 @@ describe("invoices CLI helpers", () => {
     expect(unassignedQuery({ from: "2026-01-01", to: "2026-03-31" })).toBe(
       "?from=2026-01-01&to=2026-03-31",
     );
-    expect(() => unassignedQuery({ from: "2026-01-01" })).toThrow(/both/);
-    expect(() => unassignedQuery({ from: "January", to: "March" })).toThrow(/days/);
-    expect(() => unassignedQuery({ from: "2026-03-01", to: "2026-01-01" })).toThrow(/before/);
+    expect(refusal(unassignedQuery({ from: "2026-01-01" }))).toMatch(/both/);
+    expect(refusal(unassignedQuery({ from: "January", to: "March" }))).toMatch(/days/);
+    expect(refusal(unassignedQuery({ from: "2026-03-01", to: "2026-01-01" }))).toMatch(/before/);
   });
 });

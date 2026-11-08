@@ -9,8 +9,8 @@
  *
  * - serves the SPA from Workers static assets (`dist/client`), with the same
  *   security headers and hashed-asset 404 rule `server.ts` applies;
- * - runs the Hono API (`src/api`) itself, against Hyperdrive and the private
- *   ClickHouse binding; or
+ * - runs the API (`src/api`, the HttpApi router) itself, against Hyperdrive
+ *   and the private ClickHouse binding; or
  * - forwards to Node, with `src/edge/gateway-routes.ts` choosing the tier:
  *   WebSocket sessions and stateful routes to the session gateway; driver-only
  *   routes, plugin calls and requests about accounts that need Node
@@ -102,7 +102,7 @@ export interface Env extends EdgeBindings, RealtimeEnv {
   LAMBDA_GATEWAY_URL?: string;
   /** Shared with the Lambda, which refuses any request that lacks it. */
   LAMBDA_GATEWAY_SECRET?: string;
-  /** Read by `/api/v1/aws-bulk-pricing` through `c.env`. */
+  /** Read by `/api/v1/aws-bulk-pricing` through the `Invocation` service. */
   AWS_BULK_PRICING: KVNamespace;
 }
 

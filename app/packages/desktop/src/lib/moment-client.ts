@@ -4,7 +4,8 @@ import {
   type MomentRequest,
   type MomentResponse,
 } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
 
 /**
  * The moment view is cloud-only: every feed in the union is recorded by the
@@ -23,13 +24,20 @@ export function createDesktopMomentClient(): MomentClient {
   };
 
   return {
-    getMoment: (request: MomentRequest) =>
-      invoke<MomentResponse>("cloud_moment", {
-        orgId: requireOrg(),
-        ...(request.at ? { at: request.at } : {}),
-        ...(typeof request.windowMinutes === "number"
-          ? { windowMinutes: request.windowMinutes }
-          : {}),
-      }),
+    getMoment: (request: MomentRequest): Promise<MomentResponse> => {
+      const orgId = requireOrg();
+      const { at, windowMinutes } = request;
+      return runRpc(
+        cloudClient("moment").moment.get({
+          params: { orgId },
+          query: {
+            ...(at ? { at } : {}),
+            ...(typeof windowMinutes === "number" && Number.isFinite(windowMinutes)
+              ? { window: String(windowMinutes) }
+              : {}),
+          },
+        }),
+      );
+    },
   };
 }

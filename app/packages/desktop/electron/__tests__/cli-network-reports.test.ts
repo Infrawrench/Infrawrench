@@ -1,34 +1,30 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+// `network-reports` over a result built by client-core's own
+// `buildNetworkFlowReport`, so a change to the shape the server sends breaks
+// here as well as in the build. The command's other paths are pinned in
+// `cli-effect-files.test.ts`.
 vi.mock("electron", () => ({
-  app: { getPath: () => "/tmp" },
+  app: { getPath: () => "/tmp", getVersion: () => "9.9.9" },
+  shell: { openExternal: vi.fn() },
   ipcMain: { handle: () => {} },
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-const fetches = vi.hoisted(() => ({ orgFetch: vi.fn() }));
-vi.mock("../cli/context", () => ({
-  CliError: class CliError extends Error {
-    constructor(
-      message: string,
-      readonly exitCode = 1,
-    ) {
-      super(message);
-    }
-  },
-  orgFetch: fetches.orgFetch,
-  resolveOrg: async () => ({ id: "org-1", displayName: "Acme" }),
+vi.mock("../cloud-tokens", () => ({
+  getAccessToken: vi.fn(async () => "tok"),
+  forceRefreshAccessToken: vi.fn(async () => null),
+  fetchCloudOrgs: vi.fn(async () => [{ id: "org-1", displayName: "Acme", role: "admin" }]),
+  getAuthStatus: vi.fn(async () => ({ authenticated: true })),
+  setTokenStoreReadOnly: vi.fn(),
 }));
 
 import type { NetworkFlowReport, NetworkFlowReportRunResult } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { parseCliArgs } from "../cli/args";
-import { cmdNetworkReports } from "../cli/commands/network-reports";
-import type { CliContext } from "../cli/context";
-import { setColorEnabled } from "../cli/output";
+import { run, serveRoutes, useCliCapture } from "./cli-harness";
 
-beforeAll(() => setColorEnabled(false));
+const out = useCliCapture();
 
 // Built from client-core in beforeAll: this test compiles as CommonJS and
 // client-core is ESM, so it is imported dynamically.
@@ -65,71 +61,45 @@ beforeAll(async () => {
   };
 });
 
-function ctx(overrides: Partial<CliContext["flags"]> = {}): CliContext {
-  return { flags: { output: "text", ...overrides } } as unknown as CliContext;
-}
-
-let out: string[] = [];
 beforeEach(() => {
-  out = [];
-  vi.spyOn(console, "log").mockImplementation((line?: unknown) => {
-    out.push(String(line ?? ""));
+  serveRoutes(out, {
+    "GET /network-flows/reports": [report],
+    "POST /network-flows/reports/r1/run": result,
   });
-  vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
-    out.push(String(chunk));
-    return true;
-  });
-  fetches.orgFetch.mockReset();
-  fetches.orgFetch.mockImplementation(async (_org: string, path: string) =>
-    path === "/network-flows/reports" ? [report] : result,
-  );
 });
-afterEach(() => vi.restoreAllMocks());
 
 describe("network-reports", () => {
-  it("parses --format and --out", () => {
-    const parsed = parseCliArgs([
-      "network-reports",
-      "Egress by VPC",
-      "--format",
-      "pairs-csv",
-      "--out",
-      "x.csv",
-    ]);
-    expect(parsed.positionals).toEqual(["network-reports", "Egress by VPC"]);
-    expect(parsed.exportFlags.format).toBe("pairs-csv");
-    expect(parsed.exportFlags.out).toBe("x.csv");
-  });
-
   it("refuses --local", async () => {
-    await expect(cmdNetworkReports(ctx({ local: true }), "", {})).rejects.toThrow(/Cloud/);
+    expect(await run("network-reports", "--local")).toBe(1);
+    expect(out.stderr).toMatch(/Cloud/);
+    expect(out.requests).toEqual([]);
   });
 
   it("lists reports", async () => {
-    await cmdNetworkReports(ctx(), "", {});
-    expect(out.join("\n")).toContain("Egress by VPC");
+    expect(await run("network-reports")).toBe(0);
+    expect(out.stdout).toContain("Egress by VPC");
   });
 
   it("runs a report by name, printing estimates and the group table", async () => {
-    await cmdNetworkReports(ctx(), "egress", {});
-    expect(fetches.orgFetch).toHaveBeenCalledWith("org-1", "/network-flows/reports/r1/run", {
-      method: "POST",
-      body: "{}",
-    });
-    const text = out.join("\n");
-    expect(text).toContain("Estimated from flow logs");
-    expect(text).toContain("vpc-1");
-    expect(text).toContain("2.0 GB");
+    expect(await run("network-reports", "egress")).toBe(0);
+    expect(out.requests).toEqual([
+      "GET /network-flows/reports",
+      "POST /network-flows/reports/r1/run",
+    ]);
+    expect(out.stdout).toContain("Estimated from flow logs");
+    expect(out.stdout).toContain("vpc-1");
+    expect(out.stdout).toContain("2.0 GB");
   });
 
   it("prints the server's result for --json", async () => {
-    await cmdNetworkReports(ctx({ output: "json" }), "r1", {});
-    expect(JSON.parse(out.join(""))).toMatchObject({ org: "org-1", reportId: "r1" });
+    expect(await run("network-reports", "r1", "--json")).toBe(0);
+    expect(JSON.parse(out.stdout)).toEqual({ org: "org-1", ...result });
   });
 
   it("writes the series CSV and refuses an unknown format", async () => {
-    await cmdNetworkReports(ctx(), "r1", { format: "csv" });
-    expect(out.join("")).toContain('"bucket","group","currency","bytes","estimated_cost"');
-    await expect(cmdNetworkReports(ctx(), "r1", { format: "pdf" })).rejects.toThrow(/pairs-csv/);
+    expect(await run("network-reports", "r1", "--format", "csv")).toBe(0);
+    expect(out.stdout).toContain('"bucket","group","currency","bytes","estimated_cost"');
+    expect(await run("network-reports", "r1", "--format", "pdf")).toBe(2);
+    expect(out.stderr).toMatch(/pairs-csv/);
   });
 });

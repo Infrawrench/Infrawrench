@@ -1,5 +1,5 @@
 /**
- * Local-mode expiry feed for the CLI.
+ * Local-mode expiry feed, for the renderer's Expiry tab (over RPC) and the CLI.
  *
  * The cloud path (`GET /api/org/:orgId/expiring`) computes the feed
  * server-side over an organization's synced rows. This is the same
@@ -9,8 +9,8 @@
  * loads plugin *metadata* only: no plugin client is constructed, no account
  * credentials are decrypted, and no provider is contacted.
  *
- * The renderer has its own twin (src/lib/local-expiring.ts) because the GUI's
- * DB access goes over IPC; this one exists for the CLI, which has no renderer.
+ * One implementation for both callers: the renderer reaches it through the
+ * `LocalExpiringList` RPC ({@link LocalExpiring}), the CLI calls it directly.
  *
  * The `computeExpiryFeed` import is dynamic because this module graph is
  * CommonJS and client-core ships ESM (the same CJS→ESM bridge as
@@ -23,6 +23,8 @@
 import type { ExpiryListResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { LocalWorkspaceError } from "../shared/rpc/errors";
 import { getDb } from "./main-utils";
 import { loadPlugins } from "../src/plugins/loader";
 
@@ -86,4 +88,19 @@ export async function listLocalExpiring(): Promise<ExpiryListResponse> {
       fields: parseBag(r.fields_json),
     })),
   });
+}
+
+/** The expiry feed as an Effect service, for the renderer's Expiry tab over RPC. */
+export class LocalExpiring extends Context.Service<
+  LocalExpiring,
+  { readonly list: Effect.Effect<ExpiryListResponse, LocalWorkspaceError> }
+>()("infrawrench/desktop/LocalExpiring") {
+  static readonly layer = Layer.succeed(LocalExpiring)(
+    LocalExpiring.of({
+      list: Effect.tryPromise({
+        try: () => listLocalExpiring(),
+        catch: LocalWorkspaceError.fromCause,
+      }),
+    }),
+  );
 }

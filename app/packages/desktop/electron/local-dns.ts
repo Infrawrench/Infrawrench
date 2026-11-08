@@ -1,5 +1,5 @@
 /**
- * Local-mode DNS inventory for the CLI.
+ * Local-mode DNS inventory, for the renderer's DNS tab (over RPC) and the CLI.
  *
  * The cloud path (`GET /api/org/:orgId/dns`) computes the inventory
  * server-side over an organization's synced rows. This is the same
@@ -10,8 +10,8 @@
  * no account credentials are decrypted, no provider is contacted, and no DNS
  * is resolved.
  *
- * The renderer has its own twin (src/lib/local-dns.ts) because the GUI's DB
- * access goes over IPC; this one exists for the CLI, which has no renderer.
+ * One implementation for both callers: the renderer reaches it through the
+ * `LocalDnsInventory` RPC ({@link LocalDns}), the CLI calls it directly.
  *
  * The `computeDnsInventory` import is dynamic because this module graph is
  * CommonJS and client-core ships ESM (the same CJS→ESM bridge as
@@ -25,6 +25,8 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import type { DnsInventoryResponse, DnsScanResource } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
+import { Context, Effect, Layer } from "effect";
+import { LocalWorkspaceError } from "../shared/rpc/errors";
 import { getDb } from "./main-utils";
 import { loadPlugins } from "../src/plugins/loader";
 
@@ -109,4 +111,19 @@ export async function listLocalDns(): Promise<DnsInventoryResponse> {
     import("@infrawrench/client-core"),
   ]);
   return computeDnsInventory(input);
+}
+
+/** The DNS inventory as an Effect service, for the renderer's DNS tab over RPC. */
+export class LocalDns extends Context.Service<
+  LocalDns,
+  { readonly inventory: Effect.Effect<DnsInventoryResponse, LocalWorkspaceError> }
+>()("infrawrench/desktop/LocalDns") {
+  static readonly layer = Layer.succeed(LocalDns)(
+    LocalDns.of({
+      inventory: Effect.tryPromise({
+        try: () => listLocalDns(),
+        catch: LocalWorkspaceError.fromCause,
+      }),
+    }),
+  );
 }

@@ -1,6 +1,10 @@
 import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, msg, useGT, useMessages } from "gt-react";
+import {
+  CostGraphConfig as CostGraphConfigSchema,
+  decodeForm,
+} from "@infrawrench/api-contract/schemas";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   COST_BASES,
@@ -18,7 +22,6 @@ import {
   COST_DIMENSIONS,
   COST_RANGE_PRESET_LABELS as PRESET_LABELS,
   COST_RANGE_PRESETS,
-  costGraphConfigSchema,
   type CostBasis,
   type CostDimensionId,
   type BusinessMetric,
@@ -389,9 +392,9 @@ export function CostGraphConfigModal({
       comparisonStyle:
         config.comparePreviousPeriod && config.comparisonStyle === "bars" ? "bars" : undefined,
     } satisfies CostGraphConfig;
-    const parsed = costGraphConfigSchema.safeParse(cleaned);
+    const parsed = decodeForm(CostGraphConfigSchema, cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid configuration"));
+      setError(parsed.message || gt("Invalid configuration"));
       return;
     }
     if (parsed.data.groupBy === "tag" && !parsed.data.groupByTagKey) {

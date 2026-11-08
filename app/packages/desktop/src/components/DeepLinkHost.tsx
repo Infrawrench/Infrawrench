@@ -9,7 +9,7 @@ import {
   useUIStore,
   vulnerabilitiesTabTarget,
 } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
+import { subscribeRpc } from "../lib/rpc/subscribe";
 import {
   incidentsTabTarget,
   navigateToWorkspaceTarget,
@@ -19,8 +19,10 @@ import {
 
 /**
  * Opens `infrawrench://open/…` links (from the VS Code and Raycast
- * extensions) as workspace tabs. Main forwards the raw URL; parsing happens
- * here with the same client-core function that builds the links.
+ * extensions) as workspace tabs. Main forwards the raw URL over the
+ * `DeepLinks` subscription (a link that arrived before this mounted comes
+ * first); parsing happens here with the same client-core function that
+ * builds the links.
  *
  * A link names its org. The desktop opens it only when that is the cloud org
  * it is showing: a resource id from another org would resolve to nothing, and
@@ -31,8 +33,7 @@ export function DeepLinkHost() {
   const gt = useGT();
 
   useEffect(() => {
-    const open = (url: unknown) => {
-      if (typeof url !== "string") return;
+    const open = (url: string) => {
       const link = parseDesktopDeepLink(url);
       if (!link) {
         toast.error(gt("That Infrawrench link isn't one this version can open."));
@@ -73,11 +74,7 @@ export function DeepLinkHost() {
               : servicesTabTarget(link.serviceId);
       void navigateToWorkspaceTarget(navigate, target, { mode: "pin" });
     };
-    window.electronAPI.on("deep_link_open", (...args: unknown[]) => open(args[0]));
-    void invoke<string | null>("deep_link_take_pending")
-      .then(open)
-      .catch(() => {});
-    return () => window.electronAPI.offAll("deep_link_open");
+    return subscribeRpc("deep-links", (rpc) => rpc.DeepLinks(), open);
   }, [navigate, gt]);
 
   return null;

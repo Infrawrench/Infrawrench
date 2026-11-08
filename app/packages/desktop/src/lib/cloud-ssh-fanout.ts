@@ -1,41 +1,50 @@
 /**
- * Renderer bridge for the cloud fan-out SSH API (`/api/org/:orgId/ssh-fanout`).
+ * Renderer bridge for the cloud fan-out SSH API (`/api/org/:orgId/ssh-fanout`),
+ * typed calls to the contract's `sshFanout` domain over the cloud transport.
  * The run call keeps the change-freeze 423 as data (not an exception) so the
- * shared `SshFanoutView` can offer the override affordance.
+ * shared `SshFanoutView` can offer the override affordance, which resends
+ * with the `x-change-freeze-override` header the endpoint declares.
  */
 import type { FanoutHostResult } from "@infrawrench/client-core";
 import type { SshFanoutSnippetInfo, SshFanoutTargetInfo } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { Effect, Option } from "effect";
+import { cloudClient, CloudResponseError, serverErrorSentence } from "./cloud-client";
+import { definedFields } from "./cloud-payload";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudFanoutTargets(orgId: string): Promise<SshFanoutTargetInfo[]> {
-  const res = await invoke<{ targets: SshFanoutTargetInfo[] }>("cloud_ssh_fanout_targets", {
-    orgId,
-  });
-  return res?.targets ?? [];
+const fanout = () => cloudClient("sshFanout").sshFanout;
+
+export function listCloudFanoutTargets(orgId: string): Promise<SshFanoutTargetInfo[]> {
+  return runRpc(
+    fanout()
+      .targets({ params: { orgId } })
+      .pipe(Effect.map((res) => res.targets)),
+  );
 }
 
-export async function listCloudFanoutSnippets(orgId: string): Promise<SshFanoutSnippetInfo[]> {
-  const res = await invoke<{ snippets: SshFanoutSnippetInfo[] }>("cloud_ssh_fanout_snippets_list", {
-    orgId,
-  });
-  return res?.snippets ?? [];
+export function listCloudFanoutSnippets(orgId: string): Promise<SshFanoutSnippetInfo[]> {
+  return runRpc(
+    fanout()
+      .listSnippets({ params: { orgId } })
+      .pipe(Effect.map((res) => res.snippets)),
+  );
 }
 
 export async function createCloudFanoutSnippet(
   orgId: string,
   body: { name: string; command: string },
 ): Promise<void> {
-  await invoke("cloud_ssh_fanout_snippets_create", { orgId, body });
+  await runRpc(fanout().createSnippet({ params: { orgId }, payload: body }));
 }
 
 export async function deleteCloudFanoutSnippet(orgId: string, id: string): Promise<void> {
-  await invoke("cloud_ssh_fanout_snippets_delete", { orgId, id });
+  await runRpc(fanout().deleteSnippet({ params: { orgId, id } }));
 }
 
 export type CloudFanoutRunResult =
   { kind: "results"; results: FanoutHostResult[] } | { kind: "freeze"; message: string };
 
-export async function runCloudFanout(
+export function runCloudFanout(
   orgId: string,
   body: {
     command: string;
@@ -45,23 +54,32 @@ export async function runCloudFanout(
   },
   overrideFreeze: boolean,
 ): Promise<CloudFanoutRunResult> {
-  const res = await invoke<{ status: number; body: unknown }>("cloud_ssh_fanout_run", {
-    orgId,
-    body,
-    overrideFreeze,
-  });
-  const parsed = (res?.body ?? {}) as Record<string, unknown>;
-  if (res?.status === 423) {
-    const message =
-      typeof parsed["error"] === "string"
-        ? (parsed["error"] as string)
-        : "Blocked by an active change freeze";
-    return { kind: "freeze", message };
-  }
-  if (res?.status !== 200) {
-    const message =
-      typeof parsed["error"] === "string" ? (parsed["error"] as string) : "Fan-out run failed";
-    throw new Error(message);
-  }
-  return { kind: "results", results: (parsed["results"] as FanoutHostResult[]) ?? [] };
+  return runRpc(
+    fanout()
+      .run({
+        params: { orgId },
+        headers: overrideFreeze ? { "x-change-freeze-override": "true" } : {},
+        payload: definedFields(body),
+      })
+      .pipe(
+        Effect.map((res): CloudFanoutRunResult => ({ kind: "results", results: res.results })),
+        Effect.catchTag("CloudResponseError", (error) => {
+          const sentence = serverErrorSentence(error.body);
+          // A freeze is an answer the view offers to override, not a failure.
+          if (error.status === 423) {
+            return Effect.succeed<CloudFanoutRunResult>({
+              kind: "freeze",
+              message: Option.getOrElse(sentence, () => "Blocked by an active change freeze"),
+            });
+          }
+          return Effect.fail(
+            new CloudResponseError({
+              message: Option.getOrElse(sentence, () => "Fan-out run failed"),
+              status: error.status,
+              body: error.body,
+            }),
+          );
+        }),
+      ),
+  );
 }

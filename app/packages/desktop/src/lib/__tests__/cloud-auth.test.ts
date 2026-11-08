@@ -1,32 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 
-const invoke = vi.fn();
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
-import { getCloudAuthStatus, getCloudOrgs, startCloudAuth } from "../cloud-auth";
+const { fakeRpc, resetFakeRpc } = await import("./fake-rpc");
+const { getCloudAuthStatus, getCloudOrgs, getCloudWsToken, startCloudAuth } =
+  await import("../cloud-auth");
+const { CloudRequestError } = await import("../../../shared/rpc/errors");
 
 beforeEach(() => {
-  invoke.mockReset();
-  invoke.mockResolvedValue(undefined);
+  resetFakeRpc();
 });
 
 describe("cloud-auth wrappers", () => {
-  it("getCloudAuthStatus -> cloud_auth_status", async () => {
-    invoke.mockResolvedValue({ authenticated: true, email: "a@b.c" });
-    const res = await getCloudAuthStatus();
-    expect(invoke).toHaveBeenCalledWith("cloud_auth_status");
-    expect(res).toEqual({ authenticated: true, email: "a@b.c" });
+  it("getCloudAuthStatus -> CloudAuthStatus", async () => {
+    fakeRpc["CloudAuthStatus"] = () => Effect.succeed({ authenticated: true, email: "a@b.c" });
+    await expect(getCloudAuthStatus()).resolves.toEqual({ authenticated: true, email: "a@b.c" });
   });
 
-  it("startCloudAuth -> cloud_auth_start", async () => {
+  it("startCloudAuth -> CloudAuthStart", async () => {
+    const start = vi.fn(() => Effect.void);
+    fakeRpc["CloudAuthStart"] = start;
     await startCloudAuth();
-    expect(invoke).toHaveBeenCalledWith("cloud_auth_start");
+    expect(start).toHaveBeenCalledOnce();
   });
 
-  it("getCloudOrgs -> cloud_auth_orgs", async () => {
-    invoke.mockResolvedValue([{ id: "o1", displayName: "Org", role: "owner" }]);
-    const res = await getCloudOrgs();
-    expect(invoke).toHaveBeenCalledWith("cloud_auth_orgs");
-    expect(res).toHaveLength(1);
+  it("getCloudOrgs -> CloudAuthOrgs", async () => {
+    fakeRpc["CloudAuthOrgs"] = () =>
+      Effect.succeed([{ id: "o1", displayName: "Org", role: "owner" }]);
+    await expect(getCloudOrgs()).resolves.toHaveLength(1);
+  });
+
+  it("getCloudOrgs rejects with the main process's sentence", async () => {
+    fakeRpc["CloudAuthOrgs"] = () =>
+      Effect.fail(new CloudRequestError({ message: "Loading organizations failed: HTTP 502" }));
+    await expect(getCloudOrgs()).rejects.toThrow("Loading organizations failed: HTTP 502");
+  });
+
+  it("getCloudWsToken names the org", async () => {
+    const mint = vi.fn(() => Effect.succeed("ws-1"));
+    fakeRpc["CloudWsToken"] = mint;
+    await expect(getCloudWsToken("o1")).resolves.toBe("ws-1");
+    expect(mint).toHaveBeenCalledWith({ orgId: "o1" });
   });
 });

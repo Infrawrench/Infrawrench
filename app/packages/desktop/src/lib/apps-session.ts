@@ -19,39 +19,87 @@ import type {
   RequirementId,
 } from "@infrawrench/appstream-core";
 
-import { invoke } from "./invoke";
+import { Cause, Effect, Exit, Predicate, Stream } from "effect";
+import type { AppsConnectConfig } from "../../shared/rpc/groups/linux-apps";
+import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 
 /**
- * Subscribe to a main-process event channel, returning an unsubscribe.
- *
- * The preload bridge only offers `on` and `offAll`, so a session removes every
- * listener for its own channel, which is correct here because each channel
- * name carries the session id and has exactly one subscriber.
+ * Where and how to connect (`AppsConnectConfig` in
+ * `shared/rpc/groups/linux-apps.ts`). When `privateKey` is
+ * `CLOUD_KEY_SENTINEL`, `cloudKey` names the org key the main process
+ * authenticates with through the cloud signing agent: its private half never
+ * reaches this machine, and the app stream still runs directly between this
+ * machine and the host.
  */
-function onEvent(channel: string, handler: (payload: unknown) => void): () => void {
-  window.electronAPI.on(channel, (payload) => handler(payload));
-  return () => window.electronAPI.offAll(channel);
-}
+export type { AppsConnectConfig };
 
-/**
- * A type alias rather than an interface so it carries the implicit index
- * signature `invoke`'s `Record<string, unknown>` argument needs.
- */
-export type AppsConnectConfig = {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
-  /**
-   * Set when `privateKey` is `CLOUD_KEY_SENTINEL`: the org key the main
-   * process authenticates with through the cloud signing agent. The private
-   * half never reaches this machine; the app stream still runs directly
-   * between this machine and the host.
-   */
-  cloudKey?: { orgId: string; sshKeyId: string };
-  agentForward?: boolean;
-  jumpHops?: Array<{ host: string; port: number; username: string; privateKey: string }>;
+const failureMessage = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
+  if (!Exit.isFailure(exit)) return undefined;
+  const failure = Cause.squash(exit.cause);
+  return Predicate.isError(failure) ? failure.message : String(failure);
 };
+
+/**
+ * Open the session's stream and resolve once the app server is running. The
+ * stream carries everything after that; `stop` interrupts it, which closes
+ * the app server and the connection in the main process.
+ */
+function openSession(
+  config: AppsConnectConfig,
+  handlers: {
+    onData: (bytes: Uint8Array) => void;
+    onStderr: (line: string) => void;
+    onProgress: (stage: string) => void;
+    /** The app server exited, or the connection to it failed, after it opened. */
+    onClosed: () => void;
+  },
+): Promise<{ sessionId: string; stop: () => void }> {
+  let sessionId: string | null = null;
+  let stopped = false;
+  return new Promise((resolve, reject) => {
+    const stop = forkRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        yield* Stream.runForEach(rpc.AppsSessionOpen(config), (event) =>
+          Effect.sync(() => {
+            switch (event._tag) {
+              case "Opened":
+                sessionId = event.sessionId;
+                resolve({
+                  sessionId: event.sessionId,
+                  stop: () => {
+                    stopped = true;
+                    stop();
+                  },
+                });
+                return;
+              case "Data":
+                handlers.onData(event.data);
+                return;
+              case "Stderr":
+                if (sessionId !== null) handlers.onStderr(event.line);
+                return;
+              case "Progress":
+                if (sessionId !== null) handlers.onProgress(event.stage);
+                return;
+            }
+          }),
+        );
+      }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            if (stopped) return;
+            if (sessionId === null) {
+              reject(new Error(failureMessage(exit) ?? "The app server did not start"));
+              return;
+            }
+            handlers.onClosed();
+          }),
+        ),
+      ),
+    );
+  });
+}
 
 /** Everything a tab needs to talk to one host. */
 export interface HostAppsSession {
@@ -121,7 +169,33 @@ export async function acquireHostSession(
   }
 
   const clientCaps = await caps();
-  const { sessionId } = await invoke<{ sessionId: string }>("apps_session_open", config);
+  const incoming: Array<(bytes: Uint8Array) => void> = [];
+  const closed: Array<() => void> = [];
+  // Frames that arrive between `Opened` and the session attaching its
+  // handler (the app server speaks first), delivered when it attaches.
+  const backlog: Uint8Array[] = [];
+  // The status handlers only ever run after `entry` exists: the session's
+  // events reach them once the open has resolved.
+  let setStatus: (status: HostStatus) => void = () => {};
+  const { sessionId, stop } = await openSession(config, {
+    onData: (bytes) => {
+      if (incoming.length === 0) backlog.push(bytes);
+      for (const handler of incoming) handler(bytes);
+    },
+    onClosed: () => {
+      setStatus({ stage: "error", message: "the app server stopped" });
+      for (const handler of closed) handler();
+    },
+    onStderr: (text) => {
+      // Only surfaced as status when it is the thing that went wrong; the rest
+      // is noise a user cannot act on.
+      if (/error|failed|cannot/i.test(text)) setStatus({ stage: "error", message: text });
+    },
+    onProgress: (value) => {
+      if (value === "uploading") setStatus({ stage: "uploading" });
+      else if (value === "starting") setStatus({ stage: "starting" });
+    },
+  });
 
   const listeners = new Set<(status: HostStatus) => void>();
   // `session` is attached below, once the transport it needs exists; the
@@ -135,39 +209,20 @@ export async function acquireHostSession(
     dispose: () => {},
   };
 
-  const setStatus = (status: HostStatus) => {
+  setStatus = (status: HostStatus) => {
     entry.status = status;
     for (const listener of listeners) listener(status);
   };
 
-  const incoming: Array<(bytes: Uint8Array) => void> = [];
-  const closed: Array<() => void> = [];
-
-  const offData = onEvent(`apps_data_${sessionId}`, (payload) => {
-    const bytes = payload as Uint8Array;
-    for (const handler of incoming) handler(bytes);
-  });
-  const offExit = onEvent(`apps_exit_${sessionId}`, () => {
-    setStatus({ stage: "error", message: "the app server stopped" });
-    for (const handler of closed) handler();
-  });
-  const offStderr = onEvent(`apps_stderr_${sessionId}`, (line) => {
-    // Only surfaced as status when it is the thing that went wrong; the rest
-    // is noise a user cannot act on.
-    const text = String(line);
-    if (/error|failed|cannot/i.test(text)) setStatus({ stage: "error", message: text });
-  });
-  const offProgress = onEvent(`apps_progress_${sessionId}`, (stage) => {
-    const value = String(stage);
-    if (value === "uploading") setStatus({ stage: "uploading" });
-    else if (value === "starting") setStatus({ stage: "starting" });
-  });
-
   const transport: AppSessionTransport = {
-    send: (bytes) => void invoke<void>("apps_session_write", { sessionId, data: bytes }),
-    onMessage: (handler) => incoming.push(handler),
+    send: (bytes) =>
+      void runRpc(DesktopRpcClient.use((rpc) => rpc.AppsSessionWrite({ sessionId, data: bytes }))),
+    onMessage: (handler) => {
+      incoming.push(handler);
+      for (const bytes of backlog.splice(0)) handler(bytes);
+    },
     onClose: (handler) => closed.push(handler),
-    close: () => void invoke<void>("apps_session_close", { sessionId }),
+    close: stop,
   };
 
   const session = new AppSession(transport, {
@@ -180,13 +235,7 @@ export async function acquireHostSession(
     },
   });
 
-  entry.dispose = () => {
-    offData();
-    offExit();
-    offStderr();
-    offProgress();
-    void invoke<void>("apps_session_close", { sessionId });
-  };
+  entry.dispose = stop;
 
   // Same object, now complete: the closures above keep writing to it.
   const ready: Entry = Object.assign(entry, { session });
@@ -236,7 +285,7 @@ export function joinHostSession(key: string): HostAppsSession | null {
  * the `gunzip` that unpacks the app server.
  */
 export async function preflightHostApps(config: AppsConnectConfig): Promise<HostRequirementsCheck> {
-  return await invoke<HostRequirementsCheck>("apps_preflight", { config });
+  return await runRpc(DesktopRpcClient.use((rpc) => rpc.AppsPreflight({ config })));
 }
 
 /**
@@ -250,22 +299,28 @@ export async function installHostRequirements(
   include: RequirementId[] | undefined,
   onOutput: (line: string) => void,
 ): Promise<InstallOutcome> {
-  const installId = crypto.randomUUID();
-  const off = onEvent(`apps_install_${installId}`, (line) => onOutput(String(line)));
-  try {
-    return await invoke<InstallOutcome>("apps_install", {
-      config,
-      installId,
-      ...(include ? { include } : {}),
-    });
-  } finally {
-    off();
-  }
+  const outcome = await runRpc(
+    Effect.gen(function* () {
+      const rpc = yield* DesktopRpcClient;
+      let done: InstallOutcome | undefined;
+      yield* Stream.runForEach(
+        rpc.AppsInstall({ config, ...(include ? { include } : {}) }),
+        (event) =>
+          Effect.sync(() => {
+            if (event._tag === "Output") onOutput(event.line);
+            else done = event.outcome;
+          }),
+      );
+      return done;
+    }),
+  );
+  if (!outcome) throw new Error("The install ended without reporting what changed.");
+  return outcome;
 }
 
 /** List a host's applications without opening a session. */
 export async function listHostApps(config: AppsConnectConfig, iconSize = 48): Promise<AppEntry[]> {
-  return await invoke<AppEntry[]>("apps_list", { config, iconSize });
+  return await runRpc(DesktopRpcClient.use((rpc) => rpc.AppsList({ config, iconSize })));
 }
 
 /**

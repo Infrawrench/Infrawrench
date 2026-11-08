@@ -1,9 +1,11 @@
-import { invoke } from "../lib/invoke";
+import { Predicate } from "effect";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { desktopInstancePricingQuery } from "./instance-pricing";
 import { getDb } from "../db/client";
 import { secretAnchorStatement } from "../db/secret-anchor";
 import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
 import { SecretReadError } from "@infrawrench/plugin-base";
+import { decryptSecretField, encryptSecretField } from "./local-secrets";
 
 export function sqlQuery(
   driverId: string,
@@ -11,12 +13,16 @@ export function sqlQuery(
   sql: string,
   options?: { caCert?: string },
 ): Promise<Record<string, unknown>[]> {
-  return invoke<Record<string, unknown>[]>("plugin_sql_query", {
-    driverId,
-    connectionString,
-    sql,
-    ...(options?.caCert ? { caCert: options.caCert } : {}),
-  });
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.PluginSqlQuery({
+        driverId,
+        connectionString,
+        sql,
+        ...(options?.caCert ? { caCert: options.caCert } : {}),
+      }),
+    ),
+  );
 }
 
 export function sqlExecute(
@@ -26,13 +32,17 @@ export function sqlExecute(
   params: unknown[],
   options?: { caCert?: string },
 ): Promise<number> {
-  return invoke<number>("plugin_sql_execute", {
-    driverId,
-    connectionString,
-    sql,
-    params,
-    ...(options?.caCert ? { caCert: options.caCert } : {}),
-  });
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.PluginSqlExecute({
+        driverId,
+        connectionString,
+        sql,
+        params,
+        ...(options?.caCert ? { caCert: options.caCert } : {}),
+      }),
+    ),
+  );
 }
 
 export function buildHostServices(
@@ -55,7 +65,11 @@ export function kvCommand(
   command: string,
   ...args: (string | number)[]
 ): Promise<unknown> {
-  return invoke<unknown>("plugin_kv_command", { driverId, connectionString, command, args });
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.PluginKvCommand({ driverId, connectionString, command, args }),
+    ),
+  );
 }
 
 export function buildKvHostServices(driverId: string, connectionString: string): HostServices {
@@ -66,7 +80,7 @@ export function buildKvHostServices(driverId: string, connectionString: string):
   };
 }
 
-// memcached routes through the same plugin_kv_command channel with driverId="memcached"
+// memcached routes through the same PluginKvCommand RPC with driverId="memcached"
 export const buildMemcachedHostServices = buildKvHostServices;
 
 export function dockerCommand(
@@ -75,7 +89,11 @@ export function dockerCommand(
   op: string,
   params?: Record<string, unknown>,
 ): Promise<unknown> {
-  return invoke<unknown>("plugin_docker_command", { driverId, dockerHost, op, params });
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.PluginDockerCommand({ driverId, dockerHost, op, ...(params ? { params } : {}) }),
+    ),
+  );
 }
 
 export function buildDockerHostServices(driverId: string, dockerHost: string): HostServices {
@@ -92,7 +110,11 @@ function k8sCommand(
   op: string,
   params?: Record<string, unknown>,
 ): Promise<unknown> {
-  return invoke<unknown>("plugin_k8s_command", { driverId, kubeconfig, op, params });
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.PluginK8sCommand({ driverId, kubeconfig, op, ...(params ? { params } : {}) }),
+    ),
+  );
 }
 
 function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
@@ -116,16 +138,19 @@ function httpRequest(req: {
   headers: Record<string, string>;
   body: string;
   rawBody?: Uint8Array;
-  /** `k8s_api_request` answers over `node:https`, which reads trailers on every request. */
+  /** `K8sApiRequest` answers over `node:https`, which reads trailers on every request. */
   trailers?: Record<string, string>;
 }> {
-  return invoke<{
-    status: number;
-    headers: Record<string, string>;
-    body: string;
-    rawBody?: Uint8Array;
-    trailers?: Record<string, string>;
-  }>("k8s_api_request", req);
+  // A byte body travels as `bodyBytes`: a JSON frame cannot tell a string
+  // from base64 bytes.
+  const { body, ...rest } = req;
+  const payload =
+    body === undefined
+      ? rest
+      : Predicate.isString(body)
+        ? { ...rest, body }
+        : { ...rest, bodyBytes: body };
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.K8sApiRequest(payload)));
 }
 
 const httpHostServices = { http: { request: httpRequest } };
@@ -159,9 +184,7 @@ export const secretHostServices: SecretHostServices = {
       const row = rows[0];
       if (!row || row.resolution_kind !== "literal") return null;
       if (!row.encrypted_value || !row.value_iv) return null;
-      const plaintext = await invoke<string>("secret_field_decrypt", {
-        resourceId,
-        fieldKey,
+      const plaintext = await decryptSecretField(resourceId, fieldKey, {
         ciphertext: row.encrypted_value,
         iv: row.value_iv,
       });
@@ -185,10 +208,7 @@ export async function persistPlaintextSecret(
   fieldKey: string,
   plaintext: string,
 ): Promise<void> {
-  const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-    "secret_field_encrypt",
-    { resourceId, fieldKey, plaintext },
-  );
+  const { ciphertext, iv } = await encryptSecretField(resourceId, fieldKey, plaintext);
   const db = await getDb();
   await db.execute(
     `INSERT INTO secret_field_states (id, resource_id, field_key, resolution_kind, encrypted_value, value_iv)
@@ -228,10 +248,7 @@ export async function persistOutputRef(
     value: string;
   },
 ): Promise<void> {
-  const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-    "secret_field_encrypt",
-    { resourceId, fieldKey, plaintext: ref.value },
-  );
+  const { ciphertext, iv } = await encryptSecretField(resourceId, fieldKey, ref.value);
   const db = await getDb();
   await db.execute(
     `INSERT INTO secret_field_states

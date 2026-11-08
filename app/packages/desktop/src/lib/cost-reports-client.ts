@@ -152,8 +152,8 @@ export function createDesktopCostReportsClient(): CostReportsClient {
 }
 
 /**
- * Object sharing over the allowlisted `cloud_settings_request` channel
- * (`/sharing` and the Team reads are on its allowlist). The org is resolved
+ * Object sharing over the settings client (`/sharing` and the Team reads are
+ * on the cloud transport's Settings allowlist). The org is resolved
  * per call, like every other desktop cost client.
  */
 export function createDesktopSharingClient(): SharingClient {

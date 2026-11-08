@@ -123,14 +123,8 @@ func (r *networkFlowSettingsResource) Delete(ctx context.Context, req resource.D
 		return
 	}
 
-	lookback := state.InitialLookbackDays.ValueInt64()
-	if lookback == 0 {
-		lookback = defaultNetworkFlowLookbackDays
-	}
-
-	if _, err := r.client.PutNetworkFlowSettings(ctx, iw.NetworkFlowSettings{
-		Enabled:             false,
-		InitialLookbackDays: lookback,
+	if _, err := r.client.PutNetworkFlowSettings(ctx, iw.NetworkFlowSettingsInput{
+		Enabled: false,
 	}); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to turn network flow collection off",
@@ -143,31 +137,17 @@ func (r *networkFlowSettingsResource) ImportState(ctx context.Context, _ resourc
 	importOrgSingleton(ctx, r.client.OrgID(), resp)
 }
 
-// defaultNetworkFlowLookbackDays mirrors the server's own default. Used only to
-// keep the destroy body valid when state somehow carries no lookback: the PUT
-// requires the field, and inventing a bigger number there would be inventing a
-// bill.
-const defaultNetworkFlowLookbackDays = 7
-
 func (r *networkFlowSettingsResource) write(ctx context.Context, plan networkFlowSettingsResourceModel, diags *diagnostics, state *tfState) {
-	// An unknown lookback (the practitioner omitted the attribute) has to
-	// resolve to something before the body is built, because the field is
-	// required on the wire. Reading the stored value first is what makes
-	// "omitted" mean "leave it alone" rather than "reset it to 7".
-	lookback := plan.InitialLookbackDays.ValueInt64()
-	if plan.InitialLookbackDays.IsNull() || plan.InitialLookbackDays.IsUnknown() {
-		current, err := r.client.GetNetworkFlowSettings(ctx)
-		if err != nil {
-			diags.AddError("Unable to read the current network flow settings", err.Error())
-			return
-		}
-		lookback = current.InitialLookbackDays
+	// An unknown lookback (the practitioner omitted the attribute) is left out
+	// of the body, which the route reads as "keep the stored one": "omitted"
+	// means "leave it alone" rather than "reset it to 7".
+	in := iw.NetworkFlowSettingsInput{Enabled: plan.Enabled.ValueBool()}
+	if !plan.InitialLookbackDays.IsNull() && !plan.InitialLookbackDays.IsUnknown() {
+		lookback := plan.InitialLookbackDays.ValueInt64()
+		in.InitialLookbackDays = &lookback
 	}
 
-	saved, err := r.client.PutNetworkFlowSettings(ctx, iw.NetworkFlowSettings{
-		Enabled:             plan.Enabled.ValueBool(),
-		InitialLookbackDays: lookback,
-	})
+	saved, err := r.client.PutNetworkFlowSettings(ctx, in)
 	if err != nil {
 		diags.AddError("Unable to write network flow settings", err.Error())
 		return

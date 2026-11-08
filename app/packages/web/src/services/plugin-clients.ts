@@ -12,7 +12,7 @@ export {
   getClientForResource,
 } from "@infrawrench/server-core/peer-clients";
 
-interface PeerPaneResult {
+export interface PeerPaneResult {
   tabLabel: string;
   pluginLogoSvg: string;
   schema: PeerPaneSchema;

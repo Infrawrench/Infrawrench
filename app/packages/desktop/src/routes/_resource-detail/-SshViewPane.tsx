@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { SshTerminal } from "../../components/SshTerminal";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
-import { invoke } from "../../lib/invoke";
 import type { QuickSshConnection, SshConfig } from "./-types";
+import { ensureAgentSshKey, getLocalSshPrivateKey } from "../../lib/local-secrets";
 
 interface SshViewPaneProps {
   accountId: string;
@@ -80,7 +80,7 @@ export function SshViewPane({
       return;
     }
     let cancelled = false;
-    invoke<{ id: string; name: string; publicKey: string }>("ssh_key_ensure_agent_key")
+    ensureAgentSshKey()
       .then((key) => {
         if (!cancelled) setResolvedAgentKey({ id: key.id, name: key.name });
       })
@@ -103,9 +103,7 @@ export function SshViewPane({
     // dispatches `cloud` key sources through the WS proxy, which signs with
     // the key server-side, so there is nothing to read here.
     const resolvePrivateKey =
-      agentKeyScope === "cloud"
-        ? Promise.resolve("")
-        : invoke<string>("ssh_key_get_private_key", { keyId: effectiveSshKeyId });
+      agentKeyScope === "cloud" ? Promise.resolve("") : getLocalSshPrivateKey(effectiveSshKeyId);
     resolvePrivateKey
       .then((privateKey) => {
         if (cancelled) return;

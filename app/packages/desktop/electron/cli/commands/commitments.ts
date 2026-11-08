@@ -1,10 +1,78 @@
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
-import type {
-  CommitmentHolding,
-  CommitmentRecommendationView,
-  CommitmentsFeed,
-} from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, type Column } from "../output";
+import type { CommitmentsFeed } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
+import { Effect, Schema } from "effect";
+import { Command } from "effect/cli";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { spreadBody, wire } from "../effect/wire";
+import { c, type Column } from "../output";
+
+const PATH = "/commitments";
+
+// `state`, `reason` and `savingBasis` stay strings: each cell renders a value
+// it does not know with its default branch rather than failing the listing.
+const Holding = Schema.Struct({
+  description: Schema.String,
+  accountName: Schema.String,
+  region: Schema.NullOr(Schema.String),
+  endDate: Schema.NullOr(Schema.String),
+  currency: Schema.NullOr(Schema.String),
+  upfrontAmount: Schema.NullOr(Schema.Finite),
+  hourlyCommitmentAmount: Schema.NullOr(Schema.Finite),
+  unitCommitments: Schema.NullOr(
+    Schema.Array(Schema.Struct({ unit: Schema.String, amount: Schema.Finite })),
+  ),
+  state: Schema.String,
+  providerUtilization: Schema.NullOr(
+    Schema.Array(Schema.Struct({ grainDays: Schema.Finite, percentage: Schema.Finite })),
+  ),
+  utilization: Schema.Struct({
+    utilization: Schema.NullOr(Schema.Finite),
+    reason: Schema.optional(Schema.String),
+    missingDays: Schema.Finite,
+  }),
+});
+type CommitmentHolding = typeof Holding.Type;
+
+const Recommendation = Schema.Struct({
+  pluginId: Schema.String,
+  service: Schema.String,
+  region: Schema.String,
+  currency: Schema.String,
+  recommendedHourlyCommitment: Schema.Finite,
+  annualCommitment: Schema.Finite,
+  savingBasis: Schema.String,
+  discountRateMax: Schema.Finite,
+  estimatedAnnualSavingMin: Schema.optional(Schema.Finite),
+  estimatedAnnualSavingMax: Schema.Finite,
+  breakEvenUtilization: Schema.Finite,
+});
+type CommitmentRecommendationView = typeof Recommendation.Type;
+
+const Feed = wire<CommitmentsFeed>()(
+  Schema.Struct({
+    holdings: Schema.Array(Holding),
+    coverage: Schema.Struct({
+      available: Schema.Boolean,
+      currencies: Schema.Array(
+        Schema.Struct({
+          currency: Schema.String,
+          broadRatio: Schema.NullOr(Schema.Finite),
+          narrowRatio: Schema.NullOr(Schema.Finite),
+        }),
+      ),
+      excludedAccountIds: Schema.Array(Schema.String),
+    }),
+    planner: Schema.Struct({ recommendations: Schema.Array(Recommendation) }),
+    failures: Schema.Array(Schema.Struct({ accountName: Schema.String, message: Schema.String })),
+    pendingAccountIds: Schema.Array(Schema.String),
+    utilizationWindowDays: Schema.Finite,
+    plannerWindowDays: Schema.Finite,
+  }),
+);
 
 /** Money in the record's own currency; never summed across currencies. */
 function amount(value: number, currency: string): string {
@@ -102,122 +170,136 @@ function savingCell(r: CommitmentRecommendationView): string {
  * date inside your renewal horizon) and a commitment quietly idle (derived
  * utilization sagging). `--json` in a weekly cron is the intended consumer.
  */
-export async function cmdCommitments(ctx: CliContext): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Commitments live in Infrawrench Cloud. The inventory is collected server-side.",
-    );
-  }
-  const org = await resolveOrg(ctx);
-  const feed = await orgFetch<CommitmentsFeed>(org.id, "/commitments");
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...feed });
-    return;
-  }
-
-  if (
-    feed.holdings.length === 0 &&
-    feed.planner.recommendations.length === 0 &&
-    feed.failures.length === 0
-  ) {
-    println(
-      c.dim(
-        "No commitments found. Only AWS, GCP and Azure accounts report reservations, " +
-          "savings plans or committed-use discounts.",
-      ),
-    );
-    return;
-  }
-
-  const active = feed.holdings.filter((h) => h.state === "active").length;
-  println(
-    `${c.bold(org.displayName)} ${c.dim(
-      `· ${feed.holdings.length} commitment${feed.holdings.length === 1 ? "" : "s"}` +
-        (active !== feed.holdings.length ? ` (${active} active)` : "") +
-        ` · utilization over ${feed.utilizationWindowDays}d of collected data`,
-    )}`,
-  );
-
-  // Coverage as a range on one line per currency: the low end counts spend
-  // that can never be committed against, the high end only cells where a
-  // commitment demonstrably landed. One number would overstate certainty.
-  if (feed.coverage.available) {
-    for (const cov of feed.coverage.currencies) {
-      if (cov.broadRatio === null || cov.narrowRatio === null) continue;
-      const range =
-        cov.broadRatio === cov.narrowRatio
-          ? pct(cov.broadRatio)
-          : `${pct(cov.broadRatio)}–${pct(cov.narrowRatio)}`;
-      println(c.dim(`  ${cov.currency} usage covered by commitments: ${range}`));
+export const commitments = Command.make(
+  "commitments",
+  {},
+  Effect.fn("commitments")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    if (session.local) {
+      return yield* new CliFailure({
+        message: "Commitments live in Infrawrench Cloud. The inventory is collected server-side.",
+      });
     }
-    if (feed.coverage.excludedAccountIds.length > 0) {
-      println(
+    const org = yield* currentOrg;
+    const body = yield* api.json(org.id, PATH);
+
+    if (session.output === "json")
+      return yield* Print.json(yield* spreadBody({ org: org.id }, body, PATH));
+    const feed = yield* decodeBody(Feed, PATH)(body);
+
+    if (
+      feed.holdings.length === 0 &&
+      feed.planner.recommendations.length === 0 &&
+      feed.failures.length === 0
+    ) {
+      return yield* Print.line(
         c.dim(
-          `  ${feed.coverage.excludedAccountIds.length} account(s) excluded: provider can't tell charge types apart`,
+          "No commitments found. Only AWS, GCP and Azure accounts report reservations, " +
+            "savings plans or committed-use discounts.",
         ),
       );
     }
-  } else if (feed.holdings.length > 0) {
-    println(c.dim("  coverage unavailable: no account's provider distinguishes charge types"));
-  }
-  println();
 
-  if (feed.holdings.length > 0) {
-    const columns: Column<CommitmentHolding>[] = [
-      { header: "commitment", value: (h) => h.description },
-      { header: "account", value: (h) => c.dim(h.accountName) },
-      // Absent region is a real state (a Compute Savings Plan applies
-      // everywhere), not missing data.
-      { header: "region", value: (h) => h.region ?? c.dim("all regions") },
-      { header: "committed", value: (h) => committedCell(h) },
-      { header: "ends", value: (h) => (h.endDate ? h.endDate.slice(0, 10) : c.dim("—")) },
-      { header: "state", value: (h) => stateCell(h) },
-      { header: "utilization", value: (h) => utilizationCell(h) },
-    ];
-    printTable(feed.holdings, columns);
-  }
-
-  if (feed.planner.recommendations.length > 0) {
-    println();
-    println(c.bold("Savings planner"));
-    println(
-      c.dim(
-        `Sized at the p10 floor of ${feed.plannerWindowDays}d uncovered usage spend. ` +
-          "Recommendations only. Nothing is purchased automatically.",
-      ),
+    const active = feed.holdings.filter((h) => h.state === "active").length;
+    yield* Print.line(
+      `${c.bold(org.displayName)} ${c.dim(
+        `· ${feed.holdings.length} commitment${feed.holdings.length === 1 ? "" : "s"}` +
+          (active !== feed.holdings.length ? ` (${active} active)` : "") +
+          ` · utilization over ${feed.utilizationWindowDays}d of collected data`,
+      )}`,
     );
-    const columns: Column<CommitmentRecommendationView>[] = [
-      {
-        header: "workload",
-        value: (r) => `${r.pluginId} · ${r.service}${r.region ? ` · ${r.region}` : ""}`,
-      },
-      { header: "commit", value: (r) => `${amount(r.recommendedHourlyCommitment, r.currency)}/h` },
-      { header: "annual", value: (r) => amount(r.annualCommitment, r.currency) },
-      { header: "saving", value: (r) => savingCell(r) },
-      {
-        header: "break-even",
-        value: (r) => `${pct(r.breakEvenUtilization)} util (can shrink ${pct(r.discountRateMax)})`,
-      },
-    ];
-    printTable(feed.planner.recommendations, columns);
-    println(
-      c.dim(
-        "Break-even is exact: at discount d the commitment pays for itself down to 1−d " +
-          "utilization. Savings quote published “up to” rates.",
-      ),
-    );
-  }
 
-  for (const failure of feed.failures) {
-    println();
-    println(c.yellow(`${failure.accountName}: ${failure.message}`));
-  }
+    // Coverage as a range on one line per currency: the low end counts spend
+    // that can never be committed against, the high end only cells where a
+    // commitment demonstrably landed. One number would overstate certainty.
+    if (feed.coverage.available) {
+      for (const cov of feed.coverage.currencies) {
+        if (cov.broadRatio === null || cov.narrowRatio === null) continue;
+        const range =
+          cov.broadRatio === cov.narrowRatio
+            ? pct(cov.broadRatio)
+            : `${pct(cov.broadRatio)}–${pct(cov.narrowRatio)}`;
+        yield* Print.line(c.dim(`  ${cov.currency} usage covered by commitments: ${range}`));
+      }
+      if (feed.coverage.excludedAccountIds.length > 0) {
+        yield* Print.line(
+          c.dim(
+            `  ${feed.coverage.excludedAccountIds.length} account(s) excluded: provider can't tell charge types apart`,
+          ),
+        );
+      }
+    } else if (feed.holdings.length > 0) {
+      yield* Print.line(
+        c.dim("  coverage unavailable: no account's provider distinguishes charge types"),
+      );
+    }
+    yield* Print.line();
 
-  if (feed.pendingAccountIds.length > 0) {
-    println();
-    println(
-      c.dim(`${feed.pendingAccountIds.length} account(s) awaiting first commitment collection.`),
-    );
-  }
-}
+    if (feed.holdings.length > 0) {
+      const columns: Column<CommitmentHolding>[] = [
+        { header: "commitment", value: (h) => h.description },
+        { header: "account", value: (h) => c.dim(h.accountName) },
+        // Absent region is a real state (a Compute Savings Plan applies
+        // everywhere), not missing data.
+        { header: "region", value: (h) => h.region ?? c.dim("all regions") },
+        { header: "committed", value: (h) => committedCell(h) },
+        { header: "ends", value: (h) => (h.endDate ? h.endDate.slice(0, 10) : c.dim("—")) },
+        { header: "state", value: (h) => stateCell(h) },
+        { header: "utilization", value: (h) => utilizationCell(h) },
+      ];
+      yield* Print.table(feed.holdings, columns);
+    }
+
+    if (feed.planner.recommendations.length > 0) {
+      yield* Print.line();
+      yield* Print.line(c.bold("Savings planner"));
+      yield* Print.line(
+        c.dim(
+          `Sized at the p10 floor of ${feed.plannerWindowDays}d uncovered usage spend. ` +
+            "Recommendations only. Nothing is purchased automatically.",
+        ),
+      );
+      const columns: Column<CommitmentRecommendationView>[] = [
+        {
+          header: "workload",
+          value: (r) => `${r.pluginId} · ${r.service}${r.region ? ` · ${r.region}` : ""}`,
+        },
+        {
+          header: "commit",
+          value: (r) => `${amount(r.recommendedHourlyCommitment, r.currency)}/h`,
+        },
+        { header: "annual", value: (r) => amount(r.annualCommitment, r.currency) },
+        { header: "saving", value: (r) => savingCell(r) },
+        {
+          header: "break-even",
+          value: (r) =>
+            `${pct(r.breakEvenUtilization)} util (can shrink ${pct(r.discountRateMax)})`,
+        },
+      ];
+      yield* Print.table(feed.planner.recommendations, columns);
+      yield* Print.line(
+        c.dim(
+          "Break-even is exact: at discount d the commitment pays for itself down to 1−d " +
+            "utilization. Savings quote published “up to” rates.",
+        ),
+      );
+    }
+
+    for (const failure of feed.failures) {
+      yield* Print.line();
+      yield* Print.line(c.yellow(`${failure.accountName}: ${failure.message}`));
+    }
+
+    if (feed.pendingAccountIds.length > 0) {
+      yield* Print.line();
+      yield* Print.line(
+        c.dim(`${feed.pendingAccountIds.length} account(s) awaiting first commitment collection.`),
+      );
+    }
+  }),
+).pipe(
+  Command.withDescription(
+    "Reserved instances, savings plans and committed-use discounts: coverage, utilization and the planner",
+  ),
+);

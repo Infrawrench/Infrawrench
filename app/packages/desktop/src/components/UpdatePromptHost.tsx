@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
+import { installUpdateNow } from "../lib/app-shell";
 
 interface UpdatePromptPayload {
   version: string;
@@ -46,7 +46,7 @@ export function UpdatePromptHost() {
     setBusy(true);
     setError(null);
     try {
-      await invoke("update_install_now");
+      await installUpdateNow();
     } catch (err) {
       console.error("[updater] failed to trigger install:", err);
       setBusy(false);

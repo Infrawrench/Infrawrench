@@ -1,6 +1,7 @@
 /**
- * Public status pages: cloud-mode only, like the probes they publish. One
- * wrapper per allowlisted IPC channel, matching `cloud-probes.ts`.
+ * Public status pages: cloud-mode only, like the probes they publish. Typed
+ * calls to the contract's `statusPages` domain over the cloud transport
+ * (`./cloud-client.ts`), matching `cloud-probes.ts`.
  */
 import type {
   StatusPage,
@@ -8,17 +9,20 @@ import type {
   StatusPageListResponse,
   StatusPagePatch,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const statusPages = () => cloudClient("statusPages").statusPages;
 
 export async function listCloudStatusPages(orgId: string): Promise<StatusPageListResponse> {
-  return invoke("cloud_status_pages_list", { orgId });
+  return runRpc(statusPages().list({ params: { orgId } }));
 }
 
 export async function createCloudStatusPage(
   orgId: string,
   input: StatusPageCreate,
 ): Promise<StatusPage> {
-  return invoke("cloud_status_pages_create", { orgId, input });
+  return runRpc(statusPages().create({ params: { orgId }, payload: input }));
 }
 
 export async function updateCloudStatusPage(
@@ -26,16 +30,16 @@ export async function updateCloudStatusPage(
   pageId: string,
   patch: StatusPagePatch,
 ): Promise<StatusPage> {
-  return invoke("cloud_status_pages_update", { orgId, pageId, patch });
+  return runRpc(statusPages().update({ params: { orgId, id: pageId }, payload: patch }));
 }
 
 export async function rotateCloudStatusPageSlug(
   orgId: string,
   pageId: string,
 ): Promise<StatusPage> {
-  return invoke("cloud_status_pages_rotate_slug", { orgId, pageId });
+  return runRpc(statusPages().rotateSlug({ params: { orgId, id: pageId } }));
 }
 
 export async function deleteCloudStatusPage(orgId: string, pageId: string): Promise<void> {
-  await invoke("cloud_status_pages_delete", { orgId, pageId });
+  await runRpc(statusPages().delete({ params: { orgId, id: pageId } }));
 }

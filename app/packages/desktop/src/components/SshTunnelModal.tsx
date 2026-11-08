@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
+import { cloudSshTunnelCreateAccount } from "../lib/cloud-sftp";
 import { getDb } from "../db/client";
 import {
   openPlainTunnel,
@@ -22,6 +22,8 @@ import {
 import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 import type { KeySource } from "../lib/ssh-key-source";
+import { createLocalAccount } from "../lib/local-credentials";
+import { encryptTunnelConfigKey } from "../lib/local-secrets";
 
 interface SshTunnelModalProps {
   sshHost: string;
@@ -137,19 +139,16 @@ export function SshTunnelModal({
       if (activeCloudOrgId && isCloudKey) {
         const displayName = `${preset.label} on ${sshHost}`;
         const credentials = buildSshTunnelCredentials(preset, remotePort);
-        const resp = await invoke<{ accountId: string }>("cloud_ssh_tunnel_create_account", {
-          orgId: activeCloudOrgId,
-          body: {
-            sshHost,
-            sshPort,
-            sshUser,
-            sshKeyId: keySource.sshKeyId,
-            remoteHost: "127.0.0.1",
-            remotePort,
-            pluginId,
-            displayName,
-            credentials,
-          },
+        const resp = await cloudSshTunnelCreateAccount(activeCloudOrgId, {
+          sshHost,
+          sshPort,
+          sshUser,
+          sshKeyId: keySource.sshKeyId,
+          remoteHost: "127.0.0.1",
+          remotePort,
+          pluginId,
+          displayName,
+          credentials,
         });
         useUIStore.getState().bumpAccounts();
         onTunnelEstablished(resp.accountId);
@@ -171,7 +170,7 @@ export function SshTunnelModal({
       const newAccountId = crypto.randomUUID();
       const credentials = buildSshTunnelCredentials(preset, remotePort);
       const displayName = `${preset.label} on ${sshHost}`;
-      await invoke<void>("account_create", {
+      await createLocalAccount({
         accountId: newAccountId,
         pluginId,
         displayName,
@@ -179,10 +178,7 @@ export function SshTunnelModal({
       });
 
       const tunnelId2 = crypto.randomUUID();
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-        "ssh_tunnel_config_encrypt_private_key",
-        { tunnelConfigId: tunnelId2, privateKey: privateKey.trim() },
-      );
+      const { ciphertext, iv } = await encryptTunnelConfigKey(tunnelId2, privateKey.trim());
       await db.execute(
         `INSERT OR REPLACE INTO ssh_tunnel_configs
          (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)

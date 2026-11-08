@@ -10,7 +10,7 @@
  * The Slack button resolves through the same transitions the web route uses
  * (`chat_pending_actions.status`, `executePendingAction` /
  * `rejectPendingAction`); only the conversation's owner may decide, exactly as
- * on the web. See api/routes/slack-inbound.ts for the enforcement.
+ * on the web. See `http/domains/slack-inbound/operations.ts` for the enforcement.
  */
 import { isSlackConfigured } from "@infrawrench/server-core/slack";
 import { routeAlert } from "@infrawrench/server-core/alerts/route";

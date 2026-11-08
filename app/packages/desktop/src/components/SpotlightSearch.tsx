@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { SpotlightSearch as SharedSpotlightSearch, type SpotlightResult } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import type { AccountRow as FullAccountRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 type AccountRow = Pick<FullAccountRow, "id" | "plugin_id" | "display_name">;
 
@@ -188,9 +188,7 @@ export function useLocalSpotlightResults(mode: "pin" | "navigate" | "drop"): {
 
             let creds: Record<string, string>;
             try {
-              creds = await invoke<Record<string, string>>("account_get_credentials", {
-                accountId: account.id,
-              });
+              creds = await getLocalAccountCredentials(account.id);
             } catch {
               return;
             }

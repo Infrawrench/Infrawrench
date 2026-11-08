@@ -110,7 +110,7 @@ export function summarizeChange(entry: Pick<ResourceChangeEntry, "changeKind" | 
 
 /**
  * Every filter `GET /api/org/{orgId}/changes` reads: one field per query
- * parameter in web's `api/routes/resource-changes.ts`. All optional: the bare
+ * parameter in web's `http/domains/resource-changes/`. All optional: the bare
  * request is page 1 of the whole org's feed, newest first.
  */
 export interface ChangeFeedRequest {
@@ -203,7 +203,7 @@ export async function fetchResourceChanges(
 /**
  * Per-org filtering and throttling for resource-drift notifications. Server
  * contract: `GET|PUT /api/org/:orgId/changes/alert-settings` (web
- * `api/routes/resource-changes.ts`), backed by `org_drift_alert_settings`.
+ * `http/domains/resource-changes/`), backed by `org_drift_alert_settings`.
  *
  * The trigger itself is opted into per channel and per device (the
  * `resourceDrift` flag on Slack channels, Teams webhooks and push

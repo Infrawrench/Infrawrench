@@ -29,8 +29,14 @@
  * identically. No store means a system caller (the poller, org config apply)
  * with full access.
  */
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import {
+  currentSharingPrincipal,
+  ObjectAccessDeniedError,
+  ObjectNotVisibleError,
+  SharingInputError,
+  type SharingPrincipal,
+} from "./sharing-context";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   DEFAULT_ORG_ACCESS,
@@ -62,16 +68,6 @@ import {
   users,
 } from "../db/schema";
 
-export interface SharingPrincipal {
-  organizationId: string;
-  userId: string;
-  roleId: string | null;
-  /** Holds `sharing:override`: full access to every object. */
-  override: boolean;
-}
-
-const storage = new AsyncLocalStorage<SharingPrincipal>();
-
 /** Types whose creator is their implicit owner (`created_by_user_id`). */
 function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
   return (
@@ -99,10 +95,6 @@ function inFolderTree(type: ShareableObjectType): boolean {
   return isFiledReport(type) || type === "cost_report_folder";
 }
 
-export function runWithSharingPrincipal<T>(principal: SharingPrincipal, fn: () => T): T {
-  return storage.run(principal, fn);
-}
-
 /** Build the principal for a user from their live membership. */
 export async function resolveSharingPrincipal(
   organizationId: string,
@@ -128,7 +120,7 @@ export async function resolveSharingPrincipal(
 }
 
 function currentPrincipal(organizationId: string): SharingPrincipal | null {
-  const p = storage.getStore();
+  const p = currentSharingPrincipal();
   if (!p) return null;
   if (p.organizationId !== organizationId) {
     throw new Error(
@@ -136,34 +128,6 @@ function currentPrincipal(organizationId: string): SharingPrincipal | null {
     );
   }
   return p.override ? null : p;
-}
-
-/** A caller below `viewer` on the object: answered as 404, never 403. */
-export class ObjectNotVisibleError extends Error {
-  override readonly name = "ObjectNotVisibleError";
-  constructor() {
-    super("Not found");
-  }
-}
-
-/** A caller who can see the object but lacks the level the action needs. */
-export class ObjectAccessDeniedError extends Error {
-  override readonly name = "ObjectAccessDeniedError";
-  constructor(
-    readonly needed: ObjectAccessLevel,
-    message?: string,
-  ) {
-    super(
-      message ??
-        (needed === "owner"
-          ? "Only an owner of this item can do that. Ask an owner to share it with you as an owner."
-          : "You can view this item but not edit it. Ask an owner to share it with you as an editor."),
-    );
-  }
-}
-
-export class SharingInputError extends Error {
-  override readonly name = "SharingInputError";
 }
 
 type GrantRow = typeof objectAccessGrants.$inferSelect;
@@ -707,3 +671,12 @@ export async function filterVisibleObjects<T>(
   if (resolver === FULL_ACCESS) return [...items];
   return items.filter((item) => canViewObject(resolver.level(idOf(item), metaOf(item))));
 }
+
+export {
+  currentSharingPrincipal,
+  ObjectAccessDeniedError,
+  ObjectNotVisibleError,
+  runWithSharingPrincipal,
+  SharingInputError,
+  type SharingPrincipal,
+} from "./sharing-context";

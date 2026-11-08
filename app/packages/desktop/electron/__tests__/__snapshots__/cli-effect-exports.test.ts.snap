@@ -1,0 +1,1807 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`export --async and export jobs > fails with exit 1 when the job fails > 1 $ infrawrench export --async --json 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j1aaaaaaaaaa",
+    "status": "failed",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 0,
+    "rowCount": 0,
+    "byteCount": 0,
+    "error": "too big",
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  }
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > fails with exit 1 when the job fails > 1 $ infrawrench export --async 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+  ],
+  "stderr": "Export failed: too big
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > fails with exit 1 when the job fails > 1 $ infrawrench export jobs j3 --json 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j3cccccccccc",
+    "status": "failed",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 0,
+    "rowCount": 0,
+    "byteCount": 0,
+    "error": "query timed out",
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  }
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > fails with exit 1 when the job fails > 1 $ infrawrench export jobs j3 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "Export failed: query timed out
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > follows a job with --wait and writes its file > 0 $ infrawrench export --async --wait --json --out job2.csv 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa/download",
+  ],
+  "stderr": "✓ job2.csv · 42 rows · 2026-10-10 → 2026-11-08
+",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j1aaaaaaaaaa",
+    "status": "succeeded",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 1,
+    "rowCount": 42,
+    "byteCount": 0,
+    "error": null,
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  },
+  "out": "job2.csv"
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > follows a job with --wait and writes its file > 0 $ infrawrench export --async --wait --json 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j1aaaaaaaaaa",
+    "status": "succeeded",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 1,
+    "rowCount": 42,
+    "byteCount": 0,
+    "error": null,
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  }
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > follows a job with --wait and writes its file > 0 $ infrawrench export --async --wait --out job.csv 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa/download",
+  ],
+  "stderr": "✓ job.csv · 42 rows · 2026-10-10 → 2026-11-08
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > follows a job with --wait and writes its file > 0 $ infrawrench export --async --wait 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa/download",
+  ],
+  "stderr": "",
+  "stdout": "date,provider,cost
+2026-11-01,aws,1.5
+",
+}
+`;
+
+exports[`export --async and export jobs > follows a job with --wait and writes its file > 0 $ infrawrench export --async --wait 2`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa/download",
+  ],
+  "stderr": "",
+  "stdout": "date,provider,cost
+2026-11-01,aws,1.5
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs --json 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "jobs": [
+    {
+      "id": "j1aaaaaaaaaa",
+      "status": "succeeded",
+      "format": "csv",
+      "focusVersion": null,
+      "from": "2026-10-10",
+      "to": "2026-11-08",
+      "source": {
+        "kind": "query",
+        "reportId": null,
+        "reportName": null,
+        "unitCostMetric": null
+      },
+      "progress": 1,
+      "rowCount": 42,
+      "byteCount": 0,
+      "error": null,
+      "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+      "contentType": "text/csv",
+      "createdAt": "2026-11-08T12:00:00.000Z",
+      "startedAt": null,
+      "finishedAt": null,
+      "expiresAt": null,
+      "downloadUrl": null
+    },
+    {
+      "id": "j2bbbbbbbbbb",
+      "status": "running",
+      "format": "focus",
+      "focusVersion": "1.4",
+      "from": "2026-10-10",
+      "to": "2026-11-08",
+      "source": {
+        "kind": "report",
+        "reportId": "r1",
+        "reportName": "Platform spend",
+        "unitCostMetric": null
+      },
+      "progress": 0.42,
+      "rowCount": 0,
+      "byteCount": 0,
+      "error": null,
+      "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+      "contentType": "text/csv",
+      "createdAt": "2026-11-08T12:00:00.000Z",
+      "startedAt": null,
+      "finishedAt": null,
+      "expiresAt": null,
+      "downloadUrl": null
+    },
+    {
+      "id": "j3cccccccccc",
+      "status": "failed",
+      "format": "csv",
+      "focusVersion": null,
+      "from": "2026-10-10",
+      "to": "2026-11-08",
+      "source": {
+        "kind": "query",
+        "reportId": null,
+        "reportName": null,
+        "unitCostMetric": null
+      },
+      "progress": 0,
+      "rowCount": 0,
+      "byteCount": 0,
+      "error": "query timed out",
+      "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+      "contentType": "text/csv",
+      "createdAt": "2026-11-08T12:00:00.000Z",
+      "startedAt": null,
+      "finishedAt": null,
+      "expiresAt": null,
+      "downloadUrl": null
+    },
+    {
+      "id": "j2bbbbzzzzzz",
+      "status": "cancelled",
+      "format": "ndjson",
+      "focusVersion": null,
+      "from": "2026-10-10",
+      "to": "2026-11-08",
+      "source": {
+        "kind": "query",
+        "reportId": null,
+        "reportName": null,
+        "unitCostMetric": null
+      },
+      "progress": 0,
+      "rowCount": 0,
+      "byteCount": 0,
+      "error": null,
+      "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+      "contentType": "text/csv",
+      "createdAt": "2026-11-08T12:00:00.000Z",
+      "startedAt": null,
+      "finishedAt": null,
+      "expiresAt": null,
+      "downloadUrl": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "j1aaaaaa succeeded · query · csv · 2026-10-10 → 2026-11-08 · 42 rows
+j2bbbbbb running 42% · Platform spend · FOCUS 1.4 · 2026-10-10 → 2026-11-08
+j3cccccc failed · query · csv · 2026-10-10 → 2026-11-08
+j2bbbbzz cancelled · query · ndjson · 2026-10-10 → 2026-11-08
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs 2`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "No recent export jobs. Start one with \`infrawrench export --async\`.
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs j1 --wait -f job3.csv 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+    "GET /costs/exports/jobs/j1aaaaaaaaaa/download",
+  ],
+  "stderr": "✓ job3.csv · 42 rows · 2026-10-10 → 2026-11-08
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs j1 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "j1aaaaaa succeeded · query · csv · 2026-10-10 → 2026-11-08 · 42 rows
+Ready. \`infrawrench export jobs j1aaaaaaaaaa --wait --out costs-2026-10-10-to-2026-11-08.csv\` downloads it.
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs j2bbbbbbbbbb 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "",
+  "stdout": "j2bbbbbb running 42% · Platform spend · FOCUS 1.4 · 2026-10-10 → 2026-11-08
+Running in the background. \`infrawrench export jobs j2bbbbbbbbbb --wait\` waits and downloads it.
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs j2bbbbbbbbbb cancel --json 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+    "DELETE /costs/exports/jobs/j2bbbbbbbbbb",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j2bbbbbbbbbb",
+    "status": "cancelled",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 0,
+    "rowCount": 0,
+    "byteCount": 0,
+    "error": null,
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  }
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 0 $ infrawrench export jobs j2bbbbbbbbbb cancel 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+    "DELETE /costs/exports/jobs/j2bbbbbbbbbb",
+  ],
+  "stderr": "",
+  "stdout": "j2bbbbbb cancelled · query · csv · 2026-10-10 → 2026-11-08
+",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 2 $ infrawrench export jobs j1 pause 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "Unknown action "pause". Try cancel.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 2 $ infrawrench export jobs j2 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": ""j2" matches 2 jobs; use more of the id.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > lists, shows and cancels jobs > 2 $ infrawrench export jobs nope 1`] = `
+{
+  "requests": [
+    "GET /costs/exports/jobs",
+  ],
+  "stderr": "No export job "nope". Run \`infrawrench export jobs\` to list yours.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 0 $ infrawrench export --async --format focus --focus-version 1.3 --where provider = 'aws' --filter eu --charge-type credit --dimensions service, account --last 3m 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+    "POST /costs/exports/jobs {"format":"focus","from":"2026-08-11","to":"2026-11-08","query":{"filters":[{"dimension":"provider","op":"in","values":["aws"]}],"savedFilterId":"sf2","chargeTypes":["credit"],"dimensions":["service","account"]},"focusVersion":"1.3"}",
+  ],
+  "stderr": "",
+  "stdout": "j1aaaaaa queued · query · csv · 2026-10-10 → 2026-11-08
+Running in the background. \`infrawrench export jobs j1aaaaaaaaaa --wait\` waits and downloads it.
+",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 0 $ infrawrench export --async --format ndjson platform spend --from 2026-01-01 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /costs/exports/jobs {"reportId":"r1","format":"ndjson","from":"2026-01-01","to":"2026-11-08"}",
+  ],
+  "stderr": "",
+  "stdout": "j1aaaaaa queued · query · csv · 2026-10-10 → 2026-11-08
+Running in the background. \`infrawrench export jobs j1aaaaaaaaaa --wait\` waits and downloads it.
+",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 0 $ infrawrench export --async --json 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "job": {
+    "id": "j1aaaaaaaaaa",
+    "status": "queued",
+    "format": "csv",
+    "focusVersion": null,
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "source": {
+      "kind": "query",
+      "reportId": null,
+      "reportName": null,
+      "unitCostMetric": null
+    },
+    "progress": 0,
+    "rowCount": 0,
+    "byteCount": 0,
+    "error": null,
+    "fileName": "costs-2026-10-10-to-2026-11-08.csv",
+    "contentType": "text/csv",
+    "createdAt": "2026-11-08T12:00:00.000Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "expiresAt": null,
+    "downloadUrl": null
+  }
+}
+",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 0 $ infrawrench export --async 1`] = `
+{
+  "requests": [
+    "POST /costs/exports/jobs {"format":"csv","from":"2026-10-10","to":"2026-11-08","query":{"filters":[]}}",
+  ],
+  "stderr": "",
+  "stdout": "j1aaaaaa queued · query · csv · 2026-10-10 → 2026-11-08
+Running in the background. \`infrawrench export jobs j1aaaaaaaaaa --wait\` waits and downloads it.
+",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 1 $ infrawrench export --async --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost exports live in Infrawrench Cloud. There is no local cost history to export.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 2 $ infrawrench export --async --focus-version 1.3 1`] = `
+{
+  "requests": [],
+  "stderr": "--focus-version only applies to --format focus.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 2 $ infrawrench export --async --format xml 1`] = `
+{
+  "requests": [],
+  "stderr": "--format must be one of csv, ndjson, focus with --async.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --async and export jobs > queues jobs like the legacy command > 2 $ infrawrench export --async platform spend --where provider = 'aws' 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "A report export uses the report's own filters. Drop --where/--filter, or export without naming the report.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 1 $ infrawrench export --format focus --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost exports live in Infrawrench Cloud. There is no local cost history to export.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 1 $ infrawrench export --format focus nope 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+  ],
+  "stderr": "No cost report matches "nope". Run \`infrawrench reports\` to see the saved ones.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 2 $ infrawrench export --format focus --charge-type fees 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Eject an account's inventory as Terraform HCL, or cost rows as FOCUS / a background export job
+
+USAGE
+  infrawrench export <subcommand> [flags] [<report...>]
+
+ARGUMENTS
+  report... string    --format focus / --async: a saved report (name or id) whose range and filters to start from (optional)
+
+FLAGS
+  --format terraform|focus|csv|ndjson    terraform (default: an account's inventory as HCL), focus (cost rows as a FOCUS CSV); csv, ndjson or focus with --async
+  --focus-version 1.4|1.3                --format focus: which FOCUS version to write (default the latest)
+  --async                                Queue a background export job (csv, ndjson or focus) instead of streaming the file
+  --wait                                 --async: poll until the file is ready, then write it
+  --dimensions a,b                       --async without a report: rows per these dimensions
+  --out path                             Write the file to this path
+  --file, -f path                        Same as --out
+  --last span                            How far back: 7d, 30d, 12w or 3m
+  --from date                            Start of the range (YYYY-MM-DD or an ISO timestamp)
+  --to date                              End of the range (YYYY-MM-DD or an ISO timestamp)
+  --where query                          Filter in the cost query language, e.g. "provider = 'aws' AND tag['env'] != 'dev'"
+  --filter name|id                       A saved cost filter, resolved on the server; combines with --where by AND
+  --charge-type type                     Keep only this kind of charge (repeatable): usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  jobs    Your recent export jobs; one job's status (--wait downloads it); cancel one
+
+ERROR
+  --charge-type must be one of usage, commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, adjustment, support, other (got "fees").
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 2 $ infrawrench export --format focus --filter nope 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+  ],
+  "stderr": "--filter: no saved cost filter named "nope". Saved filters: "Prod only", "EU".
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 2 $ infrawrench export --format focus --focus-version 2.0 1`] = `
+{
+  "requests": [],
+  "stderr": "--focus-version: "2.0" is not a FOCUS version this server writes. Use 1.4 or 1.3.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 2 $ infrawrench export --format focus --where provider = 1`] = `
+{
+  "requests": [],
+  "stderr": "--where: Expected a quoted value after "=", found the end of the query. Values are quoted: service = 'AmazonEC2'.
+  provider =
+            ^
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > refuses in the legacy words > 2 $ infrawrench export --format focus Q3 --filter eu 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /saved-cost-filters",
+  ],
+  "stderr": "--filter: "Q3 production" already applies a saved filter, and a request carries one. Use --where to narrow it further.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus --json 1`] = `
+{
+  "requests": [
+    "POST /costs/focus-export {"from":"2026-10-10","to":"2026-11-08","filters":[],"version":"1.4"}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": null,
+  "request": {
+    "from": "2026-10-10",
+    "to": "2026-11-08",
+    "filters": [],
+    "version": "1.4"
+  },
+  "rowCount": 2,
+  "csv": "BilledCost,ChargePeriodStart,BillingCurrency\\n1.5,2026-11-01,USD\\n2.5,2026-11-02,USD\\n"
+}
+",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus --last 7d --where provider = 'aws' --filter EU --charge-type usage --focus-version 1.3 1`] = `
+{
+  "requests": [
+    "GET /saved-cost-filters",
+    "POST /costs/focus-export {"from":"2026-11-02","to":"2026-11-08","filters":[{"dimension":"provider","op":"in","values":["aws"]}],"savedFilterId":"sf2","chargeTypes":["usage"],"version":"1.3"}",
+  ],
+  "stderr": "FOCUS 1.3 · 2 rows · 2026-11-02 → 2026-11-08
+",
+  "stdout": "BilledCost,ChargePeriodStart,BillingCurrency
+1.5,2026-11-01,USD
+2.5,2026-11-02,USD
+",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus --out focus.csv 1`] = `
+{
+  "requests": [
+    "POST /costs/focus-export {"from":"2026-10-10","to":"2026-11-08","filters":[],"version":"1.4"}",
+  ],
+  "stderr": "✓ focus.csv · FOCUS 1.4 · 2 rows · 2026-10-10 → 2026-11-08
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus -f f2.csv --to 2026-10-31 1`] = `
+{
+  "requests": [
+    "POST /costs/focus-export {"from":"2026-10-02","to":"2026-10-31","filters":[],"version":"1.4"}",
+  ],
+  "stderr": "✓ f2.csv · FOCUS 1.4 · 2 rows · 2026-10-02 → 2026-10-31
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus 1`] = `
+{
+  "requests": [
+    "POST /costs/focus-export {"from":"2026-10-10","to":"2026-11-08","filters":[],"version":"1.4"}",
+  ],
+  "stderr": "FOCUS 1.4 · 2 rows · 2026-10-10 → 2026-11-08
+",
+  "stdout": "BilledCost,ChargePeriodStart,BillingCurrency
+1.5,2026-11-01,USD
+2.5,2026-11-02,USD
+",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus Q3 --filter prod only 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "GET /saved-cost-filters",
+    "POST /costs/focus-export {"from":"2026-07-01","to":"2026-09-30","version":"1.4","filters":[],"savedFilterId":"sf1"}",
+  ],
+  "stderr": "FOCUS 1.4 · 2 rows · 2026-07-01 → 2026-09-30
+",
+  "stdout": "BilledCost,ChargePeriodStart,BillingCurrency
+1.5,2026-11-01,USD
+2.5,2026-11-02,USD
+",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus Q3 --from 2026-08-01 --json 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /costs/focus-export {"from":"2026-08-01","to":"2026-11-08","version":"1.4","filters":[],"savedFilterId":"sf1"}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "report": {
+    "id": "r2",
+    "name": "Q3 production"
+  },
+  "request": {
+    "from": "2026-08-01",
+    "to": "2026-11-08",
+    "version": "1.4",
+    "filters": [],
+    "savedFilterId": "sf1"
+  },
+  "rowCount": 2,
+  "csv": "BilledCost,ChargePeriodStart,BillingCurrency\\n1.5,2026-11-01,USD\\n2.5,2026-11-02,USD\\n"
+}
+",
+}
+`;
+
+exports[`export --format focus > writes the CSV to stdout and to --out > 0 $ infrawrench export --format focus platform spend 1`] = `
+{
+  "requests": [
+    "GET /cost-reports",
+    "POST /costs/focus-export {"from":"2026-11-01","to":"2026-11-08","version":"1.4","filters":[{"dimension":"provider","operator":"in","values":["aws"]}]}",
+  ],
+  "stderr": "FOCUS 1.4 · 2 rows · 2026-11-01 → 2026-11-08
+",
+  "stdout": "BilledCost,ChargePeriodStart,BillingCurrency
+1.5,2026-11-01,USD
+2.5,2026-11-02,USD
+",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 0 $ infrawrench export --format terraform -a acc_2 1`] = `
+{
+  "requests": [
+    "GET /accounts",
+    "GET /accounts/acc_2/resources",
+  ],
+  "stderr": "2 resource(s) have no Terraform mapping yet and were left out:
+  - assets (s3-bucket): No Terraform mapping for this resource type yet
+  - data (ebs-volume): Stored state is missing fields required by the Terraform provider
+1 resource(s) exported. Secrets are var.* inputs; see the \`terraform import\` hints to adopt live resources into state.
+",
+  "stdout": "terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+
+}
+
+# To adopt the existing resource into Terraform state:
+#   terraform import aws_ec2_instance.web_2 i-2
+resource "aws_ec2_instance" "web_2" {
+  tags = {}
+}
+",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 0 $ infrawrench export -a prod --json 1`] = `
+{
+  "requests": [
+    "GET /accounts",
+    "GET /accounts/acc_2/resources",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "hcl": "terraform {\\n  required_providers {\\n    aws = {\\n      source  = \\"hashicorp/aws\\"\\n      version = \\"~> 5.0\\"\\n    }\\n  }\\n}\\n\\nprovider \\"aws\\" {\\n\\n}\\n\\n# To adopt the existing resource into Terraform state:\\n#   terraform import aws_ec2_instance.web_2 i-2\\nresource \\"aws_ec2_instance\\" \\"web_2\\" {\\n  tags = {}\\n}\\n",
+  "exported": [
+    {
+      "id": "acc_2:ec2-instance:i-2",
+      "displayName": "web-2",
+      "pluginId": "aws",
+      "resourceTypeId": "ec2-instance",
+      "address": "aws_ec2_instance.web_2",
+      "importId": "i-2"
+    }
+  ],
+  "unsupported": [
+    {
+      "id": "acc_2:s3-bucket:assets",
+      "displayName": "assets",
+      "pluginId": "aws",
+      "resourceTypeId": "s3-bucket",
+      "reason": "No Terraform mapping for this resource type yet"
+    },
+    {
+      "id": "acc_2:ebs-volume:v-1",
+      "displayName": "data",
+      "pluginId": "aws",
+      "resourceTypeId": "ebs-volume",
+      "reason": "Stored state is missing fields required by the Terraform provider"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 0 $ infrawrench export -a prod 1`] = `
+{
+  "requests": [
+    "GET /accounts",
+    "GET /accounts/acc_2/resources",
+  ],
+  "stderr": "2 resource(s) have no Terraform mapping yet and were left out:
+  - assets (s3-bucket): No Terraform mapping for this resource type yet
+  - data (ebs-volume): Stored state is missing fields required by the Terraform provider
+1 resource(s) exported. Secrets are var.* inputs; see the \`terraform import\` hints to adopt live resources into state.
+",
+  "stdout": "terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+
+}
+
+# To adopt the existing resource into Terraform state:
+#   terraform import aws_ec2_instance.web_2 i-2
+resource "aws_ec2_instance" "web_2" {
+  tags = {}
+}
+",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 1 $ infrawrench export -a code 1`] = `
+{
+  "requests": [
+    "GET /accounts",
+  ],
+  "stderr": "The github plugin has no Terraform mapping yet. Nothing to export.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 1 $ infrawrench export -a prod 1`] = `
+{
+  "requests": [
+    "GET /accounts",
+  ],
+  "stderr": "Plugin "aws" is not available.
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 1 $ infrawrench export 1`] = `
+{
+  "requests": [],
+  "stderr": "Pass --account <id|name> (see \`infrawrench accounts\`).
+",
+  "stdout": "",
+}
+`;
+
+exports[`export --format terraform > ejects an account's inventory like the legacy command > 2 $ infrawrench export --format pulumi -a prod 1`] = `
+{
+  "requests": [],
+  "stderr": "Unknown export format "pulumi". Use "terraform" (an account's inventory as HCL) or "focus" (cost rows as a FOCUS CSV).
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 0 $ infrawrench exports create --name  Finance  --plugin snowflake --target database=ANALYTICS --target schema = PUBLIC --target table=COSTS --cadence weekly --hour 6 --timezone Europe/London --restatement-days 14 --dimensions provider, service -a snow --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+    "POST /cost-exports {"name":"Finance","format":"csv","query":{"version":1,"dimensions":["provider","service"],"tagKeys":[],"filters":[]},"cadence":"weekly","hour":6,"timezone":"Europe/London","restatementDays":14,"enabled":true,"destination":{"kind":"warehouse","pluginId":"snowflake","accountId":"sf1","target":{"database":"ANALYTICS","schema":"PUBLIC","table":"COSTS"}}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "export": {
+    "id": "ce9",
+    "name": "Finance \\"daily\\"",
+    "format": "csv",
+    "schema": "focus-1.4",
+    "query": {
+      "version": 1,
+      "dimensions": [
+        "provider"
+      ],
+      "tagKeys": [],
+      "filters": []
+    },
+    "cadence": "daily",
+    "hour": 4,
+    "timezone": "Europe/Berlin",
+    "restatementDays": 7,
+    "enabled": true,
+    "destination": {
+      "kind": "warehouse",
+      "pluginId": "snowflake",
+      "accountId": "sf1",
+      "target": {
+        "database": "ANALYTICS",
+        "schema": "PUBLIC",
+        "table": "COSTS"
+      }
+    },
+    "hasCredentials": true,
+    "credentialHint": null,
+    "lastRunAt": "2026-11-08T04:00:00.000Z",
+    "lastStatus": "succeeded",
+    "lastError": null,
+    "lastObjectCount": 3,
+    "lastRowCount": 420,
+    "nextRunAt": null,
+    "createdByUserId": null,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+}
+",
+}
+`;
+
+exports[`exports > creates a warehouse export > 0 $ infrawrench exports create --name  Finance  --plugin snowflake --target database=ANALYTICS --target schema = PUBLIC --target table=COSTS --cadence weekly --hour 6 --timezone Europe/London --restatement-days 14 --dimensions provider, service 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+    "POST /cost-exports {"name":"Finance","format":"csv","query":{"version":1,"dimensions":["provider","service"],"tagKeys":[],"filters":[]},"cadence":"weekly","hour":6,"timezone":"Europe/London","restatementDays":14,"enabled":true,"destination":{"kind":"warehouse","pluginId":"snowflake","accountId":"sf1","target":{"database":"ANALYTICS","schema":"PUBLIC","table":"COSTS"}}}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Finance "daily" · snowflake: ANALYTICS.PUBLIC.COSTS
+daily 04:00 Europe/Berlin · 7-day restatement window
+
+Grant the account access with \`infrawrench exports setup "Finance \\"daily\\""\`, then test it with \`infrawrench exports run\`.
+",
+}
+`;
+
+exports[`exports > creates a warehouse export > 0 $ infrawrench exports create --name F --plugin snowflake --target database=A --target schema=B --target table=C 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+    "POST /cost-exports {"name":"F","format":"csv","query":{"version":1,"dimensions":["provider","account","service","region"],"tagKeys":[],"filters":[]},"cadence":"daily","hour":4,"timezone":"UTC","restatementDays":7,"enabled":true,"destination":{"kind":"warehouse","pluginId":"snowflake","accountId":"sf1","target":{"database":"A","schema":"B","table":"C"}}}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Finance "daily" · snowflake: ANALYTICS.PUBLIC.COSTS
+daily 04:00 Europe/Berlin · 7-day restatement window
+
+Grant the account access with \`infrawrench exports setup "Finance \\"daily\\""\`, then test it with \`infrawrench exports run\`.
+",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin bigquery 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "Which BigQuery account? -a <name|id>, one of: One, Two
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin databricks 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "No Databricks account is connected. Add one first.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin redshift 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "--plugin must be one of: snowflake, databricks, bigquery
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake --target database=A --target schema=B --target table=C --cadence hourly 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "--cadence must be one of: daily, weekly, monthly
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake --target database=A --target schema=B --target table=C --dimensions tag 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "--dimensions: unknown column "tag". Use provider, account, service, region, resource, charge_type, commitment
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake --target database=A 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "Missing --target schema=…, --target table=…. \`infrawrench exports warehouses\` lists them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake --target oops 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "--target takes key=value, got "oops"
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake --target region=eu 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "Snowflake has no target field "region". Fields: database, schema, table, warehouse
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --name F --plugin snowflake -a nope 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "Which Snowflake account? -a <name|id>, one of: Snow
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > creates a warehouse export > 2 $ infrawrench exports create --plugin snowflake 1`] = `
+{
+  "requests": [],
+  "stderr": "Name the export: \`--name <name>\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "exports": [
+    {
+      "id": "ce1",
+      "name": "Nightly S3",
+      "format": "csv",
+      "schema": "focus-1.4",
+      "query": {
+        "version": 1,
+        "dimensions": [
+          "provider"
+        ],
+        "tagKeys": [],
+        "filters": []
+      },
+      "cadence": "daily",
+      "hour": 4,
+      "timezone": "Europe/Berlin",
+      "restatementDays": 7,
+      "enabled": true,
+      "destination": {
+        "kind": "s3",
+        "bucket": "costs",
+        "prefix": "exports/",
+        "region": "eu-west-1",
+        "endpoint": "",
+        "forcePathStyle": false
+      },
+      "hasCredentials": true,
+      "credentialHint": null,
+      "lastRunAt": "2026-11-08T04:00:00.000Z",
+      "lastStatus": "succeeded",
+      "lastError": null,
+      "lastObjectCount": 3,
+      "lastRowCount": 420,
+      "nextRunAt": null,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ce2",
+      "name": "Webhook",
+      "format": "ndjson",
+      "schema": "native",
+      "query": {
+        "version": 1,
+        "dimensions": [
+          "provider"
+        ],
+        "tagKeys": [],
+        "filters": []
+      },
+      "cadence": "daily",
+      "hour": 23,
+      "timezone": "Europe/Berlin",
+      "restatementDays": 0,
+      "enabled": true,
+      "destination": {
+        "kind": "http",
+        "method": "POST",
+        "urlHint": "hooks.example.com/…a7f2"
+      },
+      "hasCredentials": true,
+      "credentialHint": null,
+      "lastRunAt": "2026-11-08T04:00:00.000Z",
+      "lastStatus": "failed",
+      "lastError": "403 Forbidden from hooks.example.com",
+      "lastObjectCount": 3,
+      "lastRowCount": 420,
+      "nextRunAt": null,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ce3",
+      "name": "Warehouse",
+      "format": "csv",
+      "schema": "focus-1.4",
+      "query": {
+        "version": 1,
+        "dimensions": [
+          "provider"
+        ],
+        "tagKeys": [],
+        "filters": []
+      },
+      "cadence": "daily",
+      "hour": 4,
+      "timezone": "Europe/Berlin",
+      "restatementDays": 7,
+      "enabled": false,
+      "destination": {
+        "kind": "warehouse",
+        "pluginId": "snowflake",
+        "accountId": "sf1",
+        "target": {
+          "database": "ANALYTICS",
+          "schema": "PUBLIC",
+          "table": "COSTS"
+        }
+      },
+      "hasCredentials": true,
+      "credentialHint": null,
+      "lastRunAt": "2026-11-08T04:00:00.000Z",
+      "lastStatus": "pending",
+      "lastError": null,
+      "lastObjectCount": 3,
+      "lastRowCount": 420,
+      "nextRunAt": null,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ce4",
+      "name": "Nightly old",
+      "format": "csv",
+      "query": {
+        "version": 1,
+        "dimensions": [
+          "provider"
+        ],
+        "tagKeys": [],
+        "filters": []
+      },
+      "cadence": "daily",
+      "hour": 4,
+      "timezone": "Europe/Berlin",
+      "restatementDays": 0,
+      "enabled": true,
+      "destination": {
+        "kind": "s3",
+        "bucket": "costs",
+        "prefix": "exports/",
+        "region": "eu-west-1",
+        "endpoint": "",
+        "forcePathStyle": false
+      },
+      "hasCredentials": true,
+      "credentialHint": null,
+      "lastRunAt": "2026-11-08T04:00:00.000Z",
+      "lastStatus": "pending",
+      "lastError": null,
+      "lastObjectCount": null,
+      "lastRowCount": null,
+      "nextRunAt": null,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": "",
+  "stdout": "Acme · scheduled cost exports
+
+NAME         FORMAT           SCHEDULE                   DESTINATION                        LAST RUN        
+Nightly S3   csv · FOCUS 1.4  daily 04:00 Europe/Berlin  s3://costs/exports/                3 obj · 420 rows
+Webhook      ndjson           daily 23:00 Europe/Berlin  POST hooks.example.com/…a7f2       failed          
+Warehouse    table            daily 04:00 Europe/Berlin  snowflake: ANALYTICS.PUBLIC.COSTS  paused          
+Nightly old  csv              daily 04:00 Europe/Berlin  s3://costs/exports/                never run       
+
+✗ Webhook: 403 Forbidden from hooks.example.com
+
+Note: exports with a 0-day restatement window never revisit a period. Provider spend is restated for days after the fact, so those objects will drift from the invoice.
+
+Run one now with \`infrawrench exports run <name|id>\`.
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports 2`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": "",
+  "stdout": "Acme · scheduled cost exports
+
+No cost exports. An export writes your raw cost rows to a bucket, an HTTPS endpoint, or a Snowflake/Databricks table on a schedule. Create one in Settings → Cost Exports, or \`infrawrench exports create\` for a table.
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports run Warehouse 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/ce3/run",
+  ],
+  "stderr": "",
+  "stdout": "✓ Warehouse · 1 object(s) · 120 rows
+
+PERIOD      DAYS                     ROWS  TABLE                 
+2026-11-07  2026-11-07 → 2026-11-07   120  exports/2026-11-07.csv
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports run ce1 --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/ce1/run",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "export": {
+    "id": "ce1",
+    "name": "Nightly S3",
+    "format": "csv",
+    "schema": "focus-1.4",
+    "query": {
+      "version": 1,
+      "dimensions": [
+        "provider"
+      ],
+      "tagKeys": [],
+      "filters": []
+    },
+    "cadence": "daily",
+    "hour": 4,
+    "timezone": "Europe/Berlin",
+    "restatementDays": 7,
+    "enabled": true,
+    "destination": {
+      "kind": "s3",
+      "bucket": "costs",
+      "prefix": "exports/",
+      "region": "eu-west-1",
+      "endpoint": "",
+      "forcePathStyle": false
+    },
+    "hasCredentials": true,
+    "credentialHint": null,
+    "lastRunAt": "2026-11-08T04:00:00.000Z",
+    "lastStatus": "succeeded",
+    "lastError": null,
+    "lastObjectCount": 3,
+    "lastRowCount": 420,
+    "nextRunAt": null,
+    "createdByUserId": null,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  "exportId": "ce1",
+  "status": "succeeded",
+  "objects": [
+    {
+      "periodStart": "2026-11-07",
+      "from": "2026-11-07",
+      "to": "2026-11-07",
+      "key": "exports/2026-11-07.csv",
+      "rowCount": 120,
+      "byteCount": 900
+    }
+  ],
+  "rowCount": 120,
+  "collectionWatermark": "2026-11-07",
+  "error": null
+}
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 0 $ infrawrench exports run nightly s3 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/ce1/run",
+  ],
+  "stderr": "",
+  "stdout": "✓ Nightly S3 · 1 object(s) · 120 rows
+Collection watermark 2026-11-07. Periods ending after it are still moving.
+
+PERIOD      DAYS                     ROWS  BYTES  KEY                   
+2026-11-07  2026-11-07 → 2026-11-07   120    900  exports/2026-11-07.csv
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Cost exports live in Infrawrench Cloud. There is no local cost history to export.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports run 1`] = `
+{
+  "requests": [],
+  "stderr": "Which export? \`infrawrench exports run <name|id>\`
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports run nightly 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": ""nightly" matches 2 exports: Nightly S3, Nightly old. Use the full name or the id.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports run nope 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": "No cost export matches "nope". Run \`infrawrench exports\` to see them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports run webhook --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/ce2/run",
+  ],
+  "stderr": "Export "Webhook" failed: 403 Forbidden
+",
+  "stdout": "{
+  "org": "org_1",
+  "export": {
+    "id": "ce2",
+    "name": "Webhook",
+    "format": "ndjson",
+    "schema": "native",
+    "query": {
+      "version": 1,
+      "dimensions": [
+        "provider"
+      ],
+      "tagKeys": [],
+      "filters": []
+    },
+    "cadence": "daily",
+    "hour": 23,
+    "timezone": "Europe/Berlin",
+    "restatementDays": 0,
+    "enabled": true,
+    "destination": {
+      "kind": "http",
+      "method": "POST",
+      "urlHint": "hooks.example.com/…a7f2"
+    },
+    "hasCredentials": true,
+    "credentialHint": null,
+    "lastRunAt": "2026-11-08T04:00:00.000Z",
+    "lastStatus": "failed",
+    "lastError": "403 Forbidden from hooks.example.com",
+    "lastObjectCount": 3,
+    "lastRowCount": 420,
+    "nextRunAt": null,
+    "createdByUserId": null,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  "exportId": "ce1",
+  "status": "failed",
+  "objects": [],
+  "rowCount": 0,
+  "collectionWatermark": "2026-11-07",
+  "error": "403 Forbidden"
+}
+",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 1 $ infrawrench exports run webhook 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/ce2/run",
+  ],
+  "stderr": "Export "Webhook" failed: 403 Forbidden
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists exports and runs one like the legacy command > 2 $ infrawrench exports rerun x 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Scheduled cost exports (raw rows to a warehouse or object store) with the last run's status and error
+
+USAGE
+  infrawrench exports <subcommand> [flags]
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  run           Run one export now and list the objects it wrote
+  warehouses    Snowflake/Databricks destinations, your accounts of each, and the --target keys they take
+  create        A warehouse export: load cost rows into a Snowflake or Databricks table on a schedule
+  setup         The least-privilege GRANT statements a warehouse export needs
+
+ERROR
+  Unknown subcommand "rerun" for "infrawrench exports"
+
+  Did you mean this?
+    run
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 0 $ infrawrench exports setup ce3 --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/warehouse-setup {"accountId":"sf1","target":{"database":"ANALYTICS","schema":"PUBLIC","table":"COSTS"}}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "export": "ce3",
+  "sql": "GRANT USAGE ON DATABASE ANALYTICS TO ROLE INFRAWRENCH;\\nGRANT INSERT ON TABLE COSTS TO ROLE INFRAWRENCH;",
+  "notes": [
+    "Run as ACCOUNTADMIN",
+    "The role needs a warehouse"
+  ]
+}
+",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 0 $ infrawrench exports setup warehouse 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+    "POST /cost-exports/warehouse-setup {"accountId":"sf1","target":{"database":"ANALYTICS","schema":"PUBLIC","table":"COSTS"}}",
+  ],
+  "stderr": "",
+  "stdout": "GRANT USAGE ON DATABASE ANALYTICS TO ROLE INFRAWRENCH;
+GRANT INSERT ON TABLE COSTS TO ROLE INFRAWRENCH;
+
+• Run as ACCOUNTADMIN
+• The role needs a warehouse
+",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 0 $ infrawrench exports warehouses --json 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "sinks": [
+    {
+      "pluginId": "snowflake",
+      "displayName": "Snowflake",
+      "label": "Snowflake table",
+      "description": null,
+      "targetFields": [
+        {
+          "key": "database",
+          "label": "Database",
+          "description": null,
+          "dependsOn": [],
+          "optional": false,
+          "allowCustom": false,
+          "placeholder": null,
+          "emptyLabel": null
+        },
+        {
+          "key": "schema",
+          "label": "Schema",
+          "description": null,
+          "dependsOn": [],
+          "optional": false,
+          "allowCustom": false,
+          "placeholder": null,
+          "emptyLabel": null
+        },
+        {
+          "key": "table",
+          "label": "Table",
+          "description": null,
+          "dependsOn": [],
+          "optional": false,
+          "allowCustom": true,
+          "placeholder": null,
+          "emptyLabel": null
+        },
+        {
+          "key": "warehouse",
+          "label": "Warehouse",
+          "description": null,
+          "dependsOn": [],
+          "optional": true,
+          "allowCustom": false,
+          "placeholder": null,
+          "emptyLabel": null
+        }
+      ],
+      "accounts": [
+        {
+          "id": "sf1",
+          "name": "Snow"
+        }
+      ]
+    },
+    {
+      "pluginId": "databricks",
+      "displayName": "Databricks",
+      "label": "Databricks table",
+      "description": null,
+      "targetFields": [
+        {
+          "key": "catalog",
+          "label": "Catalog",
+          "description": null,
+          "dependsOn": [],
+          "optional": false,
+          "allowCustom": false,
+          "placeholder": null,
+          "emptyLabel": null
+        }
+      ],
+      "accounts": []
+    },
+    {
+      "pluginId": "bigquery",
+      "displayName": "BigQuery",
+      "label": "BigQuery table",
+      "description": null,
+      "targetFields": [],
+      "accounts": [
+        {
+          "id": "bq1",
+          "name": "One"
+        },
+        {
+          "id": "bq2",
+          "name": "Two"
+        }
+      ]
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 0 $ infrawrench exports warehouses 1`] = `
+{
+  "requests": [
+    "GET /cost-exports/warehouse-sinks",
+  ],
+  "stderr": "",
+  "stdout": "Acme · warehouse destinations for cost exports
+
+Snowflake table (--plugin snowflake)
+  Snow sf1
+  --target database=<database>  (required)
+  --target schema=<schema>  (required)
+  --target table=<table>  (required, new names allowed)
+  --target warehouse=<warehouse>  (optional)
+
+Databricks table (--plugin databricks)
+  No Databricks account connected. Add one first.
+  --target catalog=<catalog>  (required)
+
+BigQuery table (--plugin bigquery)
+  One bq1
+  Two bq2
+
+Create one with \`infrawrench exports create --name <n> --plugin <id> -a <account> --target key=value ...\`.
+",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 1 $ infrawrench exports setup 1`] = `
+{
+  "requests": [],
+  "stderr": "Which export? \`infrawrench exports setup <name|id>\`
+",
+  "stdout": "",
+}
+`;
+
+exports[`exports > lists warehouses and prints a warehouse export's grants > 1 $ infrawrench exports setup webhook 1`] = `
+{
+  "requests": [
+    "GET /cost-exports",
+  ],
+  "stderr": ""Webhook" writes to POST hooks.example.com/…a7f2, not a warehouse table.
+",
+  "stdout": "",
+}
+`;

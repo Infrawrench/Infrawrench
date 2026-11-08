@@ -14,6 +14,13 @@ vi.mock("../../lib/invoke", () => ({
   invoke: (...args: unknown[]) => invoke(...args),
 }));
 
+vi.mock("../../lib/ssh-keys", () => ({
+  listSystemKeys: async () => [{ name: "id_ed25519" }],
+  readSystemKey: async () => "",
+  isPageantAvailable: async () => false,
+  is1PasswordAvailable: async () => false,
+}));
+
 vi.mock("../../db/client", () => ({
   getDb: async () => ({ select: dbSelect, execute: dbExecute }),
 }));
@@ -29,11 +36,7 @@ describe("SshQuickConnectPanel", () => {
     invoke.mockReset();
     dbSelect.mockReset();
     dbExecute.mockReset();
-    invoke.mockImplementation(async (method: string) => {
-      if (method === "ssh_list_system_keys") return [{ name: "id_ed25519" }];
-      if (method === "ssh_check_pageant" || method === "ssh_check_1password") return false;
-      return undefined;
-    });
+    invoke.mockResolvedValue(undefined);
     dbSelect.mockResolvedValue([
       { id: "agent-key-1", name: "infrawrench-agent" },
       { id: "other-key", name: "deploy" },

@@ -1,8 +1,28 @@
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type { AccessRequest } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { c, printJson, println, printTable, type Column } from "../output";
+import { Effect, Schema } from "effect";
+import { Command } from "effect/cli";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { wire } from "../effect/wire";
+import { c, type Column } from "../output";
+
+const AccessRow = Schema.Struct({
+  userName: Schema.NullOr(Schema.String),
+  permissions: Schema.Array(Schema.String),
+  reason: Schema.String,
+  durationMinutes: Schema.Finite,
+  status: Schema.Literals(["pending", "approved", "denied", "expired"]),
+  expiresAt: Schema.String,
+  grantExpiresAt: Schema.NullOr(Schema.String),
+  revokedAt: Schema.NullOr(Schema.String),
+  active: Schema.Boolean,
+});
+type AccessRow = typeof AccessRow.Type;
+
+const Requests = wire<AccessRequest[]>()(Schema.Array(AccessRow));
 
 /** "45m" / "2h": kept local so the CLI pulls nothing UI-shaped. */
 function duration(minutes: number): string {
@@ -27,7 +47,7 @@ function countdown(at: string | null): string {
   return ms >= 0 ? `in ${label}` : c.dim(`${label} ago`);
 }
 
-function statusCell(request: AccessRequest): string {
+function statusCell(request: AccessRow): string {
   if (request.active) return c.yellow("LIVE");
   switch (request.status) {
     case "pending":
@@ -51,42 +71,36 @@ function statusCell(request: AccessRequest): string {
  * at is the question an on-call engineer actually types at 3am ("who is
  * elevated right now") so that is what it answers.
  */
-export async function cmdAccess(ctx: CliContext, rest: string[]): Promise<void> {
-  const org = await resolveOrg(ctx);
-  const sub = rest[0];
-  if (sub !== undefined && sub !== "list" && sub !== "active") {
-    throw new CliError(`Unknown subcommand "${sub}". Try: access, access active`);
-  }
+const listRequests = Effect.fn("access.list")(function* (activeOnly: boolean) {
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  const org = yield* currentOrg;
+  const path = `/access-requests${activeOnly ? "?active=1" : ""}`;
+  const body = yield* api.json(org.id, path);
 
-  const query = sub === "active" ? "?active=1" : "";
-  const requests = await orgFetch<AccessRequest[]>(org.id, `/access-requests${query}`);
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, requests });
-    return;
-  }
+  if (session.output === "json") return yield* Print.json({ org: org.id, requests: body });
+  const requests = yield* decodeBody(Requests, path)(body);
 
   if (requests.length === 0) {
-    println(
+    return yield* Print.line(
       c.dim(
-        sub === "active"
+        activeOnly
           ? "Nobody is holding elevated access right now."
           : "No break-glass requests. Ask for one from Settings → Break-glass Access.",
       ),
     );
-    return;
   }
 
   const live = requests.filter((r) => r.active).length;
   const waiting = requests.filter((r) => r.status === "pending").length;
-  println(
+  yield* Print.line(
     `${c.bold(org.displayName)} ${c.dim(
       `· ${live} live elevation${live === 1 ? "" : "s"}, ${waiting} waiting for a decision`,
     )}`,
   );
-  println();
+  yield* Print.line();
 
-  const columns: Column<AccessRequest>[] = [
+  const columns: Column<AccessRow>[] = [
     { header: "who", value: (r) => r.userName ?? c.dim("unknown") },
     { header: "permissions", value: (r) => r.permissions.join(", ") },
     { header: "for", value: (r) => duration(r.durationMinutes) },
@@ -98,14 +112,26 @@ export async function cmdAccess(ctx: CliContext, rest: string[]): Promise<void> 
     },
     { header: "reason", value: (r) => c.dim(r.reason) },
   ];
-  printTable(requests, columns);
+  yield* Print.table(requests, columns);
 
   if (live > 0) {
-    println();
-    println(
+    yield* Print.line();
+    yield* Print.line(
       c.dim(
         "Live elevations lapse on their own. End one early from Settings → Break-glass Access.",
       ),
     );
   }
-}
+});
+
+export const access = Command.make("access", {}, () => listRequests(false)).pipe(
+  Command.withDescription("Break-glass requests and live permission elevations (bare: list)"),
+  Command.withSubcommands([
+    Command.make("list", {}, () => listRequests(false)).pipe(
+      Command.withDescription("Every break-glass request and live elevation"),
+    ),
+    Command.make("active", {}, () => listRequests(true)).pipe(
+      Command.withDescription("Only the elevations in force right now"),
+    ),
+  ]),
+);

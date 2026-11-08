@@ -1,6 +1,6 @@
 /**
  * Org-scoped budget CRUD + status: shared by the HTTP routes
- * (api/routes/budgets.ts) and the tool registry (tools/costs.ts).
+ * (http/domains/budgets/) and the tool registry (tools/costs.ts).
  */
 import { visibilityOwnerCondition, visibilityUserIdForCreate } from "./cost-visibility-filter";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";

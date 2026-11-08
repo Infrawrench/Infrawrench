@@ -1,49 +1,72 @@
-import { invoke } from "./invoke";
+import type { StorageObject } from "@infrawrench/plugin-base";
+import { cloudClient } from "./cloud-client";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
-export async function cloudSftpList(
+/** Which account's host to reach, and the SSH overrides a cloud key brings. */
+interface CloudSftpTarget {
+  accountId: string;
+  /** Accepted for the callers' convenience; the SFTP routes resolve the host from the account. */
+  resourceId?: string;
+  sshKeyId?: string;
+  sshHost?: string;
+  sshUsername?: string;
+}
+
+/** The SSH overrides that are set, as the contract's optional keys. */
+const sshOverrides = (target: Omit<CloudSftpTarget, "accountId" | "resourceId">) => ({
+  ...(target.sshKeyId !== undefined ? { sshKeyId: target.sshKeyId } : {}),
+  ...(target.sshHost !== undefined ? { sshHost: target.sshHost } : {}),
+  ...(target.sshUsername !== undefined ? { sshUsername: target.sshUsername } : {}),
+});
+
+const connections = cloudClient("connections").connections;
+
+export function cloudSftpList(
   orgId: string,
-  body: {
-    accountId: string;
-    resourceId?: string;
-    path: string;
-    sshKeyId?: string;
-    sshHost?: string;
-    sshUsername?: string;
-  },
-): Promise<unknown> {
-  return invoke("cloud_sftp_list", { orgId, body });
+  body: CloudSftpTarget & { path: string },
+): Promise<StorageObject[]> {
+  return runRpc(
+    connections.sftpList({
+      params: { orgId },
+      payload: { accountId: body.accountId, path: body.path, ...sshOverrides(body) },
+    }),
+  );
 }
 
 export async function cloudSftpMkdir(
   orgId: string,
-  body: {
-    accountId: string;
-    resourceId?: string;
-    path: string;
-    sshKeyId?: string;
-    sshHost?: string;
-    sshUsername?: string;
-  },
+  body: CloudSftpTarget & { path: string },
 ): Promise<void> {
-  await invoke("cloud_sftp_mkdir", { orgId, body });
+  await runRpc(
+    connections.sftpMkdir({
+      params: { orgId },
+      payload: { accountId: body.accountId, path: body.path, ...sshOverrides(body) },
+    }),
+  );
 }
 
 export async function cloudSftpDelete(
   orgId: string,
-  body: {
-    accountId: string;
-    resourceId?: string;
-    path: string;
-    isDir?: boolean;
-    sshKeyId?: string;
-    sshHost?: string;
-    sshUsername?: string;
-  },
+  body: CloudSftpTarget & { path: string; isDir?: boolean },
 ): Promise<void> {
-  await invoke("cloud_sftp_delete", { orgId, body });
+  await runRpc(
+    connections.sftpDelete({
+      params: { orgId },
+      payload: {
+        accountId: body.accountId,
+        path: body.path,
+        isDir: body.isDir ?? false,
+        ...sshOverrides(body),
+      },
+    }),
+  );
 }
 
-export async function cloudSftpUpload(params: {
+/**
+ * A multipart upload, sent by the main process (`CloudSftpUpload`), which
+ * prompts for the host key when the server asks.
+ */
+export function cloudSftpUpload(params: {
   orgId: string;
   accountId: string;
   remotePath: string;
@@ -53,14 +76,19 @@ export async function cloudSftpUpload(params: {
   sshHost?: string;
   sshUsername?: string;
 }): Promise<void> {
-  await invoke("cloud_sftp_upload", params);
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.CloudSftpUpload(params)));
 }
 
-export async function cloudSftpDownload(params: {
+/**
+ * One file written to disk by the main process (`CloudSftpDownload`); the
+ * bytes never reach the renderer. A reload midway cancels it and leaves no
+ * partial file.
+ */
+export function cloudSftpDownload(params: {
   orgId: string;
   accountId: string;
   remotePath: string;
-  /** Folder the user picked via `show_open_dialog`; main rejects anything else. */
+  /** Folder the user picked via `showOpenDialog`; main rejects anything else. */
   destFolder: string;
   /** Path beneath `destFolder`, `/`-separated; main rejects `..`, `\\`, `:` and absolutes. */
   relativePath: string;
@@ -68,10 +96,10 @@ export async function cloudSftpDownload(params: {
   sshHost?: string;
   sshUsername?: string;
 }): Promise<void> {
-  await invoke("cloud_sftp_download", params);
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.CloudSftpDownload(params)));
 }
 
-export async function cloudSshTunnelExec(
+export function cloudSshTunnelExec(
   orgId: string,
   body: {
     sshHost: string;
@@ -81,7 +109,7 @@ export async function cloudSshTunnelExec(
     command: string;
   },
 ): Promise<{ stdout: string; stderr?: string; code: number }> {
-  return invoke("cloud_ssh_tunnel_exec", { orgId, body });
+  return runRpc(cloudClient("sshTunnels").sshTunnels.exec({ params: { orgId }, payload: body }));
 }
 
 export async function cloudSshTunnelCreateAccount(
@@ -98,5 +126,7 @@ export async function cloudSshTunnelCreateAccount(
     credentials: Record<string, string>;
   },
 ): Promise<{ accountId: string }> {
-  return invoke("cloud_ssh_tunnel_create_account", { orgId, body });
+  return runRpc(
+    cloudClient("sshTunnels").sshTunnels.createAccount({ params: { orgId }, payload: body }),
+  );
 }

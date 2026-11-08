@@ -574,6 +574,7 @@ import {
   type ResourceReportTagFilter,
 } from "@infrawrench/client-core";
 
+// Effect twin: `CostFilter` in `api-contract/src/schemas/cost-filter.ts`.
 const costFilterObjectSchema = z.object({
   dimension: z.enum(COST_DIMENSIONS),
   op: z.enum(COST_FILTER_OPS),
@@ -592,10 +593,12 @@ function refineCostFilter(
   if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["values"] });
 }
 
+// Effect twin: `CostFilter` in `api-contract/src/schemas/cost-filter.ts`.
 export const costFilterSchema = costFilterObjectSchema.superRefine(refineCostFilter);
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
+// Effect twin: `BusinessMetricLabelKey` in `api-contract/src/schemas/unit-costs.ts`.
 /** A business-metric label key: normalised, then the metric-key slug rule. */
 const businessMetricLabelKey = z
   .string()
@@ -608,6 +611,7 @@ const businessMetricLabelKey = z
       .regex(BUSINESS_METRIC_KEY_PATTERN, "expected a lowercase slug, e.g. customer"),
   );
 
+// Effect twin: `UnitCostScaleValue` in `api-contract/src/schemas/unit-costs.ts`.
 const unitCostScaleSchema = z.union([
   z.literal(UNIT_COST_SCALES[0]),
   z.literal(UNIT_COST_SCALES[1]),
@@ -616,6 +620,7 @@ const unitCostScaleSchema = z.union([
   z.literal(UNIT_COST_SCALES[4]),
 ]);
 
+// Effect twin: `UnitCostLabelFilter` in `api-contract/src/schemas/unit-costs.ts`.
 const unitCostLabelFilterSchema = z.object({
   key: businessMetricLabelKey,
   op: z.enum(["in", "not_in"]),
@@ -625,11 +630,13 @@ const unitCostLabelFilterSchema = z.object({
     .max(200),
 });
 
+// Effect twin: `CostDateRange` in `api-contract/src/schemas/cost-enums.ts`.
 export const costDateRangeSchema = z.union([
   z.object({ kind: z.literal("relative"), preset: z.enum(COST_RANGE_PRESETS) }),
   z.object({ kind: z.literal("absolute"), from: isoDate, to: isoDate }),
 ]);
 
+// Effect twin: `costGraphConfigFields` in `api-contract/src/schemas/cost-graph.ts`.
 const costGraphConfigObjectSchema = z.object({
   version: z.literal(1),
   chartType: z.enum(COST_CHART_TYPES),
@@ -725,8 +732,10 @@ function refineCostGraphConfig(
   }
 }
 
+// Effect twin: `CostGraphConfig` in `api-contract/src/schemas/cost-graph.ts`.
 export const costGraphConfigSchema = costGraphConfigObjectSchema.superRefine(refineCostGraphConfig);
 
+// Effect twin: `CostReportRunOverrides` in `api-contract/src/schemas/cost-graph.ts`.
 /** Body of `POST /cost-reports/:id/run`: one-off display overrides, never saved. */
 export const costReportRunOverridesSchema = z.object({
   measure: z.enum(COST_MEASURES).optional(),
@@ -737,12 +746,14 @@ export const costReportRunOverridesSchema = z.object({
   xAxisTagKey: z.string().min(1).max(256).optional(),
 });
 
+// Effect twin: `BudgetWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
 export const budgetWidgetConfigSchema = z.object({
   version: z.literal(1),
   budgetId: z.string().min(1),
 });
 
+// Effect twin: `CostReportWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /**
  * A cost_report widget is a dashboard view onto a cost_reports row. It holds no
  * config of its own on purpose: the whole point of the report object is that
@@ -753,6 +764,7 @@ export const costReportWidgetConfigSchema = z.object({
   reportId: z.string().min(1),
 });
 
+// Effect twin: `CostReportInput` in `api-contract/src/schemas/cost-reports.ts`.
 /**
  * Create/update body for a report (POST/PUT /cost-reports).
  *
@@ -767,6 +779,7 @@ export const costReportInputSchema = z.object({
   folderId: z.string().min(1).nullable().optional(),
 });
 
+// Effect twin: `CostReportFolderInput` in `api-contract/src/schemas/cost-reports.ts`.
 /**
  * Create/update body for a report folder (POST/PUT /cost-report-folders).
  *
@@ -779,6 +792,7 @@ export const costReportFolderInputSchema = z.object({
   parentFolderId: z.string().min(1).nullable().optional(),
 });
 
+// Effect twin: `CostAnnotationInput` in `api-contract/src/schemas/cost-annotations.ts`.
 /**
  * Create/update body for a cost annotation (POST/PUT /cost-annotations).
  *
@@ -799,6 +813,7 @@ export const costAnnotationInputSchema = z.object({
   costReportId: z.string().min(1).nullable().optional(),
 });
 
+// Effect twin: `CostAnomalyAcknowledge` in `api-contract/src/schemas/cost-annotations.ts`.
 /**
  * Body for acknowledging an anomaly
  * (POST /costs/anomalies/:id/acknowledge).
@@ -816,6 +831,7 @@ export const costAnomalyAcknowledgeSchema = z.object({
   explanation: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
 });
 
+// Effect twin: `BudgetAlertNoteInput` in `api-contract/src/schemas/budgets.ts`.
 /**
  * Body for a note on a fired budget alert
  * (POST /budgets/:id/events/:eventId/note).
@@ -831,6 +847,7 @@ export const budgetAlertNoteSchema = z.object({
 
 const bulkIdsSchema = z.array(z.string().min(1)).max(COST_REPORT_BULK_LIMITS.maxItems);
 
+// Effect twin: `CostReportBulkRequest` in `api-contract/src/schemas/cost-reports.ts`.
 /**
  * Body for POST /cost-reports/bulk. Shape-only: whether every id exists, is
  * visible and editable, and whether the folder moves keep the tree within its
@@ -858,12 +875,14 @@ export const costReportBulkRequestSchema = z
     message: `At most ${COST_REPORT_BULK_LIMITS.maxItems} items per request.`,
   });
 
+// Effect twin: `BudgetThreshold` in `api-contract/src/schemas/budgets.ts`.
 export const budgetThresholdSchema = z.object({
   type: z.enum(["actual", "forecast"]),
   /** Percent of the budget amount at which this threshold fires (1–1000). */
   percent: z.number().int().min(1).max(1000),
 });
 
+// Effect twin: `AlertEmailRecipients` in `api-contract/src/schemas/alert-email.ts`.
 /**
  * Alert email recipients on a cost object. Structural only: whether each user
  * id is a member and each address passes the org's external-address policy
@@ -880,6 +899,7 @@ export const alertEmailRecipientsSchema = z.object({
 
 const budgetUsageAmount = z.number().positive().max(BUDGET_LIMITS.maxUsageAmount);
 
+// Effect twin: `BudgetPeriod` in `api-contract/src/schemas/budgets.ts`.
 /**
  * Which periods a budget covers. Shapes only: ordering, overlap and "each entry
  * carries the amount its budget's measure needs" are `budgetInputError`'s,
@@ -908,6 +928,7 @@ export const budgetPeriodSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+// Effect twin: `BudgetInput` in `api-contract/src/schemas/budgets.ts`.
 /**
  * Create/update body for a budget. Deliberately a plain object (no
  * `superRefine`) so the MCP tools can spread `.shape`; the cross-field rules
@@ -958,6 +979,7 @@ export const budgetInputSchema = z.object({
   emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
+// Effect twin: `CostAlertInput` in `api-contract/src/schemas/cost-alerts.ts`.
 /**
  * Create/update body for a change-based cost alert (POST/PUT /cost-alerts).
  *
@@ -1000,6 +1022,7 @@ export const costAlertInputSchema = z
     },
   );
 
+// Effect twin: `CostAnomalySettings` in `api-contract/src/schemas/cost-anomalies.ts`.
 /**
  * Per-org anomaly tuning (PUT /costs/anomaly-settings).
  *
@@ -1049,6 +1072,7 @@ export const costAnomalySettingsSchema = z.object({
   emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
+// Effect twin: `CostAnomalySuppressionInput` in `api-contract/src/schemas/cost-anomalies.ts`.
 /**
  * `POST /costs/suppressions` and `PUT /costs/anomaly-suppressions/:id`. The
  * cross-field rules (tag key for tag scope, expiry after start, the
@@ -1067,6 +1091,7 @@ export const costAnomalySuppressionInputSchema = z.object({
   note: z.string().max(COST_ANOMALY_FEEDBACK_LIMITS.noteMaxLength).nullable().optional(),
 });
 
+// Effect twin: `CostAnomalyFeedbackInput` in `api-contract/src/schemas/cost-anomalies.ts`.
 /** `POST /costs/anomalies/:id/feedback`. */
 export const costAnomalyFeedbackSchema = z.object({
   verdict: z.enum(COST_ANOMALY_VERDICTS),
@@ -1084,6 +1109,7 @@ export const costAnomalyFeedbackSchema = z.object({
     .optional(),
 });
 
+// Effect twin: `CostEfficiencySettings` in `api-contract/src/schemas/cost-anomalies.ts`.
 /**
  * Per-org tuning for the three efficiency detectors
  * (PUT /costs/efficiency-alert-settings).
@@ -1164,18 +1190,21 @@ export const costEfficiencySettingsSchema = z.object({
   emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
+// Effect twin: `CustomGraphWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /** A custom-graph widget is a dashboard view onto a custom_graphs row. */
 export const customGraphWidgetConfigSchema = z.object({
   version: z.literal(1),
   graphId: z.string().min(1),
 });
 
+// Effect twin: `CostCanvasWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /** A cost-canvas widget is a dashboard view onto a cost_canvases row. */
 export const costCanvasWidgetConfigSchema = z.object({
   version: z.literal(1),
   canvasId: z.string().min(1),
 });
 
+// Effect twin: `RealizedSavingsWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /**
  * A `realized_savings` card: a view choice over the org's realized savings
  * report (which breakdown, how many months back). No ids: there is one report
@@ -1191,6 +1220,7 @@ export const realizedSavingsWidgetConfigSchema = z.object({
     .max(REALIZED_SAVINGS_WIDGET_LIMITS.maxMonths),
 });
 
+// Effect twin: `KpiWidgetSource` in `api-contract/src/schemas/widgets.ts`.
 /**
  * A `kpi` card: one figure from a picked source. Ids only, never a query
  * string; the cross-field rules are `kpiWidgetConfigProblem`'s, shared with
@@ -1216,6 +1246,7 @@ const kpiWidgetSourceSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+// Effect twin: `KpiWidgetConfigObject` in `api-contract/src/schemas/widgets.ts`.
 export const kpiWidgetConfigObjectSchema = z.object({
   version: z.literal(1),
   source: kpiWidgetSourceSchema,
@@ -1224,11 +1255,13 @@ export const kpiWidgetConfigObjectSchema = z.object({
   upIsGood: z.boolean().optional(),
 });
 
+// Effect twin: `KpiWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 export const kpiWidgetConfigSchema = kpiWidgetConfigObjectSchema.superRefine((config, ctx) => {
   const problem = kpiWidgetConfigProblem(config);
   if (problem) ctx.addIssue({ code: "custom", message: problem });
 });
 
+// Effect twin: `TextWidgetConfig` in `api-contract/src/schemas/widgets.ts`.
 /** A `text` card: markdown, sanitised where it is drawn rather than here. */
 export const textWidgetConfigSchema = z.object({
   version: z.literal(1),
@@ -1242,9 +1275,11 @@ type ExactWidget<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : ne
 true satisfies ExactWidget<z.infer<typeof kpiWidgetConfigSchema>, KpiWidgetConfig>;
 true satisfies ExactWidget<z.infer<typeof textWidgetConfigSchema>, TextWidgetConfig>;
 
+// Effect twin: `DashboardKpiRequest` in `api-contract/src/schemas/widgets.ts`.
 /** POST /dashboards/kpi: evaluate one KPI config (a saved card's, or an editor's preview). */
 export const dashboardKpiRequestSchema = z.object({ config: kpiWidgetConfigSchema });
 
+// Effect twin: `RealizedSavingsSettings` in `api-contract/src/schemas/savings.ts`.
 /** PUT /savings/settings. */
 export const realizedSavingsSettingsSchema = z.object({
   horizonMonths: z
@@ -1273,6 +1308,7 @@ const savingsHorizon = z
   .nullable()
   .optional();
 
+// Effect twin: `SavingsEventInput` in `api-contract/src/schemas/savings.ts`.
 /** POST /savings/events and PUT /savings/events/:id (manual entries). */
 export const savingsEventInputSchema = z.object({
   title: z.string().trim().min(1).max(REALIZED_SAVINGS_LIMITS.titleMaxLength),
@@ -1287,6 +1323,7 @@ export const savingsEventInputSchema = z.object({
   horizonMonths: savingsHorizon,
 });
 
+// Effect twin: `SavingsEventAnnotation` in `api-contract/src/schemas/savings.ts`.
 /** PATCH /savings/events/:id: context any event takes, automatic ones included. */
 export const savingsEventAnnotationSchema = z.object({
   note: z.string().max(REALIZED_SAVINGS_LIMITS.noteMaxLength).nullable().optional(),
@@ -1295,6 +1332,7 @@ export const savingsEventAnnotationSchema = z.object({
   endedOn: isoDay.nullable().optional(),
 });
 
+// Effect twin: `WIDGET_CONFIG_SCHEMAS` in `api-contract/src/schemas/widgets.ts`.
 const widgetConfigSchemas = {
   cost_graph: costGraphConfigSchema,
   cost_report: costReportWidgetConfigSchema,
@@ -1306,10 +1344,12 @@ const widgetConfigSchemas = {
   text: textWidgetConfigSchema,
 } as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
 
+// Effect twin: `widgetConfigFor` in `api-contract/src/schemas/widgets.ts`.
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
   return widgetConfigSchemas[kind];
 }
 
+// Effect twin: `RequiredTag` in `api-contract/src/schemas/tags.ts`.
 /** One required tag in the org policy: a key, optionally with allowed values. */
 export const requiredTagSchema = z.object({
   key: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength),
@@ -1319,6 +1359,7 @@ export const requiredTagSchema = z.object({
     .optional(),
 });
 
+// Effect twin: `TagPolicy` in `api-contract/src/schemas/tags.ts`.
 /** The org tag policy (PUT /tag-policy). */
 export const tagPolicySchema = z.object({
   requiredTags: z.array(requiredTagSchema).max(TAG_POLICY_LIMITS.maxRequiredTags),
@@ -1337,6 +1378,7 @@ const tagKeyEntry = z
   .transform((v) => v.trim())
   .pipe(z.string().min(1).max(TAG_KEY_SETTINGS_LIMITS.maxKeyLength));
 
+// Effect twin: `TagKeySettings` in `api-contract/src/schemas/tags.ts`.
 export const tagKeySettingsSchema = z.object({
   hidden: z
     .array(
@@ -1355,6 +1397,7 @@ export const tagKeySettingsSchema = z.object({
     .max(TAG_KEY_SETTINGS_LIMITS.maxPreferred),
 });
 
+// Effect twin: `CostCentreInput` in `api-contract/src/schemas/cost-centres.ts`.
 export const costCentreInputSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
@@ -1366,6 +1409,7 @@ export const costCentreInputSchema = z.object({
   parentId: z.string().min(1).nullable().optional(),
 });
 
+// Effect twin: `AllocationRuleMatch` in `api-contract/src/schemas/cost-centres.ts`.
 /** All set fields must match; an empty match is a catch-all. */
 export const allocationRuleMatchSchema = z
   .object({
@@ -1387,12 +1431,14 @@ export const allocationRuleMatchSchema = z
     path: ["virtualTagValue"],
   });
 
+// Effect twin: `AllocationRuleInput` in `api-contract/src/schemas/cost-centres.ts`.
 export const allocationRuleInputSchema = z.object({
   costCentreId: z.string().min(1),
   priority: z.number().int().min(0).max(100_000),
   match: allocationRuleMatchSchema,
 });
 
+// Effect twin: `CostQueryRequest` in `api-contract/src/schemas/cost-query.ts`.
 /** The cost query the API accepts: a graph config resolved to concrete dates. */
 export const costQueryRequestSchema = z.object({
   from: isoDate,
@@ -1466,6 +1512,7 @@ export const costQueryRequestSchema = z.object({
   segmentByDate: z.boolean().optional(),
 });
 
+// Effect twin: `FocusExportRequest` in `api-contract/src/schemas/cost-query.ts`.
 /**
  * `POST /costs/focus-export`: an ad-hoc FOCUS download. Exactly the cost
  * query's scope fields (range, filter in either spelling, saved filter, charge
@@ -1483,6 +1530,7 @@ export const focusExportRequestSchema = costQueryRequestSchema
   })
   .extend({ version: z.enum(FOCUS_VERSIONS).optional() });
 
+// Effect twin: `CostExportJobRequest` in `api-contract/src/schemas/cost-query.ts`.
 /**
  * `POST /costs/exports/jobs`. Shape only; the cross-field rules (exactly one of
  * `reportId` and `query`, a range with `query`, the span cap) are the
@@ -1512,6 +1560,7 @@ export const costExportJobRequestSchema = z.object({
  * Billing rules: POST/PUT /billing-rules.
  * ------------------------------------------------------------------ */
 
+// Effect twin: `BillingRuleMatch` in `api-contract/src/schemas/billing-rules.ts`.
 /**
  * The allocation match vocabulary plus `chargeType`. Shape-only, deliberately:
  * the cross-field rules (a percentage rule cannot carry an amount, a
@@ -1532,6 +1581,7 @@ export const billingRuleMatchSchema = z
     path: ["tagValue"],
   });
 
+// Effect twin: `BillingRuleAdjustment` in `api-contract/src/schemas/billing-rules.ts`.
 /**
  * Every kind-specific field is `.nullable().default(null)` so a PUT round-trip
  * of a rule this client did not create still parses: the same rule
@@ -1570,6 +1620,7 @@ export const billingRuleAdjustmentSchema = z.object({
   expression: z.string().max(PRICING_EXPRESSION_LIMITS.maxLength).nullable().default(null),
 });
 
+// Effect twin: `BillingRuleInput` in `api-contract/src/schemas/billing-rules.ts`.
 export const billingRuleInputSchema = z.object({
   name: z.string().min(1).max(BILLING_RULE_LIMITS.maxNameLength),
   description: z.string().max(BILLING_RULE_LIMITS.maxDescriptionLength).nullable().default(null),
@@ -1583,6 +1634,7 @@ export const billingRuleInputSchema = z.object({
     .optional(),
 });
 
+// Effect twin: `BillingRuleReorder` in `api-contract/src/schemas/billing-rules.ts`.
 /**
  * Reordering: the full list of rule ids in the order they should evaluate.
  * The server rewrites priorities to match, in one transaction.
@@ -1600,6 +1652,7 @@ const pricingScopeEntrySchema = z.object({
   service: z.string().max(256).nullish(),
 });
 
+// Effect twin: `DiscountTreatment` in `api-contract/src/schemas/billing-rules.ts`.
 const discountTreatmentSchema = z.object({
   mode: z.enum(DISCOUNT_TREATMENT_MODES),
   passThroughPercent: z.number().min(0).max(100).nullish(),
@@ -1610,6 +1663,7 @@ const upliftPercent = z
   .min(MANAGED_ACCOUNT_PRICING_LIMITS.minUpliftPercent)
   .max(MANAGED_ACCOUNT_PRICING_LIMITS.maxUpliftPercent);
 
+// Effect twin: `ManagedAccountPricing` in `api-contract/src/schemas/billing-rules.ts`.
 /** Shape-only; the cross-field rules are `managedAccountPricingError`. */
 export const managedAccountPricingSchema = z.object({
   rerate: z.object({
@@ -1625,6 +1679,7 @@ export const managedAccountPricingSchema = z.object({
   commitmentBenefits: discountTreatmentSchema,
 });
 
+// Effect twin: `PricingPreviewRequest` in `api-contract/src/schemas/billing-rules.ts`.
 /** `POST /billing-rules/preview`. */
 export const pricingPreviewRequestSchema = z.object({
   rule: billingRuleInputSchema.nullish(),
@@ -1641,6 +1696,7 @@ export const pricingPreviewRequestSchema = z.object({
  * Virtual tags: POST/PUT /virtual-tags.
  * ------------------------------------------------------------------ */
 
+// Effect twin: `VirtualTagSource` in `api-contract/src/schemas/virtual-tags.ts`.
 /**
  * Shape-only, like the billing-rule schemas: the cross-field rules (a split's
  * percentages sum to 100, a filter must parse, a key is listed once) live in
@@ -1654,12 +1710,14 @@ export const virtualTagSourceSchema = z.object({
   query: z.string().max(COST_QUERY_MAX_LENGTH).nullable().default(null),
 });
 
+// Effect twin: `VirtualTagAllocation` in `api-contract/src/schemas/virtual-tags.ts`.
 export const virtualTagAllocationSchema = z.object({
   value: z.string().min(1).max(VIRTUAL_TAG_LIMITS.maxValueLength),
   percent: z.number().gt(0).max(100).nullable().default(null),
   metricId: z.string().min(1).nullable().default(null),
 });
 
+// Effect twin: `VirtualTagRule` in `api-contract/src/schemas/virtual-tags.ts`.
 export const virtualTagRuleSchema = z.object({
   query: z.string().max(COST_QUERY_MAX_LENGTH).default(""),
   description: z.string().max(VIRTUAL_TAG_LIMITS.maxDescriptionLength).nullable().default(null),
@@ -1675,6 +1733,7 @@ export const virtualTagRuleSchema = z.object({
     .default([]),
 });
 
+// Effect twin: `VirtualTagInput` in `api-contract/src/schemas/virtual-tags.ts`.
 export const virtualTagInputSchema = z.object({
   key: z
     .string()
@@ -1699,6 +1758,7 @@ const currencyCode = z
   .transform((v) => v.trim().toUpperCase())
   .pipe(z.string().regex(CURRENCY_CODE_PATTERN, "expected a three-letter code, e.g. USD"));
 
+// Effect twin: `CurrencySettingsInput` in `api-contract/src/schemas/currency.ts`.
 /**
  * The display currency, or `null` for "do not convert".
  *
@@ -1725,6 +1785,7 @@ export const currencySettingsSchema = z.object({
  * survive, and parsing it to a float at the API edge would throw that away
  * before it ever reached the database.
  */
+// Effect twin: `SavedCostFilterInput` in `api-contract/src/schemas/saved-filters.ts`.
 /**
  * Create/update body for a saved cost filter (POST/PUT /saved-cost-filters).
  *
@@ -1743,6 +1804,7 @@ export const savedCostFilterInputSchema = z.object({
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
 });
 
+// Effect twin: `CostScenarioAdjustment` in `api-contract/src/schemas/cost-scenarios.ts`.
 /**
  * One adjustment inside a scenario model.
  *
@@ -1773,6 +1835,7 @@ export const costScenarioAdjustmentSchema = z.object({
   scope: z.array(costFilterSchema).max(COST_SCENARIO_LIMITS.maxScopeFilters).default([]),
 });
 
+// Effect twin: `CostScenarioModelInput` in `api-contract/src/schemas/cost-scenarios.ts`.
 /** Create/update body for a scenario model (POST/PUT /cost-scenarios). */
 export const costScenarioModelInputSchema = z.object({
   name: z.string().min(1).max(COST_SCENARIO_LIMITS.maxNameLength),
@@ -1785,6 +1848,7 @@ export const costScenarioModelInputSchema = z.object({
     .default([]),
 });
 
+// Effect twin: `ExchangeRateInput` in `api-contract/src/schemas/currency.ts`.
 export const exchangeRateInputSchema = z.object({
   fromCurrency: currencyCode,
   toCurrency: currencyCode,
@@ -1801,6 +1865,7 @@ export const exchangeRateInputSchema = z.object({
   effectiveTo: isoDate.nullable().optional(),
 });
 
+// Effect twin: `ExchangeRateImportRequest` in `api-contract/src/schemas/currency.ts`.
 /** `POST /currency/rates/import`: a CSV of stated rates. Rows are validated server-side. */
 export const exchangeRateImportRequestSchema = z.object({
   csv: z.string().max(EXCHANGE_RATE_CSV_LIMITS.maxChars),
@@ -1877,6 +1942,7 @@ const businessMetricKey = z
       .regex(BUSINESS_METRIC_KEY_PATTERN, "expected a lowercase slug, e.g. active-customers"),
   );
 
+// Effect twin: `BusinessMetricLabelMapping` in `api-contract/src/schemas/business-metrics.ts`.
 /** Where a label's values live on the cost side. */
 const businessMetricLabelMappingSchema = z.object({
   label: businessMetricLabelKey,
@@ -1890,6 +1956,7 @@ const businessMetricLabelMappingSchema = z.object({
   ]),
 });
 
+// Effect twin: `UnitCostThreshold` in `api-contract/src/schemas/business-metrics.ts`.
 /** A standing limit on a metric's unit cost or margin. */
 const unitCostThresholdSchema = z.object({
   mode: z.enum(UNIT_COST_THRESHOLD_MODES),
@@ -1905,6 +1972,7 @@ const unitCostThresholdSchema = z.object({
     .optional(),
 });
 
+// Effect twin: `BusinessMetricInput` in `api-contract/src/schemas/business-metrics.ts`.
 /**
  * Create/update body for a business metric.
  *
@@ -1932,6 +2000,7 @@ export const businessMetricInputSchema = z.object({
   thresholds: z.array(unitCostThresholdSchema).max(BUSINESS_METRIC_LIMITS.maxThresholds).optional(),
 });
 
+// Effect twin: `BusinessMetricValueInput` in `api-contract/src/schemas/business-metrics.ts`.
 /**
  * One reported day. Re-reporting a day restates it rather than accumulating:
  * see `server-core/cost/metric-ingest.ts` for why that is the only ingest
@@ -1948,11 +2017,13 @@ export const businessMetricValueInputSchema = z.object({
   labels: z.record(z.string(), z.string()).optional(),
 });
 
+// Effect twin: `BusinessMetricValuesBody` in `api-contract/src/schemas/business-metrics.ts`.
 /** The batch envelope for `POST /business-metrics/{id}/values`. */
 export const businessMetricValuesBodySchema = z.object({
   values: z.array(businessMetricValueInputSchema).max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
 });
 
+// Effect twin: `UnitCostQueryRequest` in `api-contract/src/schemas/business-metrics.ts`.
 /**
  * The unit-cost query.
  *
@@ -1981,6 +2052,7 @@ export const unitCostQueryRequestSchema = z.object({
   displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
 });
 
+// Effect twin: `UnitCostExportRequest` in `api-contract/src/schemas/business-metrics.ts`.
 /** `POST …/unit-costs/export`: the same query, plus the file format. */
 export const unitCostExportRequestSchema = unitCostQueryRequestSchema.extend({
   format: z.enum(UNIT_COST_EXPORT_FORMATS).optional(),
@@ -1996,6 +2068,7 @@ const businessMetricSourceParamsSchema = z
     message: `at most ${BUSINESS_METRIC_IMPORT_LIMITS.maxParams} parameters`,
   });
 
+// Effect twin: `BusinessMetricImporterInput` in `api-contract/src/schemas/business-metrics.ts`.
 /**
  * Create/replace body for `PUT /business-metrics/{id}/importer`. Which keys
  * `params` may carry, and which are required, is the account plugin's form;
@@ -2017,12 +2090,14 @@ export const businessMetricImporterInputSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+// Effect twin: `BusinessMetricImportRunRequest` in `api-contract/src/schemas/business-metrics.ts`.
 /** `POST /business-metrics/{id}/importer/run`. */
 export const businessMetricImportRunRequestSchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
 });
 
+// Effect twin: `BusinessMetricImportPreviewRequest` in `api-contract/src/schemas/business-metrics.ts`.
 /** `POST /business-metrics/importer-preview`. */
 export const businessMetricImportPreviewRequestSchema = z.object({
   accountId: z.string().min(1),
@@ -2034,6 +2109,7 @@ export const businessMetricImportPreviewRequestSchema = z.object({
   dryRun: z.boolean().optional(),
 });
 
+// Effect twin: `BusinessMetricSourceOptionsRequest` in `api-contract/src/schemas/business-metrics.ts`.
 /** `POST /business-metrics/importer-options`. */
 export const businessMetricSourceOptionsRequestSchema = z.object({
   accountId: z.string().min(1),
@@ -2067,6 +2143,7 @@ export type SchemasMatchBusinessMetricContract = [
  * POST /business-metrics/{id}/forecast-values.
  * ------------------------------------------------------------------ */
 
+// Effect twin: `CostForecastInput` in `api-contract/src/schemas/cost-forecasts.ts`.
 /** Create/update body for a report's named forecast. */
 export const costForecastInputSchema = z.object({
   name: z.string().min(1).max(COST_FORECAST_LIMITS.maxNameLength),
@@ -2079,6 +2156,7 @@ export const costForecastInputSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
+// Effect twin: `CostForecastRunRequest` in `api-contract/src/schemas/cost-forecasts.ts`.
 /** Body for the forecasted-costs read; every field optional. */
 export const costForecastRunRequestSchema = z.object({
   from: isoDate.optional(),
@@ -2090,11 +2168,13 @@ export const costForecastRunRequestSchema = z.object({
   all: z.boolean().optional(),
 });
 
+// Effect twin: `BusinessMetricForecastValueInput` in `api-contract/src/schemas/cost-forecasts.ts`.
 export const businessMetricForecastValueInputSchema = z.object({
   date: isoDate,
   value: z.number().finite().nonnegative(),
 });
 
+// Effect twin: `BusinessMetricForecastValuesBody` in `api-contract/src/schemas/cost-forecasts.ts`.
 /** The batch envelope for `POST /business-metrics/{id}/forecast-values`. */
 export const businessMetricForecastValuesBodySchema = z.object({
   values: z
@@ -2114,6 +2194,7 @@ export type SchemasMatchCostForecastContract = [
  * POST/PUT /invoices, POST /invoices/{id}/void.
  * ------------------------------------------------------------------ */
 
+// Effect twin: `ManagedAccountInput` in `api-contract/src/schemas/invoices.ts`.
 /**
  * A managed account is a customer. Note what is *not* in this schema: no tag
  * match, no priority, no rule of any kind. Which spend belongs to a customer is
@@ -2140,6 +2221,7 @@ export const managedAccountInputSchema = z.object({
   accountIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxAccounts).default([]),
 });
 
+// Effect twin: `ManagedInvoiceInput` in `api-contract/src/schemas/invoices.ts`.
 /**
  * Raising an invoice. No status field: a new invoice is always a draft, because
  * generating and issuing are two acts and letting one call do both would mean a
@@ -2156,6 +2238,7 @@ export const managedInvoiceInputSchema = z.object({
   supersedesInvoiceId: z.string().min(1).nullish(),
 });
 
+// Effect twin: `ManagedInvoiceUpdate` in `api-contract/src/schemas/invoices.ts`.
 /** Editing a draft. Accepted only while the invoice is a draft; see the service. */
 export const managedInvoiceUpdateSchema = z.object({
   periodFrom: isoDate,
@@ -2163,6 +2246,7 @@ export const managedInvoiceUpdateSchema = z.object({
   notes: z.string().max(MANAGED_INVOICE_LIMITS.maxNotesLength).nullish(),
 });
 
+// Effect twin: `ManagedInvoiceVoid` in `api-contract/src/schemas/invoices.ts`.
 /**
  * Voiding. `reason` is required and non-empty: it is the only record of why a
  * customer was sent an invoice that was then withdrawn.
@@ -2176,6 +2260,7 @@ export const managedInvoiceVoidSchema = z.object({
   supersede: z.boolean().default(false),
 });
 
+// Effect twin: `ManagedInvoiceSend` in `api-contract/src/schemas/invoices.ts`.
 /**
  * Sending. The body exists for one flag, and the flag exists because the two
  * reasons to press Send twice are not the same act:
@@ -2199,6 +2284,7 @@ export type SchemasMatchManagedAccountContract = [
   Exact<z.infer<typeof managedInvoiceUpdateSchema>, ManagedInvoiceUpdate>,
 ];
 
+// Effect twin: `BillingProfileInput` in `api-contract/src/schemas/invoices.ts`.
 /**
  * A billing profile write. Shape and bounds only: the IBAN checksum, the
  * prefix rules and the logo's decodability are `normalizeBillingProfileInput`
@@ -2256,6 +2342,7 @@ export const billingProfileInputSchema = z.object({
     .nullish(),
 });
 
+// Effect twin: `ManagedAccountAssignment` in `api-contract/src/schemas/invoices.ts`.
 /**
  * Moving cost centres and accounts onto one customer, or off every customer
  * with a null `managedAccountId`. The preview takes the same body plus an
@@ -2267,6 +2354,7 @@ export const managedAccountAssignmentSchema = z.object({
   accountIds: z.array(z.string().min(1)).max(500).default([]),
 });
 
+// Effect twin: `ManagedAccountAssignmentPreview` in `api-contract/src/schemas/invoices.ts`.
 export const managedAccountAssignmentPreviewSchema = managedAccountAssignmentSchema.extend({
   periodFrom: isoDate.optional(),
   periodTo: isoDate.optional(),
@@ -2293,6 +2381,7 @@ const canvasFilters = z
   .default([]);
 const canvasRef = z.string().min(1).max(200);
 
+// Effect twin: `CostCanvasKpiMetric` in `api-contract/src/schemas/cost-canvases.ts`.
 const canvasKpiMetricSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -2330,6 +2419,7 @@ const canvasKpiMetricSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+// Effect twin: `CostCanvasTableQuery` in `api-contract/src/schemas/cost-canvases.ts`.
 const canvasTableQuerySchema = z
   .object({
     dateRange: costDateRangeSchema,
@@ -2344,6 +2434,7 @@ const canvasTableQuerySchema = z
   })
   .strict();
 
+// Effect twin: `CostCanvasBlock` in `api-contract/src/schemas/cost-canvases.ts`.
 export const costCanvasBlockSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -2422,6 +2513,7 @@ function tagKeyIssues(
     : null;
 }
 
+// Effect twin: `CostCanvasSpec` in `api-contract/src/schemas/cost-canvases.ts`.
 export const costCanvasSpecSchema = z
   .object({
     version: z.literal(1),
@@ -2488,6 +2580,7 @@ export const costCanvasSpecSchema = z
     });
   });
 
+// Effect twin: `CostCanvasInput` in `api-contract/src/schemas/cost-canvases.ts`.
 export const costCanvasInputSchema = z
   .object({
     name: z.string().trim().min(1).max(COST_CANVAS_LIMITS.maxNameLength),
@@ -2496,6 +2589,7 @@ export const costCanvasInputSchema = z
   })
   .strict();
 
+// Effect twin: `CostCanvasDraftInput` in `api-contract/src/schemas/cost-canvases.ts`.
 export const costCanvasDraftInputSchema = z
   .object({
     prompt: z.string().trim().min(1).max(COST_CANVAS_LIMITS.maxPromptLength),
@@ -2504,6 +2598,7 @@ export const costCanvasDraftInputSchema = z
   })
   .strict();
 
+// Effect twin: `formatCostCanvasSpecSchemaIssues` in `api-contract/src/schemas/cost-canvases.ts`.
 /**
  * A spec failure as one readable string, for the agent's tool error (it has
  * to fix the spec from this alone) and the API's 400.
@@ -2528,6 +2623,7 @@ export type SchemasMatchCostCanvasContract = [
  * Kubernetes efficiency reports: POST/PUT /k8s-efficiency-reports.
  * ------------------------------------------------------------------ */
 
+// Effect twin: `KubernetesEfficiencyFilter` in `api-contract/src/schemas/k8s-efficiency.ts`.
 const k8sEfficiencyFilterSchema = z.object({
   dimension: z.enum(K8S_EFFICIENCY_FILTER_DIMENSIONS),
   op: z.enum(["in", "not_in"]),
@@ -2535,6 +2631,7 @@ const k8sEfficiencyFilterSchema = z.object({
   tagKey: z.string().min(1).max(300).optional(),
 });
 
+// Effect twin: `KubernetesEfficiencyConfig` in `api-contract/src/schemas/k8s-efficiency.ts`.
 const k8sEfficiencyConfigObjectSchema = z.object({
   version: z.literal(1),
   dateRange: costDateRangeSchema,
@@ -2547,6 +2644,7 @@ const k8sEfficiencyConfigObjectSchema = z.object({
   basis: z.enum(K8S_EFFICIENCY_BASES),
 });
 
+// Effect twin: `KubernetesEfficiencyConfig` in `api-contract/src/schemas/k8s-efficiency.ts`.
 /**
  * A saved report's config. The cross-field rules (a label key exactly when
  * grouping by label, the window bound) are `kubernetesEfficiencyConfigProblem`,
@@ -2559,6 +2657,7 @@ export const kubernetesEfficiencyConfigSchema = k8sEfficiencyConfigObjectSchema.
   },
 );
 
+// Effect twin: `KubernetesEfficiencyReportInput` in `api-contract/src/schemas/k8s-efficiency.ts`.
 export const kubernetesEfficiencyReportInputSchema = z.object({
   name: z.string().trim().min(1).max(K8S_EFFICIENCY_LIMITS.maxNameLength),
   description: z.string().max(K8S_EFFICIENCY_LIMITS.maxDescriptionLength).optional(),
@@ -2566,6 +2665,7 @@ export const kubernetesEfficiencyReportInputSchema = z.object({
   folderId: z.string().min(1).nullable().optional(),
 });
 
+// Effect twin: `KubernetesEfficiencyQuery` in `api-contract/src/schemas/k8s-efficiency.ts`.
 /** `POST /k8s-efficiency-reports/query`: run an unsaved config. */
 export const kubernetesEfficiencyQuerySchema = z.object({
   config: kubernetesEfficiencyConfigSchema,
@@ -2584,6 +2684,7 @@ const RR = RESOURCE_REPORT_LIMITS;
 const rrKey = z.string().min(1).max(RR.maxKeyLength);
 const rrValues = z.array(z.string().min(1).max(RR.maxValueLength)).max(RR.maxFilterValues);
 
+// Effect twin: `ResourceReportTagFilter` in `api-contract/src/schemas/resource-reports.ts`.
 export const resourceReportTagFilterSchema = z
   .object({
     source: z.enum(["tag", "virtual_tag"]),
@@ -2593,6 +2694,7 @@ export const resourceReportTagFilterSchema = z
   })
   .strict();
 
+// Effect twin: `ResourceReportFilters` in `api-contract/src/schemas/resource-reports.ts`.
 export const resourceReportFiltersSchema = z
   .object({
     pluginIds: z.array(z.string().min(1).max(128)).max(RR.maxFilterValues),
@@ -2616,6 +2718,7 @@ export const resourceReportFiltersSchema = z
   })
   .strict();
 
+// Effect twin: `ResourceReportSort` in `api-contract/src/schemas/resource-reports.ts`.
 export const resourceReportSortSchema = z
   .object({
     column: z
@@ -2626,6 +2729,7 @@ export const resourceReportSortSchema = z
   })
   .strict();
 
+// Effect twin: `ResourceReportConfig` in `api-contract/src/schemas/resource-reports.ts`.
 /**
  * A saved report's config. Shape here; the rules a person reads
  * (`resourceReportConfigError`) run in a refinement so every writer (the
@@ -2655,6 +2759,7 @@ export const resourceReportConfigSchema = z
     if (problem) ctx.addIssue({ code: "custom", message: problem });
   });
 
+// Effect twin: `ResourceReportInput` in `api-contract/src/schemas/resource-reports.ts`.
 export const resourceReportInputSchema = z
   .object({
     name: z.string().trim().min(1).max(RR.maxNameLength),
@@ -2664,6 +2769,7 @@ export const resourceReportInputSchema = z
   })
   .strict();
 
+// Effect twin: `ResourceReportQueryRequest` in `api-contract/src/schemas/resource-reports.ts`.
 export const resourceReportQueryRequestSchema = z
   .object({
     config: resourceReportConfigSchema,

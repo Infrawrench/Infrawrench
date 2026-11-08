@@ -13,10 +13,10 @@ interface DesktopJitAccessPanelProps {
  * policies, approvals and the expiry sweep all live in the cloud, and a local
  * workspace has no approvers.
  *
- * The transport is the settings proxy (`cloud_settings_request`) rather than
- * a channel of its own: the tab and the policies settings section speak one
- * API prefix, `jit-access`, so one allowlist entry covers both, and a second
- * channel would be a second allowlist for the same surface.
+ * The transport is the settings client (`lib/settings-client.ts`) rather
+ * than a client of its own: the tab and the policies settings section speak
+ * one API prefix, `jit-access`, so one entry in the cloud transport's
+ * Settings allowlist covers both.
  */
 export function DesktopJitAccessPanel({ openPolicies }: DesktopJitAccessPanelProps) {
   const gt = useGT();

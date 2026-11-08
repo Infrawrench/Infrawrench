@@ -2,33 +2,21 @@
  * Cost visibility on the HTTP and tool surfaces.
  *
  * The scope itself is applied by the ClickHouse readers (server-core
- * `cost/visibility-context.ts`); this module is what *establishes* it for a
- * request. `costVisibilityMiddleware` runs last in the org-tree chain, after
- * the principal and its permissions are known, resolves the caller's scope,
- * refuses the handful of org-wide surfaces a scoped principal must not reach,
- * and runs the rest of the request inside the scope. Tool dispatch (chat,
- * MCP) and Slack commands call {@link withPrincipalCostVisibility} for the
- * same effect outside the middleware chain.
+ * `cost/visibility-context.ts`); this module is what *establishes* it outside
+ * the org tree, and lists what a scoped caller is refused there. On the org
+ * tree, `OrgAuth` (`http/middleware-live.ts`) resolves the caller's scope once
+ * the principal and its permissions are known, refuses the handful of
+ * org-wide surfaces in {@link COST_SCOPE_DENY_RULES}, and runs the handler
+ * inside the scope. Tool dispatch (chat, MCP) and Slack commands call
+ * {@link withPrincipalCostVisibility} for the same effect outside it.
  */
 import { resolveSharingPrincipal, runWithSharingPrincipal } from "../services/object-sharing";
-import type { Context, MiddlewareHandler } from "hono";
-import { createMiddleware } from "hono/factory";
-import { COST_SCOPE_RESTRICTED_CODE } from "@infrawrench/client-core";
 import {
   resolveCostVisibility,
   type CostVisibilityPrincipal,
 } from "@infrawrench/server-core/cost/visibility";
-import {
-  runWithCostVisibility,
-  type CostVisibility,
-} from "@infrawrench/server-core/cost/visibility-context";
+import { runWithCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import { orgSubPath } from "./api-key-route-policy";
-
-declare module "hono" {
-  interface ContextVariableMap {
-    costVisibility: CostVisibility;
-  }
-}
 
 const MUTATING = ["POST", "PUT", "PATCH", "DELETE"] as const;
 
@@ -135,51 +123,6 @@ export function costScopeRouteDenial(method: string, pathname: string): string |
     if (rule.methods === "*" || rule.methods.includes(verb)) return rule.reason;
   }
   return null;
-}
-
-/** The principal on a Hono context, in the shape the resolver takes. */
-export function contextPrincipal(c: Context): CostVisibilityPrincipal {
-  const apiKey = c.get("apiKey") as
-    { id: string; agentRegistrationId?: string | undefined } | undefined;
-  return {
-    userId: c.get("session").userId,
-    apiKeyId: apiKey && !apiKey.agentRegistrationId ? apiKey.id : null,
-    agentRegistrationId: apiKey?.agentRegistrationId ?? null,
-  };
-}
-
-/**
- * Last in the org-tree chain: resolve, gate, then run the request inside the
- * caller's cost visibility. Fails closed: a resolution error is a 500, never
- * an unscoped request.
- */
-export const costVisibilityMiddleware: MiddlewareHandler = createMiddleware(async (c, next) => {
-  const organizationId = c.get("organizationId");
-  const visibility = await resolveCostVisibility(organizationId, contextPrincipal(c));
-  c.set("costVisibility", visibility);
-  if (visibility.restricted) {
-    const denial = costScopeRouteDenial(c.req.method, new URL(c.req.url).pathname);
-    if (denial) return c.json({ error: denial, code: COST_SCOPE_RESTRICTED_CODE }, 403);
-  }
-  const sharing = await resolveSharingPrincipal(
-    organizationId,
-    c.get("session").userId,
-    c.get("permissions") ?? [],
-  );
-  return runWithCostVisibility(visibility, () => runWithSharingPrincipal(sharing, next));
-});
-
-/** True when the request's caller is cost-scoped. */
-export function requestIsCostScoped(c: Context): boolean {
-  return c.get("costVisibility")?.restricted === true;
-}
-
-/**
- * The value to store in an object's `visibility_user_id` when the request's
- * caller creates it: the caller when scoped, null (org-wide) otherwise.
- */
-export function visibilityUserIdForRequest(c: Context): string | null {
-  return requestIsCostScoped(c) ? c.get("session").userId : null;
 }
 
 /**

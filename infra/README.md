@@ -1,6 +1,6 @@
 # Production infrastructure (GCP)
 
-Prod web stack on GKE: `web` (Hono + WebSockets, 2 replicas), `poller`
+Prod web stack on GKE: `web` (the Node API + WebSockets, 2 replicas), `poller`
 (2 replicas — safe, it claims work atomically), and `github-watcher`
 (1 replica — its SHA CAS makes overlap safe, but replicas just multiply
 GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
@@ -145,7 +145,7 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
 
 - **`readOnlyRootFilesystem` needs the `/tmp` emptyDir**, not optimism. `web`
   genuinely writes at runtime: object-storage downloads staged by
-  `api/routes/storage.ts`, and the 0600 kubeconfigs
+  `http/domains/storage-transfers/`, and the 0600 kubeconfigs
   `services/kubectl-pty-session.ts` and `services/k8s-pf-proxy.ts` drop before
   spawning `kubectl`/`k9s`. Every one of them builds its path under
   `os.tmpdir()`, so one scratch volume mounted at `/tmp` covers the lot. SSH
@@ -296,7 +296,7 @@ consoles, Linux app streams, chat and the workflow isolate. KNOWLEDGE.md
 
 - **`infrawrench-web`** (`app/packages/web/edge`) sits on the
   `app.infrawrench.com/*` route _in front of_ the ingress. It serves the SPA
-  from static assets, runs the Hono API itself, and forwards everything else
+  from static assets, runs the API itself, and forwards everything else
   to the origin with a plain `fetch(request)`, which a Worker's subrequest to
   its own route sends to the origin rather than back through the Worker. The
   ingress, its certificate and the hostname are unchanged; the bastion agents

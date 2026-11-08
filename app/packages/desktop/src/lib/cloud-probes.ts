@@ -1,7 +1,9 @@
 /**
  * Synthetic probes: cloud-mode only (checks run in the cloud poller through
- * the egress proxy). One wrapper per allowlisted IPC channel, matching
- * `cloud-metric-alerts.ts`.
+ * the egress proxy). Typed calls to the contract's `probes` domain over the
+ * cloud transport (`./cloud-client.ts`); each answer is the server's JSON,
+ * handed on as the client-core type the panels use, so a contract change the
+ * desktop's types disagree with fails here at compile time.
  */
 import type {
   ProbeCreate,
@@ -11,36 +13,65 @@ import type {
   ProbeSuggestionsResponse,
   SyntheticProbe,
 } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
 
-export async function listCloudProbes(orgId: string): Promise<ProbeListResponse> {
-  return invoke("cloud_probes_list", { orgId });
+const probes = () => cloudClient("probes").probes;
+
+export function listCloudProbes(orgId: string): Promise<ProbeListResponse> {
+  return runRpc(probes().list({ params: { orgId } }));
 }
 
-export async function listCloudProbeSuggestions(orgId: string): Promise<ProbeSuggestionsResponse> {
-  return invoke("cloud_probes_suggestions", { orgId });
+export function listCloudProbeSuggestions(orgId: string): Promise<ProbeSuggestionsResponse> {
+  return runRpc(probes().suggestions({ params: { orgId } }));
 }
 
-export async function fetchCloudProbeMetrics(
+export function fetchCloudProbeMetrics(
   orgId: string,
   probeId: string,
   range: { startMs: number; endMs: number },
 ): Promise<ProbeMetricsResponse> {
-  return invoke("cloud_probes_metrics", { orgId, probeId, ...range });
+  return runRpc(
+    probes().metrics({
+      params: { orgId, probeId },
+      query: { startMs: String(range.startMs), endMs: String(range.endMs) },
+    }),
+  );
 }
 
-export async function createCloudProbe(orgId: string, input: ProbeCreate): Promise<SyntheticProbe> {
-  return invoke("cloud_probes_create", { orgId, input });
+/**
+ * The create body the endpoint documents. client-core's `ProbeCreate` also
+ * carries the suggestion's `accountId`/`pluginId`/`resourceTypeId` and
+ * allows nulls; the server reads only a string `resourceId` and `outputKey`
+ * (the store derives the rest from the resource), so those are what is sent.
+ */
+function createPayload(input: ProbeCreate) {
+  const { resourceId, outputKey } = input;
+  return {
+    name: input.name,
+    url: input.url,
+    ...(input.method !== undefined ? { method: input.method } : {}),
+    ...(input.intervalSeconds !== undefined ? { intervalSeconds: input.intervalSeconds } : {}),
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+    ...(input.failureThreshold !== undefined ? { failureThreshold: input.failureThreshold } : {}),
+    ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+    ...(resourceId != null ? { resourceId } : {}),
+    ...(outputKey != null ? { outputKey } : {}),
+  };
 }
 
-export async function updateCloudProbe(
+export function createCloudProbe(orgId: string, input: ProbeCreate): Promise<SyntheticProbe> {
+  return runRpc(probes().create({ params: { orgId }, payload: createPayload(input) }));
+}
+
+export function updateCloudProbe(
   orgId: string,
   probeId: string,
   patch: ProbePatch,
 ): Promise<SyntheticProbe> {
-  return invoke("cloud_probes_update", { orgId, probeId, patch });
+  return runRpc(probes().update({ params: { orgId, probeId }, payload: patch }));
 }
 
-export async function deleteCloudProbe(orgId: string, probeId: string): Promise<void> {
-  await invoke("cloud_probes_delete", { orgId, probeId });
+export function deleteCloudProbe(orgId: string, probeId: string): Promise<void> {
+  return runRpc(probes().delete({ params: { orgId, probeId } }));
 }

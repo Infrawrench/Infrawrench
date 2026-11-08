@@ -5,7 +5,7 @@
  * assignee and last-changed time. Two things feed them, through the same
  * functions here:
  *
- *   - **Webhooks**, where the org set them up (`routes/issue-webhooks.ts`):
+ *   - **Webhooks**, where the org set them up (web's `http/domains/issue-webhooks/`):
  *     a delivery is verified, parsed (`readings.ts`) and applied at once.
  *   - **The poll** (`pass.ts`), for everything else and as the safety net for
  *     a webhook that was deleted or a delivery that never came: links are

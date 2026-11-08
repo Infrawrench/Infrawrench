@@ -1,5 +1,15 @@
+/**
+ * The org's connected accounts in cloud mode: typed calls to the contract's
+ * `accounts` domain over the cloud transport (`./cloud-client.ts`). Each
+ * answer is handed on as the ui type the sidebar and account pages use, so a
+ * contract change the desktop's types disagree with fails here at compile
+ * time.
+ */
 import type { Account, AccountDetail, Resource } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { runRpc } from "./rpc/client";
+
+const accounts = () => cloudClient("accounts").accounts;
 
 /**
  * `POST /accounts/:id/sync-type/:typeId` returns the same `Resource` shape
@@ -8,7 +18,16 @@ import { invoke } from "./invoke";
 type CloudResourceSyncItem = Omit<Resource, "accountId">;
 
 export async function listCloudAccounts(orgId: string): Promise<Account[]> {
-  return invoke("cloud_list_accounts", { orgId });
+  return runRpc(accounts().list({ params: { orgId } }));
+}
+
+/**
+ * The org's plugin catalog as the server sees it. The desktop renders plugins
+ * from its own bundle; this is read for what only the server knows, e.g.
+ * `oauth` (present only when the server can run that plugin's OAuth flow).
+ */
+export async function listCloudAccountPlugins(orgId: string) {
+  return runRpc(accounts().plugins({ params: { orgId } }));
 }
 
 export async function createCloudAccount(
@@ -17,21 +36,40 @@ export async function createCloudAccount(
   displayName: string,
   credentials: Record<string, string>,
 ): Promise<{ id: string } | null> {
-  return invoke("cloud_create_account", { orgId, pluginId, displayName, credentials });
+  return runRpc(
+    accounts().create({ params: { orgId }, payload: { pluginId, displayName, credentials } }),
+  );
 }
 
+/** The account's resources with no parent, the sidebar's tree roots. */
 export async function listCloudAccountResources(
   orgId: string,
   accountId: string,
 ): Promise<Resource[]> {
-  return invoke("cloud_list_account_resources", { orgId, accountId });
+  return runRpc(
+    accounts().resources({ params: { orgId, id: accountId }, query: { topLevelOnly: "true" } }),
+  );
 }
 
+/**
+ * The account with its plugin's resource types. The contract leaves
+ * `pluralDisplayName` and `parentTypeId` optional where the page's type has
+ * both keys; the server always sends the plural (every type definition has
+ * one), so the singular stands in only for an answer that lacks it.
+ */
 export async function getCloudAccountDetail(
   orgId: string,
   accountId: string,
 ): Promise<AccountDetail | null> {
-  return invoke("cloud_get_account_detail", { orgId, accountId });
+  const detail = await runRpc(accounts().detail({ params: { orgId, id: accountId } }));
+  return {
+    ...detail,
+    resourceTypes: detail.resourceTypes.map((type) => ({
+      ...type,
+      pluralDisplayName: type.pluralDisplayName ?? type.displayName,
+      parentTypeId: type.parentTypeId,
+    })),
+  };
 }
 
 export async function syncCloudAccountType(
@@ -39,11 +77,11 @@ export async function syncCloudAccountType(
   accountId: string,
   typeId: string,
 ): Promise<CloudResourceSyncItem[]> {
-  return invoke("cloud_sync_account_type", { orgId, accountId, typeId });
+  return runRpc(accounts().syncType({ params: { orgId, id: accountId, typeId } }));
 }
 
 export async function deleteCloudAccount(orgId: string, accountId: string): Promise<void> {
-  await invoke("cloud_delete_account", { orgId, accountId });
+  await runRpc(accounts().delete({ params: { orgId, id: accountId } }));
 }
 
 export async function renameCloudAccount(
@@ -51,7 +89,15 @@ export async function renameCloudAccount(
   accountId: string,
   displayName: string,
 ): Promise<{ id: string; displayName: string }> {
-  return invoke("cloud_rename_account", { orgId, accountId, displayName });
+  return runRpc(accounts().update({ params: { orgId, id: accountId }, payload: { displayName } }));
+}
+
+/** The stored credentials, decrypted server-side for an editor or a preflight. */
+export async function getCloudAccountCredentials(
+  orgId: string,
+  accountId: string,
+): Promise<Record<string, string>> {
+  return runRpc(accounts().credentials({ params: { orgId, id: accountId } }));
 }
 
 export async function updateCloudAccountCredentials(
@@ -59,5 +105,7 @@ export async function updateCloudAccountCredentials(
   accountId: string,
   credentials: Record<string, string>,
 ): Promise<void> {
-  await invoke("cloud_update_account_credentials", { orgId, accountId, credentials });
+  await runRpc(
+    accounts().rotateCredentials({ params: { orgId, id: accountId }, payload: { credentials } }),
+  );
 }

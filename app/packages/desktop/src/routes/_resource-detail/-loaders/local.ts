@@ -18,7 +18,6 @@ import {
 } from "@infrawrench/ui";
 import { getDb } from "../../../db/client";
 import type { AccountRow } from "../../../db/rows";
-import { invoke } from "../../../lib/invoke";
 import { getPlugin } from "../../../plugins/loader";
 import { getSqlSession, setSqlSession } from "../../../lib/sql-session";
 import {
@@ -32,6 +31,7 @@ import {
 import { resolveTunneledHost } from "../../../lib/ssh-tunnel";
 import type { SqliteResourceRow } from "../-types";
 import type { LoaderParams } from "./types";
+import { getLocalAccountCredentials } from "../../../lib/local-credentials";
 
 export async function loadLocalResource(params: LoaderParams): Promise<void> {
   const {
@@ -127,9 +127,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!accountRow) throw new Error("Account not found");
   if (!isCancelled()) setters.setAccount(accountRow);
 
-  const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-    accountId: accountRow.id,
-  });
+  const credentials = await getLocalAccountCredentials(accountRow.id);
 
   const loaded = await getPlugin(accountRow.plugin_id);
   if (!loaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);
@@ -190,7 +188,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     // type at all: the client may still expose `deleteResource` for its other
     // types. Checking only the method (as this did) offered a Delete button
     // that dispatched into a throw. The cloud path already gates on both; see
-    // `web/src/api/routes/resource-detail.ts`.
+    // `web/src/http/domains/resources/operations.ts`.
     setters.setCanDelete(!!client.deleteResource && resourceTypeDef?.supportsDelete !== false);
     const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
     setters.setCanEdit(canEdit);

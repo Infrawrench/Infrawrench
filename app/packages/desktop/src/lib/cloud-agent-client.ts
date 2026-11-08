@@ -1,20 +1,66 @@
-import type { SshInstallAccount } from "@infrawrench/plugin-base";
 import type {
   AgentClient,
   AgentCreateBody,
   AgentOpenSessionResult,
-  AgentSession,
   AgentSettings,
   AgentT3PolicyApplyRequest,
-  AgentT3PolicyApplyResult,
-  AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import { useUIStore } from "@infrawrench/ui";
-import { invoke } from "./invoke";
+import { cloudClient } from "./cloud-client";
+import { listCloudSshInstallAccounts } from "./cloud-ssh-install";
+import { runRpc } from "./rpc/client";
+
+const agents = () => cloudClient("agents").agents;
+
+/** A T3 Code policy setting as the server sends it: JSON cannot carry an undefined `value`. */
+interface WireT3Setting {
+  value?: unknown;
+  locked: boolean;
+}
+
+/**
+ * The policy with every setting's `value` present, as `T3CodePolicy` types
+ * it. The contract makes `value` optional because a setting written without
+ * one arrives without the key; the editor reads that as `undefined`, which
+ * this spells out.
+ */
+function policyFromWire<Policy extends { settings?: Record<string, WireT3Setting> }>(
+  policy: Policy,
+) {
+  const { settings, ...rest } = policy;
+  if (settings === undefined) return rest;
+  const filled: Record<string, { value: unknown; locked: boolean }> = {};
+  for (const [path, setting] of Object.entries(settings)) {
+    filled[path] = { value: setting.value, locked: setting.locked };
+  }
+  return { ...rest, settings: filled };
+}
+
+/** A settings or session row with its `t3Policy` (if any) read by {@link policyFromWire}. */
+function withPolicyFromWire<
+  Row extends { t3Policy?: { settings?: Record<string, WireT3Setting> } | null },
+>(row: Row) {
+  const { t3Policy, ...rest } = row;
+  if (t3Policy === undefined) return rest;
+  return { ...rest, t3Policy: t3Policy === null ? null : policyFromWire(t3Policy) };
+}
+
+/**
+ * The launch command for one of the org's sessions, which the server owns
+ * along with the managed org key. The resource page reads it too, to open an
+ * agent tab against an org.
+ */
+export function openCloudAgentSession(
+  orgId: string,
+  sessionId: string,
+): Promise<AgentOpenSessionResult> {
+  return runRpc(agents().open({ params: { orgId, id: sessionId } }));
+}
 
 /**
  * Agents mode against the selected org: the desktop counterpart of
- * `web/src/lib/agent-client.ts`, over the `cloud_agents_*` IPC.
+ * `web/src/lib/agent-client.ts`, over the contract's `agents` domain on the
+ * cloud transport (`./cloud-client.ts`).
  *
  * The local client (`agent-client.ts`) provisions and bootstraps VMs from this
  * machine and reconciles branches into a local checkout. This one does none of
@@ -41,45 +87,34 @@ export function createCloudAgentClient(): AgentClient {
   // synchronously: callers chain `.catch()` off these (the panel does), and a
   // sync throw would sail straight past it.
   return {
-    listAccounts: async () =>
-      invoke<AgentVmAccount[]>("cloud_agents_accounts", { orgId: requireOrg() }),
+    listAccounts: async () => runRpc(agents().accounts({ params: { orgId: requireOrg() } })),
     // The same list the resource page's "Install service…" offers.
-    listServiceAccounts: async () =>
-      invoke<SshInstallAccount[]>("cloud_ssh_install_accounts", { orgId: requireOrg() }),
+    listServiceAccounts: async () => listCloudSshInstallAccounts(requireOrg()),
     listLinkableScopes: async () =>
-      (
-        await invoke<{ scopes: string[] | null }>("cloud_agents_link_scopes", {
-          orgId: requireOrg(),
-        })
-      ).scopes,
-    getSettings: async () =>
-      invoke<AgentSettings | null>("cloud_agents_get_settings", { orgId: requireOrg() }),
+      (await runRpc(agents().linkScopes({ params: { orgId: requireOrg() } }))).scopes,
+    getSettings: async () => {
+      const settings = await runRpc(agents().settings({ params: { orgId: requireOrg() } }));
+      return settings === null ? null : withPolicyFromWire(settings);
+    },
     saveSettings: async (settings: AgentSettings) =>
-      invoke<AgentSettings>("cloud_agents_save_settings", { orgId: requireOrg(), settings }),
+      withPolicyFromWire(
+        await runRpc(agents().saveSettings({ params: { orgId: requireOrg() }, payload: settings })),
+      ),
     listSessions: async () =>
-      invoke<AgentSession[]>("cloud_agents_list_sessions", { orgId: requireOrg() }),
+      (await runRpc(agents().sessions({ params: { orgId: requireOrg() } }))).map(
+        withPolicyFromWire,
+      ),
     createSession: async (body: AgentCreateBody) =>
-      invoke<AgentSession>("cloud_agents_create_session", { orgId: requireOrg(), body }),
-    openSession: async (id: string) =>
-      invoke<AgentOpenSessionResult>("cloud_agents_open_session", {
-        orgId: requireOrg(),
-        sessionId: id,
-      }),
+      withPolicyFromWire(
+        await runRpc(agents().createSession({ params: { orgId: requireOrg() }, payload: body })),
+      ),
+    openSession: async (id: string) => openCloudAgentSession(requireOrg(), id),
     reconcileSession: async (id: string) =>
-      invoke<{ branchName: string; message: string }>("cloud_agents_reconcile_session", {
-        orgId: requireOrg(),
-        sessionId: id,
-      }),
+      runRpc(agents().reconcile({ params: { orgId: requireOrg(), id } })),
     applyT3Policy: async (request: AgentT3PolicyApplyRequest) =>
-      invoke<AgentT3PolicyApplyResult>("cloud_agents_apply_t3_policy", {
-        orgId: requireOrg(),
-        request,
-      }),
+      runRpc(agents().applyT3Policy({ params: { orgId: requireOrg() }, payload: request })),
     deleteSession: async (id: string) => {
-      await invoke<void>("cloud_agents_delete_session", {
-        orgId: requireOrg(),
-        sessionId: id,
-      });
+      await runRpc(agents().deleteSession({ params: { orgId: requireOrg(), id } }));
     },
   };
 }

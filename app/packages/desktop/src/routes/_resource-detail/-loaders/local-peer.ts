@@ -1,10 +1,10 @@
 import { resourceTabTitle, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../../../db/client";
 import type { AccountRow } from "../../../db/rows";
-import { invoke } from "../../../lib/invoke";
 import { getPlugin } from "../../../plugins/loader";
 import { buildPluginHostServices } from "../../../lib/sql-drivers";
 import type { LoaderParams } from "./types";
+import { getLocalAccountCredentials } from "../../../lib/local-credentials";
 
 export async function loadLocalPeerResource(params: LoaderParams): Promise<void> {
   const {
@@ -29,9 +29,7 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   const accountRow = accountRows[0];
   if (!accountRow) throw new Error("Account not found");
 
-  const parentCredentials = await invoke<Record<string, string>>("account_get_credentials", {
-    accountId: accountRow.id,
-  });
+  const parentCredentials = await getLocalAccountCredentials(accountRow.id);
 
   const parentLoaded = await getPlugin(accountRow.plugin_id);
   if (!parentLoaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);

@@ -12,7 +12,7 @@
  * nothing else: break-glass approval is a permission, just-in-time approval is
  * a seat in a policy's approver set.
  *
- * Server contract: `/api/org/:orgId/jit-access` (web `api/routes/jit-access.ts`).
+ * Server contract: `/api/org/:orgId/jit-access` (web `http/domains/jit-access/`).
  * The decision rules below are pure so the server, the UI and the tests agree
  * on them without a database.
  */

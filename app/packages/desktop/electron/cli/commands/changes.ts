@@ -10,148 +10,236 @@
 // Wire types and the row summary come from `@infrawrench/client-core`: the
 // same definitions the web feed renders with, so a server-side change breaks
 // the CLI's build instead of its output.
-import {
-  CliError,
-  listCloudAccounts,
-  orgFetch,
-  resolveAccount,
-  resolveOrg,
-  type CliContext,
-} from "../context";
-import type { ResourceChangeEntry, ResourceChangeKind } from "@infrawrench/client-core" with {
+import { Effect, Option, Predicate, Schema } from "effect";
+import { CliError, Command, Flag } from "effect/cli";
+import type { ResourceChangeEntry } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import type { RangeFlags } from "../args";
-import { parseLastDays } from "../args";
-import { c, printJson, println, printTable, printKeyValues } from "../output";
+import { cloudAccounts, findAccount } from "../context";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure, CliUsageError } from "../effect/errors";
+import * as Print from "../effect/print";
+import { days, from, kind, lastDays, limit, resource, to } from "../effect/range-flags";
+import { CliSession } from "../effect/session";
+import { knownOr, Unrecognized, wire } from "../effect/wire";
+import { c, safe } from "../output";
 import { formatChangeTime } from "../format";
 
 /** The endpoint's own `pageSize` bound. */
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
 
-const KINDS: ResourceChangeKind[] = ["created", "updated", "deleted"];
+const KINDS = ["created", "updated", "deleted"] as const;
+type Kind = (typeof KINDS)[number];
 
 /** One glyph + color per kind, so a long feed reads at a glance. */
-const KIND_STYLE: Record<ResourceChangeKind, { glyph: string; color: (s: string) => string }> = {
+const KIND_STYLE: Record<Kind, { glyph: string; color: (s: string) => string }> = {
   created: { glyph: "+", color: c.green },
   updated: { glyph: "~", color: c.blue },
   deleted: { glyph: "-", color: c.red },
 };
 
-export async function cmdChanges(ctx: CliContext, range: RangeFlags): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts. Local-only mode has no poller, so there is no feed.",
-    );
-  }
-  const org = await resolveOrg(ctx);
+const Entry = Schema.Struct({
+  createdAt: Schema.String,
+  changeKind: knownOr(KINDS),
+  displayName: Schema.String,
+  pluginId: Schema.String,
+  resourceTypeId: Schema.String,
+  accountName: Schema.optional(Schema.NullOr(Schema.String)),
+  // `summarizeChange` takes the diff as a mutable array.
+  diff: Schema.mutable(
+    Schema.Array(Schema.Struct({ field: Schema.String, from: Schema.Unknown, to: Schema.Unknown })),
+  ),
+});
 
-  if (range.kind !== undefined && !KINDS.includes(range.kind as ResourceChangeKind)) {
-    throw new CliError(`--kind must be one of ${KINDS.join(", ")} (got "${range.kind}").`, 2);
-  }
-  const limit = Math.min(range.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+const Feed = wire<{ entries: ResourceChangeEntry[]; total: number }>()(
+  Schema.Struct({ entries: Schema.Array(Entry), total: Schema.Finite }),
+);
 
-  const params = new URLSearchParams({ page: "1", pageSize: String(limit) });
-  if (range.kind) params.set("kind", range.kind);
-  if (range.resource) params.set("resourceId", range.resource);
+/** The feed's rows as the server sent them, for `--json`. */
+const RawFeed = Schema.Struct({ entries: Schema.Array(Schema.Unknown), total: Schema.Finite });
 
-  // --account takes the same id/name/prefix forms as every other command, so
-  // resolve it against the org's accounts rather than pushing a raw string at
-  // a uuid-typed query parameter.
-  if (ctx.flags.account) {
-    const account = resolveAccount(await listCloudAccounts(org.id), ctx.flags.account);
-    params.set("accountId", account.id);
-  }
-
-  const { from, to } = resolveWindow(range);
-  if (from) params.set("from", from);
-  if (to) params.set("to", to);
-
-  const response = await orgFetch<{ entries: ResourceChangeEntry[]; total: number }>(
-    org.id,
-    `/changes?${params.toString()}`,
-  );
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, limit, total: response.total, entries: response.entries });
-    return;
-  }
-
-  // The summary line ("name, size and 2 more") is shared with the web feed:
-  // one definition of what an update reads as.
-  const { summarizeChange, formatChangeValue } = await import("@infrawrench/client-core");
-
-  const { entries, total } = response;
-  if (entries.length === 0) {
-    println(
-      c.dim(
-        "No changes recorded for this filter. Events start accumulating once the poller has synced an account at least twice.",
-      ),
-    );
-    return;
-  }
-
-  println(
-    `${c.bold(org.displayName)} ${c.dim(`· ${entries.length} of ${total} event${total === 1 ? "" : "s"}, newest first`)}`,
-  );
-  println();
-
-  printTable(entries, [
-    { header: "when", value: (e) => c.dim(formatChangeTime(e.createdAt)) },
-    {
-      header: "",
-      value: (e) => KIND_STYLE[e.changeKind].color(KIND_STYLE[e.changeKind].glyph),
-    },
-    { header: "resource", value: (e) => c.bold(e.displayName) },
-    { header: "type", value: (e) => c.dim(`${e.pluginId}/${e.resourceTypeId}`) },
-    { header: "account", value: (e) => e.accountName ?? c.dim("—") },
-    { header: "what changed", value: (e) => summarizeChange(e) },
-  ]);
-
-  // Field-level diffs are the reason to look at one resource, so they print in
-  // full when the feed is already narrowed to one, never for a whole org's
-  // feed, which would be thousands of lines.
-  if (range.resource) {
-    for (const entry of entries) {
-      if (entry.changeKind !== "updated" || entry.diff.length === 0) continue;
-      println();
-      println(`${c.dim(formatChangeTime(entry.createdAt))} ${c.bold(entry.displayName)}`);
-      printKeyValues(
-        entry.diff.map((d) => [
-          d.field,
-          `${c.dim(formatChangeValue(d.from))} ${c.dim("→")} ${formatChangeValue(d.to)}`,
-        ]),
-      );
-    }
-  }
-
-  println();
-  println(
-    c.dim(
-      range.resource
-        ? "Pass --limit to see further back."
-        : "Narrow with --account <id|name>, --resource <id>, --kind created|updated|deleted, or --last 7d.",
-    ),
-  );
-}
+const kindFlag = kind.pipe(
+  Flag.withMetavar("created|updated|deleted"),
+  Flag.withDescription("Only this kind of change"),
+  Flag.mapEffect((value) =>
+    Option.match(value, {
+      onNone: () => Effect.succeedNone,
+      onSome: (wanted) => {
+        const known = KINDS.find((k) => k === wanted);
+        return known
+          ? Effect.succeedSome(known)
+          : Effect.fail(
+              new CliError.ValidationError({
+                message: `--kind must be one of ${KINDS.join(", ")} (got "${wanted}").`,
+              }),
+            );
+      },
+    }),
+  ),
+);
 
 /**
  * The `from`/`to` the feed should be asked for. `--last 7d` is the common case;
  * explicit `--from`/`--to` pass through as given (the endpoint wants ISO
  * date-times, which is also what a user typing a date gets).
  */
-function resolveWindow(range: RangeFlags): { from?: string; to?: string } {
-  const to = range.to;
-  if (range.from) return { from: range.from, ...(to ? { to } : {}) };
-  const days = range.days ?? (range.last ? parseLastDays(range.last) : null);
-  if (days === null) return to ? { to } : {};
+const resolveWindow = (input: {
+  readonly from: Option.Option<string>;
+  readonly to: Option.Option<string>;
+  readonly days: Option.Option<number>;
+  readonly last: Option.Option<number>;
+}): Effect.Effect<{ from?: string; to?: string }, CliUsageError> => {
+  const to = Option.getOrUndefined(input.to);
+  const toPart = to ? { to } : {};
+  if (Option.isSome(input.from) && input.from.value) {
+    return Effect.succeed({ from: input.from.value, ...toPart });
+  }
+  const span = Option.orElse(input.days, () => input.last);
+  if (Option.isNone(span)) return Effect.succeed(toPart);
   const anchor = to ? Date.parse(to) : Date.now();
   if (Number.isNaN(anchor)) {
-    throw new CliError(`Invalid --to "${to}": use an ISO 8601 date or date-time.`, 2);
+    return Effect.fail(
+      new CliUsageError({ message: `Invalid --to "${to}": use an ISO 8601 date or date-time.` }),
+    );
   }
-  return {
-    from: new Date(anchor - days * 86_400_000).toISOString(),
-    ...(to ? { to } : {}),
-  };
-}
+  return Effect.succeed({
+    from: new Date(anchor - span.value * 86_400_000).toISOString(),
+    ...toPart,
+  });
+};
+
+export const changes = Command.make(
+  "changes",
+  {
+    last: lastDays,
+    days,
+    from,
+    to,
+    limit: limit.pipe(
+      Flag.withDescription(`Events to show (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT})`),
+    ),
+    kind: kindFlag,
+    resource: resource.pipe(Flag.withDescription("Only this resource, with its field diffs")),
+  },
+  Effect.fn("changes")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    if (session.local) {
+      return yield* new CliFailure({
+        message:
+          "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts. Local-only mode has no poller, so there is no feed.",
+      });
+    }
+    const org = yield* currentOrg;
+    const pageSize = Math.min(
+      Option.getOrElse(input.limit, () => DEFAULT_LIMIT),
+      MAX_LIMIT,
+    );
+    const focus = Option.getOrUndefined(input.resource);
+
+    const params = new URLSearchParams({ page: "1", pageSize: String(pageSize) });
+    if (Option.isSome(input.kind)) params.set("kind", input.kind.value);
+    if (focus) params.set("resourceId", focus);
+
+    // --account takes the same id/name/prefix forms as every other command, so
+    // resolve it against the org's accounts rather than pushing a raw string at
+    // a uuid-typed query parameter.
+    const wantedAccount = session.account;
+    if (wantedAccount) {
+      const account = yield* findAccount(yield* cloudAccounts(org.id), wantedAccount);
+      params.set("accountId", account.id);
+    }
+
+    const window = yield* resolveWindow(input);
+    if (window.from) params.set("from", window.from);
+    if (window.to) params.set("to", window.to);
+
+    const path = `/changes?${params.toString()}`;
+    const body = yield* api.json(org.id, path);
+
+    if (session.output === "json") {
+      const raw = yield* decodeBody(RawFeed, path)(body);
+      return yield* Print.json({
+        org: org.id,
+        limit: pageSize,
+        total: raw.total,
+        entries: raw.entries,
+      });
+    }
+    const { entries, total } = yield* decodeBody(Feed, path)(body);
+
+    // The summary line ("name, size and 2 more") is shared with the web feed:
+    // one definition of what an update reads as.
+    const { summarizeChange, formatChangeValue } = yield* Effect.promise(
+      () => import("@infrawrench/client-core"),
+    );
+
+    if (entries.length === 0) {
+      return yield* Print.line(
+        c.dim(
+          "No changes recorded for this filter. Events start accumulating once the poller has synced an account at least twice.",
+        ),
+      );
+    }
+
+    yield* Print.line(
+      `${c.bold(safe(org.displayName))} ${c.dim(`· ${entries.length} of ${total} event${total === 1 ? "" : "s"}, newest first`)}`,
+    );
+    yield* Print.line();
+
+    yield* Print.table(entries, [
+      { header: "when", value: (e) => c.dim(formatChangeTime(e.createdAt)) },
+      {
+        header: "",
+        value: (e) => {
+          // A kind a newer server added gets a neutral mark and its own name.
+          if (e.changeKind instanceof Unrecognized) return c.dim("?");
+          const style = KIND_STYLE[e.changeKind];
+          return style.color(style.glyph);
+        },
+      },
+      { header: "resource", value: (e) => c.bold(safe(e.displayName)) },
+      { header: "type", value: (e) => c.dim(safe(`${e.pluginId}/${e.resourceTypeId}`)) },
+      {
+        header: "account",
+        value: (e) => (Predicate.isNullish(e.accountName) ? c.dim("—") : safe(e.accountName)),
+      },
+      {
+        header: "what changed",
+        value: (e) =>
+          e.changeKind instanceof Unrecognized
+            ? safe(e.changeKind.raw)
+            : safe(summarizeChange({ changeKind: e.changeKind, diff: e.diff })),
+      },
+    ]);
+
+    // Field-level diffs are the reason to look at one resource, so they print in
+    // full when the feed is already narrowed to one, never for a whole org's
+    // feed, which would be thousands of lines.
+    if (focus) {
+      for (const entry of entries) {
+        if (entry.changeKind !== "updated" || entry.diff.length === 0) continue;
+        yield* Print.line();
+        yield* Print.line(
+          `${c.dim(formatChangeTime(entry.createdAt))} ${c.bold(safe(entry.displayName))}`,
+        );
+        yield* Print.keyValues(
+          entry.diff.map((d) => [
+            safe(d.field),
+            `${c.dim(safe(formatChangeValue(d.from)))} ${c.dim("→")} ${safe(formatChangeValue(d.to))}`,
+          ]),
+        );
+      }
+    }
+
+    yield* Print.line();
+    yield* Print.line(
+      c.dim(
+        focus
+          ? "Pass --limit to see further back."
+          : "Narrow with --account <id|name>, --resource <id>, --kind created|updated|deleted, or --last 7d.",
+      ),
+    );
+  }),
+).pipe(Command.withDescription("What appeared, changed or disappeared across your providers"));

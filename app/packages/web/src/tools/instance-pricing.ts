@@ -4,8 +4,8 @@
  * (the deprecated `/api/v1/aws-pricing/*` paths serve the same handlers).
  *
  * Public provider list prices with history, not the organization's spend and
- * not the price catalog. `permission: null` mirrors `REQUIRED_PERMISSION` for
- * those routes: any authenticated caller, no scope.
+ * not the price catalog. `permission: null` mirrors those routes, which
+ * document no permission: any authenticated caller, no scope.
  */
 import { z } from "zod";
 import { MAX_QUERY_ROWS } from "@infrawrench/server-core/aws-pricing-warehouse/query";

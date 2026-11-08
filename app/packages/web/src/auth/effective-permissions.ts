@@ -1,8 +1,8 @@
 /**
- * Effective permissions for a principal, outside the Hono middleware chain.
+ * Effective permissions for a principal, outside the org tree's auth.
  *
- * `requirePermission` (auth/permissions.ts) covers HTTP routes, where
- * `permissionsMiddleware` has already put the resolved set on the context.
+ * On the org tree, `OrgAuth` (`http/middleware-live.ts`) has already resolved
+ * the set and gates each endpoint on it (`RequiredPermission`).
  * Surfaces that authenticate themselves (the chat endpoint, MCP, the chat
  * agent's tool loop) have no such context and resolve through here instead,
  * so all four surfaces agree on what a principal may do.

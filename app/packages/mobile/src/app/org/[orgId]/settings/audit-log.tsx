@@ -2,7 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
 
-/** Shape of GET /api/org/:orgId/audit-logs (web api/routes/audit.ts). */
+/** Shape of GET /api/org/:orgId/audit-logs (web http/domains/audit/). */
 interface AuditEntry {
   id: string;
   userId: string | null;

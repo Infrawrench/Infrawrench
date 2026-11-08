@@ -10,17 +10,18 @@ import {
 } from "@infrawrench/ui";
 import { hasPermission, type OrgMembership } from "@infrawrench/client-core";
 import { CLOUD_URL } from "../../env";
-import { invoke } from "../lib/invoke";
 import { createDesktopSettingsApi, requestText } from "../lib/settings-client";
 import { mountPlaybackTerminal } from "../lib/playback-terminal";
 import { createCloudApprovalsClient } from "../lib/cloud-workflows";
 import { navigateToWorkspaceTarget, settingsTabTarget } from "../lib/workspace-tabs";
 import { workflowsTabTarget } from "@infrawrench/ui";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * Cloud-mode org settings: the same sections the web app renders, over the
- * `cloud_settings_request` IPC proxy. Local-only mode has no org (and no
- * server to configure), so the panel asks for a cloud sign-in instead.
+ * cloud transport's Settings surface (`lib/settings-client.ts`). Local-only
+ * mode has no org (and no server to configure), so the panel asks for a cloud
+ * sign-in instead.
  */
 export function DesktopSettingsPanel({ section }: { section: string }) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -76,7 +77,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
       openExternal: (url) => {
         // Always the system browser: Stripe checkout and password-reset
         // pages have no business inside the app shell.
-        void invoke("open_external_url", { url });
+        void openExternalUrl(url);
       },
       onAccountDeleted: () => {
         // The account (and its tokens) are gone server-side; drop to

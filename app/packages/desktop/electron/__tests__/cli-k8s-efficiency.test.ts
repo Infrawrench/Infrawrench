@@ -19,7 +19,7 @@ describe("k8s-efficiency --group-by", () => {
     });
   });
 
-  it("refuses an empty value", () => {
-    expect(() => parseEfficiencyGroupBy("  ")).toThrow(/needs a value/);
+  it("answers null for a value that is only space", () => {
+    expect(parseEfficiencyGroupBy("  ")).toBeNull();
   });
 });

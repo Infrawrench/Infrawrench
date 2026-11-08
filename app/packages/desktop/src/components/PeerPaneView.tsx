@@ -18,7 +18,6 @@ import {
 } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 import type { DraggableResource } from "../lib/pins";
-import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { ErrorNotice } from "./ErrorNotice";
@@ -26,7 +25,7 @@ import { K8sExecPanel } from "./K8sExecPanel";
 import { K9sTerminal } from "./K9sTerminal";
 import { SecretExportModal } from "./SecretExportModal";
 import { buildPluginHostServices } from "../lib/sql-drivers";
-import { startPortForward, type PortForwardHandle } from "../lib/k8s-dispatch";
+import { checkK9sInstalled, startPortForward, type PortForwardHandle } from "../lib/k8s-dispatch";
 import { deleteCloudResource, importCloudYaml } from "../lib/cloud-api";
 
 /** Shared empty override map; identity-stable so the derived fallback is cheap. */
@@ -82,7 +81,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
 
   useEffect(() => {
     let cancelled = false;
-    invoke<boolean>("k9s_check")
+    checkK9sInstalled()
       .then((installed) => {
         if (!cancelled) setK9sInstalled(installed);
       })

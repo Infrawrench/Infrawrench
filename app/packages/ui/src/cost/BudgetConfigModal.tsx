@@ -1,13 +1,13 @@
 import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, useGT, useMessages } from "gt-react";
+import { BudgetInput as BudgetInputSchema, decodeForm } from "@infrawrench/api-contract/schemas";
 import {
   BUDGET_LIMITS,
   BUDGET_PERIOD_UNITS,
   budgetDepth,
   budgetDescendantIds,
   budgetInputError,
-  budgetInputSchema,
   budgetSubtreeHeight,
   type BudgetExplicitPeriod,
   type BudgetInput,
@@ -150,9 +150,9 @@ export function BudgetConfigModal({
             ...(useAdjustedSpend ? { useAdjustedSpend } : {}),
           }),
     };
-    const parsed = budgetInputSchema.safeParse(cleaned);
+    const parsed = decodeForm(BudgetInputSchema, cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid budget"));
+      setError(parsed.message || gt("Invalid budget"));
       return;
     }
     // The cross-field rules the API also runs: same sentence, before the trip.

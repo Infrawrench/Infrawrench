@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import { Modal, useDataString } from "@infrawrench/ui";
 import { getCloudAuthStatus, getCloudOrgs, startCloudAuth, type CloudOrg } from "../lib/cloud-api";
-import { invoke } from "../lib/invoke";
 import { CLOUD_URL } from "../../env";
+import { openExternalUrl } from "../lib/app-shell";
 
 const ONBOARDING_STORAGE_KEY = "infrawrench:onboarding-complete";
 
@@ -291,9 +291,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                   <button
                     type="button"
                     autoFocus
-                    onClick={() =>
-                      void invoke("open_external_url", { url: `${CLOUD_URL}/onboarding` })
-                    }
+                    onClick={() => void openExternalUrl(`${CLOUD_URL}/onboarding`)}
                     className="w-full px-4 py-2.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
                   >
                     {gt("Create an organization")}

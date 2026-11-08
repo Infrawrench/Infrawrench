@@ -4,7 +4,7 @@ import { T, useGT } from "gt-react";
 import { MomentPanel, useUIStore, type MomentEvent } from "@infrawrench/ui";
 import { createDesktopMomentClient } from "@/lib/moment-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
-import { invoke } from "@/lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 export const Route = createFileRoute("/moment")({
   component: MomentPage,
@@ -23,8 +23,8 @@ export const Route = createFileRoute("/moment")({
 });
 
 /**
- * The moment view on desktop: the same panel web renders, over the
- * `cloud_moment` IPC. A plain route rather than a workspace tab, for the same
+ * The moment view on desktop: the same panel web renders, over the cloud
+ * transport (`lib/moment-client.ts`). A plain route rather than a workspace tab, for the same
  * reasons as Changes: no per-instance state worth keeping mounted, and the
  * page is cloud-only so a restored tab could outlive its org. The guard below
  * covers signing out with the page open.
@@ -54,7 +54,7 @@ function MomentPage() {
     const link = event.link;
     if (!link) return;
     if (link.url) {
-      void invoke("open_external_url", { url: link.url });
+      void openExternalUrl(link.url);
       return;
     }
     switch (link.kind) {
@@ -114,7 +114,7 @@ function MomentPage() {
         })
       }
       onOpenEvent={openEvent}
-      onOpenUrl={(url) => void invoke("open_external_url", { url })}
+      onOpenUrl={(url) => void openExternalUrl(url)}
     />
   );
 }

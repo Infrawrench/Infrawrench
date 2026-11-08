@@ -4,46 +4,47 @@
 import { shell } from "electron";
 import http from "node:http";
 import crypto from "node:crypto";
+import { Effect } from "effect";
+import { Command } from "effect/cli";
 import {
-  createPkceChallenge,
   buildAuthorizeUrl,
-  exchangeAuthorizationCode,
-  getAuthStatus,
   clearStoredTokens,
-  fetchCloudOrgs,
+  createPkceChallenge,
+  exchangeAuthorizationCode,
+  type PkceChallenge,
 } from "../../cloud-tokens";
-import { CliError, type CliContext } from "../context";
-import { c, println, printJson } from "../output";
+import { CloudApi } from "../effect/cloud-api";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { c, println } from "../output";
 
 // Loopback redirect port for the PKCE callback. Must be whitelisted as
 // http://127.0.0.1:43117/callback on the WorkOS application.
 const LOGIN_PORT = 43117;
-const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 const CALLBACK_HTML = `<!doctype html><meta charset="utf-8"><title>Infrawrench</title>
 <body style="font-family:system-ui;display:grid;place-items:center;height:90vh;background:#0b0e14;color:#e6e6e6">
 <div style="text-align:center"><h2>Signed in to Infrawrench</h2><p>You can close this tab and return to your terminal.</p></div>`;
 
-export async function cmdLogin(ctx: CliContext): Promise<void> {
-  if (ctx.guiRunning) {
-    throw new CliError(
-      "The Infrawrench desktop app is running. Sign in from the app instead; the CLI shares its session.",
-    );
-  }
-  const status = await getAuthStatus();
-  if (status.authenticated) {
-    println(
-      `Already signed in as ${c.bold(status.email ?? "unknown")}. Run \`infrawrench logout\` first to switch accounts.`,
-    );
-    return;
-  }
+const loopbackServer = Effect.acquireRelease(
+  Effect.sync(() => http.createServer()),
+  (server) => Effect.sync(() => void server.close()),
+);
 
-  const challenge = createPkceChallenge();
-  const redirectUri = `http://127.0.0.1:${LOGIN_PORT}/callback`;
-  const authorizeUrl = buildAuthorizeUrl(challenge, redirectUri);
-
-  const email = await new Promise<string>((resolve, reject) => {
-    const server = http.createServer((req, res) => {
+/**
+ * Listen on the loopback port, open the browser, and wait for the redirect.
+ * Resolves with the signed-in email. A bad `state` is answered 400 and the
+ * wait goes on; a failed token exchange is a defect (its stack is the only
+ * useful thing to show).
+ */
+const awaitBrowserSignIn = (
+  server: http.Server,
+  challenge: PkceChallenge,
+  authorizeUrl: string,
+): Effect.Effect<string, CliFailure> =>
+  Effect.callback<string, CliFailure>((resume) => {
+    server.on("request", (req: http.IncomingMessage, res: http.ServerResponse) => {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${LOGIN_PORT}`);
       if (url.pathname !== "/callback") {
         res.writeHead(404).end();
@@ -63,19 +64,19 @@ export async function cmdLogin(ctx: CliContext): Promise<void> {
       exchangeAuthorizationCode(code, challenge.codeVerifier)
         .then((result) => {
           res.writeHead(200, { "Content-Type": "text/html" }).end(CALLBACK_HTML);
-          server.close();
-          resolve(result.email);
+          resume(Effect.succeed(result.email));
         })
         .catch((e: unknown) => {
           res.writeHead(500, { "Content-Type": "text/plain" }).end("Token exchange failed.");
-          server.close();
-          reject(e instanceof Error ? e : new Error(String(e)));
+          resume(Effect.die(e));
         });
     });
     server.on("error", (e) => {
-      reject(
-        new CliError(
-          `Couldn't listen on 127.0.0.1:${LOGIN_PORT} (${e.message}). Is another login in progress?`,
+      resume(
+        Effect.fail(
+          new CliFailure({
+            message: `Couldn't listen on 127.0.0.1:${LOGIN_PORT} (${e.message}). Is another login in progress?`,
+          }),
         ),
       );
     });
@@ -84,48 +85,89 @@ export async function cmdLogin(ctx: CliContext): Promise<void> {
       println(c.dim(`If it doesn't open, visit:\n  ${authorizeUrl}`));
       void shell.openExternal(authorizeUrl);
     });
-    setTimeout(() => {
-      server.close();
-      reject(new CliError("Sign-in timed out after 5 minutes."));
-    }, LOGIN_TIMEOUT_MS).unref();
   });
 
-  println(`${c.green("✓")} Signed in as ${c.bold(email)}`);
-}
+export const login = Command.make(
+  "login",
+  {},
+  Effect.fn("login")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    if (session.guiRunning) {
+      return yield* new CliFailure({
+        message:
+          "The Infrawrench desktop app is running. Sign in from the app instead; the CLI shares its session.",
+      });
+    }
+    const status = yield* api.authStatus;
+    if (status.authenticated) {
+      return yield* Print.line(
+        `Already signed in as ${c.bold(status.email ?? "unknown")}. Run \`infrawrench logout\` first to switch accounts.`,
+      );
+    }
 
-export async function cmdLogout(ctx: CliContext): Promise<void> {
-  if (ctx.guiRunning) {
-    throw new CliError(
-      "The Infrawrench desktop app is running. Sign out from the app instead (the CLI shares its session).",
+    const challenge = createPkceChallenge();
+    const authorizeUrl = buildAuthorizeUrl(challenge, `http://127.0.0.1:${LOGIN_PORT}/callback`);
+    const email = yield* Effect.scoped(
+      Effect.flatMap(loopbackServer, (server) =>
+        awaitBrowserSignIn(server, challenge, authorizeUrl),
+      ),
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: "5 minutes",
+        orElse: () =>
+          Effect.fail(new CliFailure({ message: "Sign-in timed out after 5 minutes." })),
+      }),
     );
-  }
-  const status = await getAuthStatus();
-  await clearStoredTokens();
-  if (ctx.flags.output === "json") {
-    printJson({ signedOut: status.authenticated });
-    return;
-  }
-  println(
-    status.authenticated
-      ? `${c.green("✓")} Signed out${status.email ? ` (${status.email})` : ""}.`
-      : "Not signed in.",
-  );
-}
+    yield* Print.line(`${c.green("✓")} Signed in as ${c.bold(email)}`);
+  }),
+).pipe(Command.withDescription("Sign in to Infrawrench Cloud (browser PKCE)"));
 
-export async function cmdWhoami(ctx: CliContext): Promise<void> {
-  const status = await getAuthStatus();
-  if (ctx.flags.output === "json") {
-    const orgs = status.authenticated ? await fetchCloudOrgs() : [];
-    printJson({ ...status, orgs });
-    return;
-  }
-  if (!status.authenticated) {
-    println("Not signed in. Run `infrawrench login`, or sign in from the desktop app.");
-    return;
-  }
-  println(`Signed in as ${c.bold(status.email ?? "unknown")}`);
-  const orgs = await fetchCloudOrgs();
-  if (orgs.length > 0) {
-    println(c.dim(`Organizations: ${orgs.map((o) => o.displayName).join(", ")}`));
-  }
-}
+export const logout = Command.make(
+  "logout",
+  {},
+  Effect.fn("logout")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    if (session.guiRunning) {
+      return yield* new CliFailure({
+        message:
+          "The Infrawrench desktop app is running. Sign out from the app instead (the CLI shares its session).",
+      });
+    }
+    const status = yield* api.authStatus;
+    yield* Effect.promise(clearStoredTokens);
+    if (session.output === "json") {
+      return yield* Print.json({ signedOut: status.authenticated });
+    }
+    yield* Print.line(
+      status.authenticated
+        ? `${c.green("✓")} Signed out${status.email ? ` (${status.email})` : ""}.`
+        : "Not signed in.",
+    );
+  }),
+).pipe(Command.withDescription("Sign out"));
+
+export const whoami = Command.make(
+  "whoami",
+  {},
+  Effect.fn("whoami")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const status = yield* api.authStatus;
+    if (session.output === "json") {
+      const orgs = status.authenticated ? yield* api.orgs : [];
+      return yield* Print.json({ ...status, orgs });
+    }
+    if (!status.authenticated) {
+      return yield* Print.line(
+        "Not signed in. Run `infrawrench login`, or sign in from the desktop app.",
+      );
+    }
+    yield* Print.line(`Signed in as ${c.bold(status.email ?? "unknown")}`);
+    const orgs = yield* api.orgs;
+    if (orgs.length > 0) {
+      yield* Print.line(c.dim(`Organizations: ${orgs.map((o) => o.displayName).join(", ")}`));
+    }
+  }),
+).pipe(Command.withDescription("Show the current session"));

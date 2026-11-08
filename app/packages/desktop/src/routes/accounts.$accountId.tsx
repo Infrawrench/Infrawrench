@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
+import { getCloudAccountCredentials } from "../lib/cloud-accounts";
 import {
   showcaseFields,
   type ResourceInstance,
@@ -64,6 +64,8 @@ import {
 } from "../lib/workspace-tabs";
 import { ResourceTile } from "./_account-detail/-ResourceTile";
 import { ResourcePanel } from "./resource.$accountId.$resourceId";
+import { openExternalUrl } from "../lib/app-shell";
+import { getLocalAccountCredentials, saveLocalAccountCredentials } from "../lib/local-credentials";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -276,9 +278,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       if (!account) return;
       void (async () => {
         try {
-          const ownerCreds = await invoke<Record<string, string>>("account_get_credentials", {
-            accountId: account.id,
-          });
+          const ownerCreds = await getLocalAccountCredentials(account.id);
           const loaded = await getPlugin(account.plugin_id);
           if (!loaded) return;
           const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
@@ -475,9 +475,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, row.display_name);
         }
 
-        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-          accountId: row.id,
-        });
+        const credentials = await getLocalAccountCredentials(row.id);
 
         const loaded = await getPlugin(row.plugin_id);
         if (!loaded)
@@ -688,7 +686,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   }
 
   // Re-read the local status when the main process reports a change (a
-  // rejected refresh, a reconnect): `provider_oauth_status` bumps accounts.
+  // rejected refresh, a reconnect): `ProviderOAuthStatusChanges` bumps accounts.
   useEffect(() => {
     if (activeCloudOrgId || accountsVersion === 0) return;
     let cancelled = false;
@@ -757,14 +755,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       // No refresh for the editor: it must open even when the grant was
       // revoked and a refresh could only fail.
       const current = activeCloudOrgId
-        ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
-            orgId: activeCloudOrgId,
-            accountId,
-          })
-        : await invoke<Record<string, string>>("account_get_credentials", {
-            accountId,
-            refresh: false,
-          });
+        ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
+        : await getLocalAccountCredentials(accountId, { refresh: false });
       const oauthInfo = (await resolveOAuthInfo(activeCloudOrgId ?? null, [manifest])).get(
         manifest.id,
       );
@@ -819,11 +811,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   async function runPreflightForAccount() {
     const { runAccountPreflight } = await import("@infrawrench/client-core");
     const credentials = activeCloudOrgId
-      ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
-          orgId: activeCloudOrgId,
-          accountId,
-        })
-      : await invoke<Record<string, string>>("account_get_credentials", { accountId });
+      ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
+      : await getLocalAccountCredentials(accountId);
     const loaded = await getPlugin(account!.plugin_id);
     if (!loaded)
       throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account!.plugin_id }));
@@ -861,7 +850,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     if (activeCloudOrgId) {
       await updateCloudAccountCredentials(activeCloudOrgId, accountId, credentials);
     } else {
-      await invoke<void>("account_save_credentials", { accountId, credentials });
+      await saveLocalAccountCredentials(accountId, credentials);
     }
     toast.success(gt("Credentials updated"));
     backgroundLoadRef.current = true;
@@ -910,7 +899,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         currentCredentials={editCredsState.current}
         onSave={saveCredentials}
         onClose={() => setEditCredsState(null)}
-        onOpenExternal={(url) => void invoke("open_external_url", { url })}
+        onOpenExternal={(url) => void openExternalUrl(url)}
         loadCredentialOptions={loadCredentialOptionsForAccount}
         accountId={accountId}
         oauthStatus={oauthStatus}
@@ -1292,7 +1281,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           declaration={preflightDeclaration}
           runPreflight={runPreflightForAccount}
           fetchPolicyTemplate={fetchPolicyTemplateForAccount}
-          onOpenExternal={(url) => void invoke("open_external_url", { url })}
+          onOpenExternal={(url) => void openExternalUrl(url)}
           onClose={() => setPreflightDeclaration(null)}
         />
       )}

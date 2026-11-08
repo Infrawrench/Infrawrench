@@ -2,7 +2,7 @@ import type { CloudFetch } from "./fetch";
 
 /**
  * Slack connection management. Server contract: org-scoped
- * `/api/org/:orgId/slack/*` routes (see web `api/routes/slack.ts`).
+ * `/api/org/:orgId/slack/*` routes (see web `http/domains/slack/`).
  *
  * A channel is a *destination*, not a policy. Which alerts reach it is decided
  * by the org's routing rules (`alert-routing.ts`), which reference this row by

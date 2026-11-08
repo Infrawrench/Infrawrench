@@ -7,8 +7,8 @@ import {
 } from "@infrawrench/ui";
 import { kvCommand } from "../lib/sql-drivers";
 import { getDb } from "../db/client";
-import { invoke } from "../lib/invoke";
 import { getPlugin, loadPlugins } from "../plugins/loader";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 /**
  * Renders a document browser against a user-picked account for a Firestore
@@ -102,9 +102,7 @@ export function FirestoreMongoPeerBrowser({
         let creds: Record<string, string>;
         let driver: NonNullable<PluginManifest["kvDriver"]>;
         try {
-          creds = await invoke<Record<string, string>>("account_get_credentials", {
-            accountId: id,
-          });
+          creds = await getLocalAccountCredentials(id);
           const db = await getDb();
           const [row] = await db.select<Array<{ plugin_id: string }>>(
             "SELECT plugin_id FROM accounts WHERE id = $1",

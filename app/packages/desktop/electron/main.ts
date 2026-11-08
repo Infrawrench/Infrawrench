@@ -2,57 +2,25 @@ import {
   app,
   autoUpdater as nativeUpdater,
   BrowserWindow,
-  clipboard,
-  ipcMain,
   dialog,
   nativeTheme,
-  Notification,
   session,
   shell,
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import crypto from "node:crypto";
 import dns from "node:dns";
-import { generateEd25519OpenSshKeyPair } from "@infrawrench/ssh-tunnel-core";
-import { z } from "zod";
-import { type SqlValue } from "sql.js";
-import { getSqlite, persist, normalizeSql, wireDbGetter } from "./db";
+import { wireDbGetter } from "./db";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
-import { validateSql, validateParams, classifyMutation } from "./db-guard";
-import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
-import { approveAccountCredentials } from "./local-exec-consent";
-import { OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
-import {
-  LocalAccountNotFoundError,
-  getOAuthProvider,
-  issuedAccessTokens,
-  loadLocalAccountCredentials,
-  readStoredAccount,
-} from "./provider-oauth/local-accounts";
-import {
-  mergeIncomingCredentials,
-  oauthStatusFor,
-  redactGrantForRenderer,
-} from "./provider-oauth/credentials";
-import { createHostResolver, registerCredentialEndpoints, shouldRelaxCors } from "./cors-policy";
+import { createHostResolver, shouldRelaxCors } from "./cors-policy";
 import { isInternalRendererUrl } from "./renderer-navigation";
 import { getActiveTunnels } from "./ssh-tunnel";
 import { CLOUD_URL } from "../env";
-import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
-import { readLocalDeploys } from "./deploy-history";
-import { listLocalOrphans } from "./local-orphans";
-import { listLocalExtendedSupport } from "./local-extended-support";
-import {
-  getEncryptionKey,
-  encryptValue,
-  decryptValue,
-  buildAad,
-  registerDialogBlessedPath,
-} from "./main-utils";
+import { startRpcServer } from "./rpc/server";
+import { getPendingUpdateInstall, hasBackgroundWork, setPendingUpdateInstall } from "./app-shell";
 
 // ssh2 has a teardown race when compression is negotiated: a channel's
 // final ticks can try to compress a close packet through already-destroyed
@@ -76,19 +44,10 @@ process.on("uncaughtException", (err) => {
 });
 
 // Side-effect imports register IPC handlers for each domain.
-import "./plugin-host";
-import "./ssh-host";
-import "./ssh-host-key-prompt";
-import { registerIwappdHandlers, shutdownIwappdSessions } from "./iwappd-host";
-import "./k8s-host";
+import { shutdownIwappdSessions } from "./iwappd-host";
 import "./cloud-auth";
-import "./cloud-data";
-import "./instance-pricing";
 import "./cloud-sync";
-import "./cloud-ssh-keys";
-import "./workflow-host";
-import "./workflow-secrets";
-import "./provider-oauth/ipc";
+import "./provider-oauth/routes";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
 import { reportTelemetry } from "./telemetry";
 
@@ -96,23 +55,14 @@ import { reportTelemetry } from "./telemetry";
 // swipe-to-navigate ourselves in the renderer via wheel events.
 app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 
-// While > 0, closing the last window hides it instead of quitting so the
-// renderer's polling loop keeps firing notifications in the background.
-let activePingCount = 0;
-let activeCronCount = 0;
+// Background work (metric pings, enabled crons) and the staged update's
+// install callback live in `./app-shell`, which the renderer sets over RPC.
 let quitting = false;
-
-/** Whether background work (metric pings or enabled crons) should keep the app alive. */
-function hasBackgroundWork(): boolean {
-  return activePingCount > 0 || activeCronCount > 0;
-}
-// Set once the update is staged and installable; `before-quit` then calls
-// `quitAndInstall` so the update actually applies on exit. MacUpdater (unlike
+// The pending install (`setPendingUpdateInstall`) is called from
+// `before-quit` so the update actually applies on exit. MacUpdater (unlike
 // BaseUpdater on win/linux) does not register a quit hook itself, so
 // `autoInstallOnAppQuit` is effectively a no-op on macOS without this.
-let pendingUpdateInstall: (() => void) | null = null;
 let installingUpdate = false;
-const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 
 /** How long to wait for `quitAndInstall` to actually take the app down. */
 const INSTALL_STALL_TIMEOUT_MS = 20_000;
@@ -167,7 +117,7 @@ function startAutoUpdater() {
     const promptForInstall = (version: string) => {
       if (promptedVersion === version) return;
       promptedVersion = version;
-      pendingUpdateInstall = () => {
+      setPendingUpdateInstall(() => {
         installingUpdate = true;
         autoUpdater.quitAndInstall();
         // If the app is still here well after quitAndInstall, the install did
@@ -182,7 +132,7 @@ function startAutoUpdater() {
           });
         }, INSTALL_STALL_TIMEOUT_MS);
         stall.unref();
-      };
+      });
       broadcastToWindows("update_available_prompt", { version });
     };
 
@@ -414,8 +364,6 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-registerIwappdHandlers();
-
 app.on("before-quit", () => {
   // Every session holds an SSH connection and a compositor on someone else's
   // machine; quitting without closing them leaves both until the idle timeout.
@@ -426,6 +374,7 @@ app.on("before-quit", (event) => {
   // If an update is staged and the user picked "Later", apply it on quit.
   // `installingUpdate` is set inside the install callback so the second
   // before-quit (fired by electron-updater's own quit) falls through cleanly.
+  const pendingUpdateInstall = getPendingUpdateInstall();
   if (pendingUpdateInstall && !installingUpdate) {
     event.preventDefault();
     pendingUpdateInstall();
@@ -433,7 +382,7 @@ app.on("before-quit", (event) => {
     // re-quit us. If it doesn't, quit for real rather than leaving an app that
     // can't be closed.
     const fallback = setTimeout(() => {
-      pendingUpdateInstall = null;
+      setPendingUpdateInstall(null);
       app.quit();
     }, INSTALL_STALL_TIMEOUT_MS);
     fallback.unref();
@@ -447,388 +396,11 @@ app.on("before-quit", (event) => {
   teardownAllPfCloudSessions();
 });
 
-ipcMain.handle("set_pings_active", (_e, { count }: { count: number }) => {
-  activePingCount = Math.max(0, Math.floor(count));
-});
-
-ipcMain.handle("set_crons_active", (_e, { count }: { count: number }) => {
-  activeCronCount = Math.max(0, Math.floor(count));
-});
-
-ipcMain.handle("update_install_now", () => {
-  // Deliberately kept set: if the install doesn't take, `before-quit` still
-  // has a way to apply it, which clearing it here used to throw away.
-  pendingUpdateInstall?.();
-});
-
-ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body: string }) => {
-  if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body });
-  n.on("click", () => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win) {
-      if (!win.isVisible()) win.show();
-      win.focus();
-    }
-  });
-  n.show();
-});
-
-// Narrow typed channels below each bind their plaintext to a specific
-// row + field via AAD, so a ciphertext from one row cannot be swapped into
-// another. The renderer never sees the raw master key.
-
-const MAX_PLAINTEXT_BYTES = 64 * 1024; // fits PEM keys + credential JSON
-const MAX_CIPHERTEXT_BYTES = 96 * 1024;
-
-const AccountIdArgs = z.object({ accountId: z.string().min(1).max(128) });
-const AccountGetCredentialsArgs = AccountIdArgs.extend({ refresh: z.boolean().optional() });
-const AccountSaveArgs = z.object({
-  accountId: z.string().min(1).max(128),
-  credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
-});
-const AccountCreateArgs = z.object({
-  accountId: z.string().min(1).max(128),
-  pluginId: z.string().min(1).max(128),
-  displayName: z.string().min(1).max(256),
-  credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
-});
-const SshKeyIdArgs = z.object({ keyId: z.string().min(1).max(128) });
-const SshKeyCreateArgs = z.object({
-  keyId: z.string().min(1).max(128),
-  name: z.string().min(1).max(256),
-  privateKey: z.string().min(1).max(MAX_PLAINTEXT_BYTES),
-});
-const SshTunnelConfigDecryptArgs = z.object({
-  tunnelConfigId: z.string().min(1).max(128),
-  ciphertext: z.string().max(MAX_CIPHERTEXT_BYTES),
-  iv: z.string().max(64),
-});
-const SshTunnelConfigEncryptArgs = z.object({
-  tunnelConfigId: z.string().min(1).max(128),
-  privateKey: z.string().min(1).max(MAX_PLAINTEXT_BYTES),
-});
-const SecretFieldDecryptArgs = z.object({
-  resourceId: z.string().min(1).max(256),
-  fieldKey: z.string().min(1).max(128),
-  ciphertext: z.string().max(MAX_CIPHERTEXT_BYTES),
-  iv: z.string().max(64),
-});
-const SecretFieldEncryptArgs = z.object({
-  resourceId: z.string().min(1).max(256),
-  fieldKey: z.string().min(1).max(128),
-  plaintext: z.string().max(MAX_PLAINTEXT_BYTES),
-});
-
-ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
-  const { accountId, refresh } = AccountGetCredentialsArgs.parse(raw);
-  // Decrypts, and refreshes an OAuth-connected account's access token when it
-  // is about to expire (provider-oauth/local-accounts.ts). Every plugin the
-  // renderer runs gets its credentials here, so this covers all of them.
-  // `refresh: false` is for the credentials editor, which must open even when
-  // the grant was revoked and a refresh can only fail.
-  let credentials: Record<string, string>;
-  try {
-    credentials =
-      refresh === false
-        ? (await readStoredAccount(accountId)).credentials
-        : await loadLocalAccountCredentials(accountId);
-  } catch (err) {
-    if (err instanceof LocalAccountNotFoundError) throw new Error("Account not found");
-    throw err;
-  }
-  // The renderer always loads an account's credentials through here before
-  // talking to its cluster, so decrypt-time registration keeps the SSRF
-  // allowlist populated across app restarts.
-  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
-  registerCredentialEndpoints(credentials);
-  // The refresh token stays in main; the renderer gets the grant without it.
-  return redactGrantForRenderer(credentials);
-});
-
-ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
-  const { accountId, credentials: incoming } = AccountSaveArgs.parse(raw);
-  // A kubeconfig that runs a program, or a Docker host, is local code
-  // execution: a new or changed one needs consent in a native dialog before
-  // it becomes a stored value the connect-time gate trusts (local-exec-guard.ts).
-  const stored = await readStoredAccount(accountId).catch(() => undefined);
-  const previous = stored?.credentials;
-  // Provider OAuth: keep the stored grant across picker edits, take a fresh
-  // one from a reconnect, drop it when the user pastes a token instead.
-  const tokenField =
-    stored && (OAUTH_CREDENTIAL_KEY in incoming || (previous && OAUTH_CREDENTIAL_KEY in previous))
-      ? (await getOAuthProvider(stored.pluginId))?.declaration.tokenField
-      : undefined;
-  const credentials = mergeIncomingCredentials(
-    incoming,
-    previous,
-    tokenField,
-    issuedAccessTokens(accountId),
-  );
-  const plaintext = JSON.stringify(credentials);
-  if (plaintext.length > MAX_PLAINTEXT_BYTES) {
-    throw new Error("account_save_credentials: credentials too large");
-  }
-  await approveAccountCredentials(credentials, previous);
-  const aad = buildAad("account", accountId, "credentials");
-  const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
-  const db = await getSqlite();
-  db.run(
-    "UPDATE accounts SET encrypted_credentials = ?, credentials_iv = ?, oauth_status = ? WHERE id = ?",
-    [ciphertext, iv, oauthStatusFor(credentials), accountId],
-  );
-  if (db.getRowsModified() === 0) {
-    throw new Error("Account not found");
-  }
-  persist();
-  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
-  registerCredentialEndpoints(credentials);
-});
-
-ipcMain.handle("account_create", async (_e, raw: unknown) => {
-  const { accountId, pluginId, displayName, credentials: incoming } = AccountCreateArgs.parse(raw);
-  // Drops a malformed `__oauth`; keeps a grant from provider_oauth_connect.
-  const credentials = mergeIncomingCredentials(incoming, undefined, undefined);
-  const plaintext = JSON.stringify(credentials);
-  if (plaintext.length > MAX_PLAINTEXT_BYTES) {
-    throw new Error("account_create: credentials too large");
-  }
-  await approveAccountCredentials(credentials, undefined);
-  const aad = buildAad("account", accountId, "credentials");
-  const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
-  const db = await getSqlite();
-  db.run(
-    `INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv, oauth_status)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [accountId, pluginId, displayName, ciphertext, iv, oauthStatusFor(credentials)],
-  );
-  persist();
-  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
-  registerCredentialEndpoints(credentials);
-});
-
-ipcMain.handle("ssh_key_get_private_key", async (_e, raw: unknown) => {
-  const { keyId } = SshKeyIdArgs.parse(raw);
-  const db = await getSqlite();
-  const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
-  stmt.bind([keyId]);
-  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-  stmt.free();
-  if (!row) throw new Error("SSH key not found");
-  const ciphertext = String(row["encrypted_key"] ?? "");
-  const iv = String(row["key_iv"] ?? "");
-  const aad = buildAad("sshKey", keyId, "privateKey");
-  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
-});
-
-ipcMain.handle("ssh_key_get_public_key", async (_e, raw: unknown) => {
-  const { keyId } = SshKeyIdArgs.parse(raw);
-  const db = await getSqlite();
-  const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
-  stmt.bind([keyId]);
-  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-  stmt.free();
-  if (!row) throw new Error("SSH key not found");
-  const privateKey = decryptValue(
-    String(row["encrypted_key"] ?? ""),
-    String(row["key_iv"] ?? ""),
-    getEncryptionKey(),
-    buildAad("sshKey", keyId, "privateKey"),
-  );
-  // Desktop app keys persist only the private half: derive the OpenSSH public
-  // key from it on demand.
-  const parsed = (await getSsh2Utils()).parseKey(privateKey);
-  if (parsed instanceof Error) {
-    throw new Error(`Could not derive public key for SSH key: ${parsed.message}`);
-  }
-  const key = Array.isArray(parsed) ? parsed[0] : parsed;
-  return `${key.type} ${key.getPublicSSH().toString("base64")}`;
-});
-
-ipcMain.handle("ssh_key_ensure_agent_key", async () => {
-  const db = await getSqlite();
-  const existing = db.prepare("SELECT id FROM ssh_keys WHERE name = ? LIMIT 1");
-  existing.bind([AGENT_SSH_KEY_NAME]);
-  const row = existing.step() ? (existing.getAsObject() as Record<string, unknown>) : null;
-  existing.free();
-  if (row) {
-    const keyId = String(row["id"] ?? "");
-    const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
-    stmt.bind([keyId]);
-    const keyRow = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-    stmt.free();
-    if (!keyRow) throw new Error("Agent SSH key not found");
-    const privateKey = decryptValue(
-      String(keyRow["encrypted_key"] ?? ""),
-      String(keyRow["key_iv"] ?? ""),
-      getEncryptionKey(),
-      buildAad("sshKey", keyId, "privateKey"),
-    );
-    return {
-      id: keyId,
-      name: AGENT_SSH_KEY_NAME,
-      publicKey: await deriveOpenSshPublicKey(privateKey),
-    };
-  }
-
-  const { publicKey, privateKey } = await generateEd25519OpenSshKeyPair(AGENT_SSH_KEY_NAME);
-  const keyId = crypto.randomUUID();
-  const aad = buildAad("sshKey", keyId, "privateKey");
-  const { ciphertext, iv } = encryptValue(privateKey, getEncryptionKey(), aad);
-  db.run("INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES (?, ?, ?, ?)", [
-    keyId,
-    AGENT_SSH_KEY_NAME,
-    ciphertext,
-    iv,
-  ]);
-  persist();
-  return { id: keyId, name: AGENT_SSH_KEY_NAME, publicKey };
-});
-
-ipcMain.handle("ssh_key_save_private_key", async (_e, raw: unknown) => {
-  const { keyId, name, privateKey } = SshKeyCreateArgs.parse(raw);
-  const aad = buildAad("sshKey", keyId, "privateKey");
-  const { ciphertext, iv } = encryptValue(privateKey, getEncryptionKey(), aad);
-  const db = await getSqlite();
-  db.run("INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES (?, ?, ?, ?)", [
-    keyId,
-    name,
-    ciphertext,
-    iv,
-  ]);
-  persist();
-});
-
-async function deriveOpenSshPublicKey(privateKey: string): Promise<string> {
-  const parsed = (await getSsh2Utils()).parseKey(privateKey);
-  if (parsed instanceof Error) {
-    throw new Error(`Could not derive public key for SSH key: ${parsed.message}`);
-  }
-  const key = Array.isArray(parsed) ? parsed[0] : parsed;
-  return `${key.type} ${key.getPublicSSH().toString("base64")} ${AGENT_SSH_KEY_NAME}`;
-}
-
-async function getSsh2Utils(): Promise<typeof import("ssh2").utils> {
-  const mod = await import("ssh2");
-  const utils = mod.utils ?? mod.default?.utils;
-  if (!utils) throw new Error("Could not load ssh2 key utilities");
-  return utils;
-}
-
-ipcMain.handle("ssh_tunnel_config_get_private_key", (_e, raw: unknown) => {
-  const { tunnelConfigId, ciphertext, iv } = SshTunnelConfigDecryptArgs.parse(raw);
-  const aad = buildAad("sshTunnelConfig", tunnelConfigId, "privateKey");
-  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
-});
-
-ipcMain.handle("ssh_tunnel_config_encrypt_private_key", (_e, raw: unknown) => {
-  const { tunnelConfigId, privateKey } = SshTunnelConfigEncryptArgs.parse(raw);
-  const aad = buildAad("sshTunnelConfig", tunnelConfigId, "privateKey");
-  return encryptValue(privateKey, getEncryptionKey(), aad);
-});
-
-// Oracle-shaped (renderer supplies ciphertext/iv on decrypt) but the AAD binds
-// each call to a specific (resourceId, fieldKey), so an attacker cannot swap
-// ciphertexts across fields or rows.
-ipcMain.handle("secret_field_decrypt", (_e, raw: unknown) => {
-  const { resourceId, fieldKey, ciphertext, iv } = SecretFieldDecryptArgs.parse(raw);
-  const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
-  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
-});
-
-ipcMain.handle("secret_field_encrypt", (_e, raw: unknown) => {
-  const { resourceId, fieldKey, plaintext } = SecretFieldEncryptArgs.parse(raw);
-  const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
-  return encryptValue(plaintext, getEncryptionKey(), aad);
-});
-
 wireDbGetter();
 
-// db_select / db_execute expose the local sql.js DB to the renderer. Access is
-// gated by the typed preload bridge plus db-guard's validateSql/validateParams
-// (no multi-statements, no ATTACH/DETACH/PRAGMA/VACUUM/LOAD_EXTENSION, capped
-// sizes, primitive params only). A compromised renderer can still mutate any
-// user-owned table: the surface is narrowed, not eliminated.
-ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
-  validateSql(sql);
-  const safeParams = validateParams(params);
-  const db = await getSqlite();
-  const stmt = db.prepare(normalizeSql(sql));
-  const rows: Record<string, unknown>[] = [];
-  stmt.bind(safeParams as SqlValue[]);
-  while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
-  stmt.free();
-  return rows;
-});
-
-ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
-  validateSql(sql);
-  const safeParams = validateParams(params);
-  const audit = classifyMutation(sql);
-  if (audit) {
-    const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
-    console.log(
-      `[db-audit] ${audit.op} on ${audit.table} (params=${safeParams.length}) :: ${preview}`,
-    );
-  }
-  const db = await getSqlite();
-  db.run(normalizeSql(sql), safeParams as SqlValue[]);
-  const rowsAffected = db.getRowsModified();
-  persist();
-  return { rowsAffected, lastInsertId: 0 };
-});
-
-// `infrawrench` shell command (CLI shim) management: see shell-command.ts.
-ipcMain.handle("cli_shell_command_status", () => getShellCommandStatus());
-ipcMain.handle("cli_install_shell_command", () => installShellCommand());
-ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
-
-// What `infrawrench deploy` did on this machine: see deploy-history.ts for why
-// it is a file rather than a table. Read-only from the renderer: only the CLI
-// ever deploys locally, so only the CLI writes.
-ipcMain.handle("local_deploy_history", () => readLocalDeploys());
-
-// Potential savings without an org: the same orphan scan the cloud runs over
-// synced rows, run over the local workspace. Credential-free: see
-// electron/local-orphans.ts. The cloud counterpart is `cloud_orphans_list`.
-ipcMain.handle("local_orphans_list", () => listLocalOrphans());
-
-// Extended-support findings without an org: the same declared support
-// calendars over the local workspace, list price only. See
-// electron/local-extended-support.ts; cloud counterpart `cloud_extended_support_list`.
-ipcMain.handle("local_extended_support_list", () => listLocalExtendedSupport());
-
-// Native clipboard image read. The renderer cannot use
-// navigator.clipboard.read() (Electron fails its permission check and the
-// promise rejects) so terminal image paste goes through the main process.
-ipcMain.handle("clipboard_read_image", () => {
-  const image = clipboard.readImage();
-  if (image.isEmpty()) return null;
-  return { pngBase64: image.toPNG().toString("base64"), mime: "image/png" };
-});
-
-ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
-  const win = BrowserWindow.getFocusedWindow();
-  const result = win
-    ? await dialog.showOpenDialog(win, options)
-    : await dialog.showOpenDialog(options);
-  if (!result.canceled) {
-    for (const p of result.filePaths ?? []) registerDialogBlessedPath(p);
-  }
-  return result;
-});
-
-const EXTERNAL_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
-
-ipcMain.handle("open_external_url", async (_e, { url }: { url: string }) => {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("open_external_url: invalid URL");
-  }
-  if (!EXTERNAL_URL_SCHEMES.has(parsed.protocol)) {
-    throw new Error(`open_external_url: scheme "${parsed.protocol}" is not permitted`);
-  }
-  await shell.openExternal(parsed.toString());
-});
+// Effect RPC (`shared/rpc/groups`): every renderer-to-main operation this file
+// used to register one `ipcMain.handle` for (the app shell, local credentials
+// and secrets, the renderer's SQLite access) is a group there, served by
+// `rpc/server.ts`. Listening before any window loads, so a renderer's first
+// connect is never missed.
+startRpcServer();

@@ -7,60 +7,96 @@
 // `@infrawrench/client-core` type-only; formatting and bands are loaded with a
 // dynamic import, the main project's rule for client-core runtime code. Zero
 // new runtime dependencies.
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import { Effect, Option, Schema } from "effect";
+import { Command, Flag } from "effect/cli";
 import type {
-  DoraBand,
-  DoraChange,
   DoraChangesResponse,
   DoraMetric,
   DoraQuery,
   DoraReport,
   DoraRestoresResponse,
   DoraSettingsView,
-  DoraSummary,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, safe, type Column } from "../output";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure, CliUsageError } from "../effect/errors";
+import * as Print from "../effect/print";
+import { days, from, groupBy, lastDays, to } from "../effect/range-flags";
+import { CliSession } from "../effect/session";
+import { knownOr, spreadBody, Unrecognized, wire } from "../effect/wire";
+import { c, safe, type Column } from "../output";
 import { sparkline } from "../charts";
-import { parseLastDays, type RangeFlags } from "../args";
 import { formatChangeTime } from "../format";
 
 type Core = typeof import("@infrawrench/client-core", { with: { "resolution-mode": "import" } });
 
-export interface DoraFlags {
-  scope: string | undefined;
-  failed: boolean;
-}
-
 const DAY_MS = 86_400_000;
 
-/** `--from`/`--to` (dates or timestamps) win; `--last`/`--days` size the window ending now. */
-export function doraWindow(range: RangeFlags, now = Date.now()): { from: string; to: string } {
-  const parse = (v: string, flag: string): number => {
-    const t = Date.parse(v);
-    if (!Number.isFinite(t))
-      throw new CliError(`Invalid --${flag} "${v}": use YYYY-MM-DD or an ISO timestamp`, 2);
-    return t;
-  };
-  const to = range.to ? parse(range.to, "to") : now;
-  const days = range.days ?? (range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30);
-  const from = range.from ? parse(range.from, "from") : to - days * DAY_MS;
-  if (from >= to) throw new CliError("--from must be before --to", 2);
-  if (to - from > 366 * DAY_MS) throw new CliError("The range is at most 366 days", 2);
-  return { from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+/** The window flags, as parsed. */
+export interface DoraWindowInput {
+  readonly from: Option.Option<string>;
+  readonly to: Option.Option<string>;
+  readonly days: Option.Option<number>;
+  readonly last: Option.Option<number>;
 }
+
+/** `--from`/`--to` (dates or timestamps) win; `--last`/`--days` size the window ending now. */
+export const doraWindow = (
+  input: DoraWindowInput,
+  now = Date.now(),
+): Effect.Effect<{ from: string; to: string }, CliUsageError> =>
+  Effect.gen(function* () {
+    const parse = (v: string, flag: string) => {
+      const t = Date.parse(v);
+      return Number.isFinite(t)
+        ? Effect.succeed(t)
+        : Effect.fail(
+            new CliUsageError({
+              message: `Invalid --${flag} "${v}": use YYYY-MM-DD or an ISO timestamp`,
+            }),
+          );
+    };
+    const toMs = Option.isSome(input.to) ? yield* parse(input.to.value, "to") : now;
+    const span = Option.getOrElse(
+      Option.orElse(input.days, () =>
+        Option.map(input.last, (last) => Math.max(1, Math.round(last))),
+      ),
+      () => 30,
+    );
+    const fromMs = Option.isSome(input.from)
+      ? yield* parse(input.from.value, "from")
+      : toMs - span * DAY_MS;
+    if (fromMs >= toMs) {
+      return yield* new CliUsageError({ message: "--from must be before --to" });
+    }
+    if (toMs - fromMs > 366 * DAY_MS) {
+      return yield* new CliUsageError({ message: "The range is at most 366 days" });
+    }
+    return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() };
+  });
 
 /** `--scope owner=user:abc` filters to one value; `--scope owner` to "not known". */
-export function parseDoraScope(scope: string | undefined): Pick<DoraQuery, "dimension" | "value"> {
-  if (!scope) return {};
+export const parseDoraScope = (
+  scope: string | undefined,
+): Effect.Effect<Pick<DoraQuery, "dimension" | "value">, CliUsageError> => {
+  if (!scope) return Effect.succeed({});
   const eq = scope.indexOf("=");
-  if (eq < 0) return { dimension: scope.trim(), value: null };
+  if (eq < 0) return Effect.succeed({ dimension: scope.trim(), value: null });
   const dimension = scope.slice(0, eq).trim();
   const value = scope.slice(eq + 1).trim();
-  if (!dimension) throw new CliError(`Invalid --scope "${scope}": use <dimension>=<value>`, 2);
-  return { dimension, value: value || null };
-}
+  if (!dimension) {
+    return Effect.fail(
+      new CliUsageError({ message: `Invalid --scope "${scope}": use <dimension>=<value>` }),
+    );
+  }
+  return Effect.succeed({ dimension, value: value || null });
+};
 
-export function bandCell(band: DoraBand | null): string {
+const BANDS = ["elite", "high", "medium", "low"] as const;
+type Band = (typeof BANDS)[number];
+
+export function bandCell(band: Band | Unrecognized | null): string {
+  // A band a newer server added prints under its own name, uncoloured.
+  if (band instanceof Unrecognized) return c.dim(safe(band.raw));
   switch (band) {
     case "elite":
       return c.green("elite");
@@ -75,6 +111,102 @@ export function bandCell(band: DoraBand | null): string {
   }
 }
 
+const MetricValue = {
+  value: Schema.NullOr(Schema.Finite),
+  band: Schema.NullOr(knownOr(BANDS)),
+  sample: Schema.Finite,
+};
+
+const Summary = Schema.Struct({
+  deploymentFrequency: Schema.Struct({ ...MetricValue, deploys: Schema.Finite }),
+  leadTime: Schema.Struct({ ...MetricValue, p90Hours: Schema.NullOr(Schema.Finite) }),
+  changeFailureRate: Schema.Struct({
+    ...MetricValue,
+    changes: Schema.Finite,
+    failures: Schema.Finite,
+  }),
+  timeToRestore: Schema.Struct({ ...MetricValue, restores: Schema.Finite }),
+});
+type Summary = typeof Summary.Type;
+
+const Report = wire<DoraReport>()(
+  Schema.Struct({
+    from: Schema.String,
+    to: Schema.String,
+    bucket: Schema.String,
+    filter: Schema.NullOr(
+      Schema.Struct({ dimension: Schema.String, value: Schema.NullOr(Schema.String) }),
+    ),
+    groupBy: Schema.String,
+    summary: Summary,
+    previous: Summary,
+    trend: Schema.Array(
+      Schema.Struct({
+        deploys: Schema.Finite,
+        leadTimeMedianHours: Schema.NullOr(Schema.Finite),
+        changeFailureRate: Schema.NullOr(Schema.Finite),
+        restoreMedianHours: Schema.NullOr(Schema.Finite),
+      }),
+    ),
+    breakdown: Schema.Array(
+      Schema.Struct({ key: Schema.NullOr(Schema.String), label: Schema.String, summary: Summary }),
+    ),
+    dimensions: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
+    eventCount: Schema.Finite,
+    scopeValues: Schema.Record(
+      Schema.String,
+      Schema.Array(Schema.Struct({ key: Schema.String, label: Schema.String })),
+    ),
+  }),
+);
+type Report = typeof Report.Type;
+
+const Change = Schema.Struct({
+  at: Schema.String,
+  name: Schema.String,
+  isRollback: Schema.Boolean,
+  environment: Schema.NullOr(Schema.String),
+  commitSha: Schema.NullOr(Schema.String),
+  leadTimeHours: Schema.NullOr(Schema.Finite),
+  pluginId: Schema.NullOr(Schema.String),
+  source: Schema.String,
+  failure: Schema.NullOr(
+    Schema.Struct({
+      kind: knownOr(["incident", "rollback", "failed_deploy", "reverted"]),
+      title: Schema.String,
+    }),
+  ),
+});
+type Change = typeof Change.Type;
+
+const Changes = wire<DoraChangesResponse>()(
+  Schema.Struct({ changes: Schema.Array(Change), truncated: Schema.Boolean }),
+);
+
+const Restores = wire<DoraRestoresResponse>()(
+  Schema.Struct({
+    restores: Schema.Array(
+      Schema.Struct({
+        restoredAt: Schema.String,
+        kind: Schema.String,
+        title: Schema.String,
+        hours: Schema.Finite,
+      }),
+    ),
+  }),
+);
+
+const Settings = wire<DoraSettingsView>()(
+  Schema.Struct({
+    productionEnvironments: Schema.Array(Schema.String),
+    pipelinePatterns: Schema.Array(Schema.String),
+    failureWindowHours: Schema.Finite,
+    countFailedDeploys: Schema.Boolean,
+    includeResourceChanges: Schema.Boolean,
+    digestEnabled: Schema.Boolean,
+  }),
+);
+
 function arrow(core: Core, metric: DoraMetric, cur: number | null, prev: number | null): string {
   const dir = core.doraTrendDirection(metric, cur, prev);
   if (dir === "better") return c.green("▲ better");
@@ -83,10 +215,10 @@ function arrow(core: Core, metric: DoraMetric, cur: number | null, prev: number 
   return "";
 }
 
-function metricRows(core: Core, report: DoraReport) {
+function metricRows(core: Core, report: Report) {
   const s = report.summary;
   const p = report.previous;
-  const trend = (pick: (b: DoraReport["trend"][number]) => number | null) => {
+  const trend = (pick: (b: Report["trend"][number]) => number | null) => {
     const values = report.trend.map((b) => pick(b) ?? 0);
     return values.length > 1 ? sparkline(values, Math.min(values.length, 40)) : "";
   };
@@ -146,21 +278,20 @@ function metricRows(core: Core, report: DoraReport) {
   ];
 }
 
-function scopeLabel(report: DoraReport): string {
-  if (!report.filter) return "all production";
-  const dim =
-    report.dimensions.find((d) => d.id === report.filter!.dimension)?.label ??
-    report.filter.dimension;
-  if (report.filter.value === null) return `${dim.toLowerCase()} not known`;
-  const v = report.scopeValues[report.filter.dimension]?.find(
-    (x) => x.key === report.filter!.value,
-  );
-  return `${dim.toLowerCase()} ${v?.label ?? report.filter.value}`;
+function scopeLabel(report: Report): string {
+  const filter = report.filter;
+  if (!filter) return "all production";
+  const dim = report.dimensions.find((d) => d.id === filter.dimension)?.label ?? filter.dimension;
+  if (filter.value === null) return `${dim.toLowerCase()} not known`;
+  const v = report.scopeValues[filter.dimension]?.find((x) => x.key === filter.value);
+  return `${dim.toLowerCase()} ${v?.label ?? filter.value}`;
 }
 
-function failureCell(change: DoraChange): string {
+function failureCell(change: Change): string {
   const f = change.failure;
   if (!f) return "";
+  // A failure kind a newer server added prints under its own name.
+  if (f.kind instanceof Unrecognized) return c.red(safe(f.kind.raw));
   switch (f.kind) {
     case "incident":
       return c.red(`incident: ${safe(f.title)}`);
@@ -173,184 +304,7 @@ function failureCell(change: DoraChange): string {
   }
 }
 
-export async function cmdDora(
-  ctx: CliContext,
-  sub: string | undefined,
-  range: RangeFlags,
-  flags: DoraFlags,
-): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Delivery metrics live in Infrawrench Cloud, beside the deploys and incidents. Drop --local.",
-    );
-  }
-  const core: Core = await import("@infrawrench/client-core");
-  const org = await resolveOrg(ctx);
-  const window = doraWindow(range);
-  const query: DoraQuery = { ...window, ...parseDoraScope(flags.scope) };
-
-  if (sub === "settings") {
-    const settings = await orgFetch<DoraSettingsView>(org.id, "/dora/settings");
-    if (ctx.flags.output === "json") return printJson({ org: org.id, settings });
-    println(c.bold("Delivery settings"));
-    println(`production environments  ${safe(settings.productionEnvironments.join(", "))}`);
-    println(
-      `deploy pipelines         ${settings.pipelinePatterns.length > 0 ? safe(settings.pipelinePatterns.join(", ")) : c.dim("none")}`,
-    );
-    println(`failure window           ${settings.failureWindowHours}h`);
-    println(`failed deploys count     ${settings.countFailedDeploys ? "yes" : "no"}`);
-    println(`resource changes count   ${settings.includeResourceChanges ? "yes" : "no"}`);
-    println(`weekly digest line       ${settings.digestEnabled ? "on" : "off"}`);
-    println();
-    println(
-      c.dim(
-        "Edit them on the Delivery tab (Settings), or with the infrawrench_dora_settings Terraform resource.",
-      ),
-    );
-    return;
-  }
-
-  if (sub === "changes") {
-    const res = await orgFetch<DoraChangesResponse>(
-      org.id,
-      `/dora/changes?${core.doraQueryString({ ...query, failedOnly: flags.failed })}`,
-    );
-    if (ctx.flags.output === "json") return printJson({ org: org.id, ...window, ...res });
-    if (res.changes.length === 0) {
-      println(
-        c.dim(
-          flags.failed
-            ? "No failed production changes in the range."
-            : "No production changes in the range.",
-        ),
-      );
-      return;
-    }
-    const columns: Column<DoraChange>[] = [
-      { header: "when", value: (x) => c.dim(formatChangeTime(x.at)) },
-      {
-        header: "change",
-        value: (x) => `${safe(x.name)}${x.isRollback ? c.yellow(" (rollback)") : ""}`,
-      },
-      { header: "env", value: (x) => safe(x.environment ?? "-") },
-      { header: "commit", value: (x) => c.dim(x.commitSha ? x.commitSha.slice(0, 7) : "-") },
-      { header: "lead time", value: (x) => core.formatDoraHours(x.leadTimeHours), align: "right" },
-      { header: "source", value: (x) => c.dim(x.pluginId ?? x.source) },
-      { header: "failure", value: failureCell },
-    ];
-    printTable(res.changes, columns);
-    if (res.truncated)
-      println(
-        c.dim(`Showing the newest ${res.changes.length}. Narrow --last or --scope for the rest.`),
-      );
-    return;
-  }
-
-  if (sub === "restores") {
-    const res = await orgFetch<DoraRestoresResponse>(
-      org.id,
-      `/dora/restores?${core.doraQueryString(query)}`,
-    );
-    if (ctx.flags.output === "json") return printJson({ org: org.id, ...window, ...res });
-    if (res.restores.length === 0) {
-      println(c.dim("No incidents resolved or deploys rolled back in the range."));
-      return;
-    }
-    printTable(res.restores, [
-      { header: "restored", value: (r) => c.dim(formatChangeTime(r.restoredAt)) },
-      { header: "kind", value: (r) => (r.kind === "incident" ? "incident" : c.yellow("rollback")) },
-      { header: "what", value: (r) => safe(r.title) },
-      { header: "took", value: (r) => core.formatDoraHours(r.hours), align: "right" },
-    ]);
-    return;
-  }
-
-  if (sub !== undefined) {
-    throw new CliError(
-      `Unknown "dora ${sub}". Use: dora, dora changes [--failed], dora restores, dora settings.`,
-      2,
-    );
-  }
-
-  const report = await orgFetch<DoraReport>(
-    org.id,
-    `/dora?${core.doraQueryString({ ...query, ...(range.groupBy ? { groupBy: range.groupBy } : {}) })}`,
-  );
-  if (ctx.flags.output === "json") return printJson({ org: org.id, ...report });
-
-  const days = Math.round((Date.parse(report.to) - Date.parse(report.from)) / DAY_MS);
-  println(
-    `${c.bold(safe(org.displayName))} ${c.dim(`· delivery · last ${days} days · ${safe(scopeLabel(report))}`)}`,
-  );
-  println();
-  if (report.eventCount === 0 && report.summary.changeFailureRate.changes === 0) {
-    println(
-      c.dim(
-        "No deploys in the range. Metrics come from Infrawrench deploys, synced provider deploys,",
-      ),
-    );
-    println(
-      c.dim("CI pipelines named in the settings, GitHub deployments and POST /dora/deployments."),
-    );
-    return;
-  }
-  printTable(metricRows(core, report), [
-    { header: "metric", value: (r) => r.name },
-    { header: "value", value: (r) => c.bold(r.value), align: "right" },
-    { header: "band", value: (r) => bandCell(r.band) },
-    { header: "previous", value: (r) => c.dim(r.prev), align: "right" },
-    { header: "", value: (r) => r.delta },
-    { header: `trend (per ${report.bucket})`, value: (r) => c.cyan(r.spark) },
-    { header: "", value: (r) => c.dim(r.detail) },
-  ]);
-
-  if (report.breakdown.length > 0) {
-    const dim = report.dimensions.find((d) => d.id === report.groupBy)?.label ?? report.groupBy;
-    println();
-    println(c.bold(`by ${dim.toLowerCase()}`));
-    printTable(report.breakdown, [
-      {
-        header: dim.toLowerCase(),
-        value: (r) => (r.key === null ? c.dim("not known") : safe(r.label)),
-      },
-      {
-        header: "deploys",
-        value: (r) => String(r.summary.deploymentFrequency.deploys),
-        align: "right",
-      },
-      {
-        header: "frequency",
-        value: (r) => core.formatDeployFrequency(r.summary.deploymentFrequency.value),
-        align: "right",
-      },
-      {
-        header: "lead time",
-        value: (r) => core.formatDoraHours(r.summary.leadTime.value),
-        align: "right",
-      },
-      {
-        header: "failure",
-        value: (r) => core.formatDoraRate(r.summary.changeFailureRate.value),
-        align: "right",
-      },
-      {
-        header: "restore",
-        value: (r) => core.formatDoraHours(r.summary.timeToRestore.value),
-        align: "right",
-      },
-      { header: "", value: (r) => bandSummary(r.summary) },
-    ]);
-  }
-  println();
-  println(c.dim("`dora changes [--failed]` and `dora restores` list what is behind the numbers."));
-  println(
-    c.dim(
-      `Scope with --scope <${report.dimensions.map((d) => d.id).join("|")}>=<value>; group with --group-by.`,
-    ),
-  );
-}
-
-function bandSummary(s: DoraSummary): string {
+function bandSummary(s: Summary): string {
   return [
     s.deploymentFrequency.band,
     s.leadTime.band,
@@ -360,3 +314,240 @@ function bandSummary(s: DoraSummary): string {
     .map((b) => bandCell(b))
     .join(c.dim(" "));
 }
+
+/** The window and scope flags every view reads. */
+const windowFlags = {
+  last: lastDays,
+  days,
+  from,
+  to,
+  scope: Flag.String("scope").pipe(
+    Flag.withMetavar("dimension[=value]"),
+    Flag.withDescription("Only this scope value (no value: where it is not known)"),
+    Flag.optional,
+  ),
+};
+
+/** Cloud only, client-core loaded, the org resolved, and the query the flags ask for. */
+const prepare = Effect.fnUntraced(function* (
+  input: DoraWindowInput & { readonly scope: Option.Option<string> },
+) {
+  const session = yield* CliSession;
+  if (session.local) {
+    return yield* new CliFailure({
+      message:
+        "Delivery metrics live in Infrawrench Cloud, beside the deploys and incidents. Drop --local.",
+    });
+  }
+  const core: Core = yield* Effect.promise(() => import("@infrawrench/client-core"));
+  const org = yield* currentOrg;
+  const window = yield* doraWindow(input);
+  const query: DoraQuery = {
+    ...window,
+    ...(yield* parseDoraScope(Option.getOrUndefined(input.scope))),
+  };
+  return { core, org, window, query };
+});
+
+const settings = Command.make(
+  "settings",
+  windowFlags,
+  Effect.fn("dora.settings")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const { org } = yield* prepare(input);
+    const path = "/dora/settings";
+    const body = yield* api.json(org.id, path);
+    if (session.output === "json") return yield* Print.json({ org: org.id, settings: body });
+    const s = yield* decodeBody(Settings, path)(body);
+    yield* Print.line(c.bold("Delivery settings"));
+    yield* Print.line(`production environments  ${safe(s.productionEnvironments.join(", "))}`);
+    yield* Print.line(
+      `deploy pipelines         ${s.pipelinePatterns.length > 0 ? safe(s.pipelinePatterns.join(", ")) : c.dim("none")}`,
+    );
+    yield* Print.line(`failure window           ${s.failureWindowHours}h`);
+    yield* Print.line(`failed deploys count     ${s.countFailedDeploys ? "yes" : "no"}`);
+    yield* Print.line(`resource changes count   ${s.includeResourceChanges ? "yes" : "no"}`);
+    yield* Print.line(`weekly digest line       ${s.digestEnabled ? "on" : "off"}`);
+    yield* Print.line();
+    yield* Print.line(
+      c.dim(
+        "Edit them on the Delivery tab (Settings), or with the infrawrench_dora_settings Terraform resource.",
+      ),
+    );
+  }),
+).pipe(Command.withDescription("What counts as production, a deploy and a failure"));
+
+const changes = Command.make(
+  "changes",
+  {
+    ...windowFlags,
+    failed: Flag.Boolean("failed").pipe(
+      Flag.withDescription("Only the changes that failed"),
+      Flag.withDefault(false),
+      Flag.withoutNegation,
+    ),
+  },
+  Effect.fn("dora.changes")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const { core, org, window, query } = yield* prepare(input);
+    const path = `/dora/changes?${core.doraQueryString({ ...query, failedOnly: input.failed })}`;
+    const body = yield* api.json(org.id, path);
+    if (session.output === "json") {
+      return yield* Print.json(yield* spreadBody({ org: org.id, ...window }, body, path));
+    }
+    const res = yield* decodeBody(Changes, path)(body);
+    if (res.changes.length === 0) {
+      return yield* Print.line(
+        c.dim(
+          input.failed
+            ? "No failed production changes in the range."
+            : "No production changes in the range.",
+        ),
+      );
+    }
+    const columns: Column<Change>[] = [
+      { header: "when", value: (x) => c.dim(formatChangeTime(x.at)) },
+      {
+        header: "change",
+        value: (x) => `${safe(x.name)}${x.isRollback ? c.yellow(" (rollback)") : ""}`,
+      },
+      { header: "env", value: (x) => safe(x.environment ?? "-") },
+      { header: "commit", value: (x) => c.dim(x.commitSha ? safe(x.commitSha.slice(0, 7)) : "-") },
+      { header: "lead time", value: (x) => core.formatDoraHours(x.leadTimeHours), align: "right" },
+      { header: "source", value: (x) => c.dim(safe(x.pluginId ?? x.source)) },
+      { header: "failure", value: failureCell },
+    ];
+    yield* Print.table(res.changes, columns);
+    if (res.truncated) {
+      yield* Print.line(
+        c.dim(`Showing the newest ${res.changes.length}. Narrow --last or --scope for the rest.`),
+      );
+    }
+  }),
+).pipe(Command.withDescription("The production changes behind the numbers (--failed: failures)"));
+
+const restores = Command.make(
+  "restores",
+  windowFlags,
+  Effect.fn("dora.restores")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const { core, org, window, query } = yield* prepare(input);
+    const path = `/dora/restores?${core.doraQueryString(query)}`;
+    const body = yield* api.json(org.id, path);
+    if (session.output === "json") {
+      return yield* Print.json(yield* spreadBody({ org: org.id, ...window }, body, path));
+    }
+    const res = yield* decodeBody(Restores, path)(body);
+    if (res.restores.length === 0) {
+      return yield* Print.line(c.dim("No incidents resolved or deploys rolled back in the range."));
+    }
+    yield* Print.table(res.restores, [
+      { header: "restored", value: (r) => c.dim(formatChangeTime(r.restoredAt)) },
+      { header: "kind", value: (r) => (r.kind === "incident" ? "incident" : c.yellow("rollback")) },
+      { header: "what", value: (r) => safe(r.title) },
+      { header: "took", value: (r) => core.formatDoraHours(r.hours), align: "right" },
+    ]);
+  }),
+).pipe(Command.withDescription("Incidents resolved and deploys rolled back: time to restore"));
+
+export const dora = Command.make(
+  "dora",
+  {
+    ...windowFlags,
+    groupBy: groupBy.pipe(Flag.withDescription("Break the metrics down by a scope dimension")),
+  },
+  Effect.fn("dora")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const { core, org, query } = yield* prepare(input);
+    const group = Option.getOrUndefined(input.groupBy);
+    const path = `/dora?${core.doraQueryString({ ...query, ...(group ? { groupBy: group } : {}) })}`;
+    const body = yield* api.json(org.id, path);
+    if (session.output === "json") {
+      return yield* Print.json(yield* spreadBody({ org: org.id }, body, path));
+    }
+    const report = yield* decodeBody(Report, path)(body);
+
+    const span = Math.round((Date.parse(report.to) - Date.parse(report.from)) / DAY_MS);
+    yield* Print.line(
+      `${c.bold(safe(org.displayName))} ${c.dim(`· delivery · last ${span} days · ${safe(scopeLabel(report))}`)}`,
+    );
+    yield* Print.line();
+    if (report.eventCount === 0 && report.summary.changeFailureRate.changes === 0) {
+      yield* Print.line(
+        c.dim(
+          "No deploys in the range. Metrics come from Infrawrench deploys, synced provider deploys,",
+        ),
+      );
+      return yield* Print.line(
+        c.dim("CI pipelines named in the settings, GitHub deployments and POST /dora/deployments."),
+      );
+    }
+    yield* Print.table(metricRows(core, report), [
+      { header: "metric", value: (r) => r.name },
+      { header: "value", value: (r) => c.bold(r.value), align: "right" },
+      { header: "band", value: (r) => bandCell(r.band) },
+      { header: "previous", value: (r) => c.dim(r.prev), align: "right" },
+      { header: "", value: (r) => r.delta },
+      { header: `trend (per ${safe(report.bucket)})`, value: (r) => c.cyan(r.spark) },
+      { header: "", value: (r) => c.dim(r.detail) },
+    ]);
+
+    if (report.breakdown.length > 0) {
+      const dim = safe(
+        report.dimensions.find((d) => d.id === report.groupBy)?.label ?? report.groupBy,
+      );
+      yield* Print.line();
+      yield* Print.line(c.bold(`by ${dim.toLowerCase()}`));
+      yield* Print.table(report.breakdown, [
+        {
+          header: dim.toLowerCase(),
+          value: (r) => (r.key === null ? c.dim("not known") : safe(r.label)),
+        },
+        {
+          header: "deploys",
+          value: (r) => String(r.summary.deploymentFrequency.deploys),
+          align: "right",
+        },
+        {
+          header: "frequency",
+          value: (r) => core.formatDeployFrequency(r.summary.deploymentFrequency.value),
+          align: "right",
+        },
+        {
+          header: "lead time",
+          value: (r) => core.formatDoraHours(r.summary.leadTime.value),
+          align: "right",
+        },
+        {
+          header: "failure",
+          value: (r) => core.formatDoraRate(r.summary.changeFailureRate.value),
+          align: "right",
+        },
+        {
+          header: "restore",
+          value: (r) => core.formatDoraHours(r.summary.timeToRestore.value),
+          align: "right",
+        },
+        { header: "", value: (r) => bandSummary(r.summary) },
+      ]);
+    }
+    yield* Print.line();
+    yield* Print.line(
+      c.dim("`dora changes [--failed]` and `dora restores` list what is behind the numbers."),
+    );
+    yield* Print.line(
+      c.dim(
+        `Scope with --scope <${report.dimensions.map((d) => safe(d.id)).join("|")}>=<value>; group with --group-by.`,
+      ),
+    );
+  }),
+).pipe(
+  Command.withDescription(
+    "DORA metrics for production: deploy frequency, lead time, change failure rate, time to restore",
+  ),
+  Command.withSubcommands([changes, restores, settings]),
+);

@@ -5,7 +5,7 @@ import { useSettingsHost } from "./host.js";
 
 /**
  * Largest quantity one purchase accepts. Mirrors `MAX_SLOTS_PER_PURCHASE` in
- * `web/src/api/routes/billing.ts`, which is the enforcing copy: this one only
+ * `web/src/http/domains/billing/operations.ts`, which is the enforcing copy: this one only
  * keeps the input from offering a quantity the server would reject.
  */
 const MAX_SLOTS_PER_PURCHASE = 25;

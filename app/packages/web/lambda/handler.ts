@@ -1,6 +1,6 @@
 /**
- * The web app's Lambda gateway: the Hono API on AWS Lambda, behind the edge
- * Worker, for the Node work that finishes within a request.
+ * The web app's Lambda gateway: the API (`src/api`) on AWS Lambda, behind the
+ * edge Worker, for the Node work that finishes within a request.
  *
  * Three tiers serve `app.infrawrench.com` (KNOWLEDGE.md, "Edge/gateway split"):
  *

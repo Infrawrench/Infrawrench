@@ -7,7 +7,7 @@
  * up with ten admins and no record of why.
  *
  * Server contract: `/api/org/:orgId/access-requests` (web
- * `api/routes/access-requests.ts`). Asking takes `access:request`, seeing the
+ * `http/domains/access-requests/`). Asking takes `access:request`, seeing the
  * queue `access:read`, deciding `access:approve`.
  */
 import { CloudApiError, type CloudFetch } from "./fetch";

@@ -1,9 +1,14 @@
+/**
+ * The cloud dashboard wrappers over the cloud transport (`CloudHttp`): the
+ * method, URL and body each one sends, and what it hands back.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn();
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
+vi.mock("../rpc/desktop-client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
-import {
+const { answerCloudHttp, resetFakeRpc } = await import("./fake-rpc");
+const {
   clearMyCloudDefaultDashboard,
   createCloudDashboardDefaultClient,
   getCloudDefaultDashboard,
@@ -19,128 +24,158 @@ import {
   reorderCloudCards,
   unpinCloudResource,
   validateCloudWorkspaceTabs,
-} from "../cloud-dashboards";
+} = await import("../cloud-dashboards");
+
+const ORG = "/api/org/org1";
 
 beforeEach(() => {
-  invoke.mockReset();
-  invoke.mockResolvedValue(undefined);
+  resetFakeRpc();
 });
+
+/** Every request the transport received, bodies parsed. */
+function requests(http: ReturnType<typeof answerCloudHttp>) {
+  return http.mock.calls.map(([request]) => ({
+    method: request.method,
+    url: request.url,
+    ...(request.body === undefined ? {} : { body: JSON.parse(request.body) }),
+  }));
+}
 
 describe("cloud-dashboards wrappers", () => {
   it("listCloudDashboards", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: [] }));
     await listCloudDashboards("org1");
-    expect(invoke).toHaveBeenCalledWith("cloud_list_dashboards", { orgId: "org1" });
+    expect(requests(http)).toEqual([{ method: "GET", url: `${ORG}/dashboards` }]);
   });
 
   it("getCloudDashboard", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: {} }));
     await getCloudDashboard("org1", "d1");
-    expect(invoke).toHaveBeenCalledWith("cloud_get_dashboard", {
-      orgId: "org1",
-      dashboardId: "d1",
-    });
+    expect(requests(http)).toEqual([{ method: "GET", url: `${ORG}/dashboards/d1` }]);
   });
 
   it("createCloudDashboard", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { id: "d1", name: "Home" } }));
     await createCloudDashboard("org1", "Home");
-    expect(invoke).toHaveBeenCalledWith("cloud_create_dashboard", { orgId: "org1", name: "Home" });
+    expect(requests(http)).toEqual([
+      { method: "POST", url: `${ORG}/dashboards`, body: { name: "Home" } },
+    ]);
   });
 
   it("deleteCloudDashboard", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
     await deleteCloudDashboard("org1", "d1");
-    expect(invoke).toHaveBeenCalledWith("cloud_delete_dashboard", { orgId: "org1", id: "d1" });
+    expect(requests(http)).toEqual([{ method: "DELETE", url: `${ORG}/dashboards/d1` }]);
   });
 
   it("default dashboard wrappers", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: {} }));
     await getCloudDefaultDashboard("org1");
-    expect(invoke).toHaveBeenCalledWith("cloud_get_default_dashboard", { orgId: "org1" });
     await setMyCloudDefaultDashboard("org1", "d1");
-    expect(invoke).toHaveBeenCalledWith("cloud_set_my_default_dashboard", {
-      orgId: "org1",
-      dashboardId: "d1",
-    });
     await clearMyCloudDefaultDashboard("org1");
-    expect(invoke).toHaveBeenCalledWith("cloud_clear_my_default_dashboard", { orgId: "org1" });
+    expect(requests(http)).toEqual([
+      { method: "GET", url: `${ORG}/dashboards/default` },
+      { method: "PUT", url: `${ORG}/dashboards/default/me`, body: { dashboardId: "d1" } },
+      { method: "DELETE", url: `${ORG}/dashboards/default/me` },
+    ]);
   });
 
-  it("createCloudDashboardDefaultClient routes through the same channels", async () => {
+  it("createCloudDashboardDefaultClient routes through the same calls", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: {} }));
     const client = createCloudDashboardDefaultClient("org1");
     await client.setMine("d2");
-    expect(invoke).toHaveBeenCalledWith("cloud_set_my_default_dashboard", {
-      orgId: "org1",
-      dashboardId: "d2",
-    });
+    expect(requests(http)).toEqual([
+      { method: "PUT", url: `${ORG}/dashboards/default/me`, body: { dashboardId: "d2" } },
+    ]);
   });
 
   it("renameCloudDashboard", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
     await renameCloudDashboard("org1", "d1", "New");
-    expect(invoke).toHaveBeenCalledWith("cloud_rename_dashboard", {
-      orgId: "org1",
-      id: "d1",
-      name: "New",
-    });
+    expect(requests(http)).toEqual([
+      { method: "POST", url: `${ORG}/dashboards/d1/rename`, body: { name: "New" } },
+    ]);
   });
 
   it("pinCloudResource", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
     await pinCloudResource("org1", "d1", "r1");
-    expect(invoke).toHaveBeenCalledWith("cloud_pin_resource", {
-      orgId: "org1",
-      dashboardId: "d1",
-      resourceId: "r1",
-    });
+    expect(requests(http)).toEqual([
+      {
+        method: "POST",
+        url: `${ORG}/dashboards/pin`,
+        body: { dashboardId: "d1", resourceId: "r1" },
+      },
+    ]);
   });
 
   it("unpinCloudResource", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
     await unpinCloudResource("org1", "d1", "r1");
-    expect(invoke).toHaveBeenCalledWith("cloud_unpin_resource", {
-      orgId: "org1",
-      dashboardId: "d1",
-      resourceId: "r1",
-    });
+    expect(requests(http)).toEqual([
+      {
+        method: "POST",
+        url: `${ORG}/dashboards/unpin`,
+        body: { dashboardId: "d1", resourceId: "r1" },
+      },
+    ]);
   });
 
   it("reorderCloudCards sends the whole mixed grid", async () => {
-    await reorderCloudCards("org1", "d1", [
-      { kind: "resource", id: "a" },
-      { kind: "widget", id: "w1" },
-      { kind: "resource", id: "b" },
+    const http = answerCloudHttp(() => ({ status: 200, json: { ok: true } }));
+    const cards = [
+      { kind: "resource" as const, id: "a" },
+      { kind: "widget" as const, id: "w1" },
+      { kind: "resource" as const, id: "b" },
+    ];
+    await reorderCloudCards("org1", "d1", cards);
+    expect(requests(http)).toEqual([
+      { method: "POST", url: `${ORG}/dashboards/d1/reorder`, body: { cards } },
     ]);
-    expect(invoke).toHaveBeenCalledWith("cloud_reorder_pins", {
-      orgId: "org1",
-      dashboardId: "d1",
-      cards: [
-        { kind: "resource", id: "a" },
-        { kind: "widget", id: "w1" },
-        { kind: "resource", id: "b" },
-      ],
-    });
   });
 
   it("probeCloudPins", async () => {
-    invoke.mockResolvedValue({ r1: "ok" });
+    const http = answerCloudHttp(() => ({ status: 200, json: { r1: "ok" } }));
     const items = [{ resourceId: "r1", accountId: "a", pluginId: "p", resourceTypeId: "t" }];
     const res = await probeCloudPins("org1", items);
-    expect(invoke).toHaveBeenCalledWith("cloud_probe_pins", { orgId: "org1", items });
+    expect(requests(http)).toEqual([
+      { method: "POST", url: `${ORG}/dashboards/probe`, body: { items } },
+    ]);
     expect(res).toEqual({ r1: "ok" });
   });
 
   it("validateCloudWorkspaceTabs returns the ids the org still has", async () => {
-    invoke.mockResolvedValue({ validTabIds: ["dashboard:d1"] });
+    const http = answerCloudHttp(() => ({ status: 200, json: { validTabIds: ["dashboard:d1"] } }));
     const tabs = [
       { id: "dashboard:d1", target: { kind: "dashboard" as const, dashboardId: "d1" } },
       { id: "dashboard:d2", target: { kind: "dashboard" as const, dashboardId: "d2" } },
     ];
     const res = await validateCloudWorkspaceTabs("org1", tabs);
-    expect(invoke).toHaveBeenCalledWith("cloud_validate_tabs", { orgId: "org1", tabs });
+    expect(requests(http)).toEqual([
+      { method: "POST", url: `${ORG}/dashboards/validate-tabs`, body: { tabs } },
+    ]);
     expect(res).toEqual(["dashboard:d1"]);
   });
 
-  it("validateCloudWorkspaceTabs tolerates a missing payload", async () => {
-    invoke.mockResolvedValue(undefined);
-    expect(await validateCloudWorkspaceTabs("org1", [])).toEqual([]);
+  it("validateCloudWorkspaceTabs fails an empty answer, which the endpoint never declares", async () => {
+    // The root route keeps every tab when validation fails, rather than
+    // reading an empty body as "none of them exist".
+    answerCloudHttp(() => ({ status: 204 }));
+    await expect(validateCloudWorkspaceTabs("org1", [])).rejects.toThrow(
+      "Infrawrench Cloud answered /dashboards/validate-tabs with an empty body",
+    );
   });
 
   it("getCloudEnrichedPin", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: {} }));
     await getCloudEnrichedPin("org1", "pin1");
-    expect(invoke).toHaveBeenCalledWith("cloud_get_pin", { orgId: "org1", pinId: "pin1" });
+    expect(requests(http)).toEqual([{ method: "GET", url: `${ORG}/dashboards/pin/pin1` }]);
+  });
+
+  it("shows the server's failure in the words the handlers used", async () => {
+    answerCloudHttp(() => ({ status: 404, json: { error: "Dashboard not found" } }));
+    await expect(getCloudDashboard("org1", "d1")).rejects.toThrow(
+      'Cloud request failed: 404 /dashboards/d1 {"error":"Dashboard not found"}',
+    );
   });
 });

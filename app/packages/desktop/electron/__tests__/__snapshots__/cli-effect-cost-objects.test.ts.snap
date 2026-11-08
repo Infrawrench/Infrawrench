@@ -1,0 +1,2556 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`budgets > annotates a firing > 0 $ infrawrench budgets annotate Platform --note   load test   1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+    "POST /budgets/b1/events/ev1abcdef/note {"note":"load test"}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Platform · actual 80% on 2026-11-04
+  Quarterly load test (Ada, 2026-11-04)
+  Posted under the alert in 1 Slack thread(s) and 2 Teams webhook(s), and drawn on the cost charts.
+",
+}
+`;
+
+exports[`budgets > annotates a firing > 0 $ infrawrench budgets annotate Platform --note why --event ev2 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+    "POST /budgets/b1/events/ev2/note {"note":"why"}",
+  ],
+  "stderr": "",
+  "stdout": "✓ Platform · forecast 100% on 2026-11-04
+  Quarterly load test (2026-11-04)
+  Drawn on the cost charts. The alert reached no Slack or Teams destination to follow up in.
+",
+}
+`;
+
+exports[`budgets > annotates a firing > 0 $ infrawrench budgets annotate b1 --note why --event ev2 --json 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+    "POST /budgets/b1/events/ev2/note {"note":"why"}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "budget": {
+    "id": "b1",
+    "name": "Platform"
+  },
+  "event": {
+    "id": "ev2",
+    "month": "2026-11",
+    "thresholdType": "forecast",
+    "thresholdPercent": 100,
+    "actualAmountCents": 800000,
+    "forecastAmountCents": 1100000,
+    "triggeredAt": "2026-11-04T08:00:00.000Z",
+    "note": {
+      "text": "Quarterly load test",
+      "notedAt": "2026-11-04T10:00:00.000Z",
+      "notedByUserId": "u1",
+      "notedByName": null,
+      "annotationId": null
+    },
+    "followUp": {
+      "slack": 0,
+      "msTeams": 0
+    }
+  }
+}
+",
+}
+`;
+
+exports[`budgets > annotates a firing > 1 $ infrawrench budgets annotate API --note why 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b2/events",
+  ],
+  "stderr": ""API" has not fired any alerts yet, so there is nothing to explain.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > annotates a firing > 1 $ infrawrench budgets annotate Platform --note why --event zz 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+  ],
+  "stderr": "No firing "zz" on "Platform". Run \`infrawrench budgets "Platform"\` for event ids.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > annotates a firing > 1 $ infrawrench budgets annotate Platform --note why --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Budgets live in Infrawrench Cloud; there is no local budget store.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > annotates a firing > 2 $ infrawrench budgets annotate --note why 1`] = `
+{
+  "requests": [],
+  "stderr": "Which budget? \`infrawrench budgets annotate <name|id> --note "<why it fired>"\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > annotates a firing > 2 $ infrawrench budgets annotate Platform --note     1`] = `
+{
+  "requests": [],
+  "stderr": "Add the note: \`--note "<why it fired>"\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > annotates a firing > 2 $ infrawrench budgets annotate Platform 1`] = `
+{
+  "requests": [],
+  "stderr": "Add the note: \`--note "<why it fired>"\`.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets --json 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "budgets": [
+    {
+      "id": "b1",
+      "name": "Platform",
+      "amountCents": 1000000,
+      "currency": "USD",
+      "filters": [],
+      "thresholds": [],
+      "month": "2026-11",
+      "actualCents": 820000,
+      "forecastCents": 1150000,
+      "forecastLowCents": 1050000,
+      "forecastHighCents": 1250000,
+      "currentMonthEvents": [
+        {
+          "id": "ev1",
+          "thresholdType": "actual",
+          "thresholdPercent": 80,
+          "triggeredAt": "x",
+          "note": {
+            "text": "Quarterly load test",
+            "notedAt": "2026-11-04T10:00:00.000Z",
+            "notedByUserId": "u1",
+            "notedByName": "Ada",
+            "annotationId": null
+          }
+        },
+        {
+          "id": "ev2",
+          "thresholdType": "forecast",
+          "thresholdPercent": 100,
+          "triggeredAt": "x",
+          "note": null
+        }
+      ],
+      "placements": [],
+      "measure": "cost",
+      "parentBudgetId": null,
+      "periodStart": "2026-11-01",
+      "periodEnd": "2026-11-30",
+      "periodLimit": 1000000,
+      "rolledUp": true,
+      "childCount": 1,
+      "hierarchyWarnings": [
+        {
+          "kind": "allocation",
+          "childTotal": 1200000,
+          "parentLimit": 1000000
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "name": "API",
+      "amountCents": 600000,
+      "currency": "USD",
+      "filters": [],
+      "thresholds": [],
+      "month": "2026-11",
+      "actualCents": 300000,
+      "forecastCents": null,
+      "forecastLowCents": null,
+      "forecastHighCents": null,
+      "currentMonthEvents": [],
+      "placements": [],
+      "measure": "cost",
+      "parentBudgetId": "b1",
+      "periodStart": "2026-11-01",
+      "periodEnd": "2026-11-30",
+      "periodLimit": 600000,
+      "rolledUp": false,
+      "childCount": 1,
+      "hierarchyWarnings": []
+    },
+    {
+      "id": "b3",
+      "name": "Tokens",
+      "amountCents": 0,
+      "currency": "USD",
+      "filters": [],
+      "thresholds": [],
+      "month": "2026-11",
+      "actualCents": 0,
+      "forecastCents": null,
+      "forecastLowCents": 1050000,
+      "forecastHighCents": 1250000,
+      "currentMonthEvents": [],
+      "placements": [],
+      "measure": "usage",
+      "parentBudgetId": null,
+      "periodStart": "2026-11-05",
+      "periodEnd": "2026-11-18",
+      "periodLimit": 2000000,
+      "rolledUp": false,
+      "childCount": 1,
+      "usageUnit": "tokens",
+      "actualUsage": 1500000,
+      "forecastUsage": 2100000
+    },
+    {
+      "id": "b4",
+      "name": "Orphan with a long name that goes past the column width limit",
+      "amountCents": 0,
+      "currency": "USD",
+      "filters": [],
+      "thresholds": [],
+      "month": "2026-11",
+      "actualCents": 820000,
+      "forecastCents": 1150000,
+      "forecastLowCents": 1050000,
+      "forecastHighCents": 1250000,
+      "currentMonthEvents": [],
+      "placements": [],
+      "measure": "cost",
+      "parentBudgetId": "gone",
+      "periodStart": null,
+      "periodEnd": "2026-11-30",
+      "rolledUp": false,
+      "childCount": 1,
+      "hierarchyWarnings": [
+        {
+          "kind": "forecast",
+          "childTotal": 2,
+          "parentLimit": 1
+        }
+      ],
+      "scenarioForecastCents": 50000
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+  ],
+  "stderr": "",
+  "stdout": "Acme · budgets
+
+Platform                                  █████████████░░░   82%  $8,200 / $10,000 fc $11,500 ($10,500-$12,500)  2026-11  Σ children alert 1 unexplained
+                                          ⚠ children allocate $12,000, more than $10,000
+  API                                     ████████░░░░░░░░   50%  $3,000 / $6,000  2026-11
+Tokens                                    ████████████░░░░   75%  1.5M tokens / 2M tokens fc 2.1M tokens  2026-11-05 → 2026-11-18  usage
+Orphan with a long name that goes past t  ················        $8,200 fc $500 ($10,500-$12,500)  no active period
+                                          ⚠ children are forecast to reach $0.02, past $0.01
+
+One budget's alert history and notes: \`infrawrench budgets "<name>"\`.
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets 2`] = `
+{
+  "requests": [
+    "GET /budgets",
+  ],
+  "stderr": "",
+  "stdout": "Acme · budgets
+
+No budgets yet. Create one from the Costs panel or a dashboard in the app: a budget limits spend or a usage quantity per period and alerts on actual or forecast crossings.
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets Tokens 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b3/events",
+  ],
+  "stderr": "",
+  "stdout": "Tokens · 2026-11-05 → 2026-11-18  1.5M tokens of 2M tokens  ████████████░░░░ 75%
+
+FIRED       THRESHOLD     USAGE        NOTE  EVENT
+2026-11-04  actual 80%    1.6M tokens  —     u1   
+2026-11-04  forecast 80%  2.1M tokens  —     u2   
+2026-11-04  forecast 80%            —  —     u3   
+
+Explain a firing with \`infrawrench budgets annotate "Tokens" --note "<why>" [--event <id>]\`.
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets api 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b2/events",
+  ],
+  "stderr": "",
+  "stdout": "API · 2026-11  $3,000 of $6,000  ████████░░░░░░░░ 50%
+
+No thresholds have fired for this budget.
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets b1 --json 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "budget": {
+    "id": "b1",
+    "name": "Platform",
+    "amountCents": 1000000,
+    "currency": "USD",
+    "filters": [],
+    "thresholds": [],
+    "month": "2026-11",
+    "actualCents": 820000,
+    "forecastCents": 1150000,
+    "forecastLowCents": 1050000,
+    "forecastHighCents": 1250000,
+    "currentMonthEvents": [
+      {
+        "id": "ev1",
+        "thresholdType": "actual",
+        "thresholdPercent": 80,
+        "triggeredAt": "x",
+        "note": {
+          "text": "Quarterly load test",
+          "notedAt": "2026-11-04T10:00:00.000Z",
+          "notedByUserId": "u1",
+          "notedByName": "Ada",
+          "annotationId": null
+        }
+      },
+      {
+        "id": "ev2",
+        "thresholdType": "forecast",
+        "thresholdPercent": 100,
+        "triggeredAt": "x",
+        "note": null
+      }
+    ],
+    "placements": [],
+    "measure": "cost",
+    "parentBudgetId": null,
+    "periodStart": "2026-11-01",
+    "periodEnd": "2026-11-30",
+    "periodLimit": 1000000,
+    "rolledUp": true,
+    "childCount": 1,
+    "hierarchyWarnings": [
+      {
+        "kind": "allocation",
+        "childTotal": 1200000,
+        "parentLimit": 1000000
+      }
+    ]
+  },
+  "events": [
+    {
+      "id": "ev1abcdef",
+      "month": "2026-11",
+      "thresholdType": "actual",
+      "thresholdPercent": 80,
+      "actualAmountCents": 800000,
+      "forecastAmountCents": null,
+      "triggeredAt": "2026-11-04T08:00:00.000Z",
+      "note": {
+        "text": "Quarterly load test",
+        "notedAt": "2026-11-04T10:00:00.000Z",
+        "notedByUserId": "u1",
+        "notedByName": "Ada",
+        "annotationId": null
+      }
+    },
+    {
+      "id": "ev2",
+      "month": "2026-11",
+      "thresholdType": "forecast",
+      "thresholdPercent": 100,
+      "actualAmountCents": 800000,
+      "forecastAmountCents": 1100000,
+      "triggeredAt": "2026-11-04T08:00:00.000Z",
+      "note": {
+        "text": "Quarterly load test",
+        "notedAt": "2026-11-04T10:00:00.000Z",
+        "notedByUserId": "u1",
+        "notedByName": null,
+        "annotationId": null
+      }
+    },
+    {
+      "id": "ev3",
+      "month": "2026-11",
+      "thresholdType": "forecast",
+      "thresholdPercent": 120,
+      "actualAmountCents": 800000,
+      "forecastAmountCents": null,
+      "triggeredAt": "2026-11-04T08:00:00.000Z",
+      "note": null
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 0 $ infrawrench budgets platform 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+    "GET /budgets/b1/events",
+  ],
+  "stderr": "",
+  "stdout": "Platform · 2026-11  $8,200 of $10,000  █████████████░░░ 82%
+
+FIRED       THRESHOLD      SPEND    NOTE                                   EVENT    
+2026-11-04  actual 80%      $8,000  Quarterly load test (Ada, 2026-11-04)  ev1abcdef
+2026-11-04  forecast 100%  $11,000  Quarterly load test (2026-11-04)       ev2      
+2026-11-04  forecast 120%   $8,000  —                                      ev3      
+
+Explain a firing with \`infrawrench budgets annotate "Platform" --note "<why>" [--event <id>]\`.
+",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 1 $ infrawrench budgets --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Budgets live in Infrawrench Cloud; there is no local budget store.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 1 $ infrawrench budgets nope 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+  ],
+  "stderr": "No budget matches "nope". Run \`infrawrench budgets\` to list them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`budgets > lists the tree and shows one budget like the legacy command > 1 $ infrawrench budgets o 1`] = `
+{
+  "requests": [
+    "GET /budgets",
+  ],
+  "stderr": ""o" matches 3 budgets: Platform, Tokens, Orphan with a long name that goes past the column width limit. Use the full name or the id.
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices customers --json 1`] = `
+{
+  "requests": [
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "customers": [
+    {
+      "id": "ma1",
+      "name": "Northwind",
+      "contactName": null,
+      "contactEmail": null,
+      "billingAddress": null,
+      "billingCurrency": "USD",
+      "costBasis": "amortized",
+      "applyBillingRules": true,
+      "pricing": {},
+      "notes": null,
+      "billingProfileId": "bp1",
+      "costCentreIds": [
+        "cc1",
+        "cc2"
+      ],
+      "accountIds": [
+        "a1"
+      ],
+      "invoiceCount": 3,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ma2",
+      "name": "Contoso",
+      "contactName": null,
+      "contactEmail": null,
+      "billingAddress": null,
+      "billingCurrency": "EUR",
+      "costBasis": "cash",
+      "applyBillingRules": false,
+      "pricing": {},
+      "notes": null,
+      "billingProfileId": null,
+      "costCentreIds": [
+        "cc3"
+      ],
+      "accountIds": [],
+      "invoiceCount": 1,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ma3",
+      "name": "Empty",
+      "contactName": null,
+      "contactEmail": null,
+      "billingAddress": null,
+      "billingCurrency": "USD",
+      "costBasis": "cash",
+      "applyBillingRules": true,
+      "pricing": {},
+      "notes": null,
+      "billingProfileId": null,
+      "costCentreIds": [],
+      "accountIds": [],
+      "invoiceCount": 0,
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices customers 1`] = `
+{
+  "requests": [
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "NAME       CURRENCY  BASIS      RULES         SCOPE                      INVOICES
+Northwind  USD       amortized  applied       2 cost centres, 1 account         3
+Contoso    EUR       cash       pass-through  1 cost centre                     1
+Empty      USD       cash       applied       none                              0
+
+A customer names cost centres; which spend lands in a centre is decided by the org's allocation rules, so an invoice line always matches \`infrawrench showback\` for the same centre and period.
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices customers 2`] = `
+{
+  "requests": [
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "No managed accounts. Add one in the Invoices tab to bill a customer.
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles --json 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "profiles": [
+    {
+      "id": "bp1",
+      "name": "EU customers",
+      "legalName": "Acme Europe BV",
+      "address": "1 Main St\\nAmsterdam",
+      "taxId": "NL123",
+      "poNumber": null,
+      "toEmails": [
+        "billing@acme.example"
+      ],
+      "ccEmails": [],
+      "currency": "EUR",
+      "paymentTermsDays": 0,
+      "numberPrefix": "EU",
+      "numberIncludesYear": true,
+      "numberStart": 100,
+      "taxRates": [
+        {
+          "name": "VAT",
+          "rate": 21
+        }
+      ],
+      "bank": {
+        "accountName": "Acme Europe",
+        "bankName": "ING",
+        "iban": "NL91 ABNA 0417 1643 00",
+        "bic": "INGBNL2A",
+        "accountNumber": null,
+        "routingNumber": null,
+        "instructions": null
+      },
+      "footer": "Thank you",
+      "logo": "logo-id",
+      "managedAccountIds": [
+        "ma1",
+        "ma-gone"
+      ],
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "bp2",
+      "name": "EU partners",
+      "legalName": null,
+      "address": null,
+      "taxId": null,
+      "poNumber": null,
+      "toEmails": [],
+      "ccEmails": [],
+      "currency": null,
+      "paymentTermsDays": null,
+      "numberPrefix": "EU",
+      "numberIncludesYear": false,
+      "numberStart": 100,
+      "taxRates": [],
+      "bank": null,
+      "footer": null,
+      "logo": null,
+      "managedAccountIds": [],
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "bp3",
+      "name": "US",
+      "legalName": "Acme Europe BV",
+      "address": "1 Main St\\nAmsterdam",
+      "taxId": "NL123",
+      "poNumber": null,
+      "toEmails": [
+        "billing@acme.example"
+      ],
+      "ccEmails": [],
+      "currency": "EUR",
+      "paymentTermsDays": 30,
+      "numberPrefix": "EU",
+      "numberIncludesYear": true,
+      "numberStart": 100,
+      "taxRates": [
+        {
+          "name": "VAT",
+          "rate": 21
+        }
+      ],
+      "bank": {
+        "accountName": "Acme Europe",
+        "bankName": "ING",
+        "iban": null,
+        "bic": "INGBNL2A",
+        "accountNumber": "123456789",
+        "routingNumber": "021000021",
+        "instructions": null
+      },
+      "footer": "Thank you",
+      "logo": "logo-id",
+      "managedAccountIds": [
+        "ma1",
+        "ma-gone"
+      ],
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "NAME          BILL TO         CURRENCY  TERMS           TAXES    PREFIX  CUSTOMERS
+EU customers  Acme Europe BV  EUR       due on receipt  VAT 21%  EU              2
+EU partners   customer        customer  no terms        —        EU              0
+US            Acme Europe BV  EUR       net 30          VAT 21%  EU              2
+
+Drafts follow a profile edit; approved invoices keep the settings they were issued with. Run \`infrawrench invoices profiles <name>\` for one in full.
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles 2`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "No billing profiles. Create one in the Invoices tab, under Billing profiles.
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles US 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "US
+  legal name   Acme Europe BV
+  address      1 Main St, Amsterdam
+  tax ID       NL123
+  to           billing@acme.example
+  currency     EUR
+  terms        net 30
+  taxes        VAT 21%
+  numbering    EU-YYYY-NNNN, from 100
+  account      Acme Europe
+  bank         ING
+  SWIFT/BIC    INGBNL2A
+  account no.  •••• 6789
+  routing      021000021
+  footer       Thank you
+  logo         yes
+  customers    Northwind, ma-gone
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles bp2 --json 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "id": "bp2",
+  "name": "EU partners",
+  "legalName": null,
+  "address": null,
+  "taxId": null,
+  "poNumber": null,
+  "toEmails": [],
+  "ccEmails": [],
+  "currency": null,
+  "paymentTermsDays": null,
+  "numberPrefix": "EU",
+  "numberIncludesYear": false,
+  "numberStart": 100,
+  "taxRates": [],
+  "bank": null,
+  "footer": null,
+  "logo": null,
+  "managedAccountIds": [],
+  "createdByUserId": null,
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 0 $ infrawrench invoices profiles eu customers 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "",
+  "stdout": "EU customers
+  legal name   Acme Europe BV
+  address      1 Main St, Amsterdam
+  tax ID       NL123
+  to           billing@acme.example
+  currency     EUR
+  terms        due on receipt
+  taxes        VAT 21%
+  numbering    EU-YYYY-NNNN, from 100
+  account      Acme Europe
+  bank         ING
+  IBAN         •••• 4300
+  SWIFT/BIC    INGBNL2A
+  footer       Thank you
+  logo         yes
+  customers    Northwind, ma-gone
+",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 1 $ infrawrench invoices profiles eu 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": ""eu" matches 2 profiles: EU customers, EU partners.
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > lists customers and billing profiles > 1 $ infrawrench invoices profiles nope 1`] = `
+{
+  "requests": [
+    "GET /billing-profiles",
+    "GET /managed-accounts",
+  ],
+  "stderr": "No billing profile matches "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices --json 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "invoices": [
+    {
+      "id": "inv1",
+      "managedAccountId": "ma1",
+      "managedAccountName": "Northwind",
+      "number": "INV-2026-0004",
+      "status": "sent",
+      "periodFrom": "2026-09-01",
+      "periodTo": "2026-09-30",
+      "currency": "USD",
+      "totals": {
+        "collected": {
+          "USD": 1234.5
+        },
+        "adjustment": {},
+        "adjusted": {
+          "USD": 1234.5
+        },
+        "billed": {
+          "USD": 1234.5
+        }
+      },
+      "issuedAt": "2026-10-02T09:00:00.000Z",
+      "sentAt": "2026-10-03T09:00:00.000Z",
+      "delivery": {
+        "status": "succeeded",
+        "recipients": [
+          "ap@northwind.example"
+        ],
+        "delivered": 1,
+        "attemptedAt": "2026-10-03T09:00:00.000Z",
+        "deliveredAt": "2026-10-03T09:00:01.000Z",
+        "attempts": 1,
+        "error": null
+      },
+      "voidedAt": null,
+      "voidReason": null,
+      "supersedesInvoiceId": null,
+      "supersededByInvoiceId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-03T00:00:00.000Z"
+    },
+    {
+      "id": "inv2",
+      "managedAccountId": "ma1",
+      "managedAccountName": "Contoso",
+      "number": null,
+      "status": "draft",
+      "periodFrom": "2026-09-01",
+      "periodTo": "2026-09-30",
+      "currency": "USD",
+      "totals": null,
+      "issuedAt": null,
+      "sentAt": null,
+      "delivery": null,
+      "voidedAt": null,
+      "voidReason": null,
+      "supersedesInvoiceId": null,
+      "supersededByInvoiceId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-03T00:00:00.000Z"
+    },
+    {
+      "id": "inv3",
+      "managedAccountId": "ma1",
+      "managedAccountName": "Northwind",
+      "number": "INV-2026-0003",
+      "status": "approved",
+      "periodFrom": "2026-09-01",
+      "periodTo": "2026-09-30",
+      "currency": "USD",
+      "totals": {
+        "collected": {
+          "EUR": 10,
+          "USD": 0,
+          "GBP": 5
+        },
+        "adjustment": {},
+        "adjusted": {
+          "EUR": 10,
+          "USD": 0,
+          "GBP": 5
+        },
+        "billed": {
+          "EUR": 10,
+          "USD": 0,
+          "GBP": 5
+        }
+      },
+      "issuedAt": "2026-10-02T09:00:00.000Z",
+      "sentAt": null,
+      "delivery": {
+        "status": "succeeded",
+        "recipients": [
+          "ap@northwind.example"
+        ],
+        "delivered": 1,
+        "attemptedAt": "2026-10-03T09:00:00.000Z",
+        "deliveredAt": "2026-10-03T09:00:01.000Z",
+        "attempts": 1,
+        "error": null
+      },
+      "voidedAt": null,
+      "voidReason": null,
+      "supersedesInvoiceId": null,
+      "supersededByInvoiceId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-03T00:00:00.000Z"
+    },
+    {
+      "id": "inv4",
+      "managedAccountId": "ma1",
+      "managedAccountName": "Fabrikam",
+      "number": "INV-2026-0002",
+      "status": "void",
+      "periodFrom": "2026-09-01",
+      "periodTo": "2026-09-30",
+      "currency": "USD",
+      "totals": {
+        "collected": {
+          "USD": 1234.5
+        },
+        "adjustment": {},
+        "adjusted": {
+          "USD": 1234.5
+        },
+        "billed": {
+          "USD": 1234.5
+        }
+      },
+      "issuedAt": "2026-10-02T09:00:00.000Z",
+      "sentAt": "2026-10-03T09:00:00.000Z",
+      "delivery": {
+        "status": "succeeded",
+        "recipients": [
+          "ap@northwind.example"
+        ],
+        "delivered": 1,
+        "attemptedAt": "2026-10-03T09:00:00.000Z",
+        "deliveredAt": "2026-10-03T09:00:01.000Z",
+        "attempts": 1,
+        "error": null
+      },
+      "voidedAt": "2026-09-15T00:00:00.000Z",
+      "voidReason": "wrong customer",
+      "supersedesInvoiceId": null,
+      "supersededByInvoiceId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-03T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 4 invoices, 1 draft
+
+NUMBER         CUSTOMER   PERIOD                   TOTAL                 STATUS             
+INV-2026-0004  Northwind  2026-09-01 → 2026-09-30           1234.50 USD  sent 2026-10-03    
+—              Contoso    2026-09-01 → 2026-09-30          not computed  draft (recomputes) 
+INV-2026-0003  Northwind  2026-09-01 → 2026-09-30  10.00 EUR + 5.00 GBP  approved 2026-10-02
+INV-2026-0002  Fabrikam   2026-09-01 → 2026-09-30           1234.50 USD  void 2026-09-15    
+
+Draft totals are not computed in this list. Run \`infrawrench invoices <number|customer>\` for a draft's current total. Approved and sent invoices are frozen.
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices 2`] = `
+{
+  "requests": [
+    "GET /invoices",
+  ],
+  "stderr": "",
+  "stdout": "No invoices. Add a managed account (a customer, with the cost centres whose spend is theirs) in the Invoices tab, then raise one.
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices INV-2026-0004 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+    "GET /invoices/inv1",
+  ],
+  "stderr": "",
+  "stdout": "INV-2026-0004 · Northwind
+2026-09-01 → 2026-09-30 · amortized basis · sent 2026-10-03
+
+Frozen at approval on 2026-10-02. No restatement of spend, change of exchange rate, edit of a billing rule or rename can change what this document says.
+Delivery: succeeded, 1/1 recipient on 2026-10-03
+
+LINE        KIND         COLLECTED    ADJUSTMENT  SUBTOTAL     RATE     INVOICED   
+Platform    cost centre  1000.00 USD  100.00 USD  1100.00 USD        —  1100.00 USD
+Data        cost centre  1000.00 EUR           —   100.00 EUR   1.0800   108.00 USD
+JP account  account      1000.00 JPY  100.00 JPY  1100.00 JPY  no rate  1100.00 JPY
+
+  total      1208.00 USD + 1100.00 JPY
+
+How this total was reached
+  scope      Platform, prod (aws)
+  rules      Markup (+10% on everything)
+  rates      1 EUR = 1.08 USD (stated 2026-09-01)
+  rate date  2026-09-30
+  warning    no exchange rate stated for JPY. Those amounts are carried in their own currency, and this invoice cannot be approved until a rate exists
+  warning    2 scope entries no longer exist and contributed nothing
+  corrects   an earlier, voided invoice (inv0)
+  superseded by inv9
+
+Billing
+  bill to    Northwind Traders Ltd · tax ID GB123
+  PO         PO-77
+  dates      issued 2026-10-02, due 2026-11-01 (net 30)
+  emailed    ap@northwind.example · cc cfo@northwind.example
+  profile    EU customers
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices contoso 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+    "GET /invoices/inv2",
+  ],
+  "stderr": "",
+  "stdout": "Draft invoice · Contoso
+2026-09-01 → 2026-09-30 · amortized basis · draft (recomputes)
+
+These figures were recomputed just now from live spend and will keep moving as providers restate. Approving freezes them.
+Delivery: failed, 0/2 recipients on 2026-10-03
+mailbox full
+
+No spend in this period for anything this customer owns.
+
+  total      0.00 USD
+
+How this total was reached
+  scope      nothing
+  rules      pass-through. No billing rule was applied
+  rates      all spend was already in USD
+  rate date  2026-09-30
+  warning    1 scope entry no longer exist and contributed nothing
+
+Billing
+  bill to    Northwind Traders Ltd
+  dates      issued 2026-10-02, no terms
+  emailed    nobody
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices fabrikam 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+    "GET /invoices/inv4",
+  ],
+  "stderr": "",
+  "stdout": "INV-2026-0002 · Fabrikam
+2026-09-01 → 2026-09-30 · amortized basis · void 2026-09-15
+
+Frozen at approval on 2026-10-02. No restatement of spend, change of exchange rate, edit of a billing rule or rename can change what this document says.
+Voided: wrong customer
+
+LINE        KIND         COLLECTED    ADJUSTMENT  SUBTOTAL     RATE     INVOICED   
+Platform    cost centre  1000.00 USD  100.00 USD  1100.00 USD        —  1100.00 USD
+Data        cost centre  1000.00 EUR           —   100.00 EUR   1.0800   108.00 USD
+JP account  account      1000.00 JPY  100.00 JPY  1100.00 JPY  no rate  1100.00 JPY
+
+  total      1234.50 USD
+
+How this total was reached
+  scope      Platform, prod (aws)
+  rules      the organisation has no billing rules
+  rates      1 EUR = 1.08 USD (stated 2026-09-01)
+  rate date  2026-09-30
+  warning    no exchange rate stated for JPY. Those amounts are carried in their own currency, and this invoice cannot be approved until a rate exists
+  warning    2 scope entries no longer exist and contributed nothing
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 0 $ infrawrench invoices inv1 --json 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+    "GET /invoices/inv1",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "id": "inv1",
+  "managedAccountId": "ma1",
+  "managedAccountName": "Northwind",
+  "number": "INV-2026-0004",
+  "status": "sent",
+  "periodFrom": "2026-09-01",
+  "periodTo": "2026-09-30",
+  "currency": "USD",
+  "totals": {
+    "collected": {
+      "USD": 1208,
+      "JPY": 1100
+    },
+    "adjustment": {},
+    "adjusted": {
+      "USD": 1208,
+      "JPY": 1100
+    },
+    "billed": {
+      "USD": 1208,
+      "JPY": 1100
+    }
+  },
+  "issuedAt": "2026-10-02T09:00:00.000Z",
+  "sentAt": "2026-10-03T09:00:00.000Z",
+  "delivery": {
+    "status": "succeeded",
+    "recipients": [
+      "ap@northwind.example"
+    ],
+    "delivered": 1,
+    "attemptedAt": "2026-10-03T09:00:00.000Z",
+    "deliveredAt": "2026-10-03T09:00:01.000Z",
+    "attempts": 1,
+    "error": null
+  },
+  "voidedAt": null,
+  "voidReason": null,
+  "supersedesInvoiceId": "inv0",
+  "supersededByInvoiceId": "inv9",
+  "createdAt": "2026-10-01T00:00:00.000Z",
+  "updatedAt": "2026-10-03T00:00:00.000Z",
+  "notes": null,
+  "lines": [
+    {
+      "kind": "cost_centre",
+      "refId": "cc1",
+      "label": "Platform",
+      "currency": "USD",
+      "collected": 1000,
+      "adjustment": 100,
+      "adjusted": 1100,
+      "rate": 1,
+      "billed": 1100
+    },
+    {
+      "kind": "cost_centre",
+      "refId": "cc1",
+      "label": "Data",
+      "currency": "EUR",
+      "collected": 1000,
+      "adjustment": 0,
+      "adjusted": 100,
+      "rate": 1.08,
+      "billed": 108
+    },
+    {
+      "kind": "account",
+      "refId": "cc1",
+      "label": "JP account",
+      "currency": "JPY",
+      "collected": 1000,
+      "adjustment": 100,
+      "adjusted": 1100,
+      "rate": null,
+      "billed": null
+    }
+  ],
+  "derivation": {
+    "costBasis": "amortized",
+    "applyBillingRules": true,
+    "rateDate": "2026-09-30",
+    "rates": [
+      {
+        "currency": "EUR",
+        "rate": 1.08,
+        "effectiveFrom": "2026-09-01",
+        "source": "manual"
+      }
+    ],
+    "unconverted": [
+      "JPY"
+    ],
+    "rules": [
+      {
+        "id": "br1",
+        "name": "Markup",
+        "kind": "markup",
+        "summary": "+10% on everything"
+      }
+    ],
+    "scope": {
+      "costCentres": [
+        {
+          "id": "cc1",
+          "name": "Platform"
+        }
+      ],
+      "accounts": [
+        {
+          "id": "a1",
+          "label": "prod (aws)"
+        }
+      ]
+    },
+    "missingScope": [
+      "cc-gone",
+      "a-gone"
+    ]
+  },
+  "billing": {
+    "profileId": "bp1",
+    "profileName": "EU customers",
+    "legalName": "Northwind Traders Ltd",
+    "attention": null,
+    "address": null,
+    "taxId": "GB123",
+    "poNumber": "PO-77",
+    "to": [
+      "ap@northwind.example"
+    ],
+    "cc": [
+      "cfo@northwind.example"
+    ],
+    "paymentTermsDays": 30,
+    "issueDate": "2026-10-02",
+    "dueDate": "2026-11-01",
+    "taxRates": [],
+    "bank": null,
+    "footer": null,
+    "logoId": null,
+    "numberPrefix": "INV",
+    "numberIncludesYear": true
+  },
+  "live": false,
+  "computedAt": "2026-10-02T09:00:00.000Z",
+  "approvedByUserId": "u1",
+  "sentByUserId": "u1",
+  "voidedByUserId": null,
+  "createdByUserId": "u1"
+}
+",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 1 $ infrawrench invoices --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Invoices live in Infrawrench Cloud, and a local-only workspace has no collected spend to bill.
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 1 $ infrawrench invoices nope 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+  ],
+  "stderr": "No invoice matches "nope".
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > lists invoices and shows one like the legacy command > 1 $ infrawrench invoices northwind 1`] = `
+{
+  "requests": [
+    "GET /invoices",
+  ],
+  "stderr": ""northwind" matches 2 invoices: INV-2026-0004 (Northwind), INV-2026-0003 (Northwind).
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 0 $ infrawrench invoices unassigned --from 2026-09-01 --to 2026-09-30 1`] = `
+{
+  "requests": [
+    "GET /managed-accounts/unassigned?from=2026-09-01&to=2026-09-30",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-01 → 2026-10-31 · amortized, before billing rules
+
+Every cost in this period is billed to a customer.
+",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 0 $ infrawrench invoices unassigned --json 1`] = `
+{
+  "requests": [
+    "GET /managed-accounts/unassigned",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "periodFrom": "2026-10-01",
+  "periodTo": "2026-10-31",
+  "rows": [
+    {
+      "kind": "cost_centre",
+      "id": "cc9",
+      "name": "Research",
+      "pluginId": null,
+      "amounts": {
+        "USD": 120,
+        "EUR": 0
+      }
+    },
+    {
+      "kind": "account",
+      "id": "a9",
+      "name": "sandbox",
+      "pluginId": "gcp",
+      "amounts": {
+        "USD": 40,
+        "EUR": 300
+      }
+    },
+    {
+      "kind": "account",
+      "id": "a8",
+      "name": "misc",
+      "pluginId": null,
+      "amounts": {}
+    },
+    {
+      "kind": "unallocated",
+      "id": null,
+      "name": "",
+      "pluginId": null,
+      "amounts": {
+        "USD": 5
+      }
+    }
+  ],
+  "totals": {
+    "unassigned": {
+      "USD": 165,
+      "EUR": 300
+    },
+    "assigned": {
+      "USD": 1000
+    },
+    "all": {
+      "USD": 1165,
+      "EUR": 300
+    }
+  },
+  "assignable": 3
+}
+",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 0 $ infrawrench invoices unassigned 1`] = `
+{
+  "requests": [
+    "GET /managed-accounts/unassigned",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-01 → 2026-10-31 · amortized, before billing rules
+
+ITEM                    KIND         SPEND                 
+Research                cost centre              120.00 USD
+sandbox                 gcp          300.00 EUR + 40.00 USD
+misc                    account                        0.00
+(no connected account)  —                          5.00 USD
+
+  unassigned 300.00 EUR + 165.00 USD of 1165.00 USD + 300.00 EUR
+
+Assign these in the Invoices tab (Unassigned spend), or name the cost centre or account on a customer.
+",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 2 $ infrawrench invoices unassigned --from 2026-09-01 1`] = `
+{
+  "requests": [],
+  "stderr": "Give both --from and --to, or neither for the last full month.
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 2 $ infrawrench invoices unassigned --from 2026-09-30 --to 2026-09-01 1`] = `
+{
+  "requests": [],
+  "stderr": "--to must not be before --from.
+",
+  "stdout": "",
+}
+`;
+
+exports[`invoices > reports unassigned spend > 2 $ infrawrench invoices unassigned --from Sept --to Oct 1`] = `
+{
+  "requests": [],
+  "stderr": "--from and --to are days, like 2026-01-31.
+",
+  "stdout": "",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys --json 1`] = `
+{
+  "requests": [
+    "GET /tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "keys": [
+    {
+      "key": "team",
+      "providers": [
+        "aws",
+        "gcp"
+      ],
+      "sources": [],
+      "costRowCount": 12345,
+      "costResourceCount": 40,
+      "inventoryCount": 52,
+      "lastSeen": "2026-11-07",
+      "hidden": false,
+      "hiddenBy": null,
+      "preferred": true
+    },
+    {
+      "key": "aws:cloudformation:stack-name",
+      "providers": [
+        "aws"
+      ],
+      "sources": [],
+      "costRowCount": 12345,
+      "costResourceCount": 40,
+      "inventoryCount": 52,
+      "lastSeen": "2026-11-07",
+      "hidden": true,
+      "hiddenBy": "aws:cloudformation:*",
+      "preferred": false
+    },
+    {
+      "key": "env",
+      "providers": [
+        "aws",
+        "gcp"
+      ],
+      "sources": [],
+      "costRowCount": 1000000,
+      "costResourceCount": 40,
+      "inventoryCount": 52,
+      "lastSeen": "2026-11-07",
+      "hidden": true,
+      "hiddenBy": "env",
+      "preferred": false
+    },
+    {
+      "key": "misc",
+      "providers": [],
+      "sources": [],
+      "costRowCount": 0,
+      "costResourceCount": 40,
+      "inventoryCount": 3,
+      "lastSeen": null,
+      "hidden": false,
+      "hiddenBy": null,
+      "preferred": false
+    }
+  ],
+  "settings": {
+    "hidden": [
+      "aws:cloudformation:*",
+      "env"
+    ],
+    "preferred": [
+      "team"
+    ]
+  },
+  "lookbackDays": 90,
+  "truncated": true
+}
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys 1`] = `
+{
+  "requests": [
+    "GET /tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "Acme · preferred team · hidden aws:cloudformation:*, env
+
+KEY                            PROVIDERS  COST ROWS  RESOURCES  LAST SEEN   STATUS                        
+team                           aws,gcp       12,345         52  2026-11-07  preferred                     
+aws:cloudformation:stack-name  aws           12,345         52  2026-11-07  hidden by aws:cloudformation:*
+env                            aws,gcp    1,000,000         52  2026-11-07  hidden                        
+misc                           —                  0         40  —           visible                       
+
+Cost usage covers the last 90 days. Showing the 4 busiest keys. Hidden keys are only left out of pickers; their data is still queryable.
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys 2`] = `
+{
+  "requests": [
+    "GET /tag-keys",
+  ],
+  "stderr": "",
+  "stdout": "Acme · preferred none · hidden none
+
+KEY                            PROVIDERS  COST ROWS  RESOURCES  LAST SEEN   STATUS                        
+team                           aws,gcp       12,345         52  2026-11-07  preferred                     
+aws:cloudformation:stack-name  aws           12,345         52  2026-11-07  hidden by aws:cloudformation:*
+env                            aws,gcp    1,000,000         52  2026-11-07  hidden                        
+misc                           —                  0         40  —           visible                       
+
+Cost usage covers the last 90 days. Hidden keys are only left out of pickers; their data is still queryable.
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys hide env 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+  ],
+  "stderr": "",
+  "stdout": "Nothing to change: env was already hidden.
+preferred team
+hidden    aws:cloudformation:*, env
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys hide misc 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+    "PUT /tag-keys/settings {"hidden":["aws:cloudformation:*","env","misc"],"preferred":["team"]}",
+  ],
+  "stderr": "",
+  "stdout": "preferred none
+hidden    aws:cloudformation:*, env, misc
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys pin env 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+    "PUT /tag-keys/settings {"hidden":["aws:cloudformation:*"],"preferred":["team","env"]}",
+  ],
+  "stderr": "",
+  "stdout": "preferred none
+hidden    aws:cloudformation:*, env, misc
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys pin team --json 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "changed": false,
+  "settings": {
+    "hidden": [
+      "aws:cloudformation:*",
+      "env"
+    ],
+    "preferred": [
+      "team"
+    ]
+  }
+}
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys unhide env --json 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+    "PUT /tag-keys/settings {"hidden":["aws:cloudformation:*"],"preferred":["team"]}",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "changed": true,
+  "settings": {
+    "hidden": [
+      "aws:cloudformation:*",
+      "env",
+      "misc"
+    ],
+    "preferred": []
+  }
+}
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys unhide team 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+  ],
+  "stderr": "",
+  "stdout": "Nothing to change: team was already not hidden.
+preferred team
+hidden    aws:cloudformation:*, env
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys unpin misc 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+  ],
+  "stderr": "",
+  "stdout": "Nothing to change: misc was already not pinned.
+preferred team
+hidden    aws:cloudformation:*, env
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 0 $ infrawrench tag-keys unpin team 1`] = `
+{
+  "requests": [
+    "GET /tag-keys/settings",
+    "PUT /tag-keys/settings {"hidden":["aws:cloudformation:*","env"],"preferred":[]}",
+  ],
+  "stderr": "",
+  "stdout": "preferred none
+hidden    aws:cloudformation:*, env, misc
+",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 1 $ infrawrench tag-keys --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Tag key settings are org-level cloud state; there is nothing local to list.
+",
+  "stdout": "",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 1 $ infrawrench tag-keys hide 1`] = `
+{
+  "requests": [],
+  "stderr": "Usage: infrawrench tag-keys hide <key | prefix*>   e.g. 'aws:cloudformation:*'
+",
+  "stdout": "",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 1 $ infrawrench tag-keys pin 1`] = `
+{
+  "requests": [],
+  "stderr": "Usage: infrawrench tag-keys pin <key>
+",
+  "stdout": "",
+}
+`;
+
+exports[`tag-keys > lists the keys and edits the lists > 2 $ infrawrench tag-keys bury misc 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  Every tag key in cost data and inventory, with providers, usage and whether it is hidden or pinned
+
+USAGE
+  infrawrench tag-keys <subcommand> [flags]
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+SUBCOMMANDS
+  hide      Hide a key, or a prefix like 'aws:cloudformation:*', from every picker (data untouched)
+  unhide    Put a hidden key back in the pickers
+  pin       Pin a key to the top of every picker
+  unpin     Unpin a key
+
+ERROR
+  Unknown subcommand "bury" for "infrawrench tag-keys"
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags --json 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "tags": [
+    {
+      "id": "vt1",
+      "key": "team",
+      "name": "Team",
+      "description": "Who owns the spend",
+      "defaultValue": "unowned",
+      "rules": [
+        {
+          "query": "provider = 'aws'",
+          "description": "Everything on AWS",
+          "startsOn": null,
+          "endsOn": null,
+          "kind": "value",
+          "value": "platform",
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": []
+        },
+        {
+          "query": "",
+          "description": null,
+          "startsOn": "2026-01-01",
+          "endsOn": null,
+          "kind": "tag",
+          "value": null,
+          "sources": [
+            {
+              "tagKey": "Team",
+              "valuePrefix": "t-",
+              "query": null
+            }
+          ],
+          "valueTransform": "lower",
+          "allocations": []
+        },
+        {
+          "query": "provider = 'aws'",
+          "description": null,
+          "startsOn": null,
+          "endsOn": "2026-12-31",
+          "kind": "split",
+          "value": null,
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": [
+            {
+              "value": "a",
+              "percent": 60,
+              "metricId": null
+            },
+            {
+              "value": "b",
+              "percent": 40,
+              "metricId": null
+            }
+          ]
+        },
+        {
+          "query": "provider = 'aws'",
+          "description": null,
+          "startsOn": "2026-01-01",
+          "endsOn": "2026-06-30",
+          "kind": "metric_split",
+          "value": null,
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": [
+            {
+              "value": "x",
+              "percent": null,
+              "metricId": "bm1"
+            },
+            {
+              "value": "y",
+              "percent": null,
+              "metricId": "bm-missing"
+            }
+          ]
+        }
+      ],
+      "status": {
+        "state": "ready",
+        "processedAt": "2026-11-08T02:00:00.000Z",
+        "error": null,
+        "stats": {
+          "from": "2025-11-08",
+          "to": "2026-11-07",
+          "currencies": [
+            {
+              "currency": "USD",
+              "total": 1000,
+              "unmatched": 124,
+              "byRule": [
+                500,
+                200,
+                100,
+                76
+              ],
+              "topValues": [
+                {
+                  "value": "platform",
+                  "amount": 500
+                },
+                {
+                  "value": "data",
+                  "amount": 300
+                }
+              ]
+            },
+            {
+              "currency": "EUR",
+              "total": 100,
+              "unmatched": 3,
+              "byRule": [
+                97
+              ],
+              "topValues": []
+            }
+          ],
+          "metricFallbackDays": 2,
+          "distinctValues": 7
+        }
+      },
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    },
+    {
+      "id": "vt2",
+      "key": "env",
+      "name": "Environment",
+      "description": null,
+      "defaultValue": null,
+      "rules": [],
+      "status": {
+        "state": "failed",
+        "processedAt": null,
+        "error": "query timed out",
+        "stats": null
+      },
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    },
+    {
+      "id": "vt3",
+      "key": "cc",
+      "name": "Cost centre",
+      "description": "Who owns the spend",
+      "defaultValue": "unowned",
+      "rules": [
+        {
+          "query": "provider = 'aws'",
+          "description": null,
+          "startsOn": null,
+          "endsOn": null,
+          "kind": "value",
+          "value": "platform",
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": []
+        }
+      ],
+      "status": {
+        "state": "processing",
+        "processedAt": null,
+        "error": null,
+        "stats": {
+          "from": null,
+          "to": null,
+          "currencies": [],
+          "metricFallbackDays": 0,
+          "distinctValues": 0
+        }
+      },
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    },
+    {
+      "id": "vt4",
+      "key": "region-group",
+      "name": "Envoy",
+      "description": "Who owns the spend",
+      "defaultValue": "unowned",
+      "rules": [
+        {
+          "query": "provider = 'aws'",
+          "description": "Everything on AWS",
+          "startsOn": null,
+          "endsOn": null,
+          "kind": "value",
+          "value": "platform",
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": []
+        },
+        {
+          "query": "",
+          "description": null,
+          "startsOn": "2026-01-01",
+          "endsOn": null,
+          "kind": "tag",
+          "value": null,
+          "sources": [
+            {
+              "tagKey": "Team",
+              "valuePrefix": "t-",
+              "query": null
+            }
+          ],
+          "valueTransform": "lower",
+          "allocations": []
+        },
+        {
+          "query": "provider = 'aws'",
+          "description": null,
+          "startsOn": null,
+          "endsOn": "2026-12-31",
+          "kind": "split",
+          "value": null,
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": [
+            {
+              "value": "a",
+              "percent": 60,
+              "metricId": null
+            },
+            {
+              "value": "b",
+              "percent": 40,
+              "metricId": null
+            }
+          ]
+        },
+        {
+          "query": "provider = 'aws'",
+          "description": null,
+          "startsOn": "2026-01-01",
+          "endsOn": "2026-06-30",
+          "kind": "metric_split",
+          "value": null,
+          "sources": [],
+          "valueTransform": "none",
+          "allocations": [
+            {
+              "value": "x",
+              "percent": null,
+              "metricId": "bm1"
+            },
+            {
+              "value": "y",
+              "percent": null,
+              "metricId": "bm-missing"
+            }
+          ]
+        }
+      ],
+      "status": {
+        "state": "pending",
+        "processedAt": null,
+        "error": null,
+        "stats": null
+      },
+      "createdByUserId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 4 virtual tags
+
+KEY           NAME         RULES  DEFAULT  STATUS      UNMATCHED             VALUES
+team          Team             4  unowned  Ready       12.4% USD · 3.0% EUR       7
+env           Environment      0  not set  Failed                       n/a     n/a
+cc            Cost centre      1  unowned  Processing              no spend       0
+region-group  Envoy            4  unowned  Queued                       n/a     n/a
+
+Use a key as virtual_tag['key'] in --where, or group by it with \`infrawrench costs --group-by virtual_tag:<key>\`. Unmatched is the share of spend no rule matched (it took the default value, or is not set).
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags 2`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "No virtual tags. Define one in Settings > Virtual tags to report on one team or env key across every provider, however each account spelled its tags.
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags Cost centre 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "Cost centre · virtual_tag['cc'] · Processing
+Who owns the spend
+
+  id         vt3
+  default    unowned
+  updated    2026-11-01T00:00:00.000Z
+
+Rules (first match wins)
+  #  RULE                         
+  1  provider = 'aws' → 'platform'
+
+Coverage
+  No spend in the evaluated range.
+  distinct values  0
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags env 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "Environment · virtual_tag['env'] · Failed
+
+  id         vt2
+  default    not set
+  updated    2026-11-01T00:00:00.000Z
+
+! last evaluation failed
+  query timed out
+
+Rules (first match wins)
+  (none: every row takes the default value)
+
+No statistics yet: the tag has never evaluated successfully.
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags region-group 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+    "GET /business-metrics",
+  ],
+  "stderr": "",
+  "stdout": "Envoy · virtual_tag['region-group'] · Queued
+Who owns the spend
+
+  id         vt4
+  default    unowned
+  updated    2026-11-01T00:00:00.000Z
+
+Rules (first match wins)
+  #  RULE                                                                               
+  1  provider = 'aws' → 'platform'  Everything on AWS                                   
+  2  everything → copy of Team (prefix 't-'), lowercase from 2026-01-01                 
+  3  provider = 'aws' → 'a' 60% / 'b' 40% until 2026-12-31                              
+  4  provider = 'aws' → 'x' by Signups / 'y' by bm-missing from 2026-01-01 to 2026-06-30
+
+No statistics yet: the first evaluation has not finished.
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags reprocess TEAM --json 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+    "POST /virtual-tags/vt1/reprocess",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "id": "vt1",
+  "key": "team",
+  "name": "Team",
+  "description": "Who owns the spend",
+  "defaultValue": "unowned",
+  "rules": [
+    {
+      "query": "provider = 'aws'",
+      "description": "Everything on AWS",
+      "startsOn": null,
+      "endsOn": null,
+      "kind": "value",
+      "value": "platform",
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": []
+    },
+    {
+      "query": "",
+      "description": null,
+      "startsOn": "2026-01-01",
+      "endsOn": null,
+      "kind": "tag",
+      "value": null,
+      "sources": [
+        {
+          "tagKey": "Team",
+          "valuePrefix": "t-",
+          "query": null
+        }
+      ],
+      "valueTransform": "lower",
+      "allocations": []
+    },
+    {
+      "query": "provider = 'aws'",
+      "description": null,
+      "startsOn": null,
+      "endsOn": "2026-12-31",
+      "kind": "split",
+      "value": null,
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": [
+        {
+          "value": "a",
+          "percent": 60,
+          "metricId": null
+        },
+        {
+          "value": "b",
+          "percent": 40,
+          "metricId": null
+        }
+      ]
+    },
+    {
+      "query": "provider = 'aws'",
+      "description": null,
+      "startsOn": "2026-01-01",
+      "endsOn": "2026-06-30",
+      "kind": "metric_split",
+      "value": null,
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": [
+        {
+          "value": "x",
+          "percent": null,
+          "metricId": "bm1"
+        },
+        {
+          "value": "y",
+          "percent": null,
+          "metricId": "bm-missing"
+        }
+      ]
+    }
+  ],
+  "status": {
+    "state": "pending",
+    "processedAt": null,
+    "error": null,
+    "stats": null
+  },
+  "createdByUserId": null,
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-11-01T00:00:00.000Z"
+}
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags reprocess team 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+    "POST /virtual-tags/vt1/reprocess",
+  ],
+  "stderr": "",
+  "stdout": "✓ team queued for reprocessing · Queued
+Cost queries already use the current rules; this refreshes the statistics. Check progress with \`infrawrench virtual-tags show team\`.
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags show team 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+    "GET /business-metrics",
+  ],
+  "stderr": "",
+  "stdout": "Team · virtual_tag['team'] · Ready
+Who owns the spend
+
+  id         vt1
+  default    unowned
+  processed  2026-11-08T02:00:00.000Z
+  evaluated  2025-11-08 → 2026-11-07
+  updated    2026-11-01T00:00:00.000Z
+
+Rules (first match wins)
+  #  RULE                                                                                 CLAIMS USD     CLAIMS EUR  
+  1  provider = 'aws' → 'platform'  Everything on AWS                                     $500.00 50.0%  €97.00 97.0%
+  2  everything → copy of Team (prefix 't-'), lowercase from 2026-01-01                   $200.00 20.0%           n/a
+  3  provider = 'aws' → 'a' 60% / 'b' 40% until 2026-12-31                                $100.00 10.0%           n/a
+  4  provider = 'aws' → 'x' by Signups / 'y' by bm-missing from 2026-01-01 to 2026-06-30    $76.00 7.6%           n/a
+
+Coverage
+  USD  total $1,000.00  ·  unmatched $124.00 (12.4%)
+  EUR  total €100.00  ·  unmatched €3.00 (3.0%)
+  distinct values  7
+  ! 2 days a metric split had no complete metric values and reused the last good weights
+
+Top values (USD)
+  VALUE     AMOUNT   SHARE
+  platform  $500.00  50.0%
+  data      $300.00  30.0%
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 0 $ infrawrench virtual-tags show vt1 --json 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "id": "vt1",
+  "key": "team",
+  "name": "Team",
+  "description": "Who owns the spend",
+  "defaultValue": "unowned",
+  "rules": [
+    {
+      "query": "provider = 'aws'",
+      "description": "Everything on AWS",
+      "startsOn": null,
+      "endsOn": null,
+      "kind": "value",
+      "value": "platform",
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": []
+    },
+    {
+      "query": "",
+      "description": null,
+      "startsOn": "2026-01-01",
+      "endsOn": null,
+      "kind": "tag",
+      "value": null,
+      "sources": [
+        {
+          "tagKey": "Team",
+          "valuePrefix": "t-",
+          "query": null
+        }
+      ],
+      "valueTransform": "lower",
+      "allocations": []
+    },
+    {
+      "query": "provider = 'aws'",
+      "description": null,
+      "startsOn": null,
+      "endsOn": "2026-12-31",
+      "kind": "split",
+      "value": null,
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": [
+        {
+          "value": "a",
+          "percent": 60,
+          "metricId": null
+        },
+        {
+          "value": "b",
+          "percent": 40,
+          "metricId": null
+        }
+      ]
+    },
+    {
+      "query": "provider = 'aws'",
+      "description": null,
+      "startsOn": "2026-01-01",
+      "endsOn": "2026-06-30",
+      "kind": "metric_split",
+      "value": null,
+      "sources": [],
+      "valueTransform": "none",
+      "allocations": [
+        {
+          "value": "x",
+          "percent": null,
+          "metricId": "bm1"
+        },
+        {
+          "value": "y",
+          "percent": null,
+          "metricId": "bm-missing"
+        }
+      ]
+    }
+  ],
+  "status": {
+    "state": "ready",
+    "processedAt": "2026-11-08T02:00:00.000Z",
+    "error": null,
+    "stats": {
+      "from": "2025-11-08",
+      "to": "2026-11-07",
+      "currencies": [
+        {
+          "currency": "USD",
+          "total": 1000,
+          "unmatched": 124,
+          "byRule": [
+            500,
+            200,
+            100,
+            76
+          ],
+          "topValues": [
+            {
+              "value": "platform",
+              "amount": 500
+            },
+            {
+              "value": "data",
+              "amount": 300
+            }
+          ]
+        },
+        {
+          "currency": "EUR",
+          "total": 100,
+          "unmatched": 3,
+          "byRule": [
+            97
+          ],
+          "topValues": []
+        }
+      ],
+      "metricFallbackDays": 2,
+      "distinctValues": 7
+    }
+  },
+  "createdByUserId": null,
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-11-01T00:00:00.000Z"
+}
+",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 1 $ infrawrench virtual-tags --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Virtual tags live in Infrawrench Cloud. They are evaluated against collected spend, and a local-only workspace has no collected spend to tag.
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 1 $ infrawrench virtual-tags nope 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": "No virtual tag matches "nope". \`infrawrench virtual-tags\` lists them.
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 1 $ infrawrench virtual-tags show en 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+  ],
+  "stderr": ""en" matches 3 virtual tags: env, cc, region-group.
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 2 $ infrawrench virtual-tags reprocess 1`] = `
+{
+  "requests": [],
+  "stderr": "Give a virtual tag key, id or name.
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > lists, shows and reprocesses like the legacy command > 2 $ infrawrench virtual-tags show 1`] = `
+{
+  "requests": [],
+  "stderr": "Give a virtual tag key, id or name.
+",
+  "stdout": "",
+}
+`;
+
+exports[`virtual-tags > shows ids when the metrics cannot be read > 0 $ infrawrench virtual-tags show team 1`] = `
+{
+  "requests": [
+    "GET /virtual-tags",
+    "GET /business-metrics",
+  ],
+  "stderr": "",
+  "stdout": "Team · virtual_tag['team'] · Ready
+Who owns the spend
+
+  id         vt1
+  default    unowned
+  processed  2026-11-08T02:00:00.000Z
+  evaluated  2025-11-08 → 2026-11-07
+  updated    2026-11-01T00:00:00.000Z
+
+Rules (first match wins)
+  #  RULE                                                                             CLAIMS USD     CLAIMS EUR  
+  1  provider = 'aws' → 'platform'  Everything on AWS                                 $500.00 50.0%  €97.00 97.0%
+  2  everything → copy of Team (prefix 't-'), lowercase from 2026-01-01               $200.00 20.0%           n/a
+  3  provider = 'aws' → 'a' 60% / 'b' 40% until 2026-12-31                            $100.00 10.0%           n/a
+  4  provider = 'aws' → 'x' by bm1 / 'y' by bm-missing from 2026-01-01 to 2026-06-30    $76.00 7.6%           n/a
+
+Coverage
+  USD  total $1,000.00  ·  unmatched $124.00 (12.4%)
+  EUR  total €100.00  ·  unmatched €3.00 (3.0%)
+  distinct values  7
+  ! 2 days a metric split had no complete metric values and reused the last good weights
+
+Top values (USD)
+  VALUE     AMOUNT   SHARE
+  platform  $500.00  50.0%
+  data      $300.00  30.0%
+",
+}
+`;

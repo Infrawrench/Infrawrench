@@ -1,5 +1,5 @@
 import { eq, and, isNull } from "drizzle-orm";
-import { HTTPException } from "hono/http-exception";
+import { MissingScopeError } from "./scope-error";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { db } from "@/db/client";
 import { apiKeys, organizationMembers } from "@/db/schema";
@@ -14,7 +14,7 @@ import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
- * match the value used in `api/routes/api-keys.ts`. */
+ * match the value used in `http/domains/api-keys/index.ts`. */
 const API_KEY_HASH_DOMAIN = "api-key";
 
 export interface ApiAuthResult {
@@ -274,15 +274,15 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
  * Throws if the bearer-auth principal lacks the required permission. Uses the
  * same wildcard matcher as session auth so wildcard scopes (e.g. `*`,
  * `resources:*:read`) are honoured. WorkOS access tokens (no `scopes` field)
- * pass: they represent the full user, whose permissions are checked via
- * `permissionsMiddleware` on org-scoped routes.
+ * pass: they represent the full user, whose permissions are checked by the
+ * org tree's own auth (`http/auth.ts`) on org-scoped routes.
  */
 export function requireScope(auth: ApiAuthResult, scope: string): void {
   if (!auth.scopes) return;
   if (!hasPermission(auth.scopes, scope)) {
-    // HTTPException, not a bare Error: Hono's error handler turns anything
-    // else into a 500 (and echoes the message outside production), which
-    // reports an authorization failure as a server fault.
-    throw new HTTPException(403, { message: `Missing required scope: ${scope}` });
+    // A typed refusal, not a bare Error: the API's error renderer turns an
+    // unknown error into a 500 (and echoes the message outside production),
+    // which reports an authorization failure as a server fault.
+    throw new MissingScopeError(scope);
   }
 }

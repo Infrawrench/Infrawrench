@@ -5,249 +5,28 @@
 // straight from the SQLite tables the GUI maintains.
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { getDb } from "../main-utils";
-import { getAccessToken, forceRefreshAccessToken, fetchCloudOrgs } from "../cloud-tokens";
+import { Effect, Predicate, Schema } from "effect";
 import {
   fetchLocalMetricSeries,
   listAccountResourcesLive,
   resolveResourceOutputs,
 } from "../plugin-runtime";
-import { CLOUD_URL } from "../../env";
+import { CloudApi } from "./effect/cloud-api";
+import { CliFailure } from "./effect/errors";
 
-type OutputMode = "json" | "text";
-
-export interface CliFlags {
-  output: OutputMode;
-  color: boolean;
-  org: string | null;
-  local: boolean;
-  account: string | null;
-  /** `posture dismiss --reason`: why an accepted risk is acceptable. */
-  reason: string | null;
-  help: boolean;
-}
-
-export interface CliContext {
-  flags: CliFlags;
-  positionals: string[];
-  /** True when the GUI holds the single-instance lock: DB + tokens are read-only. */
-  guiRunning: boolean;
-}
-
-/** Error with a user-facing message and no stack trace on print. */
+/**
+ * Error with a user-facing message and no stack trace on print, for Promise
+ * code the CLI hands to something else to run (a plugin client, a workflow
+ * runtime callback, a plugin-runtime helper): the runner prints it as one
+ * line with its exit code. Effect code fails with the typed errors in
+ * `effect/errors.ts` instead.
+ */
 export class CliError extends Error {
   exitCode: number;
   constructor(message: string, exitCode = 1) {
     super(message);
     this.exitCode = exitCode;
   }
-}
-
-function notSignedInError(): CliError {
-  return new CliError(
-    "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app; the CLI shares its session).",
-  );
-}
-
-/** Authenticated fetch against an org-scoped cloud path. */
-export async function orgFetch<T>(orgId: string, path: string, init: RequestInit = {}): Promise<T> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${t}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  const body = await res.text().catch(() => "");
-
-  if (!res.ok) {
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  // 204 No Content (the dismissal DELETEs answer with it): there is nothing to
-  // parse, and treating the empty body as malformed fails a request that worked.
-  if (res.status === 204) return undefined as T;
-
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    // A 200 that isn't JSON almost always means the SPA's catch-all served an
-    // HTML page because this route doesn't exist on that server: a version
-    // skew, not a failure. Saying so beats a raw JSON.parse stack trace.
-    if (looksLikeHtml(body)) {
-      throw new CliError(
-        `${path} is not available on ${CLOUD_URL}.\n` +
-          `The server answered with a web page instead of data, which usually means it is ` +
-          `running a version without this endpoint.`,
-      );
-    }
-    throw new CliError(
-      `Cloud request returned a malformed response for ${path}${describeBody(body)}`,
-    );
-  }
-}
-
-/**
- * Same as {@link orgFetch}, for an endpoint whose body is a document rather
- * than a JSON payload: today that is the asciicast a recorded SSH session
- * downloads as, which is newline-delimited JSON and would die on `JSON.parse`
- * at its header line.
- */
-export async function orgFetchText(
-  orgId: string,
-  path: string,
-  init: RequestInit = {},
-): Promise<string> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  const body = await res.text().catch(() => "");
-  if (!res.ok) {
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  if (looksLikeHtml(body)) {
-    throw new CliError(
-      `${path} is not available on ${CLOUD_URL}.\n` +
-        `The server answered with a web page instead of data, which usually means it is ` +
-        `running a version without this endpoint.`,
-    );
-  }
-  return body;
-}
-
-/**
- * Same as {@link orgFetchText}, for a binary download: the server-rendered
- * PDF of a cost report or a dashboard. The body is returned as raw bytes; a
- * body that turns out to be a web page is the SPA catch-all answering for a
- * route this server does not have, and is reported as such rather than
- * written to disk as a broken PDF.
- */
-export async function orgFetchBytes(
-  orgId: string,
-  path: string,
-  init: RequestInit = {},
-): Promise<Uint8Array> {
-  return (await orgFetchDownload(orgId, path, init)).bytes;
-}
-
-/**
- * {@link orgFetchBytes} plus the response's `Content-Disposition`, for a
- * download whose file name the server picks (the compliance evidence pack).
- */
-export async function orgFetchDownload(
-  orgId: string,
-  path: string,
-  init: RequestInit = {},
-): Promise<{ bytes: Uint8Array; contentDisposition: string | null }> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const contentType = res.headers.get("content-type") ?? "";
-  const head = new TextDecoder().decode(bytes.subarray(0, 200));
-  if (contentType.includes("text/html") || looksLikeHtml(head)) {
-    throw new CliError(
-      `${path} is not available on ${CLOUD_URL}.\n` +
-        `The server answered with a web page instead of a file, which usually means it is ` +
-        `running a version without this endpoint.`,
-    );
-  }
-  return { bytes, contentDisposition: res.headers.get("content-disposition") };
-}
-
-/** True for a response body that is a web page rather than data. */
-function looksLikeHtml(body: string): boolean {
-  const head = body.slice(0, 200).trimStart().toLowerCase();
-  return head.startsWith("<!doctype html") || head.startsWith("<html");
-}
-
-/**
- * A response body worth putting in an error message. HTML is summarised rather
- * than shown (a whole page of markup buries the actual problem) and anything
- * long is truncated.
- */
-function describeBody(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) return "";
-  if (looksLikeHtml(trimmed)) return " (the server returned a web page, not data)";
-  return ` ${trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed}`;
-}
-
-export interface OrgInfo {
-  id: string;
-  displayName: string;
-  role: string;
-}
-
-export async function listOrgs(): Promise<OrgInfo[]> {
-  const token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  return fetchCloudOrgs();
-}
-
-/**
- * Resolve the --org flag (id, exact name, or unique name prefix) to an org.
- * With no flag: a single org wins by default; several orgs is an error that
- * lists the choices.
- */
-export async function resolveOrg(ctx: CliContext): Promise<OrgInfo> {
-  const orgs = await listOrgs();
-  if (orgs.length === 0) {
-    throw new CliError("You are not a member of any organization.");
-  }
-  const wanted = ctx.flags.org ?? process.env.INFRAWRENCH_ORG ?? null;
-  if (!wanted) {
-    if (orgs.length === 1) return orgs[0]!;
-    throw new CliError(
-      `Multiple organizations: pass --org <id|name>:\n${orgs
-        .map((o) => `  ${o.id}  ${o.displayName}`)
-        .join("\n")}`,
-    );
-  }
-  const byId = orgs.find((o) => o.id === wanted);
-  if (byId) return byId;
-  const byName = orgs.filter((o) => o.displayName.toLowerCase().startsWith(wanted.toLowerCase()));
-  if (byName.length === 1) return byName[0]!;
-  throw new CliError(
-    byName.length === 0
-      ? `No organization matches "${wanted}".`
-      : `"${wanted}" matches several organizations: ${byName.map((o) => o.displayName).join(", ")}.`,
-  );
 }
 
 export interface AccountInfo {
@@ -264,17 +43,22 @@ export async function listLocalAccounts(): Promise<AccountInfo[]> {
   return rows.map((r) => ({ id: r.id, pluginId: r.plugin_id, displayName: r.display_name }));
 }
 
-export async function listCloudAccounts(orgId: string): Promise<AccountInfo[]> {
-  const rows = await orgFetch<
-    Array<{ id: string; pluginId: string; displayName: string; createdAt: string }>
-  >(orgId, "/accounts");
-  // The route doesn't order its rows, so without this the list (and the TUI
-  // cursor's starting account) moves between invocations. Local accounts come
-  // back `ORDER BY display_name`; match them.
-  return rows
-    .map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName }))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
-}
+const CloudAccounts = Schema.Array(
+  Schema.Struct({ id: Schema.String, pluginId: Schema.String, displayName: Schema.String }),
+);
+
+/** An org's connected accounts, by name: the order the local listing uses too. */
+export const cloudAccounts = (orgId: string) =>
+  CloudApi.use((api) => api.decode(CloudAccounts, orgId, "/accounts")).pipe(
+    // The route doesn't order its rows, so without this the list (and the TUI
+    // cursor's starting account) moves between invocations. Local accounts
+    // come back `ORDER BY display_name`; match them.
+    Effect.map((rows) =>
+      rows
+        .map((r): AccountInfo => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    ),
+  );
 
 export interface ResourceRow {
   id: string;
@@ -290,21 +74,16 @@ export interface ResourceRow {
 
 /**
  * `fieldsJson` / `outputsJson` are jsonb columns and the API serves them as
- * real JSON objects (`JsonObject` in api/openapi/paths/accounts.ts): the name
- * is a leftover from the column, not a promise of a string. A string is still
- * accepted for anything that does send one.
+ * real JSON objects (`JsonObject` in api-contract's http/schemas/common.ts):
+ * the name is a leftover from the column, not a promise of a string. A string
+ * is still accepted for anything that does send one.
  */
-function parseJsonObject(raw: unknown): Record<string, unknown> {
-  if (!raw) return {};
-  if (typeof raw === "object") {
-    return Array.isArray(raw) ? {} : (raw as Record<string, unknown>);
-  }
-  if (typeof raw !== "string") return {};
+export function parseJsonObject(raw: unknown): Record<string, unknown> {
+  if (Predicate.isObject(raw)) return { ...raw };
+  if (!Predicate.isString(raw)) return {};
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    const parsed: unknown = JSON.parse(raw);
+    return Predicate.isObject(parsed) ? { ...parsed } : {};
   } catch {
     return {};
   }
@@ -358,21 +137,31 @@ export async function loadLocalResourceOutputs(
   return { ...row, outputs: { ...row.outputs, ...outputs } };
 }
 
+const SyncAnswer = Schema.Struct({
+  synced: Schema.Finite,
+  incompleteLists: Schema.optional(Schema.Array(Schema.Struct({ message: Schema.String }))),
+});
+
 /**
  * Ask the cloud to re-list every resource type of an account from the
  * provider right now. The poller keeps the cache warm on its own schedule,
  * but "show me this account" should mean what the provider says *now*: the
- * desktop account page syncs the same way. Returns the synced row count.
+ * desktop account page syncs the same way. Answers the synced row count; a
+ * list too long to read keeps its cached rows and still answers 200, which
+ * is a `CliFailure` here with the server's sentence.
  */
-export async function syncCloudAccount(orgId: string, accountId: string): Promise<number> {
-  const { synced, incompleteLists } = await orgFetch<{
-    synced: number;
-    incompleteLists?: Array<{ message: string }>;
-  }>(orgId, `/accounts/${encodeURIComponent(accountId)}/sync`, { method: "POST" });
-  // A list too long to read keeps its cached rows, and the sync still answers 200.
-  if (incompleteLists?.[0]) throw new Error(incompleteLists[0].message);
-  return synced;
-}
+export const syncCloud = (orgId: string, accountId: string) =>
+  CloudApi.use((api) =>
+    api.decode(SyncAnswer, orgId, `/accounts/${encodeURIComponent(accountId)}/sync`, {
+      method: "POST",
+    }),
+  ).pipe(
+    Effect.flatMap(({ synced, incompleteLists }) =>
+      incompleteLists?.[0]
+        ? Effect.fail(new CliFailure({ message: incompleteLists[0].message }))
+        : Effect.succeed(synced),
+    ),
+  );
 
 /**
  * A local resource's metric series, fetched live from the provider the way
@@ -387,54 +176,77 @@ export async function fetchLocalMetrics(
   return fetchLocalMetricSeries(account, resourceTypeId, resourceId, range);
 }
 
-export async function listCloudResources(orgId: string, accountId: string): Promise<ResourceRow[]> {
-  const rows = await orgFetch<
-    Array<{
-      id: string;
-      pluginId: string;
-      resourceTypeId: string;
-      accountId: string;
-      displayName: string;
-      externalId: string;
-      fieldsJson: unknown;
-      outputsJson: unknown;
-      parentResourceId: string | null;
-    }>
-  >(orgId, `/accounts/${encodeURIComponent(accountId)}/resources`);
-  return rows
-    .map((r) => ({
-      id: r.id,
-      pluginId: r.pluginId,
-      resourceTypeId: r.resourceTypeId,
-      accountId: r.accountId,
-      displayName: r.displayName,
-      externalId: r.externalId,
-      fields: parseJsonObject(r.fieldsJson),
-      outputs: parseJsonObject(r.outputsJson),
-      parentResourceId: r.parentResourceId,
-    }))
-    .sort(
-      // The API returns rows in sync order; sort so a cloud listing reads the
-      // same way as the local one.
-      (a, b) =>
-        a.resourceTypeId.localeCompare(b.resourceTypeId) ||
-        a.displayName.localeCompare(b.displayName),
-    );
-}
+const CloudResources = Schema.Array(
+  Schema.Struct({
+    id: Schema.String,
+    pluginId: Schema.String,
+    resourceTypeId: Schema.String,
+    accountId: Schema.String,
+    displayName: Schema.String,
+    externalId: Schema.String,
+    fieldsJson: Schema.Unknown,
+    outputsJson: Schema.Unknown,
+    parentResourceId: Schema.NullOr(Schema.String),
+  }),
+);
 
-/** Resolve an account by id, exact name, or unique name prefix. */
-export function resolveAccount(accounts: AccountInfo[], wanted: string): AccountInfo {
+/** An org account's cached resources, by type then name like the local listing. */
+export const cloudResources = (orgId: string, accountId: string) =>
+  CloudApi.use((api) =>
+    api.decode(CloudResources, orgId, `/accounts/${encodeURIComponent(accountId)}/resources`),
+  ).pipe(
+    Effect.map((rows) =>
+      rows
+        .map((r): ResourceRow => ({
+          id: r.id,
+          pluginId: r.pluginId,
+          resourceTypeId: r.resourceTypeId,
+          accountId: r.accountId,
+          displayName: r.displayName,
+          externalId: r.externalId,
+          fields: parseJsonObject(r.fieldsJson),
+          outputs: parseJsonObject(r.outputsJson),
+          parentResourceId: r.parentResourceId,
+        }))
+        .sort(
+          // The API returns rows in sync order; sort so a cloud listing reads
+          // the same way as the local one.
+          (a, b) =>
+            a.resourceTypeId.localeCompare(b.resourceTypeId) ||
+            a.displayName.localeCompare(b.displayName),
+        ),
+    ),
+  );
+
+/**
+ * An account by id, exact name, or unique name prefix: what `--account` (and
+ * any other account argument) means everywhere, or the sentence saying why not.
+ */
+function matchAccount(
+  accounts: ReadonlyArray<AccountInfo>,
+  wanted: string,
+): { account: AccountInfo } | { refusal: string } {
   const byId = accounts.find((a) => a.id === wanted);
-  if (byId) return byId;
+  if (byId) return { account: byId };
   const exact = accounts.filter((a) => a.displayName.toLowerCase() === wanted.toLowerCase());
-  if (exact.length === 1) return exact[0]!;
+  if (exact.length === 1) return { account: exact[0]! };
   const prefix = accounts.filter((a) =>
     a.displayName.toLowerCase().startsWith(wanted.toLowerCase()),
   );
-  if (prefix.length === 1) return prefix[0]!;
-  throw new CliError(
-    prefix.length === 0
-      ? `No account matches "${wanted}".`
-      : `"${wanted}" matches several accounts: ${prefix.map((a) => a.displayName).join(", ")}.`,
-  );
+  if (prefix.length === 1) return { account: prefix[0]! };
+  return {
+    refusal:
+      prefix.length === 0
+        ? `No account matches "${wanted}".`
+        : `"${wanted}" matches several accounts: ${prefix.map((a) => a.displayName).join(", ")}.`,
+  };
 }
+
+/** {@link matchAccount}: the account, or a `CliFailure` saying why not. */
+export const findAccount = (accounts: ReadonlyArray<AccountInfo>, wanted: string) =>
+  Effect.suspend(() => {
+    const found = matchAccount(accounts, wanted);
+    return "account" in found
+      ? Effect.succeed(found.account)
+      : Effect.fail(new CliFailure({ message: found.refusal }));
+  });

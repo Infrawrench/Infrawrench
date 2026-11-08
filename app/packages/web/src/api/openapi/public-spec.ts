@@ -15,9 +15,9 @@
  *    default to a scheme nobody outside the UI can use, and generates client
  *    snippets with a `Cookie` header instead of `Authorization: Bearer`.
  *
- * Everything stays in the Zod path files (the code is source-available, and the
- * committed `openapi.json` keeps it all): internal operations are merely
- * tagged `x-internal: true` and dropped on the way out.
+ * Everything stays in the endpoint definitions (the code is source-available,
+ * and the committed `openapi.json` keeps it all): internal operations are
+ * merely tagged `x-internal: true` and dropped on the way out.
  */
 
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head"] as const;

@@ -1,7 +1,8 @@
 // Coding-agent VM setup pipeline: plan a setup
 // (runtime/package-manager detection), sync repo + agent config files to the
 // VM over SFTP, and reconcile the agent's branch back via git bundles. The
-// IPC registrations that call into this module live in ssh-host.ts.
+// renderer reaches it through the `AgentSetupRpcs` group
+// (`electron/rpc/handlers/agent-setup.ts`).
 import { dialog } from "electron";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -12,6 +13,9 @@ import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
 import { sanitizeGitConfigForAgentVm } from "./agent-gitconfig";
 import { getDb, isDialogBlessedPath } from "./main-utils";
 import { z } from "zod";
+import { Context, Effect, Layer } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import { AgentSetupError } from "../shared/rpc/groups/agent-setup";
 // The agent IPC protocol types are canonical in @infrawrench/ui (the renderer
 // side imports them from there); type-only import keeps main/renderer in sync.
 import type {
@@ -24,8 +28,7 @@ import type {
 
 export type { AgentTool };
 
-// Defined next to the SSH helpers that consume it; re-exported here because
-// ssh-host.ts takes it from this module.
+// Defined next to the SSH helpers that consume it.
 import type { WorkflowSshConfig } from "./ssh-tunnel";
 export type { WorkflowSshConfig };
 
@@ -1209,4 +1212,34 @@ async function ensureAgentRepoPathAllowed(localPath: string): Promise<void> {
   if (!isSessionRepo) {
     throw new Error(`Local agent repository is not associated with an agent session: ${localPath}`);
   }
+}
+
+const attempt = <A>(run: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) => new AgentSetupError({ message: errorMessage(cause) }),
+  });
+
+/** The agent VM setup pipeline, as the RPC handlers call it. */
+export class AgentSetup extends Context.Service<
+  AgentSetup,
+  {
+    readonly plan: (
+      input: Parameters<typeof planAgentSetup>[0],
+    ) => Effect.Effect<AgentSetupPlan, AgentSetupError>;
+    readonly syncFiles: (
+      input: Parameters<typeof syncAgentFiles>[0],
+    ) => Effect.Effect<Awaited<ReturnType<typeof syncAgentFiles>>, AgentSetupError>;
+    readonly reconcile: (
+      input: Parameters<typeof reconcileAgentBranch>[0],
+    ) => Effect.Effect<{ message: string }, AgentSetupError>;
+  }
+>()("infrawrench/desktop/AgentSetup") {
+  static readonly layer = Layer.succeed(AgentSetup)(
+    AgentSetup.of({
+      plan: (input) => attempt(() => planAgentSetup(input)),
+      syncFiles: (input) => attempt(() => syncAgentFiles(input)),
+      reconcile: (input) => attempt(() => reconcileAgentBranch(input)),
+    }),
+  );
 }

@@ -25,7 +25,7 @@
  *
  * The operations are therefore written once, as {@link runLocally}, and
  * reached two ways: directly on the owning pod, or over the relay from
- * another. `api/routes/internal-relay.ts` is the receiving end.
+ * another. `http/domains/internal-relay/` is the receiving end.
  *
  * Host resolution reuses `resolveSshConfig` (the one `ssh_exec` uses) so a
  * plugin-native host (Fly, Hetzner) needs no key and a VM (`sshEndpoint`) uses

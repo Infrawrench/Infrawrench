@@ -1,6 +1,6 @@
 /**
  * Cost canvases: CRUD, sharing, conversations and deterministic execution.
- * Shared by the HTTP routes (api/routes/cost-canvases.ts), the tool registry
+ * Shared by the HTTP routes (http/domains/cost-canvases/), the tool registry
  * (tools/cost-canvases.ts), the PDF renderer and the delivery loop.
  *
  * A canvas stores a structured spec and never a number. `runCostCanvasSpec`

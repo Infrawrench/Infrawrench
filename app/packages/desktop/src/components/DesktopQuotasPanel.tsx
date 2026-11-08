@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { QuotasSection, useUIStore, type QuotaListResponse } from "@infrawrench/ui";
-import { invoke } from "@/lib/invoke";
+import { cloudClient } from "@/lib/cloud-client";
+import { runRpc } from "@/lib/rpc/client";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The quota radar on desktop: the same screen web renders. Rendered as a
@@ -22,7 +24,10 @@ export function DesktopQuotasPanel() {
   const load = useCallback(async () => {
     if (!activeCloudOrgId) return;
     try {
-      setData(await invoke<QuotaListResponse>("cloud_quotas", { orgId: activeCloudOrgId }));
+      const quotas: QuotaListResponse = await runRpc(
+        cloudClient("quotas").quotas.list({ params: { orgId: activeCloudOrgId } }),
+      );
+      setData(quotas);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : gt("Request failed"));
@@ -49,7 +54,7 @@ export function DesktopQuotasPanel() {
       data={data}
       error={error}
       onRetry={() => void load()}
-      onOpenExternal={(url) => void invoke("open_external_url", { url })}
+      onOpenExternal={(url) => void openExternalUrl(url)}
     />
   );
 }

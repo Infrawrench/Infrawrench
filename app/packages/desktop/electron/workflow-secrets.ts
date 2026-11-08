@@ -1,28 +1,17 @@
+/**
+ * Local workflow secrets: encrypted at rest in SQLite, listed to the renderer
+ * by name only, decrypted in the main process into a run's snapshot. Served
+ * as the `WorkflowSecret*` RPCs (`shared/rpc/groups/workflows.ts`), whose
+ * payload schemas check the name and id formats.
+ */
 import crypto from "node:crypto";
-import { ipcMain } from "electron";
 import type { ParamsObject } from "sql.js";
-import { z } from "zod";
+import { Context, Effect, Layer } from "effect";
 
+import { errorMessage } from "../shared/rpc/errors";
+import { WorkflowSecretError, type WorkflowSecretSummary } from "../shared/rpc/groups/workflows";
 import { getSqlite, persist } from "./db";
 import { buildAad, decryptValue, encryptValue, getEncryptionKey } from "./main-utils";
-
-const Identifier = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(
-    /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/,
-    "Secret name must be a JavaScript dot identifier",
-  );
-const UpsertArgs = z.object({
-  id: z.string().uuid().optional(),
-  name: Identifier,
-  value: z
-    .string()
-    .min(1)
-    .max(1024 * 1024),
-});
-const IdArgs = z.object({ id: z.string().uuid() });
 
 interface SecretRow {
   id: string;
@@ -131,7 +120,7 @@ export async function loadLocalWorkflowSecretValuesForWorkflow(
   return loadLocalWorkflowSecretValues(ids);
 }
 
-ipcMain.handle("workflow_secrets_list", async () => {
+async function listSecrets(): Promise<WorkflowSecretSummary[]> {
   const db = await getSqlite();
   const stmt = db.prepare(
     "SELECT id, name, encrypted_value FROM workflow_secrets ORDER BY name ASC",
@@ -140,10 +129,15 @@ ipcMain.handle("workflow_secrets_list", async () => {
   while (stmt.step()) rows.push(toSecretRow(stmt.getAsObject()));
   stmt.free();
   return rows.map(metadata);
-});
+}
 
-ipcMain.handle("workflow_secret_upsert", async (_event, raw: unknown) => {
-  const input = UpsertArgs.parse(raw);
+interface SecretInput {
+  readonly id?: string;
+  readonly name: string;
+  readonly value: string;
+}
+
+async function upsertSecret(input: SecretInput): Promise<WorkflowSecretSummary> {
   const db = await getSqlite();
   const id = input.id ?? crypto.randomUUID();
   if (input.id && !readSecret(db, id)) throw new Error("Workflow secret not found");
@@ -178,11 +172,12 @@ ipcMain.handle("workflow_secret_upsert", async (_event, raw: unknown) => {
     }
     throw error;
   }
-  return metadata(readSecret(db, id)!);
-});
+  const saved = readSecret(db, id);
+  if (!saved) throw new Error("Workflow secret not found");
+  return metadata(saved);
+}
 
-ipcMain.handle("workflow_secret_delete", async (_event, raw: unknown) => {
-  const { id } = IdArgs.parse(raw);
+async function deleteSecret(id: string): Promise<void> {
   const db = await getSqlite();
   db.run("BEGIN");
   try {
@@ -222,5 +217,26 @@ ipcMain.handle("workflow_secret_delete", async (_event, raw: unknown) => {
     db.run("ROLLBACK");
     throw error;
   }
-  return { ok: true };
-});
+}
+
+const toSecretError = (cause: unknown) => new WorkflowSecretError({ message: errorMessage(cause) });
+
+export class WorkflowSecrets extends Context.Service<
+  WorkflowSecrets,
+  {
+    readonly list: Effect.Effect<WorkflowSecretSummary[], WorkflowSecretError>;
+    readonly upsert: (
+      input: SecretInput,
+    ) => Effect.Effect<WorkflowSecretSummary, WorkflowSecretError>;
+    readonly remove: (id: string) => Effect.Effect<void, WorkflowSecretError>;
+  }
+>()("infrawrench/desktop/WorkflowSecrets") {
+  static readonly layer = Layer.succeed(WorkflowSecrets)(
+    WorkflowSecrets.of({
+      list: Effect.tryPromise({ try: listSecrets, catch: toSecretError }),
+      upsert: (input) =>
+        Effect.tryPromise({ try: () => upsertSecret(input), catch: toSecretError }),
+      remove: (id) => Effect.tryPromise({ try: () => deleteSecret(id), catch: toSecretError }),
+    }),
+  );
+}

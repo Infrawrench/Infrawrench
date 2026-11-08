@@ -1,6 +1,6 @@
 /**
  * Org-scoped saved-cost-filter CRUD and referent scanning: shared by the HTTP
- * routes (api/routes/saved-filters.ts) and the tool registry, mirroring
+ * routes (http/domains/saved-filters) and the tool registry, mirroring
  * services/cost-reports.ts.
  *
  * A saved filter is a named `CostFilter[]` that graphs, reports and budgets

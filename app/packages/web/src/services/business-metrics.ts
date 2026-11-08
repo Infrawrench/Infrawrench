@@ -1,6 +1,6 @@
 /**
  * Org-scoped business-metric CRUD: shared by the HTTP routes
- * (api/routes/business-metrics.ts) and the tool registry, mirroring
+ * (http/domains/business-metrics/) and the tool registry, mirroring
  * services/saved-cost-filters.ts, so the MCP/chat surface and the API cannot
  * drift into behaving differently.
  *
