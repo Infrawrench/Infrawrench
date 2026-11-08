@@ -14,6 +14,9 @@ on:
       # The warehouse code above takes its shared constants from client-core.
       - "app/packages/client-core/src/**"
       - "pnpm-lock.yaml"
+      # A change to the build steps redeploys, rather than waiting for the next
+      # change to the site.
+      - ".github/workflows/instances-deploy.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
