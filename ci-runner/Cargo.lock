@@ -2887,6 +2887,7 @@ dependencies = [
  "getrandom 0.3.4",
  "hex",
  "iwci-vfs",
+ "serde_json",
  "sha2",
  "thiserror",
  "tokio",

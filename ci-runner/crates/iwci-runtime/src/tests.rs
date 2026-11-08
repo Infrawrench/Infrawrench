@@ -615,18 +615,33 @@ mod host_fs {
     }
 }
 
+/// A fixture named by an environment variable. Unset, the test skips, so a
+/// plain `cargo test` needs nothing built; with `IWCI_REQUIRE_FIXTURES` set
+/// (the CI job that builds the builtins) it fails instead, so a renamed
+/// variable or a lost path cannot quietly turn these tests off.
+fn fixture(var: &str, what: &str) -> Option<PathBuf> {
+    match std::env::var_os(var) {
+        Some(path) => Some(PathBuf::from(path)),
+        None if std::env::var_os("IWCI_REQUIRE_FIXTURES").is_some() => {
+            panic!("IWCI_REQUIRE_FIXTURES is set but {var} is not: {what}")
+        }
+        None => {
+            eprintln!("skipping: set {var} to {what}");
+            None
+        }
+    }
+}
+
 /// gofmt built for `GOOS=wasip1`: a real Go runtime under WASI.
 #[test]
 fn gofmt_lists_and_rewrites_a_badly_formatted_file() {
-    // Build one with `GOOS=wasip1 GOARCH=wasm go build -o gofmt.wasm cmd/gofmt`.
-    let Some(path) = std::env::var_os("IWCI_TEST_GOFMT_WASM").map(PathBuf::from) else {
-        eprintln!("skipping: set IWCI_TEST_GOFMT_WASM to a gofmt built for wasip1");
+    // `builtins/gofmt/build.sh` builds one, or
+    // `GOOS=wasip1 GOARCH=wasm go build -o gofmt.wasm cmd/gofmt`.
+    let Some(path) = fixture("IWCI_TEST_GOFMT_WASM", "a gofmt built for wasip1") else {
         return;
     };
-    let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("skipping: no gofmt.wasm at {}", path.display());
-        return;
-    };
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("IWCI_TEST_GOFMT_WASM={}: {e}", path.display()));
     let rt = runtime();
     let job = snapshot(&[
         (
@@ -654,30 +669,39 @@ fn gofmt_lists_and_rewrites_a_badly_formatted_file() {
     );
 }
 
+/// The packages of an environment `builtins/environments/build.sh` built
+/// (a directory with its `build.json`, such as `dist/environment/bash/5.1.16`),
+/// or a directory holding just `bash.webc` and `coreutils.webc`.
 fn webc_packages() -> Option<Vec<WebcPackage>> {
-    let Some(dir) = std::env::var_os("IWCI_TEST_WEBC_DIR").map(PathBuf::from) else {
-        eprintln!(
-            "skipping: set IWCI_TEST_WEBC_DIR to a directory with bash.webc and coreutils.webc"
+    let dir = fixture(
+        "IWCI_TEST_WEBC_DIR",
+        "an environment build directory, or one with bash.webc and coreutils.webc",
+    )?;
+    let read = |file: &str| {
+        std::fs::read(dir.join(file))
+            .unwrap_or_else(|e| panic!("IWCI_TEST_WEBC_DIR: {}: {e}", dir.join(file).display()))
+    };
+    if dir.join("build.json").exists() {
+        let build: serde_json::Value = serde_json::from_slice(&read("build.json")).unwrap();
+        let packages: Vec<WebcPackage> = build["packages"]
+            .as_array()
+            .expect("build.json lists packages")
+            .iter()
+            .map(|p| {
+                let field = |k: &str| p[k].as_str().expect("package fields are strings");
+                WebcPackage::new(field("name"), field("version"), read(field("file")))
+            })
+            .collect();
+        assert!(
+            packages.iter().any(|p| p.name == "wasmer/bash"),
+            "the environment has no bash"
         );
-        return None;
-    };
-    let load = |file: &str, name: &str, version: &str| {
-        let bytes = std::fs::read(dir.join(file)).ok()?;
-        Some(WebcPackage::new(name, version, bytes))
-    };
-    match (
-        load("bash.webc", "wasmer/bash", "1.0.25"),
-        load("coreutils.webc", "wasmer/coreutils", "1.0.27"),
-    ) {
-        (Some(bash), Some(coreutils)) => Some(vec![bash, coreutils]),
-        _ => {
-            eprintln!(
-                "skipping: {} lacks bash.webc or coreutils.webc",
-                dir.display()
-            );
-            None
-        }
+        return Some(packages);
     }
+    Some(vec![
+        WebcPackage::new("wasmer/bash", "1.0.25", read("bash.webc")),
+        WebcPackage::new("wasmer/coreutils", "1.0.27", read("coreutils.webc")),
+    ])
 }
 
 #[test]

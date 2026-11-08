@@ -572,6 +572,35 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Tests never reach the network. The ones that need real artifacts (a built
-TypeScript module, Wasmer packages, a live registry) are `#[ignore]`d and say
-which environment variable points them at the files.
+Tests never reach the network. The ones that need real artifacts say which
+environment variable points them at the files: gofmt (`IWCI_TEST_GOFMT_WASM`)
+and the bash environment (`IWCI_TEST_WEBC_DIR`, an environment's `dist/`
+directory) skip without one, and the TypeScript module and live registries
+are `#[ignore]`d. `IWCI_REQUIRE_FIXTURES=1` turns those skips into failures,
+which is how CI runs them.
+
+### Testing the builtins
+
+`builtins/test.sh` tests builtins the way a user meets them: it builds each
+with its own `build.sh`, publishes it to a throwaway store with `iwci
+publish`, and runs pipelines through `iwci run` against a fixture
+repository that has something to pass and something to fail for each tool.
+
+```sh
+cargo build -p iwci
+bash builtins/test.sh                        # gofmt and bash
+bash builtins/test.sh typescript oxfmt       # needs their toolchains
+cargo build -p iwci --features node && bash builtins/test.sh bash-node
+```
+
+A job whose key ends in `-passes` must pass and one ending in `-fails` must
+fail; a tool that will not resolve or start is an error and fails the test.
+`SKIP_BUILD=1` reuses what is already in `dist/`.
+
+In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
+`ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
+which each need a large toolchain, on changes to the builtins, the runtime
+or the store, and nightly, because those builds resolve crates and a WASIX
+toolchain that this repository does not pin byte for byte. The Node job
+runs on x86_64, the only Linux architecture with a prebuilt V8 for
+`wasmer-napi`.
