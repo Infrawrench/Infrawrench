@@ -11,8 +11,16 @@
  * Call sites keep their real shape (`runRpc(DesktopRpcClient.use((rpc) => rpc.X(p)))`,
  * `forkRpc(Effect.gen(...yield* DesktopRpcClient...))`); an operation the test
  * did not answer dies with its name.
+ *
+ * A module that calls the cloud through `cloudClient` (`../cloud-client.ts`)
+ * reaches the client through `../rpc/desktop-client`, so mock that too, with
+ * the same module, and answer the transport with {@link answerCloudHttp}:
+ *
+ *   vi.mock("../rpc/desktop-client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
  */
+import { vi } from "vitest";
 import { Effect, Fiber, Predicate } from "effect";
+import type { CloudHttpRequest, CloudHttpResponse } from "../../../shared/rpc/groups/cloud-http";
 
 type Operation = (...args: never[]) => unknown;
 
@@ -62,3 +70,24 @@ export const fakeRpcClientModule = {
     };
   },
 };
+
+/**
+ * Answer the `CloudHttp` transport with `answer(request)`: a status and a
+ * JSON value (sent as its text), or a status alone for an empty body. The
+ * returned mock records each request as the main process would receive it,
+ * so a test can assert the method, the encoded URL and the JSON body.
+ */
+export function answerCloudHttp(
+  answer: (request: CloudHttpRequest) => { readonly status: number; readonly json?: unknown },
+) {
+  const operation = vi.fn((request: CloudHttpRequest) => {
+    const { status, json } = answer(request);
+    const response: CloudHttpResponse = {
+      status,
+      body: json === undefined ? "" : JSON.stringify(json),
+    };
+    return Effect.succeed(response);
+  });
+  fakeRpc["CloudHttp"] = operation;
+  return operation;
+}

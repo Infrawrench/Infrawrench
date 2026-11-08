@@ -11,7 +11,7 @@ ipcMain.handle("cloud_list_dashboards", async (_e, { orgId }: { orgId: string })
 
 // The dashboard this member lands on (user, then role, then org default) and
 // their own "My default dashboard". Role defaults are admin settings and go
-// through the Settings proxy (`cloud-data/settings.ts`).
+// through the settings client (Settings allowlist in `cloud-allowlist.ts`).
 ipcMain.handle("cloud_get_default_dashboard", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/dashboards/default");
 });

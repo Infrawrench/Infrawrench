@@ -24,6 +24,7 @@ import { LocalPostureHandlers } from "./handlers/local-posture";
 import { ShellCommandHandlers } from "./handlers/shell-command";
 import { SshHandlers } from "./handlers/ssh";
 import { CloudAuthHandlers, CloudSshKeyHandlers } from "./handlers/cloud-auth";
+import { CloudHttpHandlers } from "./handlers/cloud-http";
 import { DeepLinkHandlers } from "./handlers/deep-links";
 import { InstancePricingHandlers } from "./handlers/instance-pricing";
 import { K8sPfCloudHandlers } from "./handlers/k8s-pf-cloud";
@@ -49,6 +50,7 @@ const DesktopRpcHandlers = Layer.mergeAll(
   SshHandlers,
   CloudAuthHandlers,
   CloudSshKeyHandlers,
+  CloudHttpHandlers,
   DeepLinkHandlers,
   InstancePricingHandlers,
   K8sPfCloudHandlers,

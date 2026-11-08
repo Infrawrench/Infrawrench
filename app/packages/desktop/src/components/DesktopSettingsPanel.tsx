@@ -19,8 +19,9 @@ import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * Cloud-mode org settings: the same sections the web app renders, over the
- * `cloud_settings_request` IPC proxy. Local-only mode has no org (and no
- * server to configure), so the panel asks for a cloud sign-in instead.
+ * cloud transport's Settings surface (`lib/settings-client.ts`). Local-only
+ * mode has no org (and no server to configure), so the panel asks for a cloud
+ * sign-in instead.
  */
 export function DesktopSettingsPanel({ section }: { section: string }) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);

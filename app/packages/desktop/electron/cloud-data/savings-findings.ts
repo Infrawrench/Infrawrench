@@ -7,7 +7,7 @@ import { cloudFetch } from "./shared";
 // The savings findings workflow, cloud mode only: statuses, detected dates
 // and saved views live server-side (`savings_finding_states`,
 // `savings_views`), so there is no local counterpart. Sharing a view rides
-// the existing `cloud_settings_request` proxy (`sharing/` is allowlisted).
+// the settings client (`sharing/` is on the cloud transport's allowlist).
 
 /** Pull the server's `{ error }` out of cloudFetch's "Cloud request failed" message. */
 function serverError(err: unknown): Error {

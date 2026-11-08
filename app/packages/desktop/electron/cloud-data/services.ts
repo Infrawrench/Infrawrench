@@ -3,8 +3,8 @@ import { cloudFetch } from "./shared";
 
 // Services and scorecards: cloud-mode only (membership is evaluated against
 // the cloud inventory and billing data, scores by the cloud poller). The
-// editor's other pickers reuse existing channels: `cloud_ownership_members`,
-// `cloud_slos_list`, `cloud_runbooks`, `cloud_list_accounts` and
+// editor's other pickers reuse existing calls: `cloud_ownership_members`,
+// the SLO list (`listCloudSlos`), `cloud_runbooks`, `cloud_list_accounts` and
 // `cloud_savings_search_resources`. The three reads below are the ones no
 // channel outside the Settings proxy covered.
 

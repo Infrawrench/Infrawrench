@@ -30,6 +30,7 @@ The HTTP API's endpoint definitions live in `@infrawrench/api-contract` (`app/pa
 - **A new domain** is a module there plus an `export *` line and an `API_DEFINITIONS` entry in its `src/index.ts`; export names must be unique across the package (the build fails otherwise).
 - **Web, ui and desktop read its `dist`**: rebuild it (`turbo run build --filter=@infrawrench/api-contract`) after changing a definition, before typechecking or testing them.
 - **Clients decode what a newer server may extend leniently.** The desktop and the CLI ship behind the server, so a client never fails on an enum value or a field the server added: the CLI decodes server enums with `knownOr`/`openUnion`, and typed requests built from the contract pass the response body through rather than decoding it strictly.
+- **The desktop renderer calls the cloud through the contract, not a channel.** `cloudClient("<domain>").<group>.<endpoint>(request)` (`desktop/src/lib/cloud-client.ts`) encodes the request with the endpoint's schemas and resolves with the server's JSON typed as the endpoint's wire type; it rides the one `CloudHttp` RPC, whose main-process end (`electron/cloud-transport.ts`) owns the token, the 401 refresh, the SSH host-key prompt and the allowlist. The domain must be an entry of `DESKTOP_CLOUD_APIS` (`desktop/shared/cloud-apis.ts`), which is also the allowlist. Never add an `ipcMain.handle` + `cloudFetch` channel for a cloud route; KNOWLEDGE.md ("Desktop IPC on Effect RPC") has the migration recipe for the existing ones.
 
 # Learning more about Effect
 
@@ -86,7 +87,7 @@ Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts
 The 14 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific; API transport, permissions, `openExternal`, cross-surface navigation; from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
 
 - **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper, and a docs page. Both platforms' navs derive from the registry.
-- **New endpoint used by a section**: the desktop reaches the cloud through the single `cloud_settings_request` IPC channel, whose handler (`electron/cloud-data/settings.ts`) enforces a method+path allowlist. Add the new path there in the same change, or the section works on web and silently fails on desktop.
+- **New endpoint used by a section**: the desktop reaches the cloud through its one cloud transport (the `CloudHttp` RPC, `electron/cloud-transport.ts`), which refuses any method+path outside its allowlist (`electron/cloud-allowlist.ts`). The sections call raw paths, so their surface is the hand-written `SETTINGS_RULES` there: add the new path in the same change, or the section works on web and silently fails on desktop.
 - Structured errors the sections branch on (seat limit, plan gate) live in `client-core/src/api-errors.ts` and must be thrown by both transports (web `apiFetch`, desktop `settings-client.ts`).
 
 ## UI translations (gt-react)

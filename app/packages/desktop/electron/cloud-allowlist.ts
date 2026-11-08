@@ -1,28 +1,32 @@
-import { ipcMain } from "electron";
-import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
-import { CLOUD_URL } from "../../env";
-
 /**
- * Single authorized proxy for the cloud-mode Settings tab.
+ * Which method+path a renderer may ask the cloud transport for
+ * (`cloud-transport.ts`, the `CloudHttp` RPC). Anything else is refused
+ * before a request leaves the main process: the renderer holds no token, so
+ * this list is the whole of what a compromised page could do with the user's
+ * session.
  *
- * The shared settings sections (in @infrawrench/ui) speak the same `/api/...`
- * paths the web app fetches: ~60 endpoints across team, roles, keys,
- * billing, notification routing and the personal profile. Giving each its own
- * IPC channel would triple the preload allowlist for one feature, so this one
- * channel proxies them all, but only them: the method+path allowlist below
- * is the security boundary, and anything outside the settings surface is
- * rejected before a request leaves the main process. The channel name itself
- * stays fixed, so the renderer still cannot reach an arbitrary handler.
+ * Two surfaces make it up:
  *
- * Unlike `cloudFetch`, errors are returned as data (`status` + body text):
- * the sections need structured failures (seat limits, plan gates) that an IPC
- * rejection's flattened message would destroy. The renderer-side client
- * (src/lib/settings-client.ts) rebuilds the typed errors.
+ * - **Every endpoint of every contract domain in `DESKTOP_CLOUD_APIS`**
+ *   (`shared/cloud-apis.ts`), matched by Effect's router (`FindMyWay`, the one
+ *   the server routes with) on the endpoint's own method and path template. A
+ *   migrated area extends this by adding its domain there; nothing here
+ *   changes.
+ * - **The Settings tab's surface**, the {@link SETTINGS_RULES} below. The
+ *   shared settings sections (`@infrawrench/ui/settings`) speak the same
+ *   `/api/...` paths the web app fetches through `SettingsApi.get(path)`,
+ *   ~60 endpoints across team, roles, keys, billing, notification routing and
+ *   the personal profile, with no endpoint definition at the call site, so
+ *   their surface is written out by hand. A new endpoint a section calls is
+ *   added here in the same change (CLAUDE.md "Settings").
  */
+import { FindMyWay } from "effect/http";
+import { DESKTOP_CLOUD_APIS } from "../shared/cloud-apis";
 
 const ORG = "^/api/org/[^/]+";
 
-const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
+/** The Settings tab's method+path surface (see the module comment). */
+const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   // Personal account (profile, MFA, sessions, deletion).
   { methods: ["GET", "POST", "PATCH", "DELETE"], pattern: /^\/api\/profile(\/|$)/ },
   // The caller's own push devices.
@@ -71,68 +75,63 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET"], pattern: new RegExp(`${ORG}/iac/states$`) },
 ];
 
-interface SettingsRequestArgs {
-  method: string;
-  path: string;
-  body?: unknown;
-}
-
-interface SettingsRequestResult {
-  status: number;
-  bodyText: string;
-}
-
 /**
  * The allowlist matches the path as text, but `fetch` resolves dot segments
  * (and some servers decode `%2F`/`%2E` before routing), so
  * `/api/profile/../org/x/billing/...` would match the profile rule and then
- * reach a route outside the surface. Refuse any path whose URL-normalized form
+ * reach a route outside the surface. Refuse a path whose URL-normalized form
  * differs from what was matched, or that carries an encoded dot, slash or
- * backslash anywhere.
+ * backslash in the part being matched.
  */
-export function isAllowedSettingsRequest(method: string, path: string): boolean {
-  if (typeof method !== "string" || typeof path !== "string") return false;
+function isCanonical(path: string, matched: string): boolean {
   if (!path.startsWith("/") || path.startsWith("//")) return false;
-  if (/%2e|%2f|%5c|\\/i.test(path)) return false;
+  if (/%2e|%2f|%5c|\\/i.test(matched)) return false;
   let normalized: URL;
   try {
-    normalized = new URL(path, "https://settings.invalid");
+    normalized = new URL(path, "https://allowlist.invalid");
   } catch {
     return false;
   }
-  if (normalized.origin !== "https://settings.invalid") return false;
-  if (`${normalized.pathname}${normalized.search}` !== path) return false;
-  const upper = method.toUpperCase();
-  return ALLOWED.some((rule) => rule.methods.includes(upper) && rule.pattern.test(path));
+  if (normalized.origin !== "https://allowlist.invalid") return false;
+  return `${normalized.pathname}${normalized.search}` === path;
 }
 
-ipcMain.handle(
-  "cloud_settings_request",
-  async (_e, { method, path, body }: SettingsRequestArgs): Promise<SettingsRequestResult> => {
-    const upper = String(method).toUpperCase();
-    if (!isAllowedSettingsRequest(method, path)) {
-      throw new Error(`Settings proxy: ${upper} ${path} is not on the settings API surface`);
-    }
+/** Whether `method path` is on the Settings tab's surface (the whole path, query included). */
+export function isAllowedSettingsRequest(method: string, path: string): boolean {
+  if (!isCanonical(path, path)) return false;
+  const upper = method.toUpperCase();
+  return SETTINGS_RULES.some((rule) => rule.methods.includes(upper) && rule.pattern.test(path));
+}
 
-    let token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
-    const url = `${CLOUD_URL}${path}`;
-    const buildInit = (t: string): RequestInit => ({
-      method: upper,
-      headers: {
-        Authorization: `Bearer ${t}`,
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    let res = await fetch(url, buildInit(token));
-    if (res.status === 401) {
-      const refreshed = await forceRefreshAccessToken();
-      if (!refreshed) throw new Error("Authentication expired; please sign in again");
-      token = refreshed;
-      res = await fetch(url, buildInit(token));
+/** Every endpoint of every registered contract domain, routed as the server routes them. */
+const contractRoutes = (() => {
+  const router = FindMyWay.make<true>();
+  const seen = new Set<string>();
+  for (const { endpoints } of Object.values(DESKTOP_CLOUD_APIS)) {
+    for (const { endpoint } of endpoints) {
+      // The router keys a route on its template with parameter names erased
+      // (`/x/:id` and `/x/:probeId` are one route) and throws on a repeat.
+      const key = `${endpoint.method} ${endpoint.path.replace(/:\w+/g, ":")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      router.on(endpoint.method, `/${endpoint.path.replace(/^\//, "")}`, true);
     }
-    const bodyText = await res.text().catch(() => "");
-    return { status: res.status, bodyText };
-  },
-);
+  }
+  return router;
+})();
+
+/**
+ * Whether `method path` is an endpoint of a registered contract domain. Only
+ * the path is held to the encoded-character rule here: a query value may
+ * carry an encoded slash (a file path, a prefix) without changing the route.
+ */
+export function isAllowedContractRequest(method: string, path: string): boolean {
+  const [pathname = ""] = path.split("?", 1);
+  if (!isCanonical(path, pathname)) return false;
+  return contractRoutes.find(method.toUpperCase(), path) !== undefined;
+}
+
+/** The transport's allowlist: a registered contract endpoint or the Settings surface. */
+export function isAllowedCloudRequest(method: string, path: string): boolean {
+  return isAllowedContractRequest(method, path) || isAllowedSettingsRequest(method, path);
+}

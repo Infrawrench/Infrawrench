@@ -264,9 +264,9 @@ export function DesktopWorkspaceTabsViewport() {
  * resolves to nothing, which is the correct answer rather than a control that
  * could only fail.
  *
- * Requests go over the same allowlisted `cloud_settings_request` IPC channel
- * the settings sections use; `/jira` and `/linear` are in that allowlist
- * (electron/cloud-data/settings.ts).
+ * Requests go over the same settings client the settings sections use;
+ * `/jira` and `/linear` are in the cloud transport's Settings allowlist
+ * (electron/cloud-allowlist.ts).
  */
 function IssueFiling({ orgId, children }: { orgId: string | null; children: ReactNode }) {
   const api = useMemo(() => createDesktopSettingsApi(), []);

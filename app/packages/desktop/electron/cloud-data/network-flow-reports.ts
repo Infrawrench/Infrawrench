@@ -1,8 +1,8 @@
 // Saved network flow reports (cloud-only): bytes and estimated cost by flow
 // pair over time, read from the server's network-flow store. One channel per
 // route, each on the preload allowlist; nothing here forwards an arbitrary
-// path. Sharing goes through the existing `cloud_settings_request` channel,
-// whose allowlist already covers `/sharing`.
+// path. Sharing goes through the settings client, whose allowlist
+// (`cloud-allowlist.ts`) already covers `/sharing`.
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 

@@ -17,6 +17,7 @@ import { LocalPostureRpcs } from "./local-posture";
 import { ShellCommandRpcs } from "./shell-command";
 import { SshRpcs } from "./ssh";
 import { CloudAuthRpcs } from "./cloud-auth";
+import { CloudHttpRpcs } from "./cloud-http";
 import { CloudSshKeyRpcs } from "./cloud-ssh-keys";
 import { DeepLinkRpcs } from "./deep-links";
 import { InstancePricingRpcs } from "./instance-pricing";
@@ -41,6 +42,7 @@ export class DesktopRpcs extends ShellCommandRpcs.merge(
   LocalPostureRpcs,
   SshRpcs,
   CloudAuthRpcs,
+  CloudHttpRpcs,
   CloudSshKeyRpcs,
   DeepLinkRpcs,
   InstancePricingRpcs,
