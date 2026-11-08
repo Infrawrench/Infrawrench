@@ -20,7 +20,8 @@
 import { randomUUID } from "node:crypto";
 import { Cause, Context, Effect, Layer, SchemaIssue } from "effect";
 import { HttpServerResponse } from "effect/http";
-import { HttpApiError, HttpApiMiddleware, type HttpApiEndpoint } from "effect/http-api";
+import { HttpApiError, type HttpApiEndpoint } from "effect/http-api";
+import { RequestErrors } from "./middleware-tags";
 import { HTTPException } from "hono/http-exception";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import {
@@ -37,25 +38,9 @@ import {
 import { InvalidRequestMessage, RequiredPermission } from "./annotations";
 import { HttpFailure } from "./errors";
 import { withLegacyScopes } from "./legacy";
-import {
-  missingPermission,
-  OrgPrincipal,
-  type OrgPrincipalValue,
-  type SessionPrincipal,
-} from "./principal";
+import { missingPermission, OrgPrincipal, type OrgPrincipalValue } from "./principal";
 
-export class OrgAuth extends HttpApiMiddleware.Service<OrgAuth, { provides: OrgPrincipal }>()(
-  "infrawrench/http/OrgAuth",
-) {}
-
-export class SessionAuth extends HttpApiMiddleware.Service<
-  SessionAuth,
-  { provides: SessionPrincipal }
->()("infrawrench/http/SessionAuth") {}
-
-export class RequestErrors extends HttpApiMiddleware.Service<RequestErrors>()(
-  "infrawrench/http/RequestErrors",
-) {}
+export { OrgAuth, RequestErrors, SessionAuth } from "./middleware-tags";
 
 export const json = (body: unknown, status: number) =>
   HttpServerResponse.jsonUnsafe(body, { status });

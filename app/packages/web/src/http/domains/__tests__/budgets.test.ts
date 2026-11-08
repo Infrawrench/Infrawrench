@@ -34,7 +34,7 @@ vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
   SavedCostFilterResolutionError: FakeSavedFilterError,
 }));
 
-const { budgetsDomain } = await import("@/http/domains/budgets");
+const { budgetsDomain } = await import("@/http/domains/budgets/index");
 const basePath = "/api/org/org-1/budgets";
 const buildApp = () => buildTestApi(budgetsDomain, { basePath });
 

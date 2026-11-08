@@ -10,7 +10,7 @@
 import { Context, Layer, type FileSystem, type Path } from "effect";
 import type { Etag, HttpPlatform, HttpRouter } from "effect/http";
 import { HttpApi, HttpApiBuilder, OpenApi, type HttpApiGroup } from "effect/http-api";
-import { RequestErrors, type OrgAuth, type SessionAuth } from "./middleware";
+import { RequestErrors, type OrgAuth, type SessionAuth } from "./middleware-tags";
 
 /**
  * What a domain layer may still need once its handlers are provided: the

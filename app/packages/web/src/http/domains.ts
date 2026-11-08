@@ -6,6 +6,6 @@
  * domain moves here by deleting its Hono routes in the same change.
  */
 import type { Domain } from "./domain";
-import { budgetsDomain } from "./domains/budgets";
+import { budgetsDomain } from "./domains/budgets/index";
 
 export const DOMAINS: readonly Domain[] = [budgetsDomain];

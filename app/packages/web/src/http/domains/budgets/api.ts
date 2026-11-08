@@ -1,13 +1,12 @@
 /**
- * Budgets: `/api/org/:orgId/budgets`.
+ * Budgets: `/api/org/:orgId/budgets`, the endpoint definitions.
  *
- * Request bodies are the shared schemas the budget form validates with
- * (`@infrawrench/ui/schemas`); response shapes are documented here. The
- * services are still promise code and run through `legacy`, inside the
- * request's cost visibility scope.
+ * Definitions only (schemas, endpoints, the `HttpApi`): no handlers and no
+ * server code, so a client can be derived from this file. Request bodies are
+ * the shared schemas the budget form validates with (`@infrawrench/ui/schemas`).
  */
-import { Effect, Schema } from "effect";
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
+import { Schema } from "effect";
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import {
   AlertEmailRecipients,
   BudgetAlertNoteInput,
@@ -25,27 +24,11 @@ import {
   BudgetUseAdjustedSpend,
   pattern,
 } from "@infrawrench/ui/schemas";
-import { SavedCostFilterResolutionError } from "@infrawrench/server-core/cost/saved-filters";
-import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
-import {
-  BudgetValidationError,
-  createBudget,
-  getBudgetWithStatus,
-  listBudgetEvents,
-  listBudgetsWithStatus,
-  softDeleteBudget,
-  updateBudget,
-} from "../../services/budgets";
-import { BudgetAlertNoteError, noteBudgetAlertEvent } from "../../services/budget-alert-notes";
-import { logAudit } from "../../services/audit";
-import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from "../annotations";
-import { makeDomain, withApiDefaults } from "../domain";
-import { BadRequest, Forbidden, NotFound, notFound } from "../errors";
-import { fireAndForget, legacy, legacyTry } from "../legacy";
-import { OrgAuth } from "../middleware";
-import { OrgPrincipal, requirePermission } from "../principal";
-import { respond } from "../response";
-import { IsoDate, IsoDateTime, Ok, ok, OrgIdParams, OrgParams, Uuid } from "../schemas/common";
+import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from "../../annotations";
+import { withApiDefaults } from "../../domain";
+import { BadRequest, Forbidden, NotFound } from "../../errors";
+import { OrgAuth } from "../../middleware-tags";
+import { IsoDate, IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
 
 const Month = Schema.String.check(pattern(/^\d{4}-\d{2}$/)).annotate({
   examples: ["2026-07"],
@@ -70,7 +53,7 @@ const BudgetHierarchyWarning = Schema.Struct({
   }),
 }).annotate({ identifier: "BudgetHierarchyWarning" });
 
-const BudgetFull = Schema.Struct({
+export const BudgetFull = Schema.Struct({
   id: Uuid,
   organizationId: Uuid,
   name: Schema.String,
@@ -134,11 +117,11 @@ const budgetAlertEventFields = {
   note: Schema.NullOr(BudgetAlertNote),
 };
 
-const BudgetAlertEvent = Schema.Struct(budgetAlertEventFields).annotate({
+export const BudgetAlertEvent = Schema.Struct(budgetAlertEventFields).annotate({
   identifier: "BudgetAlertEvent",
 });
 
-const BudgetAlertNoteResult = Schema.Struct({
+export const BudgetAlertNoteResult = Schema.Struct({
   ...budgetAlertEventFields,
   followUp: Schema.Struct({
     slack: Schema.Int.annotate({ description: "Slack threads the note was posted in as a reply." }),
@@ -148,7 +131,7 @@ const BudgetAlertNoteResult = Schema.Struct({
   }),
 }).annotate({ identifier: "BudgetAlertNoteResult" });
 
-const BudgetWithStatus = Schema.Struct({
+export const BudgetWithStatus = Schema.Struct({
   id: Uuid,
   name: Schema.String,
   amountCents: Schema.Int,
@@ -326,110 +309,3 @@ export class BudgetsGroup extends HttpApiGroup.make("budgets")
   .annotate(OpenApi.Title, "Budgets") {}
 
 export class BudgetsApi extends withApiDefaults(HttpApi.make("budgets").add(BudgetsGroup)) {}
-
-/** The service's refusals that are the caller's fault: 400 with its sentence. */
-const writeRefusal = (error: unknown) =>
-  error instanceof SavedCostFilterResolutionError ||
-  error instanceof BudgetValidationError ||
-  error instanceof AlertEmailRecipientsError
-    ? new BadRequest({ error: error.message })
-    : undefined;
-
-const BudgetsHandlers = HttpApiBuilder.group(BudgetsApi, "budgets", (handlers) =>
-  handlers
-    .handle("list", () =>
-      Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
-        const budgets = yield* legacy(() => listBudgetsWithStatus(organizationId));
-        return yield* respond(Schema.Array(BudgetWithStatus))(budgets);
-      }),
-    )
-    .handle("create", ({ payload }) =>
-      Effect.gen(function* () {
-        const { organizationId, session } = yield* OrgPrincipal;
-        // A budget must not be born pointing at a saved filter that does not
-        // resolve: it would error every evaluation from day one.
-        const created = yield* legacyTry(
-          () => createBudget(organizationId, payload, session.userId ?? null),
-          writeRefusal,
-        );
-        return yield* respond(BudgetFull)(created);
-      }),
-    )
-    .handle("get", ({ params }) =>
-      Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
-        const budget = yield* legacy(() => getBudgetWithStatus(organizationId, params.id));
-        if (!budget) return yield* notFound();
-        return yield* respond(BudgetWithStatus)(budget);
-      }),
-    )
-    .handle("update", ({ params, payload }) =>
-      Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
-        const updated = yield* legacyTry(
-          () => updateBudget(organizationId, params.id, payload),
-          writeRefusal,
-        );
-        if (!updated) return yield* notFound();
-        return yield* respond(BudgetFull)(updated);
-      }),
-    )
-    .handle("delete", ({ params }) =>
-      Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
-        const deleted = yield* legacy(() => softDeleteBudget(organizationId, params.id));
-        if (!deleted) return yield* notFound();
-        return ok;
-      }),
-    )
-    .handle("events", ({ params }) =>
-      Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
-        const events = yield* legacy(() => listBudgetEvents(organizationId, params.id));
-        if (!events) return yield* notFound();
-        return yield* respond(Schema.Array(BudgetAlertEvent))(events);
-      }),
-    )
-    .handle("note", ({ params, payload }) =>
-      Effect.gen(function* () {
-        yield* requirePermission("budgets:read");
-        const { organizationId, session } = yield* OrgPrincipal;
-        const result = yield* legacyTry(
-          () =>
-            noteBudgetAlertEvent(
-              organizationId,
-              params.id,
-              params.eventId,
-              payload.note,
-              session.userId ?? null,
-            ),
-          (error) =>
-            error instanceof BudgetAlertNoteError
-              ? new BadRequest({ error: error.message })
-              : undefined,
-        );
-        if (!result) return yield* notFound();
-        yield* fireAndForget(() =>
-          logAudit({
-            organizationId,
-            userId: session.userId,
-            action: "budget_alert.note",
-            entityType: "budget",
-            entityId: params.id,
-            metadata: {
-              eventId: result.id,
-              month: result.month,
-              thresholdType: result.thresholdType,
-              thresholdPercent: result.thresholdPercent,
-              note: result.note?.text ?? null,
-              annotationId: result.note?.annotationId ?? null,
-            },
-          }),
-        );
-        return yield* respond(BudgetAlertNoteResult)(result);
-      }),
-    ),
-);
-
-export const budgetsDomain = makeDomain("budgets", BudgetsApi, BudgetsHandlers);

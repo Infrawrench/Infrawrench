@@ -30,7 +30,7 @@ vi.mock("@/services/audit", () => ({
   logAudit: (...a: unknown[]) => mockLogAudit(...a),
 }));
 
-const { budgetsDomain } = await import("@/http/domains/budgets");
+const { budgetsDomain } = await import("@/http/domains/budgets/index");
 const basePath = "/api/org/org-1/budgets";
 
 const path = "/b1/events/e1/note";
