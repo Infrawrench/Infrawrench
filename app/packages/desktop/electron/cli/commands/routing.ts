@@ -10,23 +10,128 @@
 // The response shapes come from `@infrawrench/client-core`, the same
 // definitions the editor renders, so a server-side change breaks this build
 // instead of its output. Type-only imports, so no new runtime dependency.
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import { Effect, Option, Schema } from "effect";
+import { Command, Flag } from "effect/cli";
 import type {
-  AlertCondition,
   AlertDeliveryRecord,
-  AlertDestination,
   AlertEmailSettingsView,
-  AlertRule,
   AlertRulesResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, type Column } from "../output";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { limit } from "../effect/range-flags";
+import { CliSession } from "../effect/session";
+import { spreadBody, wire } from "../effect/wire";
+import { c, safe, type Column } from "../output";
 import { formatChangeTime } from "../format";
 
-/** Shorter local name for the wire type, so the table columns stay readable. */
-type Delivery = AlertDeliveryRecord;
+// Both unions are switched on exhaustively, so their discriminants decode as
+// literals; the operators only pick a wording, so they stay strings.
+const Destination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("push") }),
+  Schema.Struct({ kind: Schema.Literal("slack"), channelId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("msteams"), webhookId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("on-call"), scheduleId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("github-issues") }),
+  Schema.Struct({ kind: Schema.Literal("email-member"), userId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("email-address"), address: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("paging-provider"),
+    accountId: Schema.String,
+    targetId: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("provider-on-call"),
+    accountId: Schema.String,
+    sourceId: Schema.String,
+  }),
+]);
+type Destination = typeof Destination.Type;
+
+const ValuesCondition = <F extends string>(field: F) =>
+  Schema.Struct({
+    field: Schema.Literal(field),
+    op: Schema.String,
+    values: Schema.Array(Schema.String),
+  });
+
+const Condition = Schema.Union([
+  ValuesCondition("trigger"),
+  Schema.Struct({ field: Schema.Literal("severity"), op: Schema.String, severity: Schema.String }),
+  ValuesCondition("accountId"),
+  ValuesCondition("pluginId"),
+  ValuesCondition("resourceTypeId"),
+  Schema.Struct({ field: Schema.Literal("amountCents"), op: Schema.String, cents: Schema.Finite }),
+  Schema.Struct({ field: Schema.Literal("key"), op: Schema.String, value: Schema.String }),
+  Schema.Struct({ field: Schema.Literal("text"), op: Schema.String, value: Schema.String }),
+]);
+type Condition = typeof Condition.Type;
+
+const Rule = Schema.Struct({
+  name: Schema.String,
+  enabled: Schema.Boolean,
+  conditions: Schema.Array(Condition),
+  destinations: Schema.Array(Destination),
+  continueOnMatch: Schema.Boolean,
+  quietHours: Schema.NullOr(
+    Schema.Struct({
+      timezone: Schema.String,
+      startMinute: Schema.Finite,
+      endMinute: Schema.Finite,
+      days: Schema.Array(Schema.Finite),
+      urgentOverride: Schema.NullOr(Schema.String),
+    }),
+  ),
+  escalation: Schema.NullOr(
+    Schema.Struct({ afterMinutes: Schema.Finite, destinations: Schema.Array(Destination) }),
+  ),
+});
+type Rule = typeof Rule.Type;
+
+const Named = Schema.Struct({ id: Schema.String, name: Schema.String });
+
+const RulesResponse = wire<AlertRulesResponse>()(
+  Schema.Struct({
+    rules: Schema.Array(Rule),
+    usingDefaults: Schema.Boolean,
+    slackChannels: Schema.Array(Named),
+    msTeamsWebhooks: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
+    accounts: Schema.Array(Schema.Struct({ id: Schema.String, displayName: Schema.String })),
+    onCallSchedules: Schema.Array(Named),
+    // Absent from a server that predates email destinations.
+    members: Schema.optional(
+      Schema.Array(Schema.Struct({ userId: Schema.String, email: Schema.String })),
+    ),
+  }),
+);
+type RulesResponse = typeof RulesResponse.Type;
+
+const Delivery = Schema.Struct({
+  createdAt: Schema.String,
+  state: Schema.String,
+  severity: Schema.String,
+  title: Schema.String,
+  ruleName: Schema.NullOr(Schema.String),
+  deliverAfter: Schema.NullOr(Schema.String),
+  escalateAt: Schema.NullOr(Schema.String),
+});
+type Delivery = typeof Delivery.Type;
+
+const Deliveries = wire<AlertDeliveryRecord[]>()(Schema.Array(Delivery));
+
+const EmailSettings = wire<AlertEmailSettingsView>()(
+  Schema.Struct({
+    emailAvailable: Schema.Boolean,
+    externalPolicy: Schema.String,
+    memberDomains: Schema.Array(Schema.String),
+    allowedDomains: Schema.Array(Schema.String),
+    suppressions: Schema.Array(Schema.Struct({ email: Schema.String, createdAt: Schema.String })),
+  }),
+);
 
 /** Names for the ids a destination holds, resolved against the same response. */
-function destinationName(d: AlertDestination, data: AlertRulesResponse): string {
+function destinationName(d: Destination, data: RulesResponse): string {
   switch (d.kind) {
     case "push":
       return "mobile push";
@@ -47,7 +152,6 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
     case "github-issues":
       return "github issues";
     case "email-member": {
-      // `members` is absent from a server that predates email destinations.
       const member = (data.members ?? []).find((m) => m.userId === d.userId);
       return member ? `email:${member.email}` : "email:(former member)";
     }
@@ -67,8 +171,8 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
 }
 
 /** One condition as the sentence a person would say. */
-function describeCondition(cond: AlertCondition, data: AlertRulesResponse): string {
-  const list = (values: string[]): string => values.join(", ");
+function describeCondition(cond: Condition, data: RulesResponse): string {
+  const list = (values: ReadonlyArray<string>): string => values.join(", ");
   switch (cond.field) {
     case "trigger":
       return `${cond.op === "in" ? "trigger is" : "trigger is not"} ${list(cond.values)}`;
@@ -107,37 +211,37 @@ function minuteOfDay(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
-function describeRule(rule: AlertRule, data: AlertRulesResponse, index: number): string[] {
+function describeRule(rule: Rule, data: RulesResponse, index: number): string[] {
   const lines: string[] = [];
   const state = rule.enabled ? "" : c.dim(" (disabled)");
-  lines.push(`${c.dim(`${index + 1}.`)} ${c.bold(rule.name)}${state}`);
+  lines.push(`${c.dim(`${index + 1}.`)} ${c.bold(safe(rule.name))}${state}`);
 
   const when =
     rule.conditions.length === 0
       ? "every alert"
       : rule.conditions.map((cond) => describeCondition(cond, data)).join(" and ");
-  lines.push(`   ${c.dim("when")}  ${when}`);
+  lines.push(`   ${c.dim("when")}  ${safe(when)}`);
 
   const to =
     rule.destinations.length === 0
       ? c.dim("nowhere (this rule swallows matching alerts)")
-      : rule.destinations.map((d) => destinationName(d, data)).join(", ");
+      : safe(rule.destinations.map((d) => destinationName(d, data)).join(", "));
   lines.push(`   ${c.dim("→")}     ${to}`);
 
   if (rule.quietHours) {
     const q = rule.quietHours;
     const days = q.days.length === 0 ? "every day" : `ISO days ${q.days.join(",")}`;
     const override = q.urgentOverride
-      ? `, except ${q.urgentOverride} and above`
+      ? `, except ${safe(q.urgentOverride)} and above`
       : ", holding everything";
     lines.push(
-      `   ${c.dim("quiet")} ${minuteOfDay(q.startMinute)}–${minuteOfDay(q.endMinute)} ${q.timezone}, ${days}${override}`,
+      `   ${c.dim("quiet")} ${minuteOfDay(q.startMinute)}–${minuteOfDay(q.endMinute)} ${safe(q.timezone)}, ${days}${override}`,
     );
   }
   if (rule.escalation) {
     const dests = rule.escalation.destinations.map((d) => destinationName(d, data)).join(", ");
     lines.push(
-      `   ${c.dim("esc")}   unacknowledged after ${rule.escalation.afterMinutes}m → ${dests}`,
+      `   ${c.dim("esc")}   unacknowledged after ${rule.escalation.afterMinutes}m → ${safe(dests)}`,
     );
   }
   // Only worth printing when it changes what happens to the rules below.
@@ -147,43 +251,51 @@ function describeRule(rule: AlertRule, data: AlertRulesResponse, index: number):
   return lines;
 }
 
-/** `infrawrench routing`: the rules, in evaluation order. */
-export async function cmdRouting(ctx: CliContext): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Alert routing lives in Infrawrench Cloud. The poller routes alerts server-side. Drop --local.",
-    );
-  }
-  const org = await resolveOrg(ctx);
-  const data = await orgFetch<AlertRulesResponse>(org.id, "/alert-rules");
+const requireCloud = (message: string) =>
+  Effect.gen(function* () {
+    const session = yield* CliSession;
+    if (session.local) return yield* new CliFailure({ message });
+  });
 
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...data });
-    return;
+/** `infrawrench routing`: the rules, in evaluation order. */
+const listRules = Effect.fn("routing")(function* () {
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  yield* requireCloud(
+    "Alert routing lives in Infrawrench Cloud. The poller routes alerts server-side. Drop --local.",
+  );
+  const org = yield* currentOrg;
+  const path = "/alert-rules";
+  const body = yield* api.json(org.id, path);
+
+  if (session.output === "json") {
+    return yield* Print.json(yield* spreadBody({ org: org.id }, body, path));
   }
+  const data = yield* decodeBody(RulesResponse, path)(body);
 
   if (data.usingDefaults) {
-    println(
+    yield* Print.line(
       c.dim(
         "No rules saved. Showing the default: everything except drift, to every connected channel and to mobile push.",
       ),
     );
-    println("");
+    yield* Print.line("");
   }
   if (data.rules.length === 0) {
-    println("No routing rules, and nothing to route to.");
-    return;
+    return yield* Print.line("No routing rules, and nothing to route to.");
   }
 
-  println(c.dim("Evaluated top to bottom; the first match wins unless a rule says otherwise."));
-  println("");
-  data.rules.forEach((rule, i) => {
-    for (const line of describeRule(rule, data, i)) println(line);
-    println("");
-  });
-}
+  yield* Print.line(
+    c.dim("Evaluated top to bottom; the first match wins unless a rule says otherwise."),
+  );
+  yield* Print.line("");
+  for (const [i, rule] of data.rules.entries()) {
+    for (const line of describeRule(rule, data, i)) yield* Print.line(line);
+    yield* Print.line("");
+  }
+});
 
-const STATE_LABELS: Record<string, string> = {
+const STATE_LABELS: Partial<Record<string, string>> = {
   held: "held",
   awaiting_ack: "awaiting ack",
   sent: "sent",
@@ -193,43 +305,44 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 /** `infrawrench routing queue`: held and escalating alerts. */
-export async function cmdRoutingQueue(ctx: CliContext, limit?: number): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError("Alert routing lives in Infrawrench Cloud. Drop --local.");
-  }
-  const org = await resolveOrg(ctx);
-  const rows = await orgFetch<Delivery[]>(
-    org.id,
-    `/alert-rules/deliveries?limit=${Math.min(Math.max(limit ?? 50, 1), 200)}`,
-  );
+const queue = Command.make(
+  "queue",
+  { limit: limit.pipe(Flag.withDescription("Deliveries to show (default 50, max 200)")) },
+  Effect.fn("routing.queue")(function* (input) {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    yield* requireCloud("Alert routing lives in Infrawrench Cloud. Drop --local.");
+    const org = yield* currentOrg;
+    const wanted = Option.getOrElse(input.limit, () => 50);
+    const path = `/alert-rules/deliveries?limit=${Math.min(Math.max(wanted, 1), 200)}`;
+    const body = yield* api.json(org.id, path);
 
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, deliveries: rows });
-    return;
-  }
-  if (rows.length === 0) {
-    println("Nothing held or escalating.");
-    return;
-  }
+    if (session.output === "json") {
+      const deliveries = yield* decodeBody(Schema.Array(Schema.Unknown), path)(body);
+      return yield* Print.json({ org: org.id, deliveries });
+    }
+    const rows = yield* decodeBody(Deliveries, path)(body);
+    if (rows.length === 0) return yield* Print.line("Nothing held or escalating.");
 
-  const columns: Array<Column<Delivery>> = [
-    { header: "WHEN", value: (r) => formatChangeTime(r.createdAt) },
-    { header: "STATE", value: (r) => STATE_LABELS[r.state] ?? r.state },
-    { header: "SEVERITY", value: (r) => r.severity },
-    { header: "ALERT", value: (r) => r.title },
-    { header: "RULE", value: (r) => r.ruleName ?? "—" },
-    {
-      header: "DUE",
-      value: (r) =>
-        r.deliverAfter
-          ? `sends ${formatChangeTime(r.deliverAfter)}`
-          : r.escalateAt
-            ? `escalates ${formatChangeTime(r.escalateAt)}`
-            : "—",
-    },
-  ];
-  printTable(rows, columns);
-}
+    const columns: Array<Column<Delivery>> = [
+      { header: "WHEN", value: (r) => formatChangeTime(r.createdAt) },
+      { header: "STATE", value: (r) => STATE_LABELS[r.state] ?? safe(r.state) },
+      { header: "SEVERITY", value: (r) => safe(r.severity) },
+      { header: "ALERT", value: (r) => safe(r.title) },
+      { header: "RULE", value: (r) => safe(r.ruleName ?? "—") },
+      {
+        header: "DUE",
+        value: (r) =>
+          r.deliverAfter
+            ? `sends ${formatChangeTime(r.deliverAfter)}`
+            : r.escalateAt
+              ? `escalates ${formatChangeTime(r.escalateAt)}`
+              : "—",
+      },
+    ];
+    yield* Print.table(rows, columns);
+  }),
+).pipe(Command.withDescription("Alerts held for quiet hours or awaiting an acknowledgement"));
 
 /**
  * `infrawrench routing email`: the alert email policy and who unsubscribed.
@@ -237,39 +350,46 @@ export async function cmdRoutingQueue(ctx: CliContext, limit?: number): Promise<
  * is an inbox: an address outside the allowed domains, or one that clicked
  * the unsubscribe link, is silently skipped at send time.
  */
-export async function cmdRoutingEmail(ctx: CliContext): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError("Alert email is sent by Infrawrench Cloud. Drop --local.");
-  }
-  const org = await resolveOrg(ctx);
-  const view = await orgFetch<AlertEmailSettingsView>(org.id, "/alert-email/settings");
+const email = Command.make(
+  "email",
+  {},
+  Effect.fn("routing.email")(function* () {
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    yield* requireCloud("Alert email is sent by Infrawrench Cloud. Drop --local.");
+    const org = yield* currentOrg;
+    const path = "/alert-email/settings";
+    const body = yield* api.json(org.id, path);
 
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...view });
-    return;
-  }
+    if (session.output === "json") {
+      return yield* Print.json(yield* spreadBody({ org: org.id }, body, path));
+    }
+    const view = yield* decodeBody(EmailSettings, path)(body);
 
-  if (!view.emailAvailable) {
-    println(
-      c.yellow("This deployment has no mail provider configured: alert email is never sent."),
-    );
-    println("");
-  }
-  const policy =
-    view.externalPolicy === "any"
-      ? "any address"
-      : `member domains (${view.memberDomains.join(", ") || "none"})` +
-        (view.allowedDomains.length > 0 ? ` plus ${view.allowedDomains.join(", ")}` : "");
-  println(`${c.dim("extra addresses")}  ${policy}`);
-  println("");
+    if (!view.emailAvailable) {
+      yield* Print.line(
+        c.yellow("This deployment has no mail provider configured: alert email is never sent."),
+      );
+      yield* Print.line("");
+    }
+    const policy =
+      view.externalPolicy === "any"
+        ? "any address"
+        : `member domains (${view.memberDomains.join(", ") || "none"})` +
+          (view.allowedDomains.length > 0 ? ` plus ${view.allowedDomains.join(", ")}` : "");
+    yield* Print.line(`${c.dim("extra addresses")}  ${safe(policy)}`);
+    yield* Print.line("");
 
-  if (view.suppressions.length === 0) {
-    println("Nobody has unsubscribed.");
-    return;
-  }
-  println(c.bold("Unsubscribed"));
-  printTable(view.suppressions, [
-    { header: "ADDRESS", value: (s) => s.email },
-    { header: "SINCE", value: (s) => formatChangeTime(s.createdAt) },
-  ]);
-}
+    if (view.suppressions.length === 0) return yield* Print.line("Nobody has unsubscribed.");
+    yield* Print.line(c.bold("Unsubscribed"));
+    yield* Print.table(view.suppressions, [
+      { header: "ADDRESS", value: (s) => safe(s.email) },
+      { header: "SINCE", value: (s) => formatChangeTime(s.createdAt) },
+    ]);
+  }),
+).pipe(Command.withDescription("The alert email policy and the addresses that unsubscribed"));
+
+export const routing = Command.make("routing", {}, listRules).pipe(
+  Command.withDescription("Alert routing rules, in evaluation order"),
+  Command.withSubcommands([queue, email]),
+);

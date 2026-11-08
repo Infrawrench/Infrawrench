@@ -27,7 +27,7 @@ import {
 import { maxLength, minLength, pattern } from "./checks";
 import type { Decodes, Exact } from "./contract";
 import { matchTagFields, tagValueRequiresKey } from "./cost-centres";
-import { CurrencyCode, NonEmptyString } from "./primitives";
+import { CurrencyCode, NonEmptyString, UuidRef } from "./primitives";
 
 const L = BILLING_RULE_LIMITS;
 const between = (minimum: number, maximum: number) => Schema.isBetween({ minimum, maximum });
@@ -86,17 +86,24 @@ export const BillingRuleAdjustment = Schema.Struct({
       description:
         "`percentage` only. Signed: +15 marks up by 15%, -10 discounts by 10%. Bounded below at " +
         "-100 because a discount larger than the cost would turn spend into income.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   amount: Schema.NullOr(Schema.Finite.check(between(-L.maxFixedAmount, L.maxFixedAmount)))
-    .annotate({ description: "`fixed` only, in the major unit of `currency`, per `period`." })
+    .annotate({
+      description: "`fixed` only, in the major unit of `currency`, per `period`.",
+      default: null,
+    })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
-  currency: Schema.NullOr(CurrencyCode).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  currency: Schema.NullOr(CurrencyCode)
+    .annotate({ default: null })
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   period: Schema.NullOr(Schema.Literals(BILLING_RULE_FIXED_PERIODS))
     .annotate({
       description:
         "`fixed` only. A monthly amount is pro-rated across partial months: a range covering ten " +
         "days of a 31-day month contributes 10/31 of it.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   targetKind: Schema.NullOr(Schema.Literals(BILLING_RULE_TARGET_KINDS))
@@ -104,14 +111,18 @@ export const BillingRuleAdjustment = Schema.Struct({
       description:
         "Required on `reallocation`, optional on `fixed` (where the flat charge is booked), " +
         "never set on `percentage`.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
-  targetId: Schema.NullOr(NonEmptyString).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  targetId: Schema.NullOr(NonEmptyString)
+    .annotate({ default: null })
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   tiers: Schema.NullOr(Schema.mutable(Schema.Array(BillingRuleTier)).check(maxLength(L.maxTiers)))
     .annotate({
       description:
         "`tiered` only. Ascending, with strictly increasing `upTo`; only the last tier is " +
         "open-ended. Thresholds are in `currency`, which a tiered rule requires.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   tierMode: Schema.NullOr(Schema.Literals(BILLING_RULE_TIER_MODES))
@@ -119,12 +130,14 @@ export const BillingRuleAdjustment = Schema.Struct({
       description:
         "`tiered` only. `marginal` charges each slice of the month's spend at its own tier's " +
         "rate; `volume` charges the whole month at the rate of the tier the total falls in.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   tierScope: Schema.NullOr(Schema.Literals(BILLING_RULE_TIER_SCOPES))
     .annotate({
       description:
         "`tiered` only. Whether volume is the customer's matched spend overall or per service.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   expression: Schema.NullOr(Schema.String.check(maxLength(PRICING_EXPRESSION_LIMITS.maxLength)))
@@ -136,6 +149,7 @@ export const BillingRuleAdjustment = Schema.Struct({
         "found at. It is evaluated by a small interpreter over a closed set of fields and " +
         "functions, never handed to a database or a script engine.",
       examples: ['if service == "AmazonEC2" and tag.env == "prod" then cost * 1.1'],
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 }).annotate({ identifier: "BillingRuleAdjustment" });
@@ -145,13 +159,14 @@ export const BillingRuleInput = Schema.Struct({
   name: Schema.String.check(minLength(1), maxLength(L.maxNameLength)).annotate({
     examples: ["Platform overhead recovery"],
   }),
-  description: Schema.NullOr(Schema.String.check(maxLength(L.maxDescriptionLength))).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed(null)),
-  ),
+  description: Schema.NullOr(Schema.String.check(maxLength(L.maxDescriptionLength)))
+    .annotate({ default: null })
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   enabled: Schema.Boolean.annotate({
     description:
       "Disabled rules are kept and excluded from every query. Switching a markup off for a " +
       "quarter is an edit, not a delete.",
+    default: true,
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   priority: Schema.Int.check(between(0, 100_000)).annotate({
     description:
@@ -176,7 +191,7 @@ export const BillingRuleInput = Schema.Struct({
  * rewrites priorities to match, in one transaction.
  */
 export const BillingRuleReorder = Schema.Struct({
-  ids: Schema.mutable(Schema.Array(NonEmptyString)).check(minLength(1), maxLength(L.maxRules)),
+  ids: Schema.mutable(Schema.Array(UuidRef)).check(minLength(1), maxLength(L.maxRules)),
 }).annotate({ identifier: "BillingRuleOrder" });
 
 /* ------------------------------------------------------------------ *
@@ -257,14 +272,14 @@ export const PricingPreviewRequest = Schema.Struct({
     description: "A rule to try. Validated exactly as a create would validate it.",
   }),
   ruleId: Schema.optionalKey(
-    Schema.NullOr(NonEmptyString).annotate({
+    Schema.NullOr(UuidRef).annotate({
       description:
         "With `rule`, the saved rule it replaces (an edit being previewed). Alone, previews the " +
         "saved rule as it stands. Either way `before` is priced without this rule.",
     }),
   ),
   managedAccountId: Schema.optionalKey(
-    Schema.NullOr(NonEmptyString).annotate({
+    Schema.NullOr(UuidRef).annotate({
       description:
         "Price this customer's scope with their settings. Absent prices the organisation's whole " +
         "spend as one customer. Naming a customer also needs `invoices:read`.",

@@ -17,19 +17,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /sharing/{objectType}/{objectId}": null,
   "PUT /sharing/{objectType}/{objectId}": null,
   "DELETE /sharing/{objectType}/{objectId}": null,
-  // event subscriptions; subscribing to cost events also needs costs:read,
-  // checked in the store because it depends on the body.
-  "GET /event-subscriptions/catalog": null,
-  "GET /event-subscriptions/options": "org:settings:write",
-  "GET /event-subscriptions/deliveries": "org:settings:write",
-  "POST /event-subscriptions/deliveries/{id}/redeliver": "org:settings:write",
-  "GET /event-subscriptions": "org:settings:write",
-  "POST /event-subscriptions": "org:settings:write",
-  "GET /event-subscriptions/{id}": "org:settings:write",
-  "PUT /event-subscriptions/{id}": "org:settings:write",
-  "DELETE /event-subscriptions/{id}": "org:settings:write",
-  "POST /event-subscriptions/{id}/reroll-secret": "org:settings:write",
-  "POST /event-subscriptions/{id}/test": "org:settings:write",
   // accounts
   "GET /accounts/plugins": "accounts:read",
   "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
@@ -47,21 +34,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /accounts/{id}/export-terraform": "resources:read",
   "GET /accounts/{id}/detail": "accounts:read",
   "POST /accounts/{id}/sync-type/{typeId}": "resources:read",
-  // deployments
-  "GET /deployments/repos": "deployments:read",
-  "POST /deployments/envs": "deployments:read",
-  "POST /deployments/plan": "deployments:plan",
-  "GET /deployments/runs": "deployments:read",
-  "GET /deployments/runs/{id}": "deployments:read",
   // cost per deploy; same rule as the change feed's: deployments:read for the
-  // run, costs:read for the spend it moved.
+  // run, costs:read for the spend it moved. Served by the deployments HttpApi
+  // domain but still documented by `paths/change-cost-impact.ts`, which owns
+  // the impact components, so its documented gate stays here until that moves.
   "GET /deployments/runs/{id}/cost-impact": "costs:read",
-  "POST /deployments/runs": "deployments:write",
-  "POST /deployments/runs/{id}/rollback": "deployments:write",
-  "GET /deployments/triggers": "deployments:read",
-  "POST /deployments/triggers": "deployments:write",
-  "PATCH /deployments/triggers/{id}": "deployments:write",
-  "DELETE /deployments/triggers/{id}": "deployments:write",
   // dashboards
   "GET /dashboards": "dashboards:read",
   "POST /dashboards": "dashboards:write",
@@ -82,11 +59,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /dashboards/pin/{pinId}": "dashboards:read",
   "POST /dashboards/probe": "dashboards:read",
 
-  // workflow approvals: listing rides on the same permission as the Workflows
-  // tab; deciding is its own trust level (see routes/workflow-approvals.ts).
-  "GET /workflow-approvals": "workflows:read",
-  "POST /workflow-approvals/{id}/approve": "workflows:approve",
-  "POST /workflow-approvals/{id}/deny": "workflows:approve",
   // custom graphs: genuinely dashboard content, so they keep the dashboards
   // permissions the workflows routes have moved off.
   "GET /custom-graphs": "dashboards:read",
@@ -97,20 +69,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /custom-graphs/{id}": "dashboards:write",
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
-  // workflows: typings rides workflows:read (same as the editor/tool path);
-  // the schedule sub-resource is a workflow edit (a schedule is what makes a
-  // workflow run unattended), so it takes the workflow permissions.
-  "GET /workflows/{id}/typings": "workflows:read",
-  "GET /workflows/{id}/secrets": "secrets:read",
-  "PUT /workflows/{id}/secrets": "workflows:write",
-  "GET /workflows/{id}/schedule": "workflows:read",
-  "PUT /workflows/{id}/schedule": "workflows:write",
-  "DELETE /workflows/{id}/schedule": "workflows:write",
-  "GET /workflow-secrets": "secrets:read",
-  "POST /workflow-secrets": "secrets:write",
-  "PATCH /workflow-secrets/{id}": "secrets:write",
-  "PUT /workflow-secrets/{id}/value": "secrets:write",
-  "DELETE /workflow-secrets/{id}": "secrets:write",
   "POST /chat/conversations/{conversationId}/pending/{pendingId}/answer": "chat:write",
   // agents
   "GET /agents/accounts": "accounts:read",
@@ -135,31 +93,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // feeds needing more (costs, workflows, deployments, audit, freezes) are
   // omitted per-feed rather than gating the whole endpoint.
   "GET /moment": "resources:read",
-  // SaaS seats: prices and savings are cost data; removing one changes a
-  // provider account, so it rides the resource write permission.
-  "GET /seats": "costs:read",
-  "POST /seats/refresh": "costs:read",
-  "GET /seats/settings": "costs:read",
-  "PUT /seats/settings": "costs:write",
-  "POST /seats/{seatId}/remove": "resources:write",
-  // compliance: reads (status, decisions, schedules, the pack) are audit:read,
-  // and each evidence source re-checks its own permission inside the read;
-  // control decisions and pack schedules are org:settings:write, the
-  // dashboard-schedule rule.
-  "GET /compliance": "audit:read",
-  "GET /compliance/frameworks": "audit:read",
-  "GET /compliance/pack": "audit:read",
-  "GET /compliance/controls": "audit:read",
-  "GET /compliance/controls/{frameworkId}/{controlId}": "audit:read",
-  "PUT /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
-  "DELETE /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
-  "GET /compliance/schedules": "audit:read",
-  "GET /compliance/schedules/targets": "org:settings:write",
-  "POST /compliance/schedules": "org:settings:write",
-  "GET /compliance/schedules/{id}": "audit:read",
-  "PUT /compliance/schedules/{id}": "org:settings:write",
-  "DELETE /compliance/schedules/{id}": "org:settings:write",
-  "POST /compliance/schedules/{id}/send": "org:settings:write",
   // session recordings; their own permission family rather than `audit:read`
   // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
   // capability than either, and the people who should hold it (compliance,
@@ -171,27 +104,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // one that should govern "how much is left".
   "GET /credits": "costs:read",
   "GET /commitments": "costs:read",
-  "GET /network-flows": "costs:read",
-  "GET /network-flows/settings": "costs:read",
-  // Not `costs:write`: enabling collection spends the organization's money in
-  // its own cloud account every day until somebody turns it off, which is a
-  // governance act rather than an edit to a cost object.
-  "PUT /network-flows/settings": "org:settings:write",
-  // Kubernetes network costs. The per-cluster billed source changes how money
-  // is *shown*, never what is collected or spent, so it is a cost-object edit.
-  "GET /network-flows/kubernetes/{accountId}": "costs:read",
-  "GET /network-flows/kubernetes/{accountId}/settings": "costs:read",
-  "PUT /network-flows/kubernetes/{accountId}/settings": "costs:write",
-  // Saved network flow reports: cost-report rules (read to list and run,
-  // write to change).
-  "GET /network-flows/report-options": "costs:read",
-  "POST /network-flows/report-query": "costs:read",
-  "GET /network-flows/reports": "costs:read",
-  "POST /network-flows/reports": "costs:write",
-  "GET /network-flows/reports/{id}": "costs:read",
-  "PUT /network-flows/reports/{id}": "costs:write",
-  "DELETE /network-flows/reports/{id}": "costs:write",
-  "POST /network-flows/reports/{id}/run": "costs:read",
   "GET /session-recordings": "session-recordings:read",
   // shared consoles: deliberately no permission family of their own. A share
   // hands over no capability the guest did not already hold: joining requires
@@ -232,71 +144,10 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /status-pages/{id}": "resources:write",
   "POST /status-pages/{id}/rotate-slug": "resources:write",
   "DELETE /status-pages/{id}": "resources:write",
-  // log workspace saved queries; the schedules stance: reads are a view over
-  // the org's resource logs (which resources:read already gates via
-  // /resources/{pluginId}/{typeId}/logs); mutations are resources:write
-  "GET /log-workspaces": "resources:read",
-  "GET /log-workspaces/resources": "resources:read",
-  "POST /log-workspaces": "resources:write",
-  "PUT /log-workspaces/{queryId}": "resources:write",
-  "DELETE /log-workspaces/{queryId}": "resources:write",
-  // tag policy & showback: policy is org settings; compliance/untagged ride
-  // the resource/cost read scopes their data is computed over
-  "GET /tag-policy": "resources:read",
-  "PUT /tag-policy": "org:settings:write",
-  "GET /tag-policy/compliance": "resources:read",
-  // tag key settings: a display preference over every picker, so reads ride
-  // resources:read like the policy; GET /tag-keys adds cost usage only when the
-  // caller also holds costs:read
-  "GET /tag-keys": "resources:read",
-  "GET /tag-keys/settings": "resources:read",
-  "PUT /tag-keys/settings": "org:settings:write",
+  // showback and untagged spend ride the cost read scope their data is
+  // computed over
   "GET /costs/untagged": "costs:read",
   "GET /costs/showback": "costs:read",
-  // currency: reads ride costs:read because a converted total is unauditable
-  // without the rate that produced it; writes are org:settings:write because
-  // stating a rate restates every total the org reports, in digests and in the
-  // budget alerts that page people. Finance governance, not a user preference.
-  "GET /currency": "costs:read",
-  "PUT /currency": "org:settings:write",
-  "PUT /currency/rates": "org:settings:write",
-  "DELETE /currency/rates/{rateId}": "org:settings:write",
-  "GET /currency/rates/template": "costs:read",
-  "POST /currency/rates/import": "org:settings:write",
-  // cost centres & allocation rules
-  // billing rules: the org's own adjustments to collected spend.
-  //
-  // Reads ride `costs:read` like every other cost surface: a rule is part of
-  // the explanation for a number, and hiding it from the people who read the
-  // number would make every adjusted figure unauditable.
-  //
-  // Writes are `org:settings:write`, deliberately **not** `costs:write`.
-  // `costs:write` is the "name a report, define a cost centre, save a filter"
-  // scope: acts that add a view of the org's spend. A billing rule is not a
-  // view: a markup changes what every internal figure in the organisation
-  // says, including an opted-in budget's thresholds and the chargeback
-  // statements finance sends to other departments. Same reasoning as
-  // `PUT /currency` (stating a rate restates every total) and
-  // `POST /cost-exports` (standing authorisation to ship the billing history),
-  // which puts all three "this changes the org's money story" acts behind one
-  // scope.
-  "GET /billing-rules": "costs:read",
-  "GET /billing-rules/{id}": "costs:read",
-  "POST /billing-rules": "org:settings:write",
-  "POST /billing-rules/preview": "costs:read",
-  "POST /billing-rules/reorder": "org:settings:write",
-  "PUT /billing-rules/{id}": "org:settings:write",
-  "DELETE /billing-rules/{id}": "org:settings:write",
-  // virtual tags: a way to slice spend that never changes how much there is
-  // (splits are weighted, totals conserved), so the cost-centre scope, not
-  // the billing-rule one.
-  "GET /virtual-tags": "costs:read",
-  "GET /virtual-tags/{id}": "costs:read",
-  "POST /virtual-tags/preview": "costs:read",
-  "POST /virtual-tags": "costs:write",
-  "PUT /virtual-tags/{id}": "costs:write",
-  "POST /virtual-tags/{id}/reprocess": "costs:write",
-  "DELETE /virtual-tags/{id}": "costs:write",
   // managed accounts & invoices: the managed-service-provider surface.
   //
   // Its own family rather than more `costs:*`. Every other cost surface is the
@@ -342,80 +193,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /invoices/{id}/approve": "invoices:issue",
   "POST /invoices/{id}/send": "invoices:issue",
   "POST /invoices/{id}/void": "invoices:issue",
-  "GET /cost-centres": "costs:read",
-  "POST /cost-centres": "costs:write",
-  "PUT /cost-centres/{id}": "costs:write",
-  "DELETE /cost-centres/{id}": "costs:write",
-  "GET /cost-centres/rules": "costs:read",
-  "POST /cost-centres/rules": "costs:write",
-  "POST /cost-centres/rules/swap": "costs:write",
-  "PUT /cost-centres/rules/{id}": "costs:write",
-  "DELETE /cost-centres/rules/{id}": "costs:write",
-  // Custom cost sources: an upload is the same act as `POST /costs/rows`, so
-  // it rides the same `costs:write`.
-  "GET /custom-cost-sources": "costs:read",
-  "POST /custom-cost-sources": "costs:write",
-  "GET /custom-cost-sources/{id}": "costs:read",
-  "PUT /custom-cost-sources/{id}": "costs:write",
-  "DELETE /custom-cost-sources/{id}": "costs:write",
-  "GET /custom-cost-sources/{id}/uploads": "costs:read",
-  "POST /custom-cost-sources/{id}/uploads": "costs:write",
-  "POST /custom-cost-sources/{id}/uploads/{uploadId}/rows": "costs:write",
-  "POST /custom-cost-sources/{id}/uploads/{uploadId}/complete": "costs:write",
-  "DELETE /custom-cost-sources/{id}/uploads/{uploadId}": "costs:write",
-  // jira: read covers the redacted connection, the pickers, and the
-  // finding→issue links a list view needs; write covers configuring the
-  // credential and filing.
-  "GET /jira": "jira:read",
-  "PUT /jira": "jira:write",
-  "DELETE /jira": "jira:write",
-  "POST /jira/verify": "jira:write",
-  "GET /jira/projects": "jira:read",
-  "GET /jira/projects/{key}/issue-types": "jira:read",
-  "POST /jira/issues": "jira:write",
-  "GET /jira/links": "jira:read",
-  // live issue status: setting up the webhook is configuration (write);
-  // refreshing only re-reads what the tracker already shows (read).
-  "POST /jira/webhook": "jira:write",
-  "DELETE /jira/webhook": "jira:write",
-  "POST /jira/links/refresh": "jira:read",
-  // linear; the same split as jira, for the same reasons: read covers the
-  // redacted connection, the team picker, and the finding→issue links; write
-  // covers configuring the API key and filing.
-  "GET /linear": "linear:read",
-  "PUT /linear": "linear:write",
-  "DELETE /linear": "linear:write",
-  "POST /linear/verify": "linear:write",
-  "GET /linear/teams": "linear:read",
-  "POST /linear/issues": "linear:write",
-  "GET /linear/links": "linear:read",
-  "POST /linear/webhook": "linear:write",
-  "POST /linear/webhook/url": "linear:write",
-  "DELETE /linear/webhook": "linear:write",
-  "POST /linear/links/refresh": "linear:read",
-  // github issues; reads take read, filing and pull requests take write, and
-  // the settings document (which holds the pull-request switch) takes
-  // org:settings:write.
-  "GET /github-issues": "github-issues:read",
-  "PUT /github-issues/settings": "org:settings:write",
-  "GET /github-issues/labels": "github-issues:read",
-  "GET /github-issues/assignees": "github-issues:read",
-  "GET /github-issues/route": "github-issues:read",
-  "GET /github-issues/branches": "github-issues:read",
-  "POST /github-issues/issues": "github-issues:write",
-  "GET /github-issues/links": "github-issues:read",
-  "POST /github-issues/links/refresh": "github-issues:read",
-  "POST /github-issues/pull-requests/preview": "github-issues:write",
-  "POST /github-issues/pull-requests": "github-issues:write",
-  // pull request checks
-  "GET /pr-checks": "iac:read",
-  "GET /pr-checks/repositories": "iac:read",
-  "POST /pr-checks/repositories": "org:settings:write",
-  "GET /pr-checks/repositories/{id}": "iac:read",
-  "PUT /pr-checks/repositories/{id}": "org:settings:write",
-  "DELETE /pr-checks/repositories/{id}": "org:settings:write",
-  "GET /pr-checks/runs": "iac:read",
-  "POST /pr-checks/preview": "iac:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",
@@ -467,17 +244,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Retuning detection changes what the org's whole cost feed alerts on, so it
   // rides the cost write scope rather than the budget one.
   "PUT /costs/anomaly-settings": "costs:write",
-  // anomaly feedback: verdicts and suppressions change what the cost feed
-  // alerts on, so they ride the same write scope as the settings.
-  "POST /costs/anomalies/{anomalyId}/feedback": "costs:write",
-  "DELETE /costs/anomalies/{anomalyId}/feedback": "costs:write",
-  "GET /costs/anomaly-suppressions": "costs:read",
-  "POST /costs/anomaly-suppressions": "costs:write",
-  "GET /costs/anomaly-suppressions/{suppressionId}": "costs:read",
-  "PUT /costs/anomaly-suppressions/{suppressionId}": "costs:write",
-  "DELETE /costs/anomaly-suppressions/{suppressionId}": "costs:write",
-  "GET /costs/anomaly-sensitivity": "costs:read",
-  "GET /costs/anomaly-precision": "costs:read",
   // efficiency alerts: commitment expiry, idle commitments, unit-cost
   // regression. Same split as anomaly settings and for the same reason:
   // reading what fired is cost data, retuning it changes what the org's whole
@@ -486,23 +252,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /costs/efficiency-alert-settings": "costs:read",
   "PUT /costs/efficiency-alert-settings": "costs:write",
   "POST /costs/rows": "costs:write",
-  // cost reports: a report is cost data under a name, so it follows the cost
-  // permissions rather than the dashboard ones. Running one is a read.
-  // A note on a fired budget alert creates a cost annotation, so it takes the
-  // annotation scope (the handler also requires budgets:read).
-  "GET /cost-reports": "costs:read",
-  "POST /cost-reports": "costs:write",
-  "POST /cost-reports/bulk": "costs:write",
-  "GET /cost-reports/{id}": "costs:read",
-  "PUT /cost-reports/{id}": "costs:write",
-  "DELETE /cost-reports/{id}": "costs:write",
-  "POST /cost-reports/{id}/run": "costs:read",
-  "GET /cost-reports/{id}/forecasts": "costs:read",
-  "POST /cost-reports/{id}/forecasts": "costs:write",
-  "PUT /cost-reports/{id}/forecasts/{forecastId}": "costs:write",
-  "DELETE /cost-reports/{id}/forecasts/{forecastId}": "costs:write",
-  "POST /cost-reports/{id}/forecasted-costs": "costs:read",
-  // cost canvases: the report rules, plus chat:write for the routes that open
+  // cost canvases: the cost report rules, plus chat:write for the routes that open
   // a conversation (checked in the route; the table holds one permission).
   "GET /cost-canvases": "costs:read",
   "POST /cost-canvases": "costs:write",
@@ -554,37 +304,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /dashboards/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /dashboards/{id}/notifications/{notificationId}/send": "org:settings:write",
   "GET /dashboard-notifications": "dashboards:read",
-  // cost annotations: dated notes drawn over a chart. Reads ride costs:read
-  // and writes costs:write, exactly as reports do: a note about spend is cost
-  // data with words on it, not dashboard furniture.
-  "GET /cost-annotations": "costs:read",
-  "POST /cost-annotations": "costs:write",
-  "POST /cost-annotations/change-impact": "costs:write",
-  "PUT /cost-annotations/{id}": "costs:write",
-  "DELETE /cost-annotations/{id}": "costs:write",
-  // change-based cost alerts: a cost-scoped alert config, so it rides the
-  // cost scopes the way reports do.
-  "GET /cost-alerts": "costs:read",
-  "POST /cost-alerts": "costs:write",
-  "GET /cost-alerts/events": "costs:read",
-  "GET /cost-alerts/{id}": "costs:read",
-  "PUT /cost-alerts/{id}": "costs:write",
-  "DELETE /cost-alerts/{id}": "costs:write",
-  // saved cost filters: a named filter is a statement about cost data, so it
-  // rides the cost scopes exactly as reports do. DELETE additionally answers
-  // 409 while the filter is referenced; that is policy, not permission.
-  "GET /saved-cost-filters": "costs:read",
-  "POST /saved-cost-filters": "costs:write",
-  "GET /saved-cost-filters/{id}": "costs:read",
-  "PUT /saved-cost-filters/{id}": "costs:write",
-  "DELETE /saved-cost-filters/{id}": "costs:write",
-  "GET /saved-cost-filters/{id}/referents": "costs:read",
-  "GET /cost-scenarios": "costs:read",
-  "POST /cost-scenarios": "costs:write",
-  "GET /cost-scenarios/{id}": "costs:read",
-  "PUT /cost-scenarios/{id}": "costs:write",
-  "DELETE /cost-scenarios/{id}": "costs:write",
-  "GET /cost-scenarios/{id}/referents": "costs:read",
   // business metrics: the denominators unit costs divide by. Reads are
   // costs:read and writes costs:write, matching saved filters and the cost
   // push endpoint: a metric is a statement about cost data, not dashboard
@@ -613,12 +332,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /business-metrics/{id}/importer": "costs:write",
   "POST /business-metrics/{id}/importer/run": "resources:execute",
   "GET /business-metrics/{id}/importer/runs": "costs:read",
-  // cost-report folders organize the Reports list and nothing else, so they
-  // ride the same scopes the reports do.
-  "GET /cost-report-folders": "costs:read",
-  "POST /cost-report-folders": "costs:write",
-  "PUT /cost-report-folders/{id}": "costs:write",
-  "DELETE /cost-report-folders/{id}": "costs:write",
   // resource reports; cost and virtual tag cells additionally need costs:read
   // (checked in the service: without it they come back empty, not 403).
   "GET /resource-reports": "resources:read",

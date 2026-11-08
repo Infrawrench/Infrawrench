@@ -28,7 +28,7 @@ import {
 import { CostFilter } from "./cost-filter";
 import { NonEmptyString } from "./primitives";
 import {
-  BusinessMetricLabelKey,
+  businessMetricLabelKey,
   UnitCostLabelFilter,
   UnitCostMode,
   UnitCostScaleValue,
@@ -107,9 +107,9 @@ export const costGraphConfigFields = {
       .check(maxLength(10))
       .annotate({ description: "Keep only metric values carrying these labels." }),
   ),
-  unitCostGroupByLabel: Schema.optionalKey(BusinessMetricLabelKey).annotateKey({
-    description: "One line per value of this metric label.",
-  }),
+  unitCostGroupByLabel: Schema.optionalKey(
+    businessMetricLabelKey({ description: "One line per value of this metric label." }),
+  ),
   adjusted: Schema.optionalKey(
     Schema.Boolean.annotate({ description: "Draw the org's billing rules applied." }),
   ),
@@ -148,13 +148,15 @@ export const costGraphConfigCheck = Schema.makeFilter(
 
 /** zod's `costGraphConfigSchema`. */
 export const CostGraphConfig = Schema.Struct(costGraphConfigFields)
-  .check(costGraphConfigCheck)
+  // Described before the check: a description annotated after one lands on
+  // the check, which the JSON Schema drops.
   .annotate({
-    identifier: "CostGraphConfig",
     description:
       "The saved graph. Identical to the config an ad-hoc `cost_graph` dashboard widget stores " +
       "inline: a report is that config given a name and an id.",
-  });
+  })
+  .check(costGraphConfigCheck)
+  .annotate({ identifier: "CostGraphConfig" });
 
 /** Body of `POST /cost-reports/:id/run`: one-off display overrides, never saved. */
 export const CostReportRunOverrides = Schema.Struct({

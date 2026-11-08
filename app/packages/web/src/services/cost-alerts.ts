@@ -1,6 +1,6 @@
 /**
  * Org-scoped change-based cost alert CRUD + fired-event listing: shared by
- * the HTTP routes (api/routes/cost-alerts.ts) and the tool registry
+ * the HTTP routes (http/domains/cost-alerts) and the tool registry
  * (tools/cost-alerts.ts), like every other cost service.
  *
  * Evaluation itself lives in server-core (`cost/change-eval.ts`) and runs

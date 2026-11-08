@@ -11,6 +11,13 @@ export const IsoDate = Schema.String.check(
 /** zod's `z.string().min(1)`: ids and references, never validated further here. */
 export const NonEmptyString = Schema.String.check(minLength(1));
 
+/**
+ * A reference to a stored row: checked non-empty only, as zod's
+ * `z.string().min(1)` was, and documented as the UUID every stored id is.
+ * The format is annotated before the check so the document states it inline.
+ */
+export const UuidRef = Schema.String.annotate({ format: "uuid" }).check(minLength(1));
+
 /** An upper-case ISO 4217 code, as sent (`CURRENCY_CODE_PATTERN`). */
 export const CurrencyCode = Schema.String.check(pattern(CURRENCY_CODE_PATTERN));
 

@@ -28,6 +28,27 @@ const ChatAskQuestionResult = strict({
   }),
 }).openapi("ChatAskQuestionResult");
 
+/**
+ * The chat password field's body. The workflow-secrets domain (HttpApi)
+ * defines the same `WorkflowSecretValueWrite` component for its value write;
+ * the spec builder keeps that definition, so the two must stay identical.
+ */
+const WorkflowSecretValueWrite = strict({
+  value: z
+    .string()
+    .min(1)
+    .max(1024 * 1024)
+    .openapi({
+      description:
+        "Write-only plaintext. It is AES-256-GCM encrypted before storage and is never returned.",
+    }),
+}).openapi("WorkflowSecretValueWrite");
+
+const ChatSecretRequestResult = strict({
+  ok: z.literal(true),
+  allResolved: z.boolean(),
+}).openapi("ChatSecretRequestResult");
+
 export function registerChatPaths(ctx: BuildContext) {
   const { registry } = ctx;
   registry.registerPath({
@@ -57,6 +78,40 @@ export function registerChatPaths(ctx: BuildContext) {
       200: {
         description: "Answers recorded",
         content: { "application/json": { schema: ChatAskQuestionResult } },
+      },
+      400: ErrorResponses[400],
+      403: ErrorResponses[403],
+      404: ErrorResponses[404],
+      409: ErrorResponses[409],
+    },
+  });
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/chat/conversations/{conversationId}/secret-requests/{requestId}",
+    tags: ["Chat"],
+    summary: "Submit a requested workflow secret",
+    description:
+      "Human-only, write-only handoff from the chat password field to encrypted workflow-secret storage. The value is never returned or added to chat history.",
+    request: {
+      params: OrgIdParam.extend({
+        conversationId: Uuid.openapi({
+          param: { name: "conversationId", in: "path" },
+          description: "Chat conversation id",
+        }),
+        requestId: Uuid.openapi({
+          param: { name: "requestId", in: "path" },
+          description: "Pending secret request id",
+        }),
+      }),
+      body: {
+        required: true,
+        content: { "application/json": { schema: WorkflowSecretValueWrite } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Stored without returning the value",
+        content: { "application/json": { schema: ChatSecretRequestResult } },
       },
       400: ErrorResponses[400],
       403: ErrorResponses[403],

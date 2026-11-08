@@ -45,14 +45,18 @@ vi.mock("@/api/auth-middleware", () => ({
 }));
 
 const { signSlackState, SLACK_STATE_TTL_MS } = await import("@infrawrench/server-core/slack");
-const { slackRoutes, slackOauthRoute } = await import("@/api/routes/slack");
-const { buildTestApp } = await import("./test-utils");
+const { slackOauthRoute } = await import("@/api/routes/slack");
+// `install-url` mints the state, on the org tree's HttpApi domain.
+const { slackDomain } = await import("@/http/domains/slack/index");
+const { buildTestApi } = await import("@/http/testing");
 
 const oauthApp = new Hono().route("/api", slackOauthRoute);
 
 /** `install-url` as user-1 in org-1; returns the state it minted. */
 async function mintState(): Promise<string> {
-  const res = await buildTestApp(slackRoutes).request("/install-url");
+  const res = await buildTestApi(slackDomain, { basePath: "/api/org/org-1/slack" }).request(
+    "/install-url",
+  );
   expect(res.status).toBe(200);
   const { url } = (await res.json()) as { url: string };
   const parsed = new URL(url);

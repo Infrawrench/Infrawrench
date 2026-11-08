@@ -15,14 +15,17 @@ import {
   type CostScenarioAdjustment as CostScenarioAdjustmentContract,
   type CostScenarioModelInput as CostScenarioModelInputContract,
 } from "@infrawrench/client-core";
-import { maxLength, minLength } from "./checks";
+import { maxLength, minLength, pattern } from "./checks";
 import type { Exact } from "./contract";
 import { CostFilter } from "./cost-filter";
-import { CurrencyCode, IsoDate, NonEmptyString } from "./primitives";
+import { CurrencyCode, NonEmptyString } from "./primitives";
 
 export const CostScenarioScopeTerm = CostFilter.annotate({ identifier: "CostScenarioScopeTerm" });
 
-const ScenarioDay = IsoDate.annotate({ examples: ["2026-09-01"] });
+/** `IsoDate`, documented as a `date` (annotated before the check, so the document says it inline). */
+const ScenarioDay = Schema.String.annotate({ format: "date", examples: ["2026-09-01"] }).check(
+  pattern(/^\d{4}-\d{2}-\d{2}$/, { message: "expected YYYY-MM-DD" }),
+);
 
 /**
  * One adjustment inside a scenario model. Every kind-specific field is

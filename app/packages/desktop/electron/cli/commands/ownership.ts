@@ -14,14 +14,53 @@
 // definitions every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The imports are type-only, so the CLI
 // still ships zero new runtime dependencies.
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
-import type {
-  ResourceOwnership,
-  ResourceOwnershipListResponse,
-} from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, type Column } from "../output";
+import type { ResourceOwnershipListResponse } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
+import { Effect, Option, Schema } from "effect";
+import { Argument, Command } from "effect/cli";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { wire } from "../effect/wire";
+import { c, type Column } from "../output";
 
-function ownerCell(record: ResourceOwnership): string {
+const PATH = "/ownership";
+
+const OwnershipList = wire<ResourceOwnershipListResponse>()(
+  Schema.Struct({
+    ownership: Schema.Array(
+      Schema.Struct({
+        resourceId: Schema.String,
+        resourceName: Schema.String,
+        ownerUserId: Schema.NullOr(Schema.String),
+        ownerName: Schema.NullOr(Schema.String),
+        ownerEmail: Schema.NullOr(Schema.String),
+        ownerLabel: Schema.NullOr(Schema.String),
+        purpose: Schema.NullOr(Schema.String),
+        ticketUrl: Schema.NullOr(Schema.String),
+      }),
+    ),
+  }),
+);
+type Ownership = (typeof OwnershipList.Type)["ownership"][number];
+
+/** The same list with each record as the server sent it, for `--json`. */
+const RawOwnershipList = Schema.Struct({ ownership: Schema.Array(Schema.Unknown) });
+
+function matches(record: Ownership, needle: string): boolean {
+  return (
+    record.resourceName.toLowerCase().includes(needle) ||
+    record.resourceId.toLowerCase().includes(needle) ||
+    (record.ownerName?.toLowerCase().includes(needle) ?? false) ||
+    (record.ownerEmail?.toLowerCase().includes(needle) ?? false) ||
+    (record.ownerLabel?.toLowerCase().includes(needle) ?? false) ||
+    (record.purpose?.toLowerCase().includes(needle) ?? false)
+  );
+}
+
+function ownerCell(record: Ownership): string {
   const member = record.ownerName ?? record.ownerEmail;
   if (record.ownerUserId && member) return member;
   // A free-text owner is marked, because the difference that matters is
@@ -30,62 +69,71 @@ function ownerCell(record: ResourceOwnership): string {
   return c.dim("unowned");
 }
 
-export async function cmdOwnership(ctx: CliContext, query?: string): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Ownership lives in Infrawrench Cloud. It names an org member. Drop --local.",
+export const ownership = Command.make(
+  "ownership",
+  {
+    query: Argument.String("query").pipe(
+      Argument.withDescription("Only resources whose name, id, owner or purpose contains this"),
+      Argument.optional,
+    ),
+  },
+  Effect.fn("ownership")(function* (input) {
+    const session = yield* CliSession;
+    if (session.local) {
+      return yield* new CliFailure({
+        message: "Ownership lives in Infrawrench Cloud. It names an org member. Drop --local.",
+      });
+    }
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    const query = Option.getOrUndefined(input.query);
+    const body = yield* api.json(org.id, PATH);
+    // The filter reads the records even under --json, so the body is decoded
+    // first; the rows `--json` prints are the server's own, every field kept.
+    const { ownership: records } = yield* decodeBody(OwnershipList, PATH)(body);
+    const raw = yield* decodeBody(RawOwnershipList, PATH)(body);
+
+    const needle = query?.toLowerCase();
+    const kept = records.map((record) => needle === undefined || matches(record, needle));
+    const rows = records.filter((_, i) => kept[i]);
+
+    if (session.output === "json") {
+      return yield* Print.json({ org: org.id, ownership: raw.ownership.filter((_, i) => kept[i]) });
+    }
+
+    if (rows.length === 0) {
+      return yield* Print.line(
+        c.dim(
+          query
+            ? `Nothing recorded matches "${query}".`
+            : "No ownership recorded yet. Set an owner from a resource's Ownership tab. The orphan finder will then name them against anything it flags.",
+        ),
+      );
+    }
+
+    const columns: Column<Ownership>[] = [
+      { header: "resource", value: (r) => r.resourceName },
+      { header: "owner", value: ownerCell },
+      { header: "purpose", value: (r) => r.purpose ?? c.dim("—") },
+      { header: "ticket", value: (r) => c.dim(r.ticketUrl ?? "—") },
+    ];
+
+    yield* Print.line(
+      `${c.bold(org.displayName)} ${c.dim(`· ${rows.length} resource${rows.length === 1 ? "" : "s"} with ownership recorded`)}`,
     );
-  }
-  const org = await resolveOrg(ctx);
-  const { ownership } = await orgFetch<ResourceOwnershipListResponse>(org.id, "/ownership");
+    yield* Print.line();
+    yield* Print.table(rows, columns);
 
-  const needle = query?.toLowerCase();
-  const rows = needle
-    ? ownership.filter(
-        (record) =>
-          record.resourceName.toLowerCase().includes(needle) ||
-          record.resourceId.toLowerCase().includes(needle) ||
-          (record.ownerName?.toLowerCase().includes(needle) ?? false) ||
-          (record.ownerEmail?.toLowerCase().includes(needle) ?? false) ||
-          (record.ownerLabel?.toLowerCase().includes(needle) ?? false) ||
-          (record.purpose?.toLowerCase().includes(needle) ?? false),
-      )
-    : ownership;
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ownership: rows });
-    return;
-  }
-
-  if (rows.length === 0) {
-    println(
+    yield* Print.line();
+    yield* Print.line(
       c.dim(
-        query
-          ? `Nothing recorded matches "${query}".`
-          : "No ownership recorded yet. Set an owner from a resource's Ownership tab. The orphan finder will then name them against anything it flags.",
+        "Only resources with something recorded appear here. Everything else is unowned. " +
+          "Run `infrawrench orphans` to see the unowned resources that also look wasted.",
       ),
     );
-    return;
-  }
-
-  const columns: Column<ResourceOwnership>[] = [
-    { header: "resource", value: (r) => r.resourceName },
-    { header: "owner", value: ownerCell },
-    { header: "purpose", value: (r) => r.purpose ?? c.dim("—") },
-    { header: "ticket", value: (r) => c.dim(r.ticketUrl ?? "—") },
-  ];
-
-  println(
-    `${c.bold(org.displayName)} ${c.dim(`· ${rows.length} resource${rows.length === 1 ? "" : "s"} with ownership recorded`)}`,
-  );
-  println();
-  printTable(rows, columns);
-
-  println();
-  println(
-    c.dim(
-      "Only resources with something recorded appear here. Everything else is unowned. " +
-        "Run `infrawrench orphans` to see the unowned resources that also look wasted.",
-    ),
-  );
-}
+  }),
+).pipe(
+  Command.withDescription(
+    "Who owns each resource, what it's for and its ticket (give a query to filter)",
+  ),
+);

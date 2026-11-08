@@ -9,9 +9,13 @@
  * - {@link fieldsOf} is the destructuring those handlers did on the result.
  * - {@link decodeFirstIssue} answers a refused body with the first issue's
  *   message as `{ error }`, as `schema.safeParse(...)` routes did.
+ * - {@link decodeAsPayload} answers it as the endpoint's own payload 400,
+ *   `{ error: InvalidRequestMessage, issues }`, for a body read with
+ *   {@link readJsonOr} because an absent one meant "use the defaults".
  */
 import { Effect, Predicate, Schema, SchemaIssue } from "effect";
 import type { HttpServerRequest } from "effect/http";
+import { HttpApiError } from "effect/http-api";
 import { BadRequest } from "./errors";
 
 const parseJson = (text: string): unknown => JSON.parse(text);
@@ -74,4 +78,21 @@ export const decodeFirstIssue = <S extends Schema.Decoder<unknown>>(
           error: formatIssues(error.issue).issues[0]?.message ?? "Invalid body",
         }),
     ),
+  );
+
+/**
+ * Decode `value` against `schema` as if HttpApi had decoded it as the
+ * payload: a refusal is the 400 the error renderer sends for any payload that
+ * fails its schema, with the endpoint's `InvalidRequestMessage` and every
+ * issue. For `readJsonOr` bodies, where HttpApi's own decoding would refuse
+ * the empty or unreadable body the route always took as `{}`.
+ */
+export const decodeAsPayload = <S extends Schema.Decoder<unknown>>(
+  schema: S,
+  value: unknown,
+): Effect.Effect<S["Type"], never, S["DecodingServices"]> =>
+  Schema.decodeUnknownEffect(schema)(value, { errors: "all" }).pipe(
+    Effect.mapError((cause) => new HttpApiError.HttpApiSchemaError({ kind: "Payload", cause })),
+    // The renderer answers a schema error raised as a defect as it does a typed one.
+    Effect.orDie,
   );

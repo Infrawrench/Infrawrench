@@ -88,6 +88,14 @@ export interface BillingProfileBank {
   instructions: string | null;
 }
 
+/**
+ * {@link BillingProfileBank} as a client writes it: any field may be left
+ * out, and an absent field is stored as null.
+ */
+export type BillingProfileBankInput = {
+  [K in keyof BillingProfileBank]?: BillingProfileBank[K] | undefined;
+};
+
 export interface BillingProfileInput {
   /** What the profile is called in pickers. Not printed on the invoice. */
   name: string;
@@ -114,7 +122,7 @@ export interface BillingProfileInput {
   /** The first sequence number, for continuing a sequence from another system. */
   numberStart?: number | undefined;
   taxRates?: BillingProfileTaxRate[] | undefined;
-  bank?: BillingProfileBank | null | undefined;
+  bank?: BillingProfileBankInput | null | undefined;
   /** Printed at the bottom of every invoice: terms, a thank-you, a registration number. */
   footer?: string | null | undefined;
   /**

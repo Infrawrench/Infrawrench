@@ -8,7 +8,7 @@ import {
 } from "@infrawrench/client-core";
 import { maxLength, minLength } from "./checks";
 import type { Exact } from "./contract";
-import { NonEmptyString } from "./primitives";
+import { NonEmptyString, UuidRef } from "./primitives";
 
 export const CostCentreInput = Schema.Struct({
   name: Schema.String.check(minLength(1), maxLength(120)).annotate({ examples: ["Platform"] }),
@@ -19,7 +19,7 @@ export const CostCentreInput = Schema.Struct({
    * the root just by renaming it.
    */
   parentId: Schema.optionalKey(
-    Schema.NullOr(NonEmptyString).annotate({
+    Schema.NullOr(UuidRef).annotate({
       description:
         "Cost centre to nest this one under; null is the top level. On an update, moving a " +
         "centre is this field changing; omitting it leaves the centre where it is. Rejected " +
@@ -85,7 +85,7 @@ export const AllocationRuleMatch = Schema.Struct({
   });
 
 export const AllocationRuleInput = Schema.Struct({
-  costCentreId: NonEmptyString,
+  costCentreId: UuidRef,
   priority: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100_000 })).annotate({
     description: "Lower fires first; the first matching rule wins.",
   }),

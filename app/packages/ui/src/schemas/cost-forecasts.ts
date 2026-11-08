@@ -36,7 +36,15 @@ export const CostForecastInput = Schema.Struct({
   description: Schema.optionalKey(
     Schema.NullOr(Schema.String.check(maxLength(COST_FORECAST_LIMITS.maxDescriptionLength))),
   ),
-  scenarioModelIds: Schema.mutable(Schema.Array(Ref(200)))
+  // Model ids, documented as the UUIDs they are; checked only for length.
+  scenarioModelIds: Schema.mutable(
+    Schema.Array(
+      Schema.String.annotate({
+        format: "uuid",
+        examples: ["00000000-0000-0000-0000-000000000000"],
+      }).check(minLength(1), maxLength(200)),
+    ),
+  )
     .check(maxLength(COST_FORECAST_LIMITS.maxScenarioModels))
     .annotate({
       description:

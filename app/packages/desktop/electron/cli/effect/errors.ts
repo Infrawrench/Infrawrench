@@ -18,6 +18,15 @@ export class CliFailure extends Schema.TaggedError<CliFailure>()("CliFailure", {
   readonly exitCode = 1;
 }
 
+/**
+ * The command has already said what went wrong (a failed test delivery,
+ * printed with the rest of its output) and only the exit code is left: the
+ * runner prints nothing more.
+ */
+export class CliExit extends Schema.TaggedError<CliExit>()("CliExit", {
+  exitCode: Schema.Int,
+}) {}
+
 /** No cloud session: no stored token, or the refresh token is dead. */
 export class NotSignedIn extends Schema.TaggedError<NotSignedIn>()("NotSignedIn", {}) {
   readonly exitCode = 1;
@@ -29,7 +38,7 @@ export class NotSignedIn extends Schema.TaggedError<NotSignedIn>()("NotSignedIn"
 /** The cloud answered with a non-2xx status. */
 export class CloudRequestFailed extends Schema.TaggedError<CloudRequestFailed>()(
   "CloudRequestFailed",
-  { status: Schema.Number, path: Schema.String, body: Schema.String },
+  { status: Schema.Int, path: Schema.String, body: Schema.String },
 ) {
   readonly exitCode = 1;
   override get message(): string {
@@ -101,7 +110,7 @@ export type CloudError =
   NotSignedIn | CloudRequestFailed | EndpointUnavailable | MalformedResponse | OrgNotResolved;
 
 /** Every typed failure a migrated command may end with. */
-export type CliCommandError = CliUsageError | CliFailure | CloudError;
+export type CliCommandError = CliUsageError | CliFailure | CliExit | CloudError;
 
 /** True for a response body that is a web page rather than data. */
 export function looksLikeHtml(body: string): boolean {

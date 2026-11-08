@@ -1,106 +1,23 @@
 /**
- * Alert email: the recipient picker's options, the org's external-address
- * policy, the suppression list, and the public unsubscribe endpoint.
+ * The public alert-email unsubscribe link in every alert email, mounted at
+ * the API root with no session: the HMAC-signed token in the URL is the whole
+ * authorization, and all it can do is stop mail to the one address it names.
+ * The GET only renders a confirmation page (link scanners and mail previewers
+ * fetch every URL in a message, and must not unsubscribe anyone), and the POST
+ * does the work, which is also exactly what an RFC 8058 one-click
+ * `List-Unsubscribe-Post` sends.
  *
- * Two Hono apps because the halves have nothing in common but the subject:
- *
- * - `alertEmailRoutes` is org-scoped (`/api/org/:orgId/alert-email`). The
- *   options read is `costs:read`, because every cost-object editor (budgets,
- *   change alerts, anomaly and efficiency settings) needs the member list and
- *   the policy to tell the truth about what will send. The policy and the
- *   suppressions are `org:settings:write`, the same gate as alert routing.
- * - `alertEmailPublicRoutes` is the unsubscribe link in every alert email,
- *   mounted at the API root with no session: the HMAC-signed token in the URL
- *   is the whole authorization, and all it can do is stop mail to the one
- *   address it names. The GET only renders a confirmation page (link
- *   scanners and mail previewers fetch every URL in a message, and must not
- *   unsubscribe anyone), and the POST does the work, which is also exactly
- *   what an RFC 8058 one-click `List-Unsubscribe-Post` sends.
+ * The org-scoped half (the recipient picker's options, the external-address
+ * policy and the suppression list) is on HttpApi in `http/domains/alert-email`.
  */
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { alertEmailSettingsError, type AlertEmailSettings } from "@infrawrench/client-core";
-import {
-  getAlertEmailOptions,
-  getAlertEmailSettingsView,
-  removeAlertEmailSuppression,
-  setAlertEmailSettings,
-  suppressAlertEmail,
-  verifyUnsubscribeToken,
-} from "@infrawrench/server-core/alerts/email";
+import { suppressAlertEmail, verifyUnsubscribeToken } from "@infrawrench/server-core/alerts/email";
 import { escapeHtml } from "@infrawrench/server-core/email-html";
 
 import { db } from "../../db/client";
 import { organizations } from "../../db/schema";
-import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
-
-const app = new Hono();
-
-/** GET /api/org/:orgId/alert-email: members, policy and availability for a picker. */
-app.get("/", async (c) => {
-  requirePermission(c, "costs:read");
-  return c.json(await getAlertEmailOptions(c.get("organizationId")));
-});
-
-/** GET /api/org/:orgId/alert-email/settings: the admin view, with suppressions. */
-app.get("/settings", async (c) => {
-  requirePermission(c, "org:settings:write");
-  return c.json(await getAlertEmailSettingsView(c.get("organizationId")));
-});
-
-/**
- * PUT /api/org/:orgId/alert-email/settings: whole object.
- *
- * Tightening the policy does not edit any stored recipient list: an address
- * that no longer passes is skipped at send time, so loosening it again later
- * brings it back without anybody re-entering it.
- */
-app.put("/settings", async (c) => {
-  requirePermission(c, "org:settings:write");
-  const organizationId = c.get("organizationId");
-  const session = c.get("session");
-  const body = (await c.req.json().catch(() => null)) as Partial<AlertEmailSettings> | null;
-  if (!body || typeof body !== "object") return c.json({ error: "Invalid settings" }, 400);
-  const input: AlertEmailSettings = {
-    externalPolicy: body.externalPolicy as AlertEmailSettings["externalPolicy"],
-    allowedDomains: body.allowedDomains as string[],
-  };
-  const error = alertEmailSettingsError(input);
-  if (error) return c.json({ error }, 400);
-
-  const saved = await setAlertEmailSettings(organizationId, input);
-  await logAudit({
-    organizationId,
-    ...(session?.userId ? { userId: session.userId } : {}),
-    action: "alert_email.settings.update",
-    entityType: "alert_email_settings",
-    entityId: organizationId,
-    metadata: { externalPolicy: saved.externalPolicy, allowedDomains: saved.allowedDomains },
-  });
-  return c.json(await getAlertEmailSettingsView(organizationId));
-});
-
-/** DELETE /api/org/:orgId/alert-email/suppressions/:id: resume mail to an address. */
-app.delete("/suppressions/:id", async (c) => {
-  requirePermission(c, "org:settings:write");
-  const organizationId = c.get("organizationId");
-  const session = c.get("session");
-  const removed = await removeAlertEmailSuppression(organizationId, c.req.param("id"));
-  if (!removed) return c.json({ error: "Not found" }, 404);
-  await logAudit({
-    organizationId,
-    ...(session?.userId ? { userId: session.userId } : {}),
-    action: "alert_email.suppression.remove",
-    entityType: "alert_email_suppression",
-    entityId: c.req.param("id"),
-  });
-  return c.json({ ok: true });
-});
-
-export { app as alertEmailRoutes };
-
-// --- Public unsubscribe ---
 
 const pub = new Hono();
 

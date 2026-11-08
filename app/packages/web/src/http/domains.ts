@@ -44,6 +44,41 @@ import { extendedSupportDomain } from "./domains/extended-support/index";
 import { quotasDomain } from "./domains/quotas/index";
 import { vulnerabilitiesDomain } from "./domains/vulnerabilities/index";
 import { leakedSecretsDomain } from "./domains/leaked-secrets/index";
+import { seatsDomain } from "./domains/seats/index";
+import { backupsDomain } from "./domains/backups/index";
+import { complianceDomain } from "./domains/compliance/index";
+import { costReportsDomain } from "./domains/cost-reports/index";
+import { costReportFoldersDomain } from "./domains/cost-report-folders/index";
+import { costAnnotationsDomain } from "./domains/cost-annotations/index";
+import { savedFiltersDomain } from "./domains/saved-filters/index";
+import { costAlertsDomain } from "./domains/cost-alerts/index";
+import { costAnomalyFeedbackDomain } from "./domains/cost-anomaly-feedback/index";
+import { tagKeysDomain } from "./domains/tag-keys/index";
+import { tagPolicyDomain } from "./domains/tag-policy/index";
+import { slackDomain } from "./domains/slack/index";
+import { msTeamsDomain } from "./domains/msteams/index";
+import { alertRulesDomain } from "./domains/alert-rules/index";
+import { alertEmailDomain } from "./domains/alert-email/index";
+import { digestDomain } from "./domains/digest/index";
+import { eventSubscriptionsDomain } from "./domains/event-subscriptions/index";
+import { jiraDomain } from "./domains/jira/index";
+import { linearDomain } from "./domains/linear/index";
+import { githubIssuesDomain } from "./domains/github-issues/index";
+import { workflowsDomain } from "./domains/workflows/index";
+import { workflowApprovalsDomain } from "./domains/workflow-approvals/index";
+import { workflowSecretsDomain } from "./domains/workflow-secrets/index";
+import { deploymentsDomain } from "./domains/deployments/index";
+import { iacDomain } from "./domains/iac/index";
+import { prChecksDomain } from "./domains/pr-checks/index";
+import { logWorkspacesDomain } from "./domains/log-workspaces/index";
+import { aiAttributionDomain } from "./domains/ai-attribution/index";
+import { networkFlowsDomain } from "./domains/network-flows/index";
+import { currencyDomain } from "./domains/currency/index";
+import { costCentresDomain } from "./domains/cost-centres/index";
+import { billingRulesDomain } from "./domains/billing-rules/index";
+import { virtualTagsDomain } from "./domains/virtual-tags/index";
+import { costScenariosDomain } from "./domains/cost-scenarios/index";
+import { customCostSourcesDomain } from "./domains/custom-cost-sources/index";
 
 export const DOMAINS: readonly Domain[] = [
   budgetsDomain,
@@ -84,4 +119,39 @@ export const DOMAINS: readonly Domain[] = [
   quotasDomain,
   vulnerabilitiesDomain,
   leakedSecretsDomain,
+  seatsDomain,
+  backupsDomain,
+  complianceDomain,
+  costReportsDomain,
+  costReportFoldersDomain,
+  costAnnotationsDomain,
+  savedFiltersDomain,
+  costAlertsDomain,
+  costAnomalyFeedbackDomain,
+  tagKeysDomain,
+  tagPolicyDomain,
+  slackDomain,
+  msTeamsDomain,
+  alertRulesDomain,
+  alertEmailDomain,
+  digestDomain,
+  eventSubscriptionsDomain,
+  jiraDomain,
+  linearDomain,
+  githubIssuesDomain,
+  workflowsDomain,
+  workflowApprovalsDomain,
+  workflowSecretsDomain,
+  deploymentsDomain,
+  iacDomain,
+  prChecksDomain,
+  logWorkspacesDomain,
+  aiAttributionDomain,
+  networkFlowsDomain,
+  currencyDomain,
+  costCentresDomain,
+  billingRulesDomain,
+  virtualTagsDomain,
+  costScenariosDomain,
+  customCostSourcesDomain,
 ];

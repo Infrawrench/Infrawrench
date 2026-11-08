@@ -52,7 +52,17 @@ export const CostReportFolderInput = Schema.Struct({
   ),
 }).annotate({ identifier: "CostReportFolderInput" });
 
-const BulkIds = Schema.mutable(Schema.Array(NonEmptyString)).check(
+/**
+ * Report and folder ids: documented as the UUIDs they are, though only checked
+ * non-empty. Annotated before the check, which would otherwise carry the
+ * format into an `allOf` of its own.
+ */
+const BulkId = Schema.String.annotate({
+  format: "uuid",
+  examples: ["00000000-0000-0000-0000-000000000000"],
+}).check(minLength(1));
+
+const BulkIds = Schema.mutable(Schema.Array(BulkId)).check(
   maxLength(COST_REPORT_BULK_LIMITS.maxItems),
 );
 
@@ -68,7 +78,7 @@ export const CostReportBulkRequest = Schema.Union(
       action: Schema.Literal("move"),
       reportIds: BulkIds,
       folderIds: BulkIds,
-      targetFolderId: Schema.NullOr(NonEmptyString).annotate({
+      targetFolderId: Schema.NullOr(BulkId).annotate({
         description:
           "Destination folder; null is the top level. Reports are filed into it and folders " +
           "become its direct children. Needs editor on the destination, because a folder's " +
@@ -80,6 +90,13 @@ export const CostReportBulkRequest = Schema.Union(
   // Documented as `anyOf`, as the Zod spec's `z.union` was; the literal
   // `action` lets exactly one member match either way.
 )
+  // Described before the checks: a description annotated after one lands on
+  // the check, which the JSON Schema drops.
+  .annotate({
+    description:
+      "At least one id and at most 500 in total. Reports and folders are validated together " +
+      "against the tree as it will be after every move, then applied in one transaction.",
+  })
   .check(
     Schema.makeFilter((b) =>
       b.reportIds.length + b.folderIds.length > 0
@@ -92,12 +109,7 @@ export const CostReportBulkRequest = Schema.Union(
         : `At most ${COST_REPORT_BULK_LIMITS.maxItems} items per request.`,
     ),
   )
-  .annotate({
-    identifier: "CostReportBulkRequest",
-    description:
-      "At least one id and at most 500 in total. Reports and folders are validated together " +
-      "against the tree as it will be after every move, then applied in one transaction.",
-  });
+  .annotate({ identifier: "CostReportBulkRequest" });
 
 export type CostReportSchemasMatchContract = [
   Exact<typeof CostReportInput.Type, CostReportInputContract>,

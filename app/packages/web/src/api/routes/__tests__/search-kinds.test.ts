@@ -11,7 +11,9 @@ const table = (name: string) =>
     get: (t, prop) => (prop in t ? t[prop as string] : `${name}.${String(prop)}`),
   });
 
-vi.mock("@/db/schema", () => {
+// The tables the search reads are fakes; the rest are real, since the test
+// also loads every HttpApi domain to read their permission gates.
+vi.mock("@/db/schema", async (importOriginal) => {
   const names = [
     "accounts",
     "budgets",
@@ -33,7 +35,10 @@ vi.mock("@/db/schema", () => {
     "virtualTags",
     "workflows",
   ];
-  return Object.fromEntries(names.map((n) => [n, table(n)]));
+  return {
+    ...(await importOriginal<typeof import("@/db/schema")>()),
+    ...Object.fromEntries(names.map((n) => [n, table(n)])),
+  };
 });
 
 const rowsByTable = new Map<string, unknown[]>();

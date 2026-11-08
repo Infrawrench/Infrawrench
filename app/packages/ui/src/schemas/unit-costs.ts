@@ -33,21 +33,30 @@ export const UnitCostScale = UnitCostScaleValue.annotate({
     "Margin ignores it. Absent is 1.",
 });
 
-/** A business-metric label key: trimmed and lower-cased, then the metric-key slug rule. */
-export const BusinessMetricLabelKey = normalized(
-  (value) => value.trim().toLowerCase(),
-  [
-    minLength(1),
-    maxLength(BUSINESS_METRIC_LIMITS.maxLabelKeyLength),
-    pattern(BUSINESS_METRIC_KEY_PATTERN, {
-      message: "expected a lowercase slug, e.g. customer",
-    }),
-  ],
-  {
+/**
+ * A business-metric label key: trimmed and lower-cased, then the metric-key
+ * slug rule. A factory as well as a schema, because a normalised string is
+ * described on its documented side: a use site that words the field its own
+ * way (a graph's `unitCostGroupByLabel`) builds its own rather than annotating.
+ */
+export const businessMetricLabelKey = (
+  annotations: Schema.Annotations.Documentation<string> = {
     description: "A label key: a lowercase slug, normalised (trimmed, lowercased) on write.",
-    examples: ["customer"],
   },
-);
+) =>
+  normalized(
+    (value) => value.trim().toLowerCase(),
+    [
+      minLength(1),
+      maxLength(BUSINESS_METRIC_LIMITS.maxLabelKeyLength),
+      pattern(BUSINESS_METRIC_KEY_PATTERN, {
+        message: "expected a lowercase slug, e.g. customer",
+      }),
+    ],
+    { examples: ["customer"], ...annotations },
+  );
+
+export const BusinessMetricLabelKey = businessMetricLabelKey();
 
 export const UnitCostLabelFilter = Schema.Struct({
   key: BusinessMetricLabelKey,

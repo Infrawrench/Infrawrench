@@ -1,64 +1,11 @@
 import { z } from "../zod";
-import { strict, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
 /**
- * Live status of filed issues: the schema pieces Jira, Linear and GitHub links
- * share (`issue-status.ts` in client-core is the contract), and the three
- * inbound tracker webhooks that keep them current.
+ * The three inbound tracker webhooks that keep the status of filed issues
+ * current. The schema pieces the Jira, Linear and GitHub links share are in
+ * `http/schemas/issue-status.ts`, with the HttpApi domains that send them.
  */
-
-export const IssueStatusCategory = z
-  .enum(["todo", "in_progress", "done", "canceled"])
-  .openapi("IssueStatusCategory", {
-    description:
-      "Tracker-neutral progress. Jira's status category, Linear's workflow state type, and GitHub's state and close reason all map onto these four.",
-  });
-
-/** The status columns on every issue link. Null until the first sync. */
-export const issueStatusFields = {
-  status: z.string().nullable().openapi({
-    description: "The tracker's own status name, e.g. `In Progress`, `Backlog`, `Closed`.",
-    example: "In Progress",
-  }),
-  statusCategory: IssueStatusCategory.nullable(),
-  assignee: z.string().nullable().openapi({
-    description: "Assignee display name (Jira, Linear) or login (GitHub).",
-  }),
-  issueUpdatedAt: IsoDateTime.nullable().openapi({
-    description: "When the issue last changed, as the tracker reports it.",
-  }),
-  statusSyncedAt: IsoDateTime.nullable().openapi({
-    description: "When Infrawrench last learned the status, by webhook or poll.",
-  }),
-};
-
-export const IssueWebhookState = strict({
-  mode: z.enum(["registered", "manual"]).nullable().openapi({
-    description:
-      "`registered`: created in the tracker by Infrawrench. `manual`: created by a person with the URL and secret from here. Null: no webhook; statuses come from the poll.",
-  }),
-  url: z.string().nullable().openapi({ description: "The receiver URL the tracker posts to." }),
-  lastDeliveryAt: IsoDateTime.nullable().openapi({
-    description: "When the last correctly signed delivery arrived.",
-  }),
-}).openapi("IssueWebhookState");
-
-export const IssueWebhookSetupResult = strict({
-  webhook: IssueWebhookState,
-  secret: z.string().optional().openapi({
-    description:
-      "Jira manual mode only: the signing secret to paste into Jira's webhook form. Returned this once; it is stored encrypted and never read back.",
-  }),
-  fallbackReason: z.string().optional().openapi({
-    description: "Why automatic registration fell back to manual.",
-  }),
-}).openapi("IssueWebhookSetupResult");
-
-export const IssueStatusRefreshResult = strict({
-  checked: z.number().int().openapi({ description: "Links the tracker was asked about." }),
-  changed: z.number().int().openapi({ description: "Links whose status, assignee or time moved." }),
-}).openapi("IssueStatusRefreshResult");
 
 export function registerIssueWebhookPaths({ registry }: BuildContext) {
   const responses = {

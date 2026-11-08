@@ -56,7 +56,9 @@ function optionalBool(v: unknown): boolean | undefined | null {
  * `fail` did: 400/404/409 as the declared errors, a 502 (the provider failed)
  * as itself.
  */
-const leakCall = <A>(fn: () => PromiseLike<A>): Effect.Effect<A, BadRequest | NotFound | Conflict> =>
+const leakCall = <A>(
+  fn: () => PromiseLike<A>,
+): Effect.Effect<A, BadRequest | NotFound | Conflict> =>
   legacyTry(fn, (error) => {
     if (!(error instanceof LeakedSecretError)) return undefined;
     if (error.status === 502) return undefined;

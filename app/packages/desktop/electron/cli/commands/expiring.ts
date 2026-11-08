@@ -12,14 +12,48 @@
 // definition every other surface uses) so a server-side change breaks the
 // CLI's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
-import { orgFetch, resolveOrg, type CliContext } from "../context";
+import { Effect, Schema } from "effect";
+import { Command } from "effect/cli";
 import { listLocalExpiring } from "../../local-expiring";
-import type {
-  ExpiryItem,
-  ExpiryListResponse,
-  ExpirySeverity,
-} from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, type Column } from "../output";
+import type { ExpiryListResponse, ExpirySeverity } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { spreadBody, wire } from "../effect/wire";
+import { c, type Column } from "../output";
+
+const PATH = "/expiring";
+
+const Severity = Schema.Literals(["expired", "critical", "warning", "upcoming", "ok"]);
+
+const Expiring = wire<ExpiryListResponse>()(
+  Schema.Struct({
+    items: Schema.Array(
+      Schema.Struct({
+        displayName: Schema.String,
+        resourceTypeName: Schema.String,
+        accountName: Schema.String,
+        label: Schema.String,
+        dueAt: Schema.String,
+        daysRemaining: Schema.Finite,
+        severity: Severity,
+      }),
+    ),
+    totalCount: Schema.Finite,
+    counts: Schema.Struct({
+      expired: Schema.Finite,
+      critical: Schema.Finite,
+      warning: Schema.Finite,
+      upcoming: Schema.Finite,
+      ok: Schema.Finite,
+    }),
+    leadDays: Schema.Finite,
+  }),
+);
+type Expiring = typeof Expiring.Type;
+type ExpiryItem = Expiring["items"][number];
 
 /** Terminal tone per bucket: red = past due, yellow = close, dim = far out. */
 const SEVERITY_COLOR: Record<ExpirySeverity, (s: string) => string> = {
@@ -42,7 +76,7 @@ function remaining(item: ExpiryItem): string {
 }
 
 /** The header's severity tally, e.g. "2 expired · 1 <7d · 4 <30d · 3 ≤60d". */
-function countsSummary(response: ExpiryListResponse): string {
+function countsSummary(response: Expiring): string {
   const { counts, leadDays } = response;
   const parts: string[] = [];
   if (counts.expired > 0) parts.push(c.red(`${counts.expired} expired`));
@@ -53,63 +87,77 @@ function countsSummary(response: ExpiryListResponse): string {
   return parts.join(c.dim(" · "));
 }
 
-export async function cmdExpiring(ctx: CliContext): Promise<void> {
-  const scope = ctx.flags.local
-    ? { label: "Local workspace", response: await listLocalExpiring(), json: {} }
-    : await (async () => {
-        const org = await resolveOrg(ctx);
-        return {
-          label: org.displayName,
-          response: await orgFetch<ExpiryListResponse>(org.id, "/expiring"),
-          json: { org: org.id },
-        };
-      })();
-  const { response } = scope;
-
-  if (ctx.flags.output === "json") {
-    printJson({ ...scope.json, ...response });
-    return;
+/** The deadlines in scope: the local workspace, or the `--org` org's. */
+const loadExpiring = Effect.fn("expiring.load")(function* () {
+  const session = yield* CliSession;
+  if (session.local) {
+    const response = yield* Effect.promise(listLocalExpiring);
+    return { label: "Local workspace", json: { ...response }, response };
   }
+  const api = yield* CloudApi;
+  const org = yield* currentOrg;
+  const body = yield* api.json(org.id, PATH);
+  return {
+    label: org.displayName,
+    json: yield* spreadBody({ org: org.id }, body, PATH),
+    response: yield* decodeBody(Expiring, PATH)(body),
+  };
+});
 
-  if (response.items.length === 0) {
-    println(
+export const expiring = Command.make(
+  "expiring",
+  {},
+  Effect.fn("expiring")(function* () {
+    const session = yield* CliSession;
+    const scope = yield* loadExpiring();
+    const { response } = scope;
+
+    if (session.output === "json") return yield* Print.json(scope.json);
+
+    if (response.items.length === 0) {
+      yield* Print.line(
+        c.dim(
+          "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing, such as a cert's end date or a domain's renewal.",
+        ),
+      );
+      if (session.local) {
+        yield* Print.line(
+          c.dim("This scan covered the local workspace only; drop --local for your organization."),
+        );
+      }
+      return;
+    }
+
+    yield* Print.line(
+      `${c.bold(scope.label)} ${c.dim(
+        `· ${response.totalCount} tracked deadline${response.totalCount === 1 ? "" : "s"}`,
+      )}  ${countsSummary(response)}`,
+    );
+    yield* Print.line();
+
+    // The contract serves the feed soonest first; copy-sort anyway so the table
+    // never depends on a server's ordering.
+    const rows = [...response.items].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+
+    const columns: Column<ExpiryItem>[] = [
+      { header: "resource", value: (r) => r.displayName },
+      { header: "type", value: (r) => c.dim(r.resourceTypeName) },
+      { header: "account", value: (r) => c.dim(r.accountName) },
+      { header: "deadline", value: (r) => r.label },
+      { header: "due", value: (r) => new Date(r.dueAt).toISOString().slice(0, 10) },
+      { header: "remaining", value: (r) => remaining(r), align: "right" },
+    ];
+    yield* Print.table(rows, columns);
+
+    yield* Print.line();
+    yield* Print.line(
       c.dim(
-        "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing, such as a cert's end date or a domain's renewal.",
+        `Computed from already-synced fields. No provider was contacted. "≤${response.leadDays}d" follows the organization's expiry-alert lead time; age-based deadlines (key rotation budgets) count from the last rotation.`,
       ),
     );
-    if (ctx.flags.local) {
-      println(
-        c.dim("This scan covered the local workspace only; drop --local for your organization."),
-      );
-    }
-    return;
-  }
-
-  println(
-    `${c.bold(scope.label)} ${c.dim(
-      `· ${response.totalCount} tracked deadline${response.totalCount === 1 ? "" : "s"}`,
-    )}  ${countsSummary(response)}`,
-  );
-  println();
-
-  // The contract serves the feed soonest first; copy-sort anyway so the table
-  // never depends on a server's ordering.
-  const rows = [...response.items].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
-
-  const columns: Column<ExpiryItem>[] = [
-    { header: "resource", value: (r) => r.displayName },
-    { header: "type", value: (r) => c.dim(r.resourceTypeName) },
-    { header: "account", value: (r) => c.dim(r.accountName) },
-    { header: "deadline", value: (r) => r.label },
-    { header: "due", value: (r) => new Date(r.dueAt).toISOString().slice(0, 10) },
-    { header: "remaining", value: (r) => remaining(r), align: "right" },
-  ];
-  printTable(rows, columns);
-
-  println();
-  println(
-    c.dim(
-      `Computed from already-synced fields. No provider was contacted. "≤${response.leadDays}d" follows the organization's expiry-alert lead time; age-based deadlines (key rotation budgets) count from the last rotation.`,
-    ),
-  );
-}
+  }),
+).pipe(
+  Command.withDescription(
+    "Certificates, domains, tokens and keys approaching expiry, soonest first",
+  ),
+);

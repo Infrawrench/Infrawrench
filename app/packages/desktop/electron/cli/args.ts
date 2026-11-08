@@ -1,6 +1,6 @@
 // Flag parsing for the CLI. Built on node:util parseArgs (no dependency);
 // subcommand routing happens in main.ts over the returned positionals.
-import { parseArgs } from "node:util";
+import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import { CliError, type CliFlags } from "./context";
 import type { JitFlags } from "./commands/jit";
 import type {
@@ -468,219 +468,255 @@ export interface LeakFlags {
   keepUpstreamOpen: boolean;
 }
 
+/**
+ * The flags every command takes, before or after its name. Migrated commands
+ * declare these as `effect/cli` shared flags (`effect/session.ts`); they stay
+ * here too because {@link scanCommandLine} must step over their values to
+ * find the command word.
+ */
+const GLOBAL_OPTIONS = {
+  json: { type: "boolean", default: false },
+  text: { type: "boolean", default: false },
+  output: { type: "string", short: "o" },
+  org: { type: "string" },
+  local: { type: "boolean", default: false },
+  account: { type: "string", short: "a" },
+  "no-color": { type: "boolean", default: false },
+  help: { type: "boolean", short: "h", default: false },
+  version: { type: "boolean", short: "v", default: false },
+} satisfies ParseArgsOptionsConfig;
+
+/**
+ * Every flag the legacy switch in `main.ts` reads, parsed globally. When a
+ * command moves to `effect/cli`, the flags only it read leave this table (and
+ * {@link ParsedCli}) and become `Flag`s on that command.
+ */
+const LEGACY_OPTIONS = {
+  ...GLOBAL_OPTIONS,
+  // Range flags used by metrics/costs; parsed globally so `--last`
+  // can appear anywhere on the line.
+  last: { type: "string" },
+  from: { type: "string" },
+  to: { type: "string" },
+  "group-by": { type: "string" },
+  series: { type: "string" },
+  type: { type: "string" },
+  days: { type: "string" },
+  limit: { type: "string" },
+  offset: { type: "string" },
+  kind: { type: "string" },
+  resource: { type: "string" },
+  // `moment` half-window (± around the timestamp).
+  window: { type: "string", short: "w" },
+  // `costs` money selectors: which number, and which kinds of charge.
+  basis: { type: "string" },
+  currency: { type: "string" },
+  // `costs --where "<cost query>"`: the filter, as text.
+  where: { type: "string" },
+  // `costs --filter <name|id>`: a saved filter, applied by reference.
+  filter: { type: "string" },
+  // `billing-rules preview`: whose invoice, and which month.
+  customer: { type: "string" },
+  month: { type: "string" },
+  // `costs`/`reports` display options: what to sum, the bin, the unit.
+  measure: { type: "string" },
+  bin: { type: "string" },
+  unit: { type: "string" },
+  cumulative: { type: "boolean", default: false },
+  // `costs`/`reports` axis options: a dimension on X, and the previous period.
+  "x-axis": { type: "string" },
+  "segment-by-date": { type: "boolean", default: false },
+  compare: { type: "boolean", default: false },
+  // Repeatable: one --charge-type per kind to keep.
+  "charge-type": { type: "string", multiple: true },
+  // `costs --anomalies`: same command, different question.
+  anomalies: { type: "boolean", default: false },
+  // `costs --anomalies feedback <id>`: the verdict and what it suppresses.
+  // `--reason` (shared with posture dismiss) carries the reason category.
+  expected: { type: "boolean", default: false },
+  unexpected: { type: "boolean", default: false },
+  clear: { type: "boolean", default: false },
+  note: { type: "string" },
+  recurrence: { type: "string" },
+  expires: { type: "string" },
+  explain: { type: "boolean", default: false },
+  // `costs --anomalies precision --months 6`.
+  months: { type: "string" },
+  // `costs --alerts`; the third cost question: configured change alerts.
+  alerts: { type: "boolean", default: false },
+  // `unit-costs <metric> --margin`: the ratio's other form.
+  margin: { type: "boolean", default: false },
+  // `unit-costs` calculation selectors: which calculation, at what scale,
+  // narrowed to and split by which metric labels.
+  mode: { type: "string" },
+  scale: { type: "string" },
+  label: { type: "string", multiple: true },
+  split: { type: "string" },
+  "usage-unit": { type: "string" },
+  labels: { type: "boolean", default: false },
+  "usage-units": { type: "boolean", default: false },
+  // `posture dismiss`: why the finding is an accepted risk.
+  reason: { type: "string" },
+  // Push-up flags (`page`, `costs push`).
+  source: { type: "string" },
+  key: { type: "string" },
+  title: { type: "string" },
+  cooldown: { type: "string" },
+  voice: { type: "boolean", default: false },
+  file: { type: "string", short: "f" },
+  // `costs push` file uploads into a custom cost source.
+  map: { type: "string", multiple: true },
+  replace: { type: "boolean", default: false },
+  append: { type: "boolean", default: false },
+  "date-format": { type: "string" },
+  // Export flags (`export`).
+  format: { type: "string" },
+  // Deploy flags (`deploy`).
+  env: { type: "string", short: "e" },
+  plan: { type: "boolean", default: false },
+  // Repeatable: one --set per select() key the Infrafile asks about.
+  set: { type: "string", multiple: true },
+  "to-run": { type: "string" },
+  "delete-created": { type: "boolean", default: false },
+  created: { type: "boolean", default: false },
+  // Fan-out SSH flags (`ssh-fanout`). `--list` and `--yes` are booleans;
+  // the rest narrow the host set or supply credentials.
+  list: { type: "boolean", default: false },
+  hosts: { type: "string" },
+  plugin: { type: "string" },
+  tag: { type: "string" },
+  user: { type: "string" },
+  launch: { type: "string" },
+  // `apps --check` / `apps --install`: what a Linux host is missing before
+  // applications can run there, and installing it.
+  check: { type: "boolean", default: false },
+  install: { type: "boolean", default: false },
+  snippet: { type: "string" },
+  yes: { type: "boolean", short: "y", default: false },
+  concurrency: { type: "string" },
+  // Environment diff (`diff`). `-a` is the existing account flag, so the
+  // second side needs one of its own.
+  against: { type: "string", short: "b" },
+  all: { type: "boolean", default: false },
+  // Config-as-code flags (`config`). `--file` doubles as the export
+  // destination; `--out` is the name that reads right when writing.
+  out: { type: "string" },
+  // `export --format focus`: which FOCUS version to write.
+  "focus-version": { type: "string" },
+  // `export --async [--wait] [--report <name>]`: a background export job.
+  async: { type: "boolean", default: false },
+  wait: { type: "boolean", default: false },
+  report: { type: "string" },
+  // `currency import <file> --skip-invalid`.
+  "skip-invalid": { type: "boolean", default: false },
+  sections: { type: "string" },
+  prune: { type: "boolean", default: false },
+  // `exports create` (a warehouse export). `--plugin`, `--account` and
+  // `--timezone`-style schedule flags only mean something there.
+  name: { type: "string" },
+  target: { type: "string", multiple: true },
+  cadence: { type: "string" },
+  hour: { type: "string" },
+  timezone: { type: "string" },
+  "restatement-days": { type: "string" },
+  dimensions: { type: "string" },
+  // Price catalog (`prices search|compare`).
+  provider: { type: "string" },
+  region: { type: "string" },
+  area: { type: "string" },
+  rate: { type: "string" },
+  term: { type: "string" },
+  vcpus: { type: "string" },
+  memory: { type: "string" },
+  "min-vcpus": { type: "string" },
+  "max-vcpus": { type: "string" },
+  "min-memory": { type: "string" },
+  "max-memory": { type: "string" },
+  gpu: { type: "string" },
+  gpus: { type: "string" },
+  "gpu-model": { type: "string" },
+  "max-price": { type: "string" },
+  sort: { type: "string" },
+  desc: { type: "boolean", default: false },
+  // `reports move --folder`, `budgets annotate --note/--event`. `--note`
+  // itself is declared once above and shared with `costs --anomalies
+  // feedback`: each command reads it into its own flag group.
+  folder: { type: "string" },
+  event: { type: "string" },
+  // `savings log`: a manual saving's monthly amount (`--note` is the shared one).
+  amount: { type: "string" },
+  // `savings findings`: minimum monthly savings and a saved view by name or id.
+  "min-savings": { type: "string" },
+  view: { type: "string" },
+  // `jit request|extend|list`: which policy and role, for how long, and
+  // filters on the queue. `--reason` and `--note` are the shared ones.
+  policy: { type: "string" },
+  role: { type: "string" },
+  scope: { type: "string" },
+  for: { type: "string" },
+  by: { type: "string" },
+  ticket: { type: "string" },
+  status: { type: "string" },
+  mine: { type: "boolean", default: false },
+  // `dora`: list only failed changes / list recoveries.
+  failed: { type: "boolean", default: false },
+  restores: { type: "boolean", default: false },
+  holding: { type: "boolean", default: false },
+  // `leaks`: a dismissal's note, the replacement value's source (stdin
+  // only: a secret on argv lands in shell history), and whether to
+  // leave the finding open on the scanner.
+  comment: { type: "string" },
+  "value-stdin": { type: "boolean", default: false },
+  "keep-upstream-open": { type: "boolean", default: false },
+  // `vulns` filters. `--plugin`, `--limit` and `-a/--account` are shared.
+  severity: { type: "string" },
+  // `costs forecast`: the named forecast and the band level.
+  forecast: { type: "string" },
+  level: { type: "string" },
+  running: { type: "boolean", default: false },
+  "not-running": { type: "boolean", default: false },
+  "fix-available": { type: "boolean", default: false },
+  kev: { type: "boolean", default: false },
+  search: { type: "string" },
+  "include-dismissed": { type: "boolean", default: false },
+  service: { type: "string" },
+  // `compliance`: which framework, and only the controls with gaps.
+  framework: { type: "string" },
+  gaps: { type: "boolean", default: false },
+  // `pr-check`: a pull request by number, or a local diff against a base.
+  repo: { type: "string" },
+  pr: { type: "string" },
+  base: { type: "string" },
+  // `services --tier <1-4>`.
+  tier: { type: "string" },
+} satisfies ParseArgsOptionsConfig;
+
+/**
+ * The command word, found without validating anything: `runCli` uses it to
+ * choose between `effect/cli` (a migrated command, which parses its own line)
+ * and the legacy switch. Non-strict, so a flag this table does not know never
+ * fails here; it reads as a boolean, which is how it can misplace the command
+ * word only when an unknown flag's value precedes it, and then the legacy
+ * parser rejects the line anyway. `noColor` is read early so help and parse
+ * errors from `effect/cli` are already uncoloured.
+ */
+export function scanCommandLine(argv: string[]): { command: string | undefined; noColor: boolean } {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    strict: false,
+    options: LEGACY_OPTIONS,
+  });
+  return { command: positionals[0], noColor: values["no-color"] === true };
+}
+
 export function parseCliArgs(argv: string[]): ParsedCli {
   let parsed: ReturnType<typeof parseArgs>;
   try {
     parsed = parseArgs({
       args: argv,
       allowPositionals: true,
-      options: {
-        json: { type: "boolean", default: false },
-        text: { type: "boolean", default: false },
-        output: { type: "string", short: "o" },
-        org: { type: "string" },
-        local: { type: "boolean", default: false },
-        account: { type: "string", short: "a" },
-        "no-color": { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-        version: { type: "boolean", short: "v", default: false },
-        // Range flags used by metrics/costs; parsed globally so `--last`
-        // can appear anywhere on the line.
-        last: { type: "string" },
-        from: { type: "string" },
-        to: { type: "string" },
-        "group-by": { type: "string" },
-        series: { type: "string" },
-        type: { type: "string" },
-        days: { type: "string" },
-        limit: { type: "string" },
-        offset: { type: "string" },
-        kind: { type: "string" },
-        resource: { type: "string" },
-        // `moment` half-window (± around the timestamp).
-        window: { type: "string", short: "w" },
-        // `costs` money selectors: which number, and which kinds of charge.
-        basis: { type: "string" },
-        currency: { type: "string" },
-        // `costs --where "<cost query>"`: the filter, as text.
-        where: { type: "string" },
-        // `costs --filter <name|id>`: a saved filter, applied by reference.
-        filter: { type: "string" },
-        // `billing-rules preview`: whose invoice, and which month.
-        customer: { type: "string" },
-        month: { type: "string" },
-        // `costs`/`reports` display options: what to sum, the bin, the unit.
-        measure: { type: "string" },
-        bin: { type: "string" },
-        unit: { type: "string" },
-        cumulative: { type: "boolean", default: false },
-        // `costs`/`reports` axis options: a dimension on X, and the previous period.
-        "x-axis": { type: "string" },
-        "segment-by-date": { type: "boolean", default: false },
-        compare: { type: "boolean", default: false },
-        // Repeatable: one --charge-type per kind to keep.
-        "charge-type": { type: "string", multiple: true },
-        // `costs --anomalies`: same command, different question.
-        anomalies: { type: "boolean", default: false },
-        // `costs --anomalies feedback <id>`: the verdict and what it suppresses.
-        // `--reason` (shared with posture dismiss) carries the reason category.
-        expected: { type: "boolean", default: false },
-        unexpected: { type: "boolean", default: false },
-        clear: { type: "boolean", default: false },
-        note: { type: "string" },
-        recurrence: { type: "string" },
-        expires: { type: "string" },
-        explain: { type: "boolean", default: false },
-        // `costs --anomalies precision --months 6`.
-        months: { type: "string" },
-        // `costs --alerts`; the third cost question: configured change alerts.
-        alerts: { type: "boolean", default: false },
-        // `unit-costs <metric> --margin`: the ratio's other form.
-        margin: { type: "boolean", default: false },
-        // `unit-costs` calculation selectors: which calculation, at what scale,
-        // narrowed to and split by which metric labels.
-        mode: { type: "string" },
-        scale: { type: "string" },
-        label: { type: "string", multiple: true },
-        split: { type: "string" },
-        "usage-unit": { type: "string" },
-        labels: { type: "boolean", default: false },
-        "usage-units": { type: "boolean", default: false },
-        // `posture dismiss`: why the finding is an accepted risk.
-        reason: { type: "string" },
-        // Push-up flags (`page`, `costs push`).
-        source: { type: "string" },
-        key: { type: "string" },
-        title: { type: "string" },
-        cooldown: { type: "string" },
-        voice: { type: "boolean", default: false },
-        file: { type: "string", short: "f" },
-        // `costs push` file uploads into a custom cost source.
-        map: { type: "string", multiple: true },
-        replace: { type: "boolean", default: false },
-        append: { type: "boolean", default: false },
-        "date-format": { type: "string" },
-        // Export flags (`export`).
-        format: { type: "string" },
-        // Deploy flags (`deploy`).
-        env: { type: "string", short: "e" },
-        plan: { type: "boolean", default: false },
-        // Repeatable: one --set per select() key the Infrafile asks about.
-        set: { type: "string", multiple: true },
-        "to-run": { type: "string" },
-        "delete-created": { type: "boolean", default: false },
-        created: { type: "boolean", default: false },
-        // Fan-out SSH flags (`ssh-fanout`). `--list` and `--yes` are booleans;
-        // the rest narrow the host set or supply credentials.
-        list: { type: "boolean", default: false },
-        hosts: { type: "string" },
-        plugin: { type: "string" },
-        tag: { type: "string" },
-        user: { type: "string" },
-        launch: { type: "string" },
-        // `apps --check` / `apps --install`: what a Linux host is missing before
-        // applications can run there, and installing it.
-        check: { type: "boolean", default: false },
-        install: { type: "boolean", default: false },
-        snippet: { type: "string" },
-        yes: { type: "boolean", short: "y", default: false },
-        concurrency: { type: "string" },
-        // Environment diff (`diff`). `-a` is the existing account flag, so the
-        // second side needs one of its own.
-        against: { type: "string", short: "b" },
-        all: { type: "boolean", default: false },
-        // Config-as-code flags (`config`). `--file` doubles as the export
-        // destination; `--out` is the name that reads right when writing.
-        out: { type: "string" },
-        // `export --format focus`: which FOCUS version to write.
-        "focus-version": { type: "string" },
-        // `export --async [--wait] [--report <name>]`: a background export job.
-        async: { type: "boolean", default: false },
-        wait: { type: "boolean", default: false },
-        report: { type: "string" },
-        // `currency import <file> --skip-invalid`.
-        "skip-invalid": { type: "boolean", default: false },
-        sections: { type: "string" },
-        prune: { type: "boolean", default: false },
-        // `exports create` (a warehouse export). `--plugin`, `--account` and
-        // `--timezone`-style schedule flags only mean something there.
-        name: { type: "string" },
-        target: { type: "string", multiple: true },
-        cadence: { type: "string" },
-        hour: { type: "string" },
-        timezone: { type: "string" },
-        "restatement-days": { type: "string" },
-        dimensions: { type: "string" },
-        // Price catalog (`prices search|compare`).
-        provider: { type: "string" },
-        region: { type: "string" },
-        area: { type: "string" },
-        rate: { type: "string" },
-        term: { type: "string" },
-        vcpus: { type: "string" },
-        memory: { type: "string" },
-        "min-vcpus": { type: "string" },
-        "max-vcpus": { type: "string" },
-        "min-memory": { type: "string" },
-        "max-memory": { type: "string" },
-        gpu: { type: "string" },
-        gpus: { type: "string" },
-        "gpu-model": { type: "string" },
-        "max-price": { type: "string" },
-        sort: { type: "string" },
-        desc: { type: "boolean", default: false },
-        // `reports move --folder`, `budgets annotate --note/--event`. `--note`
-        // itself is declared once above and shared with `costs --anomalies
-        // feedback`: each command reads it into its own flag group.
-        folder: { type: "string" },
-        event: { type: "string" },
-        // `savings log`: a manual saving's monthly amount (`--note` is the shared one).
-        amount: { type: "string" },
-        // `savings findings`: minimum monthly savings and a saved view by name or id.
-        "min-savings": { type: "string" },
-        view: { type: "string" },
-        // `jit request|extend|list`: which policy and role, for how long, and
-        // filters on the queue. `--reason` and `--note` are the shared ones.
-        policy: { type: "string" },
-        role: { type: "string" },
-        scope: { type: "string" },
-        for: { type: "string" },
-        by: { type: "string" },
-        ticket: { type: "string" },
-        status: { type: "string" },
-        mine: { type: "boolean", default: false },
-        // `dora`: list only failed changes / list recoveries.
-        failed: { type: "boolean", default: false },
-        restores: { type: "boolean", default: false },
-        holding: { type: "boolean", default: false },
-        // `leaks`: a dismissal's note, the replacement value's source (stdin
-        // only: a secret on argv lands in shell history), and whether to
-        // leave the finding open on the scanner.
-        comment: { type: "string" },
-        "value-stdin": { type: "boolean", default: false },
-        "keep-upstream-open": { type: "boolean", default: false },
-        // `vulns` filters. `--plugin`, `--limit` and `-a/--account` are shared.
-        severity: { type: "string" },
-        // `costs forecast`: the named forecast and the band level.
-        forecast: { type: "string" },
-        level: { type: "string" },
-        running: { type: "boolean", default: false },
-        "not-running": { type: "boolean", default: false },
-        "fix-available": { type: "boolean", default: false },
-        kev: { type: "boolean", default: false },
-        search: { type: "string" },
-        "include-dismissed": { type: "boolean", default: false },
-        service: { type: "string" },
-        // `compliance`: which framework, and only the controls with gaps.
-        framework: { type: "string" },
-        gaps: { type: "boolean", default: false },
-        // `pr-check`: a pull request by number, or a local diff against a base.
-        repo: { type: "string" },
-        pr: { type: "string" },
-        base: { type: "string" },
-        // `services --tier <1-4>`.
-        tier: { type: "string" },
-      },
+      options: LEGACY_OPTIONS,
     });
   } catch (e) {
     throw new CliError(e instanceof Error ? e.message : String(e), 2);

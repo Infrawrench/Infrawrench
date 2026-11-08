@@ -1,11 +1,13 @@
 /**
  * Cost per change / cost per deploy.
  *
- * Three routes that share one set of schemas, which is why they live in one
- * file rather than being split across `resource-changes.ts`,
- * `deployments.ts` and `cost-annotations.ts` the way their handlers are: the
- * shape of an impact is the contract, and describing it three times is how
- * three descriptions of it end up disagreeing.
+ * Routes that share one set of schemas, which is why they live in one file
+ * rather than being split across `resource-changes.ts` and `deployments.ts`
+ * the way their handlers are: the shape of an impact is the contract, and
+ * describing it several times is how the descriptions end up disagreeing.
+ * The third, `POST /cost-annotations/change-impact`, is documented by the
+ * cost-annotations HttpApi domain, which references `ChangeCostImpact` and
+ * `ChangeCostBasis` from here rather than defining them again.
  */
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, ResourceId, Uuid } from "../common";
@@ -164,19 +166,6 @@ const DeploymentCostImpact = strict({
   ),
 }).openapi("DeploymentCostImpact");
 
-const ChangeCostImpactAnnotationRequest = strict({
-  subjectKind: z.enum(["change", "deployment"]),
-  subjectId: z.string().min(1),
-  windowDays: z.number().int().min(2).max(30).optional(),
-  costBasis: ChangeCostBasis.optional(),
-}).openapi("ChangeCostImpactAnnotationRequest");
-
-const ChangeCostImpactAnnotationResponse = strict({
-  annotationId: Uuid,
-  text: z.string(),
-  impact: ChangeCostImpact,
-}).openapi("ChangeCostImpactAnnotationResponse");
-
 export function registerChangeCostImpactPaths(ctx: BuildContext): void {
   ctx.registry.registerPath({
     method: "post",
@@ -232,32 +221,6 @@ export function registerChangeCostImpactPaths(ctx: BuildContext): void {
       200: {
         description: "Per-resource cost impact for the run",
         content: { "application/json": { schema: DeploymentCostImpact } },
-      },
-      400: ErrorResponses[400],
-      404: ErrorResponses[404],
-    },
-  });
-
-  ctx.registry.registerPath({
-    method: "post",
-    path: "/api/org/{orgId}/cost-annotations/change-impact",
-    tags: ["Costs"],
-    summary: "Pin a change's or deploy's cost impact onto the cost charts",
-    description:
-      "Writes the finding as a cost annotation, so the step in the run rate is explained on the " +
-      "graph where it shows. Re-posting the same subject **rewords the existing note** rather " +
-      "than adding a second; which is what makes it safe to pin a finding again once the " +
-      "provider has finished restating. The note's date and report scope are never rewritten: " +
-      "they may have been edited deliberately.\n\n" +
-      "A subject with no measurable impact is a 400, not a note reading `$0.00/day`.",
-    request: {
-      params: OrgIdParam,
-      body: { content: { "application/json": { schema: ChangeCostImpactAnnotationRequest } } },
-    },
-    responses: {
-      200: {
-        description: "The annotation that was written or reworded, with the impact it describes",
-        content: { "application/json": { schema: ChangeCostImpactAnnotationResponse } },
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],

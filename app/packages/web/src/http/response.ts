@@ -35,6 +35,10 @@ function onlyMissingKeys(issue: SchemaIssue.Issue): boolean {
       return onlyMissingKeys(issue.issue);
     case "Composite":
       return issue.issues.every(onlyMissingKeys);
+    // A union (`NullOr(Struct)`, ...) fits when one member would have, so the
+    // fixture is partial rather than wrong when any member's issue is.
+    case "AnyOf":
+      return issue.issues.some(onlyMissingKeys);
     default:
       return false;
   }

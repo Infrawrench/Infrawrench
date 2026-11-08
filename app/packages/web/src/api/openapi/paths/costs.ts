@@ -451,7 +451,9 @@ export const CostAnomalyFeedbackReason = z
 
 const CostAnomalyFeedback = strict({
   verdict: z.enum(["expected", "unexpected"]),
-  reason: CostAnomalyFeedbackReason.nullable(),
+  // A union rather than `.nullable()`: zod-to-openapi would mark the shared
+  // component itself nullable, and the component is the HttpApi domain's now.
+  reason: z.union([CostAnomalyFeedbackReason, z.null()]),
   note: z.string().nullable(),
   at: IsoDateTime.describe("When the current verdict was recorded; restamped on every save."),
   byUserId: z.string().nullable(),

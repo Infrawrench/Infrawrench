@@ -40,4 +40,17 @@ describe("schema failures", () => {
     const res = await app.request("/", { method: "POST", body: "not json" });
     expect(res.status).toBe(400);
   });
+
+  it("read a body sent as text/plain or a form type as JSON, as Hono did", async () => {
+    for (const type of ["text/plain;charset=UTF-8", "application/x-www-form-urlencoded"]) {
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": type },
+        body: JSON.stringify({ name: 5 }),
+      });
+      // Decoded (and refused on its fields), not a 415.
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe("Invalid budget");
+    }
+  });
 });

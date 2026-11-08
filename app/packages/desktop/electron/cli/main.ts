@@ -7,14 +7,10 @@ import { app } from "electron";
 import { wireDbGetter, setDatabaseReadOnly } from "../db";
 import { setRequireExistingEncryptionKey, UserFacingError } from "../main-utils";
 import { setTokenStoreReadOnly } from "../cloud-tokens";
-import { parseCliArgs } from "./args";
+import { parseCliArgs, scanCommandLine } from "./args";
 import { CliError, type CliContext } from "./context";
 import { setColorEnabled, printErr, println, c } from "./output";
-import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
-import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
-import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
-import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts, cmdCostTagKeys } from "./commands/costs";
 import { cmdCostForecast, cmdCostForecasts } from "./commands/forecasts";
 import {
@@ -76,69 +72,39 @@ import {
   cmdInvoiceUnassigned,
   cmdInvoices,
 } from "./commands/invoices";
-import { cmdOrphans } from "./commands/orphans";
-import { cmdIdleRules } from "./commands/idle-rules";
-import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
-import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
-import { cmdIssues } from "./commands/issues";
 import { cmdPrCheck } from "./commands/pr-check";
-import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdSeats } from "./commands/seats";
-import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdK8sEfficiency } from "./commands/k8s-efficiency";
 import { cmdNetworkReports } from "./commands/network-reports";
-import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
-import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
-import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdVulns, cmdVulnsDismiss, cmdVulnsRestore, cmdVulnsSources } from "./commands/vulns";
 import { cmdCompliance, cmdComplianceExport, cmdComplianceFrameworks } from "./commands/compliance";
-import { cmdDns } from "./commands/dns";
-import { cmdChanges } from "./commands/changes";
 import { cmdDiff } from "./commands/diff";
-import { cmdMoment } from "./commands/moment";
-import { cmdIncidents } from "./commands/incidents";
-import { cmdSchedules } from "./commands/schedules";
-import { cmdLeases } from "./commands/leases";
 import { cmdRecordings } from "./commands/recordings";
-import { cmdAccess } from "./commands/access";
 import { cmdJit } from "./commands/jit";
-import { cmdCostVisibility } from "./commands/cost-visibility";
-import { cmdHygiene } from "./commands/hygiene";
-import { cmdAgents } from "./commands/agents";
-import { cmdCredits } from "./commands/credits";
-import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import {
   cmdSavingsFindings,
   cmdSavingsFindingsSet,
   cmdSavingsViews,
 } from "./commands/savings-findings";
-import { cmdProbes } from "./commands/probes";
-import { cmdSlos } from "./commands/slos";
 import { cmdResourceReports } from "./commands/resource-reports";
-import { cmdSearch, cmdStarred } from "./commands/search";
 import { cmdServices } from "./commands/services";
 import { cmdScorecards } from "./commands/scorecards";
 import { cmdDora } from "./commands/dora";
-import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
-import { cmdWebhooks } from "./commands/webhooks";
 import { cmdLeaks } from "./commands/leaks";
-import { cmdStatusPages } from "./commands/status-pages";
-import { cmdOwnership } from "./commands/ownership";
-import { cmdGraph } from "./commands/graph";
-import { cmdBlastRadius } from "./commands/blast-radius";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCostSources } from "./commands/custom-costs";
-import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
 import { cmdSshFanout } from "./commands/ssh-fanout";
 import { cmdApps } from "./commands/apps";
 import { cmdConfig } from "./commands/config";
 import { runTui } from "./tui";
+import { migratedCommands } from "./effect/root";
+import { runEffectCli } from "./effect/run";
 
 const HELP = `infrawrench: manage your infrastructure from the terminal
 
@@ -690,6 +656,24 @@ function detectGuiRunning(): boolean {
   return true;
 }
 
+/**
+ * Everything a command needs before it runs, migrated or not. Order is
+ * load-bearing: see detectGuiRunning(). Ready first, probe second.
+ */
+async function bootstrap(): Promise<boolean> {
+  await app.whenReady();
+  const guiRunning = detectGuiRunning();
+
+  wireDbGetter();
+  setDatabaseReadOnly(guiRunning);
+  setTokenStoreReadOnly(guiRunning);
+  // The GUI owns first-run key creation. A terminal session that can't reach
+  // the keychain must fail loudly rather than mint a key that orphans every
+  // stored credential.
+  setRequireExistingEncryptionKey(true);
+  return guiRunning;
+}
+
 export async function runCli(): Promise<void> {
   installTerminalGuards();
   // Terminal process: no GPU, no dock icon, as little Chromium as possible.
@@ -700,6 +684,18 @@ export async function runCli(): Promise<void> {
 
   let exitCode = 0;
   try {
+    // A command migrated to effect/cli parses its own line (flags, --help,
+    // --version) through `effect/root.ts`; everything else takes the switch
+    // below. Bare `infrawrench`, `help` and `--help` stay here: HELP lists
+    // every command, migrated or not.
+    const { command: first, noColor } = scanCommandLine(argv);
+    if (first !== undefined && migratedCommands.has(first)) {
+      setColorEnabled(!noColor && process.stdout.isTTY === true && !process.env.NO_COLOR);
+      const guiRunning = await bootstrap();
+      app.exit(await runEffectCli(argv, { version: app.getVersion(), guiRunning }));
+      return;
+    }
+
     const parsed = parseCliArgs(argv);
     setColorEnabled(parsed.flags.color && process.stdout.isTTY === true && !process.env.NO_COLOR);
 
@@ -717,17 +713,7 @@ export async function runCli(): Promise<void> {
       return;
     }
 
-    // Order is load-bearing: see detectGuiRunning(). Ready first, probe second.
-    await app.whenReady();
-    const guiRunning = detectGuiRunning();
-
-    wireDbGetter();
-    setDatabaseReadOnly(guiRunning);
-    setTokenStoreReadOnly(guiRunning);
-    // The GUI owns first-run key creation. A terminal session that can't reach
-    // the keychain must fail loudly rather than mint a key that orphans every
-    // stored credential.
-    setRequireExistingEncryptionKey(true);
+    const guiRunning = await bootstrap();
 
     const ctx: CliContext = { flags: parsed.flags, positionals: parsed.positionals, guiRunning };
 
@@ -740,32 +726,8 @@ export async function runCli(): Promise<void> {
         }
         await runTui(ctx);
         break;
-      case "login":
-        await cmdLogin(ctx);
-        break;
-      case "logout":
-        await cmdLogout(ctx);
-        break;
-      case "whoami":
-        await cmdWhoami(ctx);
-        break;
-      case "orgs":
-        await cmdOrgs(ctx);
-        break;
-      case "accounts":
-        await cmdAccounts(ctx);
-        break;
       case "apps":
         await cmdApps(ctx, rest[0] ?? "", parsed.apps);
-        break;
-      case "resources":
-        await cmdResources(ctx, parsed.range.type);
-        break;
-      case "resource":
-        await cmdResource(ctx, rest[0] ?? "");
-        break;
-      case "metrics":
-        await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
         break;
       case "export":
         // Background export jobs: `export jobs …` manages them, and `--async`
@@ -801,9 +763,6 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdExport(ctx, parsed.exportFlags.format);
-        break;
-      case "estimate":
-        await cmdEstimate(ctx, rest[0] ?? "");
         break;
       case "costs":
         if (rest[0] === "push") {
@@ -1137,36 +1096,14 @@ export async function runCli(): Promise<void> {
         }
         await cmdScenarios(ctx);
         break;
-      case "orphans":
-        await cmdOrphans(ctx);
-        break;
-      case "idle-rules":
-        await cmdIdleRules(ctx, rest[0]);
-        break;
-      case "oversized":
-        await cmdOversized(ctx);
-        break;
       case "prices":
         await cmdPrices(ctx, rest[0] ?? "", rest.slice(1), parsed.prices, parsed.range);
-        break;
-      case "issues":
-        await cmdIssues(ctx, rest[0]);
-        break;
-      case "github-issues":
-        if (rest[0] === "settings") await cmdGithubIssueSettings(ctx);
-        else await cmdGithubIssues(ctx);
         break;
       case "pr-check":
         await cmdPrCheck(ctx, parsed.prCheck);
         break;
-      case "extended-support":
-        await cmdExtendedSupport(ctx);
-        break;
       case "seats":
         await cmdSeats(ctx, rest, parsed.bulk.yes);
-        break;
-      case "carbon":
-        await cmdCarbon(ctx, parsed.range);
         break;
       case "k8s-network":
         await cmdK8sNetwork(ctx, rest.join(" "), parsed.range);
@@ -1179,27 +1116,6 @@ export async function runCli(): Promise<void> {
           format: parsed.exportFlags.format,
           out: parsed.exportFlags.out,
         });
-        break;
-      case "alerts":
-        if (rest[0] === "events") {
-          await cmdAlertEvents(ctx, parsed.range.limit);
-          break;
-        }
-        await cmdAlerts(ctx);
-        break;
-      case "routing":
-        if (rest[0] === "queue") {
-          await cmdRoutingQueue(ctx, parsed.range.limit);
-          break;
-        }
-        if (rest[0] === "email") {
-          await cmdRoutingEmail(ctx);
-          break;
-        }
-        await cmdRouting(ctx);
-        break;
-      case "expiring":
-        await cmdExpiring(ctx);
         break;
       case "posture":
         if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
@@ -1237,52 +1153,16 @@ export async function runCli(): Promise<void> {
           );
         }
         break;
-      case "dns":
-        await cmdDns(ctx);
-        break;
-      case "changes":
-        await cmdChanges(ctx, parsed.range);
-        break;
       case "diff":
         // `infrawrench diff staging prod` is the same as -a/-b; the two
         // positionals are the only ones this command could take.
         await cmdDiff(ctx, rest, parsed.diff, parsed.range);
         break;
-      case "incidents":
-        await cmdIncidents(ctx);
-        break;
-      case "moment":
-        await cmdMoment(ctx, parsed.range);
-        break;
-      case "schedules":
-        await cmdSchedules(ctx);
-        break;
-      case "leases":
-        await cmdLeases(ctx);
-        break;
       case "recordings":
         await cmdRecordings(ctx, rest, { file: parsed.push.file });
         break;
-      case "access":
-        await cmdAccess(ctx, rest);
-        break;
       case "jit":
         await cmdJit(ctx, rest, parsed.jit);
-        break;
-      case "cost-visibility":
-        await cmdCostVisibility(ctx, rest);
-        break;
-      case "hygiene":
-        await cmdHygiene(ctx, { days: parsed.range.days });
-        break;
-      case "agents":
-        await cmdAgents(ctx);
-        break;
-      case "credits":
-        await cmdCredits(ctx);
-        break;
-      case "commitments":
-        await cmdCommitments(ctx);
         break;
       case "savings":
         if (rest[0] === "findings" && rest[1] === "set") {
@@ -1309,20 +1189,6 @@ export async function runCli(): Promise<void> {
             groupBy: parsed.range.groupBy,
           });
         }
-        break;
-      case "search":
-        await cmdSearch(ctx, rest.join(" "), parsed.range.kind);
-        break;
-      case "starred":
-        await cmdStarred(ctx, rest);
-        break;
-      case "probes":
-        // `infrawrench probes <id|name>` charts one probe's latency history.
-        await cmdProbes(ctx, rest[0]);
-        break;
-      case "slos":
-        // `infrawrench slos <id|name>` shows one SLO's burn rates and charts.
-        await cmdSlos(ctx, rest[0]);
         break;
       case "resource-reports":
         // Bare lists them; `resource-reports <name|id>` runs one (the words
@@ -1352,34 +1218,6 @@ export async function runCli(): Promise<void> {
         // Incidents mirrored from paging providers: the third "incident".
         await cmdPaging(ctx, rest, parsed.diff.all);
         break;
-      case "webhooks":
-        // Event subscriptions: where the org's events are delivered, and how that is going.
-        await cmdWebhooks(ctx, rest);
-        break;
-      case "declared-incidents":
-        // Incidents *we* declared (incident mode), as opposed to `incidents`
-        // above, which is the provider status-page correlation. Two features,
-        // one English word; the long name is what keeps them apart.
-        await cmdDeclaredIncidents(ctx, rest[0]);
-        break;
-      case "status-pages":
-        // `infrawrench status-pages <name|id>` details one page's components.
-        await cmdStatusPages(ctx, rest[0]);
-        break;
-      case "ownership":
-        // `infrawrench ownership <query>` filters to matching resources.
-        await cmdOwnership(ctx, rest[0]);
-        break;
-      case "graph":
-        // `infrawrench graph <resource-id>` is the same as --resource; a
-        // resource id is the only positional this command could take.
-        await cmdGraph(ctx, rest[0] ? { ...parsed.range, resource: rest[0] } : parsed.range);
-        break;
-      case "blast-radius":
-        // `infrawrench blast-radius <resource-id>`: the full impact report,
-        // not just the graph's share of it.
-        await cmdBlastRadius(ctx, rest[0]);
-        break;
       case "page":
         await cmdPage(ctx, rest, parsed.push);
         break;
@@ -1391,9 +1229,6 @@ export async function runCli(): Promise<void> {
         break;
       case "config":
         await cmdConfig(ctx, rest[0], parsed.config);
-        break;
-      case "cli":
-        await cmdCli(ctx, rest[0]);
         break;
       default:
         printErr(`Unknown command "${command}". Run \`infrawrench help\`.`);

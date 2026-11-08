@@ -56,6 +56,7 @@ const ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "404": "Not found",
   "409": "Conflict",
   "500": "Server error",
+  "502": "Bad gateway: an upstream service failed",
   "503": "A backing service this endpoint depends on is not available",
 };
 
@@ -86,9 +87,9 @@ const withoutDescription = (schema: unknown) => {
  * `Name`, keeping the variant's description at the reference. Variants that
  * really differ keep their names, and are reported.
  */
-function canonicalizeComponents(spec: GeneratedDocument, conflicts: string[]): void {
+function canonicalizeOnce(spec: GeneratedDocument, conflicts: string[]): boolean {
   const schemas = spec.components?.schemas;
-  if (!schemas) return;
+  if (!schemas) return false;
   const baseOf = (name: string) => name.replace(/_\d+$/, "").replace(/Encoded$/, "");
   const groups = new Map<string, string[]>();
   for (const name of Object.keys(schemas)) {
@@ -120,7 +121,8 @@ function canonicalizeComponents(spec: GeneratedDocument, conflicts: string[]): v
       schemas[base] = schemas[canonicalName];
     }
   }
-  if (renames.size === 0) return;
+  // Only a variant folded into another name changes anything worth another pass.
+  if (![...renames].some(([name, rename]) => name !== rename.to)) return false;
   const rewritten = rewriteRefs(spec, (name, holder) => {
     const rename = renames.get(name);
     if (!rename) return holder;
@@ -133,14 +135,33 @@ function canonicalizeComponents(spec: GeneratedDocument, conflicts: string[]): v
     };
   });
   if (Predicate.isObject(rewritten)) Object.assign(spec, rewritten);
+  // The rewrite copied every object, so delete from the document's own map now.
+  const folded = spec.components?.schemas ?? schemas;
   for (const [name, rename] of renames) {
-    if (name !== rename.to) delete schemas[name];
+    if (name !== rename.to) delete folded[name];
   }
   // The canonical keeps no description of its own when its variants disagreed.
   for (const name of new Set([...renames.values()].map((r) => r.to))) {
     const schema = spec.components?.schemas?.[name];
     if (Predicate.isObject(schema) && name === "Error")
       delete (schema as JsonObject)["description"];
+  }
+  return true;
+}
+
+/**
+ * {@link canonicalizeOnce} until nothing more folds. A component embedding a
+ * variant (`Parent_1` pointing at `Child_1`) only matches its canonical once
+ * the child has been folded, so a pass that renamed something is repeated,
+ * and only the last pass's conflicts are real.
+ */
+function canonicalizeComponents(spec: GeneratedDocument, conflicts: string[]): void {
+  for (;;) {
+    const pass: string[] = [];
+    if (!canonicalizeOnce(spec, pass)) {
+      conflicts.push(...pass);
+      return;
+    }
   }
 }
 

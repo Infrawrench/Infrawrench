@@ -5,7 +5,7 @@
  * calls, because the poller collects findings.
  *
  * Mirrors the posture tools (`list_posture_findings` and friends in
- * `./generic`) and the HTTP route (`api/routes/vulnerabilities.ts`): the same
+ * `./generic`) and the HTTP route (`http/domains/vulnerabilities/`): the same
  * permissions and the same audit actions, so a dismissal made through chat is
  * indistinguishable from one made in the UI except for its `source`.
  */

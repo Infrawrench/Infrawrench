@@ -1,7 +1,7 @@
 /**
  * Org-scoped cost-annotation CRUD: the dated notes drawn over cost charts.
  *
- * Shared by the HTTP routes (api/routes/cost-annotations.ts) the same way
+ * Shared by the HTTP routes (http/domains/cost-annotations) the same way
  * services/cost-reports.ts is, so there is one implementation of "which notes
  * does this chart show" no matter which caller asks.
  *

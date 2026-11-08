@@ -5,13 +5,14 @@
 // straight from the SQLite tables the GUI maintains.
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { getDb } from "../main-utils";
-import { getAccessToken, forceRefreshAccessToken, fetchCloudOrgs } from "../cloud-tokens";
+import { Effect } from "effect";
 import {
   fetchLocalMetricSeries,
   listAccountResourcesLive,
   resolveResourceOutputs,
 } from "../plugin-runtime";
-import { CLOUD_URL } from "../../env";
+import { type CloudApi, type OrgInfo, runCloudApi } from "./effect/cloud-api";
+import type { CloudError } from "./effect/errors";
 
 type OutputMode = "json" | "text";
 
@@ -42,58 +43,26 @@ export class CliError extends Error {
   }
 }
 
-function notSignedInError(): CliError {
-  return new CliError(
-    "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app; the CLI shares its session).",
+/**
+ * Run a {@link CloudApi} call for a command that has not moved to Effect yet:
+ * a tagged failure becomes a `CliError` with the same sentence and exit code,
+ * and a defect (a network error, a locked keychain) rejects as itself, which
+ * `runCli`'s catch prints as it always has.
+ */
+function runCloud<A>(f: (api: CloudApi["Service"]) => Effect.Effect<A, CloudError>): Promise<A> {
+  return Effect.runPromise(
+    runCloudApi(f).pipe(Effect.mapError((e) => new CliError(e.message, e.exitCode))),
   );
 }
 
-/** Authenticated fetch against an org-scoped cloud path. */
+/**
+ * Authenticated fetch against an org-scoped cloud path.
+ *
+ * `T` is unchecked, as it always was here; a migrated command decodes the
+ * body with `CloudApi.decode` and a schema instead.
+ */
 export async function orgFetch<T>(orgId: string, path: string, init: RequestInit = {}): Promise<T> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${t}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  const body = await res.text().catch(() => "");
-
-  if (!res.ok) {
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  // 204 No Content (the dismissal DELETEs answer with it): there is nothing to
-  // parse, and treating the empty body as malformed fails a request that worked.
-  if (res.status === 204) return undefined as T;
-
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    // A 200 that isn't JSON almost always means the SPA's catch-all served an
-    // HTML page because this route doesn't exist on that server: a version
-    // skew, not a failure. Saying so beats a raw JSON.parse stack trace.
-    if (looksLikeHtml(body)) {
-      throw new CliError(
-        `${path} is not available on ${CLOUD_URL}.\n` +
-          `The server answered with a web page instead of data, which usually means it is ` +
-          `running a version without this endpoint.`,
-      );
-    }
-    throw new CliError(
-      `Cloud request returned a malformed response for ${path}${describeBody(body)}`,
-    );
-  }
+  return (await runCloud((api) => api.json(orgId, path, init))) as T;
 }
 
 /**
@@ -102,45 +71,15 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
  * downloads as, which is newline-delimited JSON and would die on `JSON.parse`
  * at its header line.
  */
-export async function orgFetchText(
-  orgId: string,
-  path: string,
-  init: RequestInit = {},
-): Promise<string> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  const body = await res.text().catch(() => "");
-  if (!res.ok) {
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  if (looksLikeHtml(body)) {
-    throw new CliError(
-      `${path} is not available on ${CLOUD_URL}.\n` +
-        `The server answered with a web page instead of data, which usually means it is ` +
-        `running a version without this endpoint.`,
-    );
-  }
-  return body;
+export function orgFetchText(orgId: string, path: string, init: RequestInit = {}): Promise<string> {
+  return runCloud((api) => api.text(orgId, path, init));
 }
 
 /**
  * Same as {@link orgFetchText}, for a binary download: the server-rendered
- * PDF of a cost report or a dashboard. The body is returned as raw bytes; a
- * body that turns out to be a web page is the SPA catch-all answering for a
- * route this server does not have, and is reported as such rather than
- * written to disk as a broken PDF.
+ * PDF of a cost report or a dashboard. A body that turns out to be a web page
+ * is the SPA catch-all answering for a route this server does not have, and
+ * is reported as such rather than written to disk as a broken PDF.
  */
 export async function orgFetchBytes(
   orgId: string,
@@ -154,70 +93,18 @@ export async function orgFetchBytes(
  * {@link orgFetchBytes} plus the response's `Content-Disposition`, for a
  * download whose file name the server picks (the compliance evidence pack).
  */
-export async function orgFetchDownload(
+export function orgFetchDownload(
   orgId: string,
   path: string,
   init: RequestInit = {},
 ): Promise<{ bytes: Uint8Array; contentDisposition: string | null }> {
-  let token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw notSignedInError();
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
-  }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const contentType = res.headers.get("content-type") ?? "";
-  const head = new TextDecoder().decode(bytes.subarray(0, 200));
-  if (contentType.includes("text/html") || looksLikeHtml(head)) {
-    throw new CliError(
-      `${path} is not available on ${CLOUD_URL}.\n` +
-        `The server answered with a web page instead of a file, which usually means it is ` +
-        `running a version without this endpoint.`,
-    );
-  }
-  return { bytes, contentDisposition: res.headers.get("content-disposition") };
+  return runCloud((api) => api.download(orgId, path, init));
 }
 
-/** True for a response body that is a web page rather than data. */
-function looksLikeHtml(body: string): boolean {
-  const head = body.slice(0, 200).trimStart().toLowerCase();
-  return head.startsWith("<!doctype html") || head.startsWith("<html");
-}
-
-/**
- * A response body worth putting in an error message. HTML is summarised rather
- * than shown (a whole page of markup buries the actual problem) and anything
- * long is truncated.
- */
-function describeBody(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) return "";
-  if (looksLikeHtml(trimmed)) return " (the server returned a web page, not data)";
-  return ` ${trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed}`;
-}
-
-export interface OrgInfo {
-  id: string;
-  displayName: string;
-  role: string;
-}
+export type { OrgInfo };
 
 export async function listOrgs(): Promise<OrgInfo[]> {
-  const token = await getAccessToken();
-  if (!token) throw notSignedInError();
-  return fetchCloudOrgs();
+  return [...(await runCloud((api) => api.listOrgs))];
 }
 
 /**
@@ -225,29 +112,8 @@ export async function listOrgs(): Promise<OrgInfo[]> {
  * With no flag: a single org wins by default; several orgs is an error that
  * lists the choices.
  */
-export async function resolveOrg(ctx: CliContext): Promise<OrgInfo> {
-  const orgs = await listOrgs();
-  if (orgs.length === 0) {
-    throw new CliError("You are not a member of any organization.");
-  }
-  const wanted = ctx.flags.org ?? process.env.INFRAWRENCH_ORG ?? null;
-  if (!wanted) {
-    if (orgs.length === 1) return orgs[0]!;
-    throw new CliError(
-      `Multiple organizations: pass --org <id|name>:\n${orgs
-        .map((o) => `  ${o.id}  ${o.displayName}`)
-        .join("\n")}`,
-    );
-  }
-  const byId = orgs.find((o) => o.id === wanted);
-  if (byId) return byId;
-  const byName = orgs.filter((o) => o.displayName.toLowerCase().startsWith(wanted.toLowerCase()));
-  if (byName.length === 1) return byName[0]!;
-  throw new CliError(
-    byName.length === 0
-      ? `No organization matches "${wanted}".`
-      : `"${wanted}" matches several organizations: ${byName.map((o) => o.displayName).join(", ")}.`,
-  );
+export function resolveOrg(ctx: CliContext): Promise<OrgInfo> {
+  return runCloud((api) => api.resolveOrg(ctx.flags.org));
 }
 
 export interface AccountInfo {

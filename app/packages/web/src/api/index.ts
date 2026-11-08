@@ -10,10 +10,6 @@ import {
   SharingInputError,
 } from "../services/object-sharing";
 import { costVisibilityMiddleware } from "../auth/cost-visibility";
-import workflowRoutes from "./routes/workflows.js";
-import workflowApprovalRoutes from "./routes/workflow-approvals.js";
-import { workflowSecretRoutes } from "./routes/workflow-secrets.js";
-import deploymentRoutes from "./routes/deployments";
 import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
 import { setCookie } from "hono/cookie";
@@ -60,8 +56,6 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
-import { costAnomalyFeedbackRoutes } from "./routes/cost-anomaly-feedback";
-import { costReportRoutes } from "./routes/cost-reports";
 import { costCanvasRoutes } from "./routes/cost-canvases";
 import { kubernetesEfficiencyReportRoutes } from "./routes/k8s-efficiency-reports";
 import {
@@ -73,18 +67,13 @@ import {
   dashboardNotificationRoutes,
   orgDashboardNotificationRoutes,
 } from "./routes/dashboard-notifications";
-import { costReportFolderRoutes } from "./routes/cost-report-folders";
 import { resourceReportRoutes } from "./routes/resource-reports";
-import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
 import { costExportJobRoutes } from "./routes/cost-export-jobs";
 import {
   costReportAnomalyAlertRoutes,
   orgReportAnomalyAlertRoutes,
 } from "./routes/cost-report-anomaly-alerts";
-import { costAlertRoutes } from "./routes/cost-alerts";
-import { savedFilterRoutes } from "./routes/saved-filters";
-import { costScenarioRoutes } from "./routes/cost-scenarios";
 import { businessMetricRoutes } from "./routes/business-metrics";
 import { orphanRoutes } from "./routes/orphans";
 import { idleFindingRoutes } from "./routes/idle-findings";
@@ -93,13 +82,6 @@ import { priceCatalogRoutes } from "./routes/price-catalog";
 import { costIngestRoutes } from "./routes/cost-ingest";
 import { pageRoutes } from "./routes/pages";
 import { metricAlertRoutes } from "./routes/metric-alerts";
-import { tagPolicyRoutes } from "./routes/tag-policy";
-import { tagKeyRoutes } from "./routes/tag-keys";
-import { currencyRoutes } from "./routes/currency";
-import { costCentreRoutes } from "./routes/cost-centres";
-import { customCostSourceRoutes } from "./routes/custom-cost-sources";
-import { billingRuleRoutes } from "./routes/billing-rules";
-import { virtualTagRoutes } from "./routes/virtual-tags";
 import { invoiceRoutes, managedAccountRoutes } from "./routes/invoices";
 import { billingProfileRoutes } from "./routes/billing-profiles";
 import { customGraphRoutes } from "./routes/custom-graphs";
@@ -110,16 +92,11 @@ import { connectionFeatureRoutes } from "./routes/connection-features";
 import { resourceDetailRoutes } from "./routes/resource-detail";
 import { resourceChangeRoutes } from "./routes/resource-changes";
 import { statusIncidentRoutes } from "./routes/status-incidents";
-import { complianceRoutes } from "./routes/compliance";
-import { seatRoutes } from "./routes/seats";
-import { backupRoutes } from "./routes/backups";
 import { publicCalendarRoutes } from "./routes/calendar-feed";
 import { pagingWebhookRoutes } from "./routes/paging-providers";
 import { carbonRoutes } from "./routes/carbon";
 import { momentRoutes } from "./routes/moment";
 import { statusPageRoutes, publicStatusRoutes } from "./routes/status-pages";
-import { iacRoutes } from "./routes/iac";
-import { logWorkspaceRoutes } from "./routes/log-workspaces";
 import { wsTokenRoutes } from "./routes/ws-token";
 import { storageRoutes } from "./routes/storage";
 import { sftpRoutes } from "./routes/sftp";
@@ -130,8 +107,6 @@ import creditRoutes from "./routes/credits.js";
 import commitmentRoutes from "./routes/commitments.js";
 import savingsRoutes from "./routes/savings.js";
 import { savingsFindingRoutes, savingsViewRoutes } from "./routes/savings-findings.js";
-import { networkFlowRoutes } from "./routes/network-flows.js";
-import { aiAttributionRoutes } from "./routes/ai-attribution.js";
 import { searchRoutes } from "./routes/search";
 import { starredRoutes } from "./routes/starred";
 import { connectRoutes } from "./routes/connect";
@@ -139,21 +114,13 @@ import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { sshFanoutRoutes } from "./routes/ssh-fanout";
 import { appsRoutes } from "./routes/apps";
 import { twilioRoutes } from "./routes/twilio";
-import { slackRoutes, slackOauthRoute } from "./routes/slack";
+import { slackOauthRoute } from "./routes/slack";
 import { providerOAuthRoutes, providerOAuthCallbackRoute } from "./routes/provider-oauth";
 import { slackInboundRoutes } from "./routes/slack-inbound";
 import { anomalyFeedbackLinkRoutes } from "./routes/anomaly-feedback-link";
-import { msteamsRoutes } from "./routes/msteams";
-import { eventSubscriptionRoutes } from "./routes/event-subscriptions";
-import { jiraRoutes } from "./routes/jira";
-import { linearRoutes } from "./routes/linear";
-import { githubIssuesRoutes } from "./routes/github-issues";
 import { issueWebhookRoutes } from "./routes/issue-webhooks";
-import { prChecksRoutes } from "./routes/pr-checks";
-import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
-import alertRuleRoutes from "./routes/alert-rules";
-import { alertEmailPublicRoutes, alertEmailRoutes } from "./routes/alert-email";
+import { alertEmailPublicRoutes } from "./routes/alert-email";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -422,11 +389,8 @@ orgScoped.use("*", costVisibilityMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
-// Anomaly verdicts, suppressions, sensitivity and precision share the prefix.
-orgScoped.route("/costs", costAnomalyFeedbackRoutes);
 // Background export jobs: `/costs/exports/jobs…`.
 orgScoped.route("/costs", costExportJobRoutes);
-orgScoped.route("/cost-reports", costReportRoutes);
 // Delivery schedules share the /cost-reports prefix (their paths are all
 // /:id/notifications…); the org-wide list lives on its own prefix so it can
 // never collide with /cost-reports/:id.
@@ -441,44 +405,23 @@ orgScoped.route("/cost-report-anomaly-alerts", orgReportAnomalyAlertRoutes);
 orgScoped.route("/cost-reports", costReportPdfRoutes);
 orgScoped.route("/dashboards", dashboardNotificationRoutes);
 orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
-orgScoped.route("/cost-report-folders", costReportFolderRoutes);
-// Saved inventory tables with per-resource cost, filed in the same folders.
+// Saved inventory tables with per-resource cost, filed in the cost-report folders.
 orgScoped.route("/resource-reports", resourceReportRoutes);
 // Natural-language report canvases: CRUD, run, preview, PDF and schedules.
 orgScoped.route("/cost-canvases", costCanvasRoutes);
 orgScoped.route("/k8s-efficiency-reports", kubernetesEfficiencyReportRoutes);
-// Dated notes drawn over cost charts. Its own prefix rather than a child of
-// /cost-reports: an annotation with no report id is org-wide and belongs to
-// every chart, so it is not a sub-resource of any one report.
-orgScoped.route("/cost-annotations", costAnnotationRoutes);
 orgScoped.route("/cost-exports", costExportRoutes);
-orgScoped.route("/cost-alerts", costAlertRoutes);
-orgScoped.route("/saved-cost-filters", savedFilterRoutes);
-orgScoped.route("/cost-scenarios", costScenarioRoutes);
 orgScoped.route("/business-metrics", businessMetricRoutes);
 orgScoped.route("/orphans", orphanRoutes);
 orgScoped.route("/idle-findings", idleFindingRoutes);
 orgScoped.route("/rightsizing", rightsizingRoutes);
 orgScoped.route("/price-catalog", priceCatalogRoutes);
 orgScoped.route("/metric-alerts", metricAlertRoutes);
-orgScoped.route("/tag-policy", tagPolicyRoutes);
-orgScoped.route("/tag-keys", tagKeyRoutes);
-orgScoped.route("/currency", currencyRoutes);
-orgScoped.route("/cost-centres", costCentreRoutes);
-// Spend uploaded from files into named sources; each source reads as its own
-// provider in the cost dimensions. See server-core/src/cost/custom-costs.ts.
-orgScoped.route("/custom-cost-sources", customCostSourceRoutes);
-orgScoped.route("/billing-rules", billingRuleRoutes);
-orgScoped.route("/virtual-tags", virtualTagRoutes);
 orgScoped.route("/managed-accounts", managedAccountRoutes);
 orgScoped.route("/billing-profiles", billingProfileRoutes);
 orgScoped.route("/invoices", invoiceRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
 orgScoped.route("/config", orgConfigRoutes);
-orgScoped.route("/workflows", workflowRoutes);
-orgScoped.route("/workflow-approvals", workflowApprovalRoutes);
-orgScoped.route("/workflow-secrets", workflowSecretRoutes);
-orgScoped.route("/deployments", deploymentRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
 orgScoped.route("/accounts", accountRoutes);
@@ -492,14 +435,9 @@ orgScoped.route("/", connectionFeatureRoutes);
 orgScoped.route("/resources", resourceDetailRoutes);
 orgScoped.route("/changes", resourceChangeRoutes);
 orgScoped.route("/status-incidents", statusIncidentRoutes);
-orgScoped.route("/compliance", complianceRoutes);
-orgScoped.route("/seats", seatRoutes);
-orgScoped.route("/backups", backupRoutes);
 orgScoped.route("/carbon", carbonRoutes);
 orgScoped.route("/moment", momentRoutes);
 orgScoped.route("/status-pages", statusPageRoutes);
-orgScoped.route("/iac", iacRoutes);
-orgScoped.route("/log-workspaces", logWorkspaceRoutes);
 orgScoped.route("/ws-token", wsTokenRoutes);
 orgScoped.route("/v1/storage", storageRoutes);
 orgScoped.route("/v1/sftp", sftpRoutes);
@@ -512,8 +450,6 @@ orgScoped.route("/commitments", commitmentRoutes);
 orgScoped.route("/savings/findings", savingsFindingRoutes);
 orgScoped.route("/savings-views", savingsViewRoutes);
 orgScoped.route("/savings", savingsRoutes);
-orgScoped.route("/network-flows", networkFlowRoutes);
-orgScoped.route("/ai-attribution", aiAttributionRoutes);
 orgScoped.route("/search", searchRoutes);
 orgScoped.route("/starred", starredRoutes);
 orgScoped.route("/connect", connectRoutes);
@@ -521,17 +457,7 @@ orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
 orgScoped.route("/ssh-fanout", sshFanoutRoutes);
 orgScoped.route("/apps", appsRoutes);
 orgScoped.route("/twilio", twilioRoutes);
-orgScoped.route("/slack", slackRoutes);
-orgScoped.route("/msteams", msteamsRoutes);
-orgScoped.route("/event-subscriptions", eventSubscriptionRoutes);
-orgScoped.route("/jira", jiraRoutes);
-orgScoped.route("/linear", linearRoutes);
-orgScoped.route("/github-issues", githubIssuesRoutes);
-orgScoped.route("/pr-checks", prChecksRoutes);
-orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
-orgScoped.route("/alert-rules", alertRuleRoutes);
-orgScoped.route("/alert-email", alertEmailRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

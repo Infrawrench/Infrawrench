@@ -99,6 +99,21 @@ export const currentOrg = Effect.gen(function* () {
   return yield* api.resolveOrg(session.org);
 });
 
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
+/**
+ * Decode a body {@link CloudApi.json} already returned: a body that does not
+ * fit is `MalformedResponse`, as with `decode`. For a command that prints the
+ * raw body under `--json` (byte for byte what the server sent, every field
+ * included) and decodes only what its text rendering reads.
+ */
+export const decodeBody =
+  <A>(schema: Schema.ConstraintDecoder<A>, path: string) =>
+  (body: unknown): Effect.Effect<A, MalformedResponse> =>
+    Schema.decodeUnknownEffect(schema)(body).pipe(
+      Effect.mapError((error) => new MalformedResponse({ path, detail: `: ${error.message}` })),
+    );
+
 const orgUrl = (baseUrl: string, orgId: string, path: string) =>
   `${baseUrl}/api/org/${encodeURIComponent(orgId)}${path}`;
 
@@ -141,7 +156,7 @@ function makeCloudApi(baseUrl: string): CloudApi["Service"] {
     // 204 No Content (the dismissal DELETEs answer with it): there is nothing
     // to parse, and treating the empty body as malformed fails a request that worked.
     if (res.status === 204) return undefined;
-    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+    return yield* decodeJson(body).pipe(
       // A 200 that isn't JSON almost always means the SPA's catch-all served
       // an HTML page because this route doesn't exist on that server.
       Effect.mapError(() =>
@@ -157,14 +172,7 @@ function makeCloudApi(baseUrl: string): CloudApi["Service"] {
     orgId: string,
     path: string,
     init: RequestInit = {},
-  ) =>
-    json(orgId, path, init).pipe(
-      Effect.flatMap((value) =>
-        Schema.decodeUnknownEffect(schema)(value).pipe(
-          Effect.mapError((error) => new MalformedResponse({ path, detail: `: ${error.message}` })),
-        ),
-      ),
-    );
+  ) => json(orgId, path, init).pipe(Effect.flatMap(decodeBody(schema, path)));
 
   const text = Effect.fnUntraced(function* (orgId: string, path: string, init: RequestInit = {}) {
     const res = yield* authorized(orgId, path, init, false);

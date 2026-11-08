@@ -8,6 +8,7 @@ import {
   BILLING_PROFILE_LIMITS,
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,
+  type BillingProfileInput as BillingProfileInputContract,
   type ManagedInvoiceUpdate as ManagedInvoiceUpdateContract,
 } from "@infrawrench/client-core";
 import { maxLength, minLength } from "./checks";
@@ -313,5 +314,6 @@ export const ManagedAccountAssignmentPreview = Schema.Struct({
 
 export type ManagedAccountSchemasMatchContract = [
   Exact<typeof ManagedInvoiceUpdate.Type, ManagedInvoiceUpdateContract>,
+  Exact<typeof BillingProfileInput.Type, BillingProfileInputContract>,
 ];
-[true] satisfies ManagedAccountSchemasMatchContract;
+[true, true] satisfies ManagedAccountSchemasMatchContract;

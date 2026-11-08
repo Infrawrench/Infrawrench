@@ -1,3 +1,10 @@
+/**
+ * What remains of the tag policy's Zod spec: the 422 slot resource creation
+ * (still on Hono) answers when the policy blocks it, and `GET /costs/untagged`,
+ * served by the cost routes. The policy routes are documented by their HttpApi
+ * domain (`http/domains/tag-policy/`), whose `RequiredTag` replaces this one
+ * in the merged document.
+ */
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam } from "../common";
 import type { BuildContext } from "../context";
@@ -15,16 +22,6 @@ const RequiredTag = strict({
     .optional()
     .openapi({ description: "When set, the tag's value must be one of these (compared exactly)." }),
 }).openapi("RequiredTag");
-
-const TagPolicy = strict({
-  requiredTags: z.array(RequiredTag).max(32),
-  enforceOnCreate: z.boolean().openapi({
-    description:
-      "When true, resource creation is rejected with a 422 (`tag_policy_unmet`) if the " +
-      "submitted fields carry a tag map missing a required tag. Types whose create form has " +
-      "no `tags`/`labels` field are exempt.",
-  }),
-}).openapi("TagPolicy");
 
 const TagPolicyViolation = strict({
   key: z.string(),
@@ -54,25 +51,6 @@ export const TagPolicyUnmetResponse = {
     "hold `tag-policy:override`; both blocks and overrides are audit-logged.",
   content: { "application/json": { schema: TagPolicyBlocked } },
 } as const;
-
-const AccountTagCompliance = strict({
-  accountId: z.string(),
-  pluginId: z.string(),
-  displayName: z.string(),
-  totalResources: z.number().int(),
-  evaluated: z.number().int().openapi({
-    description: "Resources whose stored record exposes a tag map (the scoreable set).",
-  }),
-  compliant: z.number().int(),
-  score: z.number().int().min(0).max(100).nullable().openapi({
-    description: "Percent of evaluated resources carrying every required tag; null when none.",
-  }),
-}).openapi("AccountTagCompliance");
-
-const TagComplianceReport = strict({
-  policy: TagPolicy,
-  accounts: z.array(AccountTagCompliance),
-}).openapi("TagComplianceReport");
 
 const CurrencyAmounts = z
   .record(z.string(), z.number())
@@ -114,56 +92,8 @@ const RangeQuery = strict({
     }),
 });
 
-export function registerTagPolicyPaths(ctx: BuildContext) {
+export function registerUntaggedSpendPaths(ctx: BuildContext) {
   const { registry } = ctx;
-
-  registry.registerPath({
-    method: "get",
-    path: "/api/org/{orgId}/tag-policy",
-    tags: ["Tag Policy"],
-    summary: "The org's required-tag policy",
-    request: { params: OrgIdParam },
-    responses: {
-      200: { description: "Tag policy", content: { "application/json": { schema: TagPolicy } } },
-    },
-  });
-
-  registry.registerPath({
-    method: "put",
-    path: "/api/org/{orgId}/tag-policy",
-    tags: ["Tag Policy"],
-    summary: "Replace the org's tag policy",
-    description:
-      "Sets the required tag keys (each optionally restricted to allowed values) and whether " +
-      "resource creation is blocked when they are missing. Keys are matched case-insensitively " +
-      "against the generic `tags`/`labels` field convention.",
-    request: {
-      params: OrgIdParam,
-      body: { content: { "application/json": { schema: TagPolicy } }, required: true },
-    },
-    responses: {
-      200: { description: "Saved", content: { "application/json": { schema: TagPolicy } } },
-      400: ErrorResponses[400],
-    },
-  });
-
-  registry.registerPath({
-    method: "get",
-    path: "/api/org/{orgId}/tag-policy/compliance",
-    tags: ["Tag Policy"],
-    summary: "Per-account tag compliance scores",
-    description:
-      "For each account: how many of its resources expose tags and how many of those carry " +
-      "every required tag with an allowed value. `score` is over the evaluated (tag-capable) " +
-      "set so untaggable resource types don't drag it.",
-    request: { params: OrgIdParam },
-    responses: {
-      200: {
-        description: "Compliance report",
-        content: { "application/json": { schema: TagComplianceReport } },
-      },
-    },
-  });
 
   registry.registerPath({
     method: "get",

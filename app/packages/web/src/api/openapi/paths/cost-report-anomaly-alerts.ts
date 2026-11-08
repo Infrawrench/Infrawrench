@@ -1,7 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
-import { AlertDestination, AlertRulesResponse } from "./alert-rules";
+import { AlertDestination, AlertDestinationCatalog } from "../alert-destinations";
 
 /**
  * Anomaly alerts scoped to one cost report. One per report, addressed by the
@@ -70,15 +70,9 @@ const CostReportAnomalyAlert = CostReportAnomalyAlertInput.extend({
     .openapi({ description: "The latest 20 findings, newest first." }),
 }).openapi("CostReportAnomalyAlert");
 
-const CostReportAnomalyAlertTargets = AlertRulesResponse.pick({
-  slackChannels: true,
-  msTeamsWebhooks: true,
-  onCallSchedules: true,
-  members: true,
-  emailAvailable: true,
-  emailSettings: true,
-  memberDomains: true,
-}).openapi("CostReportAnomalyAlertTargets");
+const CostReportAnomalyAlertTargets = AlertDestinationCatalog.openapi(
+  "CostReportAnomalyAlertTargets",
+);
 
 export function registerCostReportAnomalyAlertPaths(ctx: BuildContext) {
   const { registry } = ctx;

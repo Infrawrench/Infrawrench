@@ -18,14 +18,69 @@
 // definitions every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The imports are type-only, so the CLI
 // still ships zero new runtime dependencies.
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import { Effect, Option, Schema } from "effect";
+import { Argument, Command } from "effect/cli";
 import type {
-  Incident,
   IncidentListResponse,
   IncidentTimelineResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, safe, type Column } from "../output";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { wire } from "../effect/wire";
+import { c, safe, type Column } from "../output";
 import { formatChangeTime } from "../format";
+
+const PATH = "/incidents";
+
+// Severity, status and artefact status stay strings: each renderer has a
+// fallback for a value a newer server adds.
+const IncidentList = wire<IncidentListResponse>()(
+  Schema.Struct({
+    incidents: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        title: Schema.String,
+        severity: Schema.String,
+        status: Schema.String,
+        summary: Schema.NullOr(Schema.String),
+        startedAt: Schema.String,
+        resolvedAt: Schema.NullOr(Schema.String),
+        declaredByName: Schema.NullOr(Schema.String),
+        artifacts: Schema.Array(
+          Schema.Struct({
+            kind: Schema.String,
+            status: Schema.String,
+            label: Schema.NullOr(Schema.String),
+            error: Schema.NullOr(Schema.String),
+          }),
+        ),
+      }),
+    ),
+  }),
+);
+type Incident = (typeof IncidentList.Type)["incidents"][number];
+
+/** The list with each incident left as the server sent it, for `--json`. */
+const RawIncidentList = Schema.Struct({ incidents: Schema.Array(Schema.Unknown) });
+
+const Timeline = wire<IncidentTimelineResponse>()(
+  Schema.Struct({
+    entries: Schema.Array(
+      Schema.Struct({
+        source: Schema.String,
+        at: Schema.String,
+        title: Schema.String,
+        detail: Schema.optional(Schema.NullOr(Schema.String)),
+        severity: Schema.String,
+      }),
+    ),
+    feeds: Schema.Array(Schema.Struct({ feed: Schema.String, status: Schema.String })),
+    truncated: Schema.Boolean,
+  }),
+);
+type Timeline = typeof Timeline.Type;
 
 /**
  * Duration rendering, hand-rolled rather than imported: client-core's
@@ -94,47 +149,31 @@ function severityGlyph(severity: string): string {
   }
 }
 
-export async function cmdDeclaredIncidents(ctx: CliContext, incidentArg?: string): Promise<void> {
-  if (ctx.flags.local) {
-    throw new CliError(
-      "Incidents live in Infrawrench Cloud. An incident is org-scoped and declaring one composes cloud features. Drop --local.",
-    );
-  }
-  const org = await resolveOrg(ctx);
-  const { incidents } = await orgFetch<IncidentListResponse>(org.id, "/incidents");
+/** The incident `wanted` names: id, then exact title, then a title containing it. */
+function findIncident(incidents: ReadonlyArray<Incident>, wanted: string): number {
+  const needle = wanted.toLowerCase();
+  const byId = incidents.findIndex((i) => i.id === wanted);
+  if (byId >= 0) return byId;
+  const exact = incidents.findIndex((i) => i.title.toLowerCase() === needle);
+  if (exact >= 0) return exact;
+  return incidents.findIndex((i) => i.title.toLowerCase().includes(needle));
+}
 
-  if (incidentArg) {
-    const needle = incidentArg.toLowerCase();
-    const incident =
-      incidents.find((i) => i.id === incidentArg) ??
-      incidents.find((i) => i.title.toLowerCase() === needle) ??
-      incidents.find((i) => i.title.toLowerCase().includes(needle));
-    if (!incident) {
-      throw new CliError(
-        `No incident matches "${incidentArg}". Run \`infrawrench declared-incidents\` to list.`,
-      );
-    }
-    await printIncidentDetail(ctx, org.id, incident);
-    return;
-  }
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, incidents });
-    return;
-  }
-
+const printList = Effect.fnUntraced(function* (
+  orgName: string,
+  incidents: ReadonlyArray<Incident>,
+) {
   if (incidents.length === 0) {
-    println(c.dim("No incidents have been declared. Long may it last."));
-    return;
+    return yield* Print.line(c.dim("No incidents have been declared. Long may it last."));
   }
 
   const open = incidents.filter((i) => i.status !== "resolved").length;
-  println(
-    `${c.bold(safe(org.displayName))} ${c.dim(
+  yield* Print.line(
+    `${c.bold(safe(orgName))} ${c.dim(
       `· ${incidents.length} incident${incidents.length === 1 ? "" : "s"}`,
     )}${open > 0 ? `  ${c.red(`${open} not resolved`)}` : ""}`,
   );
-  println();
+  yield* Print.line();
 
   const columns: Column<Incident>[] = [
     { header: "", value: (i) => statusCell(i) },
@@ -153,34 +192,22 @@ export async function cmdDeclaredIncidents(ctx: CliContext, incidentArg?: string
       align: "right",
     },
   ];
-  printTable(incidents, columns);
+  yield* Print.table(incidents, columns);
 
-  println();
-  println(
+  yield* Print.line();
+  yield* Print.line(
     c.dim(
       "`infrawrench declared-incidents <id|title>` prints one incident's assembled timeline. Declare and resolve from the Incidents tab.",
     ),
   );
-}
+});
 
 /** One incident: its facts, its artefacts, and the joined timeline. */
-async function printIncidentDetail(
-  ctx: CliContext,
-  orgId: string,
-  incident: Incident,
-): Promise<void> {
-  const timeline = await orgFetch<IncidentTimelineResponse>(
-    orgId,
-    `/incidents/${encodeURIComponent(incident.id)}/timeline`,
+const printIncidentDetail = Effect.fnUntraced(function* (incident: Incident, timeline: Timeline) {
+  yield* Print.line(
+    `${severityCell(incident)} ${c.bold(safe(incident.title))}  ${statusCell(incident)}`,
   );
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: orgId, incident, timeline });
-    return;
-  }
-
-  println(`${severityCell(incident)} ${c.bold(safe(incident.title))}  ${statusCell(incident)}`);
-  println(
+  yield* Print.line(
     c.dim(
       `started ${formatChangeTime(incident.startedAt)} · ${duration(
         incident.startedAt,
@@ -188,53 +215,109 @@ async function printIncidentDetail(
       )}${incident.declaredByName ? ` · declared by ${safe(incident.declaredByName)}` : ""}`,
     ),
   );
-  if (incident.summary) println(safe(incident.summary));
-  println();
+  if (incident.summary) yield* Print.line(safe(incident.summary));
+  yield* Print.line();
 
   // Artefacts first, and failures loudly: the point of recording a failed
   // artefact is that somebody sees it.
   if (incident.artifacts.length > 0) {
     for (const artifact of incident.artifacts) {
       const line = `${artifact.kind}: ${artifact.status}${artifact.label ? ` (${safe(artifact.label)})` : ""}`;
-      println(
+      yield* Print.line(
         isFailureStatus(artifact.status)
           ? c.red(`  ✗ ${line}, ${safe(artifact.error) || "no detail recorded"}`)
           : c.dim(`  · ${line}`),
       );
     }
-    println();
+    yield* Print.line();
   }
 
   const degraded = timeline.feeds.filter((f) => f.status !== "ok");
   if (degraded.length > 0) {
-    println(
+    yield* Print.line(
       c.dim(
         `feeds unavailable or not visible to you: ${degraded.map((f) => safe(f.feed)).join(", ")}`,
       ),
     );
-    println();
+    yield* Print.line();
   }
 
   if (timeline.entries.length === 0) {
-    println(
+    return yield* Print.line(
       c.dim(
         "Nothing else was recorded in this window. The change feed, deploys and alerts were all quiet.",
       ),
     );
-    return;
   }
 
   for (const entry of timeline.entries) {
-    println(
+    yield* Print.line(
       `${severityGlyph(entry.severity)} ${c.dim(formatChangeTime(entry.at).padEnd(16))} ${c.dim(
         safe(entry.source).padEnd(13),
       )} ${safe(entry.title)}`,
     );
-    if (entry.detail) println(`  ${c.dim(safe(entry.detail))}`);
+    if (entry.detail) yield* Print.line(`  ${c.dim(safe(entry.detail))}`);
   }
 
   if (timeline.truncated) {
-    println();
-    println(c.dim("Timeline truncated. This window holds more events than one view can carry."));
+    yield* Print.line();
+    yield* Print.line(
+      c.dim("Timeline truncated. This window holds more events than one view can carry."),
+    );
   }
-}
+});
+
+export const declaredIncidents = Command.make(
+  "declared-incidents",
+  {
+    incident: Argument.String("id|title").pipe(
+      Argument.withDescription("An incident to show the timeline of, by id or title"),
+      Argument.optional,
+    ),
+  },
+  Effect.fn("declared-incidents")(function* ({ incident: incidentArg }) {
+    const session = yield* CliSession;
+    if (session.local) {
+      return yield* new CliFailure({
+        message:
+          "Incidents live in Infrawrench Cloud. An incident is org-scoped and declaring one composes cloud features. Drop --local.",
+      });
+    }
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    const body = yield* api.json(org.id, PATH);
+    const raw = yield* decodeBody(RawIncidentList, PATH)(body);
+
+    if (Option.isSome(incidentArg)) {
+      const { incidents } = yield* decodeBody(IncidentList, PATH)(body);
+      const index = findIncident(incidents, incidentArg.value);
+      const incident = incidents[index];
+      if (!incident) {
+        return yield* new CliFailure({
+          message: `No incident matches "${incidentArg.value}". Run \`infrawrench declared-incidents\` to list.`,
+        });
+      }
+      const timelinePath = `/incidents/${encodeURIComponent(incident.id)}/timeline`;
+      const timelineBody = yield* api.json(org.id, timelinePath);
+      if (session.output === "json") {
+        return yield* Print.json({
+          org: org.id,
+          incident: raw.incidents[index],
+          timeline: timelineBody,
+        });
+      }
+      const timeline = yield* decodeBody(Timeline, timelinePath)(timelineBody);
+      return yield* printIncidentDetail(incident, timeline);
+    }
+
+    if (session.output === "json") {
+      return yield* Print.json({ org: org.id, incidents: raw.incidents });
+    }
+    const { incidents } = yield* decodeBody(IncidentList, PATH)(body);
+    yield* printList(org.displayName, incidents);
+  }),
+).pipe(
+  Command.withDescription(
+    "Incidents you declared (incident mode): severity, status, duration and failed artefacts",
+  ),
+);

@@ -51,6 +51,16 @@ export class Conflict extends Schema.Error<Conflict>("infrawrench/http/Conflict"
   errorAnnotations(409),
 ) {}
 
+export class InternalServerError extends Schema.Error<InternalServerError>(
+  "infrawrench/http/InternalServerError",
+)({ error: message }, errorAnnotations(500)) {}
+
+/** An upstream provider (Slack, Jira, a cloud API) failed the call this route made. */
+export class BadGateway extends Schema.Error<BadGateway>("infrawrench/http/BadGateway")(
+  { error: message },
+  errorAnnotations(502),
+) {}
+
 export class ServiceUnavailable extends Schema.Error<ServiceUnavailable>(
   "infrawrench/http/ServiceUnavailable",
 )({ error: message }, errorAnnotations(503)) {}

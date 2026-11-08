@@ -12,6 +12,8 @@ You can use the CLI in three ways:
 - **Text mode.** Human-readable tables and terminal charts. This is the default for every subcommand.
 - **JSON mode.** Pass `--json` to any command for stable output you can script against (with `jq`, for example).
 
+`infrawrench help` lists every command. Most of the listing commands also have their own help, so `infrawrench orgs --help` prints just that command's usage and flags: `access`, `accounts`, `agents`, `blast-radius`, `cli`, `commitments`, `cost-visibility`, `credits`, `declared-incidents`, `dns`, `estimate`, `expiring`, `extended-support`, `github-issues`, `idle-rules`, `incidents`, `issues`, `leases`, `login`, `logout`, `orgs`, `orphans`, `oversized`, `ownership`, `probes`, `resource`, `resources`, `schedules`, `slos`, `status-pages`, `webhooks` and `whoami`. More commands get this as they are updated. Those commands are also strict about what they're given. A flag they don't take, an extra argument or an unknown subcommand (`access frobnicate`, `issues trello`) prints their help and the error to stderr and exits with status 2. Before, the extra input was ignored, or the command printed a one-line error and exited with status 1. Their own flags go after the command name: `infrawrench resources --type droplet -a prod`, not `infrawrench --type droplet resources`.
+
 ## Install the shell command
 
 In the desktop app, click **Install shell command** at the bottom of the sidebar. On macOS and Linux this adds an `infrawrench` launcher to `/usr/local/bin` (or `~/.local/bin` if that isn't writable). On Windows it goes in a per-user `bin` directory that is added to your `PATH`.

@@ -82,10 +82,31 @@ export function makeHttpApiHandler(
       const context = Context.make(Invocation, { env, executionCtx }).pipe(
         Context.add(LegacyScopes, ambientLegacyScopes()),
       );
-      const response = await web.handler(request, context);
+      const response = await web.handler(asJsonBody(request), context);
       return response.headers.get(UNMATCHED_HEADER) === "1" ? undefined : response;
     },
   };
+}
+
+/**
+ * Content types a JSON body has always been accepted under. Hono's
+ * `c.req.json()` parsed the body whatever the header said, and HttpApi picks a
+ * decoder by content type, answering 415 for one it has none for. A
+ * `fetch(url, { body: JSON.stringify(x) })` without a header sends
+ * `text/plain`, and `curl -d` sends a form type, so callers that always
+ * worked would start failing. Their bodies are read as JSON, as before;
+ * multipart and binary uploads keep their type.
+ */
+const READ_AS_JSON = new Set(["text/plain", "application/x-www-form-urlencoded"]);
+
+function asJsonBody(request: Request): Request {
+  const contentType = request.headers.get("content-type");
+  if (contentType === null) return request;
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!READ_AS_JSON.has(mediaType)) return request;
+  const headers = new Headers(request.headers);
+  headers.set("content-type", "application/json");
+  return new Request(request, { headers });
 }
 
 /**

@@ -22,7 +22,7 @@ import {
 } from "@infrawrench/client-core";
 import { maxLength, minLength, pattern } from "./checks";
 import type { Exact } from "./contract";
-import { IsoDate, NonEmptyString } from "./primitives";
+import { IsoDate, NonEmptyString, UuidRef } from "./primitives";
 
 const L = VIRTUAL_TAG_LIMITS;
 const CostQueryText = Schema.String.check(maxLength(COST_QUERY_MAX_LENGTH));
@@ -32,13 +32,14 @@ export const VirtualTagSource = Schema.Struct({
     examples: ["Environment"],
   }),
   valuePrefix: Schema.NullOr(Schema.String.check(maxLength(L.maxPrefixLength)))
-    .annotate({ description: "Prepended to the copied value, e.g. `az-`." })
+    .annotate({ description: "Prepended to the copied value, e.g. `az-`.", default: null })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   query: Schema.NullOr(CostQueryText)
     .annotate({
       description:
         "Cost-query-language filter that must also hold for this key to be read, e.g. " +
         "`provider = 'azure'`. Null for always.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 }).annotate({ identifier: "VirtualTagSource" });
@@ -48,14 +49,15 @@ export const VirtualTagAllocation = Schema.Struct({
   percent: Schema.NullOr(
     Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(100)),
   )
-    .annotate({ description: "`split` only. The shares of one rule sum to 100." })
+    .annotate({ description: "`split` only. The shares of one rule sum to 100.", default: null })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
-  metricId: Schema.NullOr(NonEmptyString)
+  metricId: Schema.NullOr(UuidRef)
     .annotate({
       description:
         "`metric_split` only. The business metric whose daily value weights this share. A day " +
         "where any share's metric has no value carries the last good day's weights forward, or " +
         "splits evenly when there is none.",
+      default: null,
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 }).annotate({ identifier: "VirtualTagAllocation" });
@@ -69,15 +71,18 @@ export const VirtualTagRule = Schema.Struct({
       "'AmazonRDS'`. Empty matches every row. May filter on another virtual tag " +
       "(`virtual_tag['team'] = 'payments'`) that gives each row one value (no split rules), " +
       "as long as the references form no cycle and no chain is more than five tags deep.",
+    default: "",
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
-  description: Schema.NullOr(Schema.String.check(maxLength(L.maxDescriptionLength))).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed(null)),
-  ),
+  description: Schema.NullOr(Schema.String.check(maxLength(L.maxDescriptionLength)))
+    .annotate({ default: null })
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   startsOn: RuleDay.annotate({
     description: "Inclusive UTC day the rule starts applying; null for no start.",
+    default: null,
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   endsOn: RuleDay.annotate({
     description: "Inclusive UTC day the rule stops applying; null for no end.",
+    default: null,
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   kind: Schema.Literals(VIRTUAL_TAG_RULE_KINDS).annotate({
     description:
@@ -86,20 +91,21 @@ export const VirtualTagRule = Schema.Struct({
       "percentage. `metric_split`: divide it in proportion to business metrics, day by day.",
   }),
   value: Schema.NullOr(Schema.String.check(maxLength(L.maxValueLength)))
-    .annotate({ description: "`value` only." })
+    .annotate({ description: "`value` only.", default: null })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   sources: Schema.mutable(Schema.Array(VirtualTagSource))
     .check(maxLength(L.maxSources))
-    .annotate({ description: "`tag` only." })
+    .annotate({ description: "`tag` only.", default: [] })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   valueTransform: Schema.Literals(VIRTUAL_TAG_VALUE_TRANSFORMS)
     .annotate({
       description: "`tag` only. Case fold applied to the copied value before the prefix.",
+      default: "none",
     })
     .pipe(Schema.withDecodingDefaultKey(Effect.succeed("none"))),
   allocations: Schema.mutable(Schema.Array(VirtualTagAllocation))
     .check(maxLength(L.maxAllocations))
-    .annotate({ description: "`split` and `metric_split` only; at least two." })
+    .annotate({ description: "`split` and `metric_split` only; at least two.", default: [] })
     .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
 }).annotate({ identifier: "VirtualTagRule" });
 

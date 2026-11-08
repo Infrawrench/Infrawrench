@@ -26,3 +26,9 @@ export const table = <T>(
 
 export const keyValues = (pairs: Array<[string, string]>): Effect.Effect<void> =>
   Effect.sync(() => printKeyValues(pairs));
+
+/** Text exactly as given, no newline added: a document a command passes through. */
+export const write = (text: string): Effect.Effect<void> =>
+  Effect.sync(() => {
+    process.stdout.write(text);
+  });

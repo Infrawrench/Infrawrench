@@ -1,6 +1,6 @@
 /**
  * Org-scoped scenario-model CRUD and referent scanning: shared by the HTTP
- * routes (api/routes/cost-scenarios.ts) and the tool registry, mirroring
+ * routes (http/domains/cost-scenarios/) and the tool registry, mirroring
  * services/saved-cost-filters.ts.
  *
  * A scenario model is **known future cost the trend cannot see**: a purchase
