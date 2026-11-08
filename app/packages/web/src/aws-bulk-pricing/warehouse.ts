@@ -1258,11 +1258,18 @@ class ClickHouseLoad implements WarehouseLoad {
       this.put(REGIONS, { source: this.source, region: code, location, location_type: type });
     }
     const snapshots = [...meta.snapshots].sort((a, b) => a - b);
-    for (const table of TABLES) {
-      if (table !== SYNC_STATE) await this.flush(table);
-    }
+    // The last batches go one at a time. CloudHouse applies a committed INSERT
+    // to its engine after the commit, and a query that syncs that engine in
+    // between makes it list the new part twice until the catalog next moves,
+    // so the count below reads double (#909). During the load the next commit
+    // moves the catalog; nothing comes after these but the count.
     await Promise.all(this.inFlight);
-    if (this.failure) throw this.failure;
+    for (const table of TABLES) {
+      if (table === SYNC_STATE) continue;
+      await this.flush(table);
+      await Promise.all(this.inFlight);
+      if (this.failure) throw this.failure;
+    }
 
     // Tokens make a retried INSERT land once; a count that disagrees still fails
     // the load rather than swapping in duplicates.
