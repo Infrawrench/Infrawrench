@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
+  lazyPanel,
   useUIStore,
   workspaceTabTargetsEqual,
   type WorkspaceTab,
@@ -19,28 +20,21 @@ import {
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
 import { type DeploymentClient } from "@infrawrench/ui";
 import { createWebDeploymentClient } from "@/lib/deployment-client";
-import { WebDeploymentsPanel } from "./WebDeploymentsPanel";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
 import { createWebNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
 import { createWebInvoicesClient } from "@/lib/invoices-client";
-import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
+import { type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
-import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
-import { WebAgentsPanel } from "./WebAgentsPanel";
+// Static: ResourceDetailClient renders the Apps launcher from the same module.
 import { WebAppWindowPanel } from "./WebAppsPanels";
-import { WebChatPanel } from "./WebChatPanel";
-import { WebGraphPanel } from "./WebGraphPanel";
-import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
-import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
+import { type CostsClient } from "@infrawrench/ui/cost";
+import { type CostReportsClient } from "@infrawrench/ui/cost-reports";
+import { type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
-import {
-  KubernetesEfficiencyPanel,
-  type KubernetesEfficiencyClient,
-} from "@infrawrench/ui/k8s-efficiency";
+import { type KubernetesEfficiencyClient } from "@infrawrench/ui/k8s-efficiency";
 import { createWebKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import {
   costReportsTabTarget,
@@ -77,35 +71,106 @@ import { createWebSeatsClient } from "@/lib/seats-client";
 import { createWebSavingsFindingsClient } from "@/lib/savings-findings-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
-import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
-import { WebChangesPanel } from "./WebChangesPanel";
-import { WebExpiryPanel } from "./WebExpiryPanel";
-import { WebPosturePanel } from "./WebPosturePanel";
+import { type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebAccountLeakBanner } from "./WebAccountLeakBanner";
-import { WebVulnerabilitiesPanel } from "./WebVulnerabilitiesPanel";
-import { WebCompliancePanel } from "./WebCompliancePanel";
-import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
-import { WebJitAccessPanel } from "./WebJitAccessPanel";
-import { WebBackupsPanel } from "./WebBackupsPanel";
-import { WebWallboardPanel } from "./WebWallboardPanel";
-import { WebCalendarPanel } from "./WebCalendarPanel";
-import { WebRunbooksPanel } from "./WebRunbooksPanel";
-import { WebQueryMonitorsPanel } from "./WebQueryMonitorsPanel";
-import { WebDnsPanel } from "./WebDnsPanel";
-import { WebIacPanel } from "./WebIacPanel";
-import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
-import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
-import { WebProbesPanel } from "./WebProbesPanel";
-import { WebStatusPagesPanel } from "./WebStatusPagesPanel";
-import { WebQuotasPanel } from "./WebQuotasPanel";
-import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
-import { WebIncidentsPanel } from "./WebIncidentsPanel";
-import { WebSlosPanel } from "./WebSlosPanel";
-import { WebResourceReportsPanel } from "./WebResourceReportsPanel";
-import { WebServicesPanel } from "./WebServicesPanel";
-import { WebDeliveryPanel } from "./WebDeliveryPanel";
-import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
-import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
+
+// Each tab kind's panel downloads the first time a tab of that kind mounts,
+// not with the app (#912). Shared panels load by their `@infrawrench/ui`
+// module subpath, never the barrel, or nothing splits; see `lazyPanel`. The
+// dashboard, account and resource panels stay static: they live in route
+// modules the route tree imports anyway.
+const CostsPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost/CostsPanel").then((m) => m.CostsPanel),
+);
+const CostReportsPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost-reports/CostReportsPanel").then((m) => m.CostReportsPanel),
+);
+const CostCanvasesPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost-canvases/CostCanvasesPanel").then((m) => m.CostCanvasesPanel),
+);
+const KubernetesEfficiencyPanel = lazyPanel(() =>
+  import("@infrawrench/ui/k8s-efficiency/KubernetesEfficiencyPanel").then(
+    (m) => m.KubernetesEfficiencyPanel,
+  ),
+);
+const InvoicesPanel = lazyPanel(() =>
+  import("@infrawrench/ui/invoices/InvoicesPanel").then((m) => m.InvoicesPanel),
+);
+const LogWorkspacePanel = lazyPanel(() =>
+  import("@infrawrench/ui/logs/LogWorkspacePanel").then((m) => m.LogWorkspacePanel),
+);
+const WebDeploymentsPanel = lazyPanel(() =>
+  import("./WebDeploymentsPanel").then((m) => m.WebDeploymentsPanel),
+);
+const WebWorkflowsPanel = lazyPanel(() =>
+  import("./WebWorkflowsPanel").then((m) => m.WebWorkflowsPanel),
+);
+const WebAgentsPanel = lazyPanel(() => import("./WebAgentsPanel").then((m) => m.WebAgentsPanel));
+const WebChatPanel = lazyPanel(() => import("./WebChatPanel").then((m) => m.WebChatPanel));
+const WebGraphPanel = lazyPanel(() => import("./WebGraphPanel").then((m) => m.WebGraphPanel));
+const WebChangesPanel = lazyPanel(() => import("./WebChangesPanel").then((m) => m.WebChangesPanel));
+const WebExpiryPanel = lazyPanel(() => import("./WebExpiryPanel").then((m) => m.WebExpiryPanel));
+const WebPosturePanel = lazyPanel(() => import("./WebPosturePanel").then((m) => m.WebPosturePanel));
+const WebVulnerabilitiesPanel = lazyPanel(() =>
+  import("./WebVulnerabilitiesPanel").then((m) => m.WebVulnerabilitiesPanel),
+);
+const WebCompliancePanel = lazyPanel(() =>
+  import("./WebCompliancePanel").then((m) => m.WebCompliancePanel),
+);
+const WebAccessReviewPanel = lazyPanel(() =>
+  import("./WebAccessReviewPanel").then((m) => m.WebAccessReviewPanel),
+);
+const WebJitAccessPanel = lazyPanel(() =>
+  import("./WebJitAccessPanel").then((m) => m.WebJitAccessPanel),
+);
+const WebBackupsPanel = lazyPanel(() => import("./WebBackupsPanel").then((m) => m.WebBackupsPanel));
+const WebWallboardPanel = lazyPanel(() =>
+  import("./WebWallboardPanel").then((m) => m.WebWallboardPanel),
+);
+const WebCalendarPanel = lazyPanel(() =>
+  import("./WebCalendarPanel").then((m) => m.WebCalendarPanel),
+);
+const WebRunbooksPanel = lazyPanel(() =>
+  import("./WebRunbooksPanel").then((m) => m.WebRunbooksPanel),
+);
+const WebQueryMonitorsPanel = lazyPanel(() =>
+  import("./WebQueryMonitorsPanel").then((m) => m.WebQueryMonitorsPanel),
+);
+const WebDnsPanel = lazyPanel(() => import("./WebDnsPanel").then((m) => m.WebDnsPanel));
+const WebIacPanel = lazyPanel(() => import("./WebIacPanel").then((m) => m.WebIacPanel));
+const WebEnvironmentDiffPanel = lazyPanel(() =>
+  import("./WebEnvironmentDiffPanel").then((m) => m.WebEnvironmentDiffPanel),
+);
+const WebMetricAlertsPanel = lazyPanel(() =>
+  import("./WebMetricAlertsPanel").then((m) => m.WebMetricAlertsPanel),
+);
+const WebProbesPanel = lazyPanel(() => import("./WebProbesPanel").then((m) => m.WebProbesPanel));
+const WebStatusPagesPanel = lazyPanel(() =>
+  import("./WebStatusPagesPanel").then((m) => m.WebStatusPagesPanel),
+);
+const WebQuotasPanel = lazyPanel(() => import("./WebQuotasPanel").then((m) => m.WebQuotasPanel));
+const WebPriceCatalogPanel = lazyPanel(() =>
+  import("./WebPriceCatalogPanel").then((m) => m.WebPriceCatalogPanel),
+);
+const WebIncidentsPanel = lazyPanel(() =>
+  import("./WebIncidentsPanel").then((m) => m.WebIncidentsPanel),
+);
+const WebSlosPanel = lazyPanel(() => import("./WebSlosPanel").then((m) => m.WebSlosPanel));
+const WebResourceReportsPanel = lazyPanel(() =>
+  import("./WebResourceReportsPanel").then((m) => m.WebResourceReportsPanel),
+);
+const WebServicesPanel = lazyPanel(() =>
+  import("./WebServicesPanel").then((m) => m.WebServicesPanel),
+);
+const WebDeliveryPanel = lazyPanel(() =>
+  import("./WebDeliveryPanel").then((m) => m.WebDeliveryPanel),
+);
+const WebEnvironmentsPanel = lazyPanel(() =>
+  import("./WebEnvironmentsPanel").then((m) => m.WebEnvironmentsPanel),
+);
+const WebSshFanoutPanel = lazyPanel(() =>
+  import("./WebSshFanoutPanel").then((m) => m.WebSshFanoutPanel),
+);
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;

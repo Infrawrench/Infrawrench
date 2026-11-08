@@ -66,7 +66,11 @@ function preloadAppChunk(): Plugin {
       order: "post",
       handler(_html, ctx) {
         const chunks = Object.values(ctx.bundle ?? {}).filter((c) => c.type === "chunk");
-        const app = chunks.find((c) => c.facadeModuleId?.endsWith("/src/main.tsx"));
+        // By the module it holds, not `facadeModuleId`: the lazily loaded
+        // panels import code they share with the app from this chunk, and a
+        // chunk that exports more than its entry module's own exports gets no
+        // facade.
+        const app = chunks.find((c) => c.moduleIds.some((id) => id.endsWith("/src/main.tsx")));
         if (!app) throw new Error("preloadAppChunk: no chunk for src/main.tsx");
         const entry = chunks.find((c) => c.isEntry)?.fileName;
         const scripts = [app.fileName, ...app.imports.filter((f) => f !== entry)];

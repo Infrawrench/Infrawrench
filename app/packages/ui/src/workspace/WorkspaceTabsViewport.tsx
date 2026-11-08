@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { useGT } from "gt-react";
 import { useUIStore, type WorkspaceTab } from "../store/ui.store.js";
 import { WorkspaceTabProvider } from "./WorkspaceTabContext.js";
 import { workspaceTabPanelProps } from "./tab-dom-ids.js";
@@ -47,7 +48,9 @@ interface WorkspaceTabsViewportProps {
  * alive when the user switches tabs.
  *
  * Each panel is wrapped in `WorkspaceTabProvider` so it can read its own
- * tab id via `useTabId()`.
+ * tab id via `useTabId()`, and in a `Suspense` boundary of its own, so a
+ * panel the host loads with `lazyPanel` shows a loading line while its chunk
+ * downloads, without hiding or remounting any other tab.
  *
  * Every panel is the `role="tabpanel"` that the matching `role="tab"` button
  * in `GlobalTabBar` points at with `aria-controls`; both sides derive the ids
@@ -84,11 +87,23 @@ export function WorkspaceTabsViewport({
             className="flex-col flex-1 min-h-0 min-w-0 overflow-auto"
           >
             {mounted ? (
-              <WorkspaceTabProvider tabId={tab.id}>{renderTabPanel(tab)}</WorkspaceTabProvider>
+              <WorkspaceTabProvider tabId={tab.id}>
+                <Suspense fallback={<PanelLoading />}>{renderTabPanel(tab)}</Suspense>
+              </WorkspaceTabProvider>
             ) : null}
           </div>
         );
       })}
     </>
+  );
+}
+
+/** What a tab shows while its lazily loaded panel's chunk downloads. */
+function PanelLoading() {
+  const gt = useGT();
+  return (
+    <div className="flex flex-1 items-center justify-center text-on-surface-tertiary">
+      <div className="animate-pulse text-sm">{gt("Loading…")}</div>
+    </div>
   );
 }

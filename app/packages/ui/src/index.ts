@@ -8,6 +8,7 @@ export {
 } from "./store/ui.store.js";
 
 export { WorkspaceTabsViewport } from "./workspace/WorkspaceTabsViewport.js";
+export { lazyPanel } from "./workspace/lazy-panel.js";
 export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.js";
 // Shared by GlobalTabBar (aria-controls) and WorkspaceTabsViewport
 // (id / aria-labelledby); exported so a host that renders its own tab strip or

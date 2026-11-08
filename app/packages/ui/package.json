@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "license": "BUSL-1.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -118,6 +119,11 @@
       "types": "./dist/workflows/prompt-bridge.d.ts",
       "import": "./dist/workflows/prompt-bridge.js",
       "require": "./dist/workflows/prompt-bridge.cjs"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/*.cjs"
     }
   },
   "main": "./dist/index.cjs",
