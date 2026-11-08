@@ -18,13 +18,13 @@ import {
   COST_DIMENSIONS,
   COST_RANGE_PRESET_LABELS as PRESET_LABELS,
   COST_RANGE_PRESETS,
-  costGraphConfigSchema,
   type CostBasis,
   type CostDimensionId,
   type BusinessMetric,
   type CostGraphConfig,
   type CostScenarioModel,
 } from "./config.js";
+import { CostGraphConfig as CostGraphConfigSchema, decodeForm } from "../schemas/index.js";
 import { UnitCostConfigFields } from "./UnitCostConfigFields.js";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";
@@ -389,9 +389,9 @@ export function CostGraphConfigModal({
       comparisonStyle:
         config.comparePreviousPeriod && config.comparisonStyle === "bars" ? "bars" : undefined,
     } satisfies CostGraphConfig;
-    const parsed = costGraphConfigSchema.safeParse(cleaned);
+    const parsed = decodeForm(CostGraphConfigSchema, cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid configuration"));
+      setError(parsed.message || gt("Invalid configuration"));
       return;
     }
     if (parsed.data.groupBy === "tag" && !parsed.data.groupByTagKey) {

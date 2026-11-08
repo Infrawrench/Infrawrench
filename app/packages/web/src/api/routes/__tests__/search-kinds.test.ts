@@ -73,7 +73,15 @@ vi.mock("@/services/cost-visibility-filter", () => ({
 
 const { searchRoutes, parseSearchKinds } = await import("@/api/routes/search");
 const { SEARCH_KIND_PERMISSION } = await import("@/services/palette-search");
-const { REQUIRED_PERMISSION } = await import("@/api/openapi/required-permissions");
+const { REQUIRED_PERMISSION: HONO_REQUIRED_PERMISSION } =
+  await import("@/api/openapi/required-permissions");
+const { DOMAINS } = await import("@/http/domains");
+const { requiredPermissionIndex } = await import("@/http/openapi");
+// Routes still on Hono declare their gate in the map; HttpApi endpoints carry it.
+const REQUIRED_PERMISSION: Record<string, string | null> = {
+  ...HONO_REQUIRED_PERMISSION,
+  ...requiredPermissionIndex(DOMAINS),
+};
 
 describe("SEARCH_KIND_PERMISSION", () => {
   // A kind is searchable on exactly the permission its own list route needs:

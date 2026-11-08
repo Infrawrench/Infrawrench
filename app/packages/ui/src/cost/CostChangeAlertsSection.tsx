@@ -20,7 +20,8 @@ import {
 import { useEffect, useId, useState } from "react";
 import { T, useGT } from "gt-react";
 
-import { COST_DIMENSIONS, costAlertInputSchema, type CostFilter } from "./config.js";
+import { COST_DIMENSIONS, type CostFilter } from "./config.js";
+import { CostAlertInput as CostAlertInputSchema, decodeForm } from "../schemas/index.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import { VirtualTagKeySelect } from "./VirtualTagKeySelect.js";
 import { formatMoney } from "./transform.js";
@@ -433,9 +434,9 @@ export function CostChangeAlertConfigModal({
       thresholdAmountCents: amount === null ? null : Math.round(amount * 100),
       filters: input.filters.filter(isCompleteCostFilter),
     };
-    const parsed = costAlertInputSchema.safeParse(cleaned);
+    const parsed = decodeForm(CostAlertInputSchema, cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid cost alert"));
+      setError(parsed.message || gt("Invalid cost alert"));
       return;
     }
     setSaving(true);

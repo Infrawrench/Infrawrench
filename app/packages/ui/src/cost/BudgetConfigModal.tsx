@@ -7,7 +7,6 @@ import {
   budgetDepth,
   budgetDescendantIds,
   budgetInputError,
-  budgetInputSchema,
   budgetSubtreeHeight,
   type BudgetExplicitPeriod,
   type BudgetInput,
@@ -16,6 +15,7 @@ import {
   type CostFilter,
   type CostScenarioModel,
 } from "./config.js";
+import { BudgetInput as BudgetInputSchema, decodeForm } from "../schemas/index.js";
 import {
   COST_BASIS_UNAVAILABLE_HINT,
   CostBasisField,
@@ -150,9 +150,9 @@ export function BudgetConfigModal({
             ...(useAdjustedSpend ? { useAdjustedSpend } : {}),
           }),
     };
-    const parsed = budgetInputSchema.safeParse(cleaned);
+    const parsed = decodeForm(BudgetInputSchema, cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? gt("Invalid budget"));
+      setError(parsed.message || gt("Invalid budget"));
       return;
     }
     // The cross-field rules the API also runs: same sentence, before the trip.

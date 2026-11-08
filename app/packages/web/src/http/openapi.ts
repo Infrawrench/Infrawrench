@@ -258,3 +258,21 @@ export function mergeOpenApiFragment(
     if (!tags.some((t) => t.name === tag.name)) tags.push(tag);
   }
 }
+
+/**
+ * Every HttpApi endpoint's permission gate, keyed the way `REQUIRED_PERMISSION`
+ * is (`"GET /slos/{id}"`, the path after `/api/org/{orgId}`), so a check that
+ * asks "what does this route require" can read both halves of the migration.
+ */
+export function requiredPermissionIndex(domains: readonly Domain[]): Record<string, string> {
+  const index: Record<string, string> = {};
+  for (const domain of domains) {
+    for (const endpoint of domain.endpoints()) {
+      const permission = Context.get(endpoint.annotations, RequiredPermission);
+      if (permission === undefined) continue;
+      const path = toOpenApiPath(endpoint.path).replace(/^\/api\/org\/\{orgId\}/, "") || "/";
+      index[`${endpoint.method.toUpperCase()} ${path}`] = permission;
+    }
+  }
+  return index;
+}

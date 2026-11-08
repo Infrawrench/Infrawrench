@@ -93,21 +93,6 @@ function normalize(schema: Json | undefined, doc: Obj, stack: readonly string[] 
     return isObj(target) ? { ...target, ...normalizeObj(rest, doc, stack), $name: name } : target;
   }
 
-  // `type: [x, "null"]` and `nullable: true` are both "x or null".
-  if (Array.isArray(s["type"])) {
-    const types = s["type"].filter((t) => t !== "null");
-    if (types.length < s["type"].length) s["$nullable"] = true;
-    s["type"] = types.length === 1 ? (types[0] ?? null) : types;
-  }
-  if (s["nullable"] === true) {
-    delete s["nullable"];
-    s["$nullable"] = true;
-  }
-  if ("const" in s) {
-    s["enum"] = [s["const"] ?? null];
-    delete s["const"];
-  }
-
   // `allOf` is the intersection of its members: constraint-only members are
   // the parent with extra keywords, and object members (zod's `.extend()`)
   // merge into one object.
@@ -172,6 +157,21 @@ function normalize(schema: Json | undefined, doc: Obj, stack: readonly string[] 
     }
   }
   delete s["discriminator"];
+
+  // `type: [x, "null"]` and `nullable: true` are both "x or null".
+  if (Array.isArray(s["type"])) {
+    const types = s["type"].filter((t) => t !== "null");
+    if (types.length < s["type"].length) s["$nullable"] = true;
+    s["type"] = types.length === 1 ? (types[0] ?? null) : types;
+  }
+  if (s["nullable"] === true) {
+    delete s["nullable"];
+    s["$nullable"] = true;
+  }
+  if ("const" in s) {
+    s["enum"] = [s["const"] ?? null];
+    delete s["const"];
+  }
 
   // A member merged up out of `anyOf` or `allOf` may itself be a reference.
   if (typeof s["$ref"] === "string") return normalize(s, doc, stack);

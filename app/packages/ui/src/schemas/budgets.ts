@@ -5,8 +5,8 @@
  * one unit per hierarchy) live in `budgetInputError`, which every caller runs
  * after this decodes.
  */
-import { Effect, Schema, SchemaTransformation } from "effect";
-import { maxLength, minLength, pattern } from "./checks";
+import { Effect, Schema } from "effect";
+import { maxLength, minLength, trimmed } from "./checks";
 import {
   BUDGET_LIMITS,
   BUDGET_MEASURES,
@@ -18,11 +18,11 @@ import {
   type BudgetThreshold as BudgetThresholdContract,
 } from "@infrawrench/client-core";
 import { AlertEmailRecipients } from "./alert-email";
+import type { Exact } from "./contract";
 import { CostFilter } from "./cost-filter";
+import { IsoDate } from "./primitives";
 
-const IsoDay = Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
-  examples: ["2026-10-01"],
-});
+const IsoDay = IsoDate.annotate({ examples: ["2026-10-01"] });
 
 export const BudgetThreshold = Schema.Struct({
   type: Schema.Literals(["actual", "forecast"]),
@@ -177,11 +177,11 @@ export const BudgetInput = Schema.Struct({
   costBasis: Schema.optionalKey(BudgetCostBasis),
   useAdjustedSpend: Schema.optionalKey(BudgetUseAdjustedSpend),
   measure: Schema.optionalKey(BudgetMeasure),
-  // Documented and length-checked as sent, then trimmed, then checked non-empty again.
+  // Trimmed, then checked, as zod's `.trim().min(1).max(n)` was.
   usageUnit: Schema.optionalKey(
-    BudgetUsageUnit.pipe(
-      Schema.decodeTo(Schema.String.check(minLength(1)), SchemaTransformation.trim()),
-    ),
+    trimmed([minLength(1), maxLength(BUDGET_LIMITS.maxUsageUnitLength)], {
+      description: "The usage unit a usage budget counts, exactly as the providers report it.",
+    }),
   ),
   usageAmount: Schema.optionalKey(BudgetUsageAmount),
   period: Schema.optionalKey(BudgetPeriod),
@@ -203,9 +203,9 @@ export const BudgetAlertNoteInput = Schema.Struct({
   ),
 }).annotate({ identifier: "BudgetAlertNoteInput" });
 
-type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 export type BudgetSchemasMatchContract = [
   Exact<typeof BudgetThreshold.Type, BudgetThresholdContract>,
   Exact<typeof BudgetPeriod.Type, BudgetPeriodContract>,
   Exact<typeof BudgetInput.Type, BudgetInputContract>,
 ];
+[true, true, true] satisfies BudgetSchemasMatchContract;

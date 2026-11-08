@@ -20,8 +20,9 @@ import { logAudit } from "./audit";
  * written to the audit trail.
  */
 
-const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
-const CHANGE_FREEZE_ACTIVE_CODE = "change_freeze_active";
+/** The request header a `freezes:override` holder sends to proceed anyway. */
+export const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
+const CHANGE_FREEZE_ACTIVE_CODE: "change_freeze_active" = "change_freeze_active";
 
 export interface ChangeFreezeRow {
   id: string;
@@ -73,7 +74,7 @@ export function freezeBlockedPayload(freeze: ChangeFreezeRow) {
   };
 }
 
-interface FreezeAuditTarget {
+export interface FreezeAuditTarget {
   /** The destructive action being attempted, e.g. "resource.delete". */
   action: string;
   entityType: string;
@@ -94,12 +95,41 @@ export async function checkChangeFreeze(
   c: Context,
   target: FreezeAuditTarget,
 ): Promise<Response | null> {
-  const organizationId = c.get("organizationId");
+  const session = c.get("session") as { userId?: string } | undefined;
+  const blocked = await evaluateChangeFreeze(
+    {
+      organizationId: c.get("organizationId"),
+      userId: session?.userId,
+      permissions: (c.get("permissions") ?? []) as readonly string[],
+      overrideHeader: c.req.header(CHANGE_FREEZE_OVERRIDE_HEADER),
+    },
+    target,
+  );
+  return blocked ? c.json(blocked, 423) : null;
+}
+
+/** Who is attempting a destructive mutation, for {@link evaluateChangeFreeze}. */
+export interface FreezeCaller {
+  readonly organizationId: string;
+  readonly userId: string | undefined;
+  readonly permissions: readonly string[];
+  /** The raw `x-change-freeze-override` request header, if sent. */
+  readonly overrideHeader: string | undefined;
+}
+
+/**
+ * {@link checkChangeFreeze} without the HTTP framework: null when the caller
+ * may proceed, otherwise the 423 body. Blocks and overrides are audit-logged
+ * the same way.
+ */
+export async function evaluateChangeFreeze(
+  caller: FreezeCaller,
+  target: FreezeAuditTarget,
+): Promise<ReturnType<typeof freezeBlockedPayload> | null> {
+  const { organizationId, userId } = caller;
   const freeze = await getActiveChangeFreeze(organizationId);
   if (!freeze) return null;
 
-  const session = c.get("session") as { userId?: string } | undefined;
-  const userId = session?.userId;
   const baseMeta = {
     ...target.metadata,
     freezeId: freeze.id,
@@ -107,9 +137,9 @@ export async function checkChangeFreeze(
     attemptedAction: target.action,
   };
 
-  const overrideRequested = c.req.header(CHANGE_FREEZE_OVERRIDE_HEADER)?.toLowerCase() === "true";
+  const overrideRequested = caller.overrideHeader?.toLowerCase() === "true";
   if (overrideRequested) {
-    const granted = (c.get("permissions") ?? []) as readonly string[];
+    const granted = caller.permissions;
     if (hasPermission(granted, "freezes:override")) {
       void logAudit({
         organizationId,
@@ -132,7 +162,7 @@ export async function checkChangeFreeze(
     entityId: target.entityId,
     metadata: { ...baseMeta, overrideRequested },
   });
-  return c.json(freezeBlockedPayload(freeze), 423);
+  return freezeBlockedPayload(freeze);
 }
 
 /**

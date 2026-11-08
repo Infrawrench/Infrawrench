@@ -131,25 +131,10 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // provider status correlation: reads the same resource set the incidents
   // are matched against, so it rides the resources read scope
   "GET /status-incidents": "resources:read",
-  // expiry radar: the feed is a read over the org's resource set; the alert
-  // settings decide what the org's channels hear, the same trust level as the
-  // drift alert settings
-  "GET /expiring": "resources:read",
   // The moment union spans six read scopes; `resources:read` is the floor:
   // feeds needing more (costs, workflows, deployments, audit, freezes) are
   // omitted per-feed rather than gating the whole endpoint.
   "GET /moment": "resources:read",
-  "GET /expiring/settings": "org:settings:write",
-  "PUT /expiring/settings": "org:settings:write",
-  // quota radar: the feed is a read over already-collected readings; the
-  // threshold decides what the org's channels hear, the same trust level as
-  // the expiry alert settings next door
-  "GET /quotas": "resources:read",
-  "GET /quotas/settings": "org:settings:write",
-  "PUT /quotas/settings": "org:settings:write",
-  "GET /extended-support": "resources:read",
-  "GET /extended-support/settings": "org:settings:write",
-  "PUT /extended-support/settings": "org:settings:write",
   // SaaS seats: prices and savings are cost data; removing one changes a
   // provider account, so it rides the resource write permission.
   "GET /seats": "costs:read",
@@ -157,30 +142,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /seats/settings": "costs:read",
   "PUT /seats/settings": "costs:write",
   "POST /seats/{seatId}/remove": "resources:write",
-  "GET /posture": "resources:read",
-  // leaked credentials; reading is the posture stance, acting on one rotates
-  // or accepts a secret, so it needs secrets:write.
-  "GET /leaked-secrets": "resources:read",
-  "POST /leaked-secrets/scan": "secrets:write",
-  "POST /leaked-secrets/{id}/rotate": "secrets:write",
-  "POST /leaked-secrets/{id}/mark-rotated": "secrets:write",
-  "POST /leaked-secrets/{id}/dismiss": "secrets:write",
-  "POST /leaked-secrets/{id}/reopen": "secrets:write",
-  "POST /posture/dismissals": "resources:write",
-  "DELETE /posture/dismissals": "resources:write",
-  // cross-cloud access review; the posture stance exactly: the review and its
-  // export are reads over the org's resource set, and accepting a finding is a
-  // statement about one resource at the same trust level as changing it. There
-  // is no settings route: the findings ride the posture alert window, so
-  // /posture/settings is the one switch.
-  "GET /access-review": "resources:read",
-  "GET /access-review/export": "resources:read",
-  "POST /access-review/dismissals": "resources:write",
-  "DELETE /access-review/dismissals": "resources:write",
-  "GET /dns": "resources:read",
-  // Environment diff: pure read over two accounts' already-synced inventories.
-  "GET /environment-diff": "resources:read",
-  "GET /posture/settings": "org:settings:write",
   // compliance: reads (status, decisions, schedules, the pack) are audit:read,
   // and each evidence source re-checks its own permission inside the read;
   // control decisions and pack schedules are org:settings:write, the
@@ -199,60 +160,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /compliance/schedules/{id}": "org:settings:write",
   "DELETE /compliance/schedules/{id}": "org:settings:write",
   "POST /compliance/schedules/{id}/send": "org:settings:write",
-  "PUT /posture/settings": "org:settings:write",
-  // sleep/wake schedules: reads ride the resource read scope (the list is
-  // derived from the org's resource set, like orphans); mutations are a
-  // standing instruction to invoke the same actions `resources:write` already
-  // gates on /resources/invoke-action
-  "GET /schedules": "resources:read",
-  "POST /schedules": "resources:write",
-  "POST /schedules/preview": "resources:read",
-  "PUT /schedules/{scheduleId}": "resources:write",
-  "DELETE /schedules/{scheduleId}": "resources:write",
-  // resource leases; the schedules stance: reads are a view over the org's
-  // resource set; mutations are resources:write. Setting autoDelete: true
-  // additionally requires resources:delete (checked in the handler; the
-  // lease becomes a standing deletion), which this one-permission-per-route
-  // map cannot express.
-  // ephemeral environments; the leases stance: reads are a view over the org's
-  // own resources, template edits are writes, teardown is a delete, and
-  // instantiation needs both (every instance carries a standing auto-delete).
-  // The TTL ceiling is org settings, not a resource edit.
-  "GET /environments/settings": "resources:read",
-  "PUT /environments/settings": "org:settings:write",
-  "POST /environments/capture": "resources:read",
-  "GET /environments/templates": "resources:read",
-  "POST /environments/templates": "resources:write",
-  "GET /environments/templates/{templateId}": "resources:read",
-  "PUT /environments/templates/{templateId}": "resources:write",
-  "DELETE /environments/templates/{templateId}": "resources:write",
-  "POST /environments/templates/{templateId}/estimate": "resources:read",
-  "POST /environments/templates/{templateId}/instantiate": "resources:write",
-  "GET /environments/instances": "resources:read",
-  "GET /environments/instances/{instanceId}": "resources:read",
-  "POST /environments/instances/{instanceId}/teardown": "resources:delete",
-  "DELETE /environments/instances/{instanceId}": "resources:write",
-  "GET /leases": "resources:read",
-  "GET /leases/resource": "resources:read",
-  "POST /leases": "resources:write",
-  "PUT /leases/{leaseId}": "resources:write",
-  "POST /leases/{leaseId}/cancel": "resources:write",
-  "DELETE /leases/{leaseId}": "resources:write",
   // session recordings; their own permission family rather than `audit:read`
   // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
   // capability than either, and the people who should hold it (compliance,
   // security) are often not the people who administer keys. Deliberately
   // absent from the `member` system role: recording exists to watch
   // operators, so handing every operator the ability to watch defeats it.
-  // break-glass access: three verbs held by genuinely different people.
-  // `access:approve` is deliberately not implied by `team:role:write`: granting
-  // a role is a considered change, approving an elevation happens mid-incident.
-  // `revoke` has no entry because its permission depends on who is calling
-  // (the holder may always end their own grant) which this one-permission-per
-  // -route map cannot express; the handler owns it.
-  // credential hygiene: `audit:read`, not a family of its own. Every fact in
-  // the report is already reachable by anyone who can read the audit log, so a
-  // separate permission would only mean granting two things to get one view.
   // credit burndown: `costs:read`. A prepaid balance is spend information,
   // and the permission that already governs "what is this costing us" is the
   // one that should govern "how much is left".
@@ -279,35 +192,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /network-flows/reports/{id}": "costs:write",
   "DELETE /network-flows/reports/{id}": "costs:write",
   "POST /network-flows/reports/{id}/run": "costs:read",
-  "GET /credential-hygiene": "audit:read",
-  "GET /access-requests": "access:read",
-  "GET /access-requests/catalog": "access:read",
-  "POST /access-requests": "access:request",
-  "POST /access-requests/{requestId}/approve": "access:approve",
-  "POST /access-requests/{requestId}/deny": "access:approve",
-  "POST /access-requests/{requestId}/withdraw": "access:request",
-  // just-in-time access: the route floor. Deciding and extending also need a
-  // seat in the policy's approver set, which the service checks at decision
-  // time; revoke has no single permission (holder, approver or
-  // org:settings:write), so the handler owns it.
-  "GET /jit-access/accounts": "access:read",
-  "GET /jit-access/accounts/{accountId}/scopes": "org:settings:write",
-  "GET /jit-access/accounts/{accountId}/roles": "org:settings:write",
-  "GET /jit-access/policies": "access:read",
-  "POST /jit-access/policies": "org:settings:write",
-  "GET /jit-access/policies/{policyId}": "access:read",
-  "PUT /jit-access/policies/{policyId}": "org:settings:write",
-  "DELETE /jit-access/policies/{policyId}": "org:settings:write",
-  "GET /jit-access/policies/{policyId}/principal": "access:request",
-  "GET /jit-access/policies/{policyId}/principals": "access:request",
-  "GET /jit-access/requests": "access:read",
-  "POST /jit-access/requests": "access:request",
-  "GET /jit-access/requests/{requestId}": "access:read",
-  "POST /jit-access/requests/{requestId}/approve": "access:read",
-  "POST /jit-access/requests/{requestId}/deny": "access:read",
-  "POST /jit-access/requests/{requestId}/cancel": "access:request",
-  "POST /jit-access/requests/{requestId}/extend": "access:read",
-  "POST /jit-access/requests/{requestId}/revoke": null,
   "GET /session-recordings": "session-recordings:read",
   // shared consoles: deliberately no permission family of their own. A share
   // hands over no capability the guest did not already hold: joining requires
@@ -339,66 +223,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /session-recordings/{recordingId}": "session-recordings:read",
   "GET /session-recordings/{recordingId}/cast": "session-recordings:read",
   "DELETE /session-recordings/{recordingId}": "session-recordings:write",
-  // synthetic probes; the schedules stance: reads (list, suggestions mined
-  // from resource outputs, recorded series) ride the resource read scope;
-  // mutations are resources:write
-  "GET /probes": "resources:read",
-  "GET /probes/suggestions": "resources:read",
-  "GET /probes/{probeId}/metrics": "resources:read",
-  "POST /probes": "resources:write",
-  "PUT /probes/{probeId}": "resources:write",
-  "DELETE /probes/{probeId}": "resources:write",
-  // SLOs: the probes stance. Starting a freeze from an SLO needs the same
-  // freezes:write a freeze made in Settings needs.
-  "GET /slos": "resources:read",
-  "GET /slos/sources": "resources:read",
-  "GET /slos/{sloId}": "resources:read",
-  "POST /slos": "resources:write",
-  "PUT /slos/{sloId}": "resources:write",
-  "DELETE /slos/{sloId}": "resources:write",
-  "POST /slos/{sloId}/freeze": "freezes:write",
-  // services: the resource ownership stance. Grouping resources into a
-  // service is the same kind of statement as "this VM is mine".
-  "GET /services": "resources:read",
-  "GET /services/for-resources": "resources:read",
-  "GET /services/{serviceId}": "resources:read",
-  "GET /services/{serviceId}/summary": "resources:read",
-  "GET /services/{serviceId}/scorecards": "resources:read",
-  "POST /services": "resources:write",
-  "PATCH /services/{serviceId}": "resources:write",
-  "DELETE /services/{serviceId}": "resources:write",
-  "POST /services/{serviceId}/members": "resources:write",
-  "DELETE /services/{serviceId}/members/{resourceId}": "resources:write",
-  // scorecards: the SLO stance
-  "GET /scorecards": "resources:read",
-  "GET /scorecards/overview": "resources:read",
-  "GET /scorecards/{scorecardId}": "resources:read",
-  "POST /scorecards": "resources:write",
-  "PATCH /scorecards/{scorecardId}": "resources:write",
-  "DELETE /scorecards/{scorecardId}": "resources:write",
-  "POST /scorecards/{scorecardId}/evaluate": "resources:write",
-  // DORA metrics: a view over the deployment record, so the deployments
-  // permissions. The settings decide what counts as production for everyone.
-  "GET /dora": "deployments:read",
-  "GET /dora/changes": "deployments:read",
-  "GET /dora/restores": "deployments:read",
-  "GET /dora/settings": "deployments:read",
-  "PUT /dora/settings": "org:settings:write",
-  "POST /dora/deployments": "deployments:write",
-  // incident mode: the declared kind. `incidents:write` is held by members
-  // as well as admins on purpose (see the permission catalog); what a
-  // declaration may *do* keeps its own gates, so requesting a change freeze
-  // still needs freezes:write.
-  "GET /incidents": "incidents:read",
-  "GET /incidents/{incidentId}": "incidents:read",
-  "GET /incidents/{incidentId}/timeline": "incidents:read",
-  "GET /incidents/{incidentId}/postmortem": "incidents:read",
-  "POST /incidents": "incidents:write",
-  "PATCH /incidents/{incidentId}": "incidents:write",
-  "DELETE /incidents/{incidentId}": "incidents:write",
-  "POST /incidents/{incidentId}/retry-artifacts": "incidents:write",
-  "POST /incidents/{incidentId}/notes": "incidents:write",
-  "DELETE /incidents/{incidentId}/notes/{noteId}": "incidents:write",
   // status pages: a page is a view over probes, so it rides the probe stance:
   // whoever may create the monitoring may decide what of it is public.
   // GET /api/status/{slug} is deliberately absent: it is mounted outside the
@@ -408,14 +232,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /status-pages/{id}": "resources:write",
   "POST /status-pages/{id}/rotate-slug": "resources:write",
   "DELETE /status-pages/{id}": "resources:write",
-  // resource ownership: the leases stance. Note /ownership/members is
-  // resources:read, not team:read: the person who can create a resource must
-  // be able to say it is theirs.
-  "GET /ownership": "resources:read",
-  "GET /ownership/members": "resources:read",
-  "GET /ownership/resource": "resources:read",
-  "PUT /ownership": "resources:write",
-  "DELETE /ownership": "resources:write",
   // log workspace saved queries; the schedules stance: reads are a view over
   // the org's resource logs (which resources:read already gates via
   // /resources/{pluginId}/{typeId}/logs); mutations are resources:write
@@ -836,11 +652,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // pages
   "POST /pages": "pages:write",
   "DELETE /pages": "pages:write",
-  // associations
-  "POST /associations": "secrets:write",
-  "POST /associations/literal": "secrets:write",
-  "GET /dependency-graph": "resources:read",
-  "GET /blast-radius": "resources:read",
   // connection-features
   "POST /sql/query": "resources:execute",
   "POST /sql/execute": "resources:execute",
@@ -896,11 +707,6 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /price-catalog/providers": "resources:read",
   "GET /price-catalog/search": "resources:read",
   "GET /price-catalog/compare": "resources:read",
-  // ssh keys
-  "GET /ssh-keys": "ssh-keys:read",
-  "POST /ssh-keys": "ssh-keys:write",
-  "POST /ssh-keys/import": "ssh-keys:write",
-  "DELETE /ssh-keys/{id}": "ssh-keys:write",
   // ssh tunnels
   "POST /ssh-tunnels/create-account": "accounts:write",
   // ssh fan-out
@@ -914,50 +720,19 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /ssh-tunnels/close": "resources:execute",
   "GET /ssh-tunnels/active": "resources:execute",
   "POST /ssh-tunnels/exec": "resources:execute",
-  // bastions
-  "GET /bastions": "bastions:read",
-  "POST /bastions": "bastions:write",
-  "DELETE /bastions/{id}": "bastions:write",
   // ws-token
   "POST /ws-token": "resources:execute",
-  // team & roles
-  "GET /team/me": null,
-  "GET /team/permissions": "team:read",
-  "GET /team/roles": "team:read",
-  "POST /team/roles": "team:role:write",
-  "PATCH /team/roles/{id}": "team:role:write",
-  "DELETE /team/roles/{id}": "team:role:write",
-  "GET /team/members": "team:read",
-  "GET /team/invitations": "team:read",
-  "POST /team/invitations": "team:invite",
-  "DELETE /team/members/{id}": "team:remove",
-  "PATCH /team/members/{id}/role": "team:role:write",
-  "DELETE /team/invitations/{id}": "team:invite",
   // billing
   "GET /billing/status": "billing:read",
   "POST /billing/checkout": "billing:write",
   "POST /billing/measurement-consent": "billing:write",
   "POST /billing/portal": "billing:write",
-  // audit
-  "GET /audit-logs": "audit:read",
-  // change freezes
-  "GET /change-freezes": "freezes:read",
-  "GET /change-freezes/status": "freezes:read",
-  "POST /change-freezes": "freezes:write",
-  "PUT /change-freezes/{id}": "freezes:write",
-  "POST /change-freezes/{id}/end": "freezes:write",
-  "DELETE /change-freezes/{id}": "freezes:write",
-  // api keys
   // agent registrations and platform links (Settings → Agents)
   "GET /agent-registrations": "team:read",
   "PATCH /agent-registrations/{id}": "team:invite",
   "DELETE /agent-registrations/{id}": "team:invite",
   "GET /agent-links": "team:read",
   "DELETE /agent-links/{id}": "team:invite",
-  "POST /api-keys": "apikeys:write",
-  "GET /api-keys": "apikeys:read",
-  "POST /api-keys/{id}/revoke": "apikeys:write",
-  "POST /api-keys/{id}/rotate": "apikeys:write",
   // config as code (each route additionally checks the per-section permission
   // of every section involved: see api/routes/org-config.ts)
   "GET /config/export": "config:read",

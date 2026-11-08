@@ -13,7 +13,7 @@
  * worse than no report.
  *
  * Server contract: `/api/org/:orgId/credential-hygiene` (web
- * `api/routes/credential-hygiene.ts`), gated on `audit:read`.
+ * `http/domains/credential-hygiene/`), gated on `audit:read`.
  */
 import type { CloudFetch } from "./fetch";
 

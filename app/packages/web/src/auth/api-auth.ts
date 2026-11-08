@@ -14,7 +14,7 @@ import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
- * match the value used in `api/routes/api-keys.ts`. */
+ * match the value used in `http/domains/api-keys/index.ts`. */
 const API_KEY_HASH_DOMAIN = "api-key";
 
 export interface ApiAuthResult {

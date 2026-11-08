@@ -3,7 +3,7 @@
  * more than one domain is defined once, here: the spec builder fails when two
  * domains define the same component name differently.
  */
-import { Schema, SchemaTransformation } from "effect";
+import { Predicate, Schema, SchemaTransformation } from "effect";
 
 /**
  * A UUID. Documented, not checked: route params were never validated as
@@ -13,6 +13,21 @@ import { Schema, SchemaTransformation } from "effect";
 export const Uuid = Schema.String.annotate({
   format: "uuid",
   examples: ["00000000-0000-0000-0000-000000000000"],
+});
+
+/**
+ * The host's composite resource id, `pluginId:accountId:externalId`.
+ * Documented, not checked, like {@link Uuid}: no route ever refused an id for
+ * its shape, so one that is not composite finds nothing rather than a 400.
+ */
+export const ResourceId = Schema.String.check(
+  Schema.makeFilter(() => true, {
+    toJsonSchema: () => ({ minLength: 1, pattern: "^[^:]+:[^:]+:.+$" }),
+  }),
+).annotate({
+  identifier: "ResourceId",
+  description: "Composite id `pluginId:accountId:externalId`.",
+  examples: ["gcp:00000000-0000-0000-0000-000000000000:projects/p/instances/i"],
 });
 
 /** An ISO-8601 timestamp the service already holds as a string. */
@@ -41,3 +56,17 @@ export const OrgParams = { orgId: OrgId } as const;
 
 /** Path params of an org-tree endpoint addressing one object by `:id`. */
 export const OrgIdParams = { orgId: OrgId, id: Uuid } as const;
+
+/**
+ * A free-form JSON object whose shape depends on its source (a plugin's
+ * fields, an audit entry's metadata). Any object decodes; the document says
+ * `additionalProperties: true` as the hand-written spec did.
+ */
+export const JsonObject = Schema.Any.pipe(
+  Schema.refine(Predicate.isObject, {
+    toJsonSchema: () => ({ type: "object", additionalProperties: true }),
+  }),
+).annotate({
+  identifier: "JsonObject",
+  description: "Free-form JSON object whose shape depends on the plugin.",
+});

@@ -12,6 +12,7 @@ import {
   costFilterOpError,
   type CostFilter as CostFilterContract,
 } from "@infrawrench/client-core";
+import type { Exact } from "./contract";
 
 /** How a term compares (`COST_FILTER_OPS`). Registered once, as every filter references it. */
 export const CostFilterOperator = Schema.Literals(COST_FILTER_OPS).annotate({
@@ -55,5 +56,5 @@ export const CostFilter = Schema.Struct(costFilterFields).check(
   }),
 );
 
-type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 export type CostFilterSchemaMatchesContract = Exact<typeof CostFilter.Type, CostFilterContract>;
+true satisfies CostFilterSchemaMatchesContract;

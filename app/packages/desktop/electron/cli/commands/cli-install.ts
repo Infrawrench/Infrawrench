@@ -1,54 +1,66 @@
 // `infrawrench cli install|uninstall|status`: manage the shell shim itself.
+// Bare `infrawrench cli` is `status`.
 import { Effect } from "effect";
+import { Command } from "effect/cli";
 import { ShellCommand } from "../../shell-command";
-import { CliError, type CliContext } from "../context";
-import { c, printJson, println } from "../output";
+import { CliFailure } from "../effect/errors";
+import * as Print from "../effect/print";
+import { CliSession } from "../effect/session";
+import { c } from "../output";
 
-/** Run one `ShellCommand` operation; a refusal rejects with its sentence, which the CLI prints. */
-const shellCommand = <A, E>(f: (service: ShellCommand["Service"]) => Effect.Effect<A, E>) =>
-  Effect.runPromise(ShellCommand.use(f).pipe(Effect.provide(ShellCommand.layer)));
+/** A refusal (an unrelated binary in the way, no writable directory) is one sentence. */
+const refused = Effect.mapError(
+  (e: { readonly message: string }) => new CliFailure({ message: e.message }),
+);
 
-export async function cmdCli(ctx: CliContext, action: string | undefined): Promise<void> {
-  switch (action) {
-    case "install": {
-      const result = await shellCommand((s) => s.install);
-      if (ctx.flags.output === "json") {
-        printJson(result);
-        return;
-      }
-      println(`${c.green("✓")} Installed ${c.bold(result.path)}`);
-      if (result.note) println(c.yellow(result.note));
-      return;
-    }
-    case "uninstall": {
-      const removed = await shellCommand((s) => s.uninstall);
-      if (ctx.flags.output === "json") {
-        printJson({ removed });
-        return;
-      }
-      println(removed ? `${c.green("✓")} Removed ${removed}` : "Shell command is not installed.");
-      return;
-    }
-    case "status":
-    case undefined: {
-      const status = await shellCommand((s) => s.status);
-      if (ctx.flags.output === "json") {
-        printJson(status);
-        return;
-      }
-      if (!status.installed) {
-        println("Shell command is not installed. Run `infrawrench cli install`.");
-      } else {
-        println(
-          `Installed at ${c.bold(status.path!)}${status.stale ? c.yellow(" (points at a different app build; reinstall)") : ""}`,
-        );
-      }
-      return;
-    }
-    default:
-      throw new CliError(
-        `Unknown subcommand "cli ${action}": use install, uninstall, or status.`,
-        2,
-      );
+const status = Effect.fn("cli.status")(function* () {
+  const session = yield* CliSession;
+  const shell = yield* ShellCommand;
+  const result = yield* shell.status;
+  if (session.output === "json") return yield* Print.json(result);
+  if (!result.installed || !result.path) {
+    return yield* Print.line("Shell command is not installed. Run `infrawrench cli install`.");
   }
-}
+  yield* Print.line(
+    `Installed at ${c.bold(result.path)}${result.stale ? c.yellow(" (points at a different app build; reinstall)") : ""}`,
+  );
+});
+
+const install = Command.make(
+  "install",
+  {},
+  Effect.fn("cli.install")(function* () {
+    const session = yield* CliSession;
+    const shell = yield* ShellCommand;
+    const result = yield* shell.install.pipe(refused);
+    if (session.output === "json") return yield* Print.json(result);
+    yield* Print.line(`${c.green("✓")} Installed ${c.bold(result.path)}`);
+    if (result.note) yield* Print.line(c.yellow(result.note));
+  }),
+).pipe(Command.withDescription("Put the `infrawrench` command on your PATH"));
+
+const uninstall = Command.make(
+  "uninstall",
+  {},
+  Effect.fn("cli.uninstall")(function* () {
+    const session = yield* CliSession;
+    const shell = yield* ShellCommand;
+    const removed = yield* shell.uninstall.pipe(refused);
+    if (session.output === "json") return yield* Print.json({ removed });
+    yield* Print.line(
+      removed ? `${c.green("✓")} Removed ${removed}` : "Shell command is not installed.",
+    );
+  }),
+).pipe(Command.withDescription("Remove the shell command"));
+
+export const cli = Command.make("cli", {}, status).pipe(
+  Command.withDescription("Install, remove or check this shell command (bare: status)"),
+  Command.withSubcommands([
+    install,
+    uninstall,
+    Command.make("status", {}, status).pipe(
+      Command.withDescription("Whether the shell command is installed, and where"),
+    ),
+  ]),
+  Command.provide(ShellCommand.layer),
+);
