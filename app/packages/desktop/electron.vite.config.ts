@@ -92,6 +92,10 @@ export default defineConfig(({ command }) => ({
     plugins: [
       externalizeDepsPlugin({
         exclude: [
+          // ESM-only, and the main bundle is CommonJS: bundled rather than left as
+          // a runtime require (it reached main through plugin-base before
+          // desktop depended on it directly).
+          "effect",
           "@infrawrench/plugin-anthropic",
           "@infrawrench/plugin-anyscale",
           "@infrawrench/plugin-assemblyai",

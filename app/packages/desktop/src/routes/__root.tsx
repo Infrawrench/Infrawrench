@@ -54,6 +54,7 @@ import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { pinResource, pinWorkflow } from "../lib/pins";
 import { invoke } from "../lib/invoke";
+import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
 import { useSwipeNavigation } from "../lib/useSwipeNavigation";
@@ -355,16 +356,14 @@ function RootLayout() {
   useEffect(() => {
     startMetricPinger();
     startCronRunner();
-    invoke<{ installed: boolean; stale: boolean }>("cli_shell_command_status")
+    runRpc(DesktopRpcClient.use((rpc) => rpc.ShellCommandStatus()))
       .then((status) => setShellCommandInstalled(status.installed && !status.stale))
       .catch(() => setShellCommandInstalled(null));
   }, []);
 
   async function handleInstallShellCommand() {
     try {
-      const result = await invoke<{ path: string; note: string | null }>(
-        "cli_install_shell_command",
-      );
+      const result = await runRpc(DesktopRpcClient.use((rpc) => rpc.ShellCommandInstall()));
       setShellCommandInstalled(true);
       toast.success(gt("Installed `infrawrench` at {path}", { path: result.path }), {
         ...(result.note ? { description: result.note } : {}),

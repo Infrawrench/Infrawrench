@@ -9,10 +9,6 @@
  */
 import { oauthEnvPrefix } from "@infrawrench/plugin-base";
 
-// `electron/` type-checks as CommonJS, where `import.meta` is not allowed,
-// but electron-vite replaces this expression at build time and vitest runs it
-// as ESM, so it is never evaluated as CommonJS.
-// @ts-expect-error TS1470: see above.
 const BUILD_ENV: ImportMetaEnv = (import.meta.env as ImportMetaEnv | undefined) ?? {};
 
 /** The env var holding a plugin's desktop client id. */

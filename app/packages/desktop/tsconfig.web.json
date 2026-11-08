@@ -13,6 +13,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "env.ts"],
+  "include": ["src", "env.ts", "shared"],
   "exclude": ["node_modules"]
 }

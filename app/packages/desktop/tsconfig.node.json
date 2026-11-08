@@ -3,11 +3,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "Node16",
-    "moduleResolution": "Node16",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
     "outDir": "out",
     "rootDir": ".",
     "types": ["node", "electron", "sql.js"]
   },
-  "include": ["electron", "src/db/schema.ts", "src/lib/deploy-history-types.ts"]
+  "include": ["electron", "src/db/schema.ts", "src/lib/deploy-history-types.ts", "shared"]
 }

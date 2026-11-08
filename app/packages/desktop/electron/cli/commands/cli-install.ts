@@ -1,16 +1,17 @@
 // `infrawrench cli install|uninstall|status`: manage the shell shim itself.
-import {
-  getShellCommandStatus,
-  installShellCommand,
-  uninstallShellCommand,
-} from "../../shell-command";
+import { Effect } from "effect";
+import { ShellCommand } from "../../shell-command";
 import { CliError, type CliContext } from "../context";
 import { c, printJson, println } from "../output";
+
+/** Run one `ShellCommand` operation; a refusal rejects with its sentence, which the CLI prints. */
+const shellCommand = <A, E>(f: (service: ShellCommand["Service"]) => Effect.Effect<A, E>) =>
+  Effect.runPromise(ShellCommand.use(f).pipe(Effect.provide(ShellCommand.layer)));
 
 export async function cmdCli(ctx: CliContext, action: string | undefined): Promise<void> {
   switch (action) {
     case "install": {
-      const result = await installShellCommand();
+      const result = await shellCommand((s) => s.install);
       if (ctx.flags.output === "json") {
         printJson(result);
         return;
@@ -20,7 +21,7 @@ export async function cmdCli(ctx: CliContext, action: string | undefined): Promi
       return;
     }
     case "uninstall": {
-      const removed = await uninstallShellCommand();
+      const removed = await shellCommand((s) => s.uninstall);
       if (ctx.flags.output === "json") {
         printJson({ removed });
         return;
@@ -30,7 +31,7 @@ export async function cmdCli(ctx: CliContext, action: string | undefined): Promi
     }
     case "status":
     case undefined: {
-      const status = getShellCommandStatus();
+      const status = await shellCommand((s) => s.status);
       if (ctx.flags.output === "json") {
         printJson(status);
         return;

@@ -600,6 +600,17 @@ Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 
 ---
 
+## Desktop IPC on Effect RPC (`app/packages/desktop/shared/rpc/`)
+
+Main-process operations are moving off one `ipcMain.handle` per channel onto `effect/rpc`, served over two IPC channels (`shared/rpc/channels.ts`): the renderer sends `iw-rpc:connect`, then both sides exchange JSON frames on `iw-rpc:frame`. Each operation is declared once in an `RpcGroup` under `shared/rpc/groups/` (payload, success, typed error, or a stream), which both TypeScript projects include, so the main process decodes every payload against the schema the renderer encoded it with, and the renderer decodes every answer.
+
+- **Main**: `electron/rpc/ipc-socket-server.ts` is an Effect `SocketServer` with one socket per `webContents` (a reconnect replaces it; `destroyed` ends it, interrupting that renderer's calls); frames from any other sender are ignored. `electron/rpc/server.ts` serves `DesktopRpcs` with the handler layers in `electron/rpc/handlers/`, started once from `main.ts` before any window loads.
+- **Preload** exposes only `electronAPI.rpc` (`connect`, `send`, `onFrame`): no channel name crosses the bridge.
+- **Renderer**: `src/lib/rpc/client.ts`'s `runRpc(DesktopRpcClient.use((rpc) => rpc.X(payload)))` returns a Promise that rejects with the operation's typed error.
+- **Adding an operation**: a group in `shared/rpc/groups/<area>.ts` merged into `DesktopRpcs` (`groups/index.ts`); its handlers in `electron/rpc/handlers/<area>.ts` as `Group.toLayer(...)`, backed by an Effect service (see `ShellCommand` in `electron/shell-command.ts`); the layer added to `DesktopRpcHandlers`; the old `ipcMain.handle` and its `INVOKE_CHANNELS` entry deleted; renderer call sites on `runRpc`. A service the CLI also uses is consumed there through `Effect.runPromise(Service.use(...).pipe(Effect.provide(Service.layer)))`.
+- `electron/` typechecks with `moduleResolution: "Bundler"` (electron-vite bundles it), and `effect` is in the main build's `externalizeDepsPlugin` exclude list: it is ESM-only and the main bundle is CommonJS.
+- `electron/__tests__/rpc-ipc.test.ts` drives the transport end to end through a fake `ipcMain`/`webContents`.
+
 ## CLI (`infrawrench …`)
 
 The desktop app doubles as a terminal tool: a shell shim (VS Code's `code` model) execs the app binary with `--cli`, and the bootstrap entry (`electron/index.ts`, now the electron-vite main input) dynamically imports either `electron/main.ts` (GUI) or `electron/cli/main.ts` (headless runner). The dynamic-import split means a CLI invocation never runs GUI import-time side effects (protocol registration, single-instance lock, ipcMain handlers) and vice versa.

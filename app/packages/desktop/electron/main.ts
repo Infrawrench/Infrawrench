@@ -42,7 +42,7 @@ import { createHostResolver, registerCredentialEndpoints, shouldRelaxCors } from
 import { isInternalRendererUrl } from "./renderer-navigation";
 import { getActiveTunnels } from "./ssh-tunnel";
 import { CLOUD_URL } from "../env";
-import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
+import { startRpcServer } from "./rpc/server";
 import { readLocalDeploys } from "./deploy-history";
 import { listLocalOrphans } from "./local-orphans";
 import { listLocalExtendedSupport } from "./local-extended-support";
@@ -778,10 +778,10 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   return { rowsAffected, lastInsertId: 0 };
 });
 
-// `infrawrench` shell command (CLI shim) management: see shell-command.ts.
-ipcMain.handle("cli_shell_command_status", () => getShellCommandStatus());
-ipcMain.handle("cli_install_shell_command", () => installShellCommand());
-ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
+// Effect RPC (`shared/rpc/groups`): the operations moved off one-handler-per-
+// channel IPC. Listening before any window loads, so a renderer's first
+// connect is never missed.
+startRpcServer();
 
 // What `infrawrench deploy` did on this machine: see deploy-history.ts for why
 // it is a file rather than a table. Read-only from the renderer: only the CLI

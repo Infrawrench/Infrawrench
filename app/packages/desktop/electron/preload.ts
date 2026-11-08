@@ -2,6 +2,7 @@
 // and only listen to events in EVENT_LITERALS / EVENT_PREFIXES: there is no
 // path for a compromised renderer to pass an arbitrary channel name through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { RPC_CONNECT, RPC_FRAME } from "../shared/rpc/channels";
 
 // Must stay in sync with the ipcMain.handle(...) calls in the electron/ dir.
 const INVOKE_CHANNELS = [
@@ -109,9 +110,6 @@ const INVOKE_CHANNELS = [
   "k8s_pf_cloud_stop",
   "k8s_api_request",
   // shell command (`infrawrench` CLI shim)
-  "cli_install_shell_command",
-  "cli_uninstall_shell_command",
-  "cli_shell_command_status",
   // what `infrawrench deploy` did on this machine (local mode's Deploy tab)
   "local_deploy_history",
   // cloud
@@ -691,8 +689,30 @@ for (const ch of INVOKE_CHANNELS) {
   invokeMap[ch] = (args?: unknown) => ipcRenderer.invoke(ch, args);
 }
 
+// The Effect RPC transport (`shared/rpc/channels.ts`): the renderer connects,
+// then exchanges JSON frames. Only these two channels, so the RPC bridge adds
+// no way to reach a handler by name.
+const rpcBridge = {
+  connect(): void {
+    ipcRenderer.send(RPC_CONNECT);
+  },
+  send(frame: string): void {
+    if (typeof frame === "string") ipcRenderer.send(RPC_FRAME, frame);
+  },
+  onFrame(listener: (frame: string) => void): () => void {
+    const handler = (_event: IpcRendererEvent, frame: unknown) => {
+      if (typeof frame === "string") listener(frame);
+    };
+    ipcRenderer.on(RPC_FRAME, handler);
+    return () => {
+      ipcRenderer.off(RPC_FRAME, handler);
+    };
+  },
+};
+
 contextBridge.exposeInMainWorld("electronAPI", {
   ...invokeMap,
+  rpc: rpcBridge,
 
   on(channel: string, callback: (...args: unknown[]) => void): void {
     if (!isAllowedEventChannel(channel)) {
