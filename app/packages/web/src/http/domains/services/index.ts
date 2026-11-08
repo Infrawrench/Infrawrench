@@ -49,10 +49,10 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import {
   Service,
   ServiceDetail,
@@ -65,11 +65,10 @@ import {
 
 type Body = { readonly [key: string]: unknown };
 
-const serviceStore = {
-  isInputError: (error: unknown): error is ServiceInputError => error instanceof ServiceInputError,
+const serviceStore = refusalsOf(ServiceInputError, {
   logPrefix: "[services]",
   failure: "Service operation failed",
-};
+});
 
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -246,10 +245,10 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const input = pickServiceBody(read.body);
         if (typeof input === "string") return yield* badRequest(input);
-        const created = yield* storeCall(serviceStore, async () => {
+        const created = yield* refusalCall(serviceStore, inputRefusals, async () => {
           const row = await createServiceRecord(organizationId, input, session.userId);
           await ensureDefaultScorecard(organizationId);
           await markScorecardsDue(organizationId);
@@ -268,7 +267,7 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         yield* fireAndForget(() =>
           keepAlive(publishServiceChanged(organizationId, created, "created")),
         );
-        const { service } = yield* storeCall(serviceStore, () =>
+        const { service } = yield* refusalCall(serviceStore, inputRefusals, () =>
           getServiceWire(organizationId, created),
         );
         return yield* respond(Service, { status: 201 })(service);
@@ -278,11 +277,11 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const patch = pickServiceBody(read.body);
         if (typeof patch === "string") return yield* badRequest(patch);
         if (Object.keys(patch).length === 0) return yield* badRequest("No changes supplied");
-        const updated = yield* storeCall(serviceStore, async () => {
+        const updated = yield* refusalCall(serviceStore, inputRefusals, async () => {
           const row = await updateServiceRecord(organizationId, params.serviceId, patch);
           await markScorecardsDue(organizationId);
           return row;
@@ -300,7 +299,7 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         yield* fireAndForget(() =>
           keepAlive(publishServiceChanged(organizationId, updated, "updated", Object.keys(patch))),
         );
-        const { service } = yield* storeCall(serviceStore, () =>
+        const { service } = yield* refusalCall(serviceStore, inputRefusals, () =>
           getServiceWire(organizationId, updated),
         );
         return yield* respond(Service)(service);
@@ -309,7 +308,7 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* storeCall(serviceStore, () =>
+        const deleted = yield* refusalCall(serviceStore, inputRefusals, () =>
           deleteServiceRecord(organizationId, params.serviceId),
         );
         yield* fireAndForget(() =>
@@ -333,12 +332,12 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         const { organizationId, session } = yield* OrgPrincipal;
         const row = yield* findService(organizationId, params.serviceId);
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const resourceIds = read.body["resourceIds"];
         if (!isStringArray(resourceIds)) {
           return yield* badRequest("resourceIds must be an array of resource ids");
         }
-        const added = yield* storeCall(serviceStore, async () => {
+        const added = yield* refusalCall(serviceStore, inputRefusals, async () => {
           const count = await addServiceMembers(
             organizationId,
             row.id,
@@ -361,7 +360,9 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         yield* fireAndForget(() =>
           keepAlive(publishServiceChanged(organizationId, row, "updated", ["members"])),
         );
-        const detail = yield* storeCall(serviceStore, () => serviceDetail(organizationId, row));
+        const detail = yield* refusalCall(serviceStore, inputRefusals, () =>
+          serviceDetail(organizationId, row),
+        );
         return yield* respond(ServiceDetail)(detail);
       }),
     )
@@ -377,17 +378,17 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         const resourceId = params.resourceId;
         let outcome: "removed" | "excluded" | "restored";
         if (query.restore === "1") {
-          const restored = yield* storeCall(serviceStore, () =>
+          const restored = yield* refusalCall(serviceStore, inputRefusals, () =>
             restoreExcludedMember(row.id, resourceId),
           );
           if (!restored) return yield* notFound("That resource is not excluded from this service");
           outcome = "restored";
         } else {
-          outcome = yield* storeCall(serviceStore, () =>
+          outcome = yield* refusalCall(serviceStore, inputRefusals, () =>
             removeServiceMember(organizationId, row, resourceId, session.userId),
           );
         }
-        yield* storeCall(serviceStore, () => markScorecardsDue(organizationId));
+        yield* refusalCall(serviceStore, inputRefusals, () => markScorecardsDue(organizationId));
         const action =
           outcome === "restored" ? "restore" : outcome === "excluded" ? "exclude" : "remove";
         yield* fireAndForget(() =>
@@ -403,7 +404,9 @@ const ServicesHandlers = HttpApiBuilder.group(ServicesApi, "services", (handlers
         yield* fireAndForget(() =>
           keepAlive(publishServiceChanged(organizationId, row, "updated", ["members"])),
         );
-        const detail = yield* storeCall(serviceStore, () => serviceDetail(organizationId, row));
+        const detail = yield* refusalCall(serviceStore, inputRefusals, () =>
+          serviceDetail(organizationId, row),
+        );
         return yield* respond(ServiceDetail)(detail);
       }),
     ),

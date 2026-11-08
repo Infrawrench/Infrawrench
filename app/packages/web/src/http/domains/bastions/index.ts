@@ -13,7 +13,7 @@ import { logAudit } from "../../../services/audit";
 import { keyedHash } from "../../../services/encryption";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

@@ -15,7 +15,13 @@
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { minLength } from "@infrawrench/ui/schemas";
-import { Internal, InvalidRequestMessage, Security, SuccessDescription } from "../../annotations";
+import {
+  DocumentedPermission,
+  Internal,
+  InvalidRequestMessage,
+  Security,
+  SuccessDescription,
+} from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import { BadRequest, Unauthorized } from "../../errors";
 import { IsoDateTime, JsonObject, Ok, ResourceId, Uuid } from "../../schemas/common";
@@ -137,6 +143,7 @@ export class SyncGroup extends HttpApiGroup.make("sync")
     })
       .annotate(OpenApi.Summary, "Pull changes since `lastSyncVersion`")
       .annotate(OpenApi.Description, "Authenticated by API key (`sync:read` scope).")
+      .annotate(DocumentedPermission, "resources:read")
       .annotate(SuccessDescription, "Pull payload"),
   )
   .add(
@@ -150,12 +157,14 @@ export class SyncGroup extends HttpApiGroup.make("sync")
         OpenApi.Description,
         "Authenticated by API key (`sync:write` scope). Last-write-wins.",
       )
+      .annotate(DocumentedPermission, "resources:write")
       .annotate(SuccessDescription, "Pushed")
       .annotate(InvalidRequestMessage, "Invalid request body"),
   )
   .add(
     HttpApiEndpoint.get("status", "/status", { success: SyncStatus, error: [Unauthorized] })
       .annotate(OpenApi.Summary, "Highest known sync version on the server")
+      .annotate(DocumentedPermission, "resources:read")
       .annotate(SuccessDescription, "Status"),
   )
   .prefix("/api/v1/sync")

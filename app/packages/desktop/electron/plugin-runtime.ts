@@ -93,7 +93,7 @@ function buildK8sHostServices(driverId: string, kubeconfig: string): HostService
  * Plain-Node HTTP for plugins. Global `fetch` handles everything except a
  * per-request CA, which only `node:https` can supply.
  *
- * Deliberately not routed through `k8s_api_request`: that channel's SSRF
+ * Deliberately not routed through `K8sApiRequest`: that operation's SSRF
  * allowlist (electron/k8s-endpoints.ts) exists to stop a *compromised
  * renderer* from reaching private addresses. Callers here already live in
  * the main process, where the URL came from the user's own credential store.
@@ -301,7 +301,7 @@ interface LocalAccountRow {
 }
 
 /**
- * Decrypt one local account's credentials. Same AAD as `account_get_credentials`,
+ * Decrypt one local account's credentials. Same AAD as `LocalAccountCredentials`,
  * and the same provider OAuth refresh (see provider-oauth/local-accounts.ts).
  */
 export async function getAccountCredentials(accountId: string): Promise<Record<string, string>> {

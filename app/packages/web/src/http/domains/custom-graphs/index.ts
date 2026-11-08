@@ -28,12 +28,12 @@ import {
 import { PlanRequiredError } from "../../../services/entitlements";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
   CustomGraphCheckResult,
   CustomGraphFull,
@@ -95,7 +95,7 @@ const CustomGraphsHandlers = HttpApiBuilder.group(CustomGraphsApi, "customGraphs
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* graphBody(yield* fieldsOf(yield* readJson(request)));
-        const created = yield* statusCall(
+        const created = yield* refusalCall(
           customGraphRefusal,
           { 400: refuse[400], 402: refuse[402] },
           () => createCustomGraph(organizationId, body, session.userId),
@@ -131,7 +131,7 @@ const CustomGraphsHandlers = HttpApiBuilder.group(CustomGraphsApi, "customGraphs
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* graphBody(yield* fieldsOf(yield* readJson(request)));
-        const updated = yield* statusCall(
+        const updated = yield* refusalCall(
           customGraphRefusal,
           { 400: refuse[400], 402: refuse[402], 404: refuse[404] },
           () => updateCustomGraph(organizationId, params.id, body, session.userId),
@@ -142,7 +142,7 @@ const CustomGraphsHandlers = HttpApiBuilder.group(CustomGraphsApi, "customGraphs
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        yield* statusCall(customGraphRefusal, { 404: refuse[404] }, () =>
+        yield* refusalCall(customGraphRefusal, { 404: refuse[404] }, () =>
           softDeleteCustomGraph(organizationId, params.id),
         );
         return ok;
@@ -156,7 +156,7 @@ const CustomGraphsHandlers = HttpApiBuilder.group(CustomGraphsApi, "customGraphs
           CustomGraphRenderRequest,
           yield* readJsonOr(request, {}),
         );
-        const result = yield* statusCall(
+        const result = yield* refusalCall(
           customGraphRefusal,
           { 400: refuse[400], 402: refuse[402], 404: refuse[404] },
           () =>

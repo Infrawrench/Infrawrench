@@ -7,8 +7,8 @@ import { resolveSshChain } from "@infrawrench/ssh-tunnel-core/chain";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
-import { invoke } from "./invoke";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
+import { getLocalAccountCredentials } from "./local-credentials";
 
 export async function listLocalSshInstallAccounts(): Promise<SshInstallAccount[]> {
   const db = await getDb();
@@ -87,9 +87,7 @@ export async function runLocalSshInstall(
         )
       : "");
   if (!host) throw new Error("Could not resolve this server's SSH address.");
-  const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-    accountId: input.target.accountId,
-  });
+  const credentials = await getLocalAccountCredentials(input.target.accountId);
   const jumpHops = credentials.connectThroughAccountId
     ? await resolveSshChain(credentials.connectThroughAccountId, async (accountId) => {
         const [hop] = await db.select<Array<{ plugin_id: string }>>(
@@ -101,9 +99,7 @@ export async function runLocalSshInstall(
           throw new Error("SSH jump account not found.");
         }
         const client = await createPluginClient(accountId, hop.plugin_id);
-        const creds = await invoke<Record<string, string>>("account_get_credentials", {
-          accountId,
-        });
+        const creds = await getLocalAccountCredentials(accountId);
         return {
           ...client.getSshConfig!(),
           ...(creds.connectThroughAccountId

@@ -20,7 +20,7 @@ import type {
   SavingsFindingsResponse,
   SavingsView,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { listCloudAccounts, resolveAccount } from "../context";
+import { cloudAccounts, findAccount } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -282,9 +282,7 @@ export const findings = Command.make(
     if (Option.isSome(flags.region)) q.set("region", flags.region.value);
     const wantedAccount = session.account;
     if (wantedAccount) {
-      const account = yield* Effect.promise(async () =>
-        resolveAccount(await listCloudAccounts(org.id), wantedAccount),
-      );
+      const account = yield* findAccount(yield* cloudAccounts(org.id), wantedAccount);
       q.set("account", account.id);
     }
     if (Option.isSome(flags.tag)) q.append("tag", flags.tag.value);

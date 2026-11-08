@@ -1,6 +1,6 @@
 /**
  * Org-scoped workflow CRUD, typings generation, and source type checking:
- * shared by the HTTP routes (api/routes/workflows.ts) and the tool registry
+ * shared by the HTTP routes (http/domains/workflows/) and the tool registry
  * (tools/workflows.ts), mirroring how services/budgets.ts backs both surfaces.
  *
  * Everything here is transport-agnostic: it takes an organizationId, returns

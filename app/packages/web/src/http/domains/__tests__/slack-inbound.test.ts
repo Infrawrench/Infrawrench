@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Effect, Layer } from "effect";
-import { generateCookie } from "hono/cookie";
+import { legacyCookie } from "./legacy-cookie";
 
 /**
  * Inbound Slack endpoints. Crypto (signature scheme, link tokens) is covered
@@ -1200,7 +1200,7 @@ describe("/api/slack/link: cookies and refusals on the wire", () => {
     const [cookie] = res.headers.getSetCookie();
     const csrf = /slack_link_csrf=([^;]+)/.exec(cookie ?? "")?.[1] ?? "";
     expect(res.headers.getSetCookie()).toEqual([
-      generateCookie("slack_link_csrf", csrf, {
+      legacyCookie("slack_link_csrf", csrf, {
         path: "/api/slack/link",
         httpOnly: true,
         sameSite: "Lax",
@@ -1224,7 +1224,7 @@ describe("/api/slack/link: cookies and refusals on the wire", () => {
       "https://app.example.com/org/org-1/settings/paging?slack=linked",
     );
     expect(res.headers.getSetCookie()).toEqual([
-      generateCookie("slack_link_csrf", "", { path: "/api/slack/link", maxAge: 0 }),
+      legacyCookie("slack_link_csrf", "", { path: "/api/slack/link", maxAge: 0 }),
     ]);
   });
 

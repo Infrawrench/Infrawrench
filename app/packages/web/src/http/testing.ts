@@ -1,8 +1,7 @@
 /**
  * Serving an HttpApi domain in a route test, as a fixed caller.
  *
- * The counterpart of `api/routes/__tests__/test-utils.ts`'s `buildTestApp`:
- * the caller is `user-1` in `org-1` holding `permissions` (everything by
+ * The caller is `user-1` in `org-1` holding `permissions` (everything by
  * default), the permission gate and the error renderer are the real ones, and
  * nothing reaches the auth chain or the database.
  *
@@ -63,8 +62,8 @@ export function testMiddleware(caller: TestCaller = {}) {
 
 export interface TestApi {
   /**
-   * Hono's `app.request`: a path under `basePath`, or a full URL, and the
-   * Worker bindings to serve it with (read through `Invocation`).
+   * `api.request`: a path under `basePath`, or a full URL, and the Worker
+   * bindings to serve it with (read through `Invocation`).
    */
   request(path: string, init?: RequestInit, env?: unknown): Promise<Response>;
 }
@@ -78,13 +77,12 @@ export function buildTestApi(domain: Domain, caller: TestCaller = {}): TestApi {
         : `http://localhost${caller.basePath ?? ""}${path}`;
       const headers = new Headers(init?.headers);
       if (typeof init?.body === "string" && !headers.has("content-type")) {
-        // Hono's `app.request` callers rarely set it, and HttpApi decodes JSON by content type.
+        // The tests rarely set it, and HttpApi decodes JSON by content type.
         // Only a string body: a `FormData` or `Blob` carries its own type (and a
         // multipart boundary) that the request derives when none is set.
         headers.set("content-type", "application/json");
       }
-      const response = await handler.handle(new Request(url, { ...init, headers }), env);
-      return response ?? new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
+      return handler.handle(new Request(url, { ...init, headers }), env);
     },
   };
 }

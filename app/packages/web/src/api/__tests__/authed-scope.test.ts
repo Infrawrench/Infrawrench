@@ -6,10 +6,13 @@
  * `apiKeyOrgMiddleware` on every `/api/org/...` request and turned away `iwk_`
  * API keys and agent tokens, which are not a person's WorkOS session. The
  * surface is HttpApi now (`SessionAuth`, each prefix guarded whole), and the
- * person check is the one implementation both halves run, `authenticatePerson`
- * in `http/auth.ts`; that is what this test intercepts. The middleware tests
- * build a mini app without the real routing, so only a test against the real
- * `api` sees it.
+ * org tree's answer to a path no domain routes is `OrgAuth`
+ * (`orgTreeGuard`), whose first step is the key's. This test intercepts the
+ * person check (`authenticatePerson` in `http/auth.ts`, what `SessionAuth`
+ * runs) and the key lookup (`authenticateApiRequest`, the key step's first
+ * read), so it reads which check a request reached first. The middleware
+ * tests serve a domain without the real routing, so only a test against the
+ * real `api` sees it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,17 +39,15 @@ vi.mock("../../http/auth", async (importOriginal) => {
   };
 });
 
-vi.mock("../auth-middleware", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../auth-middleware")>();
-  const { createMiddleware } = await import("hono/factory");
+vi.mock("@/auth/api-auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth/api-auth")>();
   return {
     ...actual,
-    apiKeyOrgMiddleware: createMiddleware(async (c, next) => {
-      const bearer = c.req.header("authorization") ?? "";
-      if (!bearer.startsWith("Bearer iwk_")) return next();
+    authenticateApiRequest: async () => {
       calls.apiKey++;
-      return c.json({ by: "api-key" }, 200);
-    }),
+      // A key that does not authenticate: the key step answers its 401.
+      return null;
+    },
   };
 });
 
@@ -58,12 +59,36 @@ beforeEach(() => {
 });
 
 describe("authed router scope", () => {
-  it("lets an API key on the org tree reach the API-key middleware", async () => {
+  it("lets an API key on the org tree reach the API-key step", async () => {
     const res = await api.request("/api/org/org_1/costs", {
       headers: { authorization: "Bearer iwk_example" },
     });
-    expect(await res.json()).toEqual({ by: "api-key" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+    expect(calls.apiKey).toBe(1);
     expect(calls.session).toBe(0);
+  });
+
+  it("authenticates a path nothing routes on the org tree before its 404", async () => {
+    for (const [method, path] of [
+      ["GET", "/api/org/org_1"],
+      ["GET", "/api/org/org_1/no-such-route"],
+      ["DELETE", "/api/org/org_1/budgets"],
+      ["GET", "/api/org/org_1/budgets/b1/no/such/route"],
+    ] as const) {
+      const res = await api.request(path, { method });
+      expect(res.status, `${method} ${path}`).toBe(401);
+      expect(await res.json(), `${method} ${path}`).toEqual({ error: "Unauthorized" });
+      expect(res.headers.get("x-frame-options"), `${method} ${path}`).toBe("DENY");
+    }
+  });
+
+  it("answers a path outside every guarded prefix with the plain 404", async () => {
+    const res = await api.request("/api/no-such-route");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("404 Not Found");
+    expect(calls.session).toBe(0);
+    expect(calls.apiKey).toBe(0);
   });
 
   it("still guards every session-only mount, bare path included", async () => {

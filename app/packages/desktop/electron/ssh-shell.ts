@@ -21,6 +21,9 @@ import {
 
 export type { SshShellConfig };
 
+/** What a connection dials: a shell's config without the PTY size (the Linux app server's too). */
+export type SshConnectConfig = Omit<SshShellConfig, "cols" | "rows">;
+
 /**
  * Open one hop. The hop is dialled either directly (when `sock` is undefined)
  * or through an existing chain via `sock`. Returns the ready client. Each hop
@@ -95,7 +98,7 @@ function connectOneHop(opts: {
  * cannot drift apart.
  */
 export async function connectSshChain(
-  config: SshShellConfig,
+  config: SshConnectConfig,
 ): Promise<{ client: SshClient; intermediates: SshClient[] }> {
   await ensureHostKeyCacheLoaded();
 
@@ -222,7 +225,7 @@ const toSshError = (cause: unknown) => new SshError({ message: errorMessage(caus
  * The whole chain as a scoped resource: dialled on acquire, every hop ended
  * (innermost first) when the scope closes.
  */
-export const acquireSshChain = (config: SshShellConfig) =>
+export const acquireSshChain = (config: SshConnectConfig) =>
   Effect.acquireRelease(
     Effect.tryPromise({ try: () => connectSshChain(config), catch: toSshError }),
     ({ client, intermediates }) => Effect.sync(() => endSshChain(client, intermediates)),

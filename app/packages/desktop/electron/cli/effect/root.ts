@@ -1,12 +1,11 @@
 // The `infrawrench` root command: the global flags as shared flags (so they
-// parse before or after the subcommand, `--org x` and `--org=x` alike) and
-// every command migrated to `effect/cli` so far. `runCli` sends a command
-// here when its name is in `migratedCommands`; anything else still takes the
-// legacy switch in `../main.ts`.
+// parse before or after the subcommand, `--org x` and `--org=x` alike), every
+// command, and a handler of its own for bare `infrawrench` (the TUI at a
+// terminal, the root help elsewhere). `runCli` hands every command line here.
 //
-// Migrating a command adds it to `subcommands`; nothing else in this file
-// changes. The root turns the parsed flags into the `CliSession` every
-// handler reads, after help and version have had their turn.
+// A new command is one entry in `subcommands`. The root turns the parsed
+// flags into the `CliSession` every handler reads, after help and version
+// have had their turn.
 import { Command } from "effect/cli";
 import { login, logout, whoami } from "../commands/auth";
 import { agents } from "../commands/agents";
@@ -77,6 +76,15 @@ import { posture } from "../commands/posture";
 import { prices } from "../commands/prices";
 import { prCheck } from "../commands/pr-check";
 import { services } from "../commands/services";
+import { jit } from "../commands/jit";
+import { leaks } from "../commands/leaks";
+import { vulns } from "../commands/vulns";
+import { scorecards } from "../commands/scorecards";
+import { apps } from "../commands/apps";
+import { sshFanout } from "../commands/ssh-fanout";
+import { config } from "../commands/config";
+import { deploy } from "../commands/deploy";
+import { help, home, tui } from "../commands/tui";
 import { CliSession, globalFlags, makeSession } from "./session";
 
 const subcommands = [
@@ -155,17 +163,32 @@ const subcommands = [
   prices,
   prCheck,
   services,
+  jit,
+  leaks,
+  vulns,
+  scorecards,
+  apps,
+  sshFanout,
+  config,
+  deploy,
+  tui,
+  help,
 ] as const;
 
-export const root = Command.make("infrawrench").pipe(
+/** The command name the root help and its parse errors are told apart by. */
+export const ROOT_NAME = "infrawrench";
+
+export const root = Command.withHandler(
+  Command.make(ROOT_NAME).pipe(Command.withSharedFlags(globalFlags)),
+  () => home,
+).pipe(
   Command.withDescription("Manage your infrastructure from the terminal"),
-  Command.withSharedFlags(globalFlags),
   Command.withSubcommands(subcommands),
   Command.provideEffect(CliSession, (flags) => makeSession(flags)),
 );
 
-/** First words (and their aliases) that `runCli` hands to {@link root}. */
-export const migratedCommands: ReadonlySet<string> = new Set(
+/** Every first word (and alias) the root knows. */
+export const commandNames: ReadonlySet<string> = new Set(
   subcommands.flatMap((command) =>
     command.alias === undefined ? [command.name] : [command.name, command.alias],
   ),

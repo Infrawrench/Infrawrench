@@ -58,7 +58,6 @@ import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";
 import { mergeResourceRow, mergeStoredFields, upsertResourceRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
-import { invoke } from "./invoke";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 import { createPluginClient } from "./plugin-client";
 import {
@@ -69,6 +68,8 @@ import {
   type StoredServiceInstall,
 } from "./agent-services";
 import { listLocalSshInstallAccounts } from "./ssh-install";
+import { showOpenDialog } from "./app-shell";
+import { ensureAgentSshKey, getLocalSshPrivateKey } from "./local-secrets";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -330,13 +331,10 @@ export function createDesktopAgentClient(): AgentClient {
       return { ...settings, serviceAccountIds: services.accountIds, t3Access, t3Policy };
     },
     async pickLocalRepoPath(): Promise<string | null> {
-      const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
-        "show_open_dialog",
-        {
-          properties: ["openDirectory"],
-          title: "Choose local repository",
-        },
-      );
+      const result = await showOpenDialog({
+        properties: ["openDirectory"],
+        title: "Choose local repository",
+      });
       if (result.canceled) return null;
       return result.filePaths?.[0] ?? null;
     },
@@ -615,7 +613,7 @@ export function createDesktopAgentClient(): AgentClient {
         };
       }
       const agentKey = await ensureAgentSshKey();
-      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+      const privateKey = await getLocalSshPrivateKey(agentKey.id);
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
       const reconcile = {
@@ -728,16 +726,10 @@ async function withAgentSshKey(
   if (!keyField) return fields;
   if (fields[keyField]?.trim()) return fields;
 
-  const key = await invoke<{ id: string; name: string; publicKey: string }>(
-    "ssh_key_ensure_agent_key",
-  );
+  const key = await ensureAgentSshKey();
   const publicKey = key.publicKey.trim();
   if (!publicKey) throw new Error(`Agent SSH key "${AGENT_SSH_KEY_NAME}" has no public key`);
   return { ...fields, [keyField]: publicKey };
-}
-
-async function ensureAgentSshKey() {
-  return invoke<{ id: string; name: string; publicKey: string }>("ssh_key_ensure_agent_key");
 }
 
 async function createAgentSetupPlan(
@@ -866,7 +858,7 @@ async function ensureAgentVmSetup(
     "setting-up",
   );
 
-  const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+  const privateKey = await getLocalSshPrivateKey(agentKey.id);
   const target = await waitForAgentSshTarget(row);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
   const remoteHome = await resolveAgentRemoteHome(target, privateKey);
@@ -1000,7 +992,7 @@ async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
   const resource = await loadAgentVmResource(row);
   const target = await resolveAgentSshTarget(row, resource);
   const agentKey = await ensureAgentSshKey();
-  const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+  const privateKey = await getLocalSshPrivateKey(agentKey.id);
   await agentSshExecCommand(
     {
       sshHost: target.host,
@@ -1060,7 +1052,7 @@ async function applyLocalT3Policy(
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
       const agentKey = await ensureAgentSshKey();
-      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+      const privateKey = await getLocalSshPrivateKey(agentKey.id);
       const result = await agentSshExecCommand(
         { sshHost: target.host, sshPort: target.port, sshUser: target.username, privateKey },
         buildT3CodePolicyApplyCommand({ policy, restart: request.restart }),

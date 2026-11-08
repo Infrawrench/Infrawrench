@@ -20,10 +20,9 @@ import {
   updateCostAnnotation,
 } from "../../../services/cost-annotations";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound } from "../../errors";
-import { fieldsOf, readJsonOr } from "../../json-body";
+import { BadRequest, notFound, badRequest } from "../../errors";
+import { fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody } from "../../object-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -140,14 +139,14 @@ const ChangeImpactAnnotationsHandlers = HttpApiBuilder.group(
         const body = yield* fieldsOf(yield* readJsonOr(request, {}));
         const subjectKind = body["subjectKind"];
         if (subjectKind !== "change" && subjectKind !== "deployment") {
-          return yield* invalidBody("subjectKind must be change or deployment");
+          return yield* badRequest("subjectKind must be change or deployment");
         }
         const subjectId = body["subjectId"];
         if (!Predicate.isString(subjectId) || subjectId.length === 0) {
-          return yield* invalidBody("subjectId is required");
+          return yield* badRequest("subjectId is required");
         }
         const costBasis = parseCostBasis(body["costBasis"]);
-        if (costBasis === null) return yield* invalidBody("costBasis must be cash or amortized");
+        if (costBasis === null) return yield* badRequest("costBasis must be cash or amortized");
         const windowDays = body["windowDays"];
 
         const { organizationId, session } = yield* OrgPrincipal;

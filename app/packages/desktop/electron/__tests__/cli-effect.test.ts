@@ -25,10 +25,12 @@ vi.mock("../cloud-tokens", () => ({
   setTokenStoreReadOnly: vi.fn(),
 }));
 
-import { scanCommandLine } from "../cli/args";
-import { CliError, listOrgs, orgFetch, orgFetchText } from "../cli/context";
-import { migratedCommands } from "../cli/effect/root";
+import { Effect } from "effect";
+import { CliError } from "../cli/context";
+import { CloudApi } from "../cli/effect/cloud-api";
+import { commandNames } from "../cli/effect/root";
 import { runEffectCli } from "../cli/effect/run";
+import { HELP } from "../cli/help";
 import { UserFacingError } from "../main-utils";
 
 const ORGS = [
@@ -64,14 +66,15 @@ afterEach(() => {
 
 const run = (...argv: string[]) => runEffectCli(argv, { version: "9.9.9", guiRunning: false });
 
-describe("effect/cli bridge: routing", () => {
-  it("lists the migrated commands", () => {
-    expect([...migratedCommands].sort()).toEqual([
+describe("effect/cli: routing", () => {
+  it("knows every command", () => {
+    expect([...commandNames].sort()).toEqual([
       "access",
       "accounts",
       "agents",
       "ai-spend",
       "alerts",
+      "apps",
       "billing-rules",
       "blast-radius",
       "budgets",
@@ -82,12 +85,15 @@ describe("effect/cli bridge: routing", () => {
       "cli",
       "commitments",
       "compliance",
+      "config",
       "cost-visibility",
       "costs",
       "credits",
       "currency",
       "dashboards",
       "declared-incidents",
+      "deploy",
+      "diff",
       "dns",
       "dora",
       "estimate",
@@ -97,13 +103,16 @@ describe("effect/cli bridge: routing", () => {
       "extended-support",
       "github-issues",
       "graph",
+      "help",
       "hygiene",
       "idle-rules",
       "incidents",
       "invoices",
       "issues",
+      "jit",
       "k8s-efficiency",
       "k8s-network",
+      "leaks",
       "leases",
       "login",
       "logout",
@@ -115,6 +124,10 @@ describe("effect/cli bridge: routing", () => {
       "oversized",
       "ownership",
       "page",
+      "paging",
+      "posture",
+      "pr-check",
+      "prices",
       "probes",
       "recordings",
       "reports",
@@ -125,30 +138,84 @@ describe("effect/cli bridge: routing", () => {
       "savings",
       "scenarios",
       "schedules",
+      "scorecards",
       "search",
+      "seats",
+      "services",
       "showback",
       "slos",
+      "ssh-fanout",
       "starred",
       "status-pages",
       "tag-keys",
       "tags",
+      "tui",
       "unit-costs",
       "virtual-tags",
+      "vulnerabilities",
+      "vulns",
       "webhooks",
       "whoami",
     ]);
   });
+});
 
-  it("finds the command word past global and legacy flags with values", () => {
-    expect(scanCommandLine(["--org", "acme", "whoami"]).command).toBe("whoami");
-    expect(scanCommandLine(["-a", "prod", "--json", "orgs"]).command).toBe("orgs");
-    expect(scanCommandLine(["--limit", "5", "vulns"]).command).toBe("vulns");
-    expect(scanCommandLine(["--no-color", "whoami"])).toEqual({ command: "whoami", noColor: true });
-    expect(scanCommandLine(["--version"]).command).toBeUndefined();
+describe("effect/cli: bare infrawrench, tui and help", () => {
+  const realStdoutTTY = process.stdout.isTTY;
+  const realStdinTTY = process.stdin.isTTY;
+  afterEach(() => {
+    process.stdout.isTTY = realStdoutTTY;
+    process.stdin.isTTY = realStdinTTY;
+  });
+
+  it.each([
+    [[]],
+    [["tui"]],
+    [["help"]],
+    [["help", "costs"]],
+    [["--help"]],
+    [["-h"]],
+    [["--org", "acme"]],
+  ])("prints the root help for %j off a terminal", async (argv) => {
+    process.stdout.isTTY = false;
+    expect(await run(...argv)).toBe(0);
+    expect(stdout).toBe(`${HELP}\n`);
+    expect(stderr).toBe("");
+  });
+
+  it("refuses the TUI when only stdout is a terminal", async () => {
+    process.stdout.isTTY = true;
+    process.stdin.isTTY = false;
+    expect(await run("--no-color")).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(
+      "The TUI needs an interactive terminal. Use `infrawrench accounts --json` for scripts.\n",
+    );
+  });
+
+  it("answers an unknown command with the sentence it always has, exit 2", async () => {
+    expect(await run("frobnicate")).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toBe('Unknown command "frobnicate". Run `infrawrench help`.\n');
+  });
+
+  it("answers an unknown root flag with the error and where the list is, exit 2", async () => {
+    expect(await run("--bogus")).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Unrecognized flag: --bogus");
+    expect(stderr).toContain("Run `infrawrench help` for the commands and their flags.");
+  });
+
+  it("prints the version alone at the root", async () => {
+    expect(await run("--version")).toBe(0);
+    expect(stdout).toBe("9.9.9\n");
+    stdout = "";
+    expect(await run("-v")).toBe(0);
+    expect(stdout).toBe("9.9.9\n");
   });
 });
 
-describe("effect/cli bridge: global flags", () => {
+describe("effect/cli: global flags", () => {
   it.each([
     [["--json", "whoami"]],
     [["whoami", "--json"]],
@@ -172,7 +239,7 @@ describe("effect/cli bridge: global flags", () => {
   });
 });
 
-describe("effect/cli bridge: pilot commands", () => {
+describe("effect/cli: auth commands", () => {
   it("prints whoami as JSON with the session's orgs", async () => {
     expect(await run("whoami", "--json")).toBe(0);
     expect(JSON.parse(stdout)).toEqual({
@@ -212,13 +279,13 @@ describe("effect/cli bridge: pilot commands", () => {
   });
 });
 
-describe("effect/cli bridge: exit codes and rendering", () => {
+describe("effect/cli: exit codes and rendering", () => {
   it("prints the version alone", async () => {
     expect(await run("whoami", "--version")).toBe(0);
     expect(stdout).toBe("9.9.9\n");
   });
 
-  it("shows a migrated command's own help on stdout", async () => {
+  it("shows a command's own help on stdout", async () => {
     expect(await run("cli", "--help")).toBe(0);
     expect(stdout).toContain("infrawrench cli");
     expect(stdout).toContain("install");
@@ -245,7 +312,7 @@ describe("effect/cli bridge: exit codes and rendering", () => {
     );
   });
 
-  it("renders a legacy CliError thrown underneath as one line with its exit code", async () => {
+  it("renders a CliError thrown underneath as one line with its exit code", async () => {
     tokens.getAuthStatus.mockRejectedValue(new CliError("Keychain is locked.", 3));
     expect(await run("whoami")).toBe(3);
     expect(stderr).toBe("Keychain is locked.\n");
@@ -264,43 +331,53 @@ describe("effect/cli bridge: exit codes and rendering", () => {
   });
 });
 
-describe("legacy Promise helpers over CloudApi", () => {
+describe("CloudApi's sentences", () => {
   const respond = (body: string, init: ResponseInit) =>
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(body, init)),
     );
+  const call = <A, E>(f: (api: CloudApi["Service"]) => Effect.Effect<A, E>) =>
+    Effect.runPromise(
+      CloudApi.use(f).pipe(
+        Effect.flip,
+        Effect.map((e) => (e instanceof Error ? e.message : String(e))),
+        Effect.provide(CloudApi.layer),
+      ),
+    );
 
   it("decodes JSON", async () => {
     respond('{"ok":true}', { status: 200 });
-    expect(await orgFetch<{ ok: boolean }>("org_1", "/x")).toEqual({ ok: true });
+    expect(
+      await Effect.runPromise(
+        CloudApi.use((api) => api.json("org_1", "/x")).pipe(Effect.provide(CloudApi.layer)),
+      ),
+    ).toEqual({ ok: true });
   });
 
   it("keeps the failed-request sentence", async () => {
     respond('{"error":"nope"}', { status: 500 });
-    await expect(orgFetch("org_1", "/x")).rejects.toThrow(
-      new CliError('Cloud request failed: 500 /x {"error":"nope"}'),
+    expect(await call((api) => api.json("org_1", "/x"))).toBe(
+      'Cloud request failed: 500 /x {"error":"nope"}',
     );
   });
 
   it("names a web page answering for a missing route", async () => {
     respond("<!doctype html><html></html>", { status: 200 });
-    await expect(orgFetchText("org_1", "/rec")).rejects.toThrow(
+    expect(await call((api) => api.text("org_1", "/rec"))).toBe(
       "/rec is not available on http://localhost:3000.\nThe server answered with a web page instead of data, which usually means it is running a version without this endpoint.",
     );
   });
 
   it("reports a malformed body", async () => {
     respond("not json", { status: 200 });
-    await expect(orgFetch("org_1", "/x")).rejects.toThrow(
+    expect(await call((api) => api.json("org_1", "/x"))).toBe(
       "Cloud request returned a malformed response for /x not json",
     );
   });
 
-  it("rejects with a CliError when signed out", async () => {
+  it("says so when signed out", async () => {
     tokens.getAccessToken.mockResolvedValue(null);
-    const error = await listOrgs().catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(CliError);
-    expect(error).toMatchObject({ exitCode: 1 });
+    expect(await call((api) => api.listOrgs)).toMatch(/^Not signed in to Infrawrench Cloud\./);
   });
 });

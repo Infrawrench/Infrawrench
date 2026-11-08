@@ -19,8 +19,8 @@ import {
   listCloudGithubRepos,
 } from "@/lib/cloud-workflows";
 import { listCloudBudgets } from "@/lib/cloud-costs";
-import { invoke } from "@/lib/invoke";
 import { navigateToWorkspaceTarget, workflowsTabTarget } from "@/lib/workspace-tabs";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * Desktop wrapper around the shared WorkflowsPanel.
@@ -149,7 +149,7 @@ export function DesktopWorkflowsPanel({ workflowId }: { workflowId?: string | un
         // The install flow is a GitHub web page: hand it to the system
         // browser rather than a renderer window (that's where the user's
         // GitHub session lives).
-        if (url) void invoke("open_external_url", { url });
+        if (url) void openExternalUrl(url);
       })
       .catch(() => undefined);
   }, [activeCloudOrgId]);

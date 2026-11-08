@@ -1,6 +1,6 @@
 /**
  * Org-scoped unit-cost query execution: shared by the HTTP route
- * (api/routes/business-metrics.ts), the MCP tools and the CLI, exactly the way
+ * (http/domains/business-metrics/), the MCP tools and the CLI, exactly the way
  * `services/cost-query.ts` is shared, so every surface divides the same
  * numerator by the same denominator.
  *

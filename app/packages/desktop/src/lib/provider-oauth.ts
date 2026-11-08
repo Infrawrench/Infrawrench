@@ -1,10 +1,13 @@
 import type { PluginManifest } from "@infrawrench/plugin-base";
 import type { ProviderOAuthInfo, ProviderOAuthResult } from "@infrawrench/ui";
+import { Effect } from "effect";
 import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
+import { getLocalAccountCredentials, saveLocalAccountCredentials } from "./local-credentials";
 
 /**
  * Desktop half of provider OAuth ("Connect with X"). The main process runs the
- * flow (electron/provider-oauth/ipc.ts):
+ * flow (electron/provider-oauth/connect.ts, over the `ProviderOAuth*` RPCs):
  *
  * - local workspace: the desktop's own public client, a loopback redirect,
  *   and the grant stored with the local account (refreshed in main);
@@ -17,8 +20,6 @@ import { invoke } from "./invoke";
 
 /** Where the account lives: a cloud org, or the local workspace (null). */
 export type ProviderOAuthTarget = string | null;
-
-type ConnectResponse = ProviderOAuthResult | { cancelled: true };
 
 function abortError(): Error {
   const e = new Error("Connection cancelled.");
@@ -36,25 +37,31 @@ export async function connectProviderOAuth(
   pluginId: string,
   opts: { accountId?: string } = {},
 ): Promise<ProviderOAuthResult> {
-  const result = await invoke<ConnectResponse>("provider_oauth_connect", {
-    pluginId,
-    target: orgId ? "cloud" : "local",
-    ...(orgId ? { orgId } : {}),
-    ...(opts.accountId ? { accountId: opts.accountId } : {}),
-  });
-  if ("cancelled" in result) throw abortError();
-  return result;
+  return runRpc(
+    DesktopRpcClient.use((rpc) =>
+      rpc.ProviderOAuthConnect(
+        orgId
+          ? {
+              target: "cloud",
+              pluginId,
+              orgId,
+              ...(opts.accountId ? { accountId: opts.accountId } : {}),
+            }
+          : { target: "local", pluginId },
+      ),
+    ).pipe(Effect.catchTag("ProviderOAuthCancelled", () => Effect.fail(abortError()))),
+  );
 }
 
 export function cancelProviderOAuth(): void {
-  void invoke("provider_oauth_cancel").catch(() => undefined);
+  void runRpc(DesktopRpcClient.use((rpc) => rpc.ProviderOAuthCancel())).catch(() => undefined);
 }
 
 let localClients: Promise<Set<string>> | null = null;
 
 /** Plugin ids a local account can connect with OAuth in this build. */
 export function getLocalOAuthClients(): Promise<Set<string>> {
-  localClients ??= invoke<string[]>("provider_oauth_local_clients")
+  localClients ??= runRpc(DesktopRpcClient.use((rpc) => rpc.ProviderOAuthLocalClients()))
     .then((ids) => new Set(ids))
     .catch((err: unknown) => {
       localClients = null;
@@ -139,12 +146,6 @@ export async function reconnectProviderAccount(
     });
     return;
   }
-  const current = await invoke<Record<string, string>>("account_get_credentials", {
-    accountId,
-    refresh: false,
-  });
-  await invoke("account_save_credentials", {
-    accountId,
-    credentials: { ...current, ...result.credentials },
-  });
+  const current = await getLocalAccountCredentials(accountId, { refresh: false });
+  await saveLocalAccountCredentials(accountId, { ...current, ...result.credentials });
 }

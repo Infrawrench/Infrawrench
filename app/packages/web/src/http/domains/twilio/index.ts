@@ -13,10 +13,9 @@ import { encryptTwilioCredential, sendTestPage } from "@infrawrench/server-core/
 import { db } from "../../../db/client";
 import { twilioRecipients, twilioSettings } from "../../../db/schema";
 import { makeDomain } from "../../domain";
-import { BadRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { BadRequest, notFound, badRequest } from "../../errors";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody } from "../../object-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -84,7 +83,7 @@ const TwilioHandlers = HttpApiBuilder.group(TwilioApi, "twilio", (handlers) =>
         const fromNumber = body["fromNumber"];
         if (fromNumber != null && fromNumber !== "") {
           if (!Predicate.isString(fromNumber) || !E164.test(fromNumber)) {
-            return yield* invalidBody(E164_REFUSAL);
+            return yield* badRequest(E164_REFUSAL);
           }
         }
         for (const [k, min] of [
@@ -94,12 +93,12 @@ const TwilioHandlers = HttpApiBuilder.group(TwilioApi, "twilio", (handlers) =>
         ] as const) {
           const v = body[k];
           if (v != null && !(Predicate.isNumber(v) && Number.isInteger(v) && v >= min)) {
-            return yield* invalidBody(`${k} must be an integer >= ${min}`);
+            return yield* badRequest(`${k} must be an integer >= ${min}`);
           }
         }
         const enabled = body["enabled"];
         if (enabled != null && !Predicate.isBoolean(enabled)) {
-          return yield* invalidBody("enabled must be a boolean");
+          return yield* badRequest("enabled must be a boolean");
         }
 
         const patch: Partial<typeof twilioSettings.$inferInsert> = { updatedAt: new Date() };
@@ -116,8 +115,8 @@ const TwilioHandlers = HttpApiBuilder.group(TwilioApi, "twilio", (handlers) =>
 
         if (body["accountSid"] !== undefined) {
           const accountSid = yield* trimmedString(body["accountSid"], "accountSid");
-          if (!accountSid) return yield* invalidBody("accountSid cannot be empty");
-          if (accountSid.length > 100) return yield* invalidBody("accountSid is too long");
+          if (!accountSid) return yield* badRequest("accountSid cannot be empty");
+          if (accountSid.length > 100) return yield* badRequest("accountSid is too long");
           const enc = yield* legacy(() =>
             encryptTwilioCredential(organizationId, "accountSid", accountSid),
           );
@@ -126,8 +125,8 @@ const TwilioHandlers = HttpApiBuilder.group(TwilioApi, "twilio", (handlers) =>
         }
         if (body["authToken"] !== undefined) {
           const authToken = yield* trimmedString(body["authToken"], "authToken");
-          if (!authToken) return yield* invalidBody("authToken cannot be empty");
-          if (authToken.length > 200) return yield* invalidBody("authToken is too long");
+          if (!authToken) return yield* badRequest("authToken cannot be empty");
+          if (authToken.length > 200) return yield* badRequest("authToken is too long");
           const enc = yield* legacy(() =>
             encryptTwilioCredential(organizationId, "authToken", authToken),
           );
@@ -183,18 +182,18 @@ const TwilioHandlers = HttpApiBuilder.group(TwilioApi, "twilio", (handlers) =>
 
         const displayName = yield* optionalTrimmedString(body["displayName"], "displayName");
         const phoneNumber = yield* optionalTrimmedString(body["phoneNumber"], "phoneNumber");
-        if (!displayName) return yield* invalidBody("displayName is required");
+        if (!displayName) return yield* badRequest("displayName is required");
         if (!phoneNumber || !E164.test(phoneNumber)) {
-          return yield* invalidBody("phoneNumber must be E.164 (e.g. +15551234567)");
+          return yield* badRequest("phoneNumber must be E.164 (e.g. +15551234567)");
         }
         const rawSms = body["sms"] ?? true;
         const rawVoice = body["voice"] ?? true;
-        if (!Predicate.isBoolean(rawSms)) return yield* invalidBody("sms must be a boolean");
-        if (!Predicate.isBoolean(rawVoice)) return yield* invalidBody("voice must be a boolean");
+        if (!Predicate.isBoolean(rawSms)) return yield* badRequest("sms must be a boolean");
+        if (!Predicate.isBoolean(rawVoice)) return yield* badRequest("voice must be a boolean");
         const sms = rawSms;
         const voice = rawVoice;
         if (!sms && !voice) {
-          return yield* invalidBody("Recipient must have SMS, voice, or both enabled");
+          return yield* badRequest("Recipient must have SMS, voice, or both enabled");
         }
 
         const id = crypto.randomUUID();

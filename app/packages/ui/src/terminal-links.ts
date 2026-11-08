@@ -32,7 +32,7 @@ export { normalizeTerminalLinkUrl };
 export interface TerminalLinkHandlerOptions {
   /**
    * Opens the URL in the user's real browser. Desktop routes this through
-   * the main process (`open_external_url`); web uses a new tab.
+   * the main process (`AppOpenExternalUrl`); web uses a new tab.
    */
   openExternal: (url: string) => void;
   /** Called when a link is refused, so the caller can surface a reason. */

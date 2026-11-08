@@ -10,7 +10,7 @@
  * `jira:read` covers the redacted connection, the pickers, the links and the
  * status refresh; `jira:write` covers configuring the credential, the webhook
  * and filing. The inbound webhook (`/api/issue-webhooks/jira/:token`) is
- * public and stays on Hono.
+ * public and lives in its own domain (`issue-webhooks`).
  */
 import { Effect, Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";

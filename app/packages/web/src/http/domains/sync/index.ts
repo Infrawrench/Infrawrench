@@ -2,20 +2,20 @@
  * Desktop cloud sync: `/api/v1/sync`, the handlers.
  *
  * Every endpoint authenticates the bearer credential, then checks its scope
- * with `requireScope` (whose refusal is the plain-text 403 Hono's `onError`
- * always sent for it), then reads its input. The reads and writes are
+ * with `requireScope` (whose refusal is the plain-text 403 it has always
+ * sent), then reads its input. The reads and writes are
  * promise code, called through `legacy`, and scoped to the credential's
  * organization; the payload shapes are what the desktop reads, byte for byte.
  */
 import { Effect, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
-import { HTTPException } from "hono/http-exception";
 import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { stripOAuthGrantState } from "@infrawrench/plugin-base";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import type { ApiAuthResult } from "../../../auth/api-auth";
+import { MissingScopeError } from "../../../auth/scope-error";
 import { effectivePermissions } from "../../../auth/effective-permissions";
 import { db } from "../../../db/client";
 import { accounts, associations, dashboardPins, dashboards, resources } from "../../../db/schema";
@@ -29,7 +29,7 @@ import {
 import { asBearerCaller } from "../../bearer-caller";
 import { makeDomain } from "../../domain";
 import { badRequest } from "../../errors";
-import { decodeAsPayload, fieldsOf, readJsonOr } from "../../json-body";
+import { decodeAsPayload, fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { respond } from "../../response";
@@ -37,18 +37,26 @@ import { Ok, ok } from "../../schemas/common";
 import { SyncApi, SyncPullResponse, SyncPushRequest, SyncStatus } from "./api";
 
 /**
- * `requireScope(auth, scope)`, answering its refusal as the Hono app's
- * `onError` did: `HTTPException.getResponse()`, a plain-text body, not the
- * `{ error }` JSON the HttpApi renderer gives an `HTTPException`.
+ * `requireScope(auth, scope)`, answering its refusal as this surface always
+ * has: the bare sentence as a plain-text 403 (what Hono's
+ * `HTTPException.getResponse()` sent while the API ran on Hono), not the
+ * `{ error }` JSON the rest of the API answers with.
  */
 const scopeRefusal = (auth: ApiAuthResult, scope: string) =>
   legacyTry(
     // Imported on use: `auth/api-auth.ts` loads the WorkOS client (see `http/bearer-caller.ts`).
     async () => (await import("../../../auth/api-auth")).requireScope(auth, scope),
-    (error) => (error instanceof HTTPException ? error : undefined),
+    (error) => (error instanceof MissingScopeError ? error : undefined),
   ).pipe(
     Effect.as(undefined),
-    Effect.catch((error) => Effect.succeed(HttpServerResponse.fromWeb(error.getResponse()))),
+    Effect.catch((error) =>
+      Effect.succeed(
+        HttpServerResponse.text(error.message, {
+          status: error.status,
+          contentType: "text/plain;charset=UTF-8",
+        }),
+      ),
+    ),
   );
 
 const isSyncVersion = Schema.is(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)));

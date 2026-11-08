@@ -38,10 +38,10 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import {
   OrgScorecard,
   OrgScorecardHistory,
@@ -53,12 +53,10 @@ import {
 
 type Body = { readonly [key: string]: unknown };
 
-const scorecardStore = {
-  isInputError: (error: unknown): error is ScorecardInputError =>
-    error instanceof ScorecardInputError,
+const scorecardStore = refusalsOf(ScorecardInputError, {
   logPrefix: "[scorecards]",
   failure: "Scorecard operation failed",
-};
+});
 
 const isRecord = (v: unknown): v is Body => typeof v === "object" && v !== null;
 
@@ -240,10 +238,10 @@ const ScorecardsHandlers = HttpApiBuilder.group(ScorecardsApi, "scorecards", (ha
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const input = pickScorecardBody(read.body);
         if (typeof input === "string") return yield* badRequest(input);
-        const created = yield* storeCall(scorecardStore, () =>
+        const created = yield* refusalCall(scorecardStore, inputRefusals, () =>
           createScorecardRecord(organizationId, input, session.userId),
         );
         yield* fireAndForget(() =>
@@ -263,11 +261,11 @@ const ScorecardsHandlers = HttpApiBuilder.group(ScorecardsApi, "scorecards", (ha
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const patch = pickScorecardBody(read.body);
         if (typeof patch === "string") return yield* badRequest(patch);
         if (Object.keys(patch).length === 0) return yield* badRequest("No changes supplied");
-        const updated = yield* storeCall(scorecardStore, () =>
+        const updated = yield* refusalCall(scorecardStore, inputRefusals, () =>
           updateScorecardRecord(organizationId, params.scorecardId, patch),
         );
         yield* fireAndForget(() =>
@@ -286,7 +284,7 @@ const ScorecardsHandlers = HttpApiBuilder.group(ScorecardsApi, "scorecards", (ha
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* storeCall(scorecardStore, () =>
+        const deleted = yield* refusalCall(scorecardStore, inputRefusals, () =>
           deleteScorecardRecord(organizationId, params.scorecardId),
         );
         yield* fireAndForget(() =>
@@ -312,7 +310,7 @@ const ScorecardsHandlers = HttpApiBuilder.group(ScorecardsApi, "scorecards", (ha
         const { organizationId } = yield* OrgPrincipal;
         const row = yield* legacy(() => getScorecardRecord(organizationId, params.scorecardId));
         if (!row) return yield* notFound("Scorecard not found");
-        const matrix = yield* storeCall(scorecardStore, async () => {
+        const matrix = yield* refusalCall(scorecardStore, inputRefusals, async () => {
           await evaluateOrgScorecards(organizationId, { scorecardIds: [row.id], announce: false });
           return overview(organizationId);
         });

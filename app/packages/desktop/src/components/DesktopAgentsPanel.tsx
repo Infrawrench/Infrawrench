@@ -9,8 +9,8 @@ import {
   getCloudGithubStatus,
   listCloudGithubRepos,
 } from "@/lib/cloud-workflows";
-import { invoke } from "@/lib/invoke";
 import { getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The Agents tab, in whichever mode the app is in.
@@ -80,7 +80,7 @@ export function DesktopAgentsPanel({
         // The install flow is a GitHub web page: hand it to the system
         // browser rather than a renderer window (that's where the user's
         // GitHub session lives).
-        if (url) void invoke("open_external_url", { url });
+        if (url) void openExternalUrl(url);
       })
       .catch(() => undefined);
   }, [activeCloudOrgId]);

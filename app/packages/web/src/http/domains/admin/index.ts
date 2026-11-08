@@ -11,7 +11,7 @@ import { db } from "../../../db/client";
 import { organizationMembers, organizations, subscriptions } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { badRequest, forbidden, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { json } from "../../middleware";
 import { guardSessionPrefixes } from "../../prefix-guard";

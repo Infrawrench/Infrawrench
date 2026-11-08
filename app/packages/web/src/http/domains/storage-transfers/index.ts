@@ -23,7 +23,8 @@ import { badRequest, InternalServerError, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { ok } from "../../schemas/common";
-import { formFile, formString, readFormFields, webStream } from "../transfer-bodies";
+import { formFile, formString, readFormFields } from "../../request-body";
+import { webStream } from "../../response";
 import { StorageTransfersApi } from "./api";
 
 /** Maximum number of keys accepted in a single bulk download. */

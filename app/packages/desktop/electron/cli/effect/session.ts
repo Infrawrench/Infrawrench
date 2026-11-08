@@ -1,10 +1,9 @@
-// The parsed global flags, as a service every migrated command reads instead
-// of a `CliContext` argument. The flags themselves are `effect/cli` shared
+// The parsed global flags, as a service every command reads. The flags
+// themselves are `effect/cli` shared
 // flags on the root command (`root.ts`), so they parse anywhere on the line;
 // the root turns them into a `CliSession` once, before any handler runs.
 import { Context, Effect, Option } from "effect";
 import { Flag } from "effect/cli";
-import type { CliContext } from "../context";
 import { setColorEnabled } from "../output";
 import { CliUsageError } from "./errors";
 
@@ -87,8 +86,8 @@ export interface GlobalFlagValues {
 }
 
 /**
- * The parsed global flags plus the host, validated the way `parseCliArgs`
- * validates them, with the same sentences. Also applies `--no-color` to
+ * The parsed global flags plus the host, validated with the sentences the CLI
+ * has always used for a contradictory pair. Also applies `--no-color` to
  * `output.ts`, which every printer reads.
  */
 export const makeSession = Effect.fnUntraced(function* (flags: GlobalFlagValues) {
@@ -120,24 +119,3 @@ export const makeSession = Effect.fnUntraced(function* (flags: GlobalFlagValues)
 
 /** True when the command should print JSON. */
 export const isJson = CliSession.use((session) => Effect.succeed(session.output === "json"));
-
-/**
- * A `CliContext` for calling a not-yet-migrated helper (`resolveAccount`,
- * a `cmd*` function) from a migrated command. Positionals are empty: a
- * migrated command passes what it parsed as arguments instead.
- */
-export const legacyContext = CliSession.use((session) =>
-  Effect.succeed<CliContext>({
-    flags: {
-      output: session.output,
-      color: session.color,
-      org: session.org,
-      local: session.local,
-      account: session.account,
-      reason: null,
-      help: false,
-    },
-    positionals: [],
-    guiRunning: session.guiRunning,
-  }),
-);

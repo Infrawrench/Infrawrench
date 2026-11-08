@@ -5,7 +5,7 @@ import type { IssueStatusFields, IssueStatusRefreshResult } from "./issue-status
 /**
  * GitHub issues (and pull requests) for findings, through the org's existing
  * GitHub App installation. Server contract: org-scoped
- * `/api/org/:orgId/github-issues/*` routes (web `api/routes/github-issues.ts`).
+ * `/api/org/:orgId/github-issues/*` routes (web `http/domains/github-issues/`).
  *
  * The third tracker beside Jira and Linear, with two things those do not have:
  *

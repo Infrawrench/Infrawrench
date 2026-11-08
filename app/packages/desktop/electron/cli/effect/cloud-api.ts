@@ -1,8 +1,7 @@
-// The cloud HTTP API, as an Effect service. This is the one implementation:
-// the Promise helpers in `../context.ts` (`orgFetch`, `listOrgs`,
-// `resolveOrg`, ...) run these and turn the tagged errors back into
-// `CliError`s with the same sentence and exit code, so unmigrated commands
-// keep working unchanged.
+// The cloud HTTP API, as an Effect service: every cloud read and write the
+// CLI makes goes through it. Promise code that needs the cloud (the TUI's
+// loaders, a deploy's org account clients) is handed a runner over the
+// command's own services rather than a client of its own.
 //
 // Token reads, refreshes and the network itself stay Promise calls through
 // `Effect.promise`: a rejection there (a locked keychain, `fetch failed`) is a
@@ -16,7 +15,6 @@ import {
   getAuthStatus,
 } from "../../cloud-tokens";
 import {
-  type CloudError,
   CloudRequestFailed,
   describeBody,
   EndpointUnavailable,
@@ -244,11 +242,6 @@ function makeCloudApi(baseUrl: string): CloudApi["Service"] {
 
   return CloudApi.of({ json, decode, text, download, authStatus, orgs, listOrgs, resolveOrg });
 }
-
-/** Run a `CloudApi` call outside the Effect runtime (the legacy Promise helpers). */
-export const runCloudApi = <A, E extends CloudError>(
-  f: (api: CloudApi["Service"]) => Effect.Effect<A, E>,
-): Effect.Effect<A, E> => CloudApi.use(f).pipe(Effect.provide(CloudApi.layer));
 
 /**
  * `effect`, or `fallback()` when it fails for any reason, a defect (a network

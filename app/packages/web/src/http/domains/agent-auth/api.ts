@@ -30,7 +30,7 @@ import { withApiDefaults } from "../../domain";
 import { Unauthorized } from "../../errors";
 import { SessionAuth } from "../../middleware-tags";
 import { IsoDateTime, Uuid } from "../../schemas/common";
-import { describeResponse, optionalRequestBody } from "../../schemas/documented";
+import { describeResponses, optionalRequestBody } from "../../schemas/documented";
 
 const Url = Schema.String.annotate({ format: "uri" });
 
@@ -139,12 +139,6 @@ export const AgentClaimResult = Schema.Struct({
 
 /** A status the hand-written spec listed with a description and no body. */
 const bare = (status: number) => HttpApiSchema.Empty(status);
-
-/** `describeResponse` for each `[status, description]`, as one `OpenApi.Transform`. */
-const describeResponses =
-  (entries: ReadonlyArray<readonly [number, string]>) =>
-  (operation: Record<string, unknown>): Record<string, unknown> =>
-    entries.reduce((op, [status, text]) => describeResponse(status, text)(op), operation);
 
 export class AgentIdentityGroup extends HttpApiGroup.make("agentIdentity")
   .add(

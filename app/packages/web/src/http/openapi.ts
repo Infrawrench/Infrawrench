@@ -1,12 +1,13 @@
 /**
- * The HttpApi half of the OpenAPI document.
+ * Every operation of the OpenAPI document, and the components they use.
  *
- * `buildOpenApiDocument` (`api/openapi/index.ts`) still assembles the
- * hand-written Zod registry for the routes on Hono; every domain in
- * `./domains.ts` is generated from its endpoint definitions instead and merged
- * in here, before the shared post-processing (operation ids, permission notes,
- * internal markers, the public-spec strip). A route documents itself the day
- * it moves: its schemas are the ones its requests are decoded with.
+ * Each domain in `./domains.ts` is generated from its endpoint definitions,
+ * normalised here, and merged by `buildOpenApiDocument`
+ * (`api/openapi/index.ts`) onto a base of plain data (info, servers, security
+ * schemes, tags, the plugin registry's enums and the event webhooks) before
+ * the shared post-processing (operation ids, permission notes, internal
+ * markers, the public-spec strip). A route documents itself: its schemas are
+ * the ones its requests are decoded with.
  */
 import { Context, Predicate } from "effect";
 import {
@@ -254,47 +255,49 @@ export function buildOpenApiFragment(domains: readonly Domain[]): OpenApiFragmen
 }
 
 /**
- * Merge a fragment into the Zod-built document. A component the Zod registry
- * also defines is replaced: the HttpApi definition is the one requests are
- * decoded with. An operation on both sides is a migration left half done, and
- * fails loudly rather than documenting the stale one.
+ * Merge a fragment into the base document. A component the base also defines
+ * (`EventSeverity`, which the event webhooks share with the event
+ * subscription routes) must be defined identically, and an operation the
+ * base already has is a second definition of one route; both fail loudly
+ * rather than documenting one of the two.
  */
 export function mergeOpenApiFragment(
   doc: {
-    paths?: Record<string, unknown>;
-    components?: { schemas?: Record<string, unknown> };
-    tags?: Array<{ name: string; description?: string }>;
+    paths: Record<string, Record<string, JsonObject>>;
+    components: { schemas: Record<string, unknown> };
+    tags: Array<{ name: string; description?: string }>;
   },
   fragment: OpenApiFragment,
 ): void {
-  if (fragment.conflicts.length > 0) {
-    throw new Error(`HttpApi domains disagree on: ${fragment.conflicts.join(", ")}`);
-  }
-  const paths = (doc.paths ??= {}) as Record<string, Record<string, unknown>>;
+  const conflicts = [...fragment.conflicts];
   for (const [path, item] of Object.entries(fragment.paths)) {
-    const target = (paths[path] ??= {});
+    const target = (doc.paths[path] ??= {});
     for (const [method, op] of Object.entries(item)) {
-      if (target[method]) {
-        throw new Error(
-          `${method.toUpperCase()} ${path} is documented by both the Zod registry and an HttpApi domain`,
-        );
-      }
+      if (target[method]) conflicts.push(`operation ${method} ${path}`);
       target[method] = op;
     }
   }
-  const components = (doc.components ??= {});
-  const schemas = (components.schemas ??= {});
-  Object.assign(schemas, fragment.schemas);
-  const tags = (doc.tags ??= []);
+  const schemas = doc.components.schemas;
+  for (const [name, schema] of Object.entries(fragment.schemas)) {
+    const existing = schemas[name];
+    if (existing !== undefined && stableStringify(existing) !== stableStringify(schema)) {
+      conflicts.push(`schema ${name} differs from the base document's`);
+    }
+    schemas[name] = schema;
+  }
+  if (conflicts.length > 0) {
+    throw new Error(`The OpenAPI document has conflicting definitions: ${conflicts.join(", ")}`);
+  }
   for (const tag of fragment.tags) {
-    if (!tags.some((t) => t.name === tag.name)) tags.push(tag);
+    if (!doc.tags.some((t) => t.name === tag.name)) doc.tags.push(tag);
   }
 }
 
 /**
- * Every HttpApi endpoint's permission gate, keyed the way `REQUIRED_PERMISSION`
- * is (`"GET /slos/{id}"`, the path after `/api/org/{orgId}`), so a check that
- * asks "what does this route require" can read both halves of the migration.
+ * Every endpoint's permission gate, `RequiredPermission` or
+ * `DocumentedPermission`, keyed by method and the path after
+ * `/api/org/{orgId}` (`"GET /slos/{id}"`), for checks that ask "what does this
+ * route require".
  */
 export function requiredPermissionIndex(domains: readonly Domain[]): Record<string, string> {
   const index: Record<string, string> = {};

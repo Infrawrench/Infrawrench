@@ -44,7 +44,7 @@ import {
   notFound,
   PaymentRequired,
 } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";

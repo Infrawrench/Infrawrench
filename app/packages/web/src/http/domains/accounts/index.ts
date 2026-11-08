@@ -43,7 +43,7 @@ import { FREE_PLAN_LIMITS, planAccess } from "../../../services/entitlements";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, HttpFailure, notFound, PaymentRequired } from "../../errors";
-import { decodeAsPayload, fieldsOf, readJson } from "../../json-body";
+import { decodeAsPayload, fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

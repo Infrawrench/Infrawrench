@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { T, Var, useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshExecCommand, sshOpenTunnel } from "../lib/ssh-tunnel";
 import { useUIStore, Modal, formatErrorMessage, runDockerSetupScript } from "@infrawrench/ui";
@@ -9,6 +8,8 @@ import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 import type { KeySource } from "../lib/ssh-key-source";
 import { cloudSshTunnelExec, cloudSshTunnelCreateAccount } from "../lib/cloud-api";
+import { createLocalAccount } from "../lib/local-credentials";
+import { encryptTunnelConfigKey } from "../lib/local-secrets";
 
 type Step = "credentials" | "checking" | "installing" | "configuring" | "done";
 
@@ -132,7 +133,7 @@ export function DockerSetupModal({
         newAccountId = crypto.randomUUID();
 
         const credentials = { dockerHost: "tcp://localhost:2375" };
-        await invoke<void>("account_create", {
+        await createLocalAccount({
           accountId: newAccountId,
           pluginId: "docker",
           displayName: accountName,
@@ -140,13 +141,10 @@ export function DockerSetupModal({
         });
 
         const tunnelConfigId = crypto.randomUUID();
-        const { ciphertext: keyCiphertext, iv: keyIv } = await invoke<{
-          ciphertext: string;
-          iv: string;
-        }>("ssh_tunnel_config_encrypt_private_key", {
+        const { ciphertext: keyCiphertext, iv: keyIv } = await encryptTunnelConfigKey(
           tunnelConfigId,
-          privateKey: privateKey.trim(),
-        });
+          privateKey.trim(),
+        );
         await db.execute(
           `INSERT OR REPLACE INTO ssh_tunnel_configs
            (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)

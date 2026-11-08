@@ -41,19 +41,18 @@ import { createChangeFreeze, getActiveChangeFreeze } from "../../../services/cha
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import { Slo, SloActiveFreeze, SloDetail, SloList, SloSources, SlosApi } from "./api";
 
 type Body = { readonly [key: string]: unknown };
 
-const sloStore = {
-  isInputError: (error: unknown): error is SloInputError => error instanceof SloInputError,
+const sloStore = refusalsOf(SloInputError, {
   logPrefix: "[slos]",
   failure: "SLO operation failed",
-};
+});
 
 const isSliKind = (value: string): value is SloSliKind => SLO_SLI_KINDS.some((k) => k === value);
 const isComparator = (value: string): value is SloComparator =>
@@ -265,10 +264,10 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const input = pickSloBody(read.body);
         if (typeof input === "string") return yield* badRequest(input);
-        const created = yield* storeCall(sloStore, () =>
+        const created = yield* refusalCall(sloStore, inputRefusals, () =>
           createSloRecord(organizationId, input, session.userId),
         );
         yield* fireAndForget(() =>
@@ -286,7 +285,7 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
             },
           }),
         );
-        const wire = yield* storeCall(sloStore, async () =>
+        const wire = yield* refusalCall(sloStore, inputRefusals, async () =>
           sloToWire(created, await loadSloSourceLabels(organizationId, [created])),
         );
         return yield* respond(Slo, { status: 201 })(wire);
@@ -296,13 +295,13 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const patch = pickSloBody(read.body);
         if (typeof patch !== "string" && Object.keys(patch).length === 0) {
           return yield* badRequest("No changes supplied");
         }
         if (typeof patch === "string") return yield* badRequest(patch);
-        const updated = yield* storeCall(sloStore, () =>
+        const updated = yield* refusalCall(sloStore, inputRefusals, () =>
           updateSloRecord(organizationId, params.sloId, patch),
         );
         yield* fireAndForget(() =>
@@ -315,7 +314,7 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
             metadata: { name: updated.name, patch: { ...patch } },
           }),
         );
-        const wire = yield* storeCall(sloStore, async () =>
+        const wire = yield* refusalCall(sloStore, inputRefusals, async () =>
           sloToWire(updated, await loadSloSourceLabels(organizationId, [updated])),
         );
         return yield* respond(Slo)(wire);
@@ -324,7 +323,7 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* storeCall(sloStore, () =>
+        const deleted = yield* refusalCall(sloStore, inputRefusals, () =>
           deleteSloRecord(organizationId, params.sloId),
         );
         yield* fireAndForget(() =>
@@ -351,7 +350,7 @@ const SlosHandlers = HttpApiBuilder.group(SlosApi, "slos", (handlers) =>
         const row = yield* legacy(() => getSloRecord(organizationId, params.sloId));
         if (!row) return yield* notFound("SLO not found");
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const raw = body["durationHours"];
         let duration: number | null;

@@ -7,7 +7,7 @@ import type { HttpServerRequest } from "effect/http";
 import type { ReportNotificationInput } from "@infrawrench/client-core";
 import { ReportNotificationInputError } from "@infrawrench/server-core/report-delivery/store";
 import { BadRequest, NotFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacyTry } from "../../legacy";
 
 /** A store refusal (`ReportNotificationInputError`), with the status it carries. */

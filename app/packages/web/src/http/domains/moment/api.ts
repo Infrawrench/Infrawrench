@@ -9,7 +9,7 @@
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
-import { SuccessDescription } from "../../annotations";
+import { DocumentedPermission, SuccessDescription } from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import { BadRequest, Forbidden } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
@@ -146,14 +146,6 @@ export const MomentResponse = Schema.Struct({
   incidents: Schema.Array(MomentIncidentSpan),
 }).annotate({ identifier: "MomentResponse" });
 
-/** States the documented floor without enforcing it (see the module comment). */
-const documentedPermission =
-  (permission: string) =>
-  (operation: Record<string, unknown>): Record<string, unknown> => ({
-    ...operation,
-    "x-required-permission": permission,
-  });
-
 export class MomentGroup extends HttpApiGroup.make("moment")
   .add(
     HttpApiEndpoint.get("get", "/", {
@@ -189,10 +181,11 @@ export class MomentGroup extends HttpApiGroup.make("moment")
           "whose query fails is reported as `error` without blanking the rest of the response.",
       )
       .annotate(SuccessDescription, "The merged window")
-      .annotate(OpenApi.Transform, (operation) =>
-        documentedPermission("resources:read")(
-          numericQuery({ window: { type: "integer", minimum: 1, maximum: 4320 } })(operation),
-        ),
+      // States the documented floor without enforcing it (see the module comment).
+      .annotate(DocumentedPermission, "resources:read")
+      .annotate(
+        OpenApi.Transform,
+        numericQuery({ window: { type: "integer", minimum: 1, maximum: 4320 } }),
       ),
   )
   .prefix("/api/org/:orgId/moment")

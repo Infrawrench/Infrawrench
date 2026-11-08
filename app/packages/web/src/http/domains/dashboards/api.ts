@@ -19,7 +19,7 @@
  * handlers). `/dashboards/:id/pdf` and `/:id/notifications…` share this prefix
  * and live in the `dashboard-notifications` domain.
  */
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { DashboardKpiRequest } from "@infrawrench/ui/schemas";
 import { RequiredPermission, SuccessDescription } from "../../annotations";
@@ -27,7 +27,7 @@ import { withApiDefaults } from "../../domain";
 import { BadRequest, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { Ok, OrgId, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import { documentedAs } from "../../schemas/documented";
+import { describeResponse, documentedAs } from "../../schemas/documented";
 import {
   CreateWidgetRequest,
   Dashboard,
@@ -60,19 +60,10 @@ export class Unprocessable extends Schema.Error<Unprocessable>(
 )({ error: message }, { httpApiStatus: 422, identifier: "Error" }) {}
 
 /**
- * An `OpenApi.Transform` keeping the 422's description as the hand-written
- * spec had it: the spec builder only names the statuses every domain shares.
+ * The 422's description as the hand-written spec had it: the spec builder only
+ * names the statuses every domain shares.
  */
-const unprocessableDescription = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const responses = operation["responses"];
-  if (!Predicate.isObject(responses)) return operation;
-  const refused = responses["422"];
-  if (!Predicate.isObject(refused)) return operation;
-  return {
-    ...operation,
-    responses: { ...responses, "422": { ...refused, description: "Bad request" } },
-  };
-};
+const unprocessableDescription = describeResponse(422, "Bad request");
 
 const PREFIX = "/api/org/:orgId/dashboards";
 const RoleParams = { orgId: OrgId, roleId: Uuid } as const;

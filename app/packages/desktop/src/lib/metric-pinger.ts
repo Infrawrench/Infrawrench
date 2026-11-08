@@ -1,8 +1,9 @@
-import { invoke } from "./invoke";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
 import { METRIC_PINGS_CHANGED_EVENT } from "./metric-pings";
+import { setPingsActive, showNotification } from "./app-shell";
+import { getLocalAccountCredentials } from "./local-credentials";
 
 interface PingRow {
   id: string;
@@ -39,7 +40,7 @@ async function syncActiveCount() {
     const db = await getDb();
     const rows = await db.select<{ c: number }[]>("SELECT COUNT(*) AS c FROM metric_pings");
     const count = rows[0]?.c ?? 0;
-    await invoke("set_pings_active", { count });
+    await setPingsActive(count);
   } catch (err) {
     console.error("metric-pinger: syncActiveCount failed", err);
   }
@@ -65,9 +66,7 @@ async function tick() {
       [...byAccount.entries()].map(async ([accountId, accountPings]) => {
         let credentials: Record<string, string>;
         try {
-          credentials = await invoke<Record<string, string>>("account_get_credentials", {
-            accountId,
-          });
+          credentials = await getLocalAccountCredentials(accountId);
         } catch (err) {
           console.error(`metric-pinger: credential fetch failed for account ${accountId}`, err);
           return;
@@ -120,10 +119,10 @@ async function tick() {
                     ? `≥ ${ping.min_value}`
                     : `≤ ${ping.max_value}`;
               const direction = state === "below" ? "below" : "above";
-              await invoke("show_notification", {
-                title: `${ping.resource_display_name}: ${ping.metric_label} ${direction} range`,
-                body: `Latest ${latest.value}${unit} (allowed ${range}${unit})`,
-              });
+              await showNotification(
+                `${ping.resource_display_name}: ${ping.metric_label} ${direction} range`,
+                `Latest ${latest.value}${unit} (allowed ${range}${unit})`,
+              );
               await db.execute(
                 "UPDATE metric_pings SET last_alert_state = $1, last_alert_at = datetime('now') WHERE id = $2",
                 [state, ping.id],

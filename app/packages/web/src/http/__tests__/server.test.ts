@@ -5,7 +5,7 @@
  * What only this can show: the AsyncLocalStorage scopes the org tree
  * establishes reach promise code called from an Effect handler, for each
  * request separately even when requests interleave, and a request no domain
- * routes still reaches Hono untouched.
+ * routes gets the API's 404, on the org tree only once the caller is known.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
@@ -39,10 +39,10 @@ vi.mock("@/http/auth", async (importOriginal) => {
 });
 
 vi.mock("@infrawrench/server-core/cost/visibility", () => ({
-  resolveCostVisibility: async (organizationId: string) => ({
+  resolveCostVisibility: vi.fn(async (organizationId: string) => ({
     organizationId,
     restricted: false,
-  }),
+  })),
 }));
 
 vi.mock("@/services/object-sharing", async (importOriginal) => ({
@@ -127,11 +127,35 @@ describe("HttpApi through the api app", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("hands a request no domain routes to Hono", async () => {
+  it("answers a request no domain routes with the 404 it always sent", async () => {
     const res = await api.request("/api/no-such-route");
-    expect(res.headers.get("x-infrawrench-httpapi-unmatched")).toBeNull();
     expect(res.status).toBe(404);
-    // Hono's own not-found body: the request went all the way down its stack.
+    expect(res.headers.get("content-type")).toBe("text/plain; charset=UTF-8");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await res.text()).toBe("404 Not Found");
+  });
+
+  it("answers a member's unknown org-tree path with the 404, a stranger's with the 401", async () => {
+    const member = await get("/api/org/org-a/no-such-route");
+    expect(member.status).toBe(404);
+    expect(await member.text()).toBe("404 Not Found");
+    const stranger = await get("/api/org/org-a/no-such-route", "bad");
+    expect(stranger.status).toBe(401);
+    expect(await stranger.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("refuses a scoped caller an org-wide surface before the 404", async () => {
+    // `/cost-exports/no-such-route` is under a surface a cost-scoped caller
+    // may not reach at all, routed or not.
+    const { resolveCostVisibility } = await import("@infrawrench/server-core/cost/visibility");
+    vi.mocked(resolveCostVisibility).mockResolvedValueOnce({
+      organizationId: "org-a",
+      restricted: true,
+      userId: "user-org-a",
+      layers: [],
+    });
+    const res = await get("/api/org/org-a/cost-exports/no-such-route");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "cost_scope_restricted" });
   });
 });

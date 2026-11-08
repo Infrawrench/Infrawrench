@@ -24,13 +24,11 @@ import { checkAppsHost, installAppsHostRequirements } from "../../../services/ap
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
 import { BadGateway, NotFound } from "../../errors";
-import { readJson } from "../../json-body";
-import { decodeFirstIssueStrict } from "../first-issue-body";
+import { readJson, decodeFirstIssue } from "../../request-body";
 import { fireAndForget, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
-import { respond } from "../../response";
+import { respond, webStream } from "../../response";
 import { hostKeyTrustBody, hostKeyTrustRefusal } from "../ssh-host-key-trust";
-import { webStream } from "../transfer-bodies";
 import { LinuxAppHostCheck, LinuxAppHostTarget, LinuxAppSetupRequest, LinuxAppsApi } from "./api";
 
 const messageOr = (error: unknown, fallback: string) =>
@@ -40,7 +38,7 @@ const messageOr = (error: unknown, fallback: string) =>
 const decodeBody = <S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   request: HttpServerRequest.HttpServerRequest,
-) => Effect.flatMap(readJson(request), (body) => decodeFirstIssueStrict(schema, body));
+) => Effect.flatMap(readJson(request), (body) => decodeFirstIssue(schema, body));
 
 const LinuxAppsHandlers = HttpApiBuilder.group(LinuxAppsApi, "linuxApps", (handlers) =>
   handlers

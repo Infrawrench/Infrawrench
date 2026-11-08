@@ -82,9 +82,8 @@ const middleware = Layer.mergeAll(
 );
 const handler = makeHttpApiHandler([agentAuthDomain], middleware);
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
-  const res = await handler.handle(new Request(`https://app.example.com${path}`, init));
-  return res ?? new Response("404 Not Found", { status: 404 });
+function request(path: string, init?: RequestInit): Promise<Response> {
+  return handler.handle(new Request(`https://app.example.com${path}`, init));
 }
 
 const post = (body: unknown, headers: Record<string, string> = {}): RequestInit => ({

@@ -4,6 +4,7 @@ import { RouterProvider, createRouter, createHashHistory } from "@tanstack/react
 import { t } from "gt-react";
 import { Toaster, toast, useUIStore } from "@infrawrench/ui";
 import { routeTree } from "./routeTree.gen";
+import { subscribeRpc } from "./lib/rpc/subscribe";
 import "./globals.css";
 
 window.addEventListener("unhandledrejection", (event) => {
@@ -13,19 +14,27 @@ window.addEventListener("unhandledrejection", (event) => {
   });
 });
 
-window.electronAPI.on("cloud_auth_error", (...args: unknown[]) => {
-  const payload = args[0] as { code?: string; message?: string } | undefined;
-  toast.error(t("Sign-in failed"), {
-    description: payload?.message ?? t("Cloud authentication error"),
-  });
-});
+// A sign-in that failed in the main process's protocol callback.
+subscribeRpc(
+  "cloud-auth",
+  (rpc) => rpc.CloudAuthErrors(),
+  (failure) => {
+    toast.error(t("Sign-in failed"), {
+      description: failure.message || t("Cloud authentication error"),
+    });
+  },
+);
 
 // A local account's OAuth connection changed state in the main process (a
 // refresh was rejected, or a reconnect succeeded): the sidebar and account
 // pages re-read `oauth_status`.
-window.electronAPI.on("provider_oauth_status", () => {
-  useUIStore.getState().bumpAccounts();
-});
+subscribeRpc(
+  "provider-oauth",
+  (rpc) => rpc.ProviderOAuthStatusChanges(),
+  () => {
+    useUIStore.getState().bumpAccounts();
+  },
+);
 
 const router = createRouter({ routeTree, history: createHashHistory() });
 

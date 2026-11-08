@@ -3,21 +3,24 @@
  * emits: API JSON, the SPA shell, static assets, MCP, and `/healthz`.
  *
  * The header set is defined once, in {@link securityHeaderEntries}, and applied
- * through two thin adapters because responses leave this server by two
- * different routes:
+ * by thin adapters because responses leave the server by different routes:
  *
- *   - {@link securityHeaders}: Hono middleware, mounted on `api` (the API
- *     surface in dev and prod) and on the prod-only `prodApp` that also serves
- *     `dist/client`. Both, because `prodApp` emits the SPA shell and static
- *     assets that `api` never sees, and the framing defence matters most on
- *     exactly that HTML document. Setting identical values twice is a no-op.
- *   - {@link applySecurityHeaders}: for the two handlers that write to a raw
- *     `node:http` `ServerResponse` and never touch Hono at all: `/api/mcp`
- *     (`mcp/http-handler.ts`) and `/healthz`. `server.ts` intercepts both paths
- *     at the Node HTTP level *before* the Hono listener, so middleware cannot
- *     reach them; they call this directly instead.
+ *   - the API router's global middleware (`SecurityHeaders` in
+ *     `http/server.ts`), for every response `api` sends, the 404 for an
+ *     unknown path and a rendered error included;
+ *   - {@link setSecurityHeaders}, for the web `Response`s `server.ts` sends
+ *     itself in production: the SPA shell and every static asset under
+ *     `dist/client` (`node/static-client.ts`), which `api` never sees, and
+ *     where the framing defence matters most;
+ *   - {@link applySecurityHeaders}, for the two handlers that write to a raw
+ *     `node:http` `ServerResponse`: `/api/mcp` (`mcp/http-handler.ts`) and
+ *     `/healthz`. `server.ts` intercepts both paths at the Node HTTP level
+ *     *before* the API, so they call this directly instead.
  *
- * One record and two adapters rather than two lists: a header set that is
+ * The edge Worker (`edge/worker.ts`) sets the same entries on what it serves
+ * and forwards. Setting identical values twice is a no-op.
+ *
+ * One record and several adapters rather than several lists: a header set that is
  * maintained in two places is a header set that will disagree in one of them.
  *
  * What is deliberately NOT here
@@ -32,7 +35,7 @@
  *     it is explicitly configured with a bundled `monaco` instance, and Monaco
  *     spawns its language workers from `blob:` URLs.
  *   - The `/docs` page loads the Scalar standalone bundle from jsdelivr
- *     (`SCALAR_VERSION` in `api/index.ts`).
+ *     (`SCALAR_VERSION` in `http/domains/api-docs/reference-page.ts`).
  *   - Vite's dev server serves inline module scripts and uses `eval` for HMR.
  *
  * A `script-src` that covers those honestly needs nonce plumbing through
@@ -58,7 +61,6 @@
  * is worth verifying against a real WorkOS tenant first, and neither header
  * closes a gap found here.
  */
-import { createMiddleware } from "hono/factory";
 import type { ServerResponse } from "node:http";
 
 /**
@@ -135,17 +137,15 @@ export function resetSecurityHeadersCache(): void {
 }
 
 /**
- * Apply the headers to a raw `node:http` response. For handlers that bypass
- * Hono entirely: see the module docstring. Safe to call more than once, and
- * must be called before the first `write`/`end`, like any header write.
+ * Apply the headers to a raw `node:http` response, for the handlers that
+ * write one directly (see the module docstring). Safe to call more than once,
+ * and must be called before the first `write`/`end`, like any header write.
  */
 export function applySecurityHeaders(res: ServerResponse): void {
   for (const [name, value] of securityHeaderEntries()) res.setHeader(name, value);
 }
 
-/** Hono middleware form, for every response that does go through Hono. */
-export const securityHeaders = () =>
-  createMiddleware(async (c, next) => {
-    await next();
-    for (const [name, value] of securityHeaderEntries()) c.header(name, value);
-  });
+/** Apply the headers to the (mutable) headers of a web `Response` this server builds. */
+export function setSecurityHeaders(headers: Headers): void {
+  for (const [name, value] of securityHeaderEntries()) headers.set(name, value);
+}

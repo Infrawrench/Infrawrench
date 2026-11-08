@@ -17,13 +17,13 @@ import {
 } from "../../../services/workflow-secrets";
 import { makeDomain } from "../../domain";
 import { badRequest } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
 import { WorkflowSecret } from "../../schemas/workflow-secrets";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import { WorkflowSecretsApi } from "./api";
 
 const secretRefusal: ReadRefusal = (error) =>
@@ -66,7 +66,7 @@ const WorkflowSecretsHandlers = HttpApiBuilder.group(
           if (!isDescription(description)) {
             return yield* badRequest("description must be a string or null.");
           }
-          const secret = yield* statusCall(
+          const secret = yield* refusalCall(
             secretRefusal,
             { 400: refuse[400], 409: refuse[409] },
             () =>
@@ -101,7 +101,7 @@ const WorkflowSecretsHandlers = HttpApiBuilder.group(
           if (!isDescription(description)) {
             return yield* badRequest("description must be a string or null.");
           }
-          const secret = yield* statusCall(
+          const secret = yield* refusalCall(
             secretRefusal,
             { 400: refuse[400], 404: refuse[404], 409: refuse[409] },
             () =>
@@ -130,7 +130,7 @@ const WorkflowSecretsHandlers = HttpApiBuilder.group(
           if (!Predicate.isString(value)) {
             return yield* badRequest("Body must include a value string.");
           }
-          const secret = yield* statusCall(
+          const secret = yield* refusalCall(
             secretRefusal,
             { 400: refuse[400], 404: refuse[404] },
             () => writeWorkflowSecretValue(organizationId, params.id, value),
@@ -151,7 +151,7 @@ const WorkflowSecretsHandlers = HttpApiBuilder.group(
       .handle("delete", ({ params }) =>
         Effect.gen(function* () {
           const { organizationId, session } = yield* OrgPrincipal;
-          const secret = yield* statusCall(secretRefusal, { 404: refuse[404] }, () =>
+          const secret = yield* refusalCall(secretRefusal, { 404: refuse[404] }, () =>
             deleteWorkflowSecret(organizationId, params.id),
           );
           yield* fireAndForget(() =>

@@ -78,3 +78,28 @@ export const respond =
       }
       return HttpServerResponse.jsonUnsafe(value, { status: options?.status ?? 200 });
     });
+
+/**
+ * `Readable.toWeb(stream)`: a pull-driven web body over a Node stream (or any
+ * async iterable) the handler has already started filling, read as the client
+ * reads it. Each pull only reads what the scoped work wrote, so it needs no
+ * request scope of its own.
+ */
+export function webStream(source: AsyncIterable<unknown>): ReadableStream<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else if (next.value instanceof Uint8Array) controller.enqueue(next.value);
+        else controller.enqueue(new TextEncoder().encode(String(next.value)));
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+    async cancel() {
+      await iterator.return?.();
+    },
+  });
+}

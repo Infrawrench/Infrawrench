@@ -23,7 +23,7 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest, HttpFailure, NotFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -120,9 +120,9 @@ const CalendarHandlers = HttpApiBuilder.group(CalendarApi, "calendar", (handlers
     .handleRaw("createSubscription", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const name = parsed.body["name"];
-        if (!Predicate.isString(name)) return yield* invalidBody("name is required");
+        if (!Predicate.isString(name)) return yield* badRequest("name is required");
         const kinds = parseCalendarKinds(parsed.body["kinds"]);
 
         const { organizationId, session } = yield* OrgPrincipal;

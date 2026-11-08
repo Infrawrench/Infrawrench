@@ -29,6 +29,7 @@ import { ChangeFreezeBlocked } from "../../schemas/change-freeze";
 import { JsonObject, Ok, OrgParams, ResourceId, Uuid } from "../../schemas/common";
 import { documentedAs, requiredQuery } from "../../schemas/documented";
 import { PluginId, ResourceTypeId } from "../../schemas/plugin-registry";
+import { SshHostKeyTrustRequired } from "../../schemas/ssh-host-key-trust";
 import { TerraformExport } from "../../schemas/terraform-export";
 
 /*
@@ -615,27 +616,15 @@ export const SshInstallResult = Schema.Struct({
 
 /**
  * The 409 an SSH connection to a host whose key is not yet trusted answers
- * with, the body every SSH route shares (`hostKeyTrustResponse`): clients
+ * with, the body every SSH route shares (`SshHostKeyTrustRequired`): clients
  * recognise the `error` code and prompt the user to trust the fingerprint.
+ * The install has always documented it under its own component name and
+ * response description, which this keeps.
  */
-export class SshInstallTrustRequired extends Schema.Error<SshInstallTrustRequired>(
-  "infrawrench/http/SshInstallTrustRequired",
-)(
-  {
-    error: Schema.Literal("ssh_host_key_trust_required"),
-    message: Schema.String,
-    kind: Schema.Literals(["unknown", "mismatch"]),
-    host: Schema.String,
-    port: Schema.Int,
-    presentedFingerprint: Schema.String,
-    storedFingerprint: Schema.NullOr(Schema.String),
-  },
-  {
-    httpApiStatus: 409,
-    identifier: "SshInstallTrustRequired",
-    description: "SSH host-key trust is required before installation can begin",
-  },
-) {}
+const SshInstallTrustRequired = SshHostKeyTrustRequired.annotate({
+  identifier: "SshInstallTrustRequired",
+  description: "SSH host-key trust is required before installation can begin",
+});
 
 const TagPolicyViolation = Schema.Struct({
   key: Schema.String,

@@ -19,7 +19,7 @@ import {
 } from "../../../services/metric-alerts";
 import { makeDomain } from "../../domain";
 import { notFound } from "../../errors";
-import { decodeAsPayload } from "../../json-body";
+import { decodeAsPayload } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

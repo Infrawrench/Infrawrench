@@ -25,7 +25,7 @@ vi.mock("@/auth/api-auth", () => ({
 
 const mockEnsureUser = vi.fn();
 const mockHasMembership = vi.fn();
-vi.mock("@/api/auth-middleware", () => ({
+vi.mock("@/auth/users", () => ({
   ensureUserFromClaims: (...a: unknown[]) => mockEnsureUser(...a),
   hasMembership: (...a: unknown[]) => mockHasMembership(...a),
 }));

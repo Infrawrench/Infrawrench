@@ -1,16 +1,19 @@
 /**
- * Hono API server + Vite SPA dev middleware + WebSocket support
+ * The Node gateway: the HttpApi server (`src/api`), the built SPA in
+ * production or Vite's dev middleware in development, and WebSocket support
  * for SSH terminals, SQL query proxy, and K8s exec sessions.
  */
 // First, so tls distrusts the compromised eMudhra intermediates before anything connects.
 import "kill-emudhra";
 import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import { api } from "./src/api/index";
-import { applySecurityHeaders, securityHeaders } from "./src/api/security-headers";
+import { applySecurityHeaders } from "./src/api/security-headers";
+import { isApiPath } from "./src/edge/gateway-routes";
+import { toRequestListener } from "./src/node/request-listener";
+import { makeStaticClientHandler } from "./src/node/static-client";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleConsoleAttach } from "./src/services/shared-console/attach";
 import { handleSqlSession } from "./src/services/sql-proxy";
@@ -37,7 +40,7 @@ const port = parseInt(process.env["PORT"] ?? "3000", 10);
 /**
  * Unauthenticated liveness/readiness endpoint for load balancers and k8s probes.
  *
- * Like `/api/mcp`, this is answered ahead of the Hono listener and so has to
+ * Like `/api/mcp`, this is answered ahead of the API's listener and so has to
  * set the security headers itself: both server modes route through here, so
  * doing it in the one function covers both.
  */
@@ -112,18 +115,18 @@ async function start() {
     if (!dev) throw err;
   }
 
-  const honoListener = getRequestListener(api.fetch);
+  const apiListener = toRequestListener((request) => api.fetch(request));
   let server: ReturnType<typeof createHttpServer>;
 
   if (dev) {
-    // In dev: Vite dev server in middleware mode, Hono for API routes
+    // In dev: Vite dev server in middleware mode, the API for API routes
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
 
-    // Route at the Node.js HTTP level: API/callback/well-known → Hono,
+    // Route at the Node.js HTTP level: API/callback/well-known → the API,
     // /api/mcp → MCP transport, everything else → Vite
     server = createHttpServer((req, res) => {
       const url = req.url ?? "";
@@ -144,38 +147,21 @@ async function start() {
         url.startsWith("/callback") ||
         url.startsWith("/.well-known/")
       ) {
-        honoListener(req, res);
+        apiListener(req, res);
       } else {
         vite.middlewares(req, res);
       }
     });
     server.listen(port);
   } else {
-    // In prod: serve static files from dist/client/ via Hono
-    const { serveStatic } = await import("@hono/node-server/serve-static");
-    const { Hono } = await import("hono");
-    const prodApp = new Hono();
-
-    // The SPA shell and every static asset are served by this app, not by
-    // `api`, so they need the headers mounted here too: the framing defence
-    // matters most on exactly the HTML document `api` never emits.
-    prodApp.use("*", securityHeaders());
-
-    prodApp.route("/", api);
-    prodApp.use("*", serveStatic({ root: "./dist/client" }));
-    // A hashed asset that isn't on disk must 404, never fall back to index.html:
-    // during a rolling deploy an old pod can get a request for a new bundle, and
-    // a 200 text/html response under a .css/.js URL is cached by extension at the
-    // CDN for hours, breaking the app for everyone. no-store keeps the miss out
-    // of the cache so the browser recovers on the next load.
-    prodApp.use("/assets/*", async (c) => {
-      c.header("cache-control", "no-store");
-      return c.text("Not found", 404);
-    });
-    // SPA fallback: serve index.html for all non-API, non-static routes
-    prodApp.use("*", serveStatic({ root: "./dist/client", path: "index.html" }));
-
-    const prodListener = getRequestListener(prodApp.fetch);
+    // In prod: the API for its paths, the built SPA (`dist/client`) for the
+    // rest, split by `isApiPath` exactly as the edge Worker splits them. The
+    // SPA shell, the static assets, the hashed-asset 404 and the fallback to
+    // `index.html` are `node/static-client.ts`, with the security headers.
+    const serveClient = makeStaticClientHandler("./dist/client");
+    const prodListener = toRequestListener((request) =>
+      isApiPath(new URL(request.url).pathname) ? api.fetch(request) : serveClient(request),
+    );
     server = createHttpServer((req, res) => {
       const url = req.url ?? "";
       const path = url.split("?", 1)[0] ?? "";

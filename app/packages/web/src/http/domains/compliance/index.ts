@@ -45,7 +45,7 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest, NotFound, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -139,7 +139,7 @@ function readScheduleInput(body: Body): CompliancePackScheduleInput | { error: s
 const readSchedule = (request: Parameters<typeof readObjectBody>[0]) =>
   Effect.gen(function* () {
     const read = yield* readObjectBody(request);
-    if (!read.ok) return yield* invalidBody(read.error);
+    if (!read.ok) return yield* badRequest(read.error);
     const input = readScheduleInput(read.body);
     if ("error" in input) return yield* badRequest(input.error);
     return input;
@@ -235,7 +235,7 @@ const ComplianceHandlers = HttpApiBuilder.group(ComplianceApi, "compliance", (ha
     .handleRaw("putControl", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const applicable = body["applicable"];
         if (!Predicate.isBoolean(applicable)) {

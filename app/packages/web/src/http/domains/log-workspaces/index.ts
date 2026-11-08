@@ -21,12 +21,12 @@ import {
 import { logAudit } from "../../../services/audit";
 import { listLogCapableResources } from "../../../services/log-workspaces";
 import { makeDomain } from "../../domain";
-import { BadRequest, badRequest, NotFound } from "../../errors";
+import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { refusalCall, type RefusalCallOptions } from "../input-refusals";
 import {
   LogCapableResourceList,
   LogWorkspaceQuery,
@@ -36,14 +36,10 @@ import {
   LogWorkspacesApi,
 } from "./api";
 
-const store: RefusalCallOptions<LogWorkspaceInputError> = {
-  isInputError: (error): error is LogWorkspaceInputError => error instanceof LogWorkspaceInputError,
+const store: RefusalPolicy = refusalsOf(LogWorkspaceInputError, {
   logPrefix: "[log-workspaces]",
   failure: "Saved query operation failed",
-};
-
-const refuse400 = (error: string) => new BadRequest({ error });
-const refuse404 = (error: string) => new NotFound({ error });
+});
 
 const SELECTOR_KEYS = ["resourceId", "accountId", "pluginId", "resourceTypeId"] as const;
 
@@ -90,7 +86,7 @@ function readSelectors(value: unknown): LogStreamSelector[] | { readonly error: 
 
 const readBody = Effect.fnUntraced(function* (request: HttpServerRequest.HttpServerRequest) {
   const parsed = yield* readObjectBody(request);
-  if (!parsed.ok) return yield* invalidBody(parsed.error);
+  if (!parsed.ok) return yield* badRequest(parsed.error);
   return parsed.body;
 });
 
@@ -131,8 +127,8 @@ const LogWorkspacesHandlers = HttpApiBuilder.group(LogWorkspacesApi, "logWorkspa
         const created = yield* refusalCall(
           store,
           {
-            400: refuse400,
-            404: refuse404,
+            400: refuse[400],
+            404: refuse[404],
             409: (error: string) => new LogWorkspaceQueryConflict({ error }),
           },
           () => createLogWorkspaceRecord(organizationId, input, session.userId),
@@ -183,8 +179,8 @@ const LogWorkspacesHandlers = HttpApiBuilder.group(LogWorkspacesApi, "logWorkspa
         const updated = yield* refusalCall(
           store,
           {
-            400: refuse400,
-            404: refuse404,
+            400: refuse[400],
+            404: refuse[404],
             409: (error: string) => new LogWorkspaceQueryUpdateConflict({ error }),
           },
           () => updateLogWorkspaceRecord(organizationId, params.queryId, patch),
@@ -205,7 +201,7 @@ const LogWorkspacesHandlers = HttpApiBuilder.group(LogWorkspacesApi, "logWorkspa
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* refusalCall(store, { 404: refuse404 }, () =>
+        const deleted = yield* refusalCall(store, { 404: refuse[404] }, () =>
           deleteLogWorkspaceRecord(organizationId, params.queryId),
         );
         yield* fireAndForget(() =>

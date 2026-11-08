@@ -16,8 +16,20 @@ import { Effect, Fiber, Predicate } from "effect";
 
 type Operation = (...args: never[]) => unknown;
 
-/** The fake client's operations, by RPC tag. Reset with {@link resetFakeRpc}. */
-export const fakeRpc: Record<string, Operation> = {};
+declare global {
+  var __desktopFakeRpc: Record<string, Operation> | undefined;
+}
+
+/**
+ * The fake client's operations, by RPC tag. Reset with {@link resetFakeRpc}.
+ *
+ * One registry per test file however many copies of this module the file
+ * loads: after `vi.resetModules()` a dynamic import gets a fresh copy of this
+ * module, while the mocked `../rpc/client` keeps the copy its factory first
+ * loaded (Vitest does not reset the mock registry), and the two would
+ * otherwise answer from different tables.
+ */
+export const fakeRpc: Record<string, Operation> = (globalThis.__desktopFakeRpc ??= {});
 
 export function resetFakeRpc(): void {
   for (const tag of Object.keys(fakeRpc)) delete fakeRpc[tag];

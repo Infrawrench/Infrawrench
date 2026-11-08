@@ -16,9 +16,9 @@ import {
 } from "@infrawrench/ui";
 import type { KeySource } from "../lib/ssh-key-source";
 import { openSshShell, type SshShellHandle } from "../lib/ssh-dispatch";
-import { invoke } from "../lib/invoke";
 import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { cloudSftpUpload } from "../lib/cloud-api";
+import { openExternalUrl, readClipboardImage } from "../lib/app-shell";
 
 interface SshTerminalProps {
   host: string;
@@ -72,7 +72,7 @@ export function SshTerminal({
     // in the app shell. The handler validates the scheme first: terminal
     // output is remote-controlled text.
     const linkHandler = createTerminalLinkHandler({
-      openExternal: (url) => void invoke("open_external_url", { url }),
+      openExternal: (url) => void openExternalUrl(url),
     });
     const term = new Terminal({
       ...getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined),
@@ -93,9 +93,7 @@ export function SshTerminal({
       // navigator.clipboard.read() rejects in Electron renderers (permission
       // check fails), so read images via the main process's native clipboard.
       readClipboardImage: async () => {
-        const result = await invoke<{ pngBase64: string; mime: string } | null>(
-          "clipboard_read_image",
-        );
+        const result = await readClipboardImage();
         if (!result) return null;
         const binary = atob(result.pngBase64);
         const data = new Uint8Array(binary.length);

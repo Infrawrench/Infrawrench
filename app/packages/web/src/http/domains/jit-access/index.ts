@@ -36,7 +36,7 @@ import { JIT_REQUEST_STATUSES, type JitRequestStatus } from "@infrawrench/client
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, HttpFailure, notFound, Unauthorized } from "../../errors";
-import { decodeFirstIssue, readJsonOr } from "../../json-body";
+import { decodeFirstIssue, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

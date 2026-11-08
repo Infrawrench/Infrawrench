@@ -15,7 +15,7 @@ import { CliError, Command, Flag } from "effect/cli";
 import type { ResourceChangeEntry } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { listCloudAccounts, resolveAccount } from "../context";
+import { cloudAccounts, findAccount } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliFailure, CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -147,9 +147,7 @@ export const changes = Command.make(
     // a uuid-typed query parameter.
     const wantedAccount = session.account;
     if (wantedAccount) {
-      const account = yield* Effect.promise(async () =>
-        resolveAccount(await listCloudAccounts(org.id), wantedAccount),
-      );
+      const account = yield* findAccount(yield* cloudAccounts(org.id), wantedAccount);
       params.set("accountId", account.id);
     }
 

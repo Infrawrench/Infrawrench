@@ -44,7 +44,7 @@ import { logAudit } from "../../../services/audit";
 import type { ToolAuthContext } from "../../../tools/types";
 import { makeDomain } from "../../domain";
 import { badRequest, conflict, forbidden, notFound } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";

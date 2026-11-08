@@ -42,16 +42,16 @@ import {
   PlatformAgentWithCredential,
 } from "../../schemas/agent-links";
 import { Ok, Uuid } from "../../schemas/common";
-import { describeResponse, optionalRequestBody } from "../../schemas/documented";
+import { describeResponses, optionalRequestBody } from "../../schemas/documented";
 
-/** `describeResponse` for each `[status, description]`, as one `OpenApi.Transform`. */
-const describeResponses =
+/**
+ * {@link describeResponses} over a body the old spec did not mark required:
+ * every operation here that names its refusals also takes an optional body.
+ */
+const describeRefusals =
   (entries: ReadonlyArray<readonly [number, string]>) =>
   (operation: Record<string, unknown>): Record<string, unknown> =>
-    entries.reduce(
-      (op, [status, text]) => describeResponse(status, text)(op),
-      optionalRequestBody(operation),
-    );
+    describeResponses(entries)(optionalRequestBody(operation));
 
 const LinkSecurity = [{ agentLinkCredential: [] }];
 const unknownLink: readonly [number, string] = [401, "Unknown or revoked link credential"];
@@ -69,7 +69,7 @@ export class AgentLinkRequestsGroup extends HttpApiGroup.make("agentLinkRequests
       .annotate(Security, [])
       .annotate(
         OpenApi.Transform,
-        describeResponses([
+        describeRefusals([
           [400, "Malformed platform, label or scopes"],
           [429, "Too many requests from this address"],
         ]),
@@ -84,7 +84,7 @@ export class AgentLinkRequestsGroup extends HttpApiGroup.make("agentLinkRequests
       .annotate(Security, [])
       .annotate(
         OpenApi.Transform,
-        describeResponses([[429, 'Polling faster than `interval`: `{ error: "slow_down" }`']]),
+        describeRefusals([[429, 'Polling faster than `interval`: `{ error: "slow_down" }`']]),
       ),
   )
   .prefix("/api/agent-links/requests")
@@ -106,7 +106,7 @@ export class AgentLinkApprovalGroup extends HttpApiGroup.make("agentLinkApproval
       .annotate(SuccessDescription, "Resolved")
       .annotate(
         OpenApi.Transform,
-        describeResponses([
+        describeRefusals([
           [400, "Malformed, unknown or expired code"],
           [429, "Too many attempts"],
         ]),
@@ -132,7 +132,7 @@ export class AgentLinkApprovalGroup extends HttpApiGroup.make("agentLinkApproval
       .annotate(SuccessDescription, "Approved")
       .annotate(
         OpenApi.Transform,
-        describeResponses([
+        describeRefusals([
           [400, "Bad code, or `scope_not_allowed`"],
           [403, "You lack `team:invite` there"],
           [409, "Already decided or expired"],
@@ -146,7 +146,7 @@ export class AgentLinkApprovalGroup extends HttpApiGroup.make("agentLinkApproval
     })
       .annotate(OpenApi.Summary, "Deny a link request")
       .annotate(SuccessDescription, "Denied")
-      .annotate(OpenApi.Transform, describeResponses([[400, "Bad code"]])),
+      .annotate(OpenApi.Transform, describeRefusals([[400, "Bad code"]])),
   )
   .prefix("/api/agent-links/requests")
   .middleware(SessionAuth)
@@ -162,21 +162,21 @@ export class AgentLinkGroup extends HttpApiGroup.make("agentLink")
     })
       .annotate(OpenApi.Summary, "Describe this link")
       .annotate(SuccessDescription, "The link")
-      .annotate(OpenApi.Transform, describeResponses([unknownLink])),
+      .annotate(OpenApi.Transform, describeRefusals([unknownLink])),
     HttpApiEndpoint.delete("unlink", "/", {
       success: Ok,
       error: agentLinkError(401),
     })
       .annotate(OpenApi.Summary, "Unlink, revoking every agent this link made")
       .annotate(SuccessDescription, "Revoked")
-      .annotate(OpenApi.Transform, describeResponses([unknownLink])),
+      .annotate(OpenApi.Transform, describeRefusals([unknownLink])),
     HttpApiEndpoint.get("agents", "/agents", {
       success: Schema.Array(PlatformAgent),
       error: agentLinkError(401),
     })
       .annotate(OpenApi.Summary, "List the agents this link made, newest first, revoked included")
       .annotate(SuccessDescription, "Agents")
-      .annotate(OpenApi.Transform, describeResponses([unknownLink])),
+      .annotate(OpenApi.Transform, describeRefusals([unknownLink])),
     HttpApiEndpoint.post("createAgent", "/agents", {
       payload: CreatePlatformAgent,
       success: PlatformAgentWithCredential.annotate({ httpApiStatus: 201 }),
@@ -186,7 +186,7 @@ export class AgentLinkGroup extends HttpApiGroup.make("agentLink")
       .annotate(SuccessDescription, "Created")
       .annotate(
         OpenApi.Transform,
-        describeResponses([
+        describeRefusals([
           [400, "`scope_not_allowed` (with `scopes`), `invalid_provider`, or malformed"],
           unknownLink,
           [403, "The approving person no longer exists"],
@@ -203,7 +203,7 @@ export class AgentLinkGroup extends HttpApiGroup.make("agentLink")
       .annotate(SuccessDescription, "Updated")
       .annotate(
         OpenApi.Transform,
-        describeResponses([
+        describeRefusals([
           [400, "`scope_not_allowed`, `invalid_provider`, or malformed"],
           unknownLink,
           [404, "Not an agent of this link, or revoked"],
@@ -221,7 +221,7 @@ export class AgentLinkGroup extends HttpApiGroup.make("agentLink")
       .annotate(SuccessDescription, "Rotated")
       .annotate(
         OpenApi.Transform,
-        describeResponses([unknownLink, [404, "Not an agent of this link, or revoked"]]),
+        describeRefusals([unknownLink, [404, "Not an agent of this link, or revoked"]]),
       ),
     HttpApiEndpoint.delete("revokeAgent", "/agents/:id", {
       params: AgentParams,
@@ -232,7 +232,7 @@ export class AgentLinkGroup extends HttpApiGroup.make("agentLink")
       .annotate(SuccessDescription, "Revoked")
       .annotate(
         OpenApi.Transform,
-        describeResponses([unknownLink, [404, "Not an agent of this link"]]),
+        describeRefusals([unknownLink, [404, "Not an agent of this link"]]),
       ),
   )
   .prefix("/api/agent-link")

@@ -20,9 +20,10 @@ import {
 import { logAudit } from "../../../services/audit";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
-import { BadRequest, HttpFailure } from "../../errors";
+import { BadRequest, HttpFailure, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -60,9 +61,9 @@ const SeatsHandlers = HttpApiBuilder.group(SeatsApi, "seats", (handlers) =>
     .handleRaw("updateSettings", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const raw = read.body["inactiveDays"];
-        if (raw === undefined) return yield* invalidBody("No settings supplied");
+        if (raw === undefined) return yield* badRequest("No settings supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         // server-core owns the bound and its sentence.

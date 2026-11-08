@@ -1,14 +1,15 @@
 /**
- * `SessionAuth` (the HttpApi middleware of the session-only surface) against
- * the Hono `sessionMiddleware` it replaces: the same requests refused with the
- * same statuses and bodies, and a session WorkOS refreshed written back with a
- * byte-identical `Set-Cookie`, on every response the request gets.
+ * `SessionAuth` (the HttpApi middleware of the session-only surface): the
+ * requests the Hono `sessionMiddleware` it replaced refused, refused with the
+ * same statuses and bodies, and a session WorkOS refreshed written back with
+ * the `Set-Cookie` that middleware wrote, byte for byte, on every response the
+ * request gets.
  *
- * Both run the one implementation (`authenticatePerson` in `http/auth.ts`);
+ * It runs the one implementation (`authenticatePerson` in `http/auth.ts`);
  * only WorkOS, the bearer verification and the database are stubbed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
+import { legacyCookie } from "../domains/__tests__/legacy-cookie";
 
 vi.hoisted(() => {
   process.env["WORKOS_API_KEY"] ??= "sk_test_session_auth";
@@ -58,24 +59,25 @@ vi.mock("@/db/client", () => {
   };
 });
 
-const { sessionMiddleware } = await import("@/api/auth-middleware");
 const { makeHttpApiHandler } = await import("@/http/server");
 const { MiddlewareLive } = await import("@/http/middleware-live");
 const { authDomain } = await import("@/http/domains/auth/index");
 
 const effectApi = makeHttpApiHandler([authDomain], MiddlewareLive);
 
-const honoApp = new Hono();
-honoApp.use("*", sessionMiddleware);
-honoApp.get("/api/auth/me", (c) => c.json(c.get("session")));
-
-async function both(headers: Record<string, string>, path = "/api/auth/me") {
-  const request = () => new Request(`http://localhost${path}`, { headers });
-  const effect = await effectApi.handle(request());
-  if (!effect) throw new Error(`no domain routes ${path}`);
-  const hono = await honoApp.request(request());
-  return { effect, hono };
+function me(headers: Record<string, string>) {
+  return effectApi.handle(new Request("http://localhost/api/auth/me", { headers }));
 }
+
+/** The refreshed session cookie as `sessionMiddleware`'s `setCookie` wrote it. */
+const refreshedCookie = (sealed: string) =>
+  legacyCookie("wos-session", sealed, {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 400,
+  });
 
 const AGENT_SUB = "0b7c9f4e-3a0d-4b7e-9a51-2a6f1d8c4e10";
 
@@ -98,29 +100,36 @@ describe("SessionAuth refuses what sessionMiddleware refused", () => {
     mockSelectRows.mockResolvedValue([]);
   });
 
-  const cases: Array<[string, Record<string, string>, unknown]> = [
-    ["no credential", {}, null],
-    ["an iwk_ API key", { authorization: "Bearer iwk_example" }, null],
-    ["an iwa_ agent credential", { authorization: "Bearer iwa_example" }, null],
-    ["a WorkOS agent token", { authorization: "Bearer eyJ.agent" }, { sub: AGENT_SUB }],
-    ["an unverifiable bearer", { authorization: "Bearer eyJ.bad" }, null],
+  const UNAUTHORIZED = { error: "Unauthorized" };
+  const AGENT_REFUSAL = {
+    error: "Agent credentials cannot be used here. This endpoint acts on a person's account.",
+  };
+  const cases: Array<[string, Record<string, string>, unknown, number, unknown]> = [
+    ["no credential", {}, null, 401, UNAUTHORIZED],
+    ["an iwk_ API key", { authorization: "Bearer iwk_example" }, null, 401, UNAUTHORIZED],
+    ["an iwa_ agent credential", { authorization: "Bearer iwa_example" }, null, 401, UNAUTHORIZED],
+    [
+      "a WorkOS agent token",
+      { authorization: "Bearer eyJ.agent" },
+      { sub: AGENT_SUB },
+      403,
+      AGENT_REFUSAL,
+    ],
+    ["an unverifiable bearer", { authorization: "Bearer eyJ.bad" }, null, 401, UNAUTHORIZED],
   ];
 
-  it.each(cases)("%s", async (_label, headers, claims) => {
+  it.each(cases)("%s", async (_label, headers, claims, status, body) => {
     mockVerify.mockResolvedValue(claims);
-    const { effect, hono } = await both(headers);
-    expect(effect.status).toBe(hono.status);
-    expect(await effect.json()).toEqual(await hono.json());
-    expect(effect.status).toBeGreaterThanOrEqual(401);
+    const res = await me(headers);
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual(body);
   });
 
   it("answers an agent token with the person-only sentence", async () => {
     mockVerify.mockResolvedValue({ sub: AGENT_SUB });
-    const { effect } = await both({ authorization: "Bearer eyJ.agent" });
-    expect(effect.status).toBe(403);
-    expect(await effect.json()).toEqual({
-      error: "Agent credentials cannot be used here. This endpoint acts on a person's account.",
-    });
+    const res = await me({ authorization: "Bearer eyJ.agent" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual(AGENT_REFUSAL);
   });
 
   it("refuses a sealed cookie WorkOS will not open", async () => {
@@ -128,9 +137,9 @@ describe("SessionAuth refuses what sessionMiddleware refused", () => {
       authenticate: async () => ({ authenticated: false }),
       refresh: async () => ({ authenticated: false }),
     });
-    const { effect, hono } = await both({ cookie: "wos-session=stale" });
-    expect([effect.status, hono.status]).toEqual([401, 401]);
-    expect(await effect.json()).toEqual(await hono.json());
+    const res = await me({ cookie: "wos-session=stale" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual(UNAUTHORIZED);
   });
 });
 
@@ -142,18 +151,18 @@ describe("a refreshed session", () => {
 
   it("is written back byte for byte as the Hono middleware wrote it", async () => {
     refreshingSession("Fe26.2**sealed+value/==");
-    const { effect, hono } = await both({ cookie: "wos-session=old" });
-    expect(effect.status).toBe(200);
-    expect(effect.headers.getSetCookie()).toEqual(hono.headers.getSetCookie());
-    expect(effect.headers.getSetCookie()[0]).toContain("Max-Age=34560000");
+    const res = await me({ cookie: "wos-session=old" });
+    expect(res.status).toBe(200);
+    expect(res.headers.getSetCookie()).toEqual([refreshedCookie("Fe26.2**sealed+value/==")]);
+    expect(res.headers.getSetCookie()[0]).toContain("Max-Age=34560000");
   });
 
   it("rides an error response too: WorkOS has already rotated the refresh token", async () => {
     refreshingSession("sealed-2");
     mockSelectRows.mockRejectedValue(new Error("database down"));
-    const { effect, hono } = await both({ cookie: "wos-session=old" });
-    expect(effect.status).toBe(500);
-    expect(effect.headers.getSetCookie()).toEqual(hono.headers.getSetCookie());
+    const res = await me({ cookie: "wos-session=old" });
+    expect(res.status).toBe(500);
+    expect(res.headers.getSetCookie()).toEqual([refreshedCookie("sealed-2")]);
   });
 
   it("does not undo sign-out, whose cleared cookie wins as it did on Hono", async () => {
@@ -164,13 +173,25 @@ describe("a refreshed session", () => {
         headers: { cookie: "wos-session=old" },
       }),
     );
-    expect(res?.headers.getSetCookie()).toEqual(["wos-session=; Max-Age=0; Path=/"]);
+    expect(res.headers.getSetCookie()).toEqual(["wos-session=; Max-Age=0; Path=/"]);
   });
 
   it("guards the rest of the prefix with the same middleware", async () => {
     mockVerify.mockResolvedValue(null);
     const res = await effectApi.handle(new Request("http://localhost/api/auth/unknown/path"));
-    expect(res?.status).toBe(401);
-    expect(await res?.json()).toEqual({ error: "Unauthorized" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("answers a person under the prefix with the 404 for a path nothing routes", async () => {
+    mockVerify.mockResolvedValue({ sub: "user_1", email: "a@example.com" });
+    mockSelectRows.mockResolvedValue([{ id: "user_1", email: "a@example.com" }]);
+    const res = await effectApi.handle(
+      new Request("http://localhost/api/auth/unknown/path", {
+        headers: { authorization: "Bearer eyJ.person" },
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("404 Not Found");
   });
 });

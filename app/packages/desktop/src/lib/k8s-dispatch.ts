@@ -7,8 +7,11 @@
  * the WS proxy and cloud IPCs. Otherwise: local IPC.
  */
 
-import { invoke } from "./invoke";
+import { Cause, Effect, Exit, Predicate, Schema, Stream } from "effect";
+import { K8sPortForwardConfig, type K8sTerminalEvent } from "../../shared/rpc/groups/k8s-local";
+import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
+import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 
 export interface K8sSessionHandle {
   kind: "local" | "cloud";
@@ -47,16 +50,20 @@ export async function openK8sExec(params: OpenK8sExecParams): Promise<K8sSession
   return params.mode === "cloud" ? openCloudExec(params) : openLocalExec(params);
 }
 
-async function openLocalExec(params: LocalExecParams): Promise<K8sSessionHandle> {
-  const id = await invoke<string>("k8s_exec_spawn", {
+function openLocalExec(params: LocalExecParams): Promise<K8sSessionHandle> {
+  const config = {
     kubeconfig: params.kubeconfig,
     namespace: params.namespace,
     podName: params.podName,
     ...(params.containerName ? { containerName: params.containerName } : {}),
     cols: params.cols,
     rows: params.rows,
+  };
+  return openLocalTerminal({
+    open: (rpc) => rpc.K8sExecOpen(config),
+    write: (rpc, sessionId, data) => rpc.K8sExecWrite({ sessionId, data }),
+    resize: (rpc, sessionId, cols, rows) => rpc.K8sExecResize({ sessionId, cols, rows }),
   });
-  return bindLocalPty(id, "k8s_exec");
 }
 
 async function openCloudExec(params: CloudExecParams): Promise<K8sSessionHandle> {
@@ -120,13 +127,22 @@ export async function openK9s(params: OpenK9sParams): Promise<K8sSessionHandle> 
       resizeType: "k9s:resize",
     });
   }
-  const id = await invoke<string>("k9s_spawn", {
+  const config = {
     kubeconfig: params.kubeconfig,
     ...(params.namespace ? { namespace: params.namespace } : {}),
     cols: params.cols,
     rows: params.rows,
+  };
+  return openLocalTerminal({
+    open: (rpc) => rpc.K9sOpen(config),
+    write: (rpc, sessionId, data) => rpc.K9sWrite({ sessionId, data }),
+    resize: (rpc, sessionId, cols, rows) => rpc.K9sResize({ sessionId, cols, rows }),
   });
-  return bindLocalPty(id, "k9s");
+}
+
+/** Whether k9s is installed on this machine. */
+export function checkK9sInstalled(): Promise<boolean> {
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.K9sCheck()));
 }
 
 interface CommonPfParams {
@@ -161,96 +177,261 @@ export interface PortForwardHandle {
 }
 
 export async function startPortForward(params: StartPortForwardParams): Promise<PortForwardHandle> {
-  if (params.mode === "cloud") {
-    const result = await invoke<{ sessionId: string; localPort: number }>("k8s_pf_cloud_start", {
-      orgId: params.orgId,
-      accountId: params.accountId,
-      resourceId: params.resourceId,
-      peerPluginId: params.peerPluginId,
-      namespace: params.namespace,
-      resourceType: params.resourceType,
-      resourceName: params.resourceName,
-      remotePort: params.remotePort,
-      ...(params.localPort !== undefined ? { localPort: params.localPort } : {}),
-    });
-    const sessionId = result.sessionId;
-    return {
-      kind: "cloud",
-      sessionId,
-      localPort: result.localPort,
-      onExit: (cb) => {
-        window.electronAPI.on(`k8s_pf_cloud_exit_${sessionId}`, () => cb());
+  if (params.mode === "cloud") return startCloudPortForward(params);
+  return startLocalPortForward(params);
+}
+
+/**
+ * A cloud port-forward is one stream too (`K8sPfCloudStart`): it resolves
+ * once the main process's local listener is bound, and ends if the main
+ * process closes the listener itself (the app quitting). `stop` interrupts
+ * the stream, which closes the listener and every connection through it.
+ */
+function startCloudPortForward(params: CloudPfParams): Promise<PortForwardHandle> {
+  const exitListeners: Array<() => void> = [];
+  let started = false;
+  let stopped = false;
+  let exited = false;
+  let stop: () => void = () => {};
+  return new Promise<PortForwardHandle>((resolve, reject) => {
+    stop = forkRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        const config = {
+          orgId: params.orgId,
+          accountId: params.accountId,
+          resourceId: params.resourceId,
+          peerPluginId: params.peerPluginId,
+          namespace: params.namespace,
+          resourceType: params.resourceType,
+          resourceName: params.resourceName,
+          remotePort: params.remotePort,
+          ...(params.localPort !== undefined ? { localPort: params.localPort } : {}),
+        };
+        yield* Stream.runForEach(rpc.K8sPfCloudStart(config), (event) =>
+          Effect.sync(() => {
+            started = true;
+            resolve({
+              kind: "cloud",
+              sessionId: event.sessionId,
+              localPort: event.localPort,
+              onExit: (cb) => {
+                if (exited) cb();
+                else exitListeners.push(cb);
+              },
+              stop: () => {
+                if (stopped) return;
+                stopped = true;
+                exitListeners.length = 0;
+                stop();
+              },
+            });
+          }),
+        );
+      }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            exited = true;
+            if (stopped) return;
+            if (!started) {
+              reject(new Error(failureMessage(exit) ?? "The port-forward could not start"));
+              return;
+            }
+            for (const cb of exitListeners) cb();
+          }),
+        ),
+      ),
+    );
+  });
+}
+
+/** What separates `kubectl exec` from k9s: the open stream and its input calls. */
+interface LocalTerminalRpcs {
+  open: (rpc: DesktopRpcClient["Service"]) => Stream.Stream<K8sTerminalEvent, unknown>;
+  write: (
+    rpc: DesktopRpcClient["Service"],
+    sessionId: string,
+    data: string,
+  ) => Effect.Effect<void, unknown>;
+  resize: (
+    rpc: DesktopRpcClient["Service"],
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ) => Effect.Effect<void, unknown>;
+}
+
+const failureMessage = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
+  if (!Exit.isFailure(exit)) return undefined;
+  const failure = Cause.squash(exit.cause);
+  return Predicate.isError(failure) ? failure.message : String(failure);
+};
+
+/**
+ * A local terminal is one stream: it resolves once the stream reports
+ * `Opened`, carries the output after that, and ends when the process exits.
+ * `kill` interrupts the stream, which is what makes the main process kill
+ * the process and remove its kubeconfig.
+ */
+function openLocalTerminal(rpcs: LocalTerminalRpcs): Promise<K8sSessionHandle> {
+  const dataListeners: Array<(d: Uint8Array) => void> = [];
+  const exitListeners: Array<() => void> = [];
+
+  let sessionId: string | null = null;
+  let killed = false;
+  let stop: () => void = () => {};
+
+  // Keystrokes go one call at a time, coalesced while one is in flight, so
+  // they reach the process in the order they were typed.
+  let unsent = "";
+  let sending = false;
+  const flush = (): void => {
+    if (sending || killed || sessionId === null || unsent === "") return;
+    const data = unsent;
+    const id = sessionId;
+    unsent = "";
+    sending = true;
+    void runRpc(DesktopRpcClient.use((rpc) => rpcs.write(rpc, id, data)))
+      .catch(() => undefined)
+      .finally(() => {
+        sending = false;
+        flush();
+      });
+  };
+
+  return new Promise<K8sSessionHandle>((resolve, reject) => {
+    const handle: K8sSessionHandle = {
+      kind: "local",
+      write: (data) => {
+        if (killed) return;
+        unsent += data;
+        flush();
       },
-      stop: () => {
-        void invoke("k8s_pf_cloud_stop", { sessionId });
-        window.electronAPI.offAll(`k8s_pf_cloud_exit_${sessionId}`);
+      resize: (cols, rows) => {
+        if (killed || sessionId === null) return;
+        const id = sessionId;
+        void runRpc(DesktopRpcClient.use((rpc) => rpcs.resize(rpc, id, cols, rows))).catch(
+          () => undefined,
+        );
+      },
+      kill: () => {
+        if (killed) return;
+        killed = true;
+        unsent = "";
+        stop();
+      },
+      onData: (cb) => {
+        dataListeners.push(cb);
+      },
+      onExit: (cb) => {
+        exitListeners.push(cb);
+      },
+      onError: () => {
+        /* local errors surface via exit */
       },
     };
-  }
-  const result = await invoke<{ sessionId: string; localPort: number }>("k8s_pf_start", {
+
+    stop = forkRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        yield* Stream.runForEach(rpcs.open(rpc), (event) =>
+          Effect.sync(() => {
+            if (event._tag === "Opened") {
+              sessionId = event.sessionId;
+              resolve(handle);
+              flush();
+              return;
+            }
+            for (const cb of dataListeners) cb(event.data);
+          }),
+        );
+      }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            if (killed) return;
+            if (sessionId === null) {
+              // Never opened: the consent, the kubeconfig or the spawn failed.
+              reject(new Error(failureMessage(exit) ?? "The terminal closed before it opened"));
+              return;
+            }
+            for (const cb of exitListeners) cb();
+          }),
+        ),
+      ),
+    );
+  });
+}
+
+/**
+ * A local port-forward is one stream: it resolves once kubectl reports the
+ * port it bound, and ends when kubectl exits. `stop` interrupts the stream,
+ * which is what makes the main process kill kubectl.
+ */
+function startLocalPortForward(params: LocalPfParams): Promise<PortForwardHandle> {
+  const exitListeners: Array<() => void> = [];
+  let localPort: number | null = null;
+  let stopped = false;
+  let exited = false;
+  let stop: () => void = () => {};
+
+  const config = {
     kubeconfig: params.kubeconfig,
     namespace: params.namespace,
     resourceType: params.resourceType,
     resourceName: params.resourceName,
     remotePort: params.remotePort,
     localPort: params.localPort ?? 0,
-  });
-  const sessionId = result.sessionId;
-  return {
-    kind: "local",
-    sessionId,
-    localPort: result.localPort,
-    onExit: (cb) => {
-      window.electronAPI.on(`k8s_pf_exit_${sessionId}`, () => cb());
-    },
-    stop: () => {
-      void invoke("k8s_pf_stop", { sessionId });
-      window.electronAPI.offAll(`k8s_pf_exit_${sessionId}`);
-    },
   };
+
+  return new Promise<PortForwardHandle>((resolve, reject) => {
+    if (!isPortForwardResourceType(config.resourceType)) {
+      reject(new Error(`Cannot port-forward a "${config.resourceType}"`));
+      return;
+    }
+    const resourceType = config.resourceType;
+    stop = forkRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        yield* Stream.runForEach(rpc.K8sPortForwardOpen({ ...config, resourceType }), (event) =>
+          Effect.sync(() => {
+            localPort = event.localPort;
+            resolve({
+              kind: "local",
+              // The stream is the session; this only names it for the caller.
+              sessionId: crypto.randomUUID(),
+              localPort: event.localPort,
+              onExit: (cb) => {
+                if (exited) cb();
+                else exitListeners.push(cb);
+              },
+              stop: () => {
+                if (stopped) return;
+                stopped = true;
+                exitListeners.length = 0;
+                stop();
+              },
+            });
+          }),
+        );
+      }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            exited = true;
+            if (stopped) return;
+            if (localPort === null) {
+              reject(new Error(failureMessage(exit) ?? "kubectl port-forward exited"));
+              return;
+            }
+            for (const cb of exitListeners) cb();
+          }),
+        ),
+      ),
+    );
+  });
 }
 
-function bindLocalPty(id: string, namespace: "k8s_exec" | "k9s"): K8sSessionHandle {
-  const dataListeners: Array<(d: Uint8Array) => void> = [];
-  const exitListeners: Array<() => void> = [];
-
-  window.electronAPI.on(`${namespace}_data_${id}`, (...args) => {
-    const data = args[0] as Uint8Array;
-    for (const cb of dataListeners) cb(data);
-  });
-  window.electronAPI.on(`${namespace}_exit_${id}`, () => {
-    for (const cb of exitListeners) cb();
-  });
-
-  let killed = false;
-  return {
-    kind: "local",
-    write: (data) => {
-      if (killed) return;
-      void invoke(`${namespace}_write`, { sessionId: id, data });
-    },
-    resize: (cols, rows) => {
-      if (killed) return;
-      void invoke(`${namespace}_resize`, { sessionId: id, cols, rows });
-    },
-    kill: () => {
-      if (killed) return;
-      killed = true;
-      window.electronAPI.offAll(`${namespace}_data_${id}`);
-      window.electronAPI.offAll(`${namespace}_exit_${id}`);
-      void invoke(`${namespace}_kill`, { sessionId: id });
-    },
-    onData: (cb) => {
-      dataListeners.push(cb);
-    },
-    onExit: (cb) => {
-      exitListeners.push(cb);
-    },
-    onError: () => {
-      /* local errors surface via exit */
-    },
-  };
-}
+/** `svc`, `pod` or `deploy`: what `kubectl port-forward` takes. */
+const isPortForwardResourceType = Schema.is(K8sPortForwardConfig.fields.resourceType);
 
 interface CloudWsOpenParams {
   type: string;
@@ -263,7 +444,7 @@ interface CloudWsOpenParams {
 }
 
 async function openCloudWs(params: CloudWsOpenParams): Promise<K8sSessionHandle> {
-  const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId: params.orgId });
+  const token = await getCloudWsToken(params.orgId);
   if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
 
   const wsUrl = await getCloudWsUrl();

@@ -12,8 +12,8 @@
  * refusal (a status and its `error` sentence) when auth fails, the org doesn't
  * match, or the permission is missing; `http/org-request-caller.ts` sends it.
  *
- * The org tree now accepts `iwk_` keys too, through `apiKeyOrgMiddleware` in
- * `api/auth-middleware.ts`: the same `authenticateApiRequest` and the same
+ * The org tree now accepts `iwk_` keys too, through `authenticateApiKey` in
+ * `http/auth.ts`: the same `authenticateApiRequest` and the same
  * `effectivePermissions` intersection, so there is one rule about what a key
  * may do, not two. This function stays for the routers that sit *outside* that
  * tree on purpose (chat, cost ingest and paging, through
@@ -23,7 +23,7 @@
  * order the checks run in and the wording of three error bodies for no gain:
  * see the note on {@link authenticateOrgRawRequest}.
  */
-import { parse as parseCookies } from "hono/utils/cookie";
+import { Cookies } from "effect/http";
 import { workos } from "./workos";
 import { effectivePermissions } from "./effective-permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -31,7 +31,7 @@ import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/id
 import { authenticateApiRequest, requireScope, verifyWorkosAccessToken } from "./api-auth";
 import { db } from "../db/client";
 import { users } from "../db/schema";
-import { ensureUserFromClaims, hasMembership } from "../api/auth-middleware";
+import { ensureUserFromClaims, hasMembership } from "./users";
 
 export interface OrgAuthResult {
   userId: string;
@@ -181,11 +181,9 @@ export async function authenticateOrgRawRequest(
     return accept(result);
   }
 
-  // 2) Session cookie (the React UI's path). Read as Hono's `getCookie` does.
+  // 2) Session cookie (the React UI's path), read as the org tree reads it.
   const cookieHeader = request.headers.get("cookie");
-  const cookieValue = cookieHeader
-    ? parseCookies(cookieHeader, "wos-session")["wos-session"]
-    : undefined;
+  const cookieValue = cookieHeader ? Cookies.parseHeader(cookieHeader)["wos-session"] : undefined;
   if (!cookieValue) return refuse(401, "Unauthorized");
 
   const cookiePassword = process.env["WORKOS_COOKIE_PASSWORD"];
@@ -203,7 +201,7 @@ export async function authenticateOrgRawRequest(
 
     const userId = authResult.user.id;
     const email = authResult.user.email;
-    // Ensure the local users row exists (mirrors api-auth-middleware).
+    // Ensure the local users row exists (as `authenticatePerson` in `http/auth.ts` does).
     await db
       .insert(users)
       .values({ id: userId, email })

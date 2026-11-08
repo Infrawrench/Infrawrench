@@ -26,7 +26,6 @@ import {
   type WorkspaceTab,
 } from "@infrawrench/ui";
 import { createDesktopSettingsApi } from "@/lib/settings-client";
-import { invoke } from "@/lib/invoke";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
@@ -103,6 +102,7 @@ import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { AppWindowPanel } from "./AppsPanels";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
+import { openExternalUrl } from "../lib/app-shell";
 
 // One client for every org: it resolves the active org per call, so switching
 // org under a mounted Deploy tab reaches the new org's repos and history.
@@ -303,7 +303,7 @@ function IssueFiling({ orgId, children }: { orgId: string | null; children: Reac
       canFileLinear={hasPermission(permissions, "linear:write")}
       canReadGithub={hasPermission(permissions, "github-issues:read")}
       canFileGithub={hasPermission(permissions, "github-issues:write")}
-      openExternal={(url) => void invoke("open_external_url", { url })}
+      openExternal={(url) => void openExternalUrl(url)}
     >
       {children}
     </IssueFilingProvider>
@@ -363,7 +363,7 @@ function renderPanel(
           networkFlowReports={activeCloudOrgId ? getNetworkFlowReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
-          onOpenExternal={(url) => void invoke("open_external_url", { url })}
+          onOpenExternal={(url) => void openExternalUrl(url)}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }

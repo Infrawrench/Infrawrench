@@ -9,7 +9,7 @@ import { remediationIssueText, type FindingRemediation } from "./remediation";
 
 /**
  * Jira issue tracking for findings. Server contract: org-scoped
- * `/api/org/:orgId/jira/*` routes (see web `api/routes/jira.ts`).
+ * `/api/org/:orgId/jira/*` routes (see web `http/domains/jira/`).
  *
  * Infrawrench detects things a human has to act on: cost anomalies, orphaned
  * and oversized resources, posture findings, expiring credentials, failed

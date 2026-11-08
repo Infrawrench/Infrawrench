@@ -4,7 +4,7 @@ import { T, useGT } from "gt-react";
 import { MomentPanel, useUIStore, type MomentEvent } from "@infrawrench/ui";
 import { createDesktopMomentClient } from "@/lib/moment-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
-import { invoke } from "@/lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 export const Route = createFileRoute("/moment")({
   component: MomentPage,
@@ -54,7 +54,7 @@ function MomentPage() {
     const link = event.link;
     if (!link) return;
     if (link.url) {
-      void invoke("open_external_url", { url: link.url });
+      void openExternalUrl(link.url);
       return;
     }
     switch (link.kind) {
@@ -114,7 +114,7 @@ function MomentPage() {
         })
       }
       onOpenEvent={openEvent}
-      onOpenUrl={(url) => void invoke("open_external_url", { url })}
+      onOpenUrl={(url) => void openExternalUrl(url)}
     />
   );
 }

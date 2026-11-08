@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
   useUIStore,
@@ -34,6 +33,7 @@ import { reconnectProviderAccount, resolveOAuthInfo } from "../lib/provider-oaut
 import { SidebarResourceItem } from "./SidebarAccounts/SidebarResourceItem";
 import { AccountDraggableRow } from "./SidebarAccounts/AccountDraggableRow";
 import type { Account, PluginGroup } from "./SidebarAccounts/types";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 interface SidebarAccountsProps {
   /** Increment this to force a refresh */
@@ -289,9 +289,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           updatedAt: "",
         }));
       } else {
-        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-          accountId: account.id,
-        });
+        const credentials = await getLocalAccountCredentials(account.id);
         const loaded = await getPlugin(account.pluginId);
         if (!loaded)
           throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.pluginId }));
@@ -494,9 +492,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         if (account.cloudManaged) return;
         void (async () => {
           try {
-            const creds = await invoke<Record<string, string>>("account_get_credentials", {
-              accountId: account.id,
-            });
+            const creds = await getLocalAccountCredentials(account.id);
             setSecretExportDrop({
               source,
               targetPluginId: "kubernetes",
@@ -543,9 +539,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         if (ownerAccount.cloudManaged) return;
         void (async () => {
           try {
-            const ownerCreds = await invoke<Record<string, string>>("account_get_credentials", {
-              accountId: ownerAccount.id,
-            });
+            const ownerCreds = await getLocalAccountCredentials(ownerAccount.id);
             const loaded = await getPlugin(ownerAccount.pluginId);
             if (!loaded) return;
             const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);

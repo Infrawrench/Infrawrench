@@ -27,7 +27,7 @@ import { ALL_PERMISSIONS, hasPermission } from "@infrawrench/server-core/permiss
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound, Unauthorized } from "../../errors";
-import { decodeFirstIssue, readJsonOr } from "../../json-body";
+import { decodeFirstIssue, readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";

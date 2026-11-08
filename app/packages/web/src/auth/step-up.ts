@@ -13,7 +13,7 @@
  * get a 403 carrying `code: "reauthentication_required"`, which the client uses
  * to send the user back through sign-in and retry.
  */
-import type { AuthSession } from "../api/auth-middleware";
+import type { AuthSession } from "./users";
 
 /**
  * How recently the caller must have authenticated. Long enough to complete a

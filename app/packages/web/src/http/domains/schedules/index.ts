@@ -20,12 +20,12 @@ import {
 } from "@infrawrench/server-core/schedules/store";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound } from "../../errors";
+import { badRequest } from "../../errors";
 import { legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { refusalCall, type RefusalCallOptions } from "../input-refusals";
 import {
   ScheduleConflict,
   SchedulePreview,
@@ -35,16 +35,12 @@ import {
   TIME_RE,
 } from "./api";
 
-const store: RefusalCallOptions<ScheduleInputError> = {
-  isInputError: (error): error is ScheduleInputError => error instanceof ScheduleInputError,
+const store: RefusalPolicy = refusalsOf(ScheduleInputError, {
   logPrefix: "[schedules]",
   failure: "Schedule operation failed",
-};
+});
 
-const badRequestOr404 = {
-  400: (error: string) => new BadRequest({ error }),
-  404: (error: string) => new NotFound({ error }),
-};
+const badRequestOr404 = { 400: refuse[400], 404: refuse[404] } as const;
 
 interface Timing {
   daysOfWeek?: number[];
@@ -86,13 +82,13 @@ const readFullBody = Effect.fnUntraced(function* (body: { readonly [key: string]
   const resourceId = body["resourceId"];
   const accountId = body["accountId"];
   if (!Predicate.isString(resourceId) || !Predicate.isString(accountId)) {
-    return yield* invalidBody("resourceId and accountId are required");
+    return yield* badRequest("resourceId and accountId are required");
   }
   const read = readTiming(body, { partial: false });
-  if ("error" in read) return yield* invalidBody(read.error);
+  if ("error" in read) return yield* badRequest(read.error);
   const { daysOfWeek, stopTime, startTime, timezone } = read.timing;
   if (!daysOfWeek || stopTime === undefined || startTime === undefined || timezone === undefined) {
-    return yield* invalidBody("daysOfWeek must be an array of ISO weekday numbers (1–7)");
+    return yield* badRequest("daysOfWeek must be an array of ISO weekday numbers (1–7)");
   }
   const input: ScheduleCreateInput = {
     resourceId,
@@ -117,7 +113,7 @@ const SchedulesHandlers = HttpApiBuilder.group(SchedulesApi, "schedules", (handl
     .handleRaw("preview", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const input = yield* readFullBody(parsed.body);
         const { organizationId } = yield* OrgPrincipal;
         const preview = yield* refusalCall(store, badRequestOr404, () =>
@@ -129,7 +125,7 @@ const SchedulesHandlers = HttpApiBuilder.group(SchedulesApi, "schedules", (handl
     .handleRaw("create", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const input = yield* readFullBody(parsed.body);
         const { organizationId, session } = yield* OrgPrincipal;
         const wire = yield* refusalCall(
@@ -162,17 +158,17 @@ const SchedulesHandlers = HttpApiBuilder.group(SchedulesApi, "schedules", (handl
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const body = parsed.body;
         const read = readTiming(body, { partial: true });
-        if ("error" in read) return yield* invalidBody(read.error);
+        if ("error" in read) return yield* badRequest(read.error);
         const patch: ScheduleUpdateInput = { ...read.timing };
         const paused = body["paused"];
         if (paused !== undefined) {
-          if (!Predicate.isBoolean(paused)) return yield* invalidBody("paused must be a boolean");
+          if (!Predicate.isBoolean(paused)) return yield* badRequest("paused must be a boolean");
           patch.paused = paused;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No changes supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No changes supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const wire = yield* refusalCall(store, badRequestOr404, async () => {
@@ -193,7 +189,7 @@ const SchedulesHandlers = HttpApiBuilder.group(SchedulesApi, "schedules", (handl
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        yield* refusalCall(store, { 404: (error: string) => new NotFound({ error }) }, async () => {
+        yield* refusalCall(store, { 404: refuse[404] }, async () => {
           const deleted = await deleteScheduleRecord(organizationId, params.scheduleId);
           void logAudit({
             organizationId,

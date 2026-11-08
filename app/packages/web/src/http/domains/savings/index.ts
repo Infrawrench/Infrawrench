@@ -31,7 +31,7 @@ import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { refuse, statusCall, type StatusRefusal } from "../status-refusals";
+import { refuse, refusalCall, type StatusRefusal } from "../../refusals";
 import { RealizedSavingsReport, RealizedSavingsSettings, SavingsApi, SavingsEvent } from "./api";
 
 const savingsRefusal = (error: unknown): StatusRefusal | undefined =>
@@ -61,7 +61,7 @@ const SavingsHandlers = HttpApiBuilder.group(SavingsApi, "savings", (handlers) =
     .handle("createEvent", ({ payload }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const created = yield* statusCall(savingsRefusal, { 400: refuse[400] }, () =>
+        const created = yield* refusalCall(savingsRefusal, { 400: refuse[400] }, () =>
           createManualSavingsEvent(organizationId, payload, session.userId ?? null),
         );
         yield* fireAndForget(() =>
@@ -81,7 +81,7 @@ const SavingsHandlers = HttpApiBuilder.group(SavingsApi, "savings", (handlers) =
     .handle("updateEvent", ({ params, payload }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const updated = yield* statusCall(
+        const updated = yield* refusalCall(
           savingsRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => updateManualSavingsEvent(organizationId, params.id, payload),
@@ -106,7 +106,7 @@ const SavingsHandlers = HttpApiBuilder.group(SavingsApi, "savings", (handlers) =
     .handle("annotateEvent", ({ params, payload }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const updated = yield* statusCall(
+        const updated = yield* refusalCall(
           savingsRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => annotateSavingsEvent(organizationId, params.id, payload),
@@ -131,7 +131,7 @@ const SavingsHandlers = HttpApiBuilder.group(SavingsApi, "savings", (handlers) =
         const id = params.id;
         const row = yield* legacy(() => getSavingsEventRow(organizationId, id));
         if (!row) return yield* notFound("Saving not found");
-        const removed = yield* statusCall(savingsRefusal, { 404: refuse[404] }, () =>
+        const removed = yield* refusalCall(savingsRefusal, { 404: refuse[404] }, () =>
           deleteSavingsEvent(organizationId, id),
         );
         yield* fireAndForget(() =>

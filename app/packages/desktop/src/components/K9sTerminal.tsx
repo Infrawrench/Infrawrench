@@ -3,14 +3,14 @@ import { useGT } from "gt-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { invoke } from "../lib/invoke";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   getTerminalContainerProps,
   getXtermTerminalOptions,
 } from "@infrawrench/ui";
-import { openK9s, type K8sSessionHandle } from "../lib/k8s-dispatch";
+import { checkK9sInstalled, openK9s, type K8sSessionHandle } from "../lib/k8s-dispatch";
+import { openExternalUrl } from "../lib/app-shell";
 
 const K9S_INSTALL_URL = "https://k9scli.io/topics/install/";
 
@@ -50,7 +50,7 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
       return;
     }
     let cancelled = false;
-    invoke<boolean>("k9s_check")
+    checkK9sInstalled()
       .then((installed) => {
         if (!cancelled) setNativeK9sInstalled(installed);
       })
@@ -167,7 +167,7 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
           </p>
           <button
             type="button"
-            onClick={() => void invoke("open_external_url", { url: K9S_INSTALL_URL })}
+            onClick={() => void openExternalUrl(K9S_INSTALL_URL)}
             className="px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-sm font-medium text-on-accent transition-colors"
           >
             {gt("Open install guide")}

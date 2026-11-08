@@ -6,9 +6,10 @@
 //
 // - Stdio: argv, TTY probes and the three streams of this process.
 // - Terminal: size from `process.stdout`, `display` to stdout, `readLine` for
-//   prompts. Key-by-key input (`readInput`, `size` as a stream) is what
-//   `effect/cli`'s interactive `Prompt`s need; the CLI prompts through
-//   `cli/prompt.ts` instead, so those die with a sentence saying so.
+//   a line of input, and `readInput`: key by key in raw mode, decoded by
+//   `node:readline`'s keypress parser, which is what `./prompt.ts` (the
+//   CLI's own prompts) reads. Resize events (`size`) die with a sentence:
+//   nothing here follows them, the TUI listens to `process.stdout` itself.
 // - Path: the posix implementation `effect` ships.
 // - FileSystem: a no-op. `Flag.File`/`Flag.Path` checks would need it; a
 //   command reads its files with `node:fs` (as `cli/` always has) and takes
@@ -17,11 +18,14 @@
 //   `node:child_process`, the way the desktop main process does elsewhere.
 import readline from "node:readline";
 import {
+  type Cause,
   Effect,
   FileSystem,
   Layer,
+  Option,
   Path,
   PlatformError,
+  Queue,
   Sink,
   Stdio,
   Stream,
@@ -75,15 +79,58 @@ const readLine = Effect.callback<string, Terminal.QuitError>((resume) => {
 const unsupported = (what: string) =>
   Effect.die(
     new Error(
-      `${what} is not available in the infrawrench CLI's terminal layer (cli/effect/platform.ts); prompt through cli/prompt.ts.`,
+      `${what} is not available in the infrawrench CLI's terminal layer (cli/effect/platform.ts).`,
     ),
   );
+
+/** What `readline`'s keypress parser says about one key. */
+interface Keypress {
+  readonly name?: string | undefined;
+  readonly ctrl?: boolean | undefined;
+  readonly meta?: boolean | undefined;
+  readonly shift?: boolean | undefined;
+}
+
+/**
+ * Keys as they are pressed, until the scope closes: stdin in raw mode for the
+ * duration (so nothing echoes and Ctrl-C arrives as a key, which the reader
+ * decides about), restored to what it was afterwards, on every path.
+ */
+const readInput = Effect.acquireRelease(
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<Terminal.UserInput, Cause.Done>();
+    const stdin = process.stdin;
+    readline.emitKeypressEvents(stdin);
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    const onKeypress = (input: string | undefined, key: Keypress | undefined): void => {
+      Queue.offerUnsafe(queue, {
+        input: Option.fromUndefinedOr(input),
+        key: {
+          name: key?.name ?? input ?? "",
+          ctrl: key?.ctrl === true,
+          meta: key?.meta === true,
+          shift: key?.shift === true,
+        },
+      });
+    };
+    stdin.on("keypress", onKeypress);
+    const restore = (): void => {
+      stdin.off("keypress", onKeypress);
+      stdin.setRawMode?.(wasRaw);
+      stdin.pause();
+    };
+    return { queue, restore };
+  }),
+  ({ queue, restore }) => Effect.sync(restore).pipe(Effect.andThen(Queue.shutdown(queue))),
+).pipe(Effect.map(({ queue }): Queue.Dequeue<Terminal.UserInput, Cause.Done> => queue));
 
 const terminal = Terminal.make({
   columns: Effect.sync(() => process.stdout.columns ?? 80),
   rows: Effect.sync(() => process.stdout.rows ?? 24),
   size: unsupported("Terminal.size"),
-  readInput: unsupported("Terminal.readInput"),
+  readInput,
   readLine,
   display: (text) => Effect.sync(() => void process.stdout.write(text)),
 });

@@ -29,7 +29,7 @@ vi.mock("@/tools/registry", () => ({
   ]),
 }));
 
-vi.mock("@/api/auth-middleware", () => ({
+vi.mock("@/auth/users", () => ({
   hasMembership: vi.fn(),
   listUserOrganizations: vi.fn(),
 }));
@@ -47,7 +47,7 @@ vi.mock("@/tools/permissions", () => ({
 }));
 
 const { buildMcpServer } = await import("@/mcp/server");
-const middleware = await import("@/api/auth-middleware");
+const middleware = await import("@/auth/users");
 const { Client, InMemoryTransport } = await import("@modelcontextprotocol/client");
 
 async function connect() {

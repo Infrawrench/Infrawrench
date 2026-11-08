@@ -2,7 +2,7 @@ import type { CloudFetch } from "./fetch";
 
 /**
  * Weekly infrastructure digest: org-level settings. Server contract:
- * org-scoped `/api/org/:orgId/digest/*` routes (see web `api/routes/digest.ts`).
+ * org-scoped `/api/org/:orgId/digest/*` routes (see web `http/domains/digest/`).
  *
  * The digest is a weekly summary of the last complete Monday-to-Sunday week's
  * spend, sync incidents, and resource churn, delivered to the Slack channels

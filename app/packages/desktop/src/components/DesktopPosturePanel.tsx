@@ -7,7 +7,6 @@ import {
   type PostureFinding,
   type PostureListResponse,
 } from "@infrawrench/ui";
-import { invoke } from "@/lib/invoke";
 import {
   cloudLeakedCredentialsClient,
   dismissCloudPostureFinding,
@@ -19,6 +18,7 @@ import {
   loadLocalPosture,
   restoreLocalPostureFinding,
 } from "@/lib/local-posture";
+import { openExternalUrl } from "../lib/app-shell";
 
 interface DesktopPosturePanelProps {
   openResource: (finding: PostureFinding) => void;
@@ -133,7 +133,7 @@ export function DesktopPosturePanel({
           <LeakedCredentialsSection
             client={leakClient}
             onOpenAccount={openAccount}
-            openExternal={(url) => void invoke("open_external_url", { url })}
+            openExternal={(url) => void openExternalUrl(url)}
             onOpenResource={(leak) => {
               if (!leak.matchedAccountId || !leak.matchedResourceId) return;
               openResource({

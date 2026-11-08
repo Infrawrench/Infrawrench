@@ -30,12 +30,12 @@ import type { EnvironmentTemplateInput } from "@infrawrench/client-core";
 import { logAudit } from "../../../services/audit";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound, notFound } from "../../errors";
+import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { refusalCall, type RefusalCallOptions } from "../input-refusals";
 import {
   CaptureDraft,
   EnvironmentCostEstimate,
@@ -52,14 +52,10 @@ import {
 
 type Body = { readonly [key: string]: unknown };
 
-const store: RefusalCallOptions<EnvironmentInputError> = {
-  isInputError: (error): error is EnvironmentInputError => error instanceof EnvironmentInputError,
+const store: RefusalPolicy = refusalsOf(EnvironmentInputError, {
   logPrefix: "[environments]",
   failure: "Environment operation failed",
-};
-
-const refuse400 = (error: string) => new BadRequest({ error });
-const refuse404 = (error: string) => new NotFound({ error });
+});
 
 /** A JSON object's string, number and boolean values, as strings; anything else is `{}`. */
 function stringRecord(value: unknown): Record<string, string> {
@@ -108,7 +104,7 @@ function isArrayOf<T>(value: unknown): value is T[] {
 
 const readBody = Effect.fnUntraced(function* (request: Parameters<typeof readObjectBody>[0]) {
   const parsed = yield* readObjectBody(request);
-  if (!parsed.ok) return yield* invalidBody(parsed.error);
+  if (!parsed.ok) return yield* badRequest(parsed.error);
   return parsed.body;
 });
 
@@ -163,7 +159,7 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
         const accountId = body["accountId"];
         const tagKey = body["tagKey"];
         const tagValue = body["tagValue"];
-        const draft = yield* refusalCall(store, { 400: refuse400, 404: refuse404 }, () =>
+        const draft = yield* refusalCall(store, { 400: refuse[400], 404: refuse[404] }, () =>
           captureEnvironmentDraft(organizationId, {
             ...(resourceIds && resourceIds.length > 0 ? { resourceIds } : {}),
             ...(Predicate.isString(accountId) ? { accountId } : {}),
@@ -185,12 +181,12 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
       Effect.gen(function* () {
         const body = yield* readBody(request);
         const input = readTemplateInput(body);
-        if (Predicate.isString(input)) return yield* invalidBody(input);
+        if (Predicate.isString(input)) return yield* badRequest(input);
         const { organizationId, session } = yield* OrgPrincipal;
         const created = yield* refusalCall(
           store,
           {
-            400: refuse400,
+            400: refuse[400],
             409: (error: string) => new EnvironmentTemplateConflict({ error }),
           },
           async () => {
@@ -227,31 +223,35 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
       Effect.gen(function* () {
         const body = yield* readBody(request);
         const input = readTemplateInput(body);
-        if (Predicate.isString(input)) return yield* invalidBody(input);
+        if (Predicate.isString(input)) return yield* badRequest(input);
         const { organizationId, session } = yield* OrgPrincipal;
-        const updated = yield* refusalCall(store, { 400: refuse400, 404: refuse404 }, async () => {
-          const template = await updateEnvironmentTemplateRecord(
-            organizationId,
-            params.templateId,
-            input,
-          );
-          void logAudit({
-            organizationId,
-            userId: session.userId,
-            action: "environment_template.update",
-            entityType: "environment_template",
-            entityId: template.id,
-            metadata: { name: template.name, memberCount: template.members.length },
-          });
-          return template;
-        });
+        const updated = yield* refusalCall(
+          store,
+          { 400: refuse[400], 404: refuse[404] },
+          async () => {
+            const template = await updateEnvironmentTemplateRecord(
+              organizationId,
+              params.templateId,
+              input,
+            );
+            void logAudit({
+              organizationId,
+              userId: session.userId,
+              action: "environment_template.update",
+              entityType: "environment_template",
+              entityId: template.id,
+              metadata: { name: template.name, memberCount: template.members.length },
+            });
+            return template;
+          },
+        );
         return yield* respond(EnvironmentTemplate)(updated);
       }),
     )
     .handle("deleteTemplate", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        yield* refusalCall(store, { 404: refuse404 }, async () => {
+        yield* refusalCall(store, { 404: refuse[404] }, async () => {
           const deleted = await deleteEnvironmentTemplateRecord(organizationId, params.templateId);
           void logAudit({
             organizationId,
@@ -269,7 +269,7 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
       Effect.gen(function* () {
         const body = yield* readBody(request);
         const { organizationId } = yield* OrgPrincipal;
-        const estimate = yield* refusalCall(store, { 400: refuse400, 404: refuse404 }, () =>
+        const estimate = yield* refusalCall(store, { 400: refuse[400], 404: refuse[404] }, () =>
           estimateEnvironmentInstantiation(
             organizationId,
             params.templateId,
@@ -302,16 +302,16 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
         const name = body["name"];
         const ttlHours = body["ttlHours"];
         const note = body["note"];
-        if (!Predicate.isString(name)) return yield* invalidBody("name is required");
+        if (!Predicate.isString(name)) return yield* badRequest("name is required");
         if (!Predicate.isNumber(ttlHours)) {
-          return yield* invalidBody("ttlHours is required; environments must expire");
+          return yield* badRequest("ttlHours is required; environments must expire");
         }
 
         const instance = yield* refusalCall(
           store,
           {
-            400: refuse400,
-            404: refuse404,
+            400: refuse[400],
+            404: refuse[404],
             409: (error: string) => new EnvironmentInstanceConflict({ error }),
           },
           async () => {
@@ -387,7 +387,7 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
           entityType: "environment_instance",
           entityId: instanceId,
         });
-        const instance = yield* refusalCall(store, { 404: refuse404 }, async () => {
+        const instance = yield* refusalCall(store, { 404: refuse[404] }, async () => {
           const torn = await tearDownEnvironment(organizationId, instanceId, {
             userId: session.userId,
           });
@@ -410,7 +410,7 @@ const EnvironmentsHandlers = HttpApiBuilder.group(EnvironmentsApi, "environments
         yield* refusalCall(
           store,
           {
-            404: refuse404,
+            404: refuse[404],
             409: (error: string) => new EnvironmentStillLive({ error }),
           },
           async () => {

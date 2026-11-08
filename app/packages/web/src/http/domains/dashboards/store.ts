@@ -3,7 +3,7 @@
  * dashboards, their cards, resource and workflow pins, cached probe data), as
  * the Hono router did it, query for query. Widgets are `./widgets.ts` and the
  * restored-tab check `./tabs.ts`. Promise code: the handlers in
- * `./index.ts` call it through `legacy`/`statusCall`, inside the request's
+ * `./index.ts` call it through `legacy`/`refusalCall`, inside the request's
  * scopes (object sharing reads the caller's sharing principal from them).
  *
  * A route's own refusal ("Dashboard not found", "Cannot delete the default

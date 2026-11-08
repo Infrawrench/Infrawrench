@@ -11,26 +11,36 @@
 // Cloud-only, like `alerts` and `probes`: the configuration this manages lives
 // in the cloud org, and a local desktop workspace has none of it.
 //
-// The document and plan shapes come from `@infrawrench/client-core` (the same
-// definitions the server and the settings UI use) so a server-side change
-// breaks the CLI's build instead of its output. The imports are type-only, so
-// the CLI still ships zero new runtime dependencies.
+// The plan schema is checked against `@infrawrench/client-core` by `wire` (the
+// same definitions the server and the settings UI use), so a server-side
+// change breaks the CLI's build instead of its output. The document itself is
+// passed through as the server wrote it: it is the artifact, and this build
+// reads only how many entries each section holds.
+//
+// `--json` shapes:
+//   config export --out f  → { org, path, counts }   (no --out: the document itself)
+//   config plan            → { org, ...plan }
+//   config apply           → { org, ...result }      ({ org, ...plan, applied: false } when up to date)
 import { readFileSync, writeFileSync } from "node:fs";
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
-import type { ConfigFlags } from "../args";
+import { Effect, Option, Predicate, Schema, Stdio, Stream } from "effect";
+import { Command, Flag } from "effect/cli";
 import type {
   OrgConfigApplyMode,
   OrgConfigApplyResult,
-  OrgConfigChange,
-  OrgConfigDocument,
   OrgConfigPlan,
   OrgConfigSection,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println } from "../output";
-import { confirm } from "../prompt";
+import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { CliFailure, CliUsageError } from "../effect/errors";
+import { destinationOf, file, out } from "../effect/file-flags";
+import * as Print from "../effect/print";
+import { confirm } from "../effect/prompt";
+import { CliSession } from "../effect/session";
+import { knownOr, Unrecognized, wire } from "../effect/wire";
+import { c, safe } from "../output";
 
 /** Order the plan renders sections in: the order they are applied. */
-const SECTION_LABELS: Record<OrgConfigSection, string> = {
+const SECTION_LABELS: Partial<Record<string, string>> = {
   budgets: "budgets",
   customGraphs: "custom graphs",
   workflows: "workflows",
@@ -42,220 +52,138 @@ const SECTION_LABELS: Record<OrgConfigSection, string> = {
   tagPolicy: "tag policy",
   alertSettings: "alert settings",
   savingsViews: "savings views",
-};
+} satisfies Record<OrgConfigSection, string>;
 
-/** The keys of {@link SECTION_LABELS}, which the annotation makes exactly the sections. */
-const SECTIONS = Object.keys(SECTION_LABELS) as OrgConfigSection[];
+/** The sections, in {@link SECTION_LABELS}' order. */
+const SECTIONS = Object.keys(SECTION_LABELS);
 
-function requireCloud(ctx: CliContext): void {
-  if (ctx.flags.local) {
-    throw new CliError("Config as code covers cloud organizations only. Drop --local.");
+/** A section's label; one this build does not know, by its id. */
+const sectionLabel = (section: string): string => SECTION_LABELS[section] ?? section;
+
+const EXPORT_PATH = "/config/export";
+const PLAN_PATH = "/config/plan";
+const APPLY_PATH = "/config/apply";
+
+const JsonObject = Schema.Record(Schema.String, Schema.Unknown);
+
+const Action = knownOr(["create", "update", "delete", "unchanged"]);
+type Action = typeof Action.Type;
+
+const Plan = Schema.Struct({
+  // Only "replace" is called out; anything else reads as a merge.
+  mode: Schema.String,
+  changes: Schema.Array(
+    Schema.Struct({
+      section: Schema.String,
+      key: Schema.String,
+      name: Schema.String,
+      action: Action,
+      fields: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+  unresolved: Schema.Array(
+    Schema.Struct({ section: Schema.String, key: Schema.String, detail: Schema.String }),
+  ),
+  counts: Schema.Struct({
+    create: Schema.Finite,
+    update: Schema.Finite,
+    delete: Schema.Finite,
+    unchanged: Schema.Finite,
+  }),
+});
+type Plan = typeof Plan.Type;
+const PlanWire = wire<OrgConfigPlan>()(Plan);
+const ApplyWire = wire<OrgConfigApplyResult>()(Plan);
+
+const requireCloud = Effect.gen(function* () {
+  const session = yield* CliSession;
+  if (session.local) {
+    return yield* new CliFailure({
+      message: "Config as code covers cloud organizations only. Drop --local.",
+    });
   }
-}
+});
 
-export async function cmdConfig(
-  ctx: CliContext,
-  subcommand: string | undefined,
-  flags: ConfigFlags,
-): Promise<void> {
-  switch (subcommand) {
-    case undefined:
-    case "export":
-      return cmdConfigExport(ctx, flags);
-    case "plan":
-    case "diff":
-      return cmdConfigPlan(ctx, flags);
-    case "apply":
-      return cmdConfigApply(ctx, flags);
-    default:
-      throw new CliError(`Unknown config subcommand "${subcommand}". Try: export, plan, apply.`, 2);
-  }
-}
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const sectionsFlag = Flag.String("sections").pipe(
+  Flag.withMetavar("a,b"),
+  Flag.withDescription("Limit to these sections (budgets, workflows, dashboards, …)"),
+  Flag.optional,
+);
 
 /* --------------------------------- export --------------------------------- */
 
-async function cmdConfigExport(ctx: CliContext, flags: ConfigFlags): Promise<void> {
-  requireCloud(ctx);
-  const org = await resolveOrg(ctx);
-  const query = flags.sections ? `?sections=${encodeURIComponent(flags.sections)}` : "";
-  const document = await orgFetch<OrgConfigDocument>(org.id, `/config/export${query}`);
-
-  // Trailing newline so the file is a well-formed text file and `git diff`
-  // doesn't report "\ No newline at end of file" on every export.
-  const text = `${JSON.stringify(document, null, 2)}\n`;
-  const path = flags.out ?? flags.file;
-  if (path) {
-    try {
-      writeFileSync(path, text, "utf8");
-    } catch (e) {
-      throw new CliError(`Can't write ${path}: ${e instanceof Error ? e.message : String(e)}`, 2);
-    }
-    if (ctx.flags.output === "json") {
-      printJson({ org: org.id, path, ...summarizeDocument(document) });
-      return;
-    }
-    println(`${c.green("✓")} wrote ${c.bold(path)}`);
-    printDocumentSummary(document);
-    println();
-    println(
-      c.dim(
-        "Commit it, then `infrawrench config apply -f <file>` to put it back (or into another org).",
-      ),
-    );
-    return;
-  }
-
-  // No path: the document goes to stdout, so it can be piped or redirected.
-  // Deliberately raw even in text mode: this output IS the artifact.
-  process.stdout.write(text);
-}
-
-interface DocumentSummary {
+/** How many entries each array section of a document holds, by label. */
+function summarizeDocument(document: Readonly<Record<string, unknown>>): {
   counts: Record<string, number>;
-}
-
-function summarizeDocument(document: OrgConfigDocument): DocumentSummary {
+} {
   const counts: Record<string, number> = {};
   for (const section of SECTIONS) {
     const value = document[section];
-    if (Array.isArray(value)) counts[SECTION_LABELS[section]] = value.length;
+    if (Array.isArray(value)) counts[sectionLabel(section)] = value.length;
   }
   return { counts };
 }
 
-function printDocumentSummary(document: OrgConfigDocument): void {
-  const { counts } = summarizeDocument(document);
-  const parts = Object.entries(counts)
+const printDocumentSummary = (document: Readonly<Record<string, unknown>>) => {
+  const parts = Object.entries(summarizeDocument(document).counts)
     .filter(([, n]) => n > 0)
     .map(([label, n]) => `${n} ${label}`);
-  if (parts.length === 0) {
-    println(c.dim("Nothing configured yet. The document is a valid empty starting point."));
-    return;
+  return Print.line(
+    parts.length === 0
+      ? c.dim("Nothing configured yet. The document is a valid empty starting point.")
+      : c.dim(parts.join(" · ")),
+  );
+};
+
+const exportFlags = {
+  out: out.pipe(Flag.withDescription("Write the document here instead of stdout")),
+  file: file.pipe(Flag.withDescription("Same as --out")),
+  sections: sectionsFlag,
+};
+
+const exportDocument = Effect.fn("config.export")(function* (input: {
+  readonly out: Option.Option<string>;
+  readonly file: Option.Option<string>;
+  readonly sections: Option.Option<string>;
+}) {
+  yield* requireCloud;
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  const org = yield* currentOrg;
+  const sections = Option.getOrUndefined(input.sections);
+  const query = sections ? `?sections=${encodeURIComponent(sections)}` : "";
+  const path = `${EXPORT_PATH}${query}`;
+  const document = yield* api.json(org.id, path);
+
+  // Trailing newline so the file is a well-formed text file and `git diff`
+  // doesn't report "\ No newline at end of file" on every export.
+  const text = `${JSON.stringify(document, null, 2)}\n`;
+  const target = Option.getOrUndefined(destinationOf(input));
+  // No path: the document goes to stdout, so it can be piped or redirected.
+  // Deliberately raw even in text mode: this output IS the artifact.
+  if (target === undefined) return yield* Print.write(text);
+
+  yield* Effect.try({
+    try: () => writeFileSync(target, text, "utf8"),
+    catch: (e) => new CliUsageError({ message: `Can't write ${target}: ${errorText(e)}` }),
+  });
+  const parsed = yield* decodeBody(JsonObject, path)(document);
+  if (session.output === "json") {
+    return yield* Print.json({ org: org.id, path: target, ...summarizeDocument(parsed) });
   }
-  println(c.dim(parts.join(" · ")));
-}
+  yield* Print.line(`${c.green("✓")} wrote ${c.bold(target)}`);
+  yield* printDocumentSummary(parsed);
+  yield* Print.line();
+  yield* Print.line(
+    c.dim(
+      "Commit it, then `infrawrench config apply -f <file>` to put it back (or into another org).",
+    ),
+  );
+});
 
 /* ------------------------------- plan / apply ------------------------------ */
-
-async function cmdConfigPlan(ctx: CliContext, flags: ConfigFlags): Promise<void> {
-  requireCloud(ctx);
-  const org = await resolveOrg(ctx);
-  const document = readDocument(flags);
-  const mode: OrgConfigApplyMode = flags.prune ? "replace" : "merge";
-
-  const plan = await orgFetch<OrgConfigPlan>(org.id, "/config/plan", {
-    method: "POST",
-    body: JSON.stringify({ document, mode }),
-  });
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...plan });
-    return;
-  }
-  printPlan(plan, { applied: false });
-}
-
-async function cmdConfigApply(ctx: CliContext, flags: ConfigFlags): Promise<void> {
-  requireCloud(ctx);
-  const org = await resolveOrg(ctx);
-  const document = readDocument(flags);
-  const mode: OrgConfigApplyMode = flags.prune ? "replace" : "merge";
-
-  // Always plan first, even with -y. The confirmation is worth having, and on
-  // an unattended run the printed plan is the record of what the apply did.
-  const plan = await orgFetch<OrgConfigPlan>(org.id, "/config/plan", {
-    method: "POST",
-    body: JSON.stringify({ document, mode }),
-  });
-  const nothingToDo = plan.counts.create + plan.counts.update + plan.counts.delete === 0;
-
-  if (ctx.flags.output !== "json") {
-    printPlan(plan, { applied: false });
-    println();
-  }
-
-  if (nothingToDo) {
-    if (ctx.flags.output === "json") {
-      printJson({ org: org.id, ...plan, applied: false });
-      return;
-    }
-    println(c.dim("Already up to date. Nothing to apply."));
-    return;
-  }
-
-  if (!flags.yes) {
-    if (!process.stdin.isTTY) {
-      throw new CliError(
-        "Refusing to apply without confirmation on a non-interactive terminal. Re-run with -y once you've reviewed the plan.",
-        2,
-      );
-    }
-    const verb =
-      plan.counts.delete > 0
-        ? `Apply to ${org.displayName}? ${plan.counts.delete} entit${plan.counts.delete === 1 ? "y" : "ies"} will be DELETED`
-        : `Apply to ${org.displayName}?`;
-    if (!(await confirm(verb))) {
-      println(c.dim("Cancelled. Nothing was changed."));
-      return;
-    }
-  }
-
-  const result = await orgFetch<OrgConfigApplyResult>(org.id, "/config/apply", {
-    method: "POST",
-    body: JSON.stringify({ document, mode }),
-  });
-
-  if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...result });
-    return;
-  }
-  printPlan(result, { applied: true });
-}
-
-/** The document from `--file`, or from stdin when it isn't a terminal. */
-function readDocument(flags: ConfigFlags): unknown {
-  let text: string;
-  if (flags.file) {
-    try {
-      text = readFileSync(flags.file, "utf8");
-    } catch (e) {
-      throw new CliError(
-        `Can't read ${flags.file}: ${e instanceof Error ? e.message : String(e)}`,
-        2,
-      );
-    }
-  } else if (process.stdin.isTTY) {
-    throw new CliError(
-      "No document. Pass --file <path> or pipe one on stdin (`infrawrench config export | …`).",
-      2,
-    );
-  } else {
-    text = readFileSyncStdin();
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (e) {
-    throw new CliError(
-      `That file isn't valid JSON: ${e instanceof Error ? e.message : String(e)}`,
-      2,
-    );
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new CliError("Expected a config document object at the top level.", 2);
-  }
-  return narrowSections(parsed as Record<string, unknown>, flags.sections);
-}
-
-/** Read all of stdin synchronously: fd 0 to EOF. */
-function readFileSyncStdin(): string {
-  try {
-    return readFileSync(0, "utf8");
-  } catch (e) {
-    throw new CliError(`Can't read stdin: ${e instanceof Error ? e.message : String(e)}`, 2);
-  }
-}
 
 /**
  * Drop every section `--sections` doesn't name.
@@ -265,77 +193,122 @@ function readFileSyncStdin(): string {
  * can be applied a section at a time, which is how you roll a change out
  * gradually without maintaining several files.
  */
-function narrowSections(
-  document: Record<string, unknown>,
+const narrowSections = Effect.fnUntraced(function* (
+  document: Readonly<Record<string, unknown>>,
   sections: string | undefined,
-): Record<string, unknown> {
+) {
   if (!sections) return document;
   const wanted = sections
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const unknown = wanted.filter((s) => !(s in SECTION_LABELS));
+  const unknown = wanted.filter((s) => !SECTIONS.includes(s));
   if (unknown.length > 0) {
-    throw new CliError(
-      `Unknown section(s): ${unknown.join(", ")}. Valid: ${Object.keys(SECTION_LABELS).join(", ")}.`,
-      2,
-    );
+    return yield* new CliUsageError({
+      message: `Unknown section(s): ${unknown.join(", ")}. Valid: ${SECTIONS.join(", ")}.`,
+    });
   }
-  const out: Record<string, unknown> = {};
+  const narrowed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(document)) {
-    if (!(key in SECTION_LABELS) || wanted.includes(key)) out[key] = value;
+    if (!SECTIONS.includes(key) || wanted.includes(key)) narrowed[key] = value;
   }
-  return out;
-}
+  return narrowed;
+});
 
-/* -------------------------------- rendering -------------------------------- */
+/** All of standard input, as text: the document piped in (`config export | config apply`). */
+const readStdin = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio;
+  return yield* stdio.stdin.pipe(
+    Stream.decodeText(),
+    Stream.mkString,
+    Effect.mapError((e) => new CliUsageError({ message: `Can't read stdin: ${e.message}` })),
+  );
+});
 
-const ACTION_MARK: Record<OrgConfigChange["action"], (s: string) => string> = {
+/** The document from `--file`, or from stdin when it isn't a terminal. */
+const readDocument = Effect.fnUntraced(function* (
+  path: string | undefined,
+  sections: string | undefined,
+) {
+  const stdio = yield* Stdio.Stdio;
+  let text: string;
+  if (path) {
+    text = yield* Effect.try({
+      try: () => readFileSync(path, "utf8"),
+      catch: (e) => new CliUsageError({ message: `Can't read ${path}: ${errorText(e)}` }),
+    });
+  } else if (yield* stdio.stdinIsTerminal) {
+    return yield* new CliUsageError({
+      message:
+        "No document. Pass --file <path> or pipe one on stdin (`infrawrench config export | …`).",
+    });
+  } else {
+    text = yield* readStdin;
+  }
+
+  const parsed = yield* Effect.try({
+    // JSON.parse's own sentence names where the document stops parsing.
+    try: (): unknown => JSON.parse(text),
+    catch: (e) => new CliUsageError({ message: `That file isn't valid JSON: ${errorText(e)}` }),
+  });
+  if (!Predicate.isObject(parsed)) {
+    return yield* new CliUsageError({
+      message: "Expected a config document object at the top level.",
+    });
+  }
+  return yield* narrowSections(parsed, sections);
+});
+
+const ACTION_MARK: Record<Exclude<Action, Unrecognized>, (s: string) => string> = {
   create: c.green,
   update: c.yellow,
   delete: c.red,
   unchanged: c.dim,
 };
 
-const ACTION_SIGN: Record<OrgConfigChange["action"], string> = {
+const ACTION_SIGN: Record<Exclude<Action, Unrecognized>, string> = {
   create: "+",
   update: "~",
   delete: "-",
   unchanged: " ",
 };
 
-function printPlan(plan: OrgConfigPlan, opts: { applied: boolean }): void {
+const printPlan = Effect.fnUntraced(function* (plan: Plan, opts: { applied: boolean }) {
   const interesting = plan.changes.filter((change) => change.action !== "unchanged");
   const heading = opts.applied ? "Applied" : "Plan";
   const modeNote =
     plan.mode === "replace"
       ? c.red(" (replace: anything not in the document is deleted)")
       : c.dim(" (merge)");
-  println(`${c.bold(heading)}${modeNote}`);
-  println();
+  yield* Print.line(`${c.bold(heading)}${modeNote}`);
+  yield* Print.line();
 
   if (interesting.length === 0) {
-    println(c.dim("No changes."));
+    yield* Print.line(c.dim("No changes."));
   } else {
-    let lastSection: OrgConfigSection | null = null;
+    let lastSection: string | null = null;
     for (const change of interesting) {
       if (change.section !== lastSection) {
-        if (lastSection !== null) println();
-        println(c.bold(SECTION_LABELS[change.section] ?? change.section));
+        if (lastSection !== null) yield* Print.line();
+        yield* Print.line(c.bold(safe(sectionLabel(change.section))));
         lastSection = change.section;
       }
-      const paint = ACTION_MARK[change.action];
+      // An action this build does not know is shown by its name, uncoloured.
+      const mark =
+        change.action instanceof Unrecognized
+          ? `${c.dim("?")} ${c.dim(`(${safe(change.action.raw)})`)}`
+          : ACTION_MARK[change.action](ACTION_SIGN[change.action]);
       const fields =
         change.action === "update" && change.fields?.length
-          ? c.dim(`  (${change.fields.join(", ")})`)
+          ? c.dim(`  (${change.fields.map(safe).join(", ")})`)
           : "";
-      println(
-        `  ${paint(ACTION_SIGN[change.action])} ${change.name} ${c.dim(`[${change.key}]`)}${fields}`,
+      yield* Print.line(
+        `  ${mark} ${safe(change.name)} ${c.dim(`[${safe(change.key)}]`)}${fields}`,
       );
     }
   }
 
-  println();
+  yield* Print.line();
   const { create, update, delete: removed, unchanged } = plan.counts;
   const summary = [
     create > 0 ? c.green(`${create} to create`) : null,
@@ -343,14 +316,139 @@ function printPlan(plan: OrgConfigPlan, opts: { applied: boolean }): void {
     removed > 0 ? c.red(`${removed} to delete`) : null,
     unchanged > 0 ? c.dim(`${unchanged} unchanged`) : null,
   ].filter((s): s is string => s !== null);
-  println(summary.length > 0 ? summary.join(c.dim(" · ")) : c.dim("nothing to do"));
+  yield* Print.line(summary.length > 0 ? summary.join(c.dim(" · ")) : c.dim("nothing to do"));
 
   if (plan.unresolved.length > 0) {
-    println();
-    println(c.yellow("Not applied:"));
+    yield* Print.line();
+    yield* Print.line(c.yellow("Not applied:"));
     for (const item of plan.unresolved) {
-      println(`  ${c.dim("!")} ${SECTION_LABELS[item.section] ?? item.section} · ${item.key}`);
-      println(`    ${c.dim(item.detail)}`);
+      yield* Print.line(`  ${c.dim("!")} ${safe(sectionLabel(item.section))} · ${safe(item.key)}`);
+      yield* Print.line(`    ${c.dim(safe(item.detail))}`);
     }
   }
+});
+
+const documentFlags = {
+  file: file.pipe(Flag.withDescription("The config document (stdin when omitted and piped)")),
+  sections: sectionsFlag,
+  prune: Flag.Boolean("prune").pipe(
+    Flag.withDescription("Also delete what the document doesn't name (mode replace)"),
+    Flag.withDefault(false),
+    Flag.withoutNegation,
+  ),
+};
+
+interface DocumentInput {
+  readonly file: Option.Option<string>;
+  readonly sections: Option.Option<string>;
+  readonly prune: boolean;
 }
+
+/** The document and mode a plan or an apply sends, as the request body. */
+const requestBody = Effect.fnUntraced(function* (input: DocumentInput) {
+  const document = yield* readDocument(
+    Option.getOrUndefined(input.file),
+    Option.getOrUndefined(input.sections),
+  );
+  const mode: OrgConfigApplyMode = input.prune ? "replace" : "merge";
+  return JSON.stringify({ document, mode });
+});
+
+const plan = Command.make(
+  "plan",
+  documentFlags,
+  Effect.fn("config.plan")(function* (input) {
+    yield* requireCloud;
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const org = yield* currentOrg;
+    const body = yield* requestBody(input);
+    const planBody = yield* api.json(org.id, PLAN_PATH, { method: "POST", body });
+    if (session.output === "json") {
+      const raw = yield* decodeBody(JsonObject, PLAN_PATH)(planBody);
+      return yield* Print.json({ org: org.id, ...raw });
+    }
+    yield* printPlan(yield* decodeBody(PlanWire, PLAN_PATH)(planBody), { applied: false });
+  }),
+).pipe(
+  Command.withAlias("diff"),
+  Command.withDescription("What applying a document would change, without changing it"),
+);
+
+const apply = Command.make(
+  "apply",
+  {
+    ...documentFlags,
+    yes: Flag.Boolean("yes").pipe(
+      Flag.withAlias("y"),
+      Flag.withDescription("Apply after printing the plan without asking"),
+      Flag.withDefault(false),
+      Flag.withoutNegation,
+    ),
+  },
+  Effect.fn("config.apply")(function* (input) {
+    yield* requireCloud;
+    const session = yield* CliSession;
+    const api = yield* CloudApi;
+    const stdio = yield* Stdio.Stdio;
+    const org = yield* currentOrg;
+    const json = session.output === "json";
+    const body = yield* requestBody(input);
+
+    // Always plan first, even with -y. The confirmation is worth having, and on
+    // an unattended run the printed plan is the record of what the apply did.
+    const planBody = yield* api.json(org.id, PLAN_PATH, { method: "POST", body });
+    const planned = yield* decodeBody(PlanWire, PLAN_PATH)(planBody);
+    const nothingToDo = planned.counts.create + planned.counts.update + planned.counts.delete === 0;
+
+    if (!json) {
+      yield* printPlan(planned, { applied: false });
+      yield* Print.line();
+    }
+
+    if (nothingToDo) {
+      if (json) {
+        const raw = yield* decodeBody(JsonObject, PLAN_PATH)(planBody);
+        return yield* Print.json({ org: org.id, ...raw, applied: false });
+      }
+      return yield* Print.line(c.dim("Already up to date. Nothing to apply."));
+    }
+
+    if (!input.yes) {
+      if (!(yield* stdio.stdinIsTerminal)) {
+        return yield* new CliUsageError({
+          message:
+            "Refusing to apply without confirmation on a non-interactive terminal. Re-run with -y once you've reviewed the plan.",
+        });
+      }
+      const deletes = planned.counts.delete;
+      const question =
+        deletes > 0
+          ? `Apply to ${safe(org.displayName)}? ${deletes} entit${deletes === 1 ? "y" : "ies"} will be DELETED`
+          : `Apply to ${safe(org.displayName)}?`;
+      if (!(yield* confirm(question))) {
+        return yield* Print.line(c.dim("Cancelled. Nothing was changed."));
+      }
+    }
+
+    const resultBody = yield* api.json(org.id, APPLY_PATH, { method: "POST", body });
+    if (json) {
+      const raw = yield* decodeBody(JsonObject, APPLY_PATH)(resultBody);
+      return yield* Print.json({ org: org.id, ...raw });
+    }
+    yield* printPlan(yield* decodeBody(ApplyWire, APPLY_PATH)(resultBody), { applied: true });
+  }),
+).pipe(Command.withDescription("Apply a document (plans first, then asks unless -y)"));
+
+export const config = Command.make("config", exportFlags, exportDocument).pipe(
+  Command.withDescription(
+    "The org's dashboards, workflows, budgets, graphs, alert rules & policies as one JSON document (bare: export)",
+  ),
+  Command.withSubcommands([
+    Command.make("export", exportFlags, exportDocument).pipe(
+      Command.withDescription("Print the document, or write it with --out (stdout when no --out)"),
+    ),
+    plan,
+    apply,
+  ]),
+);

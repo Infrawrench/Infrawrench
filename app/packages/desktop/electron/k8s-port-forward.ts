@@ -1,153 +1,119 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+/**
+ * `kubectl port-forward` as a stream (`K8sPortForwardOpen`): it emits
+ * `Forwarding` with the bound local port once kubectl reports it, and ends
+ * when kubectl exits. The stream's scope owns the process and its
+ * kubeconfig, so interrupting it (stopping the forward, the renderer going
+ * away) kills one and removes the other.
+ */
 import { spawn, type ChildProcess } from "node:child_process";
-import type { WebContents } from "electron";
+import { Effect, Queue, Stream } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import {
+  K8sLocalError,
+  type K8sPortForwardConfig,
+  type K8sPortForwardEvent,
+} from "../shared/rpc/groups/k8s-local";
+import { acquireKubeconfigFile } from "./k8s-pty";
 import { resolveBinaryPath } from "./pty";
 
-interface K8sPortForwardConfig {
-  kubeconfig: string;
-  namespace: string;
-  resourceType: "svc" | "pod" | "deploy";
-  resourceName: string;
-  /** Remote port to forward */
-  remotePort: number;
-  /** Local port (0 = pick a random available port) */
-  localPort?: number | undefined;
-}
+/** How long kubectl gets to print its "Forwarding from" line. */
+const START_TIMEOUT_MS = 15_000;
 
-interface K8sPortForwardSession {
-  proc: ChildProcess;
-  tmpDir: string;
-  webContents: WeakRef<WebContents>;
-  localPort: number;
-  remotePort: number;
-  resourceName: string;
-  namespace: string;
-  resourceType: string;
-}
+/** "Forwarding from 127.0.0.1:12345 -> 80" */
+const FORWARDING_LINE = /Forwarding from (?:127\.0\.0\.1|\[::1]):(\d+)/;
 
-const sessions = new Map<string, K8sPortForwardSession>();
-
-export async function startPortForward(
-  webContents: WebContents,
-  config: K8sPortForwardConfig,
-): Promise<{ sessionId: string; localPort: number }> {
-  const id = randomUUID();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "iw-k8s-pf-"));
-  const kubeconfigPath = path.join(tmpDir, "kubeconfig.yaml");
-  fs.writeFileSync(kubeconfigPath, config.kubeconfig, { mode: 0o600 });
-
-  // Use 0 to let kubectl pick a free port, otherwise use the specified port
-  const localPort = config.localPort ?? 0;
-
-  const args = [
-    "port-forward",
-    `${config.resourceType}/${config.resourceName}`,
-    `${localPort}:${config.remotePort}`,
-    "-n",
-    config.namespace,
-    "--kubeconfig",
-    kubeconfigPath,
-  ];
-
-  let proc: ChildProcess;
-  try {
-    proc = spawn(resolveBinaryPath("kubectl"), args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (error) {
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // Ignore temp cleanup failures.
-    }
-    throw new Error(
-      `Failed to launch kubectl port-forward: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-
-  // Parse the actual local port from kubectl's stdout output:
-  // "Forwarding from 127.0.0.1:12345 -> 80"
-  const resolvedPort = await new Promise<number>((resolve, reject) => {
+/**
+ * The port kubectl bound. Its stdout listener stays attached for the life of
+ * the process: kubectl writes a line per connection, and an unread pipe
+ * would eventually block it.
+ */
+const awaitForwarding = (proc: ChildProcess) =>
+  Effect.callback<number, K8sLocalError>((resume) => {
     let stdoutBuf = "";
     let stderrBuf = "";
+    let settled = false;
+    const settle = (effect: Effect.Effect<number, K8sLocalError>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resume(effect);
+    };
     const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for kubectl port-forward to start"));
-      proc.kill();
-      cleanup(id);
-    }, 15_000);
-
+      settle(
+        Effect.fail(
+          new K8sLocalError({ message: "Timed out waiting for kubectl port-forward to start" }),
+        ),
+      );
+    }, START_TIMEOUT_MS);
     proc.stdout?.on("data", (chunk: Buffer) => {
+      if (settled) return;
       stdoutBuf += chunk.toString("utf8");
-      const match = stdoutBuf.match(/Forwarding from (?:127\.0\.0\.1|\[::1]):(\d+)/);
-      if (match) {
-        clearTimeout(timeout);
-        resolve(Number(match[1]));
-      }
+      const match = FORWARDING_LINE.exec(stdoutBuf);
+      if (match) settle(Effect.succeed(Number(match[1])));
     });
-
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrBuf += chunk.toString("utf8");
     });
-
-    proc.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-
+    proc.on("error", (err) => settle(Effect.fail(new K8sLocalError({ message: err.message }))));
     proc.on("exit", (code) => {
-      clearTimeout(timeout);
-      if (code !== 0) {
-        reject(
-          new Error(
-            `kubectl port-forward exited with code ${code}: ${stderrBuf.trim() || "(no output)"}`,
-          ),
-        );
-      }
+      if (code === 0) return;
+      settle(
+        Effect.fail(
+          new K8sLocalError({
+            message: `kubectl port-forward exited with code ${code}: ${stderrBuf.trim() || "(no output)"}`,
+          }),
+        ),
+      );
     });
+    return Effect.sync(() => clearTimeout(timeout));
   });
 
-  sessions.set(id, {
-    proc,
-    tmpDir,
-    webContents: new WeakRef(webContents),
-    localPort: resolvedPort,
-    remotePort: config.remotePort,
-    resourceName: config.resourceName,
-    namespace: config.namespace,
-    resourceType: config.resourceType,
-  });
-
-  const send = (channel: string) => {
-    const wc = sessions.get(id)?.webContents.deref();
-    if (wc && !wc.isDestroyed()) wc.send(channel);
-  };
-
-  proc.on("exit", () => {
-    send(`k8s_pf_exit_${id}`);
-    cleanup(id);
-  });
-
-  return { sessionId: id, localPort: resolvedPort };
-}
-
-function cleanup(id: string) {
-  const session = sessions.get(id);
-  if (!session) return;
-  try {
-    fs.rmSync(session.tmpDir, { recursive: true, force: true });
-  } catch {
-    // Ignore temp cleanup failures.
-  }
-  sessions.delete(id);
-}
-
-export function stopPortForward(id: string) {
-  const session = sessions.get(id);
-  if (!session) return;
-  session.proc.kill();
-  cleanup(id);
-}
+export const openPortForward = (
+  config: K8sPortForwardConfig,
+): Stream.Stream<K8sPortForwardEvent, K8sLocalError> =>
+  Stream.callback<K8sPortForwardEvent, K8sLocalError>((output) =>
+    Effect.gen(function* () {
+      const { kubeconfigPath } = yield* acquireKubeconfigFile("iw-k8s-pf-", config.kubeconfig);
+      let exited = false;
+      let forwarding = false;
+      const proc = yield* Effect.acquireRelease(
+        Effect.try({
+          try: () =>
+            spawn(
+              resolveBinaryPath("kubectl"),
+              [
+                "port-forward",
+                `${config.resourceType}/${config.resourceName}`,
+                // 0 lets kubectl pick a free port.
+                `${config.localPort ?? 0}:${config.remotePort}`,
+                "-n",
+                config.namespace,
+                "--kubeconfig",
+                kubeconfigPath,
+              ],
+              { stdio: ["ignore", "pipe", "pipe"] },
+            ),
+          catch: (cause) =>
+            new K8sLocalError({
+              message: `Failed to launch kubectl port-forward: ${errorMessage(cause)}`,
+            }),
+        }),
+        (proc) =>
+          Effect.sync(() => {
+            if (!exited) proc.kill();
+          }),
+      );
+      proc.on("exit", () => {
+        exited = true;
+        // Before `Forwarding`, an exit is `awaitForwarding`'s to report.
+        if (forwarding) Queue.endUnsafe(output);
+      });
+      const localPort = yield* awaitForwarding(proc);
+      forwarding = true;
+      if (exited) {
+        Queue.endUnsafe(output);
+        return;
+      }
+      Queue.offerUnsafe(output, { _tag: "Forwarding", localPort });
+    }),
+  );

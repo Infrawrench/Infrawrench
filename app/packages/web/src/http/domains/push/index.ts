@@ -19,10 +19,9 @@ import { db } from "../../../db/client";
 import { organizationMembers, pushDevices, pushPreferences, users } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { BadRequest, badRequest } from "../../errors";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody } from "../../object-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { PushApi, PushOk, PushPreferences, PushRecipient, PushTestResult } from "./api";
@@ -73,7 +72,7 @@ const PushHandlers = HttpApiBuilder.group(PushApi, "push", (handlers) =>
         const body = yield* readJson(request).pipe(Effect.flatMap(fieldsOf));
         const requested = body["mutedTriggers"];
         if (!Array.isArray(requested)) {
-          return yield* invalidBody("mutedTriggers must be an array");
+          return yield* badRequest("mutedTriggers must be an array");
         }
         // Unknown names are rejected rather than stored. A mute list is small and
         // hand-editable, and silently keeping a typo would look like it worked
@@ -81,7 +80,7 @@ const PushHandlers = HttpApiBuilder.group(PushApi, "push", (handlers) =>
         const list: readonly unknown[] = requested;
         const unknown = list.filter((t) => !isKnownTrigger(t));
         if (unknown.length > 0) {
-          return yield* invalidBody(`Unknown trigger(s): ${unknown.join(", ")}`);
+          return yield* badRequest(`Unknown trigger(s): ${unknown.join(", ")}`);
         }
         const muted = [...new Set(list.filter(isKnownTrigger))];
 

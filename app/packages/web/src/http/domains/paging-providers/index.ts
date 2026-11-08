@@ -22,10 +22,17 @@ import {
 } from "@infrawrench/server-core/paging/providers";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, InternalServerError, NotFound, notFound, Unauthorized } from "../../errors";
+import {
+  BadRequest,
+  InternalServerError,
+  NotFound,
+  notFound,
+  Unauthorized,
+  badRequest,
+} from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -97,20 +104,20 @@ const PagingProvidersHandlers = HttpApiBuilder.group(
       .handleRaw("settings", ({ params, request }) =>
         Effect.gen(function* () {
           const parsed = yield* readObjectBody(request);
-          if (!parsed.ok) return yield* invalidBody(parsed.error);
+          if (!parsed.ok) return yield* badRequest(parsed.error);
           const { body } = parsed;
           const inboundEnabled = body["inboundEnabled"];
           if (!Predicate.isBoolean(inboundEnabled)) {
-            return yield* invalidBody("inboundEnabled must be a boolean");
+            return yield* badRequest("inboundEnabled must be a boolean");
           }
           const input: PagingProviderSettingsInput = { inboundEnabled };
           if ("webhookSecret" in body) {
             const raw = body["webhookSecret"];
             if (raw !== null && !Predicate.isString(raw)) {
-              return yield* invalidBody("webhookSecret must be a string or null");
+              return yield* badRequest("webhookSecret must be a string or null");
             }
             if (Predicate.isString(raw) && raw.length > 512) {
-              return yield* invalidBody("webhookSecret is too long");
+              return yield* badRequest("webhookSecret is too long");
             }
             input.webhookSecret = raw;
           }

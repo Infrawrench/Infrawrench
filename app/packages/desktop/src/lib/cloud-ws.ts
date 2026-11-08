@@ -1,17 +1,17 @@
-import { invoke } from "./invoke";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 let cachedHttpUrl: string | null = null;
 
 async function getCloudHttpUrl(): Promise<string> {
   if (cachedHttpUrl) return cachedHttpUrl;
-  cachedHttpUrl = await invoke<string>("cloud_get_url");
+  cachedHttpUrl = await runRpc(DesktopRpcClient.use((rpc) => rpc.CloudUrl()));
   return cachedHttpUrl;
 }
 
 /**
  * Returns the `ws://` (dev) or `wss://` (prod) URL origin for the cloud
  * WebSocket endpoint, without a trailing slash. The renderer has to cross
- * the IPC boundary to learn it (the URL is declared in `env.ts` on the
+ * to the main process to learn it (the URL is declared in `env.ts` on the
  * electron side).
  */
 export async function getCloudWsUrl(): Promise<string> {

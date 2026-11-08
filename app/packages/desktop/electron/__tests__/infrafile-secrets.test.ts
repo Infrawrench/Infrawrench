@@ -44,7 +44,7 @@ beforeEach(() => prepare.mockReset());
 
 describe("the CLI's secret store", () => {
   it("reads back what the app wrote", async () => {
-    // As `setPlaintext` in plugin-runtime.ts and `secret_field_encrypt` in main.ts write it.
+    // As `setPlaintext` in plugin-runtime.ts and `LocalSecretFieldEncrypt` (local-secrets.ts) write it.
     const aad = buildAad("secretField", "r1:password", "value");
     const { ciphertext, iv } = encryptValue("hunter2", KEY, aad);
     stubRow({ resolution_kind: "literal", encrypted_value: ciphertext, value_iv: iv });

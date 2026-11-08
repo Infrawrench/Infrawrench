@@ -1,32 +1,28 @@
 // `infrawrench accounts | resources | resource`: the read commands
 // over cloud orgs and the local workspace.
 //
-// The account resolution (`resolveScopedAccount`) is still a Promise helper:
-// `export` and `apps` call it from the legacy switch, and the commands here
-// call it through `Effect.promise` with `legacyContext`, so its refusals
-// render as one line through the runner.
+// `resolveScopedAccount` is the account resolution `--account` means
+// everywhere (`resources`, `resource`, `export`, `apps`): an id, an exact
+// name or a unique prefix, in the scope `--local`/`--org` names, or in every
+// scope at once when neither does.
 import { Effect, Option, Predicate } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import {
-  CliError,
-  listOrgs,
-  resolveOrg,
-  resolveAccount,
+  cloudAccounts,
+  cloudResources,
+  findAccount,
   listLocalAccounts,
-  listCloudAccounts,
   listLocalResources,
-  listCloudResources,
   loadLocalResourceOutputs,
-  syncCloudAccount,
+  syncCloud,
   type AccountInfo,
-  type CliContext,
   type ResourceRow,
 } from "../context";
-import { getAuthStatus } from "../../cloud-tokens";
+import { attempt, CloudApi } from "../effect/cloud-api";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
-import { CliSession, legacyContext } from "../effect/session";
-import { c, printErr, seriesColor } from "../output";
+import { CliSession } from "../effect/session";
+import { c, seriesColor } from "../output";
 
 interface AccountScope {
   scope: string; // "local" or org display name
@@ -34,41 +30,42 @@ interface AccountScope {
   accounts: AccountInfo[];
 }
 
+const localAccounts = Effect.promise(() => listLocalAccounts());
+
 /**
  * Accounts in scope: --local → local only; --org → that org; neither →
  * everything, local first then each org (the CLI equivalent of the app's
  * org switcher list).
  */
-async function collectAccountScopes(ctx: CliContext): Promise<AccountScope[]> {
-  if (ctx.flags.local) {
-    return [{ scope: "local", orgId: null, accounts: await listLocalAccounts() }];
+const collectAccountScopes = Effect.gen(function* () {
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  if (session.local) {
+    return [{ scope: "local", orgId: null, accounts: yield* localAccounts }];
   }
-  if (ctx.flags.org) {
-    const org = await resolveOrg(ctx);
-    return [{ scope: org.displayName, orgId: org.id, accounts: await listCloudAccounts(org.id) }];
+  if (session.org) {
+    const org = yield* api.resolveOrg(session.org);
+    return [{ scope: org.displayName, orgId: org.id, accounts: yield* cloudAccounts(org.id) }];
   }
-  const scopes: AccountScope[] = [
-    { scope: "local", orgId: null, accounts: await listLocalAccounts() },
-  ];
-  if ((await getAuthStatus()).authenticated) {
-    for (const org of await listOrgs()) {
+  const scopes: AccountScope[] = [{ scope: "local", orgId: null, accounts: yield* localAccounts }];
+  if ((yield* api.authStatus).authenticated) {
+    for (const org of yield* api.listOrgs) {
       scopes.push({
         scope: org.displayName,
         orgId: org.id,
-        accounts: await listCloudAccounts(org.id),
+        accounts: yield* cloudAccounts(org.id),
       });
     }
   }
   return scopes;
-}
+});
 
 export const accounts = Command.make(
   "accounts",
   {},
   Effect.fn("accounts")(function* () {
     const session = yield* CliSession;
-    const ctx = yield* legacyContext;
-    const scopes = yield* Effect.promise(() => collectAccountScopes(ctx));
+    const scopes = yield* collectAccountScopes;
     if (session.output === "json") return yield* Print.json(scopes);
     let first = true;
     for (const [idx, s] of scopes.entries()) {
@@ -84,44 +81,44 @@ export const accounts = Command.make(
   }),
 ).pipe(Command.withDescription("List accounts (local + every org by default)"));
 
-/** Resolve the single account the resources/resource/export commands operate on. */
-export async function resolveScopedAccount(
-  ctx: CliContext,
-): Promise<{ orgId: string | null; account: AccountInfo }> {
-  if (!ctx.flags.account) {
-    throw new CliError("Pass --account <id|name> (see `infrawrench accounts`).");
+/**
+ * The single account the resources/resource/export/apps commands operate
+ * on: `wanted` (a resource id's account part, say) or else `--account`.
+ */
+export const resolveScopedAccount = Effect.fnUntraced(function* (wanted?: string) {
+  const session = yield* CliSession;
+  const api = yield* CloudApi;
+  const account = wanted ?? session.account;
+  if (!account) {
+    return yield* new CliFailure({
+      message: "Pass --account <id|name> (see `infrawrench accounts`).",
+    });
   }
-  if (ctx.flags.local) {
-    return { orgId: null, account: resolveAccount(await listLocalAccounts(), ctx.flags.account) };
+  if (session.local) {
+    return { orgId: null, account: yield* findAccount(yield* localAccounts, account) };
   }
-  if (ctx.flags.org) {
-    const org = await resolveOrg(ctx);
-    return {
-      orgId: org.id,
-      account: resolveAccount(await listCloudAccounts(org.id), ctx.flags.account),
-    };
+  if (session.org) {
+    const org = yield* api.resolveOrg(session.org);
+    return { orgId: org.id, account: yield* findAccount(yield* cloudAccounts(org.id), account) };
   }
   // No scope flag: search local first, then every org; require uniqueness.
   const matches: Array<{ orgId: string | null; account: AccountInfo; scope: string }> = [];
-  for (const s of await collectAccountScopes(ctx)) {
-    try {
-      matches.push({
-        orgId: s.orgId,
-        account: resolveAccount(s.accounts, ctx.flags.account),
-        scope: s.scope,
-      });
-    } catch {
-      /* no match in this scope */
-    }
+  for (const s of yield* collectAccountScopes) {
+    const found = yield* findAccount(s.accounts, account).pipe(Effect.option);
+    if (Option.isSome(found))
+      matches.push({ orgId: s.orgId, account: found.value, scope: s.scope });
   }
-  if (matches.length === 1) return matches[0]!;
-  if (matches.length === 0) throw new CliError(`No account matches "${ctx.flags.account}".`);
-  throw new CliError(
-    `"${ctx.flags.account}" exists in several scopes (${matches
+  const [only] = matches;
+  if (only && matches.length === 1) return { orgId: only.orgId, account: only.account };
+  if (matches.length === 0) {
+    return yield* new CliFailure({ message: `No account matches "${account}".` });
+  }
+  return yield* new CliFailure({
+    message: `"${account}" exists in several scopes (${matches
       .map((m) => m.scope)
       .join(", ")}). Disambiguate with --local or --org.`,
-  );
-}
+  });
+});
 
 /**
  * Re-sync a cloud account from the provider before listing it, so the listing
@@ -131,20 +128,21 @@ export async function resolveScopedAccount(
  * (minutes on a big account) so say what the silence is on an interactive
  * terminal (stderr, so `--json | jq` stays clean).
  */
-const syncBeforeListing = (orgId: string, account: AccountInfo): Effect.Effect<void> =>
-  Effect.promise(async () => {
-    const showProgress = process.stderr.isTTY === true;
-    if (showProgress) {
-      process.stderr.write(c.dim(`syncing ${account.displayName} from the provider… `));
-    }
-    try {
-      await syncCloudAccount(orgId, account.id);
-      if (showProgress) process.stderr.write(c.dim("done\n"));
-    } catch (e) {
-      if (showProgress) process.stderr.write("\n");
-      printErr(c.yellow(`sync failed, showing cached: ${e instanceof Error ? e.message : e}`));
-    }
-  });
+const syncBeforeListing = Effect.fnUntraced(function* (orgId: string, account: AccountInfo) {
+  const showProgress = process.stderr.isTTY === true;
+  if (showProgress) {
+    yield* Effect.sync(() =>
+      process.stderr.write(c.dim(`syncing ${account.displayName} from the provider… `)),
+    );
+  }
+  const synced = yield* attempt(syncCloud(orgId, account.id));
+  if (synced.ok) {
+    if (showProgress) yield* Effect.sync(() => process.stderr.write(c.dim("done\n")));
+    return;
+  }
+  if (showProgress) yield* Effect.sync(() => process.stderr.write("\n"));
+  yield* Print.errLine(c.yellow(`sync failed, showing cached: ${synced.error}`));
+});
 
 const loadResources = Effect.fnUntraced(function* (
   orgId: string | null,
@@ -153,7 +151,7 @@ const loadResources = Effect.fnUntraced(function* (
 ) {
   if (orgId) {
     yield* syncBeforeListing(orgId, account);
-    const rows = yield* Effect.promise(() => listCloudResources(orgId, account.id));
+    const rows = yield* cloudResources(orgId, account.id);
     const kept = typeFilter ? rows.filter((r) => r.resourceTypeId === typeFilter) : rows;
     return { rows: kept, errors: [] };
   }
@@ -173,8 +171,7 @@ export const resources = Command.make(
   },
   Effect.fn("resources")(function* ({ type }) {
     const session = yield* CliSession;
-    const ctx = yield* legacyContext;
-    const { orgId, account } = yield* Effect.promise(() => resolveScopedAccount(ctx));
+    const { orgId, account } = yield* resolveScopedAccount();
     const { rows, errors } = yield* loadResources(orgId, account, Option.getOrUndefined(type));
     // Warnings go to stderr so `--json` stays a plain array for `jq`.
     yield* printListingErrors(errors);
@@ -220,21 +217,16 @@ export const resource = Command.make(
     if (!resourceId) {
       return yield* new CliFailure({ message: "Usage: infrawrench resource <resource-id>" });
     }
-    const ctx = yield* legacyContext;
     // Resource ids embed their account id: {accountId}:{typeId}:{externalId}.
-    const scoped: CliContext = {
-      ...ctx,
-      flags: { ...ctx.flags, account: ctx.flags.account || (resourceId.split(":")[0] ?? null) },
-    };
-    const { orgId, account } = yield* Effect.promise(() => resolveScopedAccount(scoped));
+    const { orgId, account } = yield* resolveScopedAccount(
+      session.account || resourceId.split(":")[0] || undefined,
+    );
     // Local ids carry their type, so a targeted list beats fanning out over
     // every resource type the plugin has.
     const typeId = orgId ? undefined : resourceId.split(":")[1];
-    const rows = yield* Effect.promise(async () =>
-      orgId
-        ? await listCloudResources(orgId, account.id)
-        : (await listLocalResources(account, typeId ? { typeId } : {})).rows,
-    );
+    const rows: ResourceRow[] = orgId
+      ? yield* cloudResources(orgId, account.id)
+      : (yield* Effect.promise(() => listLocalResources(account, typeId ? { typeId } : {}))).rows;
     const found = rows.find((r) => r.id === resourceId);
     if (!found) {
       return yield* new CliFailure({

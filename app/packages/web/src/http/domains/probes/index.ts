@@ -30,10 +30,10 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound, ServiceUnavailable } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import {
   ProbeMetrics,
   ProbesApi,
@@ -44,11 +44,10 @@ import {
 
 type Body = { readonly [key: string]: unknown };
 
-const probeStore = {
-  isInputError: (error: unknown): error is ProbeInputError => error instanceof ProbeInputError,
+const probeStore = refusalsOf(ProbeInputError, {
   logPrefix: "[probes]",
   failure: "Probe operation failed",
-};
+});
 
 /** Row to wire shape (`SyntheticProbe` in client-core). */
 function toWire(row: ProbeRecord, uptime24h: number | null) {
@@ -234,7 +233,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const name = body["name"];
         const url = body["url"];
@@ -248,7 +247,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
           ...(typeof body["resourceId"] === "string" ? { resourceId: body["resourceId"] } : {}),
           ...(typeof body["outputKey"] === "string" ? { outputKey: body["outputKey"] } : {}),
         };
-        const created = yield* storeCall(probeStore, () =>
+        const created = yield* refusalCall(probeStore, inputRefusals, () =>
           createProbeRecord(organizationId, input, session.userId),
         );
         yield* fireAndForget(() =>
@@ -274,7 +273,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const patch: ProbeUpdateInput = {
           ...(typeof body["name"] === "string" ? { name: body["name"] } : {}),
@@ -282,7 +281,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
           ...pickSettings(body),
         };
         if (Object.keys(patch).length === 0) return yield* badRequest("No changes supplied");
-        const updated = yield* storeCall(probeStore, () =>
+        const updated = yield* refusalCall(probeStore, inputRefusals, () =>
           updateProbeRecord(organizationId, params.probeId, patch),
         );
         yield* fireAndForget(() =>
@@ -303,7 +302,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* storeCall(probeStore, () =>
+        const deleted = yield* refusalCall(probeStore, inputRefusals, () =>
           deleteProbeRecord(organizationId, params.probeId),
         );
         yield* fireAndForget(() =>

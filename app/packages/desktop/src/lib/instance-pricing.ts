@@ -1,5 +1,5 @@
-import type { InstancePricingQuery, InstancePricingResult } from "@infrawrench/client-core";
-import { invoke } from "./invoke";
+import type { InstancePricingQuery } from "@infrawrench/client-core";
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 export const desktopInstancePricingQuery: InstancePricingQuery = (sql, maxRows) =>
-  invoke<InstancePricingResult>("instance_pricing_query", { sql, maxRows });
+  runRpc(DesktopRpcClient.use((rpc) => rpc.InstancePricingQuery({ sql, maxRows })));

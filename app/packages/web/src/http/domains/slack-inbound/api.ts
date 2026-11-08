@@ -12,12 +12,12 @@
  * body themselves (`handleRaw`); the payloads and headers here only document
  * what arrives, and nothing is decoded ahead of the signature check.
  */
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { Security } from "../../annotations";
 import { withApiDefaults } from "../../domain";
 import { Unauthorized } from "../../errors";
-import { describeResponse, requiredQuery } from "../../schemas/documented";
+import { describeResponse, requiredHeaders, requiredQuery } from "../../schemas/documented";
 import { undecodedQuery } from "../../schemas/raw-query";
 
 const SlackSignatureHeaders = Schema.Struct({
@@ -37,18 +37,7 @@ const SlackSignatureHeaders = Schema.Struct({
  * An `OpenApi.Transform` marking the signature headers required: decoded as
  * optional, so a request without them reaches the signature check's own 401.
  */
-const requireSignatureHeaders = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const parameters = operation["parameters"];
-  if (!Array.isArray(parameters)) return operation;
-  return {
-    ...operation,
-    parameters: parameters.map((parameter: unknown) =>
-      Predicate.isObject(parameter) && parameter["in"] === "header"
-        ? { ...parameter, required: true }
-        : parameter,
-    ),
-  };
-};
+const requireSignatureHeaders = requiredHeaders(["x-slack-signature", "x-slack-request-timestamp"]);
 
 const formBody = (description: string) =>
   Schema.Any.annotate({ description }).pipe(HttpApiSchema.asFormUrlEncoded());

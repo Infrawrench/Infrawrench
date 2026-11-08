@@ -24,7 +24,7 @@ import { validateSshPublicKey } from "../../../services/ssh-keys";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, BadRequest, NotFound, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

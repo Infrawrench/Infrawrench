@@ -22,7 +22,7 @@ import {
 import { logAudit } from "../../../services/audit";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 
 /**
@@ -33,7 +33,7 @@ import { OrgPrincipal } from "../../principal";
 export const dismissFinding = (auditPrefix: string, request: HttpServerRequest.HttpServerRequest) =>
   Effect.gen(function* () {
     const read = yield* readObjectBody(request);
-    if (!read.ok) return yield* invalidBody(read.error);
+    if (!read.ok) return yield* badRequest(read.error);
     const body = read.body;
 
     const resourceId = body["resourceId"];

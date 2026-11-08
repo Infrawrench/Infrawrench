@@ -38,7 +38,7 @@ import { accounts } from "../../../db/schema";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound, Unauthorized } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

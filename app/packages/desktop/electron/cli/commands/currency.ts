@@ -28,7 +28,7 @@ import { currency } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
 import { spreadBody, wire } from "../effect/wire";
 import { c, safe, type Column } from "../output";
-import { confirm } from "../prompt";
+import { confirm } from "../effect/prompt";
 
 const CODE = /^[A-Z]{3}$/;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -425,9 +425,7 @@ const importRates = Command.make(
         if (json) return yield* asJson(previewBody);
         return yield* Print.line(c.dim("Preview only. Re-run with -y to write these rates."));
       }
-      const ok = yield* Effect.promise(() =>
-        confirm(`Write ${writable} rate${writable === 1 ? "" : "s"}?`),
-      );
+      const ok = yield* confirm(`Write ${writable} rate${writable === 1 ? "" : "s"}?`);
       if (!ok) return;
     }
     const resultBody = yield* send({ csv, skipInvalid: input.skipInvalid });

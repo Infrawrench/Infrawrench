@@ -9,7 +9,7 @@ const mockGetOrgCostStatus = vi.fn();
 // DATABASE_URL: stub them like the other server-core imports below.
 // Same DATABASE_URL reason: the saved-filter service and the commitments feed
 // both reach a db client at import time. Behaviour lives in their own tests
-// (services/__tests__ and api/routes/__tests__/saved-filters.test.ts).
+// (services/__tests__ and http/domains/__tests__/saved-filters.test.ts).
 vi.mock("@/auth/cost-visibility", () => ({
   // Cost visibility resolution reads Postgres; these tests exercise an
   // unrestricted caller, so the wrapper just runs the work.

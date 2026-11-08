@@ -16,6 +16,7 @@ import { listCloudAccounts } from "@/lib/cloud-accounts";
 import { getPlugin } from "@/plugins/loader";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The Price catalog on desktop: the same screen web renders, as a workspace
@@ -79,7 +80,7 @@ export function DesktopPriceCatalogPanel() {
         client={client}
         accounts={accounts}
         onUseInEstimate={(estimate) => void openEstimate(estimate)}
-        onOpenExternal={(url) => void invoke("open_external_url", { url })}
+        onOpenExternal={(url) => void openExternalUrl(url)}
       />
       {target && (
         <CreateResourceModal

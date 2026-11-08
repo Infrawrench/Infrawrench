@@ -10,7 +10,7 @@ import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { makeDomain } from "../../domain";
 import { BadRequest, NotFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

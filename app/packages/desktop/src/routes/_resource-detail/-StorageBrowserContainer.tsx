@@ -1,6 +1,7 @@
 import type { DetailViewSchema, HostPluginClient } from "@infrawrench/plugin-base";
 import { FileBrowser, formatErrorMessage } from "@infrawrench/ui";
-import { invoke } from "../../lib/invoke";
+import { DesktopRpcClient, runRpc } from "../../lib/rpc/client";
+import { showOpenDialog } from "../../lib/app-shell";
 
 interface StorageBrowserContainerProps {
   schema: DetailViewSchema;
@@ -31,19 +32,23 @@ export function StorageBrowserContainer({
         ? {
             onBatchDownload: async (keys: string[]) => {
               const accessToken = await getClient().getStorageAccessToken!();
-              const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
-                "show_open_dialog",
-                { properties: ["openDirectory"], title: "Choose download destination" },
-              );
+              const result = await showOpenDialog({
+                properties: ["openDirectory"],
+                title: "Choose download destination",
+              });
               if (result.canceled || !result.filePaths?.[0]) return;
               const destFolder = result.filePaths[0];
-              await invoke("storage_download_batch", {
-                pluginId,
-                bucket: bucketName,
-                keys,
-                destFolder,
-                accessToken,
-              });
+              await runRpc(
+                DesktopRpcClient.use((rpc) =>
+                  rpc.StorageDownloadBatch({
+                    pluginId,
+                    bucket: bucketName,
+                    keys,
+                    destFolder,
+                    accessToken,
+                  }),
+                ),
+              );
             },
           }
         : {})}

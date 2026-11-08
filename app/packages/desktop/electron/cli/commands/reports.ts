@@ -48,7 +48,7 @@ import {
   withPreviousTotal,
 } from "./costs";
 import { REPORTS_PATH, resolveReport } from "./report-lookup";
-import { confirm } from "../prompt";
+import { confirm } from "../effect/prompt";
 
 // Restated for `knownOr`: the CLI's client-core imports are type-only at
 // module scope, and `wire` fails the build when client-core adds a value.
@@ -703,8 +703,8 @@ const remove = Command.make(
           "Deleted reports lose their dashboard cards and delivery schedules; a deleted folder's other contents move to the top level.",
         ),
       );
-      const ok = yield* Effect.promise(() =>
-        confirm(`Delete these ${resolved.length} item(s) from ${safe(org.displayName)}?`),
+      const ok = yield* confirm(
+        `Delete these ${resolved.length} item(s) from ${safe(org.displayName)}?`,
       );
       if (!ok) return yield* Print.line(c.dim("Cancelled; nothing was changed."));
     }

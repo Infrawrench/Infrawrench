@@ -23,7 +23,7 @@ import * as Print from "../effect/print";
 import { CliSession } from "../effect/session";
 import { knownOr, spreadBody, Unrecognized, wire } from "../effect/wire";
 import { c, safe, type Column } from "../output";
-import { confirm } from "../prompt";
+import { confirm } from "../effect/prompt";
 import { printRemediation, Remediation } from "../remediation";
 
 const PATH = "/seats";
@@ -230,10 +230,8 @@ const remove = Command.make(
     }
     if (!input.yes) {
       const note = seat.removalNote ? ` ${seat.removalNote}` : "";
-      const ok = yield* Effect.promise(() =>
-        confirm(
-          `Remove the ${safe(seat.product)} seat for ${safe(holder(seat))} on ${safe(seat.accountName)}?${safe(note)}`,
-        ),
+      const ok = yield* confirm(
+        `Remove the ${safe(seat.product)} seat for ${safe(holder(seat))} on ${safe(seat.accountName)}?${safe(note)}`,
       );
       if (!ok) return;
     }

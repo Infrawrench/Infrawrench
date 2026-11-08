@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { QuotasSection, useUIStore, type QuotaListResponse } from "@infrawrench/ui";
 import { invoke } from "@/lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The quota radar on desktop: the same screen web renders. Rendered as a
@@ -49,7 +50,7 @@ export function DesktopQuotasPanel() {
       data={data}
       error={error}
       onRetry={() => void load()}
-      onOpenExternal={(url) => void invoke("open_external_url", { url })}
+      onOpenExternal={(url) => void openExternalUrl(url)}
     />
   );
 }

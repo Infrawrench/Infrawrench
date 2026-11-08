@@ -1,4 +1,4 @@
-import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
+import { getAccessToken, forceRefreshAccessToken } from "../cloud-tokens";
 import { CLOUD_URL } from "../../env";
 import { promptHostKeyDecision } from "../ssh-host-key-prompt";
 

@@ -1,5 +1,5 @@
 import { verifyWorkosAccessToken } from "../auth/api-auth";
-import { ensureUserFromClaims, hasMembership, listUserOrganizations } from "../api/auth-middleware";
+import { ensureUserFromClaims, hasMembership, listUserOrganizations } from "../auth/users";
 import {
   resolveAgentPrincipal,
   touchAgentRegistration,

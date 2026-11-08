@@ -89,7 +89,7 @@ export function responseMetadata(response: Response): {
 export interface LambdaApiDeps {
   /** `LAMBDA_GATEWAY_SECRET`. */
   secret: string | undefined;
-  /** The Hono API, run in this process. */
+  /** The API (`api.fetch`), run in this process. */
   apiFetch(request: Request): Promise<Response>;
   accountNeedsSession(accountId: string): Promise<boolean>;
   gatewayOnlyHit(): string | undefined;

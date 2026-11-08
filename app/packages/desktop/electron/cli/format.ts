@@ -1051,7 +1051,7 @@ export function formatCheckStatus(status: "pass" | "fail" | "not_applicable" | "
 
 /** A check's parameters, `key=value` joined: `"severities=critical,high"`. Empty for none. */
 export function formatScorecardParams(
-  params: Readonly<Record<string, number | string[]>>,
+  params: Readonly<Record<string, number | ReadonlyArray<string>>>,
   labelFor: (key: string) => string = (key) => key,
 ): string {
   return Object.entries(params)

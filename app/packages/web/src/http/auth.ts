@@ -2,15 +2,15 @@
  * The API's authentication chain, in Effect.
  *
  * This is the single implementation of who may call the API. The Effect
- * middleware (`./middleware.ts`) runs it for every HttpApi group; the Hono
- * middlewares in `api/auth-middleware.ts` are thin adapters over the same
- * steps, so the routes still on Hono and the ones on HttpApi authenticate
- * identically while the migration is in flight.
+ * middleware (`./middleware-live.ts`) runs it for every HttpApi group, and the
+ * org tree's guard (`orgTreeGuard` in `./prefix-guard.ts`) runs the same
+ * middleware for a path no domain routes, so that answer authenticates
+ * exactly as the endpoints do.
  *
- * The steps mirror the original middleware chain one for one and in order
- * (`iwk_` key, then agent credential, then person, then membership, then
- * permissions), including the order of every database read, so the existing
- * auth tests describe both.
+ * The steps run in a fixed order (`iwk_` key, then agent credential, then
+ * person, then membership, then permissions), including the order of every
+ * database read; each is named after the middleware it once was, which is
+ * how the older auth tests and comments refer to them.
  */
 import { Effect } from "effect";
 import { Cookies } from "effect/http";
@@ -35,7 +35,7 @@ import {
 import { resolveAgentPrincipal } from "@infrawrench/server-core/trials/principal";
 import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/identity";
 import type { AuditPrincipal } from "../services/audit-context";
-import type { AuthSession } from "../api/auth-middleware";
+import type { AuthSession } from "../auth/users";
 import { HttpFailure } from "./errors";
 import { legacy } from "./legacy";
 import { SESSION_COOKIE } from "./session-cookie";
@@ -77,7 +77,7 @@ export interface PersonAuth {
 }
 
 /**
- * `sessionMiddleware`: a WorkOS session cookie or access token, refused for an
+ * The person step (once `sessionMiddleware`): a WorkOS session cookie or access token, refused for an
  * agent's token. `stashedClaims` is the agent step's verification of the same
  * bearer (null = it failed verification), so the JWKS check runs once.
  */
@@ -182,7 +182,7 @@ export interface OrgCaller {
 }
 
 /**
- * `apiKeyOrgMiddleware`: an `iwk_` key against the org in the URL. `undefined`
+ * The key step (once `apiKeyOrgMiddleware`): an `iwk_` key against the org in the URL. `undefined`
  * when the request is not presenting a key, so the next step runs.
  *
  * Org pinning is checked before the route policy, and both before any
@@ -240,7 +240,7 @@ export type AgentStep =
       readonly bearerClaims: WorkosAccessTokenClaims | null | undefined;
     };
 
-/** `agentOrgMiddleware`: an `iwa_` credential or a WorkOS agent token. */
+/** The agent step (once `agentOrgMiddleware`): an `iwa_` credential or a WorkOS agent token. */
 export const authenticateAgent = Effect.fnUntraced(function* (
   input: AuthInput,
 ): Effect.fn.Return<AgentStep, HttpFailure> {
@@ -301,7 +301,7 @@ export const authenticateAgent = Effect.fnUntraced(function* (
   };
 });
 
-/** `orgMiddleware`: the person must already be a member of the org in the URL. */
+/** The membership step (once `orgMiddleware`): the person must already be a member of the org in the URL. */
 export const requireMembership = Effect.fnUntraced(function* (
   userId: string,
   orgId: string | undefined,
@@ -313,13 +313,13 @@ export const requireMembership = Effect.fnUntraced(function* (
 });
 
 /**
- * `permissionsMiddleware`: the person's role in the org, union any live
+ * The permissions step (once `permissionsMiddleware`): the person's role in the org, union any live
  * break-glass grant, which is what makes an elevation reach every surface.
  */
 export const resolvePersonPermissions = (userId: string, organizationId: string) =>
   legacy(() => resolveEffectivePermissions(organizationId, { kind: "user", userId }));
 
-/** The whole org-tree chain, as the Hono stack ran it. */
+/** The whole org-tree chain, every step in order. */
 export const authenticateOrgCaller = Effect.fnUntraced(function* (
   input: AuthInput,
 ): Effect.fn.Return<OrgCaller, HttpFailure> {

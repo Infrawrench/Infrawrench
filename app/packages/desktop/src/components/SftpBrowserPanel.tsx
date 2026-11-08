@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { useGT } from "gt-react";
 import { FileBrowser, formatErrorMessage, toast } from "@infrawrench/ui";
 import type { StorageObject, SftpConfig } from "@infrawrench/plugin-base";
-import { invoke } from "../lib/invoke";
 import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { planSftpDownloads } from "../lib/sftp-download-plan";
 import {
@@ -12,6 +11,7 @@ import {
   cloudSftpUpload,
   cloudSftpDownload,
 } from "../lib/cloud-api";
+import { showOpenDialog } from "../lib/app-shell";
 
 interface SftpCloudContext {
   orgId: string;
@@ -125,10 +125,10 @@ export function SftpBrowserPanel({
 
   const onBatchDownload = useCallback(
     async (keys: string[], basePath: string) => {
-      const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
-        "show_open_dialog",
-        { properties: ["openDirectory"], title: "Choose download destination" },
-      );
+      const result = await showOpenDialog({
+        properties: ["openDirectory"],
+        title: "Choose download destination",
+      });
       if (result.canceled || !result.filePaths?.[0]) return;
       const destFolder = result.filePaths[0];
       const { downloads, skipped } = planSftpDownloads(keys, basePath);

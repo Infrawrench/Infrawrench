@@ -29,10 +29,10 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { unexpectedAs } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { unexpectedAs } from "../store-errors";
 import {
   DoraApi,
   DoraChangeList,
@@ -229,7 +229,7 @@ const DoraHandlers = HttpApiBuilder.group(DoraApi, "dora", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const patch = pickSettings(read.body);
         if (typeof patch === "string") return yield* badRequest(patch);
         const saved = yield* doraCall(() =>
@@ -252,7 +252,7 @@ const DoraHandlers = HttpApiBuilder.group(DoraApi, "dora", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const status = body["status"];
         if (status !== undefined && !isDeployStatus(status)) {

@@ -27,6 +27,14 @@ export class CliExit extends Schema.TaggedError<CliExit>()("CliExit", {
   exitCode: Schema.Int,
 }) {}
 
+/** The person at the terminal backed out of a prompt (Ctrl-C, Esc): the shell's 130. */
+export class Canceled extends Schema.TaggedError<Canceled>()("Canceled", {}) {
+  readonly exitCode = 130;
+  override get message(): string {
+    return "Canceled.";
+  }
+}
+
 /** No cloud session: no stored token, or the refresh token is dead. */
 export class NotSignedIn extends Schema.TaggedError<NotSignedIn>()("NotSignedIn", {}) {
   readonly exitCode = 1;
@@ -109,8 +117,8 @@ export class OrgNotResolved extends Schema.TaggedError<OrgNotResolved>()("OrgNot
 export type CloudError =
   NotSignedIn | CloudRequestFailed | EndpointUnavailable | MalformedResponse | OrgNotResolved;
 
-/** Every typed failure a migrated command may end with. */
-export type CliCommandError = CliUsageError | CliFailure | CliExit | CloudError;
+/** Every typed failure a command may end with. */
+export type CliCommandError = CliUsageError | CliFailure | CliExit | Canceled | CloudError;
 
 /** True for a response body that is a web page rather than data. */
 export function looksLikeHtml(body: string): boolean {

@@ -31,7 +31,7 @@ const local = vi.hoisted(() => ({
   posture: vi.fn(),
   dismiss: vi.fn(),
   restore: vi.fn(),
-  confirm: vi.fn(async () => true),
+  confirm: vi.fn(async (_message: string) => true),
 }));
 
 vi.mock("../main-utils", async (original) => ({
@@ -44,38 +44,23 @@ vi.mock("../local-posture", () => ({
   dismissLocalPostureFinding: local.dismiss,
   restoreLocalPostureFinding: local.restore,
 }));
-vi.mock("../cli/prompt", () => ({ confirm: local.confirm }));
+vi.mock("../cli/effect/prompt", async () => {
+  const { Effect } = await import("effect");
+  return { confirm: (message: string) => Effect.promise(() => local.confirm(message)) };
+});
 
-import { RawResponse, serveRoutes, useCliCapture } from "./cli-harness";
-import { agrees, cli as runLine, compareWith, type LegacyInvoke } from "./cli-legacy-compare";
-import * as LPaging from "../cli/commands/paging.legacy";
-import * as LSeats from "../cli/commands/seats.legacy";
-import * as LDiff from "../cli/commands/diff.legacy";
-import * as LPosture from "../cli/commands/posture.legacy";
+import { RawResponse, run, serveRoutes, useCliCapture } from "./cli-harness";
 
 const out = useCliCapture();
-compareWith(out);
 
 /** One command line, its output on its own: a test may run several. */
 const cli = (...argv: string[]) => {
   out.stdout = "";
   out.stderr = "";
-  return runLine(...argv);
+  return run(...argv);
 };
 
 const pretty = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-
-const L = {
-  paging: (ctx, p, rest) => LPaging.cmdPaging(ctx, rest, p.diff.all),
-  seats: (ctx, p, rest) => LSeats.cmdSeats(ctx, rest, p.bulk.yes),
-  diff: (ctx, p, rest) => LDiff.cmdDiff(ctx, rest, p.diff, p.range),
-  posture: (ctx, _p, rest) =>
-    rest[0] === "dismiss"
-      ? LPosture.cmdPostureDismiss(ctx, rest.slice(1))
-      : rest[0] === "restore"
-        ? LPosture.cmdPostureRestore(ctx, rest.slice(1))
-        : LPosture.cmdPosture(ctx),
-} satisfies Record<string, LegacyInvoke>;
 
 // ---------------------------------------------------------------------------
 // paging
@@ -161,7 +146,6 @@ describe("paging", () => {
       \`infrawrench paging ack <ref>\` / \`paging resolve <ref>\` writes back to the provider as you.
       "
     `);
-    await agrees(out, L.paging);
   });
 
   it("--all asks for resolved ones too, and says when there are none", async () => {
@@ -171,17 +155,14 @@ describe("paging", () => {
       "No provider incidents mirrored. Turn mirroring on per account under Settings → On-call.
       "
     `);
-    await agrees(out, L.paging);
     serveRoutes(out, { "GET /paging-incidents": { incidents: [] } });
     expect(await cli("paging")).toBe(0);
-    await agrees(out, L.paging);
   });
 
   it("prints the incidents under --json", async () => {
     serveRoutes(out, { "GET /paging-incidents": { incidents: INCIDENTS } });
     expect(await cli("paging", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", incidents: INCIDENTS }));
-    await agrees(out, L.paging);
   });
 
   it("acknowledges and resolves by reference, provider id or id", async () => {
@@ -196,12 +177,9 @@ describe("paging", () => {
       "● acknowledged  #1234 Checkout 500s (PagerDuty)
       "
     `);
-    await agrees(out, L.paging);
     expect(await cli("paging", "acknowledge", "ext-i1", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ ...INCIDENTS[0], status: "acknowledged" }));
-    await agrees(out, L.paging);
     expect(await cli("paging", "resolve", "inc-56")).toBe(0);
-    await agrees(out, L.paging);
   });
 
   it("refuses an unmatched or missing target", async () => {
@@ -211,13 +189,11 @@ describe("paging", () => {
       "No provider incident matches "nope". Run \`infrawrench paging\` to list.
       "
     `);
-    await agrees(out, L.paging);
     expect(await cli("paging", "acknowledge")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "Usage: infrawrench paging acknowledge <id|reference>
       "
     `);
-    await agrees(out, L.paging);
   });
 
   it("lists the events Infrawrench sent upstream", async () => {
@@ -229,10 +205,8 @@ describe("paging", () => {
       resolved                    Probe down   probe    2026-11-08 08:30         
       "
     `);
-    await agrees(out, L.paging);
     expect(await cli("paging", "events", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", events: EVENTS }));
-    await agrees(out, L.paging);
   });
 
   it("refuses --local", async () => {
@@ -241,7 +215,6 @@ describe("paging", () => {
       "Paging providers live in Infrawrench Cloud: the incidents are mirrored per organization. Drop --local.
       "
     `);
-    await agrees(out, L.paging);
   });
 });
 
@@ -399,16 +372,13 @@ describe("seats", () => {
       Remove a flagged seat through its provider: infrawrench seats remove <id>
       "
     `);
-    await agrees(out, L.seats);
     expect(await cli("seats", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", ...SEATS }));
-    await agrees(out, L.seats);
   });
 
   it("says when nothing reports seats, or nothing is flagged", async () => {
     serveRoutes(out, { "GET /seats": { ...SEATS, accounts: [] } });
     expect(await cli("seats")).toBe(0);
-    await agrees(out, L.seats);
     serveRoutes(out, {
       "GET /seats": {
         ...SEATS,
@@ -426,7 +396,6 @@ describe("seats", () => {
       No seat is inactive, duplicated or on a dearer tier than it needs.
       "
     `);
-    await agrees(out, L.seats);
   });
 
   it("renders a finding kind this build does not know as its own word", async () => {
@@ -453,12 +422,10 @@ describe("seats", () => {
       Couldn't read seats from Cursor: 401 Unauthorized
       "
     `);
-    await agrees(out, L.seats);
     expect(await cli("seats", "all", "--json")).toBe(0);
     expect(out.stdout).toBe(
       pretty({ org: "org_1", inactiveDays: SEATS.inactiveDays, seats: SEATS.seats }),
     );
-    await agrees(out, L.seats);
   });
 
   it("removes a seat, asking first unless -y", async () => {
@@ -472,16 +439,13 @@ describe("seats", () => {
       "Removed. The provider bills it until the end of the cycle.
       "
     `);
-    await agrees(out, L.seats);
     expect(await cli("seats", "remove", "s1", "--json", "-y")).toBe(0);
     expect(out.stdout).toBe(
       pretty({ org: "org_1", seatId: "s1", effective: "end-of-cycle", message: null }),
     );
-    await agrees(out, L.seats);
     local.confirm.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     expect(await cli("seats", "remove", "s1")).toBe(0);
     expect(out.stdout).toBe("");
-    await agrees(out, L.seats);
     expect(local.confirm).toHaveBeenLastCalledWith("Remove the Copilot seat for Ada on GitHub?");
   });
 
@@ -492,15 +456,12 @@ describe("seats", () => {
       "No seat nope. List them with: infrawrench seats
       "
     `);
-    await agrees(out, L.seats);
     expect(await cli("seats", "remove")).toBe(1);
-    await agrees(out, L.seats);
     expect(await cli("seats", "--local")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "Seats are collected in the cloud; drop --local.
       "
     `);
-    await agrees(out, L.seats);
   });
 
   it("queues a refresh", async () => {
@@ -510,10 +471,8 @@ describe("seats", () => {
       "Re-collecting seats for 3 account(s); this takes a few minutes.
       "
     `);
-    await agrees(out, L.seats);
     expect(await cli("seats", "refresh", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", queued: 3 }));
-    await agrees(out, L.seats);
   });
 });
 
@@ -656,10 +615,8 @@ describe("diff", () => {
       Resources are paired by type and by name with environment words removed, so api-staging lines up with api-prod. 4 id, address and timestamp differences hidden. Every resource has different ones; pass --all to see them.
       "
     `);
-    await agrees(out, L.diff);
     expect(await cli("diff", "-a", "staging", "-b", "prod", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", ...DIFF }));
-    await agrees(out, L.diff);
     expect(await cli("diff", "staging", "--against", "prod", "--type", "rds", "--all")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "staging → prod · Acme · AWS
@@ -674,7 +631,6 @@ describe("diff", () => {
       The two inventories match. Every resource in staging has a counterpart in prod with the same settings.
       "
     `);
-    await agrees(out, L.diff);
   });
 
   it("renders a status this build does not know as its own word", async () => {
@@ -703,7 +659,6 @@ describe("diff", () => {
   it("diffs local accounts in-process", async () => {
     local.diff.mockResolvedValue(DIFF);
     expect(await cli("diff", "staging", "prod", "--local")).toBe(0);
-    await agrees(out, L.diff);
     expect(local.diff).toHaveBeenLastCalledWith(
       { id: "loc_1", pluginId: "aws", displayName: "staging" },
       { id: "loc_2", pluginId: "aws", displayName: "prod" },
@@ -711,7 +666,6 @@ describe("diff", () => {
     );
     expect(await cli("diff", "staging", "prod", "--local", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty(DIFF));
-    await agrees(out, L.diff);
   });
 
   it("refuses one account, the same account twice and two providers", async () => {
@@ -721,17 +675,13 @@ describe("diff", () => {
       "Two accounts are required. \`infrawrench diff -a staging -b prod\` (or \`infrawrench diff staging prod\`).
       "
     `);
-    await agrees(out, L.diff);
     expect(await cli("diff", "staging", "staging")).toBe(2);
-    await agrees(out, L.diff);
     expect(await cli("diff", "staging", "edge")).toBe(2);
     expect(out.stderr).toMatchInlineSnapshot(`
       ""staging" (aws) and "edge" (cloudflare) use different providers. A diff needs two accounts of the same provider.
       "
     `);
-    await agrees(out, L.diff);
     expect(await cli("diff", "staging", "nope")).toBe(1);
-    await agrees(out, L.diff);
   });
 });
 
@@ -806,10 +756,8 @@ describe("posture", () => {
       Computed from already-synced fields. No provider was contacted. Rules are declared by each plugin; critical & high findings feed the daily posture alerts.
       "
     `);
-    await agrees(out, L.posture);
     expect(await cli("posture", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", ...POSTURE }));
-    await agrees(out, L.posture);
   });
 
   it("scans the local workspace", async () => {
@@ -832,12 +780,9 @@ describe("posture", () => {
       This scan covered the local workspace only; drop --local for your organization.
       "
     `);
-    await agrees(out, L.posture);
     expect(await cli("posture", "--local", "--json")).toBe(0);
-    await agrees(out, L.posture);
     local.posture.mockResolvedValue({ ...POSTURE, dismissed: [], dismissedCount: 0, findings: [] });
     expect(await cli("posture", "--local")).toBe(0);
-    await agrees(out, L.posture);
   });
 
   it("dismisses and restores in the cloud", async () => {
@@ -851,41 +796,37 @@ describe("posture", () => {
       Accepted for Acme. It leaves the posture list and the daily alerts until \`posture restore\`.
       "
     `);
-    await agrees(out, L.posture);
     expect(await cli("posture", "dismiss", "logs", "r1", "--json")).toBe(0);
-    await agrees(out, L.posture);
     expect(await cli("posture", "restore", "logs", "r1")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Restored logs · r1
       Back on the posture list and in the daily alerts.
       "
     `);
-    await agrees(out, L.posture);
     expect(await cli("posture", "restore", "logs", "r1", "--json")).toBe(0);
-    await agrees(out, L.posture);
   });
 
   it("dismisses and restores locally", async () => {
     local.dismiss.mockResolvedValue(null);
-    local.restore.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    local.restore.mockResolvedValueOnce(true);
     expect(await cli("posture", "dismiss", "logs", "r1", "--local", "--reason", " ")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Dismissed logs · r1
       Local workspace only. It stays off the list until \`posture restore\`.
       "
     `);
-    await agrees(out, L.posture);
+    expect(local.dismiss).toHaveBeenLastCalledWith("logs", "r1", " ");
     expect(await cli("posture", "dismiss", "logs", "r1", "--local", "--json")).toBe(0);
-    await agrees(out, L.posture);
+    expect(out.stdout).toBe(
+      `${JSON.stringify({ dismissed: { resourceId: "logs", ruleId: "r1", reason: null } }, null, 2)}\n`,
+    );
     expect(await cli("posture", "restore", "logs", "r1", "--local")).toBe(0);
-    await agrees(out, L.posture);
     local.restore.mockResolvedValue(false);
     expect(await cli("posture", "restore", "logs", "r1", "--local")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "That finding is not dismissed in the local workspace.
       "
     `);
-    await agrees(out, L.posture);
   });
 
   it("asks for both ids", async () => {
@@ -895,8 +836,6 @@ describe("posture", () => {
       Both ids are printed by \`infrawrench posture --json\`.
       "
     `);
-    await agrees(out, L.posture);
     expect(await cli("posture", "restore")).toBe(2);
-    await agrees(out, L.posture);
   });
 });

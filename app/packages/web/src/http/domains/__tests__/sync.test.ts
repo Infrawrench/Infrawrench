@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { HTTPException } from "hono/http-exception";
+import { MissingScopeError } from "@/auth/scope-error";
 import { buildTestApi } from "@/http/testing";
 
 const mockSelect = vi.fn();
@@ -155,17 +155,18 @@ describe("Sync routes (bearer auth)", () => {
   describe("scope", () => {
     it("refuses a key without the scope as the plain-text 403 it always sent", async () => {
       mockRequireScope.mockImplementation(() => {
-        throw new HTTPException(403, { message: "Missing required scope: resources:read" });
+        throw new MissingScopeError("resources:read");
       });
       const res = await buildApp().request("/status", { method: "GET" });
       expect(res.status).toBe(403);
       expect(await res.text()).toBe("Missing required scope: resources:read");
+      expect(res.headers.get("content-type")).toBe("text/plain;charset=UTF-8");
       expect(mockSelect).not.toHaveBeenCalled();
     });
 
     it("checks the scope before reading the body", async () => {
       mockRequireScope.mockImplementation(() => {
-        throw new HTTPException(403, { message: "Missing required scope: resources:write" });
+        throw new MissingScopeError("resources:write");
       });
       const res = await buildApp().request("/push", { method: "POST", body: "not json" });
       expect(res.status).toBe(403);

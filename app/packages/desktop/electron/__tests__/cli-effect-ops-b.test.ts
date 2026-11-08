@@ -51,29 +51,18 @@ vi.mock("node:fs/promises", async (original) => {
   return { ...real, readFile, default: { ...real, readFile } };
 });
 
-import { serveRoutes, useCliCapture } from "./cli-harness";
-import { agrees, cli as runLine, compareWith, type LegacyInvoke } from "./cli-legacy-compare";
-import * as LPrices from "../cli/commands/prices.legacy";
-import * as LPrCheck from "../cli/commands/pr-check.legacy";
-import * as LServices from "../cli/commands/services.legacy";
+import { run, serveRoutes, useCliCapture } from "./cli-harness";
 
 const out = useCliCapture();
-compareWith(out);
 
 /** One command line, its output on its own: a test may run several. */
 const cli = (...argv: string[]) => {
   out.stdout = "";
   out.stderr = "";
-  return runLine(...argv);
+  return run(...argv);
 };
 
 const pretty = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-
-const L = {
-  prices: (ctx, p, rest) => LPrices.cmdPrices(ctx, rest[0] ?? "", rest.slice(1), p.prices, p.range),
-  prCheck: (ctx, p) => LPrCheck.cmdPrCheck(ctx, p.prCheck),
-  services: (ctx, p, rest) => LServices.cmdServices(ctx, rest, p.tier),
-} satisfies Record<string, LegacyInvoke>;
 
 // ---------------------------------------------------------------------------
 // prices
@@ -259,7 +248,6 @@ describe("prices", () => {
       List prices from each provider's published source; discounts are not applied.
       "
     `);
-    await agrees(out, L.prices);
   });
 
   it("searches with the defaults and prints the body under --json", async () => {
@@ -270,9 +258,7 @@ describe("prices", () => {
     routes[key] = { ...SEARCH, mixedCurrencies: false };
     expect(await cli("prices", "search", "--vcpus", "2", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", ...SEARCH, mixedCurrencies: false }));
-    await agrees(out, L.prices);
     expect(await cli("prices", "search", "--vcpus", "2")).toBe(0);
-    await agrees(out, L.prices);
   });
 
   it("compares providers against a target or a reference product", async () => {
@@ -293,11 +279,9 @@ describe("prices", () => {
       ! Providers quote in different currencies and are ordered by face value.
       "
     `);
-    await agrees(out, L.prices);
     expect(await cli("prices", "compare", "--min-vcpus", "4", "--min-memory", "16", "--json")).toBe(
       0,
     );
-    await agrees(out, L.prices);
 
     const before = out.requests.length;
     expect(await cli("prices", "compare", "--provider", "aws", "m7g.xlarge")).toBe(1);
@@ -310,7 +294,6 @@ describe("prices", () => {
     expect(out.stdout.split("\n")[0]).toBe(
       "Equivalents of m7g.xlarge · ≥4 vCPU · ≥16 GB · Spot · Europe",
     );
-    await agrees(out, L.prices);
   });
 
   it("asks for a target, a verb, and refuses --local", async () => {
@@ -327,17 +310,13 @@ describe("prices", () => {
                                   [--area europe] [--rate on-demand]
       "
     `);
-    await agrees(out, L.prices);
     expect(await cli("prices")).toBe(2);
-    await agrees(out, L.prices);
     expect(await cli("prices", "--local")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "\`prices\` is cloud-only: drop --local, or pass --org <id|name>.
       "
     `);
-    await agrees(out, L.prices);
     expect(await cli("prices", "search", "--local")).toBe(1);
-    await agrees(out, L.prices);
   });
 
   it("reads a rate type, an area and a unit this build does not know as their words", async () => {
@@ -532,7 +511,6 @@ describe("pr-check", () => {
       Prices are list prices.
       "
     `);
-    await agrees(out, L.prCheck);
     // What was sent: the infrastructure files only, with both sides, the
     // oversized one left out, and the repository read off the remote.
     const sent = vi
@@ -551,7 +529,7 @@ describe("pr-check", () => {
       ],
       repo: "acme/infra",
     };
-    expect(sent).toEqual([expected, expected]);
+    expect(sent).toEqual([expected]);
     // The legacy command printed the skipped-file note into the JSON on
     // stdout; it goes to stderr now, so the document parses.
     expect(await cli("pr-check", "--json", "--base", "origin/main", "--repo", "acme/other")).toBe(
@@ -578,10 +556,8 @@ describe("pr-check", () => {
       "No infrastructure files differ from origin/main.
       "
     `);
-    await agrees(out, L.prCheck);
     expect(await cli("pr-check", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", base: "origin/main", files: 0, preview: null }));
-    await agrees(out, L.prCheck);
   });
 
   it("previews a pull request through the GitHub App", async () => {
@@ -591,15 +567,12 @@ describe("pr-check", () => {
     });
     expect(await cli("pr-check", "--repo", "ACME/infra", "--pr", "42")).toBe(0);
     expect(out.stdout.split("\n")[0]).toBe("acme/infra#42 · neutral · +$412.00/mo");
-    await agrees(out, L.prCheck);
     expect(await cli("pr-check", "--repo", "acme/nope", "--pr", "42")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "acme/nope has no pull request checks configured. Turn them on in Settings → Pull Request Checks.
       "
     `);
-    await agrees(out, L.prCheck);
     expect(await cli("pr-check", "--pr", "42")).toBe(1);
-    await agrees(out, L.prCheck);
   });
 
   it("reports a failed git command in one line", async () => {
@@ -611,7 +584,6 @@ describe("pr-check", () => {
       "git rev-parse failed: fatal: not a git repository
       "
     `);
-    await agrees(out, L.prCheck);
   });
 
   it("refuses a bad --pr at parse time", async () => {
@@ -871,7 +843,6 @@ describe("services", () => {
       \`infrawrench services show <slug>\` prints one service's summary.
       "
     `);
-    await agrees(out, L.services);
     expect(await cli("services", "list", "--tier", "2")).toBe(0);
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · 1 service in tier 2
@@ -882,22 +853,17 @@ describe("services", () => {
       \`infrawrench services show <slug>\` prints one service's summary.
       "
     `);
-    await agrees(out, L.services);
     expect(await cli("services", "--tier", "1", "--json")).toBe(0);
     expect(out.stdout).toBe(pretty({ org: "org_1", services: [SERVICES[1]] }));
-    await agrees(out, L.services);
     expect(await cli("services", "--tier", "3")).toBe(0);
     expect(out.stdout).toBe("No tier 3 services.\n");
-    await agrees(out, L.services);
   });
 
   it("still lists when the scorecards cannot be read", async () => {
     serveRoutes(out, { "GET /services": { services: SERVICES } });
     expect(await cli("services", "list")).toBe(0);
-    await agrees(out, L.services);
     serveRoutes(out, { "GET /services": { services: [] } });
     expect(await cli("services")).toBe(0);
-    await agrees(out, L.services);
   });
 
   it("shows one service by slug, name or the shorthand", async () => {
@@ -953,9 +919,7 @@ describe("services", () => {
         2026-11-06 10:00  deleted  web-2                 
       "
     `);
-    await agrees(out, L.services);
     expect(await cli("services", "Checkout")).toBe(0);
-    await agrees(out, L.services);
     expect(await cli("services", "show", "svc_1", "--json")).toBe(0);
     const { service: _s, scorecards, ...rest } = SUMMARY;
     expect(out.stdout).toBe(
@@ -969,7 +933,6 @@ describe("services", () => {
         history: HISTORY.history,
       }),
     );
-    await agrees(out, L.services);
   });
 
   it("shows a service when its scorecard history cannot be read", async () => {
@@ -986,9 +949,7 @@ describe("services", () => {
       "GET /services/svc_1": { ...DETAIL, members: [], excluded: [] },
     });
     expect(await cli("services", "show", "checkout")).toBe(0);
-    await agrees(out, L.services);
     expect(await cli("services", "show", "checkout", "--json")).toBe(0);
-    await agrees(out, L.services);
   });
 
   it("refuses an ambiguous or unknown service, an empty show and --local", async () => {
@@ -998,17 +959,13 @@ describe("services", () => {
       ""c" matches 2 services: search-api, checkout. Use the slug.
       "
     `);
-    await agrees(out, L.services);
     expect(await cli("services", "zzz")).toBe(1);
     expect(out.stderr).toMatchInlineSnapshot(`
       "No service matches "zzz". Run \`infrawrench services\` to list.
       "
     `);
-    await agrees(out, L.services);
     expect(await cli("services", "show")).toBe(2);
-    await agrees(out, L.services);
     expect(await cli("services", "--local")).toBe(1);
-    await agrees(out, L.services);
     expect(await cli("services", "--tier", "5")).toBe(2);
     expect(out.stderr).toContain('--tier must be a whole number from 1 to 4, got "5"');
   });

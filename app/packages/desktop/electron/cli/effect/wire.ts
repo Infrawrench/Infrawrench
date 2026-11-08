@@ -1,4 +1,4 @@
-// The response schemas migrated commands read cloud bodies with.
+// The response schemas commands read cloud bodies with.
 //
 // A command prints `--json` as the body the server sent (every field, in the
 // server's order) and decodes only what its text rendering reads, so each

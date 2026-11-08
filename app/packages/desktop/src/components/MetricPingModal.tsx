@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { notifyMetricPingsChanged } from "../lib/metric-pings";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 interface ExistingPingRow {
   id: string;
@@ -64,9 +64,7 @@ export function MetricPingModal({
     let cancelled = false;
     async function load() {
       try {
-        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-          accountId,
-        });
+        const credentials = await getLocalAccountCredentials(accountId);
         const loaded = await getPlugin(pluginId);
         if (!loaded) throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId }));
         const services = buildPluginHostServices(loaded.plugin.manifest, credentials);

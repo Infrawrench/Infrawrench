@@ -1,7 +1,7 @@
 import { useState, useEffect, useId } from "react";
 import { useGT } from "gt-react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem, CloseIcon } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
+import { listCloudSshKeys } from "../lib/cloud-ssh-keys";
 import {
   is1PasswordAvailable,
   isPageantAvailable,
@@ -11,6 +11,7 @@ import {
 import { getDb } from "../db/client";
 import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
 import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
+import { getLocalSshPrivateKey, saveLocalSshKey } from "../lib/local-secrets";
 
 interface SshQuickConnectPanelProps {
   host: string;
@@ -78,9 +79,7 @@ export function SshQuickConnectPanel({
     setAppKeys(rows);
     let cloudRows: CloudKey[] = [];
     if (activeCloudOrgId) {
-      cloudRows = await invoke<CloudKey[]>("cloud_ssh_keys_list", {
-        orgId: activeCloudOrgId,
-      }).catch(() => []);
+      cloudRows = await listCloudSshKeys(activeCloudOrgId).catch(() => []);
     }
     setCloudKeys(cloudRows);
     // Prefer the key whose name matches the current/default username.
@@ -128,7 +127,7 @@ export function SshQuickConnectPanel({
     setSaving(true);
     try {
       const id = crypto.randomUUID();
-      await invoke<void>("ssh_key_save_private_key", {
+      await saveLocalSshKey({
         keyId: id,
         name: newKeyName.trim(),
         privateKey: newKeyPem.trim(),
@@ -161,7 +160,7 @@ export function SshQuickConnectPanel({
     } else if (selectedKey.type === "system") {
       key = await readSystemKey(selectedKey.name);
     } else if (selectedKey.type === "app") {
-      key = await invoke<string>("ssh_key_get_private_key", { keyId: selectedKey.id });
+      key = await getLocalSshPrivateKey(selectedKey.id);
     } else {
       // Cloud key: private key stays server-side; SshTerminal uses keySource to dispatch.
       key = "";

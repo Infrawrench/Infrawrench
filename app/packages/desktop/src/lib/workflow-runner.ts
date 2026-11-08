@@ -5,24 +5,12 @@
  * `Buffer`, which Chromium doesn't have (see electron/workflow-host.ts). This
  * module keeps the *real* WorkflowHost here in the renderer, where plugin
  * clients, the local SQLite DB, and the prompt UI live, and answers the
- * host-capability calls that main makes back during a run.
+ * host-capability calls the run streams back (`WorkflowRun`, in
+ * `shared/rpc/groups/workflows.ts`).
  */
+import { Effect, Predicate, Stream } from "effect";
 import type { RunLogEntry, RunResult, WorkflowHost } from "@infrawrench/workflow-runtime/client";
-import { invoke } from "./invoke";
-
-interface HostCall {
-  runToken: string;
-  callId: number;
-  method: keyof WorkflowHost;
-  args: unknown[];
-}
-
-// runToken -> the host serving a currently-running workflow. Multiple manual
-// runs can be in flight at once, so calls are routed by token.
-const activeHosts = new Map<string, WorkflowHost>();
-// runToken -> live log sink (for streaming logs to the editor during a run).
-const logSinks = new Map<string, (entry: RunLogEntry) => void>();
-let listening = false;
+import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 function toError(err: unknown): { message: string; stack?: string } {
   if (err instanceof Error) {
@@ -31,39 +19,35 @@ function toError(err: unknown): { message: string; stack?: string } {
   return { message: typeof err === "string" ? err : "Workflow host error" };
 }
 
-/** Subscribe to main's host-capability calls exactly once. */
-function ensureListening(): void {
-  if (listening) return;
-  listening = true;
-  window.electronAPI.on("workflow_host_call", (payload) => {
-    void handleHostCall(payload as HostCall);
-  });
-  window.electronAPI.on("workflow_log", (payload) => {
-    const { runToken, entry } = payload as { runToken: string; entry: RunLogEntry };
-    logSinks.get(runToken)?.(entry);
-  });
+/** Run one host method the sandbox asked for, by name, with its positional args. */
+async function callHost(host: WorkflowHost, method: string, args: readonly unknown[]) {
+  const fn: unknown = Reflect.get(host, method);
+  if (!Predicate.isFunction(fn)) {
+    throw new Error(`Workflow host has no method "${method}".`);
+  }
+  const value: unknown = await Reflect.apply(fn, host, args);
+  return value;
 }
 
-async function handleHostCall({ runToken, callId, method, args }: HostCall): Promise<void> {
-  const host = activeHosts.get(runToken);
-  if (!host) {
-    await invoke("workflow_host_reply", {
-      callId,
-      ok: false,
-      error: { message: "No active workflow run for this token." },
-    });
-    return;
-  }
-  try {
-    const fn = host[method] as ((...a: unknown[]) => Promise<unknown>) | undefined;
-    if (typeof fn !== "function") {
-      throw new Error(`Workflow host has no method "${String(method)}".`);
-    }
-    const value = await fn.apply(host, args);
-    await invoke("workflow_host_reply", { callId, ok: true, value });
-  } catch (err) {
-    await invoke("workflow_host_reply", { callId, ok: false, error: toError(err) });
-  }
+/** Answer a host call; a reply the main process can no longer place is dropped there. */
+function answerHostCall(
+  host: WorkflowHost,
+  callId: number,
+  method: string,
+  args: readonly unknown[],
+) {
+  void callHost(host, method, args)
+    .then(
+      (value) =>
+        runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowHostReply({ _tag: "Ok", callId, value }))),
+      (err: unknown) =>
+        runRpc(
+          DesktopRpcClient.use((rpc) =>
+            rpc.WorkflowHostReply({ _tag: "Failed", callId, error: toError(err) }),
+          ),
+        ),
+    )
+    .catch((err: unknown) => console.error("[workflow] could not answer a host call:", err));
 }
 
 /**
@@ -86,23 +70,35 @@ export async function runWorkflowInMain(
     onLog?: (entry: RunLogEntry) => void;
   },
 ): Promise<RunResult> {
-  ensureListening();
   const runToken = crypto.randomUUID();
-  activeHosts.set(runToken, host);
-  if (opts.onLog) logSinks.set(runToken, opts.onLog);
   opts.onStart?.(() => {
-    void invoke("workflow_stop", { runToken });
+    void runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowStop({ runToken }))).catch(
+      () => undefined,
+    );
   });
-  try {
-    return await invoke<RunResult>("workflow_run", {
-      source,
-      interactive,
-      runToken,
-      workflowId: opts.workflowId,
-      ...(opts.debug ? { debug: true } : {}),
-    });
-  } finally {
-    activeHosts.delete(runToken);
-    logSinks.delete(runToken);
-  }
+  const result = await runRpc(
+    Effect.gen(function* () {
+      const rpc = yield* DesktopRpcClient;
+      let done: RunResult | undefined;
+      yield* Stream.runForEach(
+        rpc.WorkflowRun({
+          runToken,
+          source,
+          interactive,
+          workflowId: opts.workflowId,
+          ...(opts.debug ? { debug: true } : {}),
+        }),
+        (event) =>
+          Effect.sync(() => {
+            if (event._tag === "HostCall")
+              answerHostCall(host, event.callId, event.method, event.args);
+            else if (event._tag === "Log") opts.onLog?.(event.entry);
+            else done = event.result;
+          }),
+      );
+      return done;
+    }),
+  );
+  if (!result) throw new Error("The workflow run ended without a result.");
+  return result;
 }

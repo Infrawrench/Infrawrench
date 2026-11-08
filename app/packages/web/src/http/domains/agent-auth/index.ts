@@ -31,7 +31,7 @@ import { effectivePermissions } from "../../../auth/effective-permissions";
 import { rawRequest } from "../../caller-auth";
 import { makeDomain } from "../../domain";
 import { HttpFailure } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { failureResponse, json } from "../../middleware";
 import { guardSessionPrefixes } from "../../prefix-guard";

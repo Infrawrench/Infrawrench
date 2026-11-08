@@ -30,6 +30,7 @@ import type { PromptSpec } from "@infrawrench/workflow-runtime/client";
 import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
 
 import { invoke } from "./invoke";
+import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
 
 /**
@@ -50,7 +51,7 @@ async function deploy(
   session: DeploySession,
 ): Promise<{ runId: string; result: DeployRunResult }> {
   const orgId = requireOrgId();
-  const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId });
+  const token = await getCloudWsToken(orgId);
   if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
   const wsUrl = await getCloudWsUrl();
   const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(token)}`);

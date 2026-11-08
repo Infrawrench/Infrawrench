@@ -3,9 +3,11 @@
  * Build the OpenAPI 3.1 document and write it to `openapi.json`.
  *
  * The spec is built from:
- *   - Hand-written Zod schemas for every route (see `src/api/openapi/paths/*`),
+ *   - Every HttpApi domain's endpoint definitions (`src/http/domains.ts`), the
+ *     same schemas the routes decode requests with,
  *   - Plus enums for `pluginId` / `resourceTypeId` sourced from the live plugin
- *     registry via `loadPlugins()`, so the spec always matches the running server.
+ *     registry via `loadPlugins()`, so the spec always matches the running server,
+ *   - And the event subscription webhooks from the client-core event registry.
  *
  * Then the client SDKs are refreshed from it, but only if they're out of date:
  * see `./sdk/generate.ts`. To rebuild them on their own, use `generate:sdk`.

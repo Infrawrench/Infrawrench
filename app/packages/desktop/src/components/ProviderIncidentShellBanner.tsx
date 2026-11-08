@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ProviderIncidentBanner, useUIStore } from "@infrawrench/ui";
 import { createDesktopStatusIncidentsClient } from "../lib/status-incidents-client";
-import { invoke } from "../lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * Desktop shell mount for the shared provider-incident banner. Cloud-only:
@@ -17,7 +17,7 @@ export function ProviderIncidentShellBanner() {
     <ProviderIncidentBanner
       key={activeCloudOrgId}
       client={client}
-      onOpenUrl={(url) => void invoke("open_external_url", { url })}
+      onOpenUrl={(url) => void openExternalUrl(url)}
     />
   );
 }

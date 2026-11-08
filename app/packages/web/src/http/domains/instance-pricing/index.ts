@@ -33,7 +33,7 @@ import {
 import { asBearerCaller, bearerPrefixGuard } from "../../bearer-caller";
 import { rawRequest } from "../../caller-auth";
 import { makeDomain } from "../../domain";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { guardPrefixes } from "../../prefix-guard";

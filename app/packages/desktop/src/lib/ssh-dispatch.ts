@@ -13,6 +13,7 @@ import { Cause, Effect, Exit, Predicate, Stream } from "effect";
 import { invoke } from "./invoke";
 import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 import type { KeySource } from "./ssh-key-source";
+import { getCloudWsToken } from "./cloud-auth";
 import { getCloudWsUrl } from "./cloud-ws";
 
 export interface SshShellHandle {
@@ -242,7 +243,7 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
   };
 
   const getToken = async (): Promise<string> => {
-    const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId: params.orgId });
+    const token = await getCloudWsToken(params.orgId);
     if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
     return token;
   };

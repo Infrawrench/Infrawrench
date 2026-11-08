@@ -18,7 +18,7 @@ import { isValidSourceName, SOURCE_NAME_HELP } from "@infrawrench/server-core/so
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest } from "../../errors";
-import { decodeAsPayload, readJsonOr } from "../../json-body";
+import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";

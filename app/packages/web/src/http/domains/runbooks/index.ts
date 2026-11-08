@@ -30,9 +30,10 @@ import {
 } from "@infrawrench/server-core/runbooks/runs";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
+import { notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -169,15 +170,15 @@ const RunbooksHandlers = HttpApiBuilder.group(RunbooksApi, "runbooks", (handlers
     .handleRaw("tickStep", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const status = parsed.body["status"];
         if (!isStepStatus(status)) {
-          return yield* invalidBody(`status must be one of ${RUNBOOK_STEP_STATUSES.join(", ")}`);
+          return yield* badRequest(`status must be one of ${RUNBOOK_STEP_STATUSES.join(", ")}`);
         }
         const note = readNullableString(parsed.body, "note");
-        if (!note.ok) return yield* invalidBody(note.error);
+        if (!note.ok) return yield* badRequest(note.error);
         const workflowRunId = readNullableString(parsed.body, "workflowRunId");
-        if (!workflowRunId.ok) return yield* invalidBody(workflowRunId.error);
+        if (!workflowRunId.ok) return yield* badRequest(workflowRunId.error);
 
         const { organizationId, session } = yield* OrgPrincipal;
         const run = yield* legacyTry(
@@ -199,13 +200,13 @@ const RunbooksHandlers = HttpApiBuilder.group(RunbooksApi, "runbooks", (handlers
     .handleRaw("closeRun", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const status = parsed.body["status"];
         if (status !== "completed" && status !== "abandoned") {
-          return yield* invalidBody("status must be completed or abandoned");
+          return yield* badRequest("status must be completed or abandoned");
         }
         const summary = readNullableString(parsed.body, "summary");
-        if (!summary.ok) return yield* invalidBody(summary.error);
+        if (!summary.ok) return yield* badRequest(summary.error);
 
         const { organizationId, session } = yield* OrgPrincipal;
         const run = yield* legacyTry(
@@ -274,11 +275,11 @@ const RunbooksHandlers = HttpApiBuilder.group(RunbooksApi, "runbooks", (handlers
     .handleRaw("create", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readRunbookBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
+        if (!fields.ok) return yield* badRequest(fields.error);
         const name = fields.value.name;
-        if (!Predicate.isString(name)) return yield* invalidBody("name is required");
+        if (!Predicate.isString(name)) return yield* badRequest("name is required");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const runbook = yield* legacyTry(
@@ -301,11 +302,10 @@ const RunbooksHandlers = HttpApiBuilder.group(RunbooksApi, "runbooks", (handlers
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readRunbookBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
-        if (Object.keys(fields.value).length === 0)
-          return yield* invalidBody("No changes supplied");
+        if (!fields.ok) return yield* badRequest(fields.error);
+        if (Object.keys(fields.value).length === 0) return yield* badRequest("No changes supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const runbook = yield* legacyTry(

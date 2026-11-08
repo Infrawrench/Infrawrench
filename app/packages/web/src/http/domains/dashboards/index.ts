@@ -3,7 +3,7 @@
  *
  * The database work is `./store.ts`, query for query what the Hono router
  * did; the default-dashboard and KPI services are called as they were. Every
- * call runs through `legacy`/`statusCall`, inside the request's scopes, so
+ * call runs through `legacy`/`refusalCall`, inside the request's scopes, so
  * object sharing sees the caller and the KPI figures are measured inside the
  * caller's cost visibility. Audit rows are fire-and-forget, after the write.
  *
@@ -31,12 +31,12 @@ import {
 } from "../../../services/default-dashboards";
 import { makeDomain } from "../../domain";
 import { badRequest, forbidden } from "../../errors";
-import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type StatusRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 import { Ok, ok } from "../../schemas/common";
-import { refuse, statusCall, type StatusRefusal } from "../status-refusals";
 import { DashboardsApi, Unprocessable } from "./api";
 import {
   Dashboard,
@@ -136,7 +136,7 @@ const DashboardsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboards", (ha
     .handle("get", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const full = yield* statusCall(readRefusal, notFoundOnly, () =>
+        const full = yield* refusalCall(readRefusal, notFoundOnly, () =>
           getDashboardWithPins(organizationId, params.id),
         );
         return yield* respond(DashboardWithPins)(full);
@@ -145,7 +145,7 @@ const DashboardsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboards", (ha
     .handle("rename", ({ params, payload }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        yield* statusCall(readRefusal, notFoundOnly, () =>
+        yield* refusalCall(readRefusal, notFoundOnly, () =>
           renameDashboard(organizationId, params.id, payload.name),
         );
         return ok;
@@ -154,7 +154,7 @@ const DashboardsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboards", (ha
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        yield* statusCall(readRefusal, badRequestOrNotFound, () =>
+        yield* refusalCall(readRefusal, badRequestOrNotFound, () =>
           deleteDashboard(organizationId, params.id),
         );
         return ok;
@@ -164,7 +164,7 @@ const DashboardsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboards", (ha
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJson(request));
-        yield* statusCall(readRefusal, badRequestOrNotFound, () =>
+        yield* refusalCall(readRefusal, badRequestOrNotFound, () =>
           reorderCards(organizationId, params.id, body),
         );
         return yield* respond(Ok)(ok);
@@ -194,7 +194,7 @@ const DefaultsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardDefaults"
     .handle("full", () =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const full = yield* statusCall(readRefusal, notFoundOnly, () =>
+        const full = yield* refusalCall(readRefusal, notFoundOnly, () =>
           getDefaultDashboardFull(organizationId, session.userId),
         );
         return yield* respond(DashboardWithPins)(full);
@@ -206,7 +206,7 @@ const DefaultsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardDefaults"
         const userId = session.userId;
         const dashboardId = readDashboardId(yield* readJsonOr(request, null));
         if (!dashboardId) return yield* badRequest("dashboardId is required");
-        const dashboard = yield* statusCall(readRefusal, badRequestOrNotFound, () =>
+        const dashboard = yield* refusalCall(readRefusal, badRequestOrNotFound, () =>
           setMyDefaultDashboard(organizationId, userId, dashboardId),
         );
         yield* fireAndForget(() =>
@@ -253,7 +253,7 @@ const DefaultsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardDefaults"
         const { organizationId, session } = yield* OrgPrincipal;
         const dashboardId = readDashboardId(yield* readJsonOr(request, null));
         if (!dashboardId) return yield* badRequest("dashboardId is required");
-        const { role, dashboard } = yield* statusCall(
+        const { role, dashboard } = yield* refusalCall(
           readRefusal,
           { ...badRequestOrNotFound, 422: (error: string) => new Unprocessable({ error }) },
           () => setRoleDefaultDashboard(organizationId, params.roleId, dashboardId),
@@ -284,7 +284,7 @@ const DefaultsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardDefaults"
     .handle("clearRole", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const role = yield* statusCall(readRefusal, notFoundOnly, () =>
+        const role = yield* refusalCall(readRefusal, notFoundOnly, () =>
           clearRoleDefaultDashboard(organizationId, params.roleId),
         );
         yield* fireAndForget(() =>
@@ -308,7 +308,7 @@ const WidgetsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardWidgets", 
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* decodeAsPayload(WidgetCreateBody, yield* readJson(request));
-        const { created, dashboardId, kind } = yield* statusCall(
+        const { created, dashboardId, kind } = yield* refusalCall(
           readRefusal,
           badRequestOrNotFound,
           () => createWidget(organizationId, body),
@@ -330,7 +330,7 @@ const WidgetsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardWidgets", 
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* decodeAsPayload(WidgetUpdateBody, yield* readJson(request));
-        const { updated, dashboardId, kind } = yield* statusCall(
+        const { updated, dashboardId, kind } = yield* refusalCall(
           readRefusal,
           badRequestOrNotFound,
           () => updateWidget(organizationId, params.widgetId, body),
@@ -355,7 +355,7 @@ const WidgetsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardWidgets", 
     .handle("duplicate", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const { created, dashboardId, kind, sourceWidgetId } = yield* statusCall(
+        const { created, dashboardId, kind, sourceWidgetId } = yield* refusalCall(
           readRefusal,
           badRequestOrNotFound,
           () => duplicateWidget(organizationId, params.widgetId),
@@ -376,7 +376,7 @@ const WidgetsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardWidgets", 
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const deleted = yield* statusCall(readRefusal, notFoundOnly, () =>
+        const deleted = yield* refusalCall(readRefusal, notFoundOnly, () =>
           deleteWidget(organizationId, params.widgetId),
         );
         yield* fireAndForget(() =>
@@ -414,7 +414,7 @@ const WidgetsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardWidgets", 
         }
         const config = decoded.success.config;
         if (config.source.kind === "budget") yield* requirePermission("budgets:read");
-        const result = yield* statusCall(
+        const result = yield* refusalCall(
           readRefusal,
           { ...badRequestOrNotFound, 403: forbidden },
           () => evaluateDashboardKpi(organizationId, config, { granted: permissions }),
@@ -430,7 +430,7 @@ const PinsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardPins", (handl
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJson(request));
-        yield* statusCall(readRefusal, notFoundOnly, () => pinResource(organizationId, body));
+        yield* refusalCall(readRefusal, notFoundOnly, () => pinResource(organizationId, body));
         return yield* respond(Ok)(ok);
       }),
     )
@@ -438,7 +438,7 @@ const PinsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardPins", (handl
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJson(request));
-        yield* statusCall(readRefusal, notFoundOnly, () => unpinResource(organizationId, body));
+        yield* refusalCall(readRefusal, notFoundOnly, () => unpinResource(organizationId, body));
         return yield* respond(Ok)(ok);
       }),
     )
@@ -446,7 +446,7 @@ const PinsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardPins", (handl
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJson(request));
-        yield* statusCall(readRefusal, notFoundOnly, () => pinWorkflow(organizationId, body));
+        yield* refusalCall(readRefusal, notFoundOnly, () => pinWorkflow(organizationId, body));
         return yield* respond(Ok)(ok);
       }),
     )
@@ -454,14 +454,14 @@ const PinsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardPins", (handl
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJson(request));
-        yield* statusCall(readRefusal, notFoundOnly, () => unpinWorkflow(organizationId, body));
+        yield* refusalCall(readRefusal, notFoundOnly, () => unpinWorkflow(organizationId, body));
         return yield* respond(Ok)(ok);
       }),
     )
     .handle("pinFull", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const pin = yield* statusCall(readRefusal, notFoundOnly, () =>
+        const pin = yield* refusalCall(readRefusal, notFoundOnly, () =>
           getPinFull(organizationId, params.pinId),
         );
         return yield* respond(PinFull)(pin);
@@ -470,7 +470,7 @@ const PinsHandlers = HttpApiBuilder.group(DashboardsApi, "dashboardPins", (handl
     .handle("pinRange", ({ params, query }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const range = yield* statusCall(readRefusal, badRequestOrNotFound, () =>
+        const range = yield* refusalCall(readRefusal, badRequestOrNotFound, () =>
           getPinRange(organizationId, params.pinId, query.fromMs, query.toMs),
         );
         return yield* respond(PinRangeResponse)(range);

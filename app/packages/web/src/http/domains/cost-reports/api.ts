@@ -8,7 +8,7 @@
  * a report is cost data under a name, not dashboard furniture. Bodies are the
  * shared schemas the report editor validates with (`@infrawrench/ui/schemas`).
  *
- * The prefix is shared with routes still on Hono (`/:id/notifications…`,
+ * The prefix is shared with other domains (`/:id/notifications…`,
  * `/:id/anomaly-alert…`, `/:id/pdf`); nothing here has a second segment one
  * of them uses.
  */

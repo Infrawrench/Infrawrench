@@ -9,43 +9,9 @@ vi.mock("electron", () => ({
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-import { parseCliArgs, parseLastDays } from "../cli/args";
+import { parseLastDays } from "../cli/args";
 import { resolveDayWindow } from "../cli/effect/range-flags";
 import { type FeedbackFlags, feedbackRequest, isIsoDay } from "../cli/commands/anomaly-feedback";
-
-describe("parseCliArgs: the legacy range flags", () => {
-  it("parses the numeric flags as numbers", () => {
-    const { range } = parseCliArgs(["vulns", "--limit", "20"]);
-    expect(range.limit).toBe(20);
-  });
-
-  it("rejects a non-integer limit with exit code 2", () => {
-    expect(() => parseCliArgs(["vulns", "--limit", "2.5"])).toThrow(/whole number/);
-    try {
-      parseCliArgs(["vulns", "--limit", "0"]);
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect((e as { exitCode?: number }).exitCode).toBe(2);
-    }
-  });
-
-  it("carries --resource through unparsed", () => {
-    const { range } = parseCliArgs(["vulns", "--resource", "acct:droplet:123"]);
-    expect(range.resource).toBe("acct:droplet:123");
-  });
-
-  it("leaves the flags undefined when absent", () => {
-    const { range } = parseCliArgs(["vulns"]);
-    expect(range.limit).toBeUndefined();
-    expect(range.resource).toBeUndefined();
-  });
-
-  it("passes everything after -- through as positionals (ssh-fanout's escape hatch)", () => {
-    const parsed = parseCliArgs(["ssh-fanout", "-y", "--", "uptime", "-p", "--since"]);
-    expect(parsed.positionals).toEqual(["ssh-fanout", "uptime", "-p", "--since"]);
-    expect(parsed.fanout.yes).toBe(true);
-  });
-});
 
 describe("parseLastDays", () => {
   it("converts days, weeks and months", () => {
@@ -84,13 +50,6 @@ describe("resolveDayWindow", () => {
   it("refuses a window the endpoint would reject, before the round trip", () => {
     const refused = window(120, undefined);
     expect(Exit.isFailure(refused) && String(refused.cause)).toMatch(/at most 90 days/);
-  });
-});
-
-describe("parseCliArgs: seats", () => {
-  it("reads -y for seats", () => {
-    expect(parseCliArgs(["seats", "remove", "a@example.com", "-y"]).bulk.yes).toBe(true);
-    expect(parseCliArgs(["seats"]).bulk.yes).toBe(false);
   });
 });
 
@@ -163,38 +122,5 @@ describe("costs --anomalies feedback flags", () => {
     expect(isIsoDay("2024-02-29")).toBe(true);
     expect(isIsoDay("2026-02-29")).toBe(false);
     expect(isIsoDay("2026-1-01")).toBe(false);
-  });
-});
-
-describe("parseCliArgs: leaks", () => {
-  it("reads the leak flags, defaulting to closing the finding upstream", () => {
-    const bare = parseCliArgs(["leaks", "rotate", "abc"]);
-    expect(bare.positionals).toEqual(["leaks", "rotate", "abc"]);
-    expect(bare.leaks).toEqual({
-      status: undefined,
-      comment: undefined,
-      valueStdin: false,
-      keepUpstreamOpen: false,
-    });
-    const full = parseCliArgs([
-      "leaks",
-      "dismiss",
-      "abc",
-      "--reason",
-      "used-in-tests",
-      "--comment",
-      "fixture key",
-      "--keep-upstream-open",
-      "--status",
-      "all",
-      "--value-stdin",
-    ]);
-    expect(full.flags.reason).toBe("used-in-tests");
-    expect(full.leaks).toEqual({
-      status: "all",
-      comment: "fixture key",
-      valueStdin: true,
-      keepUpstreamOpen: true,
-    });
   });
 });

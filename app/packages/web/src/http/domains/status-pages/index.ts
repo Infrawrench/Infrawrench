@@ -22,21 +22,19 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import { StatusPage, StatusPageListResponse, StatusPagesApi } from "./api";
 import { PublicStatusHandlers } from "./public";
 
 type Body = { readonly [key: string]: unknown };
 
-const statusPageStore = {
-  isInputError: (error: unknown): error is StatusPageInputError =>
-    error instanceof StatusPageInputError,
+const statusPageStore = refusalsOf(StatusPageInputError, {
   logPrefix: "[status-pages]",
   failure: "Status page operation failed",
-};
+});
 
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
@@ -109,7 +107,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const title = body["title"];
         if (typeof title !== "string") return yield* badRequest("title is required");
@@ -119,7 +117,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
           ...pickSettings(body),
           ...(components ? { components } : {}),
         };
-        const created = yield* storeCall(statusPageStore, () =>
+        const created = yield* refusalCall(statusPageStore, inputRefusals, () =>
           createStatusPageRecord(organizationId, input, session.userId),
         );
         yield* fireAndForget(() =>
@@ -139,7 +137,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const components = yield* bodyComponents(body);
         const title = body["title"];
@@ -148,7 +146,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
           ...pickSettings(body),
           ...(components ? { components } : {}),
         };
-        const updated = yield* storeCall(statusPageStore, () =>
+        const updated = yield* refusalCall(statusPageStore, inputRefusals, () =>
           updateStatusPageRecord(organizationId, params.id, patch),
         );
         yield* fireAndForget(() =>
@@ -169,7 +167,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
     .handle("rotateSlug", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const rotated = yield* storeCall(statusPageStore, () =>
+        const rotated = yield* refusalCall(statusPageStore, inputRefusals, () =>
           rotateStatusPageSlugRecord(organizationId, params.id),
         );
         yield* fireAndForget(() =>
@@ -187,7 +185,7 @@ const StatusPagesHandlers = HttpApiBuilder.group(StatusPagesApi, "statusPages", 
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const removed = yield* storeCall(statusPageStore, () =>
+        const removed = yield* refusalCall(statusPageStore, inputRefusals, () =>
           deleteStatusPageRecord(organizationId, params.id),
         );
         yield* fireAndForget(() =>

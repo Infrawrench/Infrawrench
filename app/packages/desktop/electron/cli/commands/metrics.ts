@@ -4,12 +4,7 @@
 // fetch live through the plugin in-process.
 import { Effect, Option, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
-import {
-  fetchLocalMetrics,
-  listCloudAccounts,
-  listLocalAccounts,
-  resolveAccount,
-} from "../context";
+import { cloudAccounts, fetchLocalMetrics, findAccount, listLocalAccounts } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -36,20 +31,22 @@ interface Loaded {
   readonly raw: ReadonlyArray<unknown>;
 }
 
-const loadLocal = (
+const loadLocal = Effect.fnUntraced(function* (
   accountId: string,
   resourceTypeId: string,
   resourceId: string,
   range: { startMs: number; endMs: number },
-) =>
-  Effect.promise(async (): Promise<Loaded> => {
-    // Live from the plugin, the way the desktop's Metrics tab reads a local
-    // resource. There is no local history store, so the provider decides how
-    // far back the series go.
-    const account = resolveAccount(await listLocalAccounts(), accountId);
-    const series = await fetchLocalMetrics(account, resourceTypeId, resourceId, range);
-    return { series, raw: series };
-  });
+) {
+  // Live from the plugin, the way the desktop's Metrics tab reads a local
+  // resource. There is no local history store, so the provider decides how
+  // far back the series go.
+  const account = yield* findAccount(yield* Effect.promise(() => listLocalAccounts()), accountId);
+  const series = yield* Effect.promise(() =>
+    fetchLocalMetrics(account, resourceTypeId, resourceId, range),
+  );
+  const loaded: Loaded = { series, raw: series };
+  return loaded;
+});
 
 const loadCloud = Effect.fnUntraced(function* (
   accountId: string,
@@ -59,9 +56,7 @@ const loadCloud = Effect.fnUntraced(function* (
 ) {
   const api = yield* CloudApi;
   const org = yield* currentOrg;
-  const account = (yield* Effect.promise(() => listCloudAccounts(org.id))).find(
-    (a) => a.id === accountId,
-  );
+  const account = (yield* cloudAccounts(org.id)).find((a) => a.id === accountId);
   if (!account) {
     return yield* new CliFailure({
       message: `Account ${accountId} not found in ${org.displayName}.`,

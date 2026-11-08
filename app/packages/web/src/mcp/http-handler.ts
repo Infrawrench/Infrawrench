@@ -41,8 +41,8 @@ function reqUrlString(req: IncomingMessage): string {
 }
 
 export async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  // `server.ts` routes /api/mcp at the Node HTTP level, ahead of the Hono
-  // listener, so the `securityHeaders()` middleware never sees these responses.
+  // `server.ts` routes /api/mcp at the Node HTTP level, ahead of the API's
+  // listener, so the API router's security headers never reach these responses.
   // Set them here: before the auth check, so the 401 and the malformed-body
   // 400 carry them too, not just the SDK handler's own writes.
   applySecurityHeaders(res);

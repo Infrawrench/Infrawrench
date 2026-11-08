@@ -1,6 +1,5 @@
 import { v4 as uuid } from "uuid";
 import { and, desc, eq } from "drizzle-orm";
-import type { Context } from "hono";
 import type { HostPluginClient } from "@infrawrench/plugin-base";
 import { db } from "@/db/client";
 import { changeFreezes } from "@/db/schema";
@@ -14,8 +13,8 @@ import { logAudit } from "./audit";
  * A freeze is "in effect" when it is active, has started, and has not passed
  * its end time. While one is in effect, the destructive mutation paths
  * (resource delete, destructive plugin actions, secret-version destroy,
- * deployment rollback) call {@link checkChangeFreeze} before touching the
- * provider. Callers holding `freezes:override` can bypass a freeze by sending
+ * deployment rollback) call {@link evaluateChangeFreeze} (through
+ * `http/change-freeze.ts` on the API) before touching the provider. Callers holding `freezes:override` can bypass a freeze by sending
  * the `x-change-freeze-override: true` header; both blocks and overrides are
  * written to the audit trail.
  */
@@ -82,32 +81,6 @@ export interface FreezeAuditTarget {
   metadata?: Record<string, unknown> | undefined;
 }
 
-/**
- * Enforce the org's change freeze on a destructive HTTP mutation.
- *
- * Returns null when the request may proceed (no freeze, or an authorized
- * explicit override: the override itself is audit-logged). Returns a 423
- * `Response` describing the freeze when the request must be blocked; the block
- * is audit-logged too. Call it after resolving/authorizing the target and
- * before performing the provider mutation.
- */
-export async function checkChangeFreeze(
-  c: Context,
-  target: FreezeAuditTarget,
-): Promise<Response | null> {
-  const session = c.get("session") as { userId?: string } | undefined;
-  const blocked = await evaluateChangeFreeze(
-    {
-      organizationId: c.get("organizationId"),
-      userId: session?.userId,
-      permissions: (c.get("permissions") ?? []) as readonly string[],
-      overrideHeader: c.req.header(CHANGE_FREEZE_OVERRIDE_HEADER),
-    },
-    target,
-  );
-  return blocked ? c.json(blocked, 423) : null;
-}
-
 /** Who is attempting a destructive mutation, for {@link evaluateChangeFreeze}. */
 export interface FreezeCaller {
   readonly organizationId: string;
@@ -118,9 +91,11 @@ export interface FreezeCaller {
 }
 
 /**
- * {@link checkChangeFreeze} without the HTTP framework: null when the caller
- * may proceed, otherwise the 423 body. Blocks and overrides are audit-logged
- * the same way.
+ * Enforce the org's change freeze on a destructive mutation: null when the
+ * caller may proceed (no freeze, or an authorized explicit override, itself
+ * audit-logged), otherwise the 423 body describing the freeze (the block is
+ * audit-logged too). Call it after resolving and authorizing the target and
+ * before performing the provider mutation.
  */
 export async function evaluateChangeFreeze(
   caller: FreezeCaller,

@@ -3,7 +3,7 @@ import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
 import { DeliveryPanel } from "@infrawrench/ui/dora";
 import { createDesktopDoraClient } from "@/lib/dora-client";
-import { invoke } from "@/lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * Delivery (DORA metrics) on desktop: the same screen web renders, as the
@@ -29,7 +29,7 @@ export function DesktopDeliveryPanel() {
       <DeliveryPanel
         key={activeCloudOrgId}
         client={client}
-        onOpenUrl={(url) => void invoke("open_external_url", { url })}
+        onOpenUrl={(url) => void openExternalUrl(url)}
       />
     </div>
   );

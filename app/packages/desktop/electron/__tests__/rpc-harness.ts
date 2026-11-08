@@ -50,12 +50,15 @@ export function fakeRenderer(id = nextRendererId++) {
 }
 
 /**
- * Run `effect` against a fresh server and a fresh renderer connection, both
- * torn down afterwards. Rejects with the operation's typed error, as
- * `runRpc` does in the renderer.
+ * Run `effect` against a fresh server and a renderer connection (a fresh
+ * one unless the test passes the `fakeRenderer()` it wants to destroy
+ * midway), both torn down afterwards. Rejects with the operation's typed
+ * error, as `runRpc` does in the renderer.
  */
-export function callDesktopRpc<A, E>(effect: Effect.Effect<A, E, DesktopRpcClient>): Promise<A> {
-  const { bridge } = fakeRenderer();
+export function callDesktopRpc<A, E>(
+  effect: Effect.Effect<A, E, DesktopRpcClient>,
+  { bridge } = fakeRenderer(),
+): Promise<A> {
   return Effect.runPromise(
     effect.pipe(
       Effect.provide(DesktopRpcClient.layer(bridge).pipe(Layer.provide(RpcServerLive))),
@@ -67,4 +70,31 @@ export function callDesktopRpc<A, E>(effect: Effect.Effect<A, E, DesktopRpcClien
 /** The typed failure of `effect`, failing the test if it succeeds. */
 export function failureOf<A, E>(effect: Effect.Effect<A, E, DesktopRpcClient>): Promise<E> {
   return callDesktopRpc(Effect.flip(effect));
+}
+
+type FakeRenderer = ReturnType<typeof fakeRenderer>;
+
+/**
+ * Several renderers against one server, as in the app (each `callDesktopRpc`
+ * builds its own server, whose connection ids start over, so two calls
+ * cannot tell renderers apart). `body` gets `as(renderer, effect)`, which
+ * runs `effect` over that renderer's connection; nest one `as` inside
+ * another to have both renderers connected at once.
+ */
+export function withSharedServer<A, E>(
+  body: (
+    as: <X, Y>(
+      renderer: FakeRenderer,
+      effect: Effect.Effect<X, Y, DesktopRpcClient>,
+    ) => Effect.Effect<X, Y>,
+  ) => Effect.Effect<A, E>,
+): Promise<A> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Layer.build(RpcServerLive);
+      return yield* body((renderer, effect) =>
+        effect.pipe(Effect.provide(DesktopRpcClient.layer(renderer.bridge)), Effect.scoped),
+      );
+    }).pipe(Effect.scoped),
+  );
 }

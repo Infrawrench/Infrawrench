@@ -53,7 +53,6 @@ import { Onboarding, isOnboardingComplete, markOnboardingComplete } from "../com
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { pinResource, pinWorkflow } from "../lib/pins";
-import { invoke } from "../lib/invoke";
 import { DesktopRpcClient, runRpc } from "../lib/rpc/client";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
@@ -80,6 +79,7 @@ import {
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -220,9 +220,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   if (!account) return null;
 
   try {
-    const credentials = await invoke<Record<string, string>>("account_get_credentials", {
-      accountId: account.id,
-    });
+    const credentials = await getLocalAccountCredentials(account.id);
     const loaded = await getPlugin(account.plugin_id);
     if (!loaded) return tab;
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);

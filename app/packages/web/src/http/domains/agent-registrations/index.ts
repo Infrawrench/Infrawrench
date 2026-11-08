@@ -22,7 +22,7 @@ import { logAudit } from "../../../services/audit";
 import { serializeAgent, unknownProviders } from "../../../services/agent-links";
 import { makeDomain } from "../../domain";
 import { badRequest, conflict, HttpFailure, notFound } from "../../errors";
-import { fieldsOf, readJsonOr } from "../../json-body";
+import { fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

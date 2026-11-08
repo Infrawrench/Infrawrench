@@ -21,10 +21,10 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import {
   OwnerCandidateListResponse,
   OwnershipApi,
@@ -35,12 +35,10 @@ import {
 
 type Body = { readonly [key: string]: unknown };
 
-const ownershipStore = {
-  isInputError: (error: unknown): error is OwnershipInputError =>
-    error instanceof OwnershipInputError,
+const ownershipStore = refusalsOf(OwnershipInputError, {
   logPrefix: "[ownership]",
   failure: "Ownership operation failed",
-};
+});
 
 /**
  * A nullable string field on the patch: absent keeps, `null` clears, a string
@@ -101,7 +99,7 @@ const OwnershipHandlers = HttpApiBuilder.group(OwnershipApi, "ownership", (handl
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const resourceId = body["resourceId"];
         if (typeof resourceId !== "string" || !resourceId) {
@@ -123,7 +121,7 @@ const OwnershipHandlers = HttpApiBuilder.group(OwnershipApi, "ownership", (handl
           ...("value" in purpose ? { purpose: purpose.value } : {}),
           ...("value" in ticketUrl ? { ticketUrl: ticketUrl.value } : {}),
         };
-        const saved = yield* storeCall(ownershipStore, () =>
+        const saved = yield* refusalCall(ownershipStore, inputRefusals, () =>
           upsertOwnership(organizationId, patch, session.userId),
         );
         yield* fireAndForget(() =>
@@ -149,7 +147,7 @@ const OwnershipHandlers = HttpApiBuilder.group(OwnershipApi, "ownership", (handl
         const { organizationId, session } = yield* OrgPrincipal;
         const resourceId = query.resourceId;
         if (!resourceId) return yield* badRequest("Missing resourceId");
-        const removed = yield* storeCall(ownershipStore, () =>
+        const removed = yield* refusalCall(ownershipStore, inputRefusals, () =>
           deleteOwnership(organizationId, resourceId),
         );
         if (!removed) return yield* notFound("No ownership recorded for this resource");

@@ -34,9 +34,9 @@ import {
   updateSavingsView,
 } from "../../../services/savings-views";
 import { makeDomain } from "../../domain";
-import { Conflict, notFound } from "../../errors";
+import { Conflict, notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -51,7 +51,7 @@ import {
 const refusing = <A>(normalize: () => A) =>
   Effect.try({
     try: normalize,
-    catch: (e) => invalidBody(e instanceof Error ? e.message : String(e)),
+    catch: (e) => badRequest(e instanceof Error ? e.message : String(e)),
   });
 
 /**
@@ -70,7 +70,7 @@ const nameConflict = (error: unknown) =>
 /** The body as a view input, or the sentence the route has always refused it with. */
 const readViewInput = Effect.fnUntraced(function* (request: HttpServerRequest.HttpServerRequest) {
   const read = yield* readObjectBody(request);
-  if (!read.ok) return yield* invalidBody(read.error);
+  if (!read.ok) return yield* badRequest(read.error);
   return yield* refusing(() => normalizeSavingsViewInput(read.body));
 });
 
@@ -136,7 +136,7 @@ const SavingsFindingsHandlers = HttpApiBuilder.group(
       .handleRaw("setStatus", ({ request }) =>
         Effect.gen(function* () {
           const read = yield* readObjectBody(request);
-          if (!read.ok) return yield* invalidBody(read.error);
+          if (!read.ok) return yield* badRequest(read.error);
           const input = yield* refusing(() => normalizeSavingsFindingStatusInput(read.body));
 
           const { organizationId, session } = yield* OrgPrincipal;

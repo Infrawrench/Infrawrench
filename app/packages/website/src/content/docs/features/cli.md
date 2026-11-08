@@ -12,7 +12,7 @@ You can use the CLI in three ways:
 - **Text mode.** Human-readable tables and terminal charts. This is the default for every subcommand.
 - **JSON mode.** Pass `--json` to any command for stable output you can script against (with `jq`, for example).
 
-`infrawrench help` lists every command. Most of the listing commands also have their own help, so `infrawrench orgs --help` prints just that command's usage and flags: `access`, `accounts`, `agents`, `blast-radius`, `budgets`, `cli`, `commitments`, `cost-visibility`, `credits`, `declared-incidents`, `dns`, `estimate`, `expiring`, `extended-support`, `github-issues`, `idle-rules`, `incidents`, `issues`, `leases`, `login`, `logout`, `orgs`, `orphans`, `oversized`, `ownership`, `page`, `probes`, `resource`, `resources`, `schedules`, `slos`, `status-pages`, `tag-keys`, `virtual-tags`, `webhooks` and `whoami`, plus the commands that take a time range or a listing filter: `ai-spend`, `alerts`, `billing-rules`, `carbon`, `changes`, `costs`, `currency`, `dora`, `graph`, `hygiene`, `invoices`, `k8s-network`, `metrics`, `moment`, `routing`, `savings`, `scenarios`, `search`, `showback`, `starred`, `tags` and `unit-costs`, and the commands that write files: `canvas`, `compliance`, `dashboards`, `export`, `exports`, `k8s-efficiency`, `network-reports`, `recordings`, `reports` and `resource-reports`. More commands get this as they are updated. Those commands are also strict about what they're given. A flag they don't take, an extra argument or an unknown subcommand (`access frobnicate`, `issues trello`) prints their help and the error to stderr and exits with status 2. Before, the extra input was ignored, or the command printed a one-line error and exited with status 1. Their own flags go after the command name, and after the subcommand for the flags only it takes: `infrawrench resources --type droplet -a prod`, not `infrawrench --type droplet resources`, and `infrawrench dora changes --failed`, not `infrawrench dora --failed changes`. A bad flag value, such as `--last 6h` on a command that counts whole days, is reported the same way, with the same sentence as before. That includes a `--format` the command cannot write (`k8s-efficiency --format xlsx`), which used to exit with status 1 on some of them, and on `network-reports` and `resource-reports` is now refused even when you list reports rather than run one.
+`infrawrench help` (or `infrawrench --help`) lists every command. Every command also has its own help, so `infrawrench orgs --help` prints just that command's usage and flags. Commands are strict about what they're given: a flag they don't take, an extra argument or an unknown subcommand (`access frobnicate`, `issues trello`) prints their help and the error to stderr and exits with status 2. An unknown command (`infrawrench frobnicate`) says so in one line, also with status 2. A command's own flags go after its name, and after the subcommand for the flags only it takes: `infrawrench resources --type droplet -a prod`, not `infrawrench --type droplet resources`, and `infrawrench dora changes --failed`, not `infrawrench dora --failed changes`. The global flags (`--json`, `--org`, `--local`, `-a/--account`, `--no-color`) go anywhere. A bad flag value, such as `--last 6h` on a command that counts whole days, is reported the same way. That includes a `--format` the command cannot write (`k8s-efficiency --format xlsx`).
 
 ## Install the shell command
 
@@ -719,7 +719,7 @@ infrawrench ssh-fanout --snippet kernel --hosts web- --key ops --yes --json
 infrawrench ssh-fanout snippets                      # the org's saved commands
 ```
 
-Like the app, it tells you how many hosts it will hit before running anything (`Run on 14 hosts?`). On a non-interactive terminal it won't run unless you pass `-y/--yes`.
+Like the app, it tells you how many hosts it will hit before running anything (`Run on 14 hosts?`). On a non-interactive terminal it won't run unless you pass `-y/--yes`. If the remote command has flags of its own, put `--` before it so they aren't read as the CLI's: `infrawrench ssh-fanout -y -- uptime -p`.
 
 - `--hosts` matches a name, address or tag. `--plugin` and `--tag` narrow it further.
 - `--key <id|name>` supplies the org SSH key that VM hosts need.
@@ -783,7 +783,7 @@ infrawrench webhooks deliveries --json     # the last 50 deliveries, every subsc
 
 `infrawrench github-issues` lists findings filed as [GitHub issues](./github-issues.md) (open first, with status, assignee and any pull request). `infrawrench github-issues settings` prints the repository routing, the Terraform sources, and whether each GitHub App installation has approved the permissions needed to file issues. Both take `--json`.
 
-`infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything. By default it checks your local working tree against where it branched from the default branch, uncommitted edits included (`--base <ref>` for a different base). For an open pull request, use `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource. `--json` returns the full report. Needs `iac:read`.
+`infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything. By default it checks your local working tree against where it branched from the default branch, uncommitted edits included (`--base <ref>` for a different base). For an open pull request, use `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource. `--json` returns the full report; a file skipped for being over 512 KiB is noted on stderr then, so the JSON on stdout stays parseable. Needs `iac:read`.
 
 These are all read-only and need the **Organization settings** permission. An address on the unsubscribed list, or outside the [email](./email-alerts.md) domains your organization allows, is skipped when alerts go out. You edit rules on the Notifications page on web or desktop.
 
@@ -795,7 +795,7 @@ These are all read-only and need the **Organization settings** permission. An ad
 infrawrench leaks                          # open leaks, the scanners and the counts
 infrawrench leaks --status all             # also rotated, dismissed and resolved upstream
 infrawrench leaks --account "Prod AWS"     # leaks that matched, or may belong to, one account
-infrawrench leaks scan                     # scan every scanner account now
+infrawrench leaks scan                     # scan every scanner account now (exits 1 if one failed)
 infrawrench leaks --json                   # the raw response: full ids, finding URLs, rotation modes
 ```
 
@@ -865,6 +865,13 @@ infrawrench deploy log --local
 
 `infrawrench deploy typings > Infrafile.d.ts` writes type declarations that give your editor autocomplete for your own accounts.
 
+The other verbs work on what earlier runs did. `-e/--env` goes before or after the verb (`infrawrench deploy -e production log` and `infrawrench deploy log -e production` are the same):
+
+- `deploy rollback` ships the deploy before the live one again, or the run you name with `--to-run <runId>`. Nothing is rebuilt. `--delete-created` also deletes the resources later runs created. Needs an organization.
+- `deploy outputs` prints what the last successful deploy passed to `infra.output(...)`.
+- `deploy status` checks that the resources this machine's deploys created still exist.
+- `deploy destroy` runs the Infrafile's `destroy()` stage. At a terminal it asks first. `deploy destroy --created -e <env>` skips the Infrafile and deletes what this machine's deploys of that environment created.
+
 ## Use the TUI
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:
@@ -912,10 +919,14 @@ infrawrench graph --resource "$DB_ID" --json | jq -r '.blastRadius[]'
 ```
 infrawrench apps <resource-id> --key ~/.ssh/id_ed25519
 infrawrench apps <resource-id> --json
+infrawrench apps <resource-id> --key ~/.ssh/id_ed25519 --check
+infrawrench apps <resource-id> --key ~/.ssh/id_ed25519 --install
 infrawrench apps <resource-id> --launch org.gnome.Nautilus.desktop
 ```
 
-`apps` lists what's installed on a Linux host, read from the host's own desktop entries. Nothing is installed on the host.
+`apps` lists what's installed on a Linux host, read from the host's own desktop entries. Listing leaves nothing behind on the host.
+
+`--check` reports what the host is missing before applications can run there, and the commands that would install it. `--install` runs those commands with the host's package manager, printing each one first. Both exit with status 1 while the host still isn't ready, so a script looping over a fleet can tell which hosts need attention. `--check --json` gives the same report as one object.
 
 `--launch` opens that application in the desktop app, since a window needs somewhere to draw. See [Linux applications](./linux-apps.md).
 

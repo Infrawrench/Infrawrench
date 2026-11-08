@@ -16,7 +16,7 @@ import {
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest } from "../../errors";
-import { decodeAsPayload, readJsonOr } from "../../json-body";
+import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { fireAndForget, legacyTry } from "../../legacy";
 import { asOrgRequestCaller } from "../../org-request-caller";
 import { respond } from "../../response";

@@ -1,7 +1,6 @@
 /**
- * The org change freeze, for HttpApi handlers: what `checkChangeFreeze(c, ...)`
- * is for the Hono routes. Call it after resolving and authorizing the target
- * and before the mutation. A freeze in effect fails with the 423
+ * The org change freeze, for HttpApi handlers. Call it after resolving and
+ * authorizing the target and before the mutation. A freeze in effect fails with the 423
  * {@link ChangeFreezeBlocked}, unless the caller holds `freezes:override` and
  * sent `x-change-freeze-override: true`; blocks and overrides are both
  * audit-logged by the service.

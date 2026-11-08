@@ -12,7 +12,7 @@ import {
   FANOUT_DEFAULT_CONCURRENCY,
   type FanoutHostResult,
 } from "@infrawrench/client-core";
-import { invoke } from "@/lib/invoke";
+import { listCloudSshKeys } from "@/lib/cloud-ssh-keys";
 import { getDb } from "@/db/client";
 import { createPluginClient } from "@/lib/plugin-client";
 import { loadPlugins } from "@/plugins/loader";
@@ -78,7 +78,7 @@ function CloudFanout({ orgId }: { orgId: string }) {
       .finally(() => {
         if (!cancelled) setTargetsLoading(false);
       });
-    invoke<Array<{ id: string; name: string }>>("cloud_ssh_keys_list", { orgId })
+    listCloudSshKeys(orgId)
       .then((keys) => {
         if (!cancelled) setSshKeys(keys.map((k) => ({ id: k.id, name: k.name })));
       })

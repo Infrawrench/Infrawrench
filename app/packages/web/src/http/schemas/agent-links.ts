@@ -5,8 +5,9 @@
  * Defined by the platform's own routes (`domains/agent-link-platform/`), the
  * device flow, the approval and the `iwl_`-authenticated surface. The org
  * tree's Settings views (`domains/agent-links/`, `domains/agent-registrations/`)
- * refer to the shared ones by name through `./zod-components.ts`, so each is
- * one component in the document.
+ * import the shared ones, so each is one component in the document. Their
+ * Settings edit is served with `handleRaw` and checks the body by hand, so
+ * {@link PatchPlatformAgent} documents it there without decoding it.
  */
 import { Schema } from "effect";
 import { HttpApiSchema } from "effect/http-api";

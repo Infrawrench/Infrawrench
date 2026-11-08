@@ -19,7 +19,7 @@ import {
 } from "@infrawrench/server-core/digest/recipients";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

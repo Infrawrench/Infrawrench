@@ -28,10 +28,11 @@ import { TAG_POLICY_OVERRIDE_HEADER } from "@infrawrench/client-core";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest, InternalServerError, NotFound, notFound } from "../../errors";
-import { decodeFirstIssue, readJson } from "../../json-body";
+import { decodeFirstIssue, readJson } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
+import { hostKeyTrustRequired } from "../ssh-host-key-trust";
 import { JsonObject, ok } from "../../schemas/common";
 import { TerraformExport } from "../../schemas/terraform-export";
 import {
@@ -54,7 +55,6 @@ import {
   SecretVersionsResponse,
   SshInstallAccounts,
   SshInstallResult,
-  SshInstallTrustRequired,
   TagPolicyBlocked,
   Undocumented,
   UpdateResourceResponse,
@@ -237,15 +237,7 @@ const ResourcesHandlers = HttpApiBuilder.group(ResourcesApi, "resources", (handl
         if (outcome.ok) return yield* respond(SshInstallResult)(outcome.result);
         if ("trust" in outcome) {
           const { trust } = outcome;
-          return yield* new SshInstallTrustRequired({
-            error: "ssh_host_key_trust_required",
-            message: trust.message,
-            kind: trust.kind,
-            host: trust.host,
-            port: trust.port,
-            presentedFingerprint: trust.presentedFingerprint,
-            storedFingerprint: trust.storedFingerprint,
-          });
+          return yield* hostKeyTrustRequired(trust);
         }
         return yield* badRequest(outcome.error);
       }),

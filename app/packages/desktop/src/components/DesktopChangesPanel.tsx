@@ -5,7 +5,7 @@ import { ChangesPanel, useUIStore } from "@infrawrench/ui";
 import { createDesktopChangesClient } from "@/lib/changes-client";
 import { createDesktopStatusIncidentsClient } from "@/lib/status-incidents-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
-import { invoke } from "@/lib/invoke";
+import { openExternalUrl } from "../lib/app-shell";
 
 /**
  * The org change timeline on desktop: the same panel web renders, over the
@@ -42,7 +42,7 @@ export function DesktopChangesPanel() {
       key={activeCloudOrgId}
       client={client}
       statusClient={statusClient}
-      onOpenUrl={(url) => void invoke("open_external_url", { url })}
+      onOpenUrl={(url) => void openExternalUrl(url)}
       onInvestigateMoment={() => void navigate({ to: "/moment" })}
       onOpenResource={(entry) =>
         void navigate(

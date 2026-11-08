@@ -1,7 +1,7 @@
 /**
  * Dashboards: the non-resource cards (cost graphs, reports, budgets, KPIs,
  * text) behind `/dashboards/widgets…`, as the Hono router wrote them. Promise
- * code, called through `statusCall`.
+ * code, called through `refusalCall`.
  *
  * A config is decoded against its kind's schema (`WIDGET_CONFIG_SCHEMAS` in
  * `@infrawrench/ui/schemas`, the editors' own) and stored as decoded. A card

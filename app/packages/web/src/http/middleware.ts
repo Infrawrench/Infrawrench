@@ -7,7 +7,7 @@
  *   plus the request's AsyncLocalStorage scopes.
  * - {@link SessionAuth}: the user-scoped surface. A person only.
  * - {@link RequestErrors}: on every group, outermost. Renders schema failures
- *   as `{ error, issues }` 400s and defects the way the Hono `onError` did.
+ *   as `{ error, issues }` 400s and defects as the API always has.
  *
  * This module holds the middleware tags, the gate shared with tests and the
  * error renderer, and stays light: domain modules import it. The auth-backed
@@ -22,7 +22,6 @@ import { Cause, Context, Effect, Layer, Predicate, SchemaIssue } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiError, type HttpApiEndpoint } from "effect/http-api";
 import { RequestErrors } from "./middleware-tags";
-import { HTTPException } from "hono/http-exception";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import {
   GATEWAY_ONLY_HEADER,
@@ -116,7 +115,7 @@ function apiErrorStatus(error: unknown): number | undefined {
 }
 
 /**
- * A defect as the old `onError` answered it. Object sharing throws from the
+ * A defect as the API has always answered it. Object sharing throws from the
  * services the routes and tools share: an object below `viewer` is a 404 so
  * its existence does not leak, one the caller can see but not change a 403.
  */
@@ -126,7 +125,6 @@ export function renderDefect(defect: unknown): HttpServerResponse.HttpServerResp
   if (apiStatus !== undefined && Predicate.hasProperty(defect, "error")) {
     return json({ error: defect.error }, apiStatus);
   }
-  if (defect instanceof HTTPException) return json({ error: defect.message }, defect.status);
   if (defect instanceof ObjectNotVisibleError) return json({ error: "Not found" }, 404);
   if (defect instanceof ObjectAccessDeniedError) return json({ error: defect.message }, 403);
   if (defect instanceof SharingInputError) return json({ error: defect.message }, 400);

@@ -5,8 +5,64 @@ const getCloudWsUrl = vi.fn();
 
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 vi.mock("../cloud-ws", () => ({ getCloudWsUrl: () => getCloudWsUrl() }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
-import { openK8sExec, openK9s, startPortForward } from "../k8s-dispatch";
+import { type Cause, Effect, Predicate, Queue, Stream } from "effect";
+import {
+  K8sLocalError,
+  type K8sPortForwardEvent,
+  type K8sTerminalEvent,
+} from "../../../shared/rpc/groups/k8s-local";
+import { checkK9sInstalled, openK8sExec, openK9s, startPortForward } from "../k8s-dispatch";
+import { K8sPfCloudError } from "../../../shared/rpc/groups/k8s-pf-cloud";
+import { fakeRpc, resetFakeRpc } from "./fake-rpc";
+
+/**
+ * A main process that answers `open` with a stream the test drives: `emit`
+ * pushes an event, `end` is the process exiting, and `isInterrupted` says
+ * whether the renderer interrupted the stream (what kills the process).
+ */
+function fakeStream<A>(tag: string, first?: A) {
+  const opened: unknown[] = [];
+  let interrupted = false;
+  let output: Queue.Queue<A, Cause.Done> | undefined;
+  fakeRpc[tag] = (config: unknown) => {
+    opened.push(config);
+    return Stream.callback<A>((queue) =>
+      Effect.gen(function* () {
+        output = queue;
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            interrupted = true;
+          }),
+        );
+        if (first !== undefined) yield* Queue.offer(queue, first);
+      }),
+    );
+  };
+  return {
+    opened,
+    emit: (event: A) => {
+      if (output) Queue.offerUnsafe(output, event);
+    },
+    end: () => {
+      if (output) Queue.endUnsafe(output);
+    },
+    isInterrupted: () => interrupted,
+  };
+}
+
+/** Record each call of `tag` and answer it with nothing. */
+function recordCalls(tag: string) {
+  const calls: unknown[] = [];
+  fakeRpc[tag] = (payload: unknown) =>
+    Effect.sync(() => {
+      calls.push(payload);
+    });
+  return calls;
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function makeElectronApi() {
   const handlers = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -59,6 +115,7 @@ class FakeWebSocket {
 }
 
 beforeEach(() => {
+  resetFakeRpc();
   invoke.mockReset();
   getCloudWsUrl.mockReset();
   FakeWebSocket.instances = [];
@@ -70,10 +127,13 @@ afterEach(() => {
 });
 
 describe("openK8sExec local", () => {
-  it("spawns via k8s_exec_spawn and binds a local pty", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce("sess-1");
+  it("opens a K8sExecOpen stream and binds it to a local handle", async () => {
+    const shell = fakeStream<K8sTerminalEvent>("K8sExecOpen", {
+      _tag: "Opened",
+      sessionId: "sess-1",
+    });
+    const writes = recordCalls("K8sExecWrite");
+    const resizes = recordCalls("K8sExecResize");
 
     const handle = await openK8sExec({
       mode: "local",
@@ -85,38 +145,86 @@ describe("openK8sExec local", () => {
       rows: 24,
     });
     expect(handle.kind).toBe("local");
-    expect(invoke.mock.calls[0]![0]).toBe("k8s_exec_spawn");
-    expect(invoke.mock.calls[0]![1]).toMatchObject({ containerName: "c", podName: "pod" });
+    expect(shell.opened).toEqual([
+      {
+        kubeconfig: "kc",
+        namespace: "default",
+        podName: "pod",
+        containerName: "c",
+        cols: 80,
+        rows: 24,
+      },
+    ]);
 
     const data: Uint8Array[] = [];
     handle.onData((d) => data.push(d));
-    api.emit("k8s_exec_data_sess-1", new Uint8Array([9]));
-    expect(data[0]).toEqual(new Uint8Array([9]));
+    shell.emit({ _tag: "Data", data: new Uint8Array([9]) });
+    await vi.waitFor(() => expect(data[0]).toEqual(new Uint8Array([9])));
 
-    handle.write("cmd");
-    expect(invoke).toHaveBeenCalledWith("k8s_exec_write", { sessionId: "sess-1", data: "cmd" });
+    handle.write("c");
+    handle.write("md");
+    await vi.waitFor(() =>
+      expect(
+        writes.map((w) => (Predicate.hasProperty(w, "data") ? w.data : undefined)).join(""),
+      ).toBe("cmd"),
+    );
+    expect(writes[0]).toMatchObject({ sessionId: "sess-1" });
     handle.resize(10, 20);
-    expect(invoke).toHaveBeenCalledWith("k8s_exec_resize", {
-      sessionId: "sess-1",
-      cols: 10,
-      rows: 20,
-    });
+    await vi.waitFor(() => expect(resizes).toEqual([{ sessionId: "sess-1", cols: 10, rows: 20 }]));
 
     const exits: number[] = [];
     handle.onExit(() => exits.push(1));
-    api.emit("k8s_exec_exit_sess-1");
-    expect(exits).toHaveLength(1);
+    // The process exits: the stream ends and the handle reports it.
+    shell.end();
+    await vi.waitFor(() => expect(exits).toHaveLength(1));
+  });
 
+  it("kill interrupts the stream, which is what kills the process", async () => {
+    const shell = fakeStream<K8sTerminalEvent>("K8sExecOpen", {
+      _tag: "Opened",
+      sessionId: "sess-2",
+    });
+    const writes = recordCalls("K8sExecWrite");
+    const handle = await openK8sExec({
+      mode: "local",
+      kubeconfig: "kc",
+      namespace: "default",
+      podName: "pod",
+      cols: 80,
+      rows: 24,
+    });
+    const exits: number[] = [];
+    handle.onExit(() => exits.push(1));
     handle.kill();
-    expect(api.offAllCalls).toContain("k8s_exec_data_sess-1");
-    expect(invoke).toHaveBeenCalledWith("k8s_exec_kill", { sessionId: "sess-1" });
+    await vi.waitFor(() => expect(shell.isInterrupted()).toBe(true));
+    handle.write("late");
+    handle.kill(); // idempotent
+    await settle();
+    expect(writes).toEqual([]);
+    // A kill is not an exit the caller has to be told about.
+    expect(exits).toEqual([]);
+  });
+
+  it("rejects with the main process's sentence when it never opens", async () => {
+    fakeRpc["K8sExecOpen"] = () =>
+      Stream.fail(new K8sLocalError({ message: "Failed to launch kubectl exec: not found" }));
+    await expect(
+      openK8sExec({
+        mode: "local",
+        kubeconfig: "kc",
+        namespace: "default",
+        podName: "pod",
+        cols: 80,
+        rows: 24,
+      }),
+    ).rejects.toThrow("Failed to launch kubectl exec: not found");
   });
 });
 
 describe("openK8sExec cloud", () => {
   it("opens a ws with k8s:exec:open and decodes data", async () => {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValueOnce("tok");
+    fakeRpc["CloudWsToken"] = () => Effect.succeed("tok");
     getCloudWsUrl.mockResolvedValue("wss://c");
 
     const handle = await openK8sExec({
@@ -191,7 +299,7 @@ describe("openK8sExec cloud", () => {
 
   it("throws without a token", async () => {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValueOnce(null);
+    fakeRpc["CloudWsToken"] = () => Effect.succeed(null);
     await expect(
       openK8sExec({
         mode: "cloud",
@@ -209,10 +317,9 @@ describe("openK8sExec cloud", () => {
 });
 
 describe("openK9s", () => {
-  it("local spawns via k9s_spawn", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce("k9s-1");
+  it("local opens a K9sOpen stream and writes through K9sWrite", async () => {
+    const k9s = fakeStream<K8sTerminalEvent>("K9sOpen", { _tag: "Opened", sessionId: "k9s-1" });
+    const writes = recordCalls("K9sWrite");
     const handle = await openK9s({
       mode: "local",
       kubeconfig: "kc",
@@ -221,12 +328,19 @@ describe("openK9s", () => {
       rows: 24,
     });
     expect(handle.kind).toBe("local");
-    expect(invoke.mock.calls[0]![0]).toBe("k9s_spawn");
+    expect(k9s.opened).toEqual([{ kubeconfig: "kc", namespace: "ns", cols: 80, rows: 24 }]);
+    handle.write(":pods");
+    await vi.waitFor(() => expect(writes).toEqual([{ sessionId: "k9s-1", data: ":pods" }]));
+  });
+
+  it("checks whether k9s is installed", async () => {
+    fakeRpc["K9sCheck"] = () => Effect.succeed(true);
+    await expect(checkK9sInstalled()).resolves.toBe(true);
   });
 
   it("cloud opens ws with k9s:open", async () => {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValueOnce("tok");
+    fakeRpc["CloudWsToken"] = () => Effect.succeed("tok");
     getCloudWsUrl.mockResolvedValue("wss://c");
     const handle = await openK9s({
       mode: "cloud",
@@ -245,10 +359,11 @@ describe("openK9s", () => {
 });
 
 describe("startPortForward", () => {
-  it("local returns a handle and wires exit/stop", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce({ sessionId: "pf-1", localPort: 15432 });
+  it("local resolves with the bound port, reports kubectl exiting, and stops", async () => {
+    const pf = fakeStream<K8sPortForwardEvent>("K8sPortForwardOpen", {
+      _tag: "Forwarding",
+      localPort: 15432,
+    });
     const handle = await startPortForward({
       mode: "local",
       kubeconfig: "kc",
@@ -257,23 +372,69 @@ describe("startPortForward", () => {
       resourceName: "db",
       remotePort: 5432,
     });
-    expect(handle).toMatchObject({ kind: "local", sessionId: "pf-1", localPort: 15432 });
-    expect(invoke.mock.calls[0]![1]).toMatchObject({ localPort: 0 });
+    expect(handle).toMatchObject({ kind: "local", localPort: 15432 });
+    expect(pf.opened).toEqual([
+      {
+        kubeconfig: "kc",
+        namespace: "ns",
+        resourceType: "svc",
+        resourceName: "db",
+        remotePort: 5432,
+        localPort: 0,
+      },
+    ]);
 
     const exits: number[] = [];
     handle.onExit(() => exits.push(1));
-    api.emit("k8s_pf_exit_pf-1");
-    expect(exits).toHaveLength(1);
-
-    handle.stop();
-    expect(invoke).toHaveBeenCalledWith("k8s_pf_stop", { sessionId: "pf-1" });
-    expect(api.offAllCalls).toContain("k8s_pf_exit_pf-1");
+    pf.end();
+    await vi.waitFor(() => expect(exits).toHaveLength(1));
   });
 
-  it("cloud returns a handle and wires cloud exit/stop", async () => {
-    const api = makeElectronApi();
-    vi.stubGlobal("window", { electronAPI: api });
-    invoke.mockResolvedValueOnce({ sessionId: "cpf-1", localPort: 16000 });
+  it("local stop interrupts the stream, which is what kills kubectl", async () => {
+    const pf = fakeStream<K8sPortForwardEvent>("K8sPortForwardOpen", {
+      _tag: "Forwarding",
+      localPort: 15433,
+    });
+    const handle = await startPortForward({
+      mode: "local",
+      kubeconfig: "kc",
+      namespace: "ns",
+      resourceType: "pod",
+      resourceName: "db-0",
+      remotePort: 5432,
+      localPort: 15433,
+    });
+    const exits: number[] = [];
+    handle.onExit(() => exits.push(1));
+    handle.stop();
+    await vi.waitFor(() => expect(pf.isInterrupted()).toBe(true));
+    await settle();
+    expect(exits).toEqual([]);
+  });
+
+  it("local rejects with kubectl's failure before it forwards", async () => {
+    fakeRpc["K8sPortForwardOpen"] = () =>
+      Stream.fail(
+        new K8sLocalError({ message: "kubectl port-forward exited with code 1: no such svc" }),
+      );
+    await expect(
+      startPortForward({
+        mode: "local",
+        kubeconfig: "kc",
+        namespace: "ns",
+        resourceType: "svc",
+        resourceName: "nope",
+        remotePort: 80,
+      }),
+    ).rejects.toThrow("kubectl port-forward exited with code 1: no such svc");
+  });
+
+  it("cloud resolves with the bound port and reports the listener closing", async () => {
+    const pf = fakeStream("K8sPfCloudStart", {
+      _tag: "Started",
+      sessionId: "cpf-1",
+      localPort: 16000,
+    });
     const handle = await startPortForward({
       mode: "cloud",
       orgId: "org",
@@ -286,16 +447,68 @@ describe("startPortForward", () => {
       remotePort: 5432,
       localPort: 16000,
     });
-    expect(handle.kind).toBe("cloud");
-    expect(invoke.mock.calls[0]![0]).toBe("k8s_pf_cloud_start");
-    expect(invoke.mock.calls[0]![1]).toMatchObject({ localPort: 16000 });
+    expect(handle).toMatchObject({ kind: "cloud", sessionId: "cpf-1", localPort: 16000 });
+    expect(pf.opened).toEqual([
+      {
+        orgId: "org",
+        accountId: "a",
+        resourceId: "r",
+        peerPluginId: "pp",
+        namespace: "ns",
+        resourceType: "svc",
+        resourceName: "db",
+        remotePort: 5432,
+        localPort: 16000,
+      },
+    ]);
 
     const exits: number[] = [];
     handle.onExit(() => exits.push(1));
-    api.emit("k8s_pf_cloud_exit_cpf-1");
-    expect(exits).toHaveLength(1);
+    pf.end();
+    await vi.waitFor(() => expect(exits).toHaveLength(1));
+  });
 
+  it("cloud stop interrupts the stream, which is what closes the listener", async () => {
+    const pf = fakeStream("K8sPfCloudStart", {
+      _tag: "Started",
+      sessionId: "cpf-2",
+      localPort: 16001,
+    });
+    const handle = await startPortForward({
+      mode: "cloud",
+      orgId: "org",
+      accountId: "a",
+      resourceId: "r",
+      peerPluginId: "pp",
+      namespace: "ns",
+      resourceType: "svc",
+      resourceName: "db",
+      remotePort: 5432,
+    });
+    const exits: number[] = [];
+    handle.onExit(() => exits.push(1));
     handle.stop();
-    expect(invoke).toHaveBeenCalledWith("k8s_pf_cloud_stop", { sessionId: "cpf-1" });
+    await vi.waitFor(() => expect(pf.isInterrupted()).toBe(true));
+    await settle();
+    expect(exits).toEqual([]);
+  });
+
+  it("cloud rejects when the listener cannot bind", async () => {
+    fakeRpc["K8sPfCloudStart"] = () =>
+      Stream.fail(new K8sPfCloudError({ message: "listen EADDRINUSE: 127.0.0.1:16000" }));
+    await expect(
+      startPortForward({
+        mode: "cloud",
+        orgId: "org",
+        accountId: "a",
+        resourceId: "r",
+        peerPluginId: "pp",
+        namespace: "ns",
+        resourceType: "svc",
+        resourceName: "db",
+        remotePort: 5432,
+        localPort: 16000,
+      }),
+    ).rejects.toThrow("listen EADDRINUSE: 127.0.0.1:16000");
   });
 });

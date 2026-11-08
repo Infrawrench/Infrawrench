@@ -46,7 +46,7 @@ import { attachmentDisposition } from "../../../lib/content-disposition";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest, NotFound, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";

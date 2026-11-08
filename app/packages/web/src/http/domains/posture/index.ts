@@ -17,9 +17,9 @@ import {
   type PostureSettingsRecord,
 } from "@infrawrench/server-core/posture/settings";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
+import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { dismissFinding, restoreFinding } from "../access-review/dismissals";
@@ -56,15 +56,15 @@ const PostureHandlers = HttpApiBuilder.group(PostureApi, "posture", (handlers) =
     .handleRaw("updateSettings", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const patch: PostureSettingsPatch = {};
         const enabled = body["enabled"];
         if (enabled !== undefined) {
-          if (!Predicate.isBoolean(enabled)) return yield* invalidBody("enabled must be a boolean");
+          if (!Predicate.isBoolean(enabled)) return yield* badRequest("enabled must be a boolean");
           patch.enabled = enabled;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
         const { organizationId } = yield* OrgPrincipal;
         const saved = yield* legacyTry(

@@ -9,7 +9,7 @@
  * and in whatever the auditor already has.
  *
  * Server contract: `/api/org/:orgId/session-recordings` (web
- * `api/routes/session-recordings.ts`). Listing and playback take
+ * `http/domains/session-recordings/`). Listing and playback take
  * `session-recordings:read`; policy changes and deletion take
  * `session-recordings:write`. Neither is in the `member` system role.
  *

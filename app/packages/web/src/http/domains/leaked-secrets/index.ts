@@ -23,7 +23,8 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, BadRequest, Conflict, HttpFailure, NotFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -119,7 +120,7 @@ const LeakedSecretsHandlers = HttpApiBuilder.group(LeakedSecretsApi, "leakedSecr
     .handleRaw("rotate", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const value = read.body["value"];
         if (value !== undefined && !Predicate.isString(value)) {
           return yield* badRequest("value must be a string");
@@ -139,7 +140,7 @@ const LeakedSecretsHandlers = HttpApiBuilder.group(LeakedSecretsApi, "leakedSecr
     .handleRaw("markRotated", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const resolveUpstream = optionalBool(read.body["resolveUpstream"]);
         if (resolveUpstream === null) return yield* badRequest("resolveUpstream must be a boolean");
         const { organizationId } = yield* OrgPrincipal;
@@ -154,7 +155,7 @@ const LeakedSecretsHandlers = HttpApiBuilder.group(LeakedSecretsApi, "leakedSecr
     .handleRaw("dismiss", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const reason = read.body["reason"];
         if (!Predicate.isString(reason) || !isDismissReason(reason)) {
           return yield* badRequest("reason must be false-positive, wont-fix or used-in-tests");

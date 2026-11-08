@@ -101,7 +101,7 @@ vi.mock("@/services/agent-links", () => ({
 }));
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
 vi.mock("@/db/client", () => ({ db: {} }));
-vi.mock("@/api/auth-middleware", () => ({
+vi.mock("@/auth/users", () => ({
   listUserOrganizations: vi.fn(async () => [{ id: "org-1", displayName: "Acme", role: "owner" }]),
 }));
 let sessionRuns = 0;
@@ -137,9 +137,7 @@ const handler = makeHttpApiHandler([agentLinkPlatformDomain], middleware);
 function app() {
   return {
     async request(path: string, init?: RequestInit): Promise<Response> {
-      const res = await handler.handle(new Request(`http://localhost${path}`, init));
-      // Nothing routed it: the Hono stack's 404, which no route here reaches.
-      return res ?? new Response("404 Not Found", { status: 404 });
+      return handler.handle(new Request(`http://localhost${path}`, init));
     },
   };
 }
@@ -348,7 +346,7 @@ describe("link-authenticated routes", () => {
       const refused = await app().request(path, { method });
       expect(refused.status).toBe(401);
       expect(await refused.json()).toEqual({ error: "Unauthorized" });
-      // With a live credential nothing routes it, and the Hono stack's 404 follows.
+      // With a live credential nothing routes it, and the API's 404 follows.
       const passed = await app().request(path, { method, headers: auth });
       expect(passed.status).toBe(404);
     }

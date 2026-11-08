@@ -39,7 +39,7 @@ import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { IssueStatusRefreshResult } from "../../schemas/issue-status";
-import { unexpectedAs } from "../store-errors";
+import { unexpectedAs } from "../../refusals";
 import {
   FileGithubIssueResult,
   GithubAssignees,

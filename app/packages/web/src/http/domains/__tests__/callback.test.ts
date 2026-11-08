@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateCookie } from "hono/cookie";
+import { legacyCookie } from "./legacy-cookie";
 
 const mockAuthenticateWithCode = vi.fn();
 vi.mock("@/auth/workos", () => ({
@@ -20,7 +20,7 @@ function buildApp() {
 }
 
 /** A deletion as Hono's `deleteCookie(c, name, { path: "/" })` wrote it. */
-const deleted = (name: string) => generateCookie(name, "", { path: "/", maxAge: 0 });
+const deleted = (name: string) => legacyCookie(name, "", { path: "/", maxAge: 0 });
 
 describe("OAuth callback route", () => {
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe("OAuth callback route", () => {
     expect(res.headers.get("location")).toBe("/api/auth/sign-in");
     expect(res.headers.getSetCookie()).toEqual([
       deleted("iw_oauth_state"),
-      generateCookie("iw_oauth_retry", "1", {
+      legacyCookie("iw_oauth_retry", "1", {
         httpOnly: true,
         secure: false,
         sameSite: "lax",
@@ -127,7 +127,7 @@ describe("OAuth callback route", () => {
     // failure gets a fresh restart.
     expect(res.headers.getSetCookie()).toEqual([
       deleted("iw_oauth_state"),
-      generateCookie("wos-session", "sealed-blob", {
+      legacyCookie("wos-session", "sealed-blob", {
         httpOnly: true,
         secure: false,
         sameSite: "lax",

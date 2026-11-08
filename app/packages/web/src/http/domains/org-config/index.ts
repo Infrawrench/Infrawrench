@@ -49,11 +49,11 @@ import {
 } from "../../../services/org-config";
 import { makeDomain } from "../../domain";
 import { forbidden } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import { OrgConfigApi, OrgConfigApplyResult, OrgConfigDocument, OrgConfigPlan } from "./api";
 
 /** `fail(c, e)`: the service's refusal with its status, a plan gate as 402. */
@@ -133,11 +133,11 @@ const OrgConfigHandlers = HttpApiBuilder.group(OrgConfigApi, "orgConfig", (handl
     .handle("export", ({ query }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const sections = yield* statusCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
+        const sections = yield* refusalCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
           parseSections(query.sections),
         );
         yield* requireSectionPermissions(sections, ORG_CONFIG_SECTION_READ_PERMISSIONS);
-        const document = yield* statusCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
+        const document = yield* refusalCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
           exportOrgConfig(organizationId, {
             organizationName: await organizationName(organizationId),
             sections,
@@ -163,14 +163,14 @@ const OrgConfigHandlers = HttpApiBuilder.group(OrgConfigApi, "orgConfig", (handl
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* readRequest(request);
-        const document = yield* statusCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
+        const document = yield* refusalCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
           parseOrgConfigDocument(body.document),
         );
         yield* requireSectionPermissions(
           orgConfigDocumentSections(document),
           ORG_CONFIG_SECTION_READ_PERMISSIONS,
         );
-        const plan = yield* statusCall(orgConfigRefusal, { 400: refuse[400] }, () =>
+        const plan = yield* refusalCall(orgConfigRefusal, { 400: refuse[400] }, () =>
           planOrgConfig(organizationId, document, {
             mode: body.mode,
             userId: session.userId ?? null,
@@ -186,12 +186,12 @@ const OrgConfigHandlers = HttpApiBuilder.group(OrgConfigApi, "orgConfig", (handl
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* readRequest(request);
-        const document = yield* statusCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
+        const document = yield* refusalCall(orgConfigRefusal, { 400: refuse[400] }, async () =>
           parseOrgConfigDocument(body.document),
         );
         const sections = orgConfigDocumentSections(document);
         yield* requireSectionPermissions(sections, ORG_CONFIG_SECTION_WRITE_PERMISSIONS);
-        const result = yield* statusCall(
+        const result = yield* refusalCall(
           orgConfigRefusal,
           { 400: refuse[400], 402: refuse[402] },
           () =>

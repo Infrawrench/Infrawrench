@@ -9,7 +9,8 @@
  * readable by any member (it is documentation). Subscribing to
  * spend-carrying events also needs `costs:read`, enforced in the store. The
  * per-event OpenAPI webhooks (the envelope and `data` schemas) are not
- * endpoints and stay registered by `api/openapi/paths/event-subscriptions.ts`.
+ * endpoints: `api/openapi/event-webhooks.ts` builds them, referencing this
+ * file's `EventSeverity` component.
  */
 import { Effect, Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";

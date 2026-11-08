@@ -28,8 +28,7 @@ export type DomainRequirements =
   | RequestErrors;
 
 /**
- * One API domain, as the server, the spec builder and the route-shadowing test
- * see it. Built by {@link makeDomain}, which keeps the domain's typed `HttpApi`
+ * One API domain, as the server, the spec builder and the tests see it. Built by {@link makeDomain}, which keeps the domain's typed `HttpApi`
  * to itself.
  */
 export interface Domain {
@@ -44,12 +43,6 @@ export interface Domain {
   readonly openapi: () => OpenApi.OpenAPISpec;
   /** Visit each endpoint with its merged annotations, for the spec builder and tests. */
   readonly endpoints: () => ReadonlyArray<DomainEndpoint>;
-  /**
-   * Path prefixes the domain also guards beyond its endpoints, every method
-   * and path under each (`./prefix-guard.ts`). The route-shadowing test holds
-   * them to owning their prefix outright.
-   */
-  readonly guardedPrefixes?: readonly string[];
 }
 
 export interface DomainEndpoint {

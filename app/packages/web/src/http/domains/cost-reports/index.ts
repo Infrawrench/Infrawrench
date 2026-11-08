@@ -33,9 +33,8 @@ import {
 } from "../../../services/cost-reports";
 import { applyCostReportBulk, CostReportBulkError } from "../../../services/cost-reports-bulk";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, notFound } from "../../errors";
+import { BadRequest, Conflict, HttpFailure, notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody } from "../../object-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -193,7 +192,7 @@ const CostReportsHandlers = HttpApiBuilder.group(CostReportsApi, "costReports", 
     .handleRaw("run", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readOptionalJson(request);
-        if (!read.ok) return yield* invalidBody("Invalid JSON body");
+        if (!read.ok) return yield* badRequest("Invalid JSON body");
         const overrides = yield* decodeBody(CostReportRunOverrides, read.body);
         const { organizationId } = yield* OrgPrincipal;
         const result = yield* legacyTry(
@@ -302,7 +301,7 @@ const CostForecastsHandlers = HttpApiBuilder.group(CostReportsApi, "costForecast
     .handleRaw("forecastedCosts", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readOptionalJson(request);
-        if (!read.ok) return yield* invalidBody("Invalid JSON body");
+        if (!read.ok) return yield* badRequest("Invalid JSON body");
         const run = yield* decodeBody(CostForecastRunRequest, read.body);
         const { organizationId } = yield* OrgPrincipal;
         const result = yield* legacyTry(

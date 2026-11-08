@@ -60,13 +60,12 @@ import { publicParticipant, publicShare } from "../../../services/shared-console
 import * as consoleRelay from "../../../services/shared-console/relay";
 import { makeDomain } from "../../domain";
 import { badRequest, conflict, forbidden, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr, decodeFirstIssue } from "../../request-body";
 import { legacy } from "../../legacy";
 import { json } from "../../middleware";
 import { OrgPrincipal, type OrgPrincipalValue } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { decodeFirstIssueStrict } from "../first-issue-body";
 import {
   CreateSharedConsole,
   HandoverSharedConsole,
@@ -218,7 +217,7 @@ const SharedConsolesHandlers = HttpApiBuilder.group(
           const principal = yield* OrgPrincipal;
           const { organizationId } = principal;
           const userId = principal.session.userId;
-          const input = yield* decodeFirstIssueStrict(
+          const input = yield* decodeFirstIssue(
             CreateSharedConsole,
             yield* readJsonOr(request, null),
           );
@@ -345,7 +344,7 @@ const SharedConsolesHandlers = HttpApiBuilder.group(
         Effect.gen(function* () {
           const principal = yield* OrgPrincipal;
           const userId = principal.session.userId;
-          const body = yield* decodeFirstIssueStrict(
+          const body = yield* decodeFirstIssue(
             JoinSharedConsole,
             yield* readJsonOr(request, null),
           ).pipe(Effect.mapError(() => badRequest("An invite token is required.")));
@@ -447,7 +446,7 @@ const SharedConsolesHandlers = HttpApiBuilder.group(
       .handleRaw("handover", ({ params, request }) =>
         Effect.gen(function* () {
           const principal = yield* OrgPrincipal;
-          const body = yield* decodeFirstIssueStrict(
+          const body = yield* decodeFirstIssue(
             HandoverSharedConsole,
             yield* readJsonOr(request, null),
           ).pipe(Effect.mapError(() => badRequest("A participantId is required.")));
@@ -531,7 +530,7 @@ const SharedConsolesHandlers = HttpApiBuilder.group(
           const principal = yield* OrgPrincipal;
           // An absent, unreadable or `null` body is "no options".
           const raw = yield* readJsonOr(request, {});
-          const body = yield* decodeFirstIssueStrict(MintSharedConsoleInvite, raw ?? {}).pipe(
+          const body = yield* decodeFirstIssue(MintSharedConsoleInvite, raw ?? {}).pipe(
             Effect.mapError(() => badRequest("Invalid body")),
           );
           const share = yield* orgShare(principal.organizationId, params.consoleId);

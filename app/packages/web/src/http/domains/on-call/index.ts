@@ -20,9 +20,10 @@ import {
 } from "@infrawrench/server-core/on-call/store";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
+import { notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -153,9 +154,9 @@ const OnCallHandlers = HttpApiBuilder.group(OnCallApi, "onCall", (handlers) =>
     .handleRaw("createSchedule", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readScheduleBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
+        if (!fields.ok) return yield* badRequest(fields.error);
 
         const { organizationId, session } = yield* OrgPrincipal;
         const schedule = yield* legacyTry(
@@ -183,11 +184,10 @@ const OnCallHandlers = HttpApiBuilder.group(OnCallApi, "onCall", (handlers) =>
     .handleRaw("updateSchedule", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readScheduleBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
-        if (Object.keys(fields.value).length === 0)
-          return yield* invalidBody("No changes supplied");
+        if (!fields.ok) return yield* badRequest(fields.error);
+        if (Object.keys(fields.value).length === 0) return yield* badRequest("No changes supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const schedule = yield* legacyTry(
@@ -245,19 +245,19 @@ const OnCallHandlers = HttpApiBuilder.group(OnCallApi, "onCall", (handlers) =>
     .handleRaw("createOverride", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const body = parsed.body;
         const scheduleId = body["scheduleId"];
         const userId = body["userId"];
         const startsAt = body["startsAt"];
         const endsAt = body["endsAt"];
-        if (!Predicate.isString(scheduleId)) return yield* invalidBody("scheduleId is required");
-        if (!Predicate.isString(userId)) return yield* invalidBody("userId is required");
-        if (!Predicate.isString(startsAt)) return yield* invalidBody("startsAt is required");
-        if (!Predicate.isString(endsAt)) return yield* invalidBody("endsAt is required");
+        if (!Predicate.isString(scheduleId)) return yield* badRequest("scheduleId is required");
+        if (!Predicate.isString(userId)) return yield* badRequest("userId is required");
+        if (!Predicate.isString(startsAt)) return yield* badRequest("startsAt is required");
+        if (!Predicate.isString(endsAt)) return yield* badRequest("endsAt is required");
         const reason = body["reason"];
         if (reason !== undefined && reason !== null && !Predicate.isString(reason)) {
-          return yield* invalidBody("reason must be a string or null");
+          return yield* badRequest("reason must be a string or null");
         }
 
         const { organizationId, session } = yield* OrgPrincipal;

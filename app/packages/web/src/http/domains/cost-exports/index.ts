@@ -26,7 +26,7 @@ import {
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadRequest, NotFound, notFound } from "../../errors";
-import { decodeAsPayload, readJson } from "../../json-body";
+import { decodeAsPayload, readJson } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

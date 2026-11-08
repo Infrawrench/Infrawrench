@@ -28,7 +28,7 @@ import {
 } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import { AgentLinkProvider, AgentLinkScopeGroup } from "../../schemas/zod-components";
+import { AgentLinkProvider, AgentLinkScopeGroup } from "../../schemas/agent-links";
 
 /** Every status the hand-written spec listed for these operations. */
 const DocumentedErrors = [

@@ -239,7 +239,7 @@ describe("openSshShell (local mode)", () => {
 describe("openSshShell (cloud mode)", () => {
   it("throws when there is no ws token", async () => {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValueOnce(null); // cloud_auth_get_ws_token
+    fakeRpc["CloudWsToken"] = () => Effect.succeed(null);
     await expect(
       openSshShell({
         mode: "cloud",
@@ -256,7 +256,7 @@ describe("openSshShell (cloud mode)", () => {
 
   it("opens a websocket, sends ssh:open, and decodes ssh:data/closed/error", async () => {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValueOnce("ws-token-abc"); // cloud_auth_get_ws_token
+    fakeRpc["CloudWsToken"] = () => Effect.succeed("ws-token-abc");
     getCloudWsUrl.mockResolvedValue("ws://localhost:3000");
 
     const handle = await openSshShell({
@@ -338,7 +338,8 @@ describe("openSshShell (cloud mode)", () => {
 describe("openSshShell (cloud mode) — write buffering", () => {
   async function openCloud() {
     vi.stubGlobal("window", { electronAPI: makeElectronApi() });
-    invoke.mockResolvedValue("ws-token-abc");
+    fakeRpc["CloudWsToken"] = () => Effect.succeed("ws-token-abc");
+    invoke.mockResolvedValue(true);
     getCloudWsUrl.mockResolvedValue("ws://localhost:3000");
     const handle = await openSshShell({
       mode: "cloud",

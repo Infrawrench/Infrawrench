@@ -24,7 +24,7 @@ import type { EnvironmentDiffResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { computeLocalEnvironmentDiff } from "../../local-environment-diff";
-import { listCloudAccounts, listLocalAccounts, resolveAccount } from "../context";
+import { cloudAccounts, findAccount, listLocalAccounts } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -148,13 +148,13 @@ export const diff = Command.make(
           const org = yield* currentOrg;
           return {
             label: org.displayName,
-            accounts: yield* Effect.promise(() => listCloudAccounts(org.id)),
+            accounts: yield* cloudAccounts(org.id),
             org,
           };
         });
 
-    const accountA = yield* Effect.sync(() => resolveAccount(scope.accounts, wantedA));
-    const accountB = yield* Effect.sync(() => resolveAccount(scope.accounts, wantedB));
+    const accountA = yield* findAccount(scope.accounts, wantedA);
+    const accountB = yield* findAccount(scope.accounts, wantedB);
     if (accountA.id === accountB.id) {
       return yield* new CliUsageError({
         message: `"${wantedA}" and "${wantedB}" are the same account.`,

@@ -33,7 +33,7 @@ vi.mock("@/auth/api-auth", () => ({
   verifyWorkosAccessToken: vi.fn(),
 }));
 
-vi.mock("@/api/auth-middleware", () => ({
+vi.mock("@/auth/users", () => ({
   ensureUserFromClaims: vi.fn(),
   hasMembership: vi.fn(),
   listUserOrganizations: vi.fn(),
@@ -45,7 +45,7 @@ const { authenticateMcpRequest } = await import("@/mcp/auth");
 const { probeClientRegistrationSupport, resetRegistrationProbeForTests } =
   await import("@/mcp/registration-probe");
 const apiAuth = await import("@/auth/api-auth");
-const middleware = await import("@/api/auth-middleware");
+const middleware = await import("@/auth/users");
 const ceremony = await import("@infrawrench/server-core/trials/ceremony");
 const principal = await import("@infrawrench/server-core/trials/principal");
 

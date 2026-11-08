@@ -4,7 +4,7 @@ import type { StorageObject } from "@infrawrench/plugin-base";
 import { apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 
-/** Mirrors `MAX_BULK_KEYS` in `api/routes/storage.ts`, which rejects above it. */
+/** Mirrors `MAX_BULK_KEYS` in `http/domains/storage-transfers/`, which rejects above it. */
 const MAX_BULK_DOWNLOAD_KEYS = 100;
 
 export function StorageBrowser({

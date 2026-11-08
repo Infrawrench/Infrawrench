@@ -201,8 +201,8 @@ const CallbackHandlers = HttpApiBuilder.group(CallbackApi, "callback", (handlers
       );
 
       // A failure past this point (WorkOS refusing the code, a missing cookie
-      // password) went to Hono's `onError`, whose response kept the cookie
-      // deletion already made on the context.
+      // password) is rendered as the API's errors are, keeping the cookie
+      // deletion already made (as Hono's `onError` did while it served this).
       return yield* exchanged.pipe(
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterruptsOnly(cause),

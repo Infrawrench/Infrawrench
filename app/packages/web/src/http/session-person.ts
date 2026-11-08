@@ -17,7 +17,7 @@
  */
 import { Effect } from "effect";
 import type { HttpServerRequest } from "effect/http";
-import type { AuthSession } from "../api/auth-middleware";
+import type { AuthSession } from "../auth/users";
 import { rawRequest } from "./caller-auth";
 import type { HttpFailure } from "./errors";
 import { legacy } from "./legacy";

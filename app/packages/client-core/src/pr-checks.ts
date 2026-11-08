@@ -6,7 +6,7 @@ import type { GithubPermissionLevel } from "./github-issues";
 /**
  * Pre-merge checks on infrastructure pull requests. Server contract:
  * org-scoped `/api/org/:orgId/pr-checks/*` routes (web
- * `api/routes/pr-checks.ts`); the work itself runs in the github-watcher,
+ * `http/domains/pr-checks/`); the work itself runs in the github-watcher,
  * which polls the open pull requests of every enabled repository through the
  * org's existing GitHub App installation and posts one **check run** per head
  * commit (plus, optionally, one sticky comment it edits in place).

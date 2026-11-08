@@ -16,9 +16,9 @@ import { getIdleFindingsOverview } from "@infrawrench/server-core/idle/feed";
 import type { IdleRuleOverride } from "@infrawrench/client-core";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
+import { BadRequest, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -83,32 +83,32 @@ const IdleFindingsHandlers = HttpApiBuilder.group(IdleFindingsApi, "idleFindings
     .handleRaw("updateSettings", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const patch: IdleSettingsPatch = {};
         for (const key of Object.keys(body)) {
           if (key !== "enabled" && key !== "lookbackDays" && key !== "rules") {
-            return yield* invalidBody(`${key} is not a setting`);
+            return yield* badRequest(`${key} is not a setting`);
           }
         }
         const enabled = body["enabled"];
         if (enabled !== undefined) {
-          if (!Predicate.isBoolean(enabled)) return yield* invalidBody("enabled must be a boolean");
+          if (!Predicate.isBoolean(enabled)) return yield* badRequest("enabled must be a boolean");
           patch.enabled = enabled;
         }
         const lookbackDays = body["lookbackDays"];
         if (lookbackDays !== undefined) {
           if (!Predicate.isNumber(lookbackDays)) {
-            return yield* invalidBody("lookbackDays must be a number");
+            return yield* badRequest("lookbackDays must be a number");
           }
           patch.lookbackDays = lookbackDays;
         }
         if (body["rules"] !== undefined) {
           const rules = parseRules(body["rules"]);
-          if (Predicate.isString(rules)) return yield* invalidBody(rules);
+          if (Predicate.isString(rules)) return yield* badRequest(rules);
           patch.rules = rules;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const saved = yield* legacyTry(

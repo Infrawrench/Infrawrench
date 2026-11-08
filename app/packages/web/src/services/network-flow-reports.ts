@@ -1,6 +1,6 @@
 /**
  * Org-scoped network flow report CRUD and execution, shared by the HTTP routes
- * (`api/routes/network-flows.ts`). Mirrors `services/cost-reports.ts`: the
+ * (`http/domains/network-flows/`). Mirrors `services/cost-reports.ts`: the
  * same folder tree, the same sharing model (creator is the implicit owner,
  * folder grants inherit), the same soft delete. The assembly lives in
  * client-core and the reads in server-core; this file is storage and access

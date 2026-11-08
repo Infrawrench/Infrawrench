@@ -5,13 +5,14 @@ import {
   type PluginInfo,
 } from "@infrawrench/ui";
 import { runAccountPreflight, type PolicyTemplate } from "@infrawrench/client-core";
-import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createCloudAccount } from "../lib/cloud-api";
 import { cancelProviderOAuth, connectProviderOAuth, resolveOAuthInfo } from "../lib/provider-oauth";
+import { openExternalUrl } from "../lib/app-shell";
+import { createLocalAccount } from "../lib/local-credentials";
 
 interface Props {
   onClose: () => void;
@@ -110,7 +111,7 @@ export function AddAccountModal({
         return;
       }
       const accountId = crypto.randomUUID();
-      await invoke<void>("account_create", { accountId, pluginId, displayName, credentials });
+      await createLocalAccount({ accountId, pluginId, displayName, credentials });
     },
     [orgId],
   );
@@ -168,7 +169,7 @@ export function AddAccountModal({
       fetchPolicyTemplate={fetchPolicyTemplate}
       loadCredentialOptions={loadCredentialOptions}
       accounts={accounts}
-      onOpenExternal={(url) => void invoke("open_external_url", { url })}
+      onOpenExternal={(url) => void openExternalUrl(url)}
       connectOAuth={connectOAuth}
       cancelOAuth={cancelProviderOAuth}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}

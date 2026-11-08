@@ -6,8 +6,10 @@
  * not pinned, or one that differs from the pin. The routes have always
  * answered it with one body, built here once: {@link hostKeyTrustBody} for a
  * caller that writes it itself (the app setup stream, whose status line has
- * already gone; the Hono routes still answering it), {@link hostKeyTrustRefusal}
- * for an HttpApi handler's `legacyTry`.
+ * already gone), {@link hostKeyTrustRequired} for a handler that has the
+ * error in hand (the SSH install), and {@link hostKeyTrustRefusal} for a
+ * handler's `legacyTry`. Every endpoint declares the one 409 class,
+ * `SshHostKeyTrustRequired` (`../schemas/ssh-host-key-trust.ts`).
  */
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
 import { SshHostKeyTrustRequired } from "../schemas/ssh-host-key-trust";

@@ -30,12 +30,13 @@ const getResource = vi.fn();
 vi.mock("../../db/client", () => ({ getDb: async () => db }));
 vi.mock("../plugin-client", () => ({ createPluginClient: async () => ({ getResource }) }));
 vi.mock("../../plugins/loader", () => ({ loadPlugins: async () => [] }));
-vi.mock("../invoke", () => ({
-  invoke: vi.fn(async (channel: string) =>
-    channel === "ssh_key_ensure_agent_key"
-      ? { id: "k1", name: "infrawrench-agent", publicKey: "ssh-ed25519 AAAA" }
-      : "",
-  ),
+vi.mock("../local-secrets", () => ({
+  ensureAgentSshKey: async () => ({
+    id: "k1",
+    name: "infrawrench-agent",
+    publicKey: "ssh-ed25519 AAAA",
+  }),
+  getLocalSshPrivateKey: async () => "",
 }));
 vi.mock("@infrawrench/ui", async (importOriginal) => ({
   ...(await importOriginal<object>()),

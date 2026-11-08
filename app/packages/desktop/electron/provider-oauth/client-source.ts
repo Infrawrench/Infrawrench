@@ -52,7 +52,7 @@ export function localClientSource(
   }
 }
 
-/** Plugin ids the `provider_oauth_local_clients` IPC reports. */
+/** Plugin ids `ProviderOAuthLocalClients` reports. */
 export function localClientPluginIds(
   plugins: readonly OAuthCapablePlugin[],
   getClientId: (pluginId: string) => string | undefined,

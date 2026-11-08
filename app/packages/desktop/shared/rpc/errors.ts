@@ -18,6 +18,21 @@ export class LocalWorkspaceError extends Schema.TaggedError<LocalWorkspaceError>
   }
 }
 
+/**
+ * A call the main process made to Infrawrench Cloud on the renderer's behalf
+ * failed: not signed in, the session expired, an HTTP error, or an answer of
+ * the wrong shape. The message is what the panel or toast shows.
+ */
+export class CloudRequestError extends Schema.TaggedError<CloudRequestError>()(
+  "CloudRequestError",
+  { message: Schema.String },
+) {
+  /** For `Effect.tryPromise({ try, catch: CloudRequestError.fromCause })`. */
+  static fromCause(cause: unknown): CloudRequestError {
+    return new CloudRequestError({ message: errorMessage(cause) });
+  }
+}
+
 /** The message of a thrown `Error`, or the thrown value as a string. */
 export function errorMessage(cause: unknown): string {
   return Predicate.isError(cause) ? cause.message : String(cause);

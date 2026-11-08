@@ -72,10 +72,10 @@ import {
 } from "../../../services/business-metric-forecast-values";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, Conflict, HttpFailure, NotFound, notFound } from "../../errors";
-import { decodeAsPayload, readJson, readJsonOr } from "../../json-body";
+import { BadRequest, Conflict, HttpFailure, NotFound, notFound, badRequest } from "../../errors";
+import { decodeAsPayload, readJson, readJsonOr } from "../../request-body";
+import { inputRefusal } from "../../refusals";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { invalidBody, inputRefusal } from "../../object-body";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
@@ -164,7 +164,7 @@ const pageLimit = (raw: string | undefined, fallback: number, max: number) =>
   Effect.gen(function* () {
     const limit = raw === undefined ? fallback : Number(raw);
     if (!Number.isInteger(limit) || limit < 1 || limit > max) {
-      return yield* invalidBody(`limit must be an integer between 1 and ${max}`);
+      return yield* badRequest(`limit must be an integer between 1 and ${max}`);
     }
     return limit;
   });

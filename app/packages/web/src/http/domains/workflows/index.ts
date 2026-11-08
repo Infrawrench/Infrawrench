@@ -39,12 +39,12 @@ import {
 } from "../../../services/workflow-secrets";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound, Unauthorized } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
   WorkflowScheduleResponse,
   WorkflowSecretAssignment,
@@ -143,7 +143,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* readWorkflowBody(request);
         if (body.secretIds !== undefined) yield* requirePermission("secrets:read");
-        const workflow = yield* statusCall(
+        const workflow = yield* refusalCall(
           workflowRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => createWorkflow(organizationId, body, session.userId),
@@ -166,7 +166,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
         const body = yield* readWorkflowBody(request);
         if (body.secretIds !== undefined) yield* requirePermission("secrets:read");
         else yield* requireSecretsReadIfAssigned(params.id);
-        const workflow = yield* statusCall(
+        const workflow = yield* refusalCall(
           workflowRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => updateWorkflow(organizationId, params.id, body, session.userId),
@@ -180,7 +180,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        yield* statusCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
+        yield* refusalCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
           softDeleteWorkflow(organizationId, params.id),
         );
         return ok;
@@ -189,7 +189,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
     .handle("getSecrets", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const secrets = yield* statusCall(workflowRefusal, { 404: refuse[404] }, () =>
+        const secrets = yield* refusalCall(workflowRefusal, { 404: refuse[404] }, () =>
           listAssignedWorkflowSecrets(organizationId, params.id),
         );
         return yield* respond(WorkflowSecretAssignment)({
@@ -207,7 +207,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
         if (!isStringArray(secretIds)) {
           return yield* badRequest("Body must include a secretIds string array.");
         }
-        const assignment = yield* statusCall(
+        const assignment = yield* refusalCall(
           workflowRefusal,
           { 400: refuse[400], 404: refuse[404] },
           async () => {
@@ -261,7 +261,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
           return yield* badRequest("`timezone` must be a string or null.");
         }
         yield* requireSecretsReadIfAssigned(params.id);
-        const wf = yield* statusCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
+        const wf = yield* refusalCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
           setWorkflowSchedule(
             organizationId,
             params.id,
@@ -279,7 +279,7 @@ const WorkflowsHandlers = HttpApiBuilder.group(WorkflowsApi, "workflows", (handl
     .handle("clearSchedule", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        yield* statusCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
+        yield* refusalCall(workflowRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
           clearWorkflowSchedule(organizationId, params.id, session.userId),
         );
         return ok;

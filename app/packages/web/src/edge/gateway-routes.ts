@@ -1,6 +1,6 @@
 /**
  * Which requests the edge Worker (`edge/worker.ts`) hands straight to Node
- * instead of running the Hono API itself, and which of the two Node tiers
+ * instead of running the API itself, and which of the two Node tiers
  * gets them.
  *
  * The edge can run every route; the question is only whether it is worth
@@ -38,7 +38,7 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // (`edge/realtime.ts`) before routing runs; this is the fallback for a
   // Worker deployed without the relay's bindings.
   /^\/api\/bastions\/agent$/,
-  // Node HTTP handler, not part of the Hono app; its app tools reach Linux
+  // Node HTTP handler, not part of the API router; its app tools reach Linux
   // app sessions through the cross-replica relay, which needs a pod address.
   /^\/api\/mcp(\/|$)/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
@@ -154,8 +154,10 @@ const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);
 const NOT_ACCOUNT_IDS = new Set(["plugins", "preflight", "credential-options"]);
 
 /**
- * Paths the Hono API answers; everything else is the SPA (static assets with
- * an index.html fallback). Mirrors what `api/index.ts` mounts outside `/api`.
+ * Paths the API answers; everything else is the SPA (static assets with an
+ * index.html fallback). Mirrors the domains' paths outside `/api` (the sign-in
+ * callback, the discovery documents, the API's own docs); `server.ts` splits
+ * production traffic by it too.
  */
 export function isApiPath(pathname: string): boolean {
   return (

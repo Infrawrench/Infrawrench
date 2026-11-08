@@ -20,7 +20,7 @@ import {
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

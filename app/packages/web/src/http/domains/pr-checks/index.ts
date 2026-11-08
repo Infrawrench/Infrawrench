@@ -32,8 +32,7 @@ import { BadGateway, badRequest, HttpFailure, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import type { Refusals } from "../input-refusals";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
+import { type Refusals, refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import {
   PrCheckDeleted,
   PrCheckPreview,
@@ -57,9 +56,9 @@ const prCheckRefusal: ReadRefusal = (error) => {
   return undefined;
 };
 
-/** As {@link statusCall}, with anything unrecognised logged and answered as the route's own 500. */
+/** As {@link refusalCall}, with anything unrecognised logged and answered as the route's own 500. */
 const prCheckCall = <A, E>(refusals: Refusals<E>, fn: () => PromiseLike<A>) =>
-  statusCall(prCheckRefusal, refusals, fn).pipe(
+  refusalCall(prCheckRefusal, refusals, fn).pipe(
     Effect.catchDefect((defect) => {
       if (defect instanceof HttpFailure) return Effect.die(defect);
       console.error("[pr-checks] unexpected route failure:", defect);

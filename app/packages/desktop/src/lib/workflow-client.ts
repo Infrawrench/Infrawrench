@@ -2,7 +2,7 @@
  * Desktop renderer-side WorkflowClient.
  *
  * On desktop the workflow's data lives in the renderer: the local SQLite DB is
- * reached via the generic `db_select` / `db_execute` IPC (see ../db/client) and
+ * reached via the generic `LocalDbSelect` / `LocalDbExecute` RPC (see ../db/client) and
  * plugin clients are built here (see ./plugin-client). So CRUD, typings, runs,
  * and metrics are all handled locally. The one exception is the QuickJS/WASM
  * isolate itself: it needs Node's `Buffer` (Chromium doesn't have it), so it
@@ -55,9 +55,11 @@ import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPeerPluginClient, createPluginClient } from "./plugin-client";
-import { invoke } from "./invoke";
+import { listCloudSshKeys } from "./cloud-ssh-keys";
 import { list1PasswordKeys, listSystemKeys, readSystemKey } from "./ssh-keys";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
+import { showNotification } from "./app-shell";
+import { getLocalSshPrivateKey, getLocalSshPublicKey } from "./local-secrets";
 
 /** Fired after a local workflow is created/updated/deleted, so the cron runner re-syncs. */
 export const WORKFLOWS_CHANGED_EVENT = "iw:workflows-changed";
@@ -226,6 +228,11 @@ async function enrichLocalPlugin(entry: WorkflowPluginInfo, firstAccountId: stri
 /** A value that already looks like an OpenSSH public key: leave it alone. */
 const PUBLIC_KEY_RE = /^(ssh-|ecdsa-|sk-ssh-|sk-ecdsa-)/;
 
+/** The local workflow secrets, by name only: values stay encrypted in the main process. */
+function listLocalWorkflowSecrets(): Promise<WorkflowSecretSummary[]> {
+  return runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSecretsList()));
+}
+
 /**
  * Names of every SSH key the create-form SSH-key picker would offer, for dts
  * autocomplete: saved app keys + system `~/.ssh` keys + 1Password agent keys,
@@ -245,9 +252,7 @@ async function listLocalSshKeyNames(): Promise<string[]> {
     listSystemKeys().catch(() => [] as { name: string }[]),
     list1PasswordKeys().catch(() => [] as { name: string }[]),
     orgId
-      ? invoke<{ name: string }[]>("cloud_ssh_keys_list", { orgId }).catch(
-          () => [] as { name: string }[],
-        )
+      ? listCloudSshKeys(orgId).catch(() => [] as { name: string }[])
       : Promise.resolve([] as { name: string }[]),
   ]);
   add(appRows);
@@ -269,7 +274,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
       "SELECT id FROM ssh_keys WHERE id = $1 OR name = $1 LIMIT 1",
       [nameOrId],
     );
-    if (rows[0]) return await invoke<string>("ssh_key_get_public_key", { keyId: rows[0].id });
+    if (rows[0]) return await getLocalSshPublicKey(rows[0].id);
   } catch {
     /* fall through */
   }
@@ -285,10 +290,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
   const orgId = useUIStore.getState().activeCloudOrgId;
   if (orgId) {
     try {
-      const cloud = await invoke<{ id: string; name: string; publicKey: string }[]>(
-        "cloud_ssh_keys_list",
-        { orgId },
-      );
+      const cloud = await listCloudSshKeys(orgId);
       const match = cloud.find((k) => k.name === nameOrId || k.id === nameOrId);
       if (match?.publicKey) return match.publicKey;
     } catch {
@@ -465,10 +467,7 @@ async function pageFromLocalWorkflow(
     };
   }
 
-  await invoke("show_notification", {
-    title: spec.title ?? workflowName,
-    body: spec.message,
-  });
+  await showNotification(spec.title ?? workflowName, spec.message);
   const now = new Date().toISOString();
   await db.execute(
     `INSERT INTO workflow_pages (id, workflow_id, key, last_paged_at, last_message)
@@ -556,7 +555,7 @@ async function resolveSshPrivateKey(sshKey: string): Promise<string> {
     "SELECT id, name FROM ssh_keys WHERE id = $1 OR name = $1 LIMIT 1",
     [sshKey],
   );
-  if (rows[0]) return invoke<string>("ssh_key_get_private_key", { keyId: rows[0].id });
+  if (rows[0]) return getLocalSshPrivateKey(rows[0].id);
   // Fall back to a system key file name in ~/.ssh (may prompt for consent).
   return readSystemKey(sshKey);
 }
@@ -683,9 +682,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       const [plugins, sshKeyNames, localSecrets] = await Promise.all([
         pluginsPromise,
         listLocalSshKeyNames().catch(() => [] as string[]),
-        invoke<WorkflowSecretSummary[]>("workflow_secrets_list").catch(
-          () => [] as WorkflowSecretSummary[],
-        ),
+        listLocalWorkflowSecrets().catch(() => [] as WorkflowSecretSummary[]),
       ]);
       const trigger = wf
         ? safeParse<WorkflowTrigger>(wf.trigger, { kind: "manual" })
@@ -761,23 +758,23 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       if (!wf) throw new Error("Workflow not found");
       const assignedSecretIds = safeParse<string[]>(wf.assigned_secret_ids, []);
       const assigned = new Set(assignedSecretIds);
-      const secrets = (await invoke<WorkflowSecretSummary[]>("workflow_secrets_list")).filter(
-        (secret) => assigned.has(secret.id),
+      const secrets = (await listLocalWorkflowSecrets()).filter((secret) =>
+        assigned.has(secret.id),
       );
       return { assignedSecretIds, secrets };
     },
 
-    listSecrets: () => invoke<WorkflowSecretSummary[]>("workflow_secrets_list"),
+    listSecrets: listLocalWorkflowSecrets,
 
     upsertSecret: ({ id, name, value }) =>
-      invoke<WorkflowSecretSummary>("workflow_secret_upsert", {
-        ...(id ? { id } : {}),
-        name,
-        value,
-      }),
+      runRpc(
+        DesktopRpcClient.use((rpc) =>
+          rpc.WorkflowSecretUpsert({ ...(id ? { id } : {}), name, value }),
+        ),
+      ),
 
     async deleteSecret(id: string) {
-      await invoke("workflow_secret_delete", { id });
+      await runRpc(DesktopRpcClient.use((rpc) => rpc.WorkflowSecretDelete({ id })));
     },
 
     async run(id: string, debug?: DebugSession) {

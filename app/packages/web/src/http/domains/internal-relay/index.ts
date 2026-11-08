@@ -33,7 +33,7 @@ import { runLocally, encodeOpResult, AppsHostError } from "../../../services/app
 import { verifyRelaySecret } from "../../../services/replica-relay";
 import { makeDomain } from "../../domain";
 import { BadRequest, Unauthorized, UnprocessableEntity } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { legacyTry } from "../../legacy";
 import { respond } from "../../response";
 import { InternalRelayApi } from "./api";

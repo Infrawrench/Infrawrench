@@ -20,7 +20,7 @@ const MARKER_SCAN_MAX_BYTES = 64 * 1024;
 const REPLAY_BODY_MAX_BYTES = 1024 * 1024;
 
 export interface EdgeApiDeps {
-  /** The Hono API, run in this isolate. */
+  /** The API (`api.fetch`), run in this isolate. */
   apiFetch(request: Request): Promise<Response>;
   /** Hand the request to the Node gateway unchanged. */
   forward(request: Request): Promise<Response>;

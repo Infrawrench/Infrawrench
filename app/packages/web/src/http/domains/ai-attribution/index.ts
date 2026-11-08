@@ -33,11 +33,11 @@ import {
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { BadGateway, badRequest, NotFound, notFound } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
   AiAttributionApi,
   AiAttributionDimension,
@@ -162,8 +162,10 @@ const AiAttributionHandlers = HttpApiBuilder.group(AiAttributionApi, "aiAttribut
         const { organizationId, session } = yield* OrgPrincipal;
         const parsed = parseSourceInput(yield* fieldsOf(yield* readJson(request)));
         if (Predicate.isString(parsed)) return yield* badRequest(parsed);
-        const source = yield* statusCall(inputRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
-          createAiRequestSource(organizationId, session.userId ?? null, parsed),
+        const source = yield* refusalCall(
+          inputRefusal,
+          { 400: refuse[400], 404: refuse[404] },
+          () => createAiRequestSource(organizationId, session.userId ?? null, parsed),
         );
         yield* fireAndForget(() =>
           logAudit({
@@ -183,8 +185,10 @@ const AiAttributionHandlers = HttpApiBuilder.group(AiAttributionApi, "aiAttribut
         const { organizationId, session } = yield* OrgPrincipal;
         const parsed = parseSourceInput(yield* fieldsOf(yield* readJson(request)));
         if (Predicate.isString(parsed)) return yield* badRequest(parsed);
-        const source = yield* statusCall(inputRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
-          updateAiRequestSource(organizationId, params.id, parsed),
+        const source = yield* refusalCall(
+          inputRefusal,
+          { 400: refuse[400], 404: refuse[404] },
+          () => updateAiRequestSource(organizationId, params.id, parsed),
         );
         yield* fireAndForget(() =>
           logAudit({
@@ -222,8 +226,10 @@ const AiAttributionHandlers = HttpApiBuilder.group(AiAttributionApi, "aiAttribut
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* fieldsOf(yield* readJsonOr(request, {}));
         const from = Predicate.isString(body["from"]) ? body["from"] : "";
-        const source = yield* statusCall(inputRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
-          recollectAiRequestSource(organizationId, params.id, from),
+        const source = yield* refusalCall(
+          inputRefusal,
+          { 400: refuse[400], 404: refuse[404] },
+          () => recollectAiRequestSource(organizationId, params.id, from),
         );
         yield* fireAndForget(() =>
           logAudit({
@@ -250,7 +256,7 @@ const AiAttributionHandlers = HttpApiBuilder.group(AiAttributionApi, "aiAttribut
         const { organizationId, session } = yield* OrgPrincipal;
         const parsed = parseDimensionInput(yield* fieldsOf(yield* readJson(request)));
         if (Predicate.isString(parsed)) return yield* badRequest(parsed);
-        const dim = yield* statusCall(inputRefusal, { 400: refuse[400] }, () =>
+        const dim = yield* refusalCall(inputRefusal, { 400: refuse[400] }, () =>
           createAiDimension(organizationId, parsed),
         );
         yield* fireAndForget(() =>
@@ -271,7 +277,7 @@ const AiAttributionHandlers = HttpApiBuilder.group(AiAttributionApi, "aiAttribut
         const { organizationId, session } = yield* OrgPrincipal;
         const parsed = parseDimensionInput(yield* fieldsOf(yield* readJson(request)));
         if (Predicate.isString(parsed)) return yield* badRequest(parsed);
-        const dim = yield* statusCall(inputRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
+        const dim = yield* refusalCall(inputRefusal, { 400: refuse[400], 404: refuse[404] }, () =>
           updateAiDimension(organizationId, params.id, parsed),
         );
         yield* fireAndForget(() =>

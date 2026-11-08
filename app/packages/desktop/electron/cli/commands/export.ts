@@ -15,12 +15,12 @@ import { Argument, Command, Flag } from "effect/cli";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { getPlugin } from "../../../src/plugins/loader";
-import { listCloudResources, listLocalResources, type ResourceRow } from "../context";
+import { cloudResources, listLocalResources, type ResourceRow } from "../context";
 import { CliFailure, CliUsageError } from "../effect/errors";
 import { destination, destinationOf } from "../effect/file-flags";
 import * as Print from "../effect/print";
 import { costScope, dateRange } from "../effect/range-flags";
-import { CliSession, legacyContext } from "../effect/session";
+import { CliSession } from "../effect/session";
 import { c, safe } from "../output";
 import { exportFocus, exportJob, exportJobFlags, exportJobs } from "./exports";
 import { resolveScopedAccount } from "./listing";
@@ -61,10 +61,7 @@ const exportTerraform = Effect.fnUntraced(function* (format: Option.Option<strin
       message: `Unknown export format "${chosen}". Use "terraform" (an account's inventory as HCL) or "focus" (cost rows as a FOCUS CSV).`,
     });
   }
-  // The account resolution and the listings are still Promise helpers; their
-  // `CliError`s render as the legacy one-line failures.
-  const ctx = yield* legacyContext;
-  const { orgId, account } = yield* Effect.promise(() => resolveScopedAccount(ctx));
+  const { orgId, account } = yield* resolveScopedAccount();
 
   const loaded = yield* Effect.promise(() => getPlugin(account.pluginId));
   if (!loaded) {
@@ -79,7 +76,7 @@ const exportTerraform = Effect.fnUntraced(function* (format: Option.Option<strin
 
   let rows: ResourceRow[];
   if (orgId) {
-    rows = yield* Effect.promise(() => listCloudResources(orgId, account.id));
+    rows = yield* cloudResources(orgId, account.id);
   } else {
     const listing = yield* Effect.promise(() => listLocalResources(account, {}));
     // Types the provider refused would silently vanish from the export:

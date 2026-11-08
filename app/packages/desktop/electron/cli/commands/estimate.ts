@@ -14,19 +14,14 @@
 //
 // The argument may be the compound `{accountId}:{typeId}:{externalId}` id, or
 // a display name / external id when `--account` (and usually `--org`) scopes
-// the lookup: same friendly resolution accounts get via `resolveAccount`.
+// the lookup: same friendly resolution accounts get via `findAccount`.
 import type { CostEstimate } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
 import type { ResourceCarbonEstimate } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { Effect, Option, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
-import {
-  listCloudAccounts,
-  listCloudResources,
-  resolveAccount,
-  type ResourceRow,
-} from "../context";
+import { cloudAccounts, cloudResources, findAccount, type ResourceRow } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -160,9 +155,8 @@ const resolveEstimateTarget = Effect.fnUntraced(function* (wanted: string) {
     });
   }
   const org = yield* currentOrg;
-  const accounts = yield* Effect.promise(() => listCloudAccounts(org.id));
-  const account = yield* Effect.sync(() => resolveAccount(accounts, accountArg));
-  const rows = yield* Effect.promise(() => listCloudResources(org.id, account.id));
+  const account = yield* findAccount(yield* cloudAccounts(org.id), accountArg);
+  const rows = yield* cloudResources(org.id, account.id);
   const row = yield* matchResource(rows, wanted);
   return {
     accountId: row.accountId,

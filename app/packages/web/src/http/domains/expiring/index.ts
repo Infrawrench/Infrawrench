@@ -15,9 +15,9 @@ import {
   type ExpirySettingsRecord,
 } from "@infrawrench/server-core/expiry/settings";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
+import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ExpiringApi, ExpiryAlertSettings, ExpiryListResponse } from "./api";
@@ -54,20 +54,20 @@ const ExpiringHandlers = HttpApiBuilder.group(ExpiringApi, "expiring", (handlers
     .handleRaw("updateSettings", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const patch: ExpirySettingsPatch = {};
         const enabled = body["enabled"];
         if (enabled !== undefined) {
-          if (!Predicate.isBoolean(enabled)) return yield* invalidBody("enabled must be a boolean");
+          if (!Predicate.isBoolean(enabled)) return yield* badRequest("enabled must be a boolean");
           patch.enabled = enabled;
         }
         const leadDays = body["leadDays"];
         if (leadDays !== undefined) {
-          if (!Predicate.isNumber(leadDays)) return yield* invalidBody("leadDays must be a number");
+          if (!Predicate.isNumber(leadDays)) return yield* badRequest("leadDays must be a number");
           patch.leadDays = leadDays;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
         const { organizationId } = yield* OrgPrincipal;
         const saved = yield* legacyTry(

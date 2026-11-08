@@ -6,22 +6,28 @@
 //   left     - accounts in the active scope
 //   right    - resources of the selected account, or the detail/metrics pane
 //   footer   - key hints
+//
+// The cloud is read through `CloudApi`, as everywhere in the CLI: the screen is
+// driven by key and resize events, so its loaders run each Effect through the
+// `runner` the `tui` command hands in (its own services), and a failure's
+// sentence lands in the status line.
+import { type Effect, Schema } from "effect";
 import {
-  listOrgs,
+  cloudAccounts,
+  cloudResources,
   listLocalAccounts,
-  listCloudAccounts,
   listLocalResources,
-  listCloudResources,
   loadLocalResourceOutputs,
-  syncCloudAccount,
+  syncCloud,
   fetchLocalMetrics,
-  orgFetch,
   type AccountInfo,
-  type CliContext,
-  type OrgInfo,
   type ResourceRow,
 } from "./context";
-import { getAuthStatus } from "../cloud-tokens";
+import { CloudApi, type OrgInfo } from "./effect/cloud-api";
+import { wire } from "./effect/wire";
+import type { CostQueryResponse } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
 import { c, colorIsEnabled, seriesColor, visibleWidth, formatNumber, formatMoney } from "./output";
 import { sparkline, lineChart, barChart } from "./charts";
 
@@ -39,6 +45,30 @@ interface Scope {
 }
 
 type Pane = "accounts" | "resources" | "detail" | "costs";
+
+/** Runs a cloud read for the screen, with the `tui` command's services. */
+export type TuiRunner = <A, E>(effect: Effect.Effect<A, E, CloudApi>) => Promise<A>;
+
+const MetricSeries = Schema.Struct({
+  label: Schema.String,
+  unit: Schema.optionalKey(Schema.String),
+  points: Schema.Array(Schema.Struct({ timestamp: Schema.Finite, value: Schema.Finite })),
+});
+const MetricsAnswer = Schema.Struct({ series: Schema.Array(MetricSeries) });
+
+const CostsAnswer = wire<CostQueryResponse>()(
+  Schema.Struct({
+    totals: Schema.Record(Schema.String, Schema.Finite),
+    series: Schema.Array(
+      Schema.Struct({
+        key: Schema.String,
+        label: Schema.String,
+        currency: Schema.String,
+        points: Schema.Array(Schema.Struct({ bucket: Schema.String, amount: Schema.Finite })),
+      }),
+    ),
+  }),
+);
 
 interface TuiState {
   scopes: Scope[];
@@ -58,20 +88,8 @@ interface TuiState {
   loading: boolean;
   /** True once the selected account's resources have been asked for. */
   resourcesLoaded: boolean;
-  metrics: Array<{
-    label: string;
-    unit?: string;
-    points: Array<{ timestamp: number; value: number }>;
-  }> | null;
-  costs: {
-    totals: Record<string, number>;
-    series: Array<{
-      key: string;
-      label: string;
-      currency: string;
-      points: Array<{ bucket: string; amount: number }>;
-    }>;
-  } | null;
+  metrics: ReadonlyArray<typeof MetricSeries.Type> | null;
+  costs: typeof CostsAnswer.Type | null;
 }
 
 function moveTo(row: number, col: number): string {
@@ -98,18 +116,12 @@ function followScroll(scroll: number, index: number, visible: number, total: num
   return Math.max(0, next);
 }
 
-export async function runTui(ctx: CliContext): Promise<void> {
-  if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    throw new Error(
-      "The TUI needs an interactive terminal. Use `infrawrench accounts --json` for scripts.",
-    );
-  }
-
+/** The full-screen dashboard, until `q`. The caller checks that both ends are a terminal. */
+export async function runTui(runner: TuiRunner): Promise<void> {
   const scopes: Scope[] = [{ kind: "local", org: null, label: "Local" }];
-  if ((await getAuthStatus()).authenticated) {
-    for (const org of await listOrgs()) {
-      scopes.push({ kind: "org", org, label: org.displayName });
-    }
+  // Signed out is the local workspace alone, not an error.
+  for (const org of await runner(CloudApi.use((api) => api.orgs))) {
+    scopes.push({ kind: "org", org, label: org.displayName });
   }
 
   const state: TuiState = {
@@ -160,7 +172,9 @@ export async function runTui(ctx: CliContext): Promise<void> {
     try {
       const scope = activeScope();
       state.accounts =
-        scope.kind === "local" ? await listLocalAccounts() : await listCloudAccounts(scope.org!.id);
+        scope.kind === "local"
+          ? await listLocalAccounts()
+          : await runner(cloudAccounts(scope.org!.id));
       state.accountIndex = 0;
       state.accountScroll = 0;
       clearResources();
@@ -205,7 +219,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
         state.resourceScroll = 0;
       } else {
         // Cached rows first so the pane fills instantly…
-        const cached = await listCloudResources(scope.org!.id, account.id);
+        const cached = await runner(cloudResources(scope.org!.id, account.id));
         if (token !== resourceLoadToken) return;
         state.resources = cached;
         state.resourceIndex = 0;
@@ -217,8 +231,8 @@ export async function runTui(ctx: CliContext): Promise<void> {
         // (the desktop account page re-syncs the same way). A failed sync
         // keeps the cached rows on screen instead of wiping the pane.
         try {
-          await syncCloudAccount(scope.org!.id, account.id);
-          const fresh = await listCloudResources(scope.org!.id, account.id);
+          await runner(syncCloud(scope.org!.id, account.id));
+          const fresh = await runner(cloudResources(scope.org!.id, account.id));
           if (token !== resourceLoadToken) return;
           state.resources = fresh;
           state.resourceIndex = Math.min(state.resourceIndex, Math.max(0, fresh.length - 1));
@@ -277,18 +291,24 @@ export async function runTui(ctx: CliContext): Promise<void> {
         if (token !== metricsLoadToken) return;
         state.metrics = series;
       } else {
-        const { series } = await orgFetch<{ series: NonNullable<TuiState["metrics"]> }>(
-          scope.org!.id,
-          `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resource.resourceTypeId)}/metrics`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              accountId: account.id,
-              resourceId: resource.id,
-              startMs,
-              endMs,
-            }),
-          },
+        const orgId = scope.org!.id;
+        const { series } = await runner(
+          CloudApi.use((api) =>
+            api.decode(
+              MetricsAnswer,
+              orgId,
+              `/resources/${encodeURIComponent(account.pluginId)}/${encodeURIComponent(resource.resourceTypeId)}/metrics`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  accountId: account.id,
+                  resourceId: resource.id,
+                  startMs,
+                  endMs,
+                }),
+              },
+            ),
+          ),
         );
         if (token !== metricsLoadToken) return;
         state.metrics = series;
@@ -313,19 +333,24 @@ export async function runTui(ctx: CliContext): Promise<void> {
     try {
       const to = new Date().toISOString().slice(0, 10);
       const from = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
-      state.costs = await orgFetch(scope.org!.id, "/costs/query", {
-        method: "POST",
-        body: JSON.stringify({
-          from,
-          to,
-          binning: "daily",
-          groupBy: "provider",
-          filters: [],
-          topN: 6,
-          comparePreviousPeriod: false,
-          forecast: false,
-        }),
-      });
+      const orgId = scope.org!.id;
+      state.costs = await runner(
+        CloudApi.use((api) =>
+          api.decode(CostsAnswer, orgId, "/costs/query", {
+            method: "POST",
+            body: JSON.stringify({
+              from,
+              to,
+              binning: "daily",
+              groupBy: "provider",
+              filters: [],
+              topN: 6,
+              comparePreviousPeriod: false,
+              forecast: false,
+            }),
+          }),
+        ),
+      );
       state.status = "";
     } catch (e) {
       state.status = e instanceof Error ? e.message : String(e);

@@ -1,19 +1,20 @@
 /**
- * How a request crosses from Hono to the HttpApi router and back:
+ * What the HttpApi handler does to a request on its way in and out, beyond
+ * what any one domain sees:
  *
- * - a request no domain routes reaches Hono with its body unread, even under a
- *   content type the router would have rewritten (a signed form post such as
- *   Slack's must verify against the bytes it was sent);
- * - a handler is not interrupted when the client goes away, as Hono's were
- *   not: interrupting between two steps of a write leaves it half done.
+ * - a request no domain routes, whatever its content type, gets the
+ *   `404 Not Found` text the API has always sent, with the security headers;
+ * - a handler is not interrupted when the client goes away, as the Hono
+ *   handlers were not: interrupting between two steps of a write leaves it
+ *   half done;
+ * - HEAD is the GET route minus its body.
  */
 import { describe, expect, it } from "vitest";
 import { Deferred, Effect, Schema } from "effect";
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
-import { Hono } from "hono";
 import { makeDomain, withApiDefaults } from "@/http/domain";
 import { legacy } from "@/http/legacy";
-import { httpApiMiddleware, makeHttpApiHandler } from "@/http/server";
+import { makeHttpApiHandler } from "@/http/server";
 import { testMiddleware } from "@/http/testing";
 
 const steps: string[] = [];
@@ -50,20 +51,24 @@ const domain = makeDomain(
   ),
 );
 
-const app = new Hono();
-app.use("*", httpApiMiddleware(makeHttpApiHandler([domain], testMiddleware())));
-app.post("/api/legacy/echo", async (c) => c.text(await c.req.text()));
+const handler = makeHttpApiHandler([domain], testMiddleware());
+const app = {
+  request: (path: string, init?: RequestInit) =>
+    handler.handle(new Request(`http://localhost${path}`, init)),
+};
 
-describe("the Hono to HttpApi handover", () => {
-  it("leaves a request no domain routes, body and all, to Hono", async () => {
+describe("the HttpApi handler", () => {
+  it("answers a request no domain routes with the 404 it always sent", async () => {
     for (const type of ["application/x-www-form-urlencoded", "text/plain;charset=UTF-8"]) {
-      const res = await app.request("/api/legacy/echo", {
+      const res = await app.request("/api/handover/unrouted", {
         method: "POST",
         headers: { "content-type": type },
         body: "token=abc&text=%2Fdeploy",
       });
-      expect(res.status).toBe(200);
-      expect(await res.text()).toBe("token=abc&text=%2Fdeploy");
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-type")).toBe("text/plain; charset=UTF-8");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+      expect(await res.text()).toBe("404 Not Found");
     }
   });
 
@@ -87,6 +92,13 @@ describe("the Hono to HttpApi handover", () => {
     const head = await app.request("/api/handover/greeting", { method: "HEAD" });
     expect(head.status).toBe(200);
     expect(head.headers.get("content-type")).toBe(get.headers.get("content-type"));
+    expect(await head.text()).toBe("");
+  });
+
+  it("answers HEAD on a path nothing routes with the 404's headers and no body", async () => {
+    const head = await app.request("/api/handover/unrouted", { method: "HEAD" });
+    expect(head.status).toBe(404);
+    expect(head.headers.get("content-type")).toBe("text/plain; charset=UTF-8");
     expect(await head.text()).toBe("");
   });
 });

@@ -20,12 +20,12 @@ import {
 } from "@infrawrench/server-core/leases/store";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { BadRequest, NotFound, badRequest } from "../../errors";
+import { badRequest } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refuse, refusalCall, type RefusalPolicy, refusalsOf } from "../../refusals";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
-import { refusalCall, type RefusalCallOptions } from "../input-refusals";
 import {
   LeaseConflict,
   LeasesApi,
@@ -34,16 +34,12 @@ import {
   ResourceLeaseLookup,
 } from "./api";
 
-const store: RefusalCallOptions<LeaseInputError> = {
-  isInputError: (error): error is LeaseInputError => error instanceof LeaseInputError,
+const store: RefusalPolicy = refusalsOf(LeaseInputError, {
   logPrefix: "[leases]",
   failure: "Lease operation failed",
-};
+});
 
-const badRequestOr404 = {
-  400: (error: string) => new BadRequest({ error }),
-  404: (error: string) => new NotFound({ error }),
-};
+const badRequestOr404 = { 400: refuse[400], 404: refuse[404] } as const;
 
 const LeasesHandlers = HttpApiBuilder.group(LeasesApi, "leases", (handlers) =>
   handlers
@@ -65,7 +61,7 @@ const LeasesHandlers = HttpApiBuilder.group(LeasesApi, "leases", (handlers) =>
     .handleRaw("create", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const body = parsed.body;
         const resourceId = body["resourceId"];
         const accountId = body["accountId"];
@@ -73,16 +69,16 @@ const LeasesHandlers = HttpApiBuilder.group(LeasesApi, "leases", (handlers) =>
         const autoDelete = body["autoDelete"];
         const note = body["note"];
         if (!Predicate.isString(resourceId) || !Predicate.isString(accountId)) {
-          return yield* invalidBody("resourceId and accountId are required");
+          return yield* badRequest("resourceId and accountId are required");
         }
         if (!Predicate.isString(expiresAt)) {
-          return yield* invalidBody("expiresAt is required (ISO 8601)");
+          return yield* badRequest("expiresAt is required (ISO 8601)");
         }
         if (autoDelete !== undefined && !Predicate.isBoolean(autoDelete)) {
-          return yield* invalidBody("autoDelete must be a boolean");
+          return yield* badRequest("autoDelete must be a boolean");
         }
         if (note !== undefined && !Predicate.isString(note)) {
-          return yield* invalidBody("note must be a string");
+          return yield* badRequest("note must be a string");
         }
         // An auto-delete lease is a standing deletion: it needs the same
         // permission the direct delete endpoint gates on.
@@ -124,32 +120,32 @@ const LeasesHandlers = HttpApiBuilder.group(LeasesApi, "leases", (handlers) =>
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const body = parsed.body;
 
         const patch: LeaseUpdateInput = {};
         const expiresAt = body["expiresAt"];
         if (expiresAt !== undefined) {
           if (!Predicate.isString(expiresAt)) {
-            return yield* invalidBody("expiresAt must be a string (ISO 8601)");
+            return yield* badRequest("expiresAt must be a string (ISO 8601)");
           }
           patch.expiresAt = expiresAt;
         }
         const autoDelete = body["autoDelete"];
         if (autoDelete !== undefined) {
           if (!Predicate.isBoolean(autoDelete)) {
-            return yield* invalidBody("autoDelete must be a boolean");
+            return yield* badRequest("autoDelete must be a boolean");
           }
           patch.autoDelete = autoDelete;
         }
         const note = body["note"];
         if (note !== undefined) {
           if (note !== null && !Predicate.isString(note)) {
-            return yield* invalidBody("note must be a string or null");
+            return yield* badRequest("note must be a string or null");
           }
           patch.note = note;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No changes supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No changes supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         // resources:delete gates auto-delete by *effective* state: turning it
@@ -199,7 +195,7 @@ const LeasesHandlers = HttpApiBuilder.group(LeasesApi, "leases", (handlers) =>
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        yield* refusalCall(store, { 404: (error: string) => new NotFound({ error }) }, async () => {
+        yield* refusalCall(store, { 404: refuse[404] }, async () => {
           const deleted = await deleteLeaseRecord(organizationId, params.leaseId);
           void logAudit({
             organizationId,

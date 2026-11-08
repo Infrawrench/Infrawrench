@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 import type { PluginManifest } from "@infrawrench/plugin-base";
 
 const invoke = vi.fn();
@@ -6,6 +7,7 @@ const select = vi.fn();
 const execute = vi.fn();
 
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 vi.mock("../../db/client", () => ({
   getDb: () => Promise.resolve({ select, execute }),
 }));
@@ -23,9 +25,25 @@ import {
   persistOutputRef,
   buildPluginHostServices,
 } from "../sql-drivers";
+import { fakeRpc } from "./fake-rpc";
+
+/** The main-process RPCs these helpers call, recorded on `invoke` by tag. */
+const RPC_TAGS = [
+  "LocalSecretFieldDecrypt",
+  "LocalSecretFieldEncrypt",
+  "K8sApiRequest",
+  "PluginSqlQuery",
+  "PluginSqlExecute",
+  "PluginKvCommand",
+  "PluginDockerCommand",
+  "PluginK8sCommand",
+];
 
 beforeEach(() => {
   invoke.mockReset();
+  for (const tag of RPC_TAGS) {
+    fakeRpc[tag] = (payload: unknown) => Effect.promise(() => invoke(tag, payload));
+  }
   select.mockReset();
   execute.mockReset();
   invoke.mockResolvedValue(undefined);
@@ -37,10 +55,10 @@ const manifest = (extra: Partial<PluginManifest> = {}): PluginManifest =>
   ({ id: "p", name: "P", resourceTypes: [], ...extra }) as unknown as PluginManifest;
 
 describe("sqlQuery / sqlExecute", () => {
-  it("sqlQuery routes to plugin_sql_query without caCert when absent", async () => {
+  it("sqlQuery routes to PluginSqlQuery without caCert when absent", async () => {
     invoke.mockResolvedValue([{ a: 1 }]);
     const res = await sqlQuery("pg", "postgres://x", "SELECT 1");
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_query", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlQuery", {
       driverId: "pg",
       connectionString: "postgres://x",
       sql: "SELECT 1",
@@ -50,7 +68,7 @@ describe("sqlQuery / sqlExecute", () => {
 
   it("sqlQuery includes caCert when provided", async () => {
     await sqlQuery("pg", "conn", "SELECT 1", { caCert: "CERT" });
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_query", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlQuery", {
       driverId: "pg",
       connectionString: "conn",
       sql: "SELECT 1",
@@ -58,10 +76,10 @@ describe("sqlQuery / sqlExecute", () => {
     });
   });
 
-  it("sqlExecute routes to plugin_sql_execute with params and caCert", async () => {
+  it("sqlExecute routes to PluginSqlExecute with params and caCert", async () => {
     invoke.mockResolvedValue(3);
     const n = await sqlExecute("my", "conn", "DELETE", ["x"], { caCert: "C" });
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_execute", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlExecute", {
       driverId: "my",
       connectionString: "conn",
       sql: "DELETE",
@@ -73,7 +91,7 @@ describe("sqlQuery / sqlExecute", () => {
 
   it("sqlExecute omits caCert when not provided", async () => {
     await sqlExecute("my", "conn", "DELETE", []);
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_execute", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlExecute", {
       driverId: "my",
       connectionString: "conn",
       sql: "DELETE",
@@ -83,17 +101,17 @@ describe("sqlQuery / sqlExecute", () => {
 });
 
 describe("buildHostServices", () => {
-  it("wires sql.query and sql.execute through to invoke with caCert", async () => {
+  it("wires sql.query and sql.execute through to the driver RPCs with caCert", async () => {
     const hs = buildHostServices("pg", "conn", { caCert: "C" });
     await hs.sql!.query("SELECT 1");
     await hs.sql!.execute("UPDATE", [1]);
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_query", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlQuery", {
       driverId: "pg",
       connectionString: "conn",
       sql: "SELECT 1",
       caCert: "C",
     });
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_execute", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlExecute", {
       driverId: "pg",
       connectionString: "conn",
       sql: "UPDATE",
@@ -105,7 +123,7 @@ describe("buildHostServices", () => {
   it("works without caCert (default options)", async () => {
     const hs = buildHostServices("pg", "conn");
     await hs.sql!.query("SELECT 1");
-    expect(invoke).toHaveBeenCalledWith("plugin_sql_query", {
+    expect(invoke).toHaveBeenCalledWith("PluginSqlQuery", {
       driverId: "pg",
       connectionString: "conn",
       sql: "SELECT 1",
@@ -117,7 +135,7 @@ describe("kv host services", () => {
   it("kvCommand forwards command + args", async () => {
     invoke.mockResolvedValue("PONG");
     const res = await kvCommand("redis", "conn", "PING", "a", 1);
-    expect(invoke).toHaveBeenCalledWith("plugin_kv_command", {
+    expect(invoke).toHaveBeenCalledWith("PluginKvCommand", {
       driverId: "redis",
       connectionString: "conn",
       command: "PING",
@@ -129,7 +147,7 @@ describe("kv host services", () => {
   it("buildKvHostServices wires kv.command", async () => {
     const hs = buildKvHostServices("redis", "conn");
     await hs.kv!.command("GET", "key");
-    expect(invoke).toHaveBeenCalledWith("plugin_kv_command", {
+    expect(invoke).toHaveBeenCalledWith("PluginKvCommand", {
       driverId: "redis",
       connectionString: "conn",
       command: "GET",
@@ -146,7 +164,7 @@ describe("docker host services", () => {
   it("dockerCommand forwards op + params", async () => {
     invoke.mockResolvedValue({ ok: true });
     const res = await dockerCommand("docker", "unix:///x", "list", { all: true });
-    expect(invoke).toHaveBeenCalledWith("plugin_docker_command", {
+    expect(invoke).toHaveBeenCalledWith("PluginDockerCommand", {
       driverId: "docker",
       dockerHost: "unix:///x",
       op: "list",
@@ -158,7 +176,7 @@ describe("docker host services", () => {
   it("buildDockerHostServices wires docker.command", async () => {
     const hs = buildDockerHostServices("docker", "host");
     await hs.docker!.command("ps", { q: 1 });
-    expect(invoke).toHaveBeenCalledWith("plugin_docker_command", {
+    expect(invoke).toHaveBeenCalledWith("PluginDockerCommand", {
       driverId: "docker",
       dockerHost: "host",
       op: "ps",
@@ -175,7 +193,7 @@ describe("secretHostServices.getPlaintext", () => {
     invoke.mockResolvedValue("secret");
     const res = await secretHostServices.getPlaintext("res", "field");
     expect(res).toBe("secret");
-    expect(invoke).toHaveBeenCalledWith("secret_field_decrypt", {
+    expect(invoke).toHaveBeenCalledWith("LocalSecretFieldDecrypt", {
       resourceId: "res",
       fieldKey: "field",
       ciphertext: "ct",
@@ -240,7 +258,7 @@ describe("secretHostServices.setPlaintext / persistPlaintextSecret", () => {
   it("encrypts then upserts the secret_field_states row", async () => {
     invoke.mockResolvedValue({ ciphertext: "CT", iv: "IV" });
     await secretHostServices.setPlaintext!("res", "field", "plain");
-    expect(invoke).toHaveBeenCalledWith("secret_field_encrypt", {
+    expect(invoke).toHaveBeenCalledWith("LocalSecretFieldEncrypt", {
       resourceId: "res",
       fieldKey: "field",
       plaintext: "plain",
@@ -308,7 +326,7 @@ describe("buildPluginHostServices", () => {
     expect(hs.kv).toBeUndefined();
   });
 
-  it("base http.request routes through the k8s_api_request channel", async () => {
+  it("base http.request routes through K8sApiRequest", async () => {
     invoke.mockResolvedValue({ status: 200, headers: {}, body: "ok" });
     const hs = buildPluginHostServices(manifest(), {})!;
     const res = await hs.http!.request({
@@ -316,12 +334,32 @@ describe("buildPluginHostServices", () => {
       method: "GET",
       headers: { accept: "application/json" },
     });
-    expect(invoke).toHaveBeenCalledWith("k8s_api_request", {
+    expect(invoke).toHaveBeenCalledWith("K8sApiRequest", {
       url: "https://api/x",
       method: "GET",
       headers: { accept: "application/json" },
     });
     expect(res).toEqual({ status: 200, headers: {}, body: "ok" });
+  });
+
+  it("base http.request sends a byte body as bodyBytes and a string as body", async () => {
+    invoke.mockResolvedValue({ status: 200, headers: {}, body: "", trailers: {} });
+    const hs = buildPluginHostServices(manifest(), {})!;
+    const bytes = new Uint8Array([0, 1, 2]);
+    await hs.http!.request({ url: "https://api/x", method: "POST", headers: {}, body: bytes });
+    await hs.http!.request({ url: "https://api/x", method: "POST", headers: {}, body: "text" });
+    expect(invoke).toHaveBeenNthCalledWith(1, "K8sApiRequest", {
+      url: "https://api/x",
+      method: "POST",
+      headers: {},
+      bodyBytes: bytes,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, "K8sApiRequest", {
+      url: "https://api/x",
+      method: "POST",
+      headers: {},
+      body: "text",
+    });
   });
 
   it("builds docker services from the dockerDriver credential", async () => {
@@ -335,7 +373,7 @@ describe("buildPluginHostServices", () => {
     expect(hs.secrets).toBe(secretHostServices);
     await hs.docker!.command("ps");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_docker_command",
+      "PluginDockerCommand",
       expect.objectContaining({ dockerHost: "tcp://1", op: "ps" }),
     );
   });
@@ -349,7 +387,7 @@ describe("buildPluginHostServices", () => {
     )!;
     await hs.docker!.command("ps");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_docker_command",
+      "PluginDockerCommand",
       expect.objectContaining({ dockerHost: "" }),
     );
   });
@@ -364,7 +402,7 @@ describe("buildPluginHostServices", () => {
     expect(hs.k8s).toBeDefined();
     await hs.k8s!.command("get", { kind: "pods" });
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_k8s_command",
+      "PluginK8sCommand",
       expect.objectContaining({ kubeconfig: "KC", op: "get" }),
     );
   });
@@ -378,7 +416,7 @@ describe("buildPluginHostServices", () => {
     )!;
     await hs.sql!.query("SELECT 1");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_sql_query",
+      "PluginSqlQuery",
       expect.objectContaining({ connectionString: "postgres://x", caCert: "CERT" }),
     );
   });
@@ -389,7 +427,7 @@ describe("buildPluginHostServices", () => {
       { url: "postgres://x" },
     )!;
     await hs.sql!.query("SELECT 1");
-    const call = invoke.mock.calls.find((c) => c[0] === "plugin_sql_query")!;
+    const call = invoke.mock.calls.find((c) => c[0] === "PluginSqlQuery")!;
     expect(call[1]).not.toHaveProperty("caCert");
   });
 
@@ -402,7 +440,7 @@ describe("buildPluginHostServices", () => {
     )!;
     await k8s.k8s!.command("get");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_k8s_command",
+      "PluginK8sCommand",
       expect.objectContaining({ kubeconfig: "" }),
     );
 
@@ -413,7 +451,7 @@ describe("buildPluginHostServices", () => {
       {},
     )!;
     await sql.sql!.query("SELECT 1");
-    const sqlCall = invoke.mock.calls.find((c) => c[0] === "plugin_sql_query")!;
+    const sqlCall = invoke.mock.calls.find((c) => c[0] === "PluginSqlQuery")!;
     expect(sqlCall[1]).toMatchObject({ connectionString: "" });
     // caCert resolves to "" -> omitted from the sql payload
     expect(sqlCall[1]).not.toHaveProperty("caCert");
@@ -424,7 +462,7 @@ describe("buildPluginHostServices", () => {
     )!;
     await kv.kv!.command("PING");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_kv_command",
+      "PluginKvCommand",
       expect.objectContaining({ connectionString: "" }),
     );
   });
@@ -437,7 +475,7 @@ describe("buildPluginHostServices", () => {
     expect(hs.kv).toBeDefined();
     await hs.kv!.command("PING");
     expect(invoke).toHaveBeenCalledWith(
-      "plugin_kv_command",
+      "PluginKvCommand",
       expect.objectContaining({ connectionString: "redis://x", command: "PING" }),
     );
   });

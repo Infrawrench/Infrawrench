@@ -312,7 +312,7 @@ export async function handleSshSession(
     const sendError = (err: unknown) => {
       if (err instanceof HostKeyTrustRequiredError) {
         // Structured frame so the client can distinguish an untrusted/changed
-        // host key from a generic failure (mirrors hostKeyTrustResponse's 409).
+        // host key from a generic failure (mirrors the HTTP routes' 409, `hostKeyTrustBody`).
         sendJson({
           type: "ssh:error",
           error: err.message,

@@ -19,8 +19,7 @@ import { FanoutInputError, listFanoutTargets, runFanout } from "../../../service
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
 import { BadRequest, conflict, notFound } from "../../errors";
-import { readJson } from "../../json-body";
-import { decodeFirstIssueStrict } from "../first-issue-body";
+import { readJson, decodeFirstIssue } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
@@ -39,7 +38,7 @@ import {
 const decodeBody = <S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   request: HttpServerRequest.HttpServerRequest,
-) => Effect.flatMap(readJson(request), (body) => decodeFirstIssueStrict(schema, body));
+) => Effect.flatMap(readJson(request), (body) => decodeFirstIssue(schema, body));
 
 const SshFanoutHandlers = HttpApiBuilder.group(SshFanoutApi, "sshFanout", (handlers) =>
   handlers

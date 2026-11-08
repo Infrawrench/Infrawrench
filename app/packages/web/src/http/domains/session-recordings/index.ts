@@ -25,12 +25,11 @@ import {
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr, decodeFirstIssue } from "../../request-body";
 import { legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { decodeFirstIssueStrict } from "../first-issue-body";
 import {
   SessionRecording,
   SessionRecordingSettings,
@@ -110,7 +109,7 @@ const SessionRecordingsHandlers = HttpApiBuilder.group(
       .handleRaw("updateSettings", ({ request }) =>
         Effect.gen(function* () {
           const { organizationId, session } = yield* OrgPrincipal;
-          const update = yield* decodeFirstIssueStrict(
+          const update = yield* decodeFirstIssue(
             SessionRecordingSettingsUpdate,
             yield* readJsonOr(request, null),
           );

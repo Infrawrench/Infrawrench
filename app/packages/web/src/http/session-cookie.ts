@@ -1,10 +1,9 @@
 /**
- * The `wos-session` cookie, as both halves of the API write it.
+ * The `wos-session` cookie, as the API writes it.
  *
  * Light on purpose (no auth chain, no database): the session-only domains
  * import it to clear the cookie on sign-out and account deletion, and the
- * auth middlewares (`./middleware-live.ts`, `api/auth-middleware.ts`) to set
- * the refreshed session.
+ * auth middleware (`./middleware-live.ts`) to set the refreshed session.
  */
 import { Duration, Effect, Option } from "effect";
 import { Cookies, HttpEffect, HttpServerResponse } from "effect/http";
@@ -15,7 +14,7 @@ export const SESSION_COOKIE = "wos-session";
 /** Lifetime of a refreshed session cookie in seconds, matching the callback's. */
 export const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
 
-/** The options a refreshed session cookie is set with; `maxAge` in seconds, as Hono takes it. */
+/** The options a refreshed session cookie is set with; `maxAge` in seconds. */
 export const sessionCookieOptions = () =>
   ({
     httpOnly: true,

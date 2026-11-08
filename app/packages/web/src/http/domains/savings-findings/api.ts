@@ -31,7 +31,7 @@ import { withApiDefaults } from "../../domain";
 import { BadRequest, Conflict, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, Ok, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import { documentedAs } from "../../schemas/documented";
+import { describeResponse, documentedAs } from "../../schemas/documented";
 import { describeQuery } from "../../schemas/params";
 
 const day = (description?: string) =>
@@ -265,21 +265,7 @@ const param = <S extends Schema.Top>(doc: S) => Schema.optionalKey(documentedAs(
 const text = (description: string) => param(Schema.String.annotate({ description }));
 
 /** The 409 a write answers when the name is taken, described as the hand-written spec had it. */
-const nameConflictResponse = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const responses = operation["responses"];
-  if (typeof responses !== "object" || responses === null || !("409" in responses)) {
-    return operation;
-  }
-  const conflict = responses["409"];
-  if (typeof conflict !== "object" || conflict === null) return operation;
-  return {
-    ...operation,
-    responses: {
-      ...responses,
-      "409": { ...conflict, description: "A live savings view already uses this name." },
-    },
-  };
-};
+const nameConflictResponse = describeResponse(409, "A live savings view already uses this name.");
 
 export class SavingsFindingsGroup extends HttpApiGroup.make("savingsFindings")
   .add(

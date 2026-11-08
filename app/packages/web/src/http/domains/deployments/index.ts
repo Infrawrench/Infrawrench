@@ -30,13 +30,13 @@ import { PlanRequiredError } from "../../../services/entitlements";
 import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { legacy } from "../../legacy";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 import { DeploymentCostImpact } from "../../schemas/change-cost-impact";
 import { ok } from "../../schemas/common";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
   DeployEnvs,
   DeploymentRun,
@@ -89,7 +89,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const { repo, branch } = yield* fieldsOf(yield* readJson(request));
-        const envs = yield* statusCall(
+        const envs = yield* refusalCall(
           deploymentRefusal,
           { 400: refuse[400], 404: refuse[404] },
           async () => {
@@ -114,7 +114,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
         const { organizationId } = yield* OrgPrincipal;
         const caller = yield* callerId;
         const { repo, branch, env, answers } = yield* fieldsOf(yield* readJson(request));
-        const run = yield* statusCall(
+        const run = yield* refusalCall(
           deploymentRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () =>
@@ -150,7 +150,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
         const { organizationId, session } = yield* OrgPrincipal;
         const body = yield* readJson(request);
         if (!isCliRunReport(body)) return yield* badRequest("env and status are required");
-        const recorded = yield* statusCall(deploymentRefusal, { 400: refuse[400] }, () =>
+        const recorded = yield* refusalCall(deploymentRefusal, { 400: refuse[400] }, () =>
           recordCliRun(organizationId, session.userId, body),
         );
         return yield* respond(DeploymentRunRecorded, { status: 201 })(recorded);
@@ -159,7 +159,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
     .handle("run", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const run = yield* statusCall(deploymentRefusal, { 404: refuse[404] }, () =>
+        const run = yield* refusalCall(deploymentRefusal, { 404: refuse[404] }, () =>
           getDeploymentRun(organizationId, params.id),
         );
         return yield* respond(DeploymentRun)(run);
@@ -196,7 +196,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
         const caller = yield* callerId;
         // The body is optional: a bare rollback has nothing to say.
         const { deleteCreated } = yield* fieldsOf(yield* readJsonOr(request, {}));
-        const run = yield* statusCall(
+        const run = yield* refusalCall(
           deploymentRefusal,
           { 400: refuse[400], 402: refuse[402], 404: refuse[404], 409: refuse[409] },
           () =>
@@ -232,7 +232,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
         ) {
           return yield* badRequest("repo, branch and env are required");
         }
-        const trigger = yield* statusCall(
+        const trigger = yield* refusalCall(
           deploymentRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () =>
@@ -255,7 +255,7 @@ const DeploymentsHandlers = HttpApiBuilder.group(DeploymentsApi, "deployments", 
         if (!Predicate.isBoolean(enabled)) {
           return yield* badRequest("enabled must be true or false");
         }
-        const trigger = yield* statusCall(
+        const trigger = yield* refusalCall(
           deploymentRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => setDeployTriggerEnabled(organizationId, params.id, enabled),

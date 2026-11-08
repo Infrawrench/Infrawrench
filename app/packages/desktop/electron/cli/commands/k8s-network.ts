@@ -17,7 +17,7 @@ import { Argument, Command, Flag } from "effect/cli";
 import type { KubernetesNetworkReport, NetworkFlowFeed } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { resolveAccount } from "../context";
+import { findAccount } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -176,17 +176,14 @@ export const k8sNetwork = Command.make(
     const [only] = clusters;
     let accountId: string;
     if (wanted) {
-      accountId = yield* Effect.sync(
-        () =>
-          resolveAccount(
-            clusters.map((a) => ({
-              id: a.accountId,
-              pluginId: a.pluginId,
-              displayName: a.displayName,
-            })),
-            wanted,
-          ).id,
-      );
+      accountId = (yield* findAccount(
+        clusters.map((a) => ({
+          id: a.accountId,
+          pluginId: a.pluginId,
+          displayName: a.displayName,
+        })),
+        wanted,
+      )).id;
     } else if (only && clusters.length === 1) {
       accountId = only.accountId;
     } else {

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGT } from "gt-react";
-import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { sshExecCommand } from "../lib/ssh-tunnel";
 import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
@@ -10,6 +9,7 @@ import type { DraggableResource } from "../lib/pins";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
 import { buildPluginHostServices } from "../lib/sql-drivers";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 type Format = "dotenv" | "profile";
 
@@ -115,9 +115,7 @@ export function SshEnvDeployModal({
         throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: source.pluginId }));
       }
 
-      const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
-        accountId: source.accountId,
-      });
+      const sourceCreds = await getLocalAccountCredentials(source.accountId);
       const sourceServices = buildPluginHostServices(sourceLoaded.plugin.manifest, sourceCreds);
       const sourceClient = sourceLoaded.plugin.createClient(sourceCreds, sourceServices);
 

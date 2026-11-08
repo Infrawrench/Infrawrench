@@ -27,6 +27,7 @@ import { CliFailure, CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
 import { positiveInt } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
+import { reason as reasonFlag } from "../effect/triage-flags";
 import { decodePaired, spreadBody, wire } from "../effect/wire";
 import { c, safe } from "../output";
 import {
@@ -345,11 +346,9 @@ const feedback = Command.make(
       Flag.withDefault(false),
       Flag.withoutNegation,
     ),
-    reason: Flag.String("reason").pipe(
-      Flag.withMetavar(FEEDBACK_REASONS.join("|")),
-      Flag.withDescription("The reason category"),
-      Flag.optional,
-    ),
+    // Checked with the other feedback flags in `feedbackRequest`, which names
+    // the categories when the value is none of them.
+    reason: reasonFlag({ metavar: FEEDBACK_REASONS.join("|"), description: "The reason category" }),
     note: Flag.String("note").pipe(
       Flag.withMetavar("text"),
       Flag.withDescription(`Context for the verdict (max ${NOTE_MAX_LENGTH} characters)`),

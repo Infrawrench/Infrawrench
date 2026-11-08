@@ -1,39 +1,43 @@
-import { ipcMain } from "electron";
+/**
+ * The cloud org's SSH keys, through the main process's signed-in session
+ * (`shared/rpc/groups/cloud-ssh-keys.ts`).
+ */
+import { Context, Effect, Layer, Schema } from "effect";
+import { CloudRequestError } from "../shared/rpc/errors";
+import { CloudSshKey, GeneratedCloudSshKey } from "../shared/rpc/groups/cloud-ssh-keys";
 import { cloudFetch } from "./cloud-data/shared";
+import { cloudRequest } from "./cloud-request";
 
-interface CloudSshKey {
-  id: string;
-  name: string;
-  publicKey: string;
-  keyType: string | null;
-  userId?: string;
-  ownerEmail?: string;
-  ownerName?: string;
-  privateKey?: string;
+const CloudSshKeyList = Schema.NullOr(Schema.mutable(Schema.Array(CloudSshKey)));
+
+export class CloudSshKeys extends Context.Service<
+  CloudSshKeys,
+  {
+    readonly list: (orgId: string) => Effect.Effect<CloudSshKey[], CloudRequestError>;
+    readonly create: (
+      orgId: string,
+      name: string,
+    ) => Effect.Effect<GeneratedCloudSshKey, CloudRequestError>;
+    readonly remove: (orgId: string, id: string) => Effect.Effect<void, CloudRequestError>;
+  }
+>()("infrawrench/desktop/CloudSshKeys") {
+  static readonly layer = Layer.succeed(CloudSshKeys)(
+    CloudSshKeys.of({
+      list: (orgId) =>
+        cloudRequest(CloudSshKeyList, orgId, "/ssh-keys").pipe(Effect.map((keys) => keys ?? [])),
+      create: (orgId, name) =>
+        cloudRequest(GeneratedCloudSshKey, orgId, "/ssh-keys", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        }),
+      remove: (orgId, id) =>
+        Effect.tryPromise({
+          try: () =>
+            cloudFetch<unknown>(orgId, `/ssh-keys/${encodeURIComponent(id)}`, {
+              method: "DELETE",
+            }),
+          catch: CloudRequestError.fromCause,
+        }).pipe(Effect.asVoid),
+    }),
+  );
 }
-
-ipcMain.handle(
-  "cloud_ssh_keys_list",
-  async (_e, { orgId }: { orgId: string }): Promise<CloudSshKey[]> => {
-    return (await cloudFetch<CloudSshKey[]>(orgId, "/ssh-keys")) ?? [];
-  },
-);
-
-ipcMain.handle(
-  "cloud_ssh_keys_create",
-  async (_e, { orgId, name }: { orgId: string; name: string }): Promise<CloudSshKey> => {
-    const result = await cloudFetch<CloudSshKey>(orgId, "/ssh-keys", {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
-    if (!result) throw new Error("Cloud SSH key creation returned no response body");
-    return result;
-  },
-);
-
-ipcMain.handle(
-  "cloud_ssh_keys_delete",
-  async (_e, { orgId, id }: { orgId: string; id: string }): Promise<void> => {
-    await cloudFetch<unknown>(orgId, `/ssh-keys/${id}`, { method: "DELETE" });
-  },
-);

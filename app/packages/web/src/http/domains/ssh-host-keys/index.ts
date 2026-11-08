@@ -15,7 +15,7 @@ import { HostKeyMismatchError, trustHostKey } from "../../../services/ssh-host-k
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { notFound } from "../../errors";
-import { decodeAsPayload, readJsonOr } from "../../json-body";
+import { decodeAsPayload, readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

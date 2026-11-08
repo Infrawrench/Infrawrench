@@ -33,7 +33,8 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -138,7 +139,7 @@ const BackupsHandlers = HttpApiBuilder.group(BackupsApi, "backups", (handlers) =
     .handleRaw("createPolicy", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const name = read.body["name"];
         if (!Predicate.isString(name)) return yield* badRequest("name is required");
         const fields = yield* readPolicyFields(read.body);
@@ -170,7 +171,7 @@ const BackupsHandlers = HttpApiBuilder.group(BackupsApi, "backups", (handlers) =
     .handleRaw("updatePolicy", ({ params, request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const name = read.body["name"];
         if (name !== undefined && !Predicate.isString(name)) {
           return yield* badRequest("name must be a string");
@@ -254,7 +255,7 @@ const BackupsHandlers = HttpApiBuilder.group(BackupsApi, "backups", (handlers) =
     .handleRaw("recordDrill", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const resourceId = body["resourceId"];
         const performedAt = body["performedAt"];

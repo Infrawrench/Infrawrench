@@ -26,7 +26,7 @@ import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -70,7 +70,7 @@ const VulnerabilitiesHandlers = HttpApiBuilder.group(
       .handleRaw("dismiss", ({ request }) =>
         Effect.gen(function* () {
           const read = yield* readObjectBody(request);
-          if (!read.ok) return yield* invalidBody(read.error);
+          if (!read.ok) return yield* badRequest(read.error);
           const body = read.body;
           const advisoryId = body["advisoryId"];
           const artifactKey = body["artifactKey"];
@@ -157,7 +157,7 @@ const VulnerabilitiesHandlers = HttpApiBuilder.group(
       .handleRaw("updateSettings", ({ request }) =>
         Effect.gen(function* () {
           const read = yield* readObjectBody(request);
-          if (!read.ok) return yield* invalidBody(read.error);
+          if (!read.ok) return yield* badRequest(read.error);
           const body = read.body;
           const patch: VulnerabilitySettingsPatch = {};
           for (const key of ["alertsEnabled", "runningOnly"] as const) {

@@ -46,9 +46,8 @@ import {
   NotFound,
   notFound,
 } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody } from "../../object-body";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -175,23 +174,23 @@ const ResourceChangesHandlers = HttpApiBuilder.group(ResourceChangesApi, "change
         for (const key of ["notifyCreated", "notifyUpdated", "notifyDeleted"] as const) {
           const value = body[key];
           if (value === undefined) continue;
-          if (!Predicate.isBoolean(value)) return yield* invalidBody(`${key} must be a boolean`);
+          if (!Predicate.isBoolean(value)) return yield* badRequest(`${key} must be a boolean`);
           patch[key] = value;
         }
         for (const key of ["cooldownMinutes", "minChanges"] as const) {
           const value = body[key];
           if (value === undefined) continue;
-          if (!Predicate.isNumber(value)) return yield* invalidBody(`${key} must be a number`);
+          if (!Predicate.isNumber(value)) return yield* badRequest(`${key} must be a number`);
           patch[key] = value;
         }
         const accountIds = body["accountIds"];
         if (accountIds !== undefined) {
           if (!Array.isArray(accountIds) || !accountIds.every(Predicate.isString)) {
-            return yield* invalidBody("accountIds must be an array of account ids");
+            return yield* badRequest("accountIds must be an array of account ids");
           }
           patch.accountIds = accountIds;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
         const { organizationId } = yield* OrgPrincipal;
         const saved = yield* legacyTry(
@@ -223,13 +222,13 @@ const ResourceChangesHandlers = HttpApiBuilder.group(ResourceChangesApi, "change
         const body = yield* readJsonOr(request, {}).pipe(Effect.flatMap(fieldsOf));
         const rawIds = body["changeIds"];
         if (!Array.isArray(rawIds) || !rawIds.every(Predicate.isString)) {
-          return yield* invalidBody("changeIds must be an array of change ids");
+          return yield* badRequest("changeIds must be an array of change ids");
         }
         if (rawIds.length > MAX_CHANGE_IMPACT_BATCH) {
-          return yield* invalidBody(`At most ${MAX_CHANGE_IMPACT_BATCH} changeIds per request`);
+          return yield* badRequest(`At most ${MAX_CHANGE_IMPACT_BATCH} changeIds per request`);
         }
         const basis = parseCostBasis(body["costBasis"]);
-        if (basis === null) return yield* invalidBody("costBasis must be cash or amortized");
+        if (basis === null) return yield* badRequest("costBasis must be cash or amortized");
         const windowDays = body["windowDays"];
         const ids: string[] = rawIds;
         const impacts = yield* legacy(() =>

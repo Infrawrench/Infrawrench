@@ -6,80 +6,10 @@ import { RPC_CONNECT, RPC_DISCONNECT, RPC_FRAME } from "../shared/rpc/channels";
 
 // Must stay in sync with the ipcMain.handle(...) calls in the electron/ dir.
 const INVOKE_CHANNELS = [
-  // app shell
-  "set_pings_active",
-  "set_crons_active",
-  "show_notification",
-  "show_open_dialog",
-  "open_external_url",
-  "update_install_now",
-  // credential helpers: each channel binds plaintext to a specific row + field via AAD
-  "account_get_credentials",
-  "account_save_credentials",
-  "account_create",
-  // provider OAuth ("Connect with X"): local loopback flow or the cloud's flow
-  "provider_oauth_local_clients",
-  "provider_oauth_connect",
-  "provider_oauth_cancel",
-  "ssh_key_get_private_key",
-  "ssh_key_get_public_key",
-  "ssh_key_ensure_agent_key",
-  "ssh_key_save_private_key",
-  "ssh_tunnel_config_get_private_key",
-  "ssh_tunnel_config_encrypt_private_key",
-  "secret_field_decrypt",
-  "secret_field_encrypt",
-  // sql.js local desktop DB (renderer-bundled SQL strings only)
-  "db_select",
-  "db_execute",
-  // workflows: the QuickJS sandbox runs in main; host capabilities are served
-  // back from the renderer (see electron/workflow-host.ts + lib/workflow-runner)
-  "workflow_run",
-  "workflow_stop",
-  "workflow_host_reply",
-  "workflow_secrets_list",
-  "workflow_secret_upsert",
-  "workflow_secret_delete",
-  // plugin drivers
-  "plugin_sql_query",
-  "plugin_sql_execute",
-  "plugin_kv_command",
-  "plugin_docker_command",
-  "plugin_k8s_command",
-  "storage_download_batch",
-  // Linux applications: open a session on a host, relay frames, list apps,
-  // and check (or fix) what the host is missing before any of that.
-  "apps_session_open",
-  "apps_session_write",
-  "apps_session_close",
-  "apps_list",
-  "apps_preflight",
-  "apps_install",
-  "clipboard_read_image",
-  // k8s
-  "k8s_exec_spawn",
-  "k8s_exec_write",
-  "k8s_exec_resize",
-  "k8s_exec_kill",
-  "k9s_check",
-  "k9s_spawn",
-  "k9s_write",
-  "k9s_resize",
-  "k9s_kill",
-  "k8s_pf_start",
-  "k8s_pf_stop",
-  "k8s_pf_cloud_start",
-  "k8s_pf_cloud_stop",
-  "k8s_api_request",
   // shell command (`infrawrench` CLI shim)
   // what `infrawrench deploy` did on this machine (local mode's Deploy tab)
   // cloud
-  "cloud_auth_start",
-  "cloud_auth_status",
-  "cloud_auth_get_ws_token",
   "cloud_ssh_host_key_trust",
-  "cloud_auth_orgs",
-  "cloud_get_url",
   "cloud_list_accounts",
   "cloud_list_account_plugins",
   "cloud_get_account_detail",
@@ -100,7 +30,6 @@ const INVOKE_CHANNELS = [
   "cloud_get_create_config",
   "cloud_get_create_pricing",
   "cloud_get_cost_estimate",
-  "instance_pricing_query",
   "cloud_invoke_action",
   "cloud_fetch_metrics",
   "cloud_get_logs",
@@ -581,9 +510,6 @@ const INVOKE_CHANNELS = [
   "cloud_sftp_download",
   "cloud_ssh_tunnel_create_account",
   "cloud_ssh_tunnel_exec",
-  "cloud_ssh_keys_list",
-  "cloud_ssh_keys_create",
-  "cloud_ssh_keys_delete",
   "cloud_ssh_fanout_targets",
   "cloud_ssh_fanout_run",
   "cloud_ssh_fanout_snippets_list",
@@ -600,38 +526,11 @@ const INVOKE_CHANNELS = [
   "cloud_chat_answer_question",
   "cloud_chat_stream_start",
   "cloud_chat_stream_abort",
-  "deep_link_take_pending",
 ] as const;
 
-const EVENT_LITERALS = new Set<string>([
-  "cloud_auth_error",
-  // a local account's OAuth connection changed state (e.g. needs reconnecting)
-  "provider_oauth_status",
-  // main forwards an infrawrench://open/… link for the renderer to open
-  "deep_link_open",
-  "storage_download_progress",
-  "update_available_prompt",
-  "update_error",
-  // main asks the renderer to serve a workflow host capability mid-run
-  "workflow_host_call",
-  // main streams a workflow's log entries to the renderer during a run
-  "workflow_log",
-]);
+const EVENT_LITERALS = new Set<string>(["update_available_prompt", "update_error"]);
 
-const EVENT_PREFIXES: readonly string[] = [
-  "k8s_exec_data_",
-  "k8s_exec_exit_",
-  "k9s_data_",
-  "k9s_exit_",
-  "k8s_pf_exit_",
-  "k8s_pf_cloud_exit_",
-  "cloud_chat_stream_",
-  "apps_data_",
-  "apps_exit_",
-  "apps_stderr_",
-  "apps_progress_",
-  "apps_install_",
-];
+const EVENT_PREFIXES: readonly string[] = ["cloud_chat_stream_"];
 
 function isAllowedEventChannel(channel: string): boolean {
   if (EVENT_LITERALS.has(channel)) return true;

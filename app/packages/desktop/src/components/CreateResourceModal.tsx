@@ -1,7 +1,6 @@
 import { createCarbonHint } from "@infrawrench/client-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPluginClient } from "../lib/plugin-client";
-import { invoke } from "../lib/invoke";
 import {
   CreateResourceModal as SharedCreateResourceModal,
   toast,
@@ -32,6 +31,7 @@ import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";
 import { upsertResourceRow } from "../db/rows";
 import { persistPlaintextSecret, persistOutputRef } from "../lib/sql-drivers";
+import { getLocalAccountCredentials, saveLocalAccountCredentials } from "../lib/local-credentials";
 
 /**
  * Persist a freshly-created resource + its plaintext secret states into the
@@ -296,13 +296,8 @@ export function CreateResourceModal({
         // warning rather than swallowing.
         if (credentialUpdates && Object.keys(credentialUpdates).length > 0) {
           try {
-            const existing = await invoke<Record<string, string>>("account_get_credentials", {
-              accountId,
-            });
-            await invoke<void>("account_save_credentials", {
-              accountId,
-              credentials: { ...existing, ...credentialUpdates },
-            });
+            const existing = await getLocalAccountCredentials(accountId);
+            await saveLocalAccountCredentials(accountId, { ...existing, ...credentialUpdates });
             // Drop the cached plugin client so the next operation
             // picks up the new credentials.
             clientRef.current = null;

@@ -5,6 +5,9 @@ vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) })
 vi.mock("../rpc/client", async () => (await import("./fake-rpc")).fakeRpcClientModule);
 
 import { Effect } from "effect";
+// Static, not re-imported per test: the mocked client above is built once,
+// from this instance, and `vi.resetModules` below does not rebuild it.
+import { fakeRpc } from "./fake-rpc";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -17,20 +20,20 @@ describe("cloud-ws getCloudWsUrl", () => {
   });
 
   it("derives ws:// from http:// and caches the http url", async () => {
-    invoke.mockResolvedValue("http://localhost:3000");
+    const cloudUrl = vi.fn(() => Effect.succeed("http://localhost:3000"));
+    fakeRpc["CloudUrl"] = cloudUrl;
     const { getCloudWsUrl } = await import("../cloud-ws");
     const url = await getCloudWsUrl();
     expect(url).toBe("ws://localhost:3000");
-    expect(invoke).toHaveBeenCalledWith("cloud_get_url");
-    // second call uses cache: invoke not called again
+    // second call uses cache: the main process is not asked again
     const url2 = await getCloudWsUrl();
     expect(url2).toBe("ws://localhost:3000");
-    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(cloudUrl).toHaveBeenCalledTimes(1);
   });
 
   it("derives wss:// from https://", async () => {
     vi.resetModules();
-    invoke.mockResolvedValue("https://cloud.infrawrench.com");
+    fakeRpc["CloudUrl"] = () => Effect.succeed("https://cloud.infrawrench.com");
     const { getCloudWsUrl } = await import("../cloud-ws");
     const url = await getCloudWsUrl();
     expect(url).toBe("wss://cloud.infrawrench.com");
@@ -76,24 +79,23 @@ describe("ssh-agent sentinels", () => {
 });
 
 describe("db/client", () => {
-  it("select routes to db_select with defaulted params", async () => {
+  it("select goes to LocalDbSelect with defaulted params", async () => {
+    const select = vi.fn(() => Effect.succeed([{ id: 1 }]));
+    fakeRpc["LocalDbSelect"] = select;
     const { getDb } = await import("../../db/client");
-    invoke.mockResolvedValue([{ id: 1 }]);
     const db = await getDb();
-    await db.select("SELECT 1");
-    expect(invoke).toHaveBeenCalledWith("db_select", { sql: "SELECT 1", params: [] });
+    await expect(db.select("SELECT 1")).resolves.toEqual([{ id: 1 }]);
+    expect(select).toHaveBeenCalledWith({ sql: "SELECT 1", params: [] });
   });
 
-  it("execute routes to db_execute with given params", async () => {
+  it("execute goes to LocalDbExecute with given params", async () => {
+    const execute = vi.fn(() => Effect.succeed({ rowsAffected: 1, lastInsertId: 0 }));
+    fakeRpc["LocalDbExecute"] = execute;
     const { getDb } = await import("../../db/client");
-    invoke.mockResolvedValue({ rowsAffected: 1, lastInsertId: 5 });
     const db = await getDb();
     const res = await db.execute("INSERT INTO t VALUES ($1)", ["x"]);
-    expect(invoke).toHaveBeenCalledWith("db_execute", {
-      sql: "INSERT INTO t VALUES ($1)",
-      params: ["x"],
-    });
-    expect(res).toEqual({ rowsAffected: 1, lastInsertId: 5 });
+    expect(execute).toHaveBeenCalledWith({ sql: "INSERT INTO t VALUES ($1)", params: ["x"] });
+    expect(res).toEqual({ rowsAffected: 1, lastInsertId: 0 });
   });
 });
 
@@ -104,7 +106,6 @@ describe("ssh-tunnel helpers", () => {
    * this way it is the same instance `../rpc/client`'s mock loads.
    */
   async function answer(tag: string, value: unknown) {
-    const { fakeRpc } = await import("./fake-rpc");
     const calls: unknown[] = [];
     fakeRpc[tag] = (payload: unknown) => {
       calls.push(payload);

@@ -1,9 +1,11 @@
 /**
  * Every API domain served by HttpApi. One line per domain; the server, the
- * spec builder and the route-shadowing test all read this list.
+ * spec builder and the domain invariant tests all read this list.
  *
- * A request no domain matches falls through to the legacy Hono app, so a
- * domain moves here by deleting its Hono routes in the same change.
+ * A request no domain matches gets the API's 404; under the org tree only
+ * once the org tree's auth has let it through, so an unknown path there still
+ * answers 401 or 403 first (`orgTreeGuard` in `./prefix-guard.ts`, added by
+ * `api/index.ts`).
  */
 import type { Domain } from "./domain";
 import { costReportNotificationsDomain } from "./domains/cost-report-notifications/index";
@@ -108,6 +110,7 @@ import { savingsDomain } from "./domains/savings/index";
 import { savingsFindingsDomain } from "./domains/savings-findings/index";
 import { invoicesDomain } from "./domains/invoices/index";
 import { billingProfilesDomain } from "./domains/billing-profiles/index";
+import { billingDomain } from "./domains/billing/index";
 import { businessMetricsDomain } from "./domains/business-metrics/index";
 import { dashboardsDomain } from "./domains/dashboards/index";
 import { searchDomain } from "./domains/search/index";
@@ -251,6 +254,7 @@ export const DOMAINS: readonly Domain[] = [
   customCostSourcesDomain,
   invoicesDomain,
   billingProfilesDomain,
+  billingDomain,
   businessMetricsDomain,
   dashboardsDomain,
   orphansDomain,

@@ -34,7 +34,7 @@ import {
 } from "../../../services/resource-reports";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest, notFound } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { holdsPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

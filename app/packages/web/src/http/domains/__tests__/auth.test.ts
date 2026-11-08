@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateCookie } from "hono/cookie";
+import { legacyCookie } from "./legacy-cookie";
 import { buildTestApi } from "@/http/testing";
 import { OAUTH_COOKIE_MAX_AGE, OAUTH_STATE_COOKIE, RETURN_TO_COOKIE } from "@/api/oauth-state";
 
@@ -92,14 +92,14 @@ describe("Auth routes", () => {
 
       // Exactly what Hono's `deleteCookie(c, "wos-session", { path: "/" })` sent.
       expect(res.headers.getSetCookie()).toEqual([
-        generateCookie("wos-session", "", { path: "/", maxAge: 0 }),
+        legacyCookie("wos-session", "", { path: "/", maxAge: 0 }),
       ]);
     });
   });
 
   describe("GET /sign-in — start the WorkOS redirect", () => {
     const oauthCookie = (name: string, value: string) =>
-      generateCookie(name, value, {
+      legacyCookie(name, value, {
         httpOnly: true,
         secure: false,
         sameSite: "lax",

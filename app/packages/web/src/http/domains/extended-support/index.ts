@@ -16,9 +16,9 @@ import {
 } from "@infrawrench/server-core/extended-support/settings";
 import { listExtendedSupportWithBilling } from "../../../services/extended-support";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
+import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ExtendedSupportApi, ExtendedSupportListResponse, ExtendedSupportSettings } from "./api";
@@ -57,24 +57,24 @@ const ExtendedSupportHandlers = HttpApiBuilder.group(
       .handleRaw("updateSettings", ({ request }) =>
         Effect.gen(function* () {
           const read = yield* readObjectBody(request);
-          if (!read.ok) return yield* invalidBody(read.error);
+          if (!read.ok) return yield* badRequest(read.error);
           const body = read.body;
           const patch: ExtendedSupportSettingsPatch = {};
           const enabled = body["enabled"];
           if (enabled !== undefined) {
             if (!Predicate.isBoolean(enabled)) {
-              return yield* invalidBody("enabled must be a boolean");
+              return yield* badRequest("enabled must be a boolean");
             }
             patch.enabled = enabled;
           }
           const leadDays = body["leadDays"];
           if (leadDays !== undefined) {
             if (!Predicate.isNumber(leadDays)) {
-              return yield* invalidBody("leadDays must be a number");
+              return yield* badRequest("leadDays must be a number");
             }
             patch.leadDays = leadDays;
           }
-          if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+          if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
           const { organizationId } = yield* OrgPrincipal;
           const saved = yield* legacyTry(

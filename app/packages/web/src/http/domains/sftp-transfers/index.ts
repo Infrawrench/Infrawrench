@@ -24,7 +24,8 @@ import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { ok } from "../../schemas/common";
 import { hostKeyTrustRefusal } from "../ssh-host-key-trust";
-import { formFile, formString, readFormFields, webStream } from "../transfer-bodies";
+import { formFile, formString, readFormFields } from "../../request-body";
+import { webStream } from "../../response";
 import { SftpTransfersApi } from "./api";
 
 const MAX_BULK_PATHS = 100;

@@ -38,7 +38,7 @@ import {
 } from "../../../services/agent-setup";
 import { makeDomain } from "../../domain";
 import { BadGateway, badRequest, forbidden, HttpFailure, notFound } from "../../errors";
-import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

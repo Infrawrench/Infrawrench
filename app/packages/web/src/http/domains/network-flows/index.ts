@@ -43,12 +43,12 @@ import {
 } from "../../../services/network-flow-reports";
 import { makeDomain } from "../../domain";
 import { BadRequest, badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson, readJsonOr } from "../../json-body";
+import { fieldsOf, readJson, readJsonOr } from "../../request-body";
+import { refuse, refusalCall, type ReadRefusal } from "../../refusals";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { ok } from "../../schemas/common";
-import { refuse, statusCall, type ReadRefusal } from "../status-refusals";
 import {
   KubernetesNetworkReport,
   KubernetesNetworkSettings,
@@ -141,7 +141,7 @@ const NetworkFlowsHandlers = HttpApiBuilder.group(NetworkFlowsApi, "networkFlows
         if (!range) return yield* badRequest(RANGE_ERROR);
         const limit = parseLimit(query.limit, 25);
         if (limit === null) return yield* badRequest(LIMIT_ERROR);
-        const report = yield* statusCall(
+        const report = yield* refusalCall(
           kubernetesRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () => getKubernetesNetworkReport(organizationId, params.accountId, { ...range, limit }),
@@ -152,7 +152,7 @@ const NetworkFlowsHandlers = HttpApiBuilder.group(NetworkFlowsApi, "networkFlows
     .handle("kubernetesSettings", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const settings = yield* statusCall(kubernetesRefusal, { 404: refuse[404] }, () =>
+        const settings = yield* refusalCall(kubernetesRefusal, { 404: refuse[404] }, () =>
           getKubernetesNetworkSettings(organizationId, params.accountId),
         );
         return yield* respond(KubernetesNetworkSettings)(settings);
@@ -166,7 +166,7 @@ const NetworkFlowsHandlers = HttpApiBuilder.group(NetworkFlowsApi, "networkFlows
         if (billedQuery !== null && !Predicate.isString(billedQuery)) {
           return yield* badRequest("billedQuery must be a string or null");
         }
-        const settings = yield* statusCall(
+        const settings = yield* refusalCall(
           kubernetesRefusal,
           { 400: refuse[400], 404: refuse[404] },
           () =>

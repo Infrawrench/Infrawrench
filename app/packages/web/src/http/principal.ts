@@ -13,7 +13,7 @@ import type { ActiveElevation, ResolvedRole } from "@infrawrench/server-core/per
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import type { CostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import type { CostVisibilityPrincipal } from "@infrawrench/server-core/cost/visibility";
-import type { AuthSession } from "../api/auth-middleware";
+import type { AuthSession } from "../auth/users";
 import { Forbidden } from "./errors";
 
 /** The `iwk_` key or agent credential the request authenticated with, if any. */

@@ -17,6 +17,11 @@
  *   CONSTRAINT  validation bounds and patterns.
  *   DOCS        summaries, descriptions, examples.
  *
+ * The `webhooks` section (the event subscription payloads) and every
+ * `components.securitySchemes` entry are compared too, and must be identical:
+ * each webhook's request body is resolved and compared whole, descriptions
+ * included, and any difference there is a STRUCTURE difference.
+ *
  * Usage:
  *   tsx --import @infrawrench/server-core/env-loader scripts/spec-diff.ts [options]
  *     --ops=effect     only operations served by an HttpApi domain (default)
@@ -455,6 +460,69 @@ for (const path of new Set([...Object.keys(oldPaths), ...Object.keys(newPaths)])
   }
 }
 
+// The webhooks and security schemes have no ops filter: they are compared
+// whole on every run, and must not change at all.
+const stable = (v: Json | undefined) =>
+  JSON.stringify(v, (_key, value: Json) =>
+    isObj(value)
+      ? Object.fromEntries(Object.entries(value).sort(([x], [y]) => x.localeCompare(y)))
+      : value,
+  );
+const section = (doc: Obj, key: string): Obj => (isObj(doc[key]) ? doc[key] : {});
+const oldHooks = section(oldDoc, "webhooks");
+const newHooks = section(newDoc, "webhooks");
+let webhooksCompared = 0;
+for (const name of new Set([...Object.keys(oldHooks), ...Object.keys(newHooks)])) {
+  const x = oldHooks[name];
+  const y = newHooks[name];
+  webhooksCompared++;
+  const op = `WEBHOOK ${name}`;
+  if (!isObj(x) || !isObj(y)) {
+    findings.push({ op, kind: "STRUCTURE", where: "webhook", message: x ? "removed" : "added" });
+    continue;
+  }
+  for (const method of new Set([...Object.keys(x), ...Object.keys(y)])) {
+    const a = x[method];
+    const b = y[method];
+    if (!isObj(a) || !isObj(b)) {
+      findings.push({ op, kind: "STRUCTURE", where: method, message: a ? "removed" : "added" });
+      continue;
+    }
+    compareOps(`${op} ${method}`, a, b, oldDoc, newDoc, findings);
+    // Resolved in full, so a payload component that changed in any way shows.
+    const resolved = (o: Obj, doc: Obj) => {
+      const { requestBody, ...rest } = o;
+      const content =
+        isObj(requestBody) && isObj(requestBody["content"]) ? requestBody["content"] : {};
+      return {
+        ...rest,
+        body: Object.fromEntries(
+          Object.entries(content).map(([type, media]) => [
+            type,
+            isObj(media) ? normalize(media["schema"], doc) : null,
+          ]),
+        ),
+      };
+    };
+    if (stable(resolved(a, oldDoc)) !== stable(resolved(b, newDoc))) {
+      findings.push({ op, kind: "STRUCTURE", where: method, message: "not identical" });
+    }
+  }
+}
+const oldSchemes = section(section(oldDoc, "components"), "securitySchemes");
+const newSchemes = section(section(newDoc, "components"), "securitySchemes");
+const schemeNames = new Set([...Object.keys(oldSchemes), ...Object.keys(newSchemes)]);
+for (const name of schemeNames) {
+  if (stable(oldSchemes[name]) !== stable(newSchemes[name])) {
+    findings.push({
+      op: `SECURITY SCHEME ${name}`,
+      kind: "STRUCTURE",
+      where: "components.securitySchemes",
+      message: `${show(oldSchemes[name])} -> ${show(newSchemes[name])}`,
+    });
+  }
+}
+
 const printDocs = args.has("docs");
 const byOp = new Map<string, Finding[]>();
 for (const f of findings) byOp.set(f.op, [...(byOp.get(f.op) ?? []), f]);
@@ -466,7 +534,8 @@ for (const [op, list] of byOp) {
 }
 const count = (k: Kind) => findings.filter((f) => f.kind === k).length;
 console.log(
-  `\n${compared} operations compared: ${count("STRUCTURE")} structure, ${count("ADDED")} added, ` +
+  `\n${compared} operations, ${webhooksCompared} webhooks and ${schemeNames.size} security ` +
+    `schemes compared: ${count("STRUCTURE")} structure, ${count("ADDED")} added, ` +
     `${count("CONSTRAINT")} constraint, ${count("DOCS")} docs differences`,
 );
 process.exit(count("STRUCTURE") > 0 ? 1 : 0);

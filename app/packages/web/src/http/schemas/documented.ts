@@ -41,13 +41,9 @@ export const optionalRequestBody = (
   return { ...operation, requestBody: rest };
 };
 
-/**
- * An `OpenApi.Transform` marking query parameters required in the document,
- * for parameters declared `optionalKey(documentedAs(...))` so that a missing
- * one still reaches the handler's own 400 ("resourceId is required").
- */
-export const requiredQuery =
-  (names: readonly string[]) =>
+/** An `OpenApi.Transform` marking the named `location` parameters required in the document. */
+const requiredParameters =
+  (location: "query" | "header", names: readonly string[]) =>
   (operation: Record<string, unknown>): Record<string, unknown> => {
     const parameters = operation["parameters"];
     if (!Array.isArray(parameters)) return operation;
@@ -55,7 +51,7 @@ export const requiredQuery =
       ...operation,
       parameters: parameters.map((parameter: unknown) =>
         Predicate.isObject(parameter) &&
-        parameter["in"] === "query" &&
+        parameter["in"] === location &&
         Predicate.isString(parameter["name"]) &&
         names.includes(parameter["name"])
           ? { ...parameter, required: true }
@@ -63,6 +59,20 @@ export const requiredQuery =
       ),
     };
   };
+
+/**
+ * An `OpenApi.Transform` marking query parameters required in the document,
+ * for parameters declared `optionalKey(documentedAs(...))` so that a missing
+ * one still reaches the handler's own 400 ("resourceId is required").
+ */
+export const requiredQuery = (names: readonly string[]) => requiredParameters("query", names);
+
+/**
+ * An `OpenApi.Transform` marking request headers required in the document,
+ * for headers decoded as optional so that a request without them reaches the
+ * handler's own refusal (a webhook's `Missing signature`).
+ */
+export const requiredHeaders = (names: readonly string[]) => requiredParameters("header", names);
 
 /**
  * An `OpenApi.Transform` setting one response's description, for an endpoint
@@ -81,3 +91,9 @@ export const describeResponse =
       responses: { ...responses, [String(status)]: { ...response, description } },
     };
   };
+
+/** {@link describeResponse} for each `[status, description]`, as one `OpenApi.Transform`. */
+export const describeResponses =
+  (entries: ReadonlyArray<readonly [number, string]>) =>
+  (operation: Record<string, unknown>): Record<string, unknown> =>
+    entries.reduce((op, [status, text]) => describeResponse(status, text)(op), operation);

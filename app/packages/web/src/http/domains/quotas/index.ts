@@ -19,9 +19,9 @@ import {
   type QuotaSettingsRecord,
 } from "@infrawrench/server-core/quotas/settings";
 import { makeDomain } from "../../domain";
-import { BadRequest } from "../../errors";
+import { BadRequest, badRequest } from "../../errors";
 import { legacy, legacyTry } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import { QuotaAlertSettings, QuotaListResponse, QuotasApi } from "./api";
@@ -59,22 +59,22 @@ const QuotasHandlers = HttpApiBuilder.group(QuotasApi, "quotas", (handlers) =>
     .handleRaw("updateSettings", ({ request }) =>
       Effect.gen(function* () {
         const read = yield* readObjectBody(request);
-        if (!read.ok) return yield* invalidBody(read.error);
+        if (!read.ok) return yield* badRequest(read.error);
         const body = read.body;
         const patch: QuotaSettingsPatchInput = {};
         const enabled = body["enabled"];
         if (enabled !== undefined) {
-          if (!Predicate.isBoolean(enabled)) return yield* invalidBody("enabled must be a boolean");
+          if (!Predicate.isBoolean(enabled)) return yield* badRequest("enabled must be a boolean");
           patch.enabled = enabled;
         }
         const threshold = body["threshold"];
         if (threshold !== undefined) {
           if (!Predicate.isNumber(threshold)) {
-            return yield* invalidBody("threshold must be a number");
+            return yield* badRequest("threshold must be a number");
           }
           patch.threshold = threshold;
         }
-        if (Object.keys(patch).length === 0) return yield* invalidBody("No settings supplied");
+        if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 
         // An API key's caller may name nobody; `updated_by_user_id` is a
         // nullable FK so that records "changed, by nobody we can name".

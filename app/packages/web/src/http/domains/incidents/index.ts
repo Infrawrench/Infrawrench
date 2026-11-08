@@ -4,7 +4,7 @@
  * Bodies are read the way the routes always read them: the store's parsers
  * (`parseIncidentSeverity`, `parseIncidentTimestamp`, ...) own the 400
  * sentences, and anything else a store call throws is a logged
- * `500 { error: "Incident operation failed" }`, through `storeCall`.
+ * `500 { error: "Incident operation failed" }`, through `refusalCall`.
  */
 import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
@@ -32,12 +32,12 @@ import {
   type IncidentActor,
 } from "../../../services/incidents";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
+import { notFound, badRequest } from "../../errors";
 import { legacy } from "../../legacy";
-import { invalidBody, readObjectBody } from "../../object-body";
+import { readObjectBody } from "../../request-body";
+import { refusalCall, inputRefusals, refusalsOf } from "../../refusals";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall } from "../store-errors";
 import {
   Incident,
   IncidentDetail,
@@ -48,15 +48,12 @@ import {
   IncidentTimeline,
 } from "./api";
 
-const incidentCall = <A>(fn: () => PromiseLike<A>) =>
-  storeCall(
-    {
-      isInputError: (error): error is IncidentInputError => error instanceof IncidentInputError,
-      logPrefix: "[incidents]",
-      failure: "Incident operation failed",
-    },
-    fn,
-  );
+const incidentStore = refusalsOf(IncidentInputError, {
+  logPrefix: "[incidents]",
+  failure: "Incident operation failed",
+});
+
+const incidentCall = <A>(fn: () => PromiseLike<A>) => refusalCall(incidentStore, inputRefusals, fn);
 
 const incidentNotFound = () => notFound("Incident not found");
 
@@ -155,7 +152,7 @@ const IncidentsHandlers = HttpApiBuilder.group(IncidentsApi, "incidents", (handl
     .handleRaw("declare", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const { body } = parsed;
         const { organizationId } = yield* OrgPrincipal;
         const by = yield* actor;
@@ -180,7 +177,7 @@ const IncidentsHandlers = HttpApiBuilder.group(IncidentsApi, "incidents", (handl
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const { body } = parsed;
         const { organizationId } = yield* OrgPrincipal;
         const by = yield* actor;
@@ -237,7 +234,7 @@ const IncidentsHandlers = HttpApiBuilder.group(IncidentsApi, "incidents", (handl
     .handleRaw("addNote", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const { body } = parsed;
         const { organizationId } = yield* OrgPrincipal;
         const by = yield* actor;

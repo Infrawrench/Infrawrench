@@ -21,9 +21,10 @@ import {
 } from "@infrawrench/server-core/query-monitors/store";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
-import { notFound } from "../../errors";
+import { notFound, badRequest } from "../../errors";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
-import { inputRefusal, invalidBody, readObjectBody } from "../../object-body";
+import { inputRefusal } from "../../refusals";
+import { readObjectBody } from "../../request-body";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
@@ -139,11 +140,11 @@ const QueryMonitorsHandlers = HttpApiBuilder.group(QueryMonitorsApi, "queryMonit
     .handleRaw("test", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readMonitorBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
+        if (!fields.ok) return yield* badRequest(fields.error);
         const { accountId, sql, mode = "scalar", resourceId, resourceTypeId } = fields.value;
-        if (!accountId || !sql) return yield* invalidBody("accountId and sql are required");
+        if (!accountId || !sql) return yield* badRequest("accountId and sql are required");
 
         const { organizationId } = yield* OrgPrincipal;
         const result = yield* legacy(() =>
@@ -177,9 +178,9 @@ const QueryMonitorsHandlers = HttpApiBuilder.group(QueryMonitorsApi, "queryMonit
     .handleRaw("create", ({ request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readMonitorBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
+        if (!fields.ok) return yield* badRequest(fields.error);
 
         const { organizationId, session } = yield* OrgPrincipal;
         const monitor = yield* legacyTry(
@@ -214,11 +215,10 @@ const QueryMonitorsHandlers = HttpApiBuilder.group(QueryMonitorsApi, "queryMonit
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const parsed = yield* readObjectBody(request);
-        if (!parsed.ok) return yield* invalidBody(parsed.error);
+        if (!parsed.ok) return yield* badRequest(parsed.error);
         const fields = readMonitorBody(parsed.body);
-        if (!fields.ok) return yield* invalidBody(fields.error);
-        if (Object.keys(fields.value).length === 0)
-          return yield* invalidBody("No changes supplied");
+        if (!fields.ok) return yield* badRequest(fields.error);
+        if (Object.keys(fields.value).length === 0) return yield* badRequest("No changes supplied");
 
         const { organizationId, session } = yield* OrgPrincipal;
         const monitor = yield* legacyTry(

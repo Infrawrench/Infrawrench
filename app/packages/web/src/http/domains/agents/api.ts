@@ -7,7 +7,7 @@
  * The request bodies are documented, not decoded: the handlers read them raw,
  * as the Hono routes did (`index.ts`).
  */
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { minLength } from "@infrawrench/ui/schemas";
 import { RequiredPermission, SuccessDescription } from "../../annotations";
@@ -15,6 +15,7 @@ import { withApiDefaults } from "../../domain";
 import { BadGateway, BadRequest, Forbidden, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, JsonObject, OrgId, OrgParams } from "../../schemas/common";
+import { describeResponse } from "../../schemas/documented";
 
 const StringMap = Schema.Record(Schema.String, Schema.String);
 
@@ -265,16 +266,7 @@ export const AgentReconcile = Schema.Struct({ branchName: Schema.String, message
 const SessionParams = { orgId: OrgId, id: Schema.String } as const;
 
 /** The 502's description, which says what failed rather than the generic one. */
-const describeProviderRefusal = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const responses = operation["responses"];
-  if (!Predicate.isObject(responses)) return operation;
-  const entries = Object.entries(responses).map(([status, response]: [string, unknown]) =>
-    status === "502" && Predicate.isObject(response)
-      ? [status, { ...response, description: "The provider refused to delete the VM" }]
-      : [status, response],
-  );
-  return { ...operation, responses: Object.fromEntries(entries) };
-};
+const describeProviderRefusal = describeResponse(502, "The provider refused to delete the VM");
 
 export class AgentsGroup extends HttpApiGroup.make("agents")
   .add(

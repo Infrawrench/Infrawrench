@@ -1,12 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn();
+const mainCall = vi.fn();
 const select = vi.fn();
 const execute = vi.fn();
 const getPlugin = vi.fn();
 const buildPluginHostServices = vi.fn();
 
-vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+// Main-process calls, recorded by RPC tag.
+vi.mock("../app-shell", () => ({
+  setPingsActive: (count: number) => mainCall("AppSetPingsActive", { count }),
+  showNotification: (title: string, body: string) =>
+    mainCall("AppShowNotification", { title, body }),
+}));
+vi.mock("../local-credentials", () => ({
+  getLocalAccountCredentials: (accountId: string) =>
+    mainCall("LocalAccountCredentials", { accountId }),
+}));
 vi.mock("../../db/client", () => ({ getDb: () => Promise.resolve({ select, execute }) }));
 vi.mock("../../plugins/loader", () => ({ getPlugin: (...args: unknown[]) => getPlugin(...args) }));
 vi.mock("../sql-drivers", () => ({
@@ -51,12 +60,12 @@ function loadPinger() {
 
 beforeEach(() => {
   vi.resetModules();
-  invoke.mockReset();
+  mainCall.mockReset();
   select.mockReset();
   execute.mockReset();
   getPlugin.mockReset();
   buildPluginHostServices.mockReset();
-  invoke.mockResolvedValue(undefined);
+  mainCall.mockResolvedValue(undefined);
   execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 0 });
   buildPluginHostServices.mockReturnValue({ http: {} });
 });
@@ -87,7 +96,7 @@ describe("startMetricPinger", () => {
 
     // syncActiveCount queried metric_pings count
     expect(select).toHaveBeenCalledWith("SELECT COUNT(*) AS c FROM metric_pings");
-    expect(invoke).toHaveBeenCalledWith("set_pings_active", { count: 0 });
+    expect(mainCall).toHaveBeenCalledWith("AppSetPingsActive", { count: 0 });
     expect(setIntervalSpy).toHaveBeenCalledTimes(1);
     expect(win.listeners.get(METRIC_PINGS_CHANGED_EVENT)).toHaveLength(1);
   });
@@ -102,10 +111,10 @@ describe("startMetricPinger", () => {
     startMetricPinger();
     await flush();
 
-    const before = invoke.mock.calls.filter((c) => c[0] === "set_pings_active").length;
+    const before = mainCall.mock.calls.filter((c) => c[0] === "AppSetPingsActive").length;
     win.emit(METRIC_PINGS_CHANGED_EVENT);
     await flush();
-    const after = invoke.mock.calls.filter((c) => c[0] === "set_pings_active").length;
+    const after = mainCall.mock.calls.filter((c) => c[0] === "AppSetPingsActive").length;
     expect(after).toBeGreaterThan(before);
   });
 
@@ -139,13 +148,13 @@ describe("metric-pinger tick (via interval)", () => {
       return Promise.resolve(opts.pings);
     });
     if (opts.credentialsThrows) {
-      invoke.mockImplementation((channel: string) => {
-        if (channel === "account_get_credentials") return Promise.reject(new Error("no creds"));
+      mainCall.mockImplementation((channel: string) => {
+        if (channel === "LocalAccountCredentials") return Promise.reject(new Error("no creds"));
         return Promise.resolve(undefined);
       });
     } else {
-      invoke.mockImplementation((channel: string) => {
-        if (channel === "account_get_credentials") return Promise.resolve({ token: "t" });
+      mainCall.mockImplementation((channel: string) => {
+        if (channel === "LocalAccountCredentials") return Promise.resolve({ token: "t" });
         return Promise.resolve(undefined);
       });
     }
@@ -170,7 +179,7 @@ describe("metric-pinger tick (via interval)", () => {
       pings: [{ ...basePing }],
       series: [{ label: "CPU", unit: "%", points: [{ value: 95 }] }],
     });
-    const notif = invoke.mock.calls.find((c) => c[0] === "show_notification");
+    const notif = mainCall.mock.calls.find((c) => c[0] === "AppShowNotification");
     expect(notif).toBeTruthy();
     expect((notif![1] as { title: string }).title).toContain("above range");
     // updates last_alert_state
@@ -183,7 +192,7 @@ describe("metric-pinger tick (via interval)", () => {
       pings: [{ ...basePing, min_value: 10, max_value: null }],
       series: [{ label: "CPU", points: [{ value: 2 }] }],
     });
-    const notif = invoke.mock.calls.find((c) => c[0] === "show_notification");
+    const notif = mainCall.mock.calls.find((c) => c[0] === "AppShowNotification");
     expect((notif![1] as { title: string }).title).toContain("below range");
     expect((notif![1] as { body: string }).body).toContain("≥ 10");
   });
@@ -193,7 +202,7 @@ describe("metric-pinger tick (via interval)", () => {
       pings: [{ ...basePing, min_value: 10, max_value: 20 }],
       series: [{ label: "CPU", points: [{ value: 30 }] }],
     });
-    const notif = invoke.mock.calls.find((c) => c[0] === "show_notification");
+    const notif = mainCall.mock.calls.find((c) => c[0] === "AppShowNotification");
     expect((notif![1] as { body: string }).body).toContain("10–20");
   });
 
@@ -202,7 +211,7 @@ describe("metric-pinger tick (via interval)", () => {
       pings: [{ ...basePing, last_alert_state: "above" }],
       series: [{ label: "CPU", points: [{ value: 95 }] }],
     });
-    expect(invoke.mock.calls.find((c) => c[0] === "show_notification")).toBeFalsy();
+    expect(mainCall.mock.calls.find((c) => c[0] === "AppShowNotification")).toBeFalsy();
   });
 
   it("resets a stale alert state to ok when value returns in range", async () => {
@@ -214,7 +223,7 @@ describe("metric-pinger tick (via interval)", () => {
       (c) => String(c[0]).includes("last_alert_state = $1") && (c[1] as unknown[])[0] === "ok",
     );
     expect(upd).toBeTruthy();
-    expect(invoke.mock.calls.find((c) => c[0] === "show_notification")).toBeFalsy();
+    expect(mainCall.mock.calls.find((c) => c[0] === "AppShowNotification")).toBeFalsy();
   });
 
   it("does nothing when there is no matching series point", async () => {
@@ -222,7 +231,7 @@ describe("metric-pinger tick (via interval)", () => {
       pings: [{ ...basePing }],
       series: [{ label: "OTHER", points: [{ value: 95 }] }],
     });
-    expect(invoke.mock.calls.find((c) => c[0] === "show_notification")).toBeFalsy();
+    expect(mainCall.mock.calls.find((c) => c[0] === "AppShowNotification")).toBeFalsy();
   });
 
   it("skips an account whose credentials fail to load", async () => {
@@ -234,12 +243,12 @@ describe("metric-pinger tick (via interval)", () => {
 
   it("skips when the plugin has no fetchMetricSeries", async () => {
     await runOneTick({ pings: [{ ...basePing }], noFetch: true });
-    expect(invoke.mock.calls.find((c) => c[0] === "show_notification")).toBeFalsy();
+    expect(mainCall.mock.calls.find((c) => c[0] === "AppShowNotification")).toBeFalsy();
   });
 
   it("skips when the plugin cannot create a client", async () => {
     await runOneTick({ pings: [{ ...basePing }], noClient: true });
-    expect(invoke.mock.calls.find((c) => c[0] === "show_notification")).toBeFalsy();
+    expect(mainCall.mock.calls.find((c) => c[0] === "AppShowNotification")).toBeFalsy();
   });
 
   it("returns early when there are no pings", async () => {

@@ -15,7 +15,7 @@ import { db } from "../../../db/client";
 import { invitations, organizationMembers, organizations } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { badRequest, forbidden, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy } from "../../legacy";
 import { guardSessionPrefixes } from "../../prefix-guard";
 import { SessionPrincipal } from "../../principal";

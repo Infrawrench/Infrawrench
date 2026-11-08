@@ -23,7 +23,7 @@ import { Argument, Command, Flag } from "effect/cli";
 import type { LeakedSecret, LeakedSecretListResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { listCloudAccounts, resolveAccount } from "../context";
+import { cloudAccounts, findAccount } from "../context";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
 import { CliExit, CliFailure, CliUsageError } from "../effect/errors";
 import * as Print from "../effect/print";
@@ -92,7 +92,7 @@ const Listing = wire<LeakedSecretListResponse>()(
         lastScannedAt: Schema.NullOr(Schema.String),
         lastError: Schema.NullOr(Schema.String),
         lastCount: Schema.NullOr(Schema.Finite),
-        lastPartial: Schema.optional(Schema.Boolean),
+        lastPartial: Schema.optionalKey(Schema.Boolean),
       }),
     ),
   }),
@@ -260,9 +260,7 @@ const listLeaks = Effect.fn("leaks.list")(function* (input: {
   const { status } = input;
   const wantedAccount = session.account;
   const accountId = wantedAccount
-    ? yield* Effect.promise(() => listCloudAccounts(org.id)).pipe(
-        Effect.map((accounts) => resolveAccount(accounts, wantedAccount).id),
-      )
+    ? (yield* findAccount(yield* cloudAccounts(org.id), wantedAccount)).id
     : null;
   const params = new URLSearchParams();
   if (status) params.set("status", status);

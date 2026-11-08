@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Effect, Layer } from "effect";
-import { generateCookie } from "hono/cookie";
+import { legacyCookie } from "./legacy-cookie";
 
 /**
  * The Slack install round trip: `install-url` -> `start` -> Slack -> `callback`.
@@ -180,7 +180,7 @@ describe("Slack install round trip", () => {
     const state = await mintState();
     const { res, cookie } = await start(state);
     expect(res.headers.getSetCookie()).toEqual([
-      generateCookie("iw_slack_oauth", cookie!, {
+      legacyCookie("iw_slack_oauth", cookie!, {
         path: "/api/slack/oauth",
         httpOnly: true,
         sameSite: "Lax",
@@ -204,8 +204,8 @@ describe("Slack install round trip", () => {
         headers: { cookie: "wos-session=stale" },
       }),
     );
-    expect(res?.status).toBe(401);
-    expect(await res?.json()).toEqual({ error: "Unauthorized" });
-    expect(res?.headers.getSetCookie()).toEqual([]);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+    expect(res.headers.getSetCookie()).toEqual([]);
   });
 });

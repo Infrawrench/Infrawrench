@@ -10,7 +10,7 @@
  * The write bodies are documented here and checked by hand in the handlers,
  * whose 400s name the field at fault, so those endpoints are served raw.
  */
-import { Predicate, Schema, Struct } from "effect";
+import { Schema, Struct } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { maxLength, minLength } from "@infrawrench/ui/schemas";
 import { InvalidRequestMessage, RequiredPermission, SuccessDescription } from "../../annotations";
@@ -18,6 +18,7 @@ import { withApiDefaults } from "../../domain";
 import { BadRequest, Conflict, NotFound } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, OrgId, OrgParams, Uuid } from "../../schemas/common";
+import { optionalRequestBody } from "../../schemas/documented";
 import { numericQuery } from "../../schemas/query";
 
 const RunbookStepKind = Schema.Literals(["manual", "workflow", "link"]).annotate({
@@ -181,18 +182,6 @@ export const MAX_RUNS_LIMIT = 200;
 const RunbookParams = { orgId: OrgId, runbookId: Uuid } as const;
 const RunParams = { orgId: OrgId, runId: Uuid } as const;
 
-/**
- * Starting a run takes an optional body: the route reads `incidentId` when one
- * is sent and starts an unattached run otherwise. HttpApi documents every
- * payload as required, so the operation says otherwise here.
- */
-const optionalBody = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const body = operation["requestBody"];
-  return Predicate.isObject(body)
-    ? { ...operation, requestBody: { ...body, required: false } }
-    : operation;
-};
-
 export class RunbooksGroup extends HttpApiGroup.make("runbooks")
   .add(
     HttpApiEndpoint.get("list", "/", {
@@ -321,7 +310,7 @@ export class RunbooksGroup extends HttpApiGroup.make("runbooks")
           "unrecorded rather than not happening.",
       )
       .annotate(SuccessDescription, "The started run")
-      .annotate(OpenApi.Transform, optionalBody),
+      .annotate(OpenApi.Transform, optionalRequestBody),
     HttpApiEndpoint.patch("update", "/:runbookId", {
       params: RunbookParams,
       payload: RunbookUpdate,

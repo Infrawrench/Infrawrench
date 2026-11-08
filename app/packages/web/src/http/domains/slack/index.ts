@@ -22,7 +22,7 @@ import { db } from "../../../db/client";
 import { slackChannels, slackInstallations } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { badRequest, notFound } from "../../errors";
-import { fieldsOf, readJson } from "../../json-body";
+import { fieldsOf, readJson } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";

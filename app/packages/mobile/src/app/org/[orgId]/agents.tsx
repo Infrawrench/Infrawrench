@@ -15,7 +15,7 @@ import { colors } from "@/lib/theme";
 
 /**
  * Read-only coding-agent sessions list (GET /api/org/:orgId/agents/sessions:
- * see app/packages/web/src/api/routes/agents.ts rowToSession). Creating,
+ * see app/packages/web/src/http/domains/agents/sessions.ts rowToSession). Creating,
  * opening, and deleting sessions stays on web/desktop.
  */
 

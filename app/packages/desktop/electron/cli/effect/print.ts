@@ -1,4 +1,4 @@
-// `output.ts`'s printers as Effects, so a migrated command's body stays one
+// `output.ts`'s printers as Effects, so a command's body stays one
 // generator. The formatting (colour, `safe`, tables) is still `output.ts`'s:
 // wrap API strings in `safe()` before handing them here, as everywhere else.
 import { Effect } from "effect";

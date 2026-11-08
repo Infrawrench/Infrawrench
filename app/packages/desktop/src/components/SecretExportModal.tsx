@@ -4,10 +4,10 @@ import type { SecretExportTemplate, HostPluginClient } from "@infrawrench/plugin
 import { camelToTitle } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
-import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
 import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
 import { buildPluginHostServices } from "../lib/sql-drivers";
+import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 interface SecretExportModalProps {
   /** Source resource being dragged */
@@ -143,9 +143,7 @@ export function SecretExportModal({
       const sourceRow = sourceRows[0];
       if (!sourceRow) throw new Error(gt("Source account not found"));
 
-      const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
-        accountId: sourceRow.id,
-      });
+      const sourceCreds = await getLocalAccountCredentials(sourceRow.id);
       const sourcePlugin = await getPlugin(sourceRow.plugin_id);
       if (!sourcePlugin)
         throw new Error(

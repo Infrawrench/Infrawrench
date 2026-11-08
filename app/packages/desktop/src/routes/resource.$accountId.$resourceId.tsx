@@ -84,6 +84,7 @@ import {
 } from "./_resource-detail/-loader";
 import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/-types";
 import { useResourceOperations } from "./_resource-detail/-useResourceOperations";
+import { ensureAgentSshKey } from "../lib/local-secrets";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -475,9 +476,7 @@ export function ResourcePanel({
 
       const next: AgentLaunchDefaults = {};
       if (!sshKeyId || !sshKeyName) {
-        const key = await invoke<{ id: string; name: string; publicKey: string }>(
-          "ssh_key_ensure_agent_key",
-        );
+        const key = await ensureAgentSshKey();
         if (!sshKeyId) next.sshKeyId = key.id;
         if (!sshKeyName) next.sshKeyName = key.name;
       }

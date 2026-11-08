@@ -1,7 +1,7 @@
 import { useState, useEffect, useId } from "react";
 import { useGT } from "gt-react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem, CloseIcon } from "@infrawrench/ui";
-import { invoke } from "../lib/invoke";
+import { listCloudSshKeys } from "../lib/cloud-ssh-keys";
 import {
   is1PasswordAvailable,
   isPageantAvailable,
@@ -11,6 +11,7 @@ import {
 import { getDb } from "../db/client";
 import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
 import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
+import { getLocalSshPrivateKey, saveLocalSshKey } from "../lib/local-secrets";
 
 interface SshKeyPickerProps {
   username: string;
@@ -63,9 +64,7 @@ export function SshKeyPicker({
 
     let cloud: CloudKey[] = [];
     if (activeCloudOrgId) {
-      cloud = await invoke<CloudKey[]>("cloud_ssh_keys_list", {
-        orgId: activeCloudOrgId,
-      }).catch(() => []);
+      cloud = await listCloudSshKeys(activeCloudOrgId).catch(() => []);
       setCloudKeys(cloud);
     } else {
       setCloudKeys([]);
@@ -118,7 +117,7 @@ export function SshKeyPicker({
       const key = await readSystemKey(source.name);
       onKeyResolved(key);
     } else if (source.type === "app") {
-      const key = await invoke<string>("ssh_key_get_private_key", { keyId: source.id });
+      const key = await getLocalSshPrivateKey(source.id);
       onKeyResolved(key);
     } else {
       // Cloud key: private key lives server-side, so pass an empty PEM.
@@ -151,7 +150,7 @@ export function SshKeyPicker({
     setSaving(true);
     try {
       const id = crypto.randomUUID();
-      await invoke<void>("ssh_key_save_private_key", {
+      await saveLocalSshKey({
         keyId: id,
         name: newKeyName.trim(),
         privateKey: newKeyPem.trim(),

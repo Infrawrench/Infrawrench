@@ -26,7 +26,7 @@ import { badRequest, notFound } from "../../errors";
 import { fireAndForget, legacy } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
-import { storeCall, type StoreCallOptions } from "../store-errors";
+import { refusalCall, inputRefusals, type RefusalPolicy, refusalsOf } from "../../refusals";
 import {
   IacApi,
   IacImportPlan,
@@ -36,11 +36,10 @@ import {
   IacStateList,
 } from "./api";
 
-const store: StoreCallOptions<IacInputError> = {
-  isInputError: (error): error is IacInputError => error instanceof IacInputError,
+const store: RefusalPolicy = refusalsOf(IacInputError, {
   logPrefix: "[iac]",
   failure: "IaC reconciliation failed",
-};
+});
 
 const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
   handlers
@@ -61,7 +60,7 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
             `State document is larger than the ${IAC_STATE_LIMITS.maxDocumentBytes / (1024 * 1024)} MiB limit.`,
           );
         }
-        const { state, parsed: document } = yield* storeCall(store, () =>
+        const { state, parsed: document } = yield* refusalCall(store, inputRefusals, () =>
           saveIacState({
             organizationId,
             label: payload.label,
@@ -93,7 +92,7 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
     .handle("deleteState", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* OrgPrincipal;
-        const removed = yield* storeCall(store, () =>
+        const removed = yield* refusalCall(store, inputRefusals, () =>
           deleteIacState(organizationId, params.stateId),
         );
         if (!removed) return yield* notFound("Unknown state document");
@@ -113,7 +112,7 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
         const { organizationId } = yield* OrgPrincipal;
         const stateId = query.stateId;
         if (!stateId) return yield* badRequest("Missing stateId");
-        const result = yield* storeCall(store, () =>
+        const result = yield* refusalCall(store, inputRefusals, () =>
           runIacReconciliation({ organizationId, stateId }),
         );
         return yield* respond(IacReconciliation)(result);
@@ -122,7 +121,7 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
     .handle("importPlan", ({ payload }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
-        const plan = yield* storeCall(store, () =>
+        const plan = yield* refusalCall(store, inputRefusals, () =>
           buildIacImportPlan(organizationId, payload.resourceIds),
         );
         return yield* respond(IacImportPlan)(plan);
@@ -133,7 +132,7 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
         const { organizationId } = yield* OrgPrincipal;
         const resourceId = query.resourceId;
         if (!resourceId) return yield* badRequest("Missing resourceId");
-        const status = yield* storeCall(store, () =>
+        const status = yield* refusalCall(store, inputRefusals, () =>
           getIacResourceStatus(organizationId, resourceId),
         );
         return yield* respond(IacResourceStatus)(status);

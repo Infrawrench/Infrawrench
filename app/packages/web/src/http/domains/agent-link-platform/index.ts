@@ -48,7 +48,7 @@ import { buildLinkInfo, serializeAgent, unknownProviders } from "../../../servic
 import { rawRequest } from "../../caller-auth";
 import { makeDomain } from "../../domain";
 import { HttpFailure } from "../../errors";
-import { readJsonOr } from "../../json-body";
+import { readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { failureResponse, json } from "../../middleware";
 import { guardPrefixes } from "../../prefix-guard";
@@ -243,7 +243,7 @@ const ApprovalHandlers = HttpApiBuilder.group(
 
             const lookup = yield* linkCall(async () => {
               const linkRequest = await lookupLinkRequest(code);
-              const { listUserOrganizations } = await import("../../../api/auth-middleware");
+              const { listUserOrganizations } = await import("../../../auth/users");
               const orgs = await listUserOrganizations(session.userId);
               const organizations = [];
               for (const org of orgs) {

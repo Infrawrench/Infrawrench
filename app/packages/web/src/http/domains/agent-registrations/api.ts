@@ -8,7 +8,7 @@
  * a reader of this page. Agent credentials cannot revoke registrations
  * (`AGENT_DENY_RULES`, which applies by path).
  */
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { RequiredPermission, SuccessDescription } from "../../annotations";
 import { withApiDefaults } from "../../domain";
@@ -24,8 +24,8 @@ import {
 } from "../../errors";
 import { OrgAuth } from "../../middleware-tags";
 import { IsoDateTime, OrgIdParams, OrgParams, Uuid } from "../../schemas/common";
-import { optionalRequestBody } from "../../schemas/documented";
-import { PatchPlatformAgent, PlatformAgentEnvelope } from "../../schemas/zod-components";
+import { describeResponse, optionalRequestBody } from "../../schemas/documented";
+import { PatchPlatformAgent, PlatformAgentEnvelope } from "../../schemas/agent-links";
 
 /** Every status the hand-written spec listed for these operations. */
 const DocumentedErrors = [
@@ -78,19 +78,7 @@ export const AgentRevoked = Schema.Struct({
 export { PlatformAgentEnvelope };
 
 /** The edit's 409, described as the hand-written spec had it. */
-const revokedConflict = (operation: Record<string, unknown>): Record<string, unknown> => {
-  const responses = operation["responses"];
-  if (!Predicate.isObject(responses)) return operation;
-  const conflict = responses["409"];
-  if (!Predicate.isObject(conflict)) return operation;
-  return {
-    ...operation,
-    responses: {
-      ...responses,
-      "409": { ...conflict, description: "The agent or its link has been revoked" },
-    },
-  };
-};
+const revokedConflict = describeResponse(409, "The agent or its link has been revoked");
 
 export class AgentRegistrationsGroup extends HttpApiGroup.make("agentRegistrations")
   .add(

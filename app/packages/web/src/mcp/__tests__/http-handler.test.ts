@@ -173,8 +173,8 @@ describe("handleMcpHttp", () => {
 
   /*
    * `server.ts` answers /api/mcp at the Node HTTP level in both dev and prod,
-   * ahead of the Hono listener, so the `securityHeaders()` middleware never
-   * sees these responses and the handler has to set them itself. Both server
+   * ahead of the API's listener, so the API router's security headers never
+   * reach these responses and the handler has to set them itself. Both server
    * modes call this one function, so covering it here covers both.
    */
   describe("security headers", () => {

@@ -1,23 +1,21 @@
 /**
- * Serving the HttpApi domains.
+ * Serving the HttpApi domains: the web server's request handler.
  *
- * Every domain in `./domains.ts` registers on one Effect router, which runs as
- * the first middleware of the Hono `api` app: it answers what a domain routes
- * and passes everything else down the Hono stack. `api` is still a Hono app,
- * so `server.ts`, the edge Worker, the Lambda handler and the tests reach both
- * halves through one `fetch`. Once the last route moves, the router becomes
- * the server and the `Unmatched` route its 404.
+ * Every domain in `./domains.ts` registers on one Effect router, which is the
+ * whole API: `api` (`api/index.ts`) is this handler over every domain plus the
+ * org tree's guard, and `server.ts`, the edge Worker, the Lambda handler and
+ * the tests all call it through `fetch`. A request no route matches gets the
+ * {@link notFound} answer every unknown path has always had, with the
+ * security headers.
  */
 import { Context, Effect, Layer } from "effect";
-import { FindMyWay, HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
-import type { MiddlewareHandler } from "hono";
-import { createMiddleware } from "hono/factory";
+import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import { securityHeaderEntries } from "../api/security-headers";
 import type { Domain, DomainRequirements } from "./domain";
 import { ambientLegacyScopes, LegacyScopes } from "./legacy";
 import type { OrgAuth, RequestErrors, SessionAuth } from "./middleware";
 
-/** What Hono's `fetch` takes besides the request, for handlers that need Worker bindings. */
+/** What a `fetch` takes besides the request, for handlers that need Worker bindings. */
 export interface InvocationEnv {
   readonly env: unknown;
   readonly executionCtx: unknown;
@@ -28,13 +26,22 @@ export class Invocation extends Context.Service<Invocation, InvocationEnv>()(
   "infrawrench/http/Invocation",
 ) {}
 
-/** Marks the response to a request no domain routes; never sent to a client. */
-export const UNMATCHED_HEADER = "x-infrawrench-httpapi-unmatched";
-
 export interface HttpApiHandler {
-  /** Serve `request` if a domain routes it; `undefined` when none does. */
-  handle(request: Request, env?: unknown, executionCtx?: unknown): Promise<Response | undefined>;
+  /** Serve `request`: what a domain routes, or {@link notFound}. */
+  handle(request: Request, env?: unknown, executionCtx?: unknown): Promise<Response>;
 }
+
+/**
+ * The answer to a path nothing routes, byte for byte the `404 Not Found` text
+ * the API has always sent for one (Hono's default not-found handler, while the
+ * API ran on Hono). The prefix guards (`./prefix-guard.ts`) answer it too,
+ * once the caller has passed their check.
+ */
+export const notFound = () =>
+  HttpServerResponse.text("404 Not Found", {
+    status: 404,
+    contentType: "text/plain; charset=UTF-8",
+  });
 
 const SecurityHeaders = HttpRouter.middleware(
   (httpEffect) =>
@@ -44,11 +51,7 @@ const SecurityHeaders = HttpRouter.middleware(
   { global: true },
 );
 
-const Unmatched = HttpRouter.add(
-  "*",
-  "*",
-  Effect.succeed(HttpServerResponse.empty({ status: 404, headers: { [UNMATCHED_HEADER]: "1" } })),
-);
+const Unmatched = HttpRouter.add("*", "*", Effect.sync(notFound));
 
 /**
  * Build the handler over `domains`. `middleware` replaces the auth and error
@@ -68,7 +71,6 @@ export function makeHttpApiHandler(
     Layer.provide(HttpServer.layerServices),
   );
 
-  const routes = makeRouteMatcher(domains);
   let web: ReturnType<typeof makeWebHandler> | undefined;
   const makeWebHandler = () => HttpRouter.toWebHandler(App, { disableLogger: true });
 
@@ -78,19 +80,14 @@ export function makeHttpApiHandler(
       // budget does not cover evaluating every domain's layer.
       web ??= makeWebHandler();
       // Captured here, synchronously, where the ambient store is the caller's
-      // own: the edge and Lambda wrappers enter the request scope around the
-      // Hono app this runs inside.
+      // own: the edge and Lambda wrappers enter the request scope around this.
       const context = Context.make(Invocation, { env, executionCtx }).pipe(
         Context.add(LegacyScopes, ambientLegacyScopes()),
       );
-      // Only a request a domain routes is handed over: building the router's
-      // copy takes the body, which Hono could then not read.
-      // Hono answered HEAD with the GET route minus its body; so does this.
+      // HEAD is answered as the GET route minus its body, as it always was.
       const head = request.method === "HEAD";
       const routed = head ? new Request(request, { method: "GET" }) : request;
-      if (!routes.matches(routed)) return undefined;
       const response = await web.handler(forRouter(routed), context);
-      if (response.headers.get(UNMATCHED_HEADER) === "1") return undefined;
       if (!head) return response;
       await response.body?.cancel();
       return new Response(null, {
@@ -103,23 +100,24 @@ export function makeHttpApiHandler(
 }
 
 /**
- * Content types a JSON body has always been accepted under. Hono's
+ * Content types a JSON body has always been accepted under. The Hono routes'
  * `c.req.json()` parsed the body whatever the header said, and HttpApi picks a
  * decoder by content type, answering 415 for one it has none for. A
  * `fetch(url, { body: JSON.stringify(x) })` without a header sends
  * `text/plain`, and `curl -d` sends a form type, so callers that always
  * worked would start failing. Their bodies are read as JSON, as before;
- * multipart and binary uploads keep their type.
+ * multipart and binary uploads keep their type. Only the header changes, never
+ * the bytes, so a signature over them (Slack's form posts) still verifies.
  */
 const READ_AS_JSON = new Set(["text/plain", "application/x-www-form-urlencoded"]);
 
 /**
  * The request as the router sees it. Detached from the client's abort signal:
- * Hono ran a handler to its end when the client went away, and the Effect web
- * handler would otherwise interrupt it there, between two steps of a write (a
- * row claimed and its work never run). A streamed response still stops when
- * the client stops reading. A JSON body sent under a text or form type gets
- * the JSON type, as above.
+ * a handler has always run to its end when the client went away, and the
+ * Effect web handler would otherwise interrupt it there, between two steps of
+ * a write (a row claimed and its work never run). A streamed response still
+ * stops when the client stops reading. A JSON body sent under a text or form
+ * type gets the JSON type, as above.
  */
 function forRouter(request: Request): Request {
   const contentType = request.headers.get("content-type");
@@ -129,57 +127,3 @@ function forRouter(request: Request): Request {
   headers.set("content-type", "application/json");
   return new Request(request, { headers, signal: null });
 }
-
-const isRouterPath = (path: string): path is `/${string}` => path.startsWith("/");
-
-/**
- * Whether a domain routes a request, decided from the method and path alone
- * (the same table the route-shadowing test builds), so a request no domain
- * routes reaches Hono with its body unread. A guarded prefix counts: what
- * falls through it is Hono's 404, never a Hono route (the shadowing test).
- */
-function makeRouteMatcher(domains: readonly Domain[]) {
-  // Two tables: a guarded prefix claims every method, which would collide
-  // with an endpoint on the bare prefix (`DELETE /api/profile`).
-  const endpoints = FindMyWay.make<true>();
-  const prefixes = FindMyWay.make<true>();
-  const seenPrefixes = new Set<string>();
-  for (const domain of domains) {
-    for (const endpoint of domain.endpoints()) {
-      if (isRouterPath(endpoint.path)) endpoints.on(endpoint.method, endpoint.path, true);
-    }
-    for (const prefix of domain.guardedPrefixes ?? []) {
-      if (!isRouterPath(prefix) || seenPrefixes.has(prefix)) continue;
-      seenPrefixes.add(prefix);
-      prefixes.all(prefix, true);
-      prefixes.all(`${prefix}/*`, true);
-    }
-  }
-  return {
-    matches(request: Request): boolean {
-      const path = new URL(request.url).pathname;
-      return (
-        endpoints.find(request.method, path) !== undefined ||
-        prefixes.find(request.method, path) !== undefined
-      );
-    },
-  };
-}
-
-/**
- * Hono middleware serving every HttpApi domain ahead of the Hono routes. A
- * request no domain routes continues down the Hono stack untouched (nothing
- * has read its body), which is what lets routes move a domain at a time.
- */
-export const httpApiMiddleware = (handler: HttpApiHandler): MiddlewareHandler =>
-  createMiddleware(async (c, next) => {
-    let executionCtx: unknown;
-    try {
-      executionCtx = c.executionCtx;
-    } catch {
-      // Node has none; Hono's getter throws rather than answering undefined.
-    }
-    const response = await handler.handle(c.req.raw, c.env, executionCtx);
-    if (response === undefined) return next();
-    return response;
-  });

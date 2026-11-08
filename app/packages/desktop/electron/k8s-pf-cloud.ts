@@ -9,24 +9,28 @@
  * single psql/mysql/redis-cli client; if we ever need heavy fan-in we can
  * layer stream ids on top.
  */
-import { ipcMain } from "electron";
 import * as net from "node:net";
 import * as crypto from "node:crypto";
 import WebSocket from "ws";
+import { Context, Effect, Layer, Option, Predicate, Queue, Schema, Stream } from "effect";
+import { errorMessage } from "../shared/rpc/errors";
+import {
+  K8sPfCloudError,
+  type K8sPfCloudConfig,
+  type K8sPfCloudEvent,
+} from "../shared/rpc/groups/k8s-pf-cloud";
 import { CLOUD_URL } from "../env";
-import { getAccessToken } from "./cloud-auth";
+import { getAccessToken } from "./cloud-tokens";
 
-interface PfCloudStartArgs {
-  orgId: string;
-  accountId: string;
-  resourceId: string;
-  peerPluginId: string;
-  namespace: string;
-  resourceType: string;
-  resourceName: string;
-  remotePort: number;
-  localPort?: number;
-}
+type PfCloudStartArgs = K8sPfCloudConfig;
+
+/** A frame from the cloud's port-forward proxy; anything else is ignored. */
+const PfMessage = Schema.Struct({
+  type: Schema.String,
+  data: Schema.optionalKey(Schema.String),
+  error: Schema.optionalKey(Schema.String),
+});
+const decodePfMessage = Schema.decodeUnknownOption(Schema.fromJsonString(PfMessage));
 
 interface PfCloudSession {
   server: net.Server;
@@ -41,49 +45,75 @@ function toWsUrl(http: string): string {
   return http.replace(/^http/, "ws");
 }
 
-ipcMain.handle(
-  "k8s_pf_cloud_start",
-  async (event, args: PfCloudStartArgs): Promise<{ sessionId: string; localPort: number }> => {
-    const sessionId = crypto.randomUUID();
-    const sockets = new Set<net.Socket>();
-    const webSockets = new Set<WebSocket>();
+/**
+ * Bind the listener as a scoped resource: closing the scope tears the session
+ * down (every socket, every WebSocket, the listener). `onClosed` runs when
+ * the listener closes for any reason, which is what ends the stream when
+ * something other than its scope (the app quitting) closed it.
+ */
+const acquireSession = (args: PfCloudStartArgs, onClosed: () => void) =>
+  Effect.acquireRelease(
+    Effect.tryPromise({
+      try: async () => {
+        const sessionId = crypto.randomUUID();
+        const sockets = new Set<net.Socket>();
+        const webSockets = new Set<WebSocket>();
 
-    const server = net.createServer((client) => {
-      sockets.add(client);
-      handleClient(sessionId, client, args, webSockets).catch(() => {
-        try {
-          client.destroy();
-        } catch {
-          /* ignore */
-        }
-      });
-      client.on("close", () => {
-        sockets.delete(client);
-      });
-    });
+        const server = net.createServer((client) => {
+          sockets.add(client);
+          handleClient(sessionId, client, args, webSockets).catch(() => {
+            try {
+              client.destroy();
+            } catch {
+              /* ignore */
+            }
+          });
+          client.on("close", () => {
+            sockets.delete(client);
+          });
+        });
 
-    const localPort = await new Promise<number>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(args.localPort ?? 0, "127.0.0.1", () => {
-        const addr = server.address();
-        if (addr && typeof addr === "object") resolve(addr.port);
-        else reject(new Error("Failed to determine local port"));
-      });
-    });
+        const localPort = await new Promise<number>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(args.localPort ?? 0, "127.0.0.1", () => {
+            const addr = server.address();
+            if (addr && typeof addr === "object") resolve(addr.port);
+            else reject(new Error("Failed to determine local port"));
+          });
+        });
 
-    sessions.set(sessionId, { server, sockets, webSockets, args });
+        sessions.set(sessionId, { server, sockets, webSockets, args });
+        server.on("close", onClosed);
+        return { sessionId, localPort };
+      },
+      catch: (cause) => new K8sPfCloudError({ message: errorMessage(cause) }),
+    }),
+    ({ sessionId }) => Effect.sync(() => teardownSession(sessionId)),
+  );
 
-    server.on("close", () => {
-      event.sender.send(`k8s_pf_cloud_exit_${sessionId}`);
-    });
-
-    return { sessionId, localPort };
-  },
-);
-
-ipcMain.handle("k8s_pf_cloud_stop", (_event, { sessionId }: { sessionId: string }) => {
-  teardownSession(sessionId);
-});
+/** Port-forward sessions, one stream each (`shared/rpc/groups/k8s-pf-cloud.ts`). */
+export class K8sPfCloud extends Context.Service<
+  K8sPfCloud,
+  {
+    readonly start: (
+      args: PfCloudStartArgs,
+    ) => Stream.Stream<typeof K8sPfCloudEvent.Type, K8sPfCloudError>;
+  }
+>()("infrawrench/desktop/K8sPfCloud") {
+  static readonly layer = Layer.succeed(K8sPfCloud)(
+    K8sPfCloud.of({
+      start: (args) =>
+        Stream.callback<typeof K8sPfCloudEvent.Type, K8sPfCloudError>((queue) =>
+          Effect.gen(function* () {
+            const { sessionId, localPort } = yield* acquireSession(args, () => {
+              Queue.endUnsafe(queue);
+            });
+            Queue.offerUnsafe(queue, { _tag: "Started", sessionId, localPort });
+          }),
+        ),
+    }),
+  );
+}
 
 async function mintWsToken(orgId: string): Promise<string | null> {
   const accessToken = await getAccessToken();
@@ -96,8 +126,8 @@ async function mintWsToken(orgId: string): Promise<string | null> {
     },
   });
   if (!res.ok) return null;
-  const body = (await res.json()) as { token?: string };
-  return body.token ?? null;
+  const body: unknown = await res.json();
+  return Predicate.hasProperty(body, "token") && Predicate.isString(body.token) ? body.token : null;
 }
 
 async function handleClient(
@@ -169,7 +199,9 @@ async function handleClient(
 
   ws.on("message", (raw) => {
     try {
-      const msg = JSON.parse(raw.toString()) as { type: string; data?: string; error?: string };
+      const decoded = decodePfMessage(raw.toString());
+      if (Option.isNone(decoded)) return;
+      const msg = decoded.value;
       if (msg.type === "k8s:pf:ready") {
         ready = true;
         for (const chunk of pendingFromClient) {
