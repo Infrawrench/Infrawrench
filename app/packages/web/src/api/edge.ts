@@ -29,20 +29,39 @@ import { makeHttpApiHandler, type HttpApiHandler } from "../http/server";
 
 const table = makeRouteTable(DOMAIN_ROUTES);
 
-/** Handlers by owning domain (`""` for none), built on first use and kept. */
+/**
+ * How many domains' handlers an isolate keeps. Each holds its own router and
+ * runtime: with all 143 domains kept, the heap measured ~30 MB above the
+ * full `api`'s (151 against 122 MB, Node, every domain requested once), and
+ * a Worker isolate has 128 MB. A page load reaches a dozen or two; an evicted
+ * handler is rebuilt in a few ms, since its modules stay loaded.
+ */
+const MAX_HANDLERS = 32;
+
+/** Handlers by owning domain (`""` for none), least recently used first. */
 const handlers = new Map<string, Promise<HttpApiHandler>>();
 
 function handlerFor(owner: string | undefined): Promise<HttpApiHandler> {
   const key = owner ?? "";
-  let handler = handlers.get(key);
-  if (!handler) {
-    const load = owner === undefined ? undefined : DOMAIN_LOADERS[owner];
-    handler = (load ? load() : Promise.resolve(undefined)).then((domain) =>
-      makeHttpApiHandler(domain ? [domain, orgTreeGuard()] : [orgTreeGuard()], MiddlewareLive),
-    );
-    // A failed import must not be cached: let the next request try again.
-    handler.catch(() => handlers.delete(key));
-    handlers.set(key, handler);
+  const cached = handlers.get(key);
+  if (cached) {
+    handlers.delete(key);
+    handlers.set(key, cached);
+    return cached;
+  }
+  const load = owner === undefined ? undefined : DOMAIN_LOADERS[owner];
+  const handler = (load ? load() : Promise.resolve(undefined)).then((domain) =>
+    makeHttpApiHandler(domain ? [domain, orgTreeGuard()] : [orgTreeGuard()], MiddlewareLive),
+  );
+  // A failed import must not be cached: let the next request try again.
+  handler.catch(() => {
+    if (handlers.get(key) === handler) handlers.delete(key);
+  });
+  handlers.set(key, handler);
+  // Dropped, not disposed: a request still running on it keeps it alive.
+  for (const oldest of handlers.keys()) {
+    if (handlers.size <= MAX_HANDLERS) break;
+    handlers.delete(oldest);
   }
   return handler;
 }
