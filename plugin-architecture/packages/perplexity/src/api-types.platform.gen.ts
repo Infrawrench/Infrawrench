@@ -18,38 +18,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/async/sonar": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_async_chat_completions_async_chat_completions_get"];
-        put?: never;
-        post: operations["create_async_chat_completions_async_chat_completions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/async/sonar/{api_request}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_async_chat_completion_response_async_chat_completions__api_request__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/models": {
         parameters: {
             query?: never;
@@ -127,39 +95,6 @@ export interface components {
             type?: string;
             url?: string;
         };
-        ApiChatCompletionsRequest: {
-            disable_search?: boolean | null;
-            enable_search_classifier?: boolean | null;
-            image_domain_filter?: string[] | null;
-            image_format_filter?: string[] | null;
-            language_preference?: string | null;
-            last_updated_after_filter?: string | null;
-            last_updated_before_filter?: string | null;
-            max_tokens?: number | null;
-            messages: components["schemas"]["ChatMessage-Input"][];
-            model: string;
-            reasoning_effort?: ("minimal" | "low" | "medium" | "high") | null;
-            response_format?: components["schemas"]["ResponseFormatText"] | components["schemas"]["ResponseFormatJSONSchema"] | null;
-            return_images?: boolean | null;
-            return_related_questions?: boolean | null;
-            search_after_date_filter?: string | null;
-            search_before_date_filter?: string | null;
-            search_domain_filter?: string[] | null;
-            search_language_filter?: string[] | null;
-            search_mode?: ("web" | "academic" | "sec") | null;
-            search_recency_filter?: string;
-            stop?: string | string[] | null;
-            /** @default false */
-            stream?: boolean | null;
-            /**
-             * @default full
-             * @enum {string}
-             */
-            stream_mode?: "full" | "concise";
-            temperature?: number | null;
-            top_p?: number | null;
-            web_search_options?: components["schemas"]["WebSearchOptions"];
-        };
         ApiError: {
             error?: {
                 code: number;
@@ -167,19 +102,6 @@ export interface components {
                 param?: string | null;
                 type: string;
             };
-        };
-        ApiPublicSearchResult: {
-            date?: string | null;
-            last_updated?: string | null;
-            /** @default  */
-            snippet?: string;
-            /**
-             * @default web
-             * @enum {string}
-             */
-            source?: "web" | "attachment";
-            title: string;
-            url: string;
         };
         ApprovalFilter: {
             read_only?: boolean | null;
@@ -189,32 +111,6 @@ export interface components {
             always?: components["schemas"]["ApprovalFilter"] | null;
             never?: components["schemas"]["ApprovalFilter"] | null;
         };
-        AsyncApiChatCompletionsRequest: {
-            idempotency_key?: string | null;
-            request: components["schemas"]["ApiChatCompletionsRequest"];
-        };
-        AsyncApiChatCompletionsResponse: {
-            completed_at?: number | null;
-            created_at: number;
-            error_message?: string | null;
-            failed_at?: number | null;
-            id: string;
-            model: string;
-            response?: components["schemas"]["CompletionResponse"] | null;
-            started_at?: number | null;
-            status: components["schemas"]["AsyncProcessingStatus"];
-        };
-        AsyncApiChatCompletionsResponseSummary: {
-            completed_at?: number | null;
-            created_at: number;
-            failed_at?: number | null;
-            id: string;
-            model: string;
-            started_at?: number | null;
-            status: components["schemas"]["AsyncProcessingStatus"];
-        };
-        /** @enum {string} */
-        AsyncProcessingStatus: "CREATED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
         BuiltinSkill: {
             /** @enum {string} */
             name: "office" | "office/docx" | "office/pdf" | "office/pptx" | "office/xlsx";
@@ -223,55 +119,6 @@ export interface components {
              * @enum {string}
              */
             type: "builtin";
-        };
-        "ChatMessage-Input": Shared_05e1360a;
-        "ChatMessage-Output": Shared_05e1360a;
-        ChatMessageContentFileChunk: {
-            file_name?: string | null;
-            file_url: components["schemas"]["URL"] | string;
-            /** @constant */
-            type: "file_url";
-        };
-        ChatMessageContentImageChunk: {
-            image_url: components["schemas"]["URL"] | string;
-            /** @constant */
-            type: "image_url";
-        };
-        ChatMessageContentPDFChunk: {
-            pdf_url: components["schemas"]["URL"] | string;
-            /** @constant */
-            type: "pdf_url";
-        };
-        ChatMessageContentTextChunk: {
-            text: string;
-            /** @constant */
-            type: "text";
-        };
-        ChatMessageContentVideoChunk: {
-            /** @constant */
-            type: "video_url";
-            video_url: components["schemas"]["VideoURL"] | string;
-        };
-        /** @enum {string} */
-        ChatMessageRole: "system" | "user" | "assistant" | "tool";
-        Choice: {
-            delta: components["schemas"]["ChatMessage-Output"];
-            finish_reason?: ("stop" | "length") | null;
-            index: number;
-            message: components["schemas"]["ChatMessage-Output"];
-        };
-        CompletionResponse: {
-            choices: components["schemas"]["Choice"][];
-            citations?: string[] | null;
-            created: number;
-            id: string;
-            images?: components["schemas"]["ImageResult"][] | null;
-            model: string;
-            /** @default chat.completion */
-            object?: string;
-            related_questions?: string[] | null;
-            search_results?: components["schemas"]["ApiPublicSearchResult"][] | null;
-            usage?: components["schemas"]["UsageInfo"] | null;
         };
         ConnectorTool: {
             allowed_tools?: string[];
@@ -292,15 +139,6 @@ export interface components {
         };
         /** @enum {string} */
         ContentPartType: "output_text";
-        Cost: {
-            citation_tokens_cost?: number | null;
-            input_tokens_cost: number;
-            output_tokens_cost: number;
-            reasoning_tokens_cost?: number | null;
-            request_cost?: number | null;
-            search_queries_cost?: number | null;
-            total_cost: number;
-        };
         /** @enum {string} */
         Currency: "USD";
         CustomSkill: {
@@ -415,9 +253,6 @@ export interface components {
              */
             type: "function";
         };
-        HTTPValidationError: {
-            detail?: components["schemas"]["ValidationError"][];
-        };
         ImageResult: {
             /** Format: int64 */
             height: number;
@@ -504,16 +339,6 @@ export interface components {
             /** Format: int64 */
             cached_tokens: number;
         };
-        JSONSchema: {
-            description?: string | null;
-            /** @default schema */
-            name?: string | null;
-            schema: {
-                [key: string]: unknown;
-            };
-            /** @default true */
-            strict?: boolean | null;
-        };
         JSONSchemaFormat: {
             description?: string;
             name: string;
@@ -521,10 +346,6 @@ export interface components {
                 [key: string]: unknown;
             };
             strict?: boolean;
-        };
-        ListAsyncApiChatCompletionsResponse: {
-            next_token?: string | null;
-            requests: components["schemas"]["AsyncApiChatCompletionsResponseSummary"][];
         };
         ListModelsResponse: {
             data: components["schemas"]["Model"][];
@@ -758,15 +579,6 @@ export interface components {
             json_schema?: components["schemas"]["JSONSchemaFormat"];
             /** @enum {string} */
             type: "json_schema";
-        };
-        ResponseFormatJSONSchema: {
-            json_schema: components["schemas"]["JSONSchema"];
-            /** @constant */
-            type: "json_schema";
-        };
-        ResponseFormatText: {
-            /** @constant */
-            type: "text";
         };
         ResponseInProgressEvent: {
             response?: components["schemas"]["ResponsesResponse"];
@@ -1027,53 +839,12 @@ export interface components {
             longitude?: number;
             region?: string;
         };
-        URL: {
-            url: string;
-        };
         UrlContent: {
             snippet: string;
             title: string;
             url: string;
         };
-        UsageInfo: {
-            citation_tokens?: number | null;
-            completion_tokens: number;
-            cost: components["schemas"]["Cost"];
-            num_search_queries?: number | null;
-            prompt_tokens: number;
-            reasoning_tokens?: number | null;
-            search_context_size?: string | null;
-            total_tokens: number;
-        };
-        UserLocation: {
-            city?: string | null;
-            country?: string | null;
-            latitude?: number | null;
-            longitude?: number | null;
-            region?: string | null;
-        };
-        ValidationError: {
-            loc: (string | number)[];
-            msg: string;
-            type: string;
-        };
-        VideoURL: {
-            /** @default 25 */
-            frame_interval?: string | number;
-            url: string;
-        };
         WebSearchFilters: components["schemas"]["SearchDomainFilter"] & components["schemas"]["DateFilters"];
-        WebSearchOptions: {
-            /** @default false */
-            image_results_enhanced_relevance?: boolean;
-            /**
-             * @default low
-             * @enum {string}
-             */
-            search_context_size?: "low" | "medium" | "high";
-            search_type?: ("fast" | "pro" | "auto") | null;
-            user_location?: components["schemas"]["UserLocation"] | null;
-        };
         WebSearchTool: {
             filters?: components["schemas"]["WebSearchFilters"];
             /** Format: int32 */
@@ -1126,71 +897,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResponsesResponse"];
                     "text/event-stream": components["schemas"]["ResponseStreamEvent"];
-                };
-            };
-        };
-    };
-    list_async_chat_completions_async_chat_completions_get: {
-        parameters: {
-            query?: {
-                next_token?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListAsyncApiChatCompletionsResponse"];
-                };
-            };
-        };
-    };
-    create_async_chat_completions_async_chat_completions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AsyncApiChatCompletionsRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AsyncApiChatCompletionsResponse"];
-                };
-            };
-        };
-    };
-    get_async_chat_completion_response_async_chat_completions__api_request__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                api_request: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AsyncApiChatCompletionsResponse"];
                 };
             };
         };
@@ -1305,7 +1011,3 @@ export interface operations {
         };
     };
 }
-type Shared_05e1360a = {
-    content: string | (components["schemas"]["ChatMessageContentTextChunk"] | components["schemas"]["ChatMessageContentImageChunk"] | components["schemas"]["ChatMessageContentFileChunk"] | components["schemas"]["ChatMessageContentPDFChunk"] | components["schemas"]["ChatMessageContentVideoChunk"])[] | null;
-    role: components["schemas"]["ChatMessageRole"];
-};

@@ -6,20 +6,6 @@
       "specUrl": "https://docs.perplexity.ai/openapi.json",
       "patches": [
         {
-          "pointer": "/components/schemas/ApiChatCompletionsRequest/properties/model",
-          "value": {
-            "type": "string"
-          },
-          "why": "An enum in the document; the create form's text goes through as typed."
-        },
-        {
-          "pointer": "/components/schemas/ApiChatCompletionsRequest/properties/search_recency_filter",
-          "value": {
-            "type": "string"
-          },
-          "why": "An enum in the document; the create form's text goes through as typed."
-        },
-        {
           "pointer": "/components/schemas/Input/oneOf/1/items",
           "value": {
             "type": "object",
@@ -35,26 +21,10 @@
             }
           },
           "why": "The plugin sends only chat turns, with no `type`. InputItem requires and discriminates on it, though the provider's own function-calling example also leaves it out."
-        },
-        {
-          "pointer": "/paths/~1v1~1async~1sonar/get/parameters",
-          "value": [
-            {
-              "name": "next_token",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "type": "string"
-              }
-            }
-          ],
-          "why": "The list answers with a next_token, but the document names no parameter to send it back in. This is the field's own name, and the client refuses a page that does not move on."
         }
       ],
       "paths": {
         "/v1/models": ["get"],
-        "/v1/async/sonar": ["get", "post"],
-        "/v1/async/sonar/{api_request}": ["get"],
         "/v1/agent": ["post"],
         "/v1/skills": ["get"],
         "/v1/skills/{skill_id}": ["get", "delete"],

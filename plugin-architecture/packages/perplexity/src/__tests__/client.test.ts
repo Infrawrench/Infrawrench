@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { PerplexityClient, agentOutputText } from "../client.js";
+import { RESOURCE_TYPES } from "../plugin.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 const ACCOUNT = "acct";
@@ -53,103 +54,16 @@ describe("Perplexity", () => {
     expect(calls[0]?.headers["Authorization"]).toBe("Bearer pplx-x");
   });
 
-  it("creates an async deep-research request wrapped in `request`", async () => {
-    const { http, calls } = host(() => ({
-      body: {
-        id: "req-1",
-        model: "sonar-deep-research",
-        status: "CREATED",
-        created_at: 1760000000,
-      },
-    }));
-    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).createResource(
-      "perplexity-async-request",
-      ACCOUNT,
-      {
-        model: "sonar-deep-research",
-        prompt: "Why?",
-        searchRecency: "week",
-      },
-    );
-    expect(r.fields["status"]).toBe("CREATED");
-    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
-      request: {
-        model: "sonar-deep-research",
-        messages: [{ role: "user", content: "Why?" }],
-        search_recency_filter: "week",
-      },
-    });
-  });
-
-  it("maps a completed async request's answer, citations and cost", async () => {
-    const { http } = host(() => ({
-      body: {
-        id: "req-1",
-        model: "sonar-pro",
-        status: "COMPLETED",
-        created_at: 1760000000,
-        response: {
-          choices: [{ message: { content: "Answer" } }],
-          citations: ["https://a"],
-          usage: { cost: { total_cost: 0.0123 } },
-        },
-      },
-    }));
-    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
-      "perplexity-async-request",
-      `${ACCOUNT}:perplexity-async-request:req-1`,
-      ACCOUNT,
-    );
-    expect(r.fields["answer"]).toBe("Answer");
-    expect(r.fields["citations"]).toBe("https://a");
-    expect(r.fields["cost"]).toBe(0.0123);
-  });
-
-  it("reads a structured async answer's text chunks, not [object Object]", async () => {
-    const { http } = host(() => ({
-      body: {
-        id: "req-1",
-        model: "sonar-pro",
-        status: "COMPLETED",
-        created_at: 1760000000,
-        response: {
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: [
-                  { type: "text", text: "First " },
-                  { type: "image_url", image_url: { url: "https://a/i.png" } },
-                  { type: "text", text: "second" },
-                ],
-              },
-            },
-          ],
-        },
-      },
-    }));
-    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
-      "perplexity-async-request",
-      `${ACCOUNT}:perplexity-async-request:req-1`,
-      ACCOUNT,
-    );
-    expect(r.fields["answer"]).toBe("First second");
-  });
-
-  it("shows no answer for null content", async () => {
-    const { http } = host(() => ({
-      body: {
-        id: "req-1",
-        status: "COMPLETED",
-        response: { choices: [{ message: { role: "assistant", content: null } }] },
-      },
-    }));
-    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
-      "perplexity-async-request",
-      `${ACCOUNT}:perplexity-async-request:req-1`,
-      ACCOUNT,
-    );
-    expect(r.fields["answer"]).toBeUndefined();
+  it("has no async request type: Perplexity retired it, and its replacement has no list", async () => {
+    expect(RESOURCE_TYPES.map((t) => t.id)).not.toContain("perplexity-async-request");
+    const { http, calls } = host(() => ({ body: { requests: [] } }));
+    await expect(
+      hostClient(new PerplexityClient({ apiKey: "k" }, { http })).listResources(
+        "perplexity-async-request",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow("unknown resource type");
+    expect(calls).toHaveLength(0);
   });
 
   it("deletes a skill guarded by its current revision", async () => {
@@ -420,94 +334,14 @@ describe("Perplexity", () => {
       await expect(list(http, "perplexity-skill")).rejects.toThrow("is not a list");
     });
 
-    it.each([
-      ["perplexity-agent-model"],
-      ["perplexity-router-model"],
-      ["perplexity-async-request"],
-    ])("throws when %s answers with something that is not a list", async (typeId) => {
-      const { http } = host(() => ({ body: { error: "try later" } }));
-      await expect(list(http, typeId)).rejects.toThrow("is not a list");
-    });
-
-    it("reads an empty list as empty", async () => {
-      const { http } = host(() => ({ body: { requests: [], next_token: null } }));
-      await expect(list(http, "perplexity-async-request")).resolves.toEqual([]);
-    });
-
-    it("sends next_token back to read every async request", async () => {
-      const { http, calls } = host((url) =>
-        url.includes("next_token=t%2F2")
-          ? { body: { requests: [{ id: "b" }], next_token: null } }
-          : { body: { requests: [{ id: "a" }], next_token: "t/2" } },
-      );
-      const rows = await list(http, "perplexity-async-request");
-      expect(rows.map((r) => r.externalId)).toEqual(["a", "b"]);
-      expect(calls.map((c) => c.url)).toEqual([
-        "https://api.perplexity.ai/v1/async/sonar",
-        "https://api.perplexity.ai/v1/async/sonar?next_token=t%2F2",
-      ]);
-    });
-
-    it("throws, at once, when the API ignores next_token and repeats a page", async () => {
-      const { http, calls } = host(() => ({
-        body: { requests: [{ id: "a" }, { id: "b" }], next_token: "more" },
-      }));
-      await expect(list(http, "perplexity-async-request")).rejects.toThrow(
-        "has more than Infrawrench reads",
-      );
-      expect(calls).toHaveLength(2);
-    });
-
-    it("throws on an async list that outruns its cap", async () => {
-      let n = 0;
-      const { http, calls } = host(() => ({
-        body: { requests: [{ id: `r${n++}` }], next_token: `t${n}` },
-      }));
-      await expect(list(http, "perplexity-async-request")).rejects.toThrow(
-        "has more than Infrawrench reads",
-      );
-      expect(calls).toHaveLength(500);
-    });
-
-    it.each([404, 405, 410])(
-      "reads a retired async list route (%i) as no requests",
-      async (status) => {
-        const { http, calls } = host(() => ({ status, body: { error: "Not Found" } }));
-        await expect(list(http, "perplexity-async-request")).resolves.toEqual([]);
-        expect(calls).toHaveLength(1);
+    it.each([["perplexity-agent-model"], ["perplexity-router-model"]])(
+      "throws when %s answers with something that is not a list",
+      async (typeId) => {
+        const { http } = host(() => ({ body: { error: "try later" } }));
+        await expect(list(http, typeId)).rejects.toThrow("is not a list");
       },
     );
-
-    it.each([401, 429, 500])("still fails the async list on a %i", async (status) => {
-      const { http } = host(() => ({ status, body: { error: "no" } }));
-      await expect(list(http, "perplexity-async-request")).rejects.toMatchObject({ status });
-    });
-
-    it("throws when a later async page answers 404, rather than reading it as the end", async () => {
-      const { http } = host((url) =>
-        url.includes("next_token")
-          ? { status: 404, body: { error: "gone" } }
-          : { body: { requests: [{ id: "a" }], next_token: "t2" } },
-      );
-      await expect(list(http, "perplexity-async-request")).rejects.toMatchObject({
-        status: 404,
-      });
-    });
   });
-
-  it.each([404, 410])(
-    "says Perplexity retired async requests when the create route answers %i",
-    async (status) => {
-      const { http } = host(() => ({ status, body: { error: "Not Found" } }));
-      await expect(
-        hostClient(new PerplexityClient({ apiKey: "k" }, { http })).createResource(
-          "perplexity-async-request",
-          ACCOUNT,
-          { model: "sonar-deep-research", prompt: "Why?" },
-        ),
-      ).rejects.toThrow("no longer accepts asynchronous Sonar requests");
-    },
-  );
 
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));

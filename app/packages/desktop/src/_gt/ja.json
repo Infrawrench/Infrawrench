@@ -22867,5 +22867,6 @@
   "12d03674d6b583da": "vCenter Serverのアドレス（vCenter 7.0以降。スタンドアロンのESXiホストはREST APIを提供しません）。プライベートアドレスは、デスクトップアプリまたはアカウントのSSHトンネル経由で利用できます。",
   "7641a8956d254cd2": "ビルド 5,000 分、Actions 20,000 分、サンドボックス 20,000 分、ストレージ 250 GB を含む",
   "2e2f0ab228e60e2a": "ビルド 500 分、Actions 2,000 分、サンドボックス 2,000 分、ストレージ 25 GB を含む",
-  "eabd5be68b2d427d": "任意。公開されている料金や枠を置き換えます。1 行に 1 つの key=value、またはカンマ区切りで指定: planFee、includedBuildMinutes、includedActionsMinutes、includedStorageGb、includedSandboxMinutes (枠)、buildMinute (0.04)、actionsMinute (0.006)、macosMinute (0.08)、sandboxMinute (0.01)、ciVcpuMinute (0.003、Depot CI の vCPU 分あたり)、storageGbMonth (0.20) は USD、請求サイクルが 1 日に始まらない場合は cycleStartDay (1 から 28)。Business 契約や料金変更時に使用します。"
+  "eabd5be68b2d427d": "任意。公開されている料金や枠を置き換えます。1 行に 1 つの key=value、またはカンマ区切りで指定: planFee、includedBuildMinutes、includedActionsMinutes、includedStorageGb、includedSandboxMinutes (枠)、buildMinute (0.04)、actionsMinute (0.006)、macosMinute (0.08)、sandboxMinute (0.01)、ciVcpuMinute (0.003、Depot CI の vCPU 分あたり)、storageGbMonth (0.20) は USD、請求サイクルが 1 日に始まらない場合は cycleStartDay (1 から 28)。Business 契約や料金変更時に使用します。",
+  "4118af972e6b4597": "Playground 付きの Sonar、Agent API、Router モデルと、Agent API スキル。"
 }

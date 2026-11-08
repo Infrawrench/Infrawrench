@@ -9,7 +9,6 @@ sidebar_order: 44
 - **Sonar Models**: `sonar`, `sonar-pro`, `sonar-reasoning-pro` and `sonar-deep-research`, each with a **Playground** that streams search-grounded answers.
 - **Agent API Models**: every model the Agent API accepts, from Perplexity and other providers, with a **Playground**.
 - **Router Models**: the open-weight and third-party models on the OpenAI-compatible Router API, with input, output and cache prices per million tokens and a streaming **Playground**.
-- **Async Sonar Requests**: Perplexity retired asynchronous Sonar requests on September 27, 2026. Any your project still has are listed with their answer, citations and cost, and the list is empty once Perplexity stops answering for it. Creating a new one fails with a message saying so.
 - **Skills**: the Agent API skills in your project, with each skill's revision history. You can delete a skill.
 
 ## Connect your account
@@ -28,7 +27,7 @@ Sonar and Router models stream token by token. Agent API replies appear once the
 
 ## Run a deep-research request
 
-Perplexity no longer accepts asynchronous Sonar requests. Ask the question from the **Playground** on `sonar-deep-research` or an Agent API model instead.
+Ask the question from the **Playground** on `sonar-deep-research` or an Agent API model. Infrawrench doesn't list asynchronous requests: Perplexity retired asynchronous Sonar requests on September 27, 2026, and the Agent API's background responses that replace them can only be read one at a time by id, with no way to list them.
 
 ## Status
 
@@ -38,5 +37,4 @@ Perplexity incidents that affect the API show as provider-wide. Website, app and
 
 - **There's no usage or billing data.** Check spend, credits, usage tiers and keys in the API console.
 - API keys aren't listed, since Perplexity doesn't expose them.
-- Every page of the async request list is read. Perplexity keeps each request for 7 days.
 - Skill bundles are zip uploads. Create and update them with Perplexity's SDK or CLI.
