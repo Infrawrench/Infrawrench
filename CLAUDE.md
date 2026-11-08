@@ -131,6 +131,15 @@ Three unrelated features have "Terraform" in the name; **eject to Terraform** (`
 - **The client half is two workspace packages**: `@infrawrench/appstream-core` (the wire; its serde field names come from `iw-proto`) and `@infrawrench/appstream-host` (staging and running the binary over an SSH connection the caller supplies). Both apps consume both; the launcher is a resource view and each window is a `linux-app` tab. A change to the protocol is a change to `iw-proto`, `appstream-core` and the golden fixtures in one commit.
 - **No new runtime dependencies without a reason you would defend in review.** Everything in this workspace runs on someone else's machine; the list is `serde`, `thiserror`, `zstd` and `jpeg-encoder` (the lossy tier; zero transitive dependencies, and the decoder is the browser's own).
 
+## CI runner (`ci-runner/`)
+
+`ci-runner/` at the repo root is a CI runner that runs each job in a Wasmer isolate over a copy-on-write in-memory snapshot of the commit. It is not wired into the app yet. `ci-runner/README.md` is the reference and KNOWLEDGE.md ("CI runner") has the design; what binds changes made elsewhere:
+
+- **It is outside every JS toolchain, on purpose**; not in `pnpm-workspace.yaml`, `turbo.json` or `cliff.toml`. Build and test it on its own: `cd ci-runner && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace` (toolchain pinned in `rust-toolchain.toml`). `.github/workflows/ci-runner.yml` runs exactly that plus shellcheck on `builtins/`.
+- **A new pipeline key** goes in `iwci-spec/src/raw.rs`, `schema/ci.schema.json` and the README's tables in one change; `iwci-spec/tests/schema.rs` fails until the schema matches the structs.
+- **Builtins and environments are pinned by tag or content hash** in `builtins/*/build.sh`, and published versions are immutable: a changed build is a new version, never a republish.
+- **The isolate gets no network and no host file system.** Anything that needs the network belongs in a dependency installer (`iwci-deps`), which verifies every byte against the lockfile; tests never reach the network (`#[ignore]` the ones that must, and read their inputs from environment variables, never a hard-coded local path).
+
 ## Edge/gateway split
 
 The web API, the SPA and most of the poller also run on Cloudflare Workers (`app/packages/web/edge`, `app/packages/poller/edge`), with the GKE pods as the Node gateway. KNOWLEDGE.md ("Edge/gateway split") has the mechanism and `infra/README.md` ("Cloudflare edge") the runbook; what binds changes made elsewhere:

@@ -1,0 +1,43 @@
+# One job decides what the others do: `affected` lists the packages a commit
+# touched, `typecheck` gets one matrix entry per package, and the docs job
+# runs only when docs changed. See ../README.md, "Outputs, dynamic matrices
+# and if:".
+name: Affected packages
+
+workspace:
+  clone: { depth: 1, into: /app }
+  deps: [pnpm]
+
+jobs:
+  affected:
+    using: env:bash@5
+    deps: false
+    outputs: [packages, docs]
+    run: |
+      cd /app/app/packages
+      list=$(ls -d */ | sed 's#/$##' | sed 's/.*/"&"/' | paste -sd, -)
+      echo "packages=[$list]" >> "$IWCI_OUTPUT"
+      if [ -d /app/app/packages/website ]; then echo "docs=true" >> "$IWCI_OUTPUT"; fi
+
+  typecheck:
+    name: TypeScript (${{ matrix }})
+    needs: [affected]
+    matrix: ${{ needs.affected.outputs.packages }}
+    using: builtin:typescript@7.1
+    cwd: /app/app/packages/${{ matrix }}
+    args: [--noEmit]
+
+  docs:
+    needs: [affected]
+    if: needs.affected.outputs.docs == 'true' && changed('app/packages/website/**')
+    using: env:bash-node@24
+    cwd: /app/app/packages/website
+    run: pnpm run build
+
+  report:
+    needs: [typecheck, docs]
+    if: always()
+    using: env:bash@5
+    deps: false
+    run: |
+      echo "typecheck: ${{ needs.typecheck.result }}, docs: ${{ needs.docs.result }}"

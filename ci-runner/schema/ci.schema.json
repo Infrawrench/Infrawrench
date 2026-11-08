@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://infrawrench.com/schemas/ci.schema.json",
+  "title": "Infrawrench CI pipeline",
+  "description": "A pipeline file in .infrawrench/ci/. Every job runs in its own WebAssembly isolate over a copy-on-write view of the commit's workspace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "jobs"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "on": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "When the pipeline runs. Omit it to run on every push.",
+      "properties": {
+        "push": {
+          "$ref": "#/$defs/triggerFilter"
+        },
+        "pull-request": {
+          "$ref": "#/$defs/triggerFilter"
+        }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The clone and dependencies every job starts from. Built once per commit and shared.",
+      "properties": {
+        "clone": {
+          "$ref": "#/$defs/clone"
+        },
+        "deps": {
+          "$ref": "#/$defs/deps"
+        }
+      }
+    },
+    "jobs": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/job"
+      }
+    }
+  },
+  "$defs": {
+    "triggerFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Branch globs. Empty means every branch."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Run only when the commit touches one of these path globs."
+        }
+      }
+    },
+    "clone": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "description": "Commits of history to fetch: 1 (the default) or more, or `full`.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "const": "full"
+            }
+          ]
+        },
+        "into": {
+          "type": "string",
+          "pattern": "^/.+",
+          "default": "/app",
+          "description": "Where the repository appears inside the isolate."
+        },
+        "submodules": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "ecosystem": {
+      "enum": ["pnpm", "go", "cargo"]
+    },
+    "deps": {
+      "type": "array",
+      "description": "Dependencies installed from the repository's lockfiles before any job runs. Nothing executes install scripts.",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ecosystem"
+          },
+          {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "propertyNames": {
+              "$ref": "#/$defs/ecosystem"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dir": {
+                  "type": "string",
+                  "description": "The lockfile's directory, relative to the clone."
+                },
+                "only": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "pnpm only: install just these importers' dependency closure."
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "scalar": {
+      "type": ["string", "number", "boolean"]
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["using"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name. May use ${{ matrix }}, ${{ matrix.<axis> }}, ${{ commit.sha }}, ${{ commit.short-sha }}, ${{ commit.branch }}, ${{ repo.id }}, ${{ event }}, ${{ needs.<job>.outputs.<name> }}, ${{ needs.<job>.result }}."
+        },
+        "matrix": {
+          "description": "A list (read as ${{ matrix }}), named axes (read as ${{ matrix.<axis> }}) whose combinations each become a job, or ${{ needs.<job>.outputs.<name> }} holding either as JSON. An axis may also come from an output.",
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/scalar"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "exclude": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/$defs/scalar"
+                    }
+                  }
+                }
+              },
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/$defs/scalar"
+                    }
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^\\s*\\$\\{\\{.*\\}\\}\\s*$",
+                    "description": "An output holding a JSON list."
+                  }
+                ]
+              }
+            },
+            {
+              "type": "string",
+              "pattern": "^\\s*\\$\\{\\{.*\\}\\}\\s*$",
+              "description": "An output of a job in `needs:`, holding a JSON list or object of axes. An empty list runs no jobs."
+            }
+          ]
+        },
+        "using": {
+          "type": "string",
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
+          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x."
+        },
+        "args": {
+          "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "run": {
+          "type": "string",
+          "description": "A bash script, for `env:` jobs. Runs with `set -euo pipefail`."
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Working directory inside the isolate. Defaults to the clone."
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "not": {
+              "pattern": "^IWCI_"
+            }
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "clone": {
+          "description": "Overrides workspace.clone; false starts from an empty file system.",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/clone"
+            }
+          ]
+        },
+        "deps": {
+          "description": "Overrides workspace.deps; false installs nothing.",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/deps"
+            }
+          ]
+        },
+        "changes": {
+          "description": "What happens when the job changes files: ignore (default), fail, or commit them with a message.",
+          "oneOf": [
+            {
+              "enum": ["ignore", "fail"]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["commit"],
+              "properties": {
+                "commit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                }
+              }
+            }
+          ]
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Jobs (all of their matrix entries) that must pass first."
+        },
+        "if": {
+          "type": "string",
+          "description": "When the job runs. Operators ==, !=, &&, ||, !, parentheses and 'strings'; functions success(), failure(), always(), contains(), startsWith(), endsWith(), changed('glob', ...); names needs.<job>.result, needs.<job>.outputs.<name>, commit.sha, commit.short-sha, commit.branch, repo.id, event. Without success(), failure() or always() it means success() && (...). A surrounding ${{ }} is optional."
+        },
+        "outputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_-]{0,63}$"
+          },
+          "description": "Names the job writes to the file at $IWCI_OUTPUT (`name=value` lines, or `name<<EOF` blocks), read by later jobs as ${{ needs.<job>.outputs.<name> }}. Not allowed on a matrix job."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Skip the job unless the commit touches one of these path globs."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^([0-9]+[smh])+$",
+          "default": "10m",
+          "description": "Up to 60m."
+        },
+        "memory": {
+          "type": "string",
+          "pattern": "^[0-9]+(KiB|MiB|GiB|K|M|G)$",
+          "default": "2GiB",
+          "description": "16MiB to 16GiB."
+        }
+      }
+    }
+  }
+}

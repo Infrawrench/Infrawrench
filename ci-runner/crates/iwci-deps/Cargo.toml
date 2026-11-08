@@ -1,0 +1,38 @@
+[package]
+name = "iwci-deps"
+description = "Installs a workspace's dependencies (pnpm, Go modules, Cargo crates) into its snapshot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iwci-vfs.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+# Go and Cargo installers: module zips, crate tarballs, Cargo.lock and the
+# checksum files cargo's directory source reads. Compression backends are
+# limited to what those formats use (deflate only).
+zip = { version = "9.4.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tar = { version = "0.4.46", default-features = false }
+flate2 = "1.1"
+toml = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = "1"
+base64 = "0.22"
+# pnpm installer: the lockfile is YAML. Package files go into the snapshot
+# as shared read-only buffers (the version virtual-fs uses), so peer
+# variants of one package share bytes and no copy happens under mem_fs's
+# lock.
+serde_yaml_ng = { workspace = true }
+shared-buffer = "0.1.4"
+# The production fetcher. rustls with the bundled webpki roots, so a run
+# trusts the same CAs on every host; no gzip, because the integrity covers
+# the bytes as served.
+ureq = { version = "3.3", default-features = false, features = ["rustls"] }
+# Cached installs (cache.rs) are stored as one zstd stream each: fast to
+# decompress, with a frame checksum so a damaged file reads as a miss.
+zstd = { version = "0.13", default-features = false }
