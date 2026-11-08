@@ -42,8 +42,18 @@ out="$(out_dir builtin oxfmt "$OXFMT_VERSION")"
 # emnapi and turns the module into a Node-API reactor (imported memory, no
 # `_start`). With the `napi` feature off nothing needs it, so both build
 # scripts are emptied in the clone.
-for build_rs in apps/oxfmt/build.rs crates/oxc_napi/build.rs; do
-  printf 'fn main() {}\n' >"$src/$build_rs"
+# Both crates also build a `cdylib` (the addon itself), which Cargo builds
+# even for a dependency and which cannot link for this target, so they are
+# trimmed to `lib`.
+for crate in apps/oxfmt crates/oxc_napi; do
+  printf 'fn main() {}\n' >"$src/$crate/build.rs"
+  manifest="$src/$crate/Cargo.toml"
+  sed 's/^crate-type = \["lib", "cdylib"\]$/crate-type = ["lib"]/' "$manifest" >"$manifest.new"
+  if cmp -s "$manifest" "$manifest.new"; then
+    echo "error: $crate no longer declares crate-type [\"lib\", \"cdylib\"]; recheck this patch" >&2
+    exit 1
+  fi
+  mv "$manifest.new" "$manifest"
 done
 
 (
