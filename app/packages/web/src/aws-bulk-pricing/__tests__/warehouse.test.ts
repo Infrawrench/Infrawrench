@@ -6,7 +6,7 @@ import { PRICES, shardOf, shardsOf } from "@infrawrench/server-core/aws-pricing-
 
 import { readTables, reduceInstance, type InstanceValue } from "../format";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
-import { ClickHouseHttp } from "../warehouse";
+import { ClickHouseHttp, ClickHouseWarehouse } from "../warehouse";
 import {
   RowBinary,
   architectureOf,
@@ -682,6 +682,62 @@ describe("deduplication of INSERTs", () => {
     });
     await ch.insert("t", columns, new Uint8Array(1));
     expect(query).toBe("INSERT INTO t (k) FORMAT RowBinary");
+  });
+});
+
+describe("committing a load", () => {
+  it("sends the last batches one at a time, so the row check reads a settled engine", async () => {
+    const values = [reduced("db.m5.large"), reduced('db.t2."odd"')];
+    const expected = new Map<string, number>([
+      ["prices", 0],
+      ["instance_types", 0],
+      ["attribute_changes", 0],
+    ]);
+    const regions = new Set<string>();
+    for (const value of values) {
+      const rows = instanceRows(value, "rds");
+      expected.set("prices", expected.get("prices")! + rows.prices.length);
+      expected.set("instance_types", expected.get("instance_types")! + (rows.instanceType ? 1 : 0));
+      expected.set(
+        "attribute_changes",
+        expected.get("attribute_changes")! + rows.attributeChanges.length,
+      );
+      for (const code of rows.regions.keys()) regions.add(code);
+    }
+    expected.set("regions", regions.size);
+
+    let open = 0;
+    let most = 0;
+    const inserted: string[] = [];
+    const ch = new ClickHouseHttp({
+      url: "https://warehouse.test/",
+      token: "t",
+      fetch: (async (url: URL, init: { body: string | Uint8Array }) => {
+        const insert = url.searchParams.get("query");
+        if (insert) {
+          inserted.push(/^INSERT INTO staging\.(\w+)/.exec(insert)![1]!);
+          most = Math.max(most, ++open);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          open--;
+          return new Response("");
+        }
+        const count = /SELECT count\(\) AS n FROM staging\.(\w+)/.exec(String(init.body));
+        return new Response(count ? JSON.stringify({ n: expected.get(count[1]!) ?? 0 }) : "");
+      }) as unknown as typeof fetch,
+    });
+    const load = await new ClickHouseWarehouse(ch, () => {}).begin("rds");
+    for (const value of values) await load.add(value);
+    await expect(load.commit({ version: "1", snapshots: [1] })).resolves.toMatchObject({
+      priceRows: expected.get("prices"),
+    });
+    expect(inserted).toEqual([
+      "prices",
+      "instance_types",
+      "attribute_changes",
+      "regions",
+      "sync_state",
+    ]);
+    expect(most).toBe(1);
   });
 });
 
