@@ -1,0 +1,86 @@
+[package]
+name = "wasmer-napi"
+version = "0.705.0"
+description = "NAPI library for Wasmer WebAssembly runtime"
+edition = "2024"
+license = "MIT"
+resolver = "2"
+
+[features]
+# Uses the browser/Node JavaScript realm as the N-API value engine when this
+# crate is compiled as part of a wasm32-unknown-unknown wasm-bindgen module.
+# On native targets this feature is inert and the V8 backend remains active.
+js = [
+  "dep:js-sys",
+  "dep:wasm-bindgen",
+  "dep:wasm-bindgen-futures",
+  "wasmer/experimental-async",
+  "wasmer/js-default",
+]
+# Implements the WASIX runtime's `InstantiationHook` for `NapiRuntimeHooks`.
+# `wasmer-wasix` is a non-optional dependency (the always-compiled guest callback
+# trampoline needs `WasiError`), so this feature only gates `mod wasix` and does
+# not activate the dependency.
+wasix = []
+cli = [
+  "wasix",
+  "dep:wasmer-cache",
+  "dep:wasmer-c-api-imports",
+  "wasmer-c-api-imports/wasi",
+  "dep:tokio",
+  "dep:virtual-fs",
+  "dep:wasmer-types",
+]
+
+[dependencies]
+anyhow = "1"
+# This manifest is consumed as `wasmer/lib/napi`, so Wasmer dependencies must
+# stay relative to that checkout. Standalone builds use Cargo.standalone.toml.
+wasmer = { version = "=7.5.0", path = "../api", default-features = false }
+
+# This dependencies are ONLY needed for testing napi in Wasm locally
+wasmer-cache = { version = "=7.5.0", path = "../cache", optional = true }
+wasmer-c-api-imports = { version = "=7.5.0", path = "../c-api-imports", optional = true, default-features = false }
+wasmer-types = { version = "=7.5.0", path = "../types", optional = true }
+# Non-optional: the guest callback trampoline re-raises guest WASI process
+# exits (`WasiError::Exit`) through the N-API import layers, so `mod guest`
+# (always compiled) needs the WASIX error type in every build.
+virtual-fs = { version = "=0.705.0", path = "../virtual-fs", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
+enum-iterator = "2.3.0"
+offset-allocator = "0.2.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2.120", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+wasmer-wasix = { version = "=0.705.0", path = "../wasix", default-features = false, features = [
+  "js",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wasmer = { version = "=7.5.0", path = "../api", default-features = false, features = [
+  "sys-default",
+] }
+wasmer-wasix = { version = "=0.705.0", path = "../wasix", default-features = false, features = [
+  "sys",
+] }
+
+[build-dependencies]
+cc = "1"
+tar = "0.4"
+ureq = "2"
+xz = "0.1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wat = "1"
+
+[package.metadata.docs.rs]
+rustc-args = ["--cfg", "docsrs"]
+
+[[bin]]
+name = "napi_wasmer"
+path = "src/bin/napi_wasmer.rs"
+required-features = ["cli"]

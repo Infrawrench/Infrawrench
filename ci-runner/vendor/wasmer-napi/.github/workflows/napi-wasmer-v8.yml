@@ -1,0 +1,116 @@
+name: napi-wasmer-v8
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  v8-native-linux:
+    name: v8-native-linux-${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Build native V8 N-API
+        run: make build-napi CMAKE_BUILD_TYPE=${{ matrix.build_type }} JOBS=4
+
+      - name: Test native V8 N-API
+        run: make test-napi CMAKE_BUILD_TYPE=${{ matrix.build_type }} JOBS=4 TEST_JOBS=4
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
+
+  v8-native-macos:
+    name: v8-native-macos-${{ matrix.build_type }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Build native V8 N-API
+        run: make build-napi CMAKE_BUILD_TYPE=${{ matrix.build_type }} JOBS=4
+
+      - name: Test native V8 N-API
+        run: make test-napi CMAKE_BUILD_TYPE=${{ matrix.build_type }} JOBS=4 TEST_JOBS=4
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
+
+  # v8-wasix-linux:
+  #   name: v8-wasix-linux
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     LLVM_DIR: llvm
+  #     SCCACHE_GHA_ENABLED: "true"
+  #     RUSTC_WRAPPER: sccache
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+
+  #     - name: Setup sccache
+  #       uses: mozilla-actions/sccache-action@v0.0.9
+
+  #     - name: Setup Rust
+  #       uses: dtolnay/rust-toolchain@stable
+
+  #     - name: Install LLVM
+  #       shell: bash
+  #       run: |
+  #         set -euo pipefail
+  #         curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+  #           --retry 3 --proto '=https' --tlsv1.2 -sSf \
+  #           "https://github.com/wasmerio/llvm-custom-builds/releases/download/21.x/llvm-linux-amd64.tar.xz" \
+  #           -L -o llvm.tar.xz
+  #         LLVM_DIR="$(pwd)/${LLVM_DIR}"
+  #         mkdir -p "${LLVM_DIR}"
+  #         tar xf llvm.tar.xz --strip-components=1 -C "${LLVM_DIR}"
+  #         echo "${LLVM_DIR}/bin" >> "$GITHUB_PATH"
+  #         echo "${LLVM_DIR}/usr/bin" >> "$GITHUB_PATH"
+  #         echo "LLVM_SYS_211_PREFIX=${LLVM_DIR}" >> "$GITHUB_ENV"
+  #         echo "ENABLE_LLVM=1" >> "$GITHUB_ENV"
+
+  #     - name: Install wasixcc
+  #       uses: wasix-org/wasixcc@v0.4.2
+  #       with:
+  #         github_token: ${{ secrets.GITHUB_TOKEN }}
+  #         sysroot-tag: v2026-02-16.1
+  #         version: v0.4.2
+
+  #     - name: Build WASIX V8 N-API runner
+  #       run: make build-wasix-napi
+
+  #     - name: Test WASIX V8 N-API runner
+  #       run: make test-wasix-napi
+
+  #     - name: sccache stats
+  #       if: always()
+  #       run: sccache --show-stats || true

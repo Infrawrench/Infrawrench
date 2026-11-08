@@ -1,0 +1,3 @@
+[submodule "quickjs/deps/quickjs"]
+	path = quickjs/deps/quickjs
+	url = https://github.com/wasmerio/quickjs.git

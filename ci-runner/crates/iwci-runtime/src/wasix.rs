@@ -32,7 +32,9 @@ use virtual_fs::{FileSystem, MountFileSystem, NullFile, RootFileSystemBuilder, T
 use wasmer::sys::NativeEngineExt;
 use wasmer::{Engine, Interrupter, Module};
 use wasmer_config::package::{PackageHash, PackageId};
-use wasmer_wasix::bin_factory::{BinaryPackage, spawn_exec, spawn_exec_module};
+use wasmer_wasix::bin_factory::{
+    BinaryPackage, BinaryPackageCommand, spawn_exec, spawn_exec_module,
+};
 use wasmer_wasix::http::DynHttpClient;
 use wasmer_wasix::os::TtyBridge;
 use wasmer_wasix::runtime::module_cache::ModuleCache;
@@ -474,6 +476,13 @@ pub(crate) fn run(
         Some(set) => binary_packages(shared, set, &runtime, tokio)?,
         None => Vec::new(),
     };
+    let job_keys: Vec<&str> = inv
+        .env
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .chain(["PWD"])
+        .collect();
+    let uses = command_env_as_defaults(uses, &job_keys);
 
     let stdout = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stdout);
     let stderr = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stderr);
@@ -497,6 +506,18 @@ pub(crate) fn run(
     builder.set_stdout(stdout.file());
     builder.set_stderr(stderr.file());
     builder.capabilities_mut().threading.max_threads = Some(MAX_TASKS);
+    // V8 must run on a real thread stack. With asynchronous threading, wasm
+    // (and the N-API calls it makes into V8) runs on coroutine stacks, and
+    // V8, whose isolate takes its stack bounds from where it was created,
+    // segfaults the first time it unwinds an exception. wasmer-napi's
+    // own runner turns it off for N-API modules the same way. It is set in
+    // the job's control plane, so it covers bash and every `node` it spawns.
+    if node.is_some() {
+        builder
+            .capabilities_mut()
+            .threading
+            .enable_asynchronous_threading = false;
+    }
     for package in &uses {
         builder.add_webc(package.clone());
     }
@@ -639,6 +660,68 @@ fn for_each_process(
             }
         }
     }
+}
+
+/// Treats a command's `wasi.env` annotation as defaults: an entry whose key
+/// the job's environment already has is dropped.
+///
+/// wasmer-wasix 0.705's `WasiEnv::prepare_spawn` appends those entries to
+/// the environment a spawned command inherits instead of merging them, so
+/// Edge.js's `pnpm` (which declares `PATH` and `HOME`) saw `PATH` twice and
+/// failed on `Object.keys(process.env)`: "'ownKeys' on proxy: trap returned
+/// duplicate entries". Wasmer's main branch now applies them as defaults
+/// (`add_command_env_defaults`); this gives the released crate the same
+/// result for every key the job starts with. A key a script exports later
+/// can still be duplicated until the upstream fix ships.
+fn command_env_as_defaults(packages: Vec<BinaryPackage>, job_keys: &[&str]) -> Vec<BinaryPackage> {
+    packages
+        .into_iter()
+        .map(|mut package| {
+            let mut changed = false;
+            let commands: Vec<BinaryPackageCommand> = package
+                .commands
+                .iter()
+                .map(|command| {
+                    let Ok(Some(mut wasi)) = command.metadata().wasi() else {
+                        return command.clone();
+                    };
+                    let Some(env) = wasi.env.as_mut() else {
+                        return command.clone();
+                    };
+                    let before = env.len();
+                    env.retain(|entry| {
+                        let key = entry.split_once('=').map_or(entry.as_str(), |(k, _)| k);
+                        !job_keys.contains(&key)
+                    });
+                    if env.len() == before {
+                        return command.clone();
+                    }
+                    let Ok(annotation) = ciborium::Value::serialized(&wasi) else {
+                        return command.clone();
+                    };
+                    let mut metadata = command.metadata().clone();
+                    metadata.annotations.insert(
+                        webc::metadata::annotations::Wasi::KEY.to_string(),
+                        annotation,
+                    );
+                    changed = true;
+                    BinaryPackageCommand::new(
+                        command.name().to_string(),
+                        metadata,
+                        command.atom(),
+                        *command.hash(),
+                        command.wasm_features(),
+                        command.package().clone(),
+                        command.origin_package().clone(),
+                    )
+                })
+                .collect();
+            if changed {
+                package.commands = commands;
+            }
+            package
+        })
+        .collect()
 }
 
 fn binary_packages(

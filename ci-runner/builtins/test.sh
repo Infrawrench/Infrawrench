@@ -145,10 +145,21 @@ jobs:
     run: |
       test "$(node -e 'console.log(6 * 7)')" = 42
       node --version
+  package-managers-passes:
+    using: env:bash-node@24
+    run: |
+      npm --version
+      pnpm --version
   throw-fails:
     using: env:bash-node@24
     run: |
       node -e 'throw new Error("expected")'
+  # A script that never yields must still be stopped by the job's timeout.
+  spin-fails:
+    using: env:bash-node@24
+    timeout: 10s
+    run: |
+      node -e 'for (;;) {}'
 YAML
       ;;
   esac
@@ -160,6 +171,7 @@ want_reason() {
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
     bash/false-fails | bash-node/throw-fails) echo "exited with 1" ;;
+    bash-node/spin-fails) echo "timed out" ;;
     *) echo "" ;;
   esac
 }

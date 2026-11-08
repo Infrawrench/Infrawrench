@@ -151,9 +151,6 @@ jobs:
     # Linux arm64 build of it.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    # Known broken: node segfaults the runner as it starts (#905). The job
-    # keeps running so it shows when that is fixed; remove this line then.
-    continue-on-error: true
     defaults:
       run:
         working-directory: ci-runner

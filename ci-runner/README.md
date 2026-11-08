@@ -271,8 +271,15 @@ WASIX a pipeline currently reports only its last command's status.
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
-[`wasmer-napi`]. That is the runtime crate's `node` feature, off by default
-because it links V8.
+[`wasmer-napi`]. That is the `node` feature (`cargo build -p iwci --features
+node`), off by default because it links V8. Three things make it work, each
+commented where it lives: jobs with Node run without WASIX's asynchronous
+threading (V8 must run on a real thread stack; wasmer-napi's own runner does
+the same), a package command's `wasi.env` is applied as defaults rather than
+appended (otherwise pnpm sees `PATH` twice), and `vendor/wasmer-napi` is
+patched so a job timeout can stop a script that never yields (see
+`vendor/README.md`). On Linux, the V8 that `wasmer-napi` downloads exists
+only for x86_64.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash.
@@ -505,10 +512,6 @@ schedule once per runner. Its README has the routes; the short version:
 
 ## Known limitations
 
-- **`env:bash-node` does not work yet.** `iwci` (built with `--features node`)
-  is killed by a segfault in V8 as soon as a job runs `node`; bash in the
-  same environment is fine. Tracked in issue #905, and
-  `ci-runner-builtins.yml` runs it nightly so a fix shows up.
 - **Pipelines in `env:` scripts.** WASIX bash reports only the last
   command's exit status: `false | cat` succeeds even under `pipefail`, and
   `PIPESTATUS` holds one entry. A plain failing command, or one inside

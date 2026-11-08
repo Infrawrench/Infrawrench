@@ -2883,6 +2883,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
+ "ciborium",
  "futures",
  "getrandom 0.3.4",
  "hex",
@@ -5901,8 +5902,6 @@ dependencies = [
 [[package]]
 name = "wasmer-napi"
 version = "0.705.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "767be5e2ae1215f64f1fb60266fc2ae8fe40994194c32278230421ab331a073f"
 dependencies = [
  "anyhow",
  "cc",

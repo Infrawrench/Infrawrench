@@ -50,3 +50,7 @@ app/packages/raycast/raycast-env.d.ts
 
 # vinext dev/build state (app/packages/instances)
 .vinext
+
+# Third-party crates vendored with a patch (ci-runner/vendor/README.md): they
+# must stay byte-for-byte as published apart from the patch file.
+ci-runner/vendor/wasmer-napi/
