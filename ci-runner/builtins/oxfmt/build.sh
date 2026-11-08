@@ -37,6 +37,15 @@ if [[ "$actual" != "$OXFMT_VERSION" ]]; then
 fi
 out="$(out_dir builtin oxfmt "$OXFMT_VERSION")"
 
+# The CLI is not a Node addon, but apps/oxfmt and crates/oxc_napi call
+# napi_build::setup() unconditionally, and for a wasi target that links
+# emnapi and turns the module into a Node-API reactor (imported memory, no
+# `_start`). With the `napi` feature off nothing needs it, so both build
+# scripts are emptied in the clone.
+for build_rs in apps/oxfmt/build.rs crates/oxc_napi/build.rs; do
+  printf 'fn main() {}\n' >"$src/$build_rs"
+done
+
 (
   cd "$src" || exit 1
   CARGO_WASIX_NO_REGISTRY_CONFIG=1 \
