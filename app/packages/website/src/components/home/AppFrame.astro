@@ -1,0 +1,31 @@
+---
+interface Props {
+  /** Basename under /screenshots/app, without -dark/-light or extension. */
+  shot: string;
+  title?: string;
+  alt: string;
+  /** Pin one theme instead of following the visitor's. */
+  theme?: 'dark' | 'light';
+  class?: string;
+  /** Above the fold: load it straight away. */
+  eager?: boolean;
+}
+const { shot, title = 'Infrawrench', alt, theme, class: cls, eager = false } = Astro.props;
+const loading = eager ? 'eager' : 'lazy';
+const fetchpriority = eager ? 'high' : 'auto';
+const base = `/screenshots/app/${shot}`;
+---
+
+<figure class:list={['hm-frame', cls]} style="margin:0">
+  <div class="hm-frame-bar"><i></i><i></i><i></i><span>{title}</span></div>
+  {
+    theme ? (
+      <img src={`${base}-${theme}.webp`} alt={alt} width="2480" height="1480" loading={loading} fetchpriority={fetchpriority} decoding="async" />
+    ) : (
+      <picture>
+        <source srcset={`${base}-dark.webp`} media="(prefers-color-scheme: dark)" />
+        <img src={`${base}-light.webp`} alt={alt} width="2480" height="1480" loading={loading} fetchpriority={fetchpriority} decoding="async" />
+      </picture>
+    )
+  }
+</figure>
