@@ -2955,6 +2955,7 @@ dependencies = [
  "tokio",
  "url",
  "virtual-fs",
+ "virtual-net",
  "wasmer",
  "wasmer-config",
  "wasmer-napi",

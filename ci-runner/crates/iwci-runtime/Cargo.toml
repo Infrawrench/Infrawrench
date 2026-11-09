@@ -21,8 +21,12 @@ wasmer = { workspace = true, features = ["experimental-host-interrupt"] }
 # wasmer-wasix refuses to build without one of `sys`, `js` or `sys-minimal`.
 # `sys-minimal` is the one without host networking, host file system access
 # or an HTTP client.
-# `host-vnet`: host sockets for a job's outbound connections (network.rs).
-wasmer-wasix = { workspace = true, features = ["sys-minimal", "host-vnet"] }
+wasmer-wasix = { workspace = true, features = ["sys-minimal"] }
+# Host sockets for a job's outbound connections (network.rs), taken from
+# virtual-net directly: wasmer-wasix's own `host-vnet` would make every
+# job's runtime build a host network of its own (a selector thread each,
+# and a panic outside a tokio context) only for us to replace it.
+virtual-net = { version = "0.705.0", default-features = false, features = ["host-net"] }
 virtual-fs.workspace = true
 thiserror.workspace = true
 sha2.workspace = true

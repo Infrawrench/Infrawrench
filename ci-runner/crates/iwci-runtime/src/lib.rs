@@ -314,7 +314,7 @@ impl Runtime {
     pub fn with_internet(mut self) -> Self {
         // LocalNetworking takes the runtime's handle when it is made.
         let _enter = self.tokio.enter();
-        let host = wasmer_wasix::virtual_net::host::LocalNetworking::new();
+        let host = virtual_net::host::LocalNetworking::new();
         self.wasix.outside = Some(Arc::new(network::OutsideNet::new(
             Arc::new(host),
             network::host_addresses(),
