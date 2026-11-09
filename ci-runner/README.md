@@ -328,7 +328,8 @@ task-cache:
 - **On a hit** the job does not run, start a tool or take memory: it
   passes, its report says `cached` and replays the log of the run it stands
   for, its `outputs:` read as that run wrote them, and its artifacts reach
-  the jobs that need it. It is not billed.
+  the jobs that need it. It is not billed. Keys read the bare checkout, so
+  a run whose jobs all hit never installs its workspace's dependencies.
 - **On a miss** it runs as usual, and after it passes its kept artifacts,
   outputs and log are saved under the key. Failures are never cached.
 - Entries are kept with the [job caches](#job-caches), scoped and counted

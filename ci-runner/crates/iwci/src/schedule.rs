@@ -47,6 +47,36 @@ pub struct BuiltWorkspace {
 
 pub trait Workspaces: Send + Sync {
     fn build(&self, spec: &WorkspaceSpec) -> Result<BuiltWorkspace, String>;
+
+    /// The commit's files as `spec` clones them, installing nothing: what a
+    /// task cache key reads, so a run whose jobs all hit never installs.
+    fn checkout(&self, spec: &WorkspaceSpec) -> Result<Snapshot, String> {
+        self.build(&WorkspaceSpec {
+            deps: Vec::new(),
+            ..spec.clone()
+        })
+        .map(|w| w.snapshot)
+    }
+}
+
+/// One workspace of a run, built the first time a job needs it, and its
+/// bare checkout, made the first time a task cache key needs it.
+struct LazyWorkspace<'a> {
+    spec: &'a WorkspaceSpec,
+    workspaces: &'a dyn Workspaces,
+    built: &'a OnceLock<Result<BuiltWorkspace, String>>,
+    checkout: &'a OnceLock<Result<Snapshot, String>>,
+}
+
+impl LazyWorkspace<'_> {
+    fn built(&self) -> &Result<BuiltWorkspace, String> {
+        self.built.get_or_init(|| self.workspaces.build(self.spec))
+    }
+
+    fn files(&self) -> &Result<Snapshot, String> {
+        self.checkout
+            .get_or_init(|| self.workspaces.checkout(self.spec))
+    }
 }
 
 /// A tool or environment fetched and verified, opaque to the scheduler.
@@ -642,6 +672,8 @@ pub fn run<T: Tools>(
     let started = Instant::now();
     let built: Vec<OnceLock<Result<BuiltWorkspace, String>>> =
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
+    let checkouts: Vec<OnceLock<Result<Snapshot, String>>> =
+        plan.workspaces.iter().map(|_| OnceLock::new()).collect();
     let state = Mutex::new(State {
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
@@ -718,11 +750,15 @@ pub fn run<T: Tools>(
                     // A slot shared with every other run on this runner;
                     // held for the job's workspace build and its run.
                     let slot = options.slots.as_ref().map(|s| s.acquire());
-                    let workspace = built[job.workspace]
-                        .get_or_init(|| workspaces.build(&plan.workspaces[job.workspace]));
+                    let workspace = LazyWorkspace {
+                        spec: &plan.workspaces[job.workspace],
+                        workspaces,
+                        built: &built[job.workspace],
+                        checkout: &checkouts[job.workspace],
+                    };
                     let mut kept = Vec::new();
                     let report = run_job(
-                        &job, plan, workspace, tools, executor, committer, options, &shared,
+                        &job, plan, &workspace, tools, executor, committer, options, &shared,
                         &inherited, &mut kept,
                     );
                     drop(slot);
@@ -973,7 +1009,7 @@ struct RunShared<'a> {
 fn run_job<T: Tools>(
     job: &PlannedJob,
     plan: &Plan,
-    workspace: &Result<BuiltWorkspace, String>,
+    workspace: &LazyWorkspace<'_>,
     tools: &T,
     executor: &dyn Executor<T::Tool>,
     committer: &dyn Committer,
@@ -983,20 +1019,23 @@ fn run_job<T: Tools>(
     kept: &mut Vec<Entry>,
 ) -> JobReport {
     let started = Instant::now();
-    let workspace = match workspace {
-        Ok(ws) => ws,
-        Err(e) => {
-            return errored(
-                job,
-                format!("workspace did not build: {e}"),
-                started.elapsed(),
-            );
-        }
-    };
     // A task-cached job whose inputs are what a passing run saw is not
     // run: that run's artifacts, outputs and log stand in for it. A miss,
-    // or an entry that cannot be used, runs the job.
-    let task_key = task_cache_key(job, plan, workspace, inherited);
+    // or an entry that cannot be used, runs the job. The key reads the bare
+    // checkout, so a hit never waits for the workspace's installs.
+    let task_key = match (&job.task_cache, &options.caches) {
+        (Some(_), Some(_)) => match workspace.files() {
+            Ok(files) => task_cache_key(job, plan, files, inherited),
+            Err(e) => {
+                return errored(
+                    job,
+                    format!("workspace did not build: {e}"),
+                    started.elapsed(),
+                );
+            }
+        },
+        _ => None,
+    };
     let mut task_lines = Vec::new();
     if let (Some(key), Some(store)) = (&task_key, &options.caches) {
         match store.restore(key, &[], plan.scratch_bytes + MAX_TASK_LOG) {
@@ -1016,6 +1055,16 @@ fn run_job<T: Tools>(
             )),
         }
     }
+    let workspace = match workspace.built() {
+        Ok(ws) => ws,
+        Err(e) => {
+            return errored(
+                job,
+                format!("workspace did not build: {e}"),
+                started.elapsed(),
+            );
+        }
+    };
     let tool = match tools.resolve(&job.tool) {
         Ok(t) => t,
         Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
@@ -1454,7 +1503,7 @@ fn short_key(key: &str) -> &str {
 fn task_cache_key(
     job: &PlannedJob,
     plan: &Plan,
-    workspace: &BuiltWorkspace,
+    snapshot: &Snapshot,
     inherited: &[(String, Arc<Vec<Entry>>)],
 ) -> Option<String> {
     use sha2::Digest;
@@ -1488,7 +1537,6 @@ fn task_cache_key(
         workspace: ws,
         inputs: &spec.inputs,
     };
-    let snapshot = &workspace.snapshot;
     let mut hash = sha2::Sha256::new();
     let add_file = |hash: &mut sha2::Sha256, label: &str, content: &[u8]| {
         hash.update(label.as_bytes());

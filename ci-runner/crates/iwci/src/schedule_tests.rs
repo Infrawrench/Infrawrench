@@ -5,6 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct FakeWorkspaces {
     builds: AtomicUsize,
+    /// Builds that installed dependencies, not just checked out.
+    installs: AtomicUsize,
     fail: bool,
     /// What the commit's `src/a.ts` holds.
     source: &'static str,
@@ -13,6 +15,9 @@ struct FakeWorkspaces {
 impl Workspaces for FakeWorkspaces {
     fn build(&self, spec: &WorkspaceSpec) -> Result<BuiltWorkspace, String> {
         self.builds.fetch_add(1, Ordering::SeqCst);
+        if !spec.deps.is_empty() {
+            self.installs.fetch_add(1, Ordering::SeqCst);
+        }
         if self.fail {
             return Err("lockfile missing".into());
         }
@@ -243,6 +248,7 @@ fn run_full(
 ) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
         fail: fail_ws,
         source: "a",
     };
@@ -655,6 +661,7 @@ fn runs_share_the_runners_slots() {
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
         fail: false,
         source: "a",
     };
@@ -720,6 +727,7 @@ fn logs_stream_lines_and_job_events_in_order() {
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
         fail: false,
         source: "a",
     };
@@ -921,8 +929,19 @@ fn run_cached(
     caches: &Arc<MemoryCaches>,
     source: &'static str,
 ) -> (RunReport, Vec<String>) {
+    let (report, ran, _) = run_cached_installs(plan, caches, source);
+    (report, ran)
+}
+
+/// [`run_cached`], plus how many workspace builds installed dependencies.
+fn run_cached_installs(
+    plan: &Plan,
+    caches: &Arc<MemoryCaches>,
+    source: &'static str,
+) -> (RunReport, Vec<String>, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
         fail: false,
         source,
     };
@@ -952,7 +971,7 @@ fn run_cached(
         &options,
     );
     let ran = ran(&exec);
-    (report, ran)
+    (report, ran, ws.installs.load(Ordering::SeqCst))
 }
 
 fn cached(report: &RunReport, id: &str) -> bool {
@@ -1060,4 +1079,21 @@ fn failures_are_not_cached() {
     assert_eq!(ran, ["t"]);
     assert!(!again.passed());
     assert!(store.saved.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_run_whose_jobs_all_hit_installs_nothing() {
+    let p = plan(
+        "name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  a:\n    using: builtin:print@1\n    task-cache: true\n  b:\n    using: builtin:print@1\n    needs: [a]\n    task-cache: true\n",
+    );
+    let store = Arc::new(MemoryCaches::default());
+    let (_, _, installs) = run_cached_installs(&p, &store, "a");
+    assert_eq!(installs, 1, "the first run installs once for both jobs");
+    let (report, ran, installs) = run_cached_installs(&p, &store, "a");
+    assert!(report.passed() && ran.is_empty(), "{ran:?}");
+    assert_eq!(
+        installs, 0,
+        "every job hit, so the workspace was never built"
+    );
+    assert!(report.installs.is_empty());
 }
