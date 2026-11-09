@@ -62,9 +62,13 @@ jobs:
 
   # Each library's JavaScript, as `pnpm build` writes it, for the tests of
   # the packages that use it. Declarations are `build`'s.
+  # Each waits for the libraries it depends on, though tsdown does not read
+  # them: that is what hands every library's dist/ down the whole chain, so
+  # a test two levels up still has plugin-base's.
   bundle:
     name: Bundle ${{ package.name }}
     packages: { scripts: { build: "tsdown*" } }
+    needs: ["^bundle"]
     using: env:bash-node@24
     run: node node_modules/tsdown/dist/run.mjs --no-dts
     artifacts: [dist]
@@ -75,9 +79,36 @@ jobs:
   # Each package's `test` script, with the JavaScript of everything it
   # depends on. The runner's installer writes no node_modules/.bin, so
   # `vitest` in the script runs as its entry point.
+  #
+  # These packages' tests stay on GitHub Actions (test.yml runs every
+  # package's either way):
+  # - native code with no WASI build: web and desktop (Vite 6 loads
+  #   Rollup's native binary), bastion-agent (esbuild), turso (a Neon
+  #   addon);
+  # - tests that run host tools: ssh-tunnel-core (ssh-keygen), plugingen
+  #   (git), tailscale (a shell and file modes);
+  # - where the runner's Node still differs from Node's: auth0
+  #   (CompressionStream on empty input, #940), ui (a fork worker that
+  #   exits), and crusoe, wasabi, server-core and poller (tests that time
+  #   out on it).
   test:
     name: Test ${{ package.name }}
-    packages: { scripts: { test: "*vitest run*" } }
+    packages:
+      scripts: { test: "*vitest run*" }
+      only:
+        - "!app/packages/web"
+        - "!app/packages/desktop"
+        - "!app/packages/bastion-agent"
+        - "!plugin-architecture/packages/turso"
+        - "!plugin-architecture/packages/ssh-tunnel-core"
+        - "!plugingen"
+        - "!plugin-architecture/packages/tailscale"
+        - "!plugin-architecture/packages/auth0"
+        - "!app/packages/ui"
+        - "!plugin-architecture/packages/crusoe"
+        - "!plugin-architecture/packages/wasabi"
+        - "!app/packages/server-core"
+        - "!app/packages/poller"
     needs: [prep, bundle, "^bundle"]
     using: env:bash-node@24
     run: |
