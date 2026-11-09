@@ -208,9 +208,12 @@ jobs:
       node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "y" + i }); console.log(k.length)'
   # Another job's spinning script must not hold this one up: Node jobs once
   # took turns behind the bridge's process-wide lock, so this `node`, started
-  # while spin-fails runs for 10s, could not begin until it was stopped.
+  # while spin-fails runs for 10s, could not begin until it was stopped. Both
+  # wait for node-passes, which compiles Edge.js: on a fresh runner that
+  # takes most of the 6s, which would time this out whatever the lock does.
   not-held-up-passes:
     using: env:bash-node@24
+    needs: [node-passes]
     timeout: 6s
     run: |
       sleep 2
@@ -218,6 +221,7 @@ jobs:
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
+    needs: [node-passes]
     timeout: 10s
     run: |
       node -e 'for (;;) {}'
