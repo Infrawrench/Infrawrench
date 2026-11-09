@@ -41,12 +41,13 @@ export function renderHomeMarkdown(site: URL | undefined): string {
 
   return `# Infrawrench
 
-Every cloud you run on, in one window. Connect any of ${PROVIDER_COUNT_COPY} providers, from
+Every cloud you run on, one platform. Connect any of ${PROVIDER_COUNT_COPY} providers, from
 AWS, GCP, Azure and Kubernetes to Hetzner, Cloudflare and Supabase, then browse
-resources, SSH in, query databases, watch costs and create infrastructure from
-typed forms, without opening a single provider console.
+resources, SSH in, query databases, watch costs, go on call and create
+infrastructure from typed forms, without opening a single provider console.
 
-Available as a web app, a desktop app (macOS, Windows, Linux) and a CLI.
+Available as a web app, a desktop app (macOS, Windows, Linux), iOS and Android
+apps and a CLI.
 
 ---
 
