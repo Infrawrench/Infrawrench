@@ -76,7 +76,8 @@ impl Executor<String> for FakeExecutor {
             .unwrap()
             .insert(inv.job.id.clone(), inv.env.clone());
         let mut exit_code = 0;
-        if tool.contains(":fail@") {
+        // `-fail` makes any tool exit 1 after doing its work.
+        if tool.contains(":fail@") || tool.contains("-fail@") {
             exit_code = 1;
         }
         if tool.contains(":write@") {
@@ -109,6 +110,37 @@ impl Executor<String> for FakeExecutor {
             for (k, v) in &inv.env {
                 stdout.push_str(&format!("{k}={v}\n"));
             }
+        }
+        if tool.contains(":art-write") {
+            let name: String = inv
+                .job
+                .id
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            inv.fs
+                .write(format!("/app/dist/{name}.txt"), inv.job.id.as_bytes())
+                .unwrap();
+        }
+        if tool.contains(":art-big@") {
+            inv.fs
+                .write("/app/dist/big.bin", &vec![1u8; 20 << 20])
+                .unwrap();
+        }
+        if tool.contains(":art-read@") {
+            let mut names: Vec<String> = inv
+                .fs
+                .entries_under(&["/app/dist"])
+                .into_iter()
+                .filter_map(|e| match e {
+                    iwci_vfs::Entry::File { path, .. } => {
+                        Some(path.file_name().unwrap().to_string_lossy().into_owned())
+                    }
+                    _ => None,
+                })
+                .collect();
+            names.sort();
+            stdout.push_str(&names.join(","));
         }
         if tool.contains(":scratch-write@") {
             inv.scratch
@@ -765,5 +797,65 @@ fn tools_are_resolved_and_handed_to_the_executor() {
     );
     assert!(
         matches!(status(&report, "b"), Status::Error { message } if message.contains("repo:missing@1"))
+    );
+}
+
+fn stdout_of(report: &RunReport, id: &str) -> String {
+    report
+        .jobs
+        .iter()
+        .find(|j| j.id == id)
+        .and_then(|j| j.execution.as_ref())
+        .map(|e| e.stdout.clone())
+        .unwrap_or_default()
+}
+
+fn notes_of(report: &RunReport, id: &str) -> Vec<String> {
+    report
+        .jobs
+        .iter()
+        .find(|j| j.id == id)
+        .unwrap()
+        .notes
+        .clone()
+}
+
+#[test]
+fn artifacts_reach_every_job_that_needs_them_and_are_not_its_changes() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    matrix: [a, b]\n    using: builtin:art-write@1\n    artifacts: [dist]\n  mid:\n    using: builtin:art-write@1\n    needs: [lib]\n    artifacts: [dist]\n  check:\n    using: builtin:art-read@1\n    needs: [mid]\n    changes: fail\n  alone:\n    using: builtin:art-read@1\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    // Through `mid`, `check` also gets `lib`'s files, both matrix entries'.
+    assert_eq!(stdout_of(&report, "check"), "lib_a_.txt,lib_b_.txt,mid.txt");
+    // And `mid` keeps only what it wrote, not what it was handed.
+    assert!(notes_of(&report, "mid").contains(&"artifacts: kept 1 file(s), 1 KiB".to_string()));
+    assert!(notes_of(&report, "check").contains(&"artifacts: 2 file(s) from `lib`".to_string()));
+    // A job that needs nothing sees nothing.
+    assert_eq!(stdout_of(&report, "alone"), "");
+}
+
+#[test]
+fn a_failed_job_hands_on_nothing() {
+    let p = plan(
+        "name: x\njobs:\n  build:\n    using: builtin:art-write-fail@1\n    artifacts: [dist]\n  report:\n    using: builtin:art-read@1\n    needs: [build]\n    if: always()\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(matches!(status(&report, "build"), Status::Failed { .. }));
+    assert_eq!(status(&report, "report"), &Status::Passed);
+    assert_eq!(stdout_of(&report, "report"), "");
+}
+
+#[test]
+fn artifacts_are_held_to_the_runs_scratch_limit() {
+    let p = plan(
+        "name: x\nscratch: 16MiB\njobs:\n  build:\n    using: builtin:art-big@1\n    artifacts: [dist]\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(
+        matches!(status(&report, "build"), Status::Failed { reason } if reason.contains("past its `scratch:` limit of 16 MiB")),
+        "{:?}",
+        status(&report, "build")
     );
 }

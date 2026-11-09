@@ -326,6 +326,10 @@ pub struct PlannedJob {
     pub memory_bytes: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
+    /// `artifacts:`: absolute, normalised guest paths whose files are handed
+    /// to the jobs that need this one once it passes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<String>,
 }
 
 /// An `env:` value with secrets in it: text (already substituted) and

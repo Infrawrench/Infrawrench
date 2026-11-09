@@ -89,6 +89,8 @@ pub const DEFAULT_CLONE_INTO: &str = "/app";
 
 /// The most `cache:` entries one job may have.
 pub const MAX_CACHES: usize = 16;
+/// The most paths one job's `artifacts:` may list.
+pub const MAX_ARTIFACT_PATHS: usize = 64;
 
 /// Fills in every `${{ hashFiles('glob', ...) }}` left in a cache key, with
 /// `hash` turning a list of globs (relative to the clone) into a digest.
@@ -997,6 +999,20 @@ impl Validator<'_> {
                 );
             }
         }
+        if job.artifacts.len() > MAX_ARTIFACT_PATHS
+            || job.artifacts.iter().any(|p| p.trim().is_empty())
+        {
+            self.error(
+                format!("{path}.artifacts"),
+                format!("takes up to {MAX_ARTIFACT_PATHS} non-empty paths"),
+            );
+        }
+        if workspace.clone.is_none() && job.artifacts.iter().any(|p| !p.starts_with('/')) {
+            self.error(
+                format!("{path}.artifacts"),
+                "a job without a clone can only keep absolute paths",
+            );
+        }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
             self.error(
@@ -1157,6 +1173,44 @@ impl Validator<'_> {
                 }
             }
             let clone_root = workspace.clone.as_ref().map(|c| c.into.clone());
+            // A `cache:` or `artifacts:` path: substituted, then relative to
+            // the clone or absolute, without `..`, and never the runner's own.
+            let guest_path = |field: &str, p: &str, what: &str| -> Option<String> {
+                let p = sub(field, p);
+                let resolved = if p.starts_with('/') {
+                    normalise_abs(&p)
+                } else {
+                    clone_root
+                        .as_deref()
+                        .and_then(|root| join_relative(root, &p))
+                };
+                match resolved {
+                    Some(r)
+                        if r == "/"
+                            || r.starts_with("/iwci")
+                            || r == "/dev"
+                            || r.starts_with("/dev/") =>
+                    {
+                        report(field, format!("`{p}` is not a path a job can {what}"));
+                        None
+                    }
+                    Some(r) => Some(r),
+                    None => {
+                        report(
+                            field,
+                            format!(
+                                "`{p}` must be relative to the clone or absolute, without `..`"
+                            ),
+                        );
+                        None
+                    }
+                }
+            };
+            let artifacts: Vec<String> = job
+                .artifacts
+                .iter()
+                .filter_map(|p| guest_path("artifacts", p, "keep"))
+                .collect();
             let caches: Vec<CacheSpec> = job
                 .cache
                 .as_ref()
@@ -1176,30 +1230,13 @@ impl Validator<'_> {
                     let paths = entry
                         .paths
                         .iter()
-                        .filter_map(|p| {
-                            let p = sub(&format!("cache[{i}].paths"), p);
-                            let resolved = if p.starts_with('/') {
-                                normalise_abs(&p)
-                            } else {
-                                clone_root.as_deref().and_then(|root| join_relative(root, &p))
-                            };
-                            match resolved {
-                                Some(r) if r == "/" || r.starts_with("/iwci") || r == "/dev" || r.starts_with("/dev/") => {
-                                    report(&format!("cache[{i}].paths"), format!("`{p}` is not a path a job can cache"));
-                                    None
-                                }
-                                Some(r) => Some(r),
-                                None => {
-                                    report(
-                                        &format!("cache[{i}].paths"),
-                                        format!("`{p}` must be relative to the clone or absolute, without `..`"),
-                                    );
-                                    None
-                                }
-                            }
-                        })
+                        .filter_map(|p| guest_path(&format!("cache[{i}].paths"), p, "cache"))
                         .collect();
-                    CacheSpec { key, restore_keys, paths }
+                    CacheSpec {
+                        key,
+                        restore_keys,
+                        paths,
+                    }
                 })
                 .collect();
             deferred |= scope.deferred.get();
@@ -1260,6 +1297,7 @@ impl Validator<'_> {
                     timeout: std::time::Duration::from_secs(st.timeout),
                     memory_bytes: st.memory,
                     caches,
+                    artifacts,
                 });
             }
         }
