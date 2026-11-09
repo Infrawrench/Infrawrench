@@ -206,6 +206,15 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "y" + i }); console.log(k.length)'
+  # Another job's spinning script must not hold this one up: Node jobs once
+  # took turns behind the bridge's process-wide lock, so this `node`, started
+  # while spin-fails runs for 10s, could not begin until it was stopped.
+  not-held-up-passes:
+    using: env:bash-node@24
+    timeout: 6s
+    run: |
+      sleep 2
+      node -e 'console.log("not held up")'
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
