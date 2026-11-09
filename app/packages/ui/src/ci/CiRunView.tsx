@@ -201,7 +201,10 @@ function Sidebar({
     );
   };
   return (
-    <nav aria-label={gt("Jobs")} className="w-full shrink-0 lg:sticky lg:top-0 lg:w-64">
+    <nav
+      aria-label={gt("Jobs")}
+      className="w-full shrink-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-72 lg:self-start lg:overflow-y-auto"
+    >
       <button
         type="button"
         onClick={() => onSelect(null)}
@@ -217,7 +220,7 @@ function Sidebar({
       <p className="mt-3 px-2 text-[11px] font-medium uppercase text-on-surface-faint">
         {gt("All jobs")}
       </p>
-      <div className="mt-1 max-h-[70vh] overflow-y-auto">
+      <div className="mt-1">
         {pipelines.map((pipeline) => {
           const groups = new Map<string, GraphJob[]>();
           for (const job of pipeline.jobs) {

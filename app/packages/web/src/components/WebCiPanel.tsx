@@ -16,7 +16,8 @@ export function WebCiPanel({
   const { has } = usePermissions();
   const client = useMemo(() => createWebCiClient(orgId), [orgId]);
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    // A run uses the tab's whole width: its graph needs it.
+    <div className={runId ? "p-6" : "p-6 max-w-6xl mx-auto"}>
       <CiPanel
         key={orgId}
         client={client}
