@@ -36,6 +36,8 @@ impl Server {
             // Variables only decide what a run does, not which pipelines
             // have schedules.
             vars: Default::default(),
+            // Which packages a job runs in does not decide its schedule.
+            packages: Default::default(),
         };
         let mut pipelines = Vec::new();
         let mut problems = Vec::new();

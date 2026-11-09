@@ -33,6 +33,78 @@ pub(crate) fn check_filter(pattern: &str) -> Result<(), String> {
         .map_err(|e| format!("`{pattern}`: {e}"))
 }
 
+/// A filter's patterns compiled once, for matching many paths.
+#[derive(Debug, Clone)]
+pub struct PathFilter {
+    starts_included: bool,
+    patterns: Vec<(bool, globset::GlobMatcher)>,
+}
+
+impl PathFilter {
+    /// Patterns that do not compile are left out; validation has already
+    /// reported them.
+    pub fn new(patterns: &[String]) -> Self {
+        Self {
+            starts_included: patterns.first().is_some_and(|p| p.starts_with('!')),
+            patterns: patterns
+                .iter()
+                .filter_map(|p| {
+                    let (negated, body) = match p.strip_prefix('!') {
+                        Some(body) => (true, body),
+                        None => (false, p.as_str()),
+                    };
+                    compile(body).ok().map(|m| (negated, m))
+                })
+                .collect(),
+        }
+    }
+
+    pub fn matches(&self, candidate: &str) -> bool {
+        let mut included = self.starts_included;
+        for (negated, m) in &self.patterns {
+            if m.is_match(candidate) {
+                included = !negated;
+            }
+        }
+        included
+    }
+
+    /// Where the paths the filter lets through can be, relative to the
+    /// root: the directories to walk (the literal leading segments of each
+    /// including pattern with a wildcard; `""` is the root) and single files
+    /// (including patterns without a wildcard). Everything when the filter
+    /// starts from everything.
+    pub fn bases(&self, patterns: &[String]) -> (Vec<String>, Vec<String>) {
+        if self.starts_included {
+            return (vec![String::new()], Vec::new());
+        }
+        let mut dirs: Vec<String> = Vec::new();
+        let mut files: Vec<String> = Vec::new();
+        for p in patterns.iter().filter(|p| !p.starts_with('!')) {
+            let segments: Vec<&str> = p.split('/').collect();
+            let literal = segments
+                .iter()
+                .take_while(|s| !s.contains(['*', '?', '[', '{', '\\']))
+                .count();
+            if literal == segments.len() {
+                files.push(p.clone());
+            } else {
+                dirs.push(segments[..literal].join("/"));
+            }
+        }
+        dirs.sort();
+        dirs.dedup();
+        let all = dirs.clone();
+        dirs.retain(|b| {
+            !all.iter()
+                .any(|o| o != b && (o.is_empty() || b.starts_with(&format!("{o}/"))))
+        });
+        files.sort();
+        files.dedup();
+        (dirs, files)
+    }
+}
+
 /// Whether a filter's patterns let `candidate` through.
 pub(crate) fn filter_matches(patterns: &[String], candidate: &str) -> bool {
     let mut included = patterns.first().is_some_and(|p| p.starts_with('!'));

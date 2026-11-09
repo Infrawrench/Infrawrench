@@ -319,6 +319,14 @@ async function retryLater(row: CiRunRow, reason: string): Promise<void> {
     .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")));
 }
 
+/**
+ * What a job the runner's task cache stood in for says, in place of a
+ * reason: it passed without running, because nothing it reads changed since
+ * a run that passed. Carried in `reason` so every client that shows one
+ * (the CI tab, the GitHub check) shows it, with no change to the job's shape.
+ */
+export const CACHED_REASON = "Cached: nothing it reads changed since a run that passed";
+
 /** The jobs of a finished run, with or without their output. */
 export function jobsOf(run: ProxyRun, withOutput: true): CiJobOutput[];
 export function jobsOf(run: ProxyRun, withOutput: false): CiJobSummary[];
@@ -347,7 +355,7 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
         id: job.id ?? "",
         name: job.name ?? job.id ?? "",
         status,
-        reason: job.reason ?? job.message ?? null,
+        reason: job.reason ?? job.message ?? (job.cached === true ? CACHED_REASON : null),
         durationMs: typeof job.duration_ms === "number" ? job.duration_ms : null,
       };
       out.push(
@@ -413,6 +421,7 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
   const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
   // No pipeline matched this event (a push to a branch when `on.push` only
   // names main): skipped, not a green pass for code nothing checked.
   if (passed && jobs.length === 0) {
@@ -429,7 +438,9 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     status: "completed",
     conclusion: passed ? "success" : "failure",
     title: passed
-      ? `${jobs.length} job(s) passed`
+      ? cachedCount > 0
+        ? `${jobs.length} job(s) passed, ${cachedCount} from the task cache`
+        : `${jobs.length} job(s) passed`
       : `${failedCount} of ${jobs.length} job(s) failed`,
     summary: checkSummary(jobs),
   });

@@ -142,28 +142,30 @@ everything through.
 
 ### Jobs
 
-| Key         | Meaning                                                                                                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`     | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                            |
-| `args`      | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                               |
-| `run`       | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
-| `name`      | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
-| `matrix`    | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
-| `cwd`       | Working directory in the isolate. Defaults to the clone.                                                                                                                       |
-| `env`       | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
-| `clone`     | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
-| `deps`      | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
-| `changes`   | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                      |
-| `needs`     | Jobs that must finish first. Naming a matrix job waits for all of its entries.                                                                                                 |
-| `if`        | When the job runs, given how its `needs` went. See below.                                                                                                                      |
-| `outputs`   | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
-| `paths`     | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
-| `timeout`   | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
-| `memory`    | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
-| `cache`     | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
-| `tools`     | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
-| `network`   | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                          |
-| `artifacts` | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                   |
+| Key          | Meaning                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `using`      | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                            |
+| `args`       | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                               |
+| `run`        | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
+| `name`       | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
+| `matrix`     | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
+| `cwd`        | Working directory in the isolate. Defaults to the clone.                                                                                                                       |
+| `env`        | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
+| `clone`      | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
+| `deps`       | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
+| `changes`    | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                      |
+| `needs`      | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.           |
+| `if`         | When the job runs, given how its `needs` went. See below.                                                                                                                      |
+| `outputs`    | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
+| `paths`      | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
+| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
+| `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
+| `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
+| `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
+| `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                          |
+| `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                   |
+| `packages`   | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                   |
+| `task-cache` | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                 |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
@@ -243,6 +245,99 @@ jobs:
   `memory:`.
 - Everything kept lives in memory until the run ends and counts toward the
   run's `scratch:` limit; a job whose artifacts would pass it fails.
+
+### Workspace packages
+
+`packages:` makes one job per package of the repository's JavaScript
+workspace, the way Turborepo runs a task in every package:
+
+```yaml
+jobs:
+  build:
+    packages: { scripts: { build: "tsdown*" } }
+    needs: ["^build"] # each package's dependencies first
+    using: builtin:typescript@7.1
+    args: [--emitDeclarationOnly, --outDir, dist]
+    artifacts: [dist] # relative to the package
+    task-cache: true
+
+  check:
+    packages: { has: [tsconfig.json], scripts: { build: "!tsdown*" } }
+    needs: ["^build"]
+    using: builtin:typescript@7.1
+    args: [--noEmit]
+```
+
+- The packages are the directories `pnpm-workspace.yaml` lists, or, without
+  it, the root `package.json`'s `workspaces` (npm, Yarn, Bun); never the
+  root package or anything under `node_modules` or a hidden directory. A
+  dependency is a workspace dependency when its name is another package's
+  (`dependencies`, `devDependencies`, `optionalDependencies`,
+  `peerDependencies`), whatever version it asks for.
+- `packages: true` is every package. A filter narrows it: `only:` globs
+  over each package's directory or name (`app/*`, `@scope/*`, `!` excludes,
+  read in order), `has:` names that must be directly in its directory,
+  `has-script:` scripts it must define, and `scripts:` a glob its command
+  must match (`*` crosses `/`; `!` selects a script that does not match or
+  is missing).
+- Each package's job is keyed `<job>[<package dir>]`, runs in the
+  package's directory, reads `${{ package.dir }}` (relative to the clone)
+  and `${{ package.name }}`, and resolves relative `artifacts`, `cache`
+  paths and `task-cache` inputs against the package. `paths:` globs stay
+  relative to the clone, since they filter the commit's changed paths.
+- In a `packages:` job, `needs: ["^build"]` waits for `build` in each
+  package this one depends on; a dependency without one (filtered out) is
+  looked through to its own dependencies. `needs: [build]` there means the
+  same package's `build`. Any other job naming a `packages:` job waits for
+  all of its packages, so `needs: [build]` on a plain job gets every
+  package's artifacts. A dependency cycle among packages is an error.
+- A `packages:` job cannot have a `matrix:`, `outputs:` or
+  `changes: commit`, and `${{ needs.<job> }}` cannot read one (it has a
+  result per package). `iwci plan` expands it over the workspace of the
+  checkout the file is in; outside one, `iwci validate` checks it against a
+  placeholder package.
+
+### The task cache
+
+`task-cache:` skips a job whose inputs have not changed since a run of it
+passed, handing on that run's artifacts, outputs and log as if it had run
+again. With `packages:` and `^` needs it is what makes a monorepo's CI only
+recheck what a change can affect:
+
+```yaml
+task-cache: true # every file of the package (or the clone)
+task-cache:
+  inputs: [src/**, tsconfig.json, "!src/**/*.test.ts"]
+  root-inputs: [tsconfig.base.json] # relative to the clone
+```
+
+- **The key** is a hash of the job's definition (tool and version,
+  arguments or script, `env:`, `cwd`, `tools:`, `artifacts:`, `outputs:`,
+  `network:`, `changes:`), its workspace's settings and lockfiles
+  (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `go.mod`, `go.sum`,
+  `Cargo.lock`), the files its inputs match as the commit has them, and the
+  bytes of every artifact it is handed. A job downstream of one that
+  changed is handed different files, so its key changes too; one whose
+  upstream rebuilt the same files is not.
+- **Inputs** are filter globs (`!` excludes, read in order), relative to
+  the package or, for a job without `packages:`, the clone. The default is
+  every file there. `node_modules` and `.git` are never read; the lockfile
+  stands for what was installed. Files a job reads that its inputs leave
+  out are not in the key: name them, or the job can be skipped when they
+  change.
+- **On a hit** the job does not run, start a tool or take memory: it
+  passes, its report says `cached` and replays the log of the run it stands
+  for, its `outputs:` read as that run wrote them, and its artifacts reach
+  the jobs that need it. It is not billed. Keys read the bare checkout, so
+  a run whose jobs all hit never installs its workspace's dependencies.
+- **On a miss** it runs as usual, and after it passes its kept artifacts,
+  outputs and log are saved under the key. Failures are never cached.
+- Entries are kept with the [job caches](#job-caches), scoped and counted
+  the same way: a pull request's entries are never read by a push to the
+  default branch.
+- A job that reads secrets or commits its changes cannot be task-cached:
+  its result could depend on what the key cannot hold. Nor should one that
+  reads the run's shared `/tmp/workflow`, which is not part of its key.
 
 ### Outputs, dynamic matrices and `if:`
 

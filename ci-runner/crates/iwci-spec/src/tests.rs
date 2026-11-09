@@ -7,6 +7,7 @@ fn ctx() -> Context {
         repo_id: "repo_1".into(),
         event: Event::Push,
         vars: Default::default(),
+        packages: PackagesSource::Unknown,
     }
 }
 
@@ -990,4 +991,328 @@ fn jobs_reach_the_internet_unless_they_turn_it_off() {
     .unwrap();
     assert!(plan.job("online").unwrap().network);
     assert!(!plan.job("offline").unwrap().network);
+}
+
+// `packages:` jobs.
+
+fn workspace() -> Context {
+    use std::collections::BTreeSet;
+    let pkg = |dir: &str, name: &str, deps: &[&str], entries: &[&str], scripts: &[&str]| {
+        workspace::Package {
+            dir: dir.into(),
+            name: name.into(),
+            deps: deps.iter().map(|d| d.to_string()).collect(),
+            entries: entries
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<BTreeSet<_>>(),
+            scripts: scripts
+                .iter()
+                .map(|e| match e.split_once('=') {
+                    Some((k, v)) => (k.to_string(), v.to_string()),
+                    None => (e.to_string(), String::new()),
+                })
+                .collect(),
+        }
+    };
+    // web -> ui -> types (no tsconfig) -> core
+    let ws = workspace::WorkspacePackages {
+        packages: vec![
+            pkg(
+                "apps/web",
+                "web",
+                &["libs/ui"],
+                &["tsconfig.json"],
+                &["typecheck=tsc --noEmit", "build=vite build"],
+            ),
+            pkg(
+                "libs/core",
+                "@x/core",
+                &[],
+                &["tsconfig.json"],
+                &["build=tsdown"],
+            ),
+            pkg("libs/types", "@x/types", &["libs/core"], &[], &[]),
+            pkg(
+                "libs/ui",
+                "@x/ui",
+                &["libs/types", "libs/core"],
+                &["tsconfig.json"],
+                &["build=tsdown --dts"],
+            ),
+        ],
+    };
+    Context {
+        packages: PackagesSource::Found(std::sync::Arc::new(ws)),
+        ..ctx()
+    }
+}
+
+fn template<'a>(plan: &'a Plan, key: &str) -> &'a JobTemplate {
+    plan.template(key).unwrap_or_else(|| {
+        panic!(
+            "no `{key}` in {:?}",
+            plan.jobs.iter().map(|t| &t.key).collect::<Vec<_>>()
+        )
+    })
+}
+
+#[test]
+fn packages_jobs_follow_the_dependency_graph() {
+    let plan = parse(
+        r#"
+name: ts
+jobs:
+  build:
+    using: builtin:typescript@7.1
+    packages: { has: [tsconfig.json], only: ["libs/*"] }
+    needs: ["^build"]
+    args: [-p, "${{ package.dir }}", --name, "${{ package.name }}"]
+    artifacts: [dist]
+    task-cache: { root-inputs: [tsconfig.base.json] }
+  check:
+    using: builtin:typescript@7.1
+    packages: { has-script: [typecheck] }
+    needs: ["^build"]
+    args: [--noEmit]
+  lint:
+    using: builtin:typescript@7.1
+    packages: true
+    needs: [build]
+    args: []
+  report:
+    using: builtin:typescript@7.1
+    needs: [build, check]
+    args: []
+"#,
+        &workspace(),
+    )
+    .unwrap();
+    let keys: Vec<&str> = plan.jobs.iter().map(|t| t.key.as_str()).collect();
+    assert_eq!(
+        keys,
+        [
+            "build[libs/core]",
+            "build[libs/ui]",
+            "check[apps/web]",
+            "lint[apps/web]",
+            "lint[libs/core]",
+            "lint[libs/types]",
+            "lint[libs/ui]",
+            "report"
+        ]
+    );
+    assert!(template(&plan, "build[libs/core]").needs.is_empty());
+    assert_eq!(
+        template(&plan, "build[libs/ui]").needs,
+        ["build[libs/core]"],
+        "libs/types has no build, so ui waits for what types depends on"
+    );
+    assert_eq!(template(&plan, "check[apps/web]").needs, ["build[libs/ui]"]);
+    assert_eq!(template(&plan, "lint[libs/ui]").needs, ["build[libs/ui]"]);
+    assert!(
+        template(&plan, "lint[apps/web]").needs.is_empty(),
+        "web has no build of its own"
+    );
+    assert_eq!(
+        template(&plan, "report").needs,
+        ["build[libs/core]", "build[libs/ui]", "check[apps/web]"]
+    );
+
+    let ui = plan.job("build[libs/ui]").unwrap();
+    assert_eq!(ui.display_name, "build (libs/ui)");
+    assert_eq!(ui.cwd, "/app/libs/ui");
+    assert_eq!(ui.artifacts, ["/app/libs/ui/dist"]);
+    assert_eq!(
+        ui.action,
+        Action::Args {
+            args: vec![
+                "-p".into(),
+                "libs/ui".into(),
+                "--name".into(),
+                "@x/ui".into()
+            ]
+        }
+    );
+    assert_eq!(ui.package.as_ref().map(|p| p.job.as_str()), Some("build"));
+    assert_eq!(
+        ui.task_cache.as_ref().unwrap().inputs,
+        ["libs/ui/**", "tsconfig.base.json"]
+    );
+    assert!(plan.job("report").unwrap().task_cache.is_none());
+}
+
+#[test]
+fn package_inputs_are_relative_to_the_package() {
+    let plan = parse(
+        r#"
+name: ts
+jobs:
+  build:
+    using: builtin:typescript@7.1
+    packages: { only: ["@x/core"] }
+    args: []
+    task-cache: { inputs: ["src/**", "!src/**/*.test.ts"] }
+  all:
+    using: builtin:typescript@7.1
+    args: []
+    task-cache: true
+"#,
+        &workspace(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.job("build[libs/core]")
+            .unwrap()
+            .task_cache
+            .as_ref()
+            .unwrap()
+            .inputs,
+        ["libs/core/src/**", "!libs/core/src/**/*.test.ts"],
+        "a name selects too, and exclusions keep their `!`"
+    );
+    assert_eq!(
+        plan.job("all").unwrap().task_cache.as_ref().unwrap().inputs,
+        ["**"]
+    );
+}
+
+#[test]
+fn packages_can_be_chosen_by_a_scripts_command() {
+    let plan = parse(
+        r#"
+name: ts
+jobs:
+  lib:
+    using: builtin:typescript@7.1
+    packages: { scripts: { build: "tsdown*" } }
+    args: []
+  app:
+    using: builtin:typescript@7.1
+    packages: { scripts: { build: "!tsdown*" } }
+    args: []
+"#,
+        &workspace(),
+    )
+    .unwrap();
+    assert_eq!(
+        ids(&plan),
+        [
+            "lib[libs/core]",
+            "lib[libs/ui]",
+            "app[apps/web]",
+            "app[libs/types]"
+        ]
+    );
+}
+
+#[test]
+fn packages_without_a_known_repository_use_a_placeholder() {
+    let plan = parse(
+        r#"
+name: ts
+jobs:
+  build:
+    using: builtin:typescript@7.1
+    packages: { has: [tsconfig.json] }
+    needs: ["^build"]
+    args: ["${{ package.dir }}"]
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        ids(&plan),
+        [format!("build[{}]", packages::PLACEHOLDER_DIR)]
+    );
+}
+
+#[test]
+fn packages_mistakes_are_named() {
+    let with = |yaml: &str, needle: &str| {
+        let errs = match parse(yaml, &workspace()) {
+            Ok(_) => panic!("expected errors for {yaml}"),
+            Err(e) => {
+                e.0.into_iter()
+                    .map(|e| format!("{}: {}", e.path, e.message))
+                    .collect::<Vec<_>>()
+            }
+        };
+        assert!(
+            errs.iter().any(|e| e.contains(needle)),
+            "no {needle:?} in {errs:#?}"
+        );
+    };
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], needs: ['^a'] }\n",
+        "only means something in a job with `packages:`",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true, matrix: [1, 2] }\n",
+        "cannot have a matrix",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true, outputs: [o] }\n",
+        "cannot declare outputs",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true }\n  b: { using: builtin:t@1, args: [], needs: [a], if: \"needs.a.result == 'success'\" }\n",
+        "has a result per package",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true, needs: ['^b'] }\n  b: { using: builtin:t@1, args: [] }\n",
+        "needs a job with `packages:` named `b`",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: ['${{ package.dir }}'] }\n",
+        "only exists in a job with `packages:`",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: ['${{ package.version }}'], packages: true }\n",
+        "not `package.version`",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: env:bash@5, run: 'true', task-cache: true, env: { T: '${{ secrets.T }}' } }\n",
+        "reads secrets cannot be task-cached",
+    );
+    with(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], task-cache: { inputs: ['../x'] } }\n",
+        "inside the clone",
+    );
+    let missing = Context {
+        packages: PackagesSource::Missing,
+        ..ctx()
+    };
+    let errs = parse(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true }\n",
+        &missing,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(errs.contains("declares no workspace"), "{errs}");
+}
+
+#[test]
+fn a_package_dependency_cycle_is_reported() {
+    use std::collections::BTreeSet;
+    let pkg = |dir: &str, deps: &[&str]| workspace::Package {
+        dir: dir.into(),
+        name: dir.into(),
+        deps: deps.iter().map(|d| d.to_string()).collect(),
+        entries: BTreeSet::new(),
+        scripts: Default::default(),
+    };
+    let ctx = Context {
+        packages: PackagesSource::Found(std::sync::Arc::new(workspace::WorkspacePackages {
+            packages: vec![pkg("a", &["b"]), pkg("b", &["a"])],
+        })),
+        ..ctx()
+    };
+    let errs = parse(
+        "name: x\njobs:\n  build: { using: builtin:t@1, args: [], packages: true, needs: ['^build'] }\n",
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(errs.contains("forms a cycle"), "{errs}");
 }

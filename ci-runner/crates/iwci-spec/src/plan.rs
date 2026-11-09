@@ -116,8 +116,29 @@ pub struct JobTemplate {
     pub tools: Vec<ToolRef>,
     /// The expanded jobs, or `None` when they depend on `needs` outputs.
     pub instances: Option<Vec<PlannedJob>>,
+    /// The workspace package of a job a `packages:` job became.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<PackageRef>,
     #[serde(skip)]
     pub(crate) raw: Option<crate::raw::Job>,
+}
+
+/// Which workspace package a job runs for, when a `packages:` job made it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageRef {
+    /// The `packages:` job's own key.
+    pub job: String,
+    /// Relative to the clone.
+    pub dir: String,
+    pub name: String,
+}
+
+/// What a `task-cache:` job's key reads from the commit, besides the job
+/// itself and the artifacts it is handed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TaskCacheSpec {
+    /// Filter globs relative to the clone (`!` excludes, in order).
+    pub inputs: Vec<String>,
 }
 
 impl JobTemplate {
@@ -334,6 +355,12 @@ pub struct PlannedJob {
     /// to the jobs that need this one once it passes.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<PackageRef>,
+    /// `task-cache:`: skipped, with what a passing run kept, when nothing
+    /// it reads has changed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_cache: Option<TaskCacheSpec>,
 }
 
 /// An `env:` value with secrets in it: text (already substituted) and

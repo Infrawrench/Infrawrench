@@ -159,6 +159,95 @@ pub struct Job {
     /// file system of every job that needs it, directly or through others.
     #[serde(default)]
     pub artifacts: Vec<String>,
+    /// One job per workspace package: `true` for every package, or a
+    /// filter. See [`crate::packages`].
+    #[serde(default)]
+    pub packages: Option<Packages>,
+    /// Skip the job when nothing it reads has changed since a run that
+    /// passed, and hand on what that run kept. See [`TaskCache`].
+    #[serde(default)]
+    pub task_cache: Option<TaskCache>,
+}
+
+/// `packages: true`, or which packages a job runs in.
+#[derive(Debug, Clone)]
+pub enum Packages {
+    All(bool),
+    Filter(PackageFilter),
+}
+
+impl<'de> Deserialize<'de> for Packages {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bool_or(deserializer, Packages::All, Packages::Filter)
+    }
+}
+
+/// `true`/`false` or a struct, deserialised by hand so a mistake inside the
+/// struct (an unknown field) is reported as itself, as with [`OneOrMany`].
+fn bool_or<'de, D, T, R>(
+    deserializer: D,
+    flag: impl FnOnce(bool) -> R,
+    value: impl FnOnce(T) -> R,
+) -> Result<R, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let v = serde_yaml_ng::Value::deserialize(deserializer)?;
+    match v {
+        serde_yaml_ng::Value::Bool(b) => Ok(flag(b)),
+        other => serde_yaml_ng::from_value(other)
+            .map(value)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PackageFilter {
+    /// Globs over each package's directory or name (`app/packages/*`,
+    /// `@scope/*`); a package either matches is let through. `!` excludes,
+    /// read in order like `paths:`. Empty means every package.
+    #[serde(default)]
+    pub only: Vec<String>,
+    /// Names that must all be directly in the package's directory.
+    #[serde(default)]
+    pub has: Vec<String>,
+    /// Scripts its `package.json` must all have.
+    #[serde(default)]
+    pub has_script: Vec<String>,
+    /// Script name to a glob its command must match (`*` matches anything,
+    /// `/` included), such as `build: "tsdown*"`; `!` before the glob
+    /// selects packages whose script does not match or is missing.
+    #[serde(default)]
+    pub scripts: IndexMap<String, String>,
+}
+
+/// `task-cache: true`, or what the job reads.
+#[derive(Debug, Clone)]
+pub enum TaskCache {
+    Enabled(bool),
+    Inputs(TaskCacheInputs),
+}
+
+impl<'de> Deserialize<'de> for TaskCache {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bool_or(deserializer, TaskCache::Enabled, TaskCache::Inputs)
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct TaskCacheInputs {
+    /// Globs of the files the job reads, relative to its package (or to the
+    /// clone for a job without `packages:`); `!` excludes. Default: all of
+    /// them.
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    /// Globs relative to the clone that every package's job reads too, such
+    /// as a shared `tsconfig.base.json`.
+    #[serde(default)]
+    pub root_inputs: Vec<String>,
 }
 
 /// One value or a list of them. Deserialised by hand rather than as an
