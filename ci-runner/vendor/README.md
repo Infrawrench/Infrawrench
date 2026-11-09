@@ -50,10 +50,16 @@ half the current limit per grant (at least 128 MiB), and gives a budget with
 room for it a 192 MiB young generation (64 MiB semi-spaces), all still
 charged against the budget. Revisit if a release makes these settings.
 
-**Still true with the patch.** `g_mu` is shared by every job in the process,
-so a long-running script in one job still serialises the lock-taking bridge
-calls (module evaluation, contextify) of other jobs' `node` processes until
-it finishes or is stopped.
+**And: `g_mu` only where state is shared.** Every per-env bridge call held
+the process-wide `g_mu` for its whole duration, including the calls that run
+JavaScript (`contextify_run_script`, module evaluation), so Node jobs on one
+runner took turns: three CPU-bound jobs took 19 s together against 7 s
+alone, and a job waiting on I/O inside a call froze the others (#922's
+`astro check`). An env's own state is only used by the thread that runs it,
+so `src/napi_bridge_init.cc` now takes `g_mu` only around what every env
+shares, the env registry and the cross-env message table (6 sites; 62 per-env
+sites no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
+main reworked `g_mu` the same way, with per-thread env ownership.
 
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
