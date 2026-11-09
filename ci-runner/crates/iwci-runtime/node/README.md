@@ -43,7 +43,7 @@ read opens the working directory (EISDIR) or another file.
 their sync forms before they reach it, then calls
 `module.syncBuiltinESMExports()` so `import { readFile } from "node:fs"`
 sees the same functions. A symlink's target is left alone, because it is
-relative to the link. `builtins/test.sh`'s `relative-reads-pass` does 40,000
+relative to the link. `builtins/test.sh`'s `relative-reads-passes` does 40,000
 concurrent reads of four files and checks each one's contents. Without the
 preload, 40 to 69 per run came back wrong. Remove it once Edge.js carries
 wasix-libc #142 and #145.

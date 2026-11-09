@@ -261,7 +261,7 @@ jobs:
   # the working directory (EISDIR) or another file. The runner's preload
   # makes them absolute first. Four files of the same length, 40,000 reads,
   # every one checked for its own contents.
-  relative-reads-pass:
+  relative-reads-passes:
     using: env:bash-node@24
     timeout: 3m
     run: |
