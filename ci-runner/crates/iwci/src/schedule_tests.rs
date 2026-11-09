@@ -122,6 +122,24 @@ impl Executor<String> for FakeExecutor {
                 .write(format!("/app/dist/{name}.txt"), inv.job.id.as_bytes())
                 .unwrap();
         }
+        if tool.contains(":src-write@") {
+            inv.fs.write("/app/src/new.ts", b"new").unwrap();
+        }
+        if tool.contains(":src-list@") {
+            let mut names: Vec<String> = inv
+                .fs
+                .entries_under(&["/app/src"])
+                .into_iter()
+                .filter_map(|e| match e {
+                    iwci_vfs::Entry::File { path, .. } => {
+                        Some(path.file_name().unwrap().to_string_lossy().into_owned())
+                    }
+                    _ => None,
+                })
+                .collect();
+            names.sort();
+            stdout.push_str(&names.join(","));
+        }
         if tool.contains(":art-big@") {
             inv.fs
                 .write("/app/dist/big.bin", &vec![1u8; 20 << 20])
@@ -858,4 +876,18 @@ fn artifacts_are_held_to_the_runs_scratch_limit() {
         "{:?}",
         status(&report, "build")
     );
+}
+
+#[test]
+fn a_job_keeps_only_the_files_it_wrote() {
+    // `src/a.ts` is in the checkout under the artifact path; only the file
+    // the job wrote there is handed on.
+    let p = plan(
+        "name: x\njobs:\n  gen:\n    using: builtin:src-write@1\n    artifacts: [src]\n  use:\n    using: builtin:src-list@1\n    needs: [gen]\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert!(notes_of(&report, "gen").contains(&"artifacts: kept 1 file(s), 1 KiB".to_string()));
+    assert!(notes_of(&report, "use").contains(&"artifacts: 1 file(s) from `gen`".to_string()));
+    assert_eq!(stdout_of(&report, "use"), "a.ts,new.ts");
 }

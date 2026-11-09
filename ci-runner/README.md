@@ -235,8 +235,9 @@ jobs:
 
 - Paths may use `${{ matrix }}` (quote them inside `[ ]`); a matrix job's
   entries hand on all of their files together.
-- A job that fails, or is skipped, hands on nothing. A job only keeps what
-  it wrote itself, not the files it was handed.
+- A job that fails, or is skipped, hands on nothing. A job keeps only the
+  files it added or changed under its paths: not the checkout's own files
+  there, and not the files it was handed.
 - Handed-on files are not the receiving job's changes, so `changes: fail`
   and `changes: commit` ignore them. They count toward the receiving job's
   `memory:`.

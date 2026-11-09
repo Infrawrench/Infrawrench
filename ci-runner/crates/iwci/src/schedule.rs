@@ -1248,10 +1248,23 @@ fn run_job<T: Tools>(
     // pass, without the files it was handed, and within the run's
     // `scratch:` limit, since they stay in memory until the run ends.
     if status == Status::Passed && !job.artifacts.is_empty() {
+        // Only what the job wrote: files it added or changed under the
+        // paths, not the checkout's own files there or the ones it was
+        // handed. Parents are created when the files are written.
+        let written: HashSet<PathBuf> = job
+            .artifacts
+            .iter()
+            .flat_map(|p| fs.changes(p))
+            .filter_map(|c| match c {
+                Change::Added { path, .. } | Change::Modified { path, .. } => Some(path),
+                Change::Deleted { .. } => None,
+            })
+            .filter(|p| !restored.contains(p))
+            .collect();
         let entries: Vec<Entry> = fs
             .entries_under(&job.artifacts)
             .into_iter()
-            .filter(|e| !restored.contains(entry_path(e)))
+            .filter(|e| matches!(e, Entry::File { path, .. } if written.contains(path)))
             .collect();
         let files = entries
             .iter()
