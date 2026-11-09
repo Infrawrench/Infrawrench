@@ -292,7 +292,7 @@ export function StepChart({ series, end, format, label, fromZero, height = 240 }
         <summary className="cursor-pointer text-ink-3 hover:text-ink">
           {gt("Show as a table")}
         </summary>
-        <div className="mt-2 max-h-72 overflow-auto rounded border border-line">
+        <div className="mt-2 max-h-72 overflow-auto rounded border border-line bg-surface">
           <table className="w-full border-collapse">
             <caption className="sr-only">{label}</caption>
             <thead className="sticky top-0 bg-surface-2">

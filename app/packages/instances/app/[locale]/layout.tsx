@@ -43,6 +43,16 @@ export default async function RootLayout({
   const translations = { [locale]: await loadTranslations(locale) };
   return (
     <html lang={locale} dir={localeDir(locale)}>
+      <head>
+        {/* Geist, as on infrawrench.com. Scripts it lacks (CJK, Hebrew, Arabic,
+            Devanagari) fall through to the system fonts in --font-sans. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+        />
+      </head>
       <body className="flex min-h-screen flex-col">
         <I18nProvider locale={locale} translations={translations}>
           <Nav />

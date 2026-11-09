@@ -99,7 +99,7 @@ function CyclingService() {
   }, [i]);
   return (
     <span
-      className="relative inline-block overflow-hidden pb-[0.15em] align-bottom -mb-[0.15em] whitespace-nowrap text-accent transition-[width] duration-[600ms] ease-in-out"
+      className="relative inline-block overflow-hidden pb-[0.15em] align-bottom -mb-[0.15em] whitespace-nowrap transition-[width] duration-[600ms] ease-in-out"
       style={width === null ? undefined : { width }}
     >
       {/* Sets the line's height (and its width before the first measure). */}
@@ -110,14 +110,14 @@ function CyclingService() {
         <span
           key={`out-${previous}`}
           aria-hidden="true"
-          className="absolute top-0 start-0 animate-[service-out_0.6s_ease-in-out_forwards]"
+          className="text-brand absolute top-0 start-0 animate-[service-out_0.6s_ease-in-out_forwards]"
         >
           {SERVICES[previous]}
         </span>
       )}
       <span
         key={`in-${i}`}
-        className={`absolute top-0 start-0 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
+        className={`text-brand absolute top-0 start-0 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
       >
         {SERVICES[i]}
       </span>
@@ -423,7 +423,7 @@ export function ChatHome() {
       tabIndex={-1}
       className="mx-auto flex min-h-[calc(100vh-110px)] max-w-3xl flex-col justify-center px-4 py-12 sm:px-7"
     >
-      <h1 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+      <h1 className="text-center text-[2rem] leading-[1.08] font-semibold tracking-[-0.04em] sm:text-5xl">
         {/* The name sits on its own centered line, so changing it moves nothing else. */}
         <T>
           What do you want to know about
@@ -434,7 +434,7 @@ export function ChatHome() {
           ?
         </T>
       </h1>
-      <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
+      <p className="mx-auto mt-5 max-w-xl text-center text-ink-2 sm:text-lg">
         {gt(
           "Ask in plain language about AWS, Azure, Google Cloud, Alibaba Cloud, Oracle Cloud, IBM Cloud, Hetzner, OVHcloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
         )}
@@ -737,7 +737,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
         ))}
         <div ref={bottom} />
       </div>
-      <div className="sticky bottom-0 z-20 -mx-4 bg-surface/80 px-4 pt-2 pb-4 backdrop-blur-md sm:-mx-7 sm:px-7">
+      <div className="sticky bottom-0 z-20 -mx-4 bg-bg/80 px-4 pt-2 pb-4 backdrop-blur-md sm:-mx-7 sm:px-7">
         <Composer onSend={send} onStop={stop} busy={busy} floating />
         <p className="mt-1.5 flex justify-between gap-3 px-1 text-[11px] text-ink-3">
           <span>

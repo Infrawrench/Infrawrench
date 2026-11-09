@@ -18,7 +18,7 @@ export function IndexView({ cloud, platforms }: { cloud: Cloud; platforms: Platf
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1280px] px-4 py-4 sm:px-7">
       <Breadcrumbs items={[{ label: provider }]} ask={provider} />
-      <h1 className="text-3xl font-bold tracking-tight">
+      <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
         {gt("{provider} instance types", { provider })}
       </h1>
       <p className="mt-2 max-w-2xl text-ink-2">
@@ -37,7 +37,7 @@ export function IndexView({ cloud, platforms }: { cloud: Cloud; platforms: Platf
           <li key={p.platform}>
             <Link
               href={localePath(locale, platformPath(p.platform))}
-              className="group flex h-full flex-col rounded-lg border border-line p-4 transition-colors hover:border-accent hover:bg-surface-2"
+              className="group flex h-full flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-accent"
             >
               <span className="flex items-center gap-2 text-lg font-semibold">
                 <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
