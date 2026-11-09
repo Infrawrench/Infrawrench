@@ -44,6 +44,34 @@ The next push runs it. Each run shows on the commit or pull request on GitHub as
 
 Choosing accounts takes the `ci:write` permission; everyone in the organization can see runs (`ci:read`). See [Roles and permissions](../team-and-billing/roles-and-permissions.md).
 
+## Monorepos: a job per package
+
+In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:
+
+```yaml
+jobs:
+  build:
+    packages: { scripts: { build: "tsdown*" } }
+    needs: ["^build"]
+    using: builtin:typescript@7.1
+    args: [--emitDeclarationOnly, --outDir, dist]
+    artifacts: [dist]
+    task-cache: true
+
+  check:
+    packages: { scripts: { build: "!tsdown*" } }
+    needs: ["^build"]
+    using: builtin:typescript@7.1
+    args: [--noEmit]
+    task-cache: true
+```
+
+- Each package's job shows as its own row in the run, named after the job and the package.
+- Filter which packages a job runs in by directory or name (`only:`), by the files a package has (`has:`), and by its scripts (`has-script:`, or `scripts:` to match a script's command).
+- A skipped job shows as **Passed** with the reason _Cached: nothing it reads changed since a run that passed_, and its output is the output of that run. The check on GitHub says how many jobs the task cache stood in for.
+- A job's cache key covers the job itself, the files it reads, your lockfile and everything earlier jobs hand it, so a change in one package reruns the jobs downstream of it only when their inputs actually changed.
+- Pull requests keep their own cached results, like their caches: nothing a pull request saves is reused on your default branch.
+
 ## Runs
 
 The runs table lists the latest runs, newest first, with their status, where they came from (a branch, or a pull request and its branch) and how long they took. Filter it by status with **Show**. Open a run to see each job's output; a failed job opens already expanded. Runs that are still going refresh on their own.
@@ -79,7 +107,9 @@ CI is part of paid plans. The usage card shows this month's runs, compute and ca
 
 - **vCPU time**: each job's running time, at its share of a vCPU.
 - **Memory**: the memory each job reserves, for as long as it runs.
-- **Cache storage**: the space your caches take on the runners, measured every hour.
+- **Cache storage**: the space your caches take on the runners, measured every hour. Task cache results count here too.
+
+A job the task cache stood in for did not run, so it uses no vCPU time or memory.
 
 Complimentary organizations are never billed. See [Billing and plans](../team-and-billing/billing-and-plans.md#ci).
 
