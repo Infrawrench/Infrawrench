@@ -1247,6 +1247,13 @@
       "when": 1794177351633,
       "tag": "0177_ci_and_org_features",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1794259843949,
+      "tag": "0178_ci_job_checks",
+      "breakpoints": true
     }
   ]
 }

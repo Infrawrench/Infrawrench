@@ -1,0 +1,1 @@
+ALTER TABLE "ci_runs" ADD COLUMN "job_checks" jsonb DEFAULT '{}'::jsonb NOT NULL;

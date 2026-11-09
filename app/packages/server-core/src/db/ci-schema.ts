@@ -87,6 +87,15 @@ export const ciRuns = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     proxyRunId: text("proxy_run_id"),
     checkRunId: bigint("check_run_id", { mode: "number" }),
+    /**
+     * One GitHub check per job key, beside the run's own: by
+     * `${pipeline}\u0000${key}`, its check run id and the state last sent,
+     * so a poll only calls GitHub for a job whose state changed.
+     */
+    jobChecks: jsonb("job_checks")
+      .$type<Record<string, { id: number; sent: string }>>()
+      .notNull()
+      .default({}),
     decidedByUserId: text("decided_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

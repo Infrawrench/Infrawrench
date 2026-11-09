@@ -656,18 +656,18 @@ otherwise. Runners are meant to sit behind a plain load balancer: reports,
 billing records and caches go to the shared object store, so any runner can
 answer for any owner, and a full runner says so instead of queueing.
 
-| Route                                   | Does                                                                                   |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `GET /healthz`                          | `200 ok`, unauthenticated.                                                             |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved.                                     |
-| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.    |
-| `GET /v1/runs/{id}[?owner=]`            | A run's state and report; `?owner=` reads it from the store when this runner lacks it. |
-| `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.       |
-| `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.          |
-| `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                |
-| `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                        |
-| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text. |
-| `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.               |
+| Route                                   | Does                                                                                                                                                                    |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved.                                                                                                                      |
+| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
+| `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
+| `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
+| `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.                                                                                           |
+| `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                                                                                                 |
+| `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
+| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text.                                                                                  |
+| `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
 
 A request body (for `runs` and `prepare`):
 

@@ -7,7 +7,10 @@ vi.mock("../../db/client.js", () => {
   const set = () => ({ where });
   return { db: { update: () => ({ set }) } };
 });
-vi.mock("../../github/app.js", () => ({ getInstallationToken: vi.fn() }));
+vi.mock("../../github/app.js", () => ({
+  getInstallationToken: vi.fn(),
+  githubInstallationFetch: vi.fn(async () => new Response(JSON.stringify({ id: 1 }))),
+}));
 const mockUpsert = vi.fn();
 vi.mock("../checks.js", async (orig) => ({
   ...(await orig<typeof import("../checks.js")>()),

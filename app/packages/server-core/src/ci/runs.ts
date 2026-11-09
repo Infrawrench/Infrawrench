@@ -33,6 +33,7 @@ import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
 import { upsertCheck } from "./checks.js";
+import { groupsFromJobs, groupsFromProgress, syncJobChecks } from "./job-checks.js";
 import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
@@ -404,7 +405,11 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     }
     return;
   }
-  if (run.state === "running") return;
+  if (run.state === "running") {
+    // Each job's own check, as it starts and finishes.
+    if (run.progress) await syncJobChecks(row, groupsFromProgress(run.progress));
+    return;
+  }
   if (run.state === "failed") {
     const reason = run.error ?? "The runner could not run this commit.";
     await finish(row, "error", reason);
@@ -423,6 +428,8 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
+  // Every job's check finished, including any no poll saw running.
+  await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
   const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
   const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
   // No pipeline matched this event (a push to a branch when `on.push` only
