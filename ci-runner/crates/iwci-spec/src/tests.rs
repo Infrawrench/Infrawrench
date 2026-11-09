@@ -980,3 +980,14 @@ jobs:
         "can only keep absolute paths",
     );
 }
+
+#[test]
+fn jobs_reach_the_internet_unless_they_turn_it_off() {
+    let plan = parse(
+        "name: x\njobs:\n  online:\n    using: builtin:t@1\n  offline:\n    using: builtin:t@1\n    network: false\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert!(plan.job("online").unwrap().network);
+    assert!(!plan.job("offline").unwrap().network);
+}

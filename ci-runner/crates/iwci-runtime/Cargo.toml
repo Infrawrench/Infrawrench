@@ -22,11 +22,18 @@ wasmer = { workspace = true, features = ["experimental-host-interrupt"] }
 # `sys-minimal` is the one without host networking, host file system access
 # or an HTTP client.
 wasmer-wasix = { workspace = true, features = ["sys-minimal"] }
+# Host sockets for a job's outbound connections (network.rs), taken from
+# virtual-net directly: wasmer-wasix's own `host-vnet` would make every
+# job's runtime build a host network of its own (a selector thread each,
+# and a panic outside a tokio context) only for us to replace it.
+virtual-net = { version = "0.705.0", default-features = false, features = ["host-net"] }
 virtual-fs.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
 futures.workspace = true
+# getifaddrs, for the host's own addresses (network.rs). Already in the tree.
+libc = "0.2"
 # The versions below are the ones wasmer-wasix itself pins or resolves, named
 # here because their types appear in the traits this crate implements.
 wasmer-types = "=7.5.0"

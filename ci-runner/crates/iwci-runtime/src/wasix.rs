@@ -5,10 +5,12 @@
 //! Each job gets a [`JobRuntime`], wasmer-wasix's `Runtime` with everything
 //! that could reach outside the job replaced:
 //!
-//! - networking is the job's own in-memory loopback (`crate::network`):
-//!   its processes can listen on and connect to `127.0.0.1` among
-//!   themselves, but no host socket is ever opened, so the host's localhost
-//!   is out of reach and nothing a job listens on appears on the host;
+//! - networking is the job's own in-memory loopback plus, unless the job
+//!   says `network: false`, the public internet (`crate::network`): its
+//!   processes listen on and connect to `127.0.0.1` among themselves, and
+//!   outbound connections to public addresses use host sockets; the host's
+//!   localhost and private addresses are out of reach, and nothing a job
+//!   listens on appears on the host;
 //! - there is no HTTP client, the package source is an in-memory list of the
 //!   packages the caller supplied and the package loader only serves those,
 //!   so a command that is not provided fails instead of being fetched from
@@ -90,6 +92,9 @@ pub(crate) struct WasixShared {
     packages: Mutex<HashMap<(WebcHash, Vec<WebcHash>), BinaryPackage>>,
     /// Parsed containers by webc digest.
     containers: Mutex<HashMap<WebcHash, (PackageSummary, Container)>>,
+    /// The host network jobs reach the public internet through, when
+    /// offered (`Runtime::with_internet`).
+    pub(crate) outside: Option<crate::network::Outside>,
 }
 
 impl WasixShared {
@@ -99,6 +104,7 @@ impl WasixShared {
             tasks,
             packages: Mutex::default(),
             containers: Mutex::default(),
+            outside: None,
         }
     }
 }
@@ -143,11 +149,15 @@ impl JobRuntime {
         #[cfg_attr(not(feature = "node"), allow(unused_variables))] node: Option<
             &crate::node::NodeHooks,
         >,
+        internet: bool,
     ) -> Self {
         let mut inner = PluggableRuntime::new(shared.tasks.clone());
         inner.set_engine(engine);
-        // One loopback per job, shared by all of its processes.
-        inner.set_networking_implementation(crate::network::JobNetwork::new());
+        // One loopback per job, shared by all of its processes, and the
+        // public internet when the runtime offers it.
+        inner.set_networking_implementation(crate::network::JobNetwork::new(
+            shared.outside.clone().filter(|_| internet),
+        ));
         inner.http_client = None;
         inner.set_module_cache(WasixCache(shared.store.clone()));
         let packages = packages.cloned().unwrap_or_default();
@@ -167,7 +177,7 @@ impl JobRuntime {
 #[cfg(test)]
 impl JobRuntime {
     pub(crate) fn for_tests(shared: &WasixShared, engine: Engine) -> Self {
-        Self::new(shared, engine, None, None)
+        Self::new(shared, engine, None, None, false)
     }
 }
 
@@ -502,7 +512,7 @@ pub(crate) fn run(
         Entry::Module(_) => None,
         Entry::Command { packages, .. } => Some(PackageSet::new(shared, packages)?),
     };
-    let runtime = JobRuntime::new(shared, engine, package_set.as_ref(), node);
+    let runtime = JobRuntime::new(shared, engine, package_set.as_ref(), node, inv.internet);
     let control = runtime.control.clone();
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
 
@@ -661,7 +671,13 @@ pub(crate) fn prepare(
 ) -> Result<()> {
     let _enter = tokio.enter();
     let set = PackageSet::new(shared, packages)?;
-    let runtime = JobRuntime::new(shared, shared.store.engine().clone(), Some(&set), None);
+    let runtime = JobRuntime::new(
+        shared,
+        shared.store.engine().clone(),
+        Some(&set),
+        None,
+        false,
+    );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
     for package in binary_packages(shared, &set, &runtime, tokio)? {
         for command in &package.commands {
