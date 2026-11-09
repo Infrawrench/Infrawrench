@@ -194,6 +194,18 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'throw new Error("expected")'
+  # Two isolates alive at once, each growing its heap well past where it
+  # starts: two jobs' `node` once crashed the runner on a CPU with memory
+  # protection keys, and a burst of allocation outran fixed heap grants and
+  # aborted it ("Reached heap limit"). See vendor/README.md.
+  allocate-a-passes:
+    using: env:bash-node@24
+    run: |
+      node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "x" + i }); console.log(k.length)'
+  allocate-b-passes:
+    using: env:bash-node@24
+    run: |
+      node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "y" + i }); console.log(k.length)'
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24

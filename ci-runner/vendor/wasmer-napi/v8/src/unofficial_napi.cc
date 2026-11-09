@@ -710,6 +710,19 @@ napi_status ConfigureRuntime(const char* engine_flags,
     v8::V8::SetFlagsFromString(engine_flags,
                                static_cast<int>(engine_flags_length));
   }
+  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
+  // process-wide JS dispatch table with a protection key and grants access to
+  // it in the PKRU register of the thread that first initialises V8, and of
+  // threads that thread later creates. PKRU is per thread, so an isolate made
+  // on a thread from an older pool (a second CI job's `node`) faulted reading
+  // that table in Isolate::Init (SIGSEGV, PK set in the error code) and took
+  // the whole runner down. Without the keys V8 protects those pages with
+  // mprotect, which every thread sees the same. Set last, so no guest flag
+  // can turn them back on.
+  {
+    static const char kNoPkeys[] = "--no-memory-protection-keys";
+    v8::V8::SetFlagsFromString(kNoPkeys, static_cast<int>(sizeof(kNoPkeys) - 1));
+  }
   v8::V8::InitializeICUDefaultLocation("");
   v8::V8::InitializeExternalStartupData("");
   g_runtime.platform = EdgeV8Platform::Create();

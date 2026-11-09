@@ -53,9 +53,22 @@ const UNLIMITED: u64 = u64::MAX;
 const MIB: u64 = 1024 * 1024;
 
 /// Initial `max_old_generation_size` charged per V8 isolate at env creation.
-pub const DEFAULT_INITIAL_ISOLATE_HEAP: u64 = 64 * MIB;
-/// Increment the near-heap-limit callback reserves per grow grant.
-pub const DEFAULT_HEAP_GROW_STEP: u64 = 32 * MIB;
+///
+/// iwci patch: 256 MiB, not 64. V8 runs a full mark-compact before every
+/// near-heap-limit grant, so a ceiling far below a program's working set
+/// costs one full GC per step on the way up: Prettier over a monorepo paid
+/// for dozens and ran 4x slower than native Node. Still charged against the
+/// budget, which is the job's `memory:`.
+pub const DEFAULT_INITIAL_ISOLATE_HEAP: u64 = 256 * MIB;
+/// The least the near-heap-limit callback reserves per grow grant (iwci
+/// patch: 128 MiB, not 32, and grants grow with the heap; see
+/// [`napi_host_near_heap_limit_grant`]).
+pub const DEFAULT_HEAP_GROW_STEP: u64 = 128 * MIB;
+/// iwci patch: the young generation a budgeted isolate gets when the guest
+/// asks for none: 64 MiB semi-spaces, so allocation-heavy code scavenges a
+/// third as often as with V8's default. Reserved up front like any explicit
+/// young-generation request.
+pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
 /// One-time V8 heap slack reserved up front so a denied growth callback can
 /// terminate and unwind without entering V8s fatal out-of-memory path.
 pub const DEFAULT_UNWIND_SLACK: u64 = 16 * MIB;
@@ -481,8 +494,16 @@ impl ResourceBudget {
         }
 
         // Explicit young/code plus a fixed overhead are reserved first; the
-        // overhead also covers V8's own metadata and any unset young/code.
-        let young = u64::from(req.max_young);
+        // overhead also covers V8's own metadata and any unset code range.
+        // The default young generation only where it leaves most of the
+        // budget for the old one; a small budget keeps V8's own default.
+        let young = if req.max_young > 0 {
+            u64::from(req.max_young)
+        } else if self.memory_remaining() >= 4 * DEFAULT_YOUNG_GENERATION {
+            DEFAULT_YOUNG_GENERATION
+        } else {
+            0
+        };
         let code = u64::from(req.code_range);
         let fixed = DEFAULT_PER_ISOLATE_OVERHEAD
             .checked_add(DEFAULT_UNWIND_SLACK)?
@@ -506,7 +527,7 @@ impl ResourceBudget {
         }
 
         Some(HeapReservation {
-            max_young: req.max_young,
+            max_young: u32::try_from(young).unwrap_or(u32::MAX),
             max_old: u32::try_from(old).unwrap_or(u32::MAX),
             code_range: req.code_range,
             ceiling_bytes: fixed + old,
@@ -533,8 +554,9 @@ pub(crate) struct EnvHeapCharge {
 /// Host-owned near-heap-limit callback for a budgeted V8 isolate.
 ///
 /// When V8 approaches a heap ceiling it invokes this on the isolate's JS
-/// thread. We charge one [`DEFAULT_HEAP_GROW_STEP`] against the budget and, if
-/// granted, raise the limit by that step. If the budget is exhausted, request
+/// thread. We charge half the current limit (at least one
+/// [`DEFAULT_HEAP_GROW_STEP`], falling back to one step) against the budget
+/// and, if granted, raise the limit by that much. If the budget is exhausted, request
 /// isolate termination and expose the pre-reserved unwind slack once. A second
 /// denial leaves the limit unchanged, so the quota cannot be expanded repeatedly. The budget is atomic, so this is safe
 /// to call concurrently with charges on other threads.
@@ -555,9 +577,18 @@ pub extern "C" fn napi_host_near_heap_limit_grant(
     }
     // SAFETY: see the function's safety contract.
     let tracker = unsafe { &*(data as *const EnvHeapCharge) };
-    let step = DEFAULT_HEAP_GROW_STEP;
-    match tracker.budget.try_charge(Pool::V8HeapReserved, step) {
-        Ok(()) => {
+    // iwci patch: grow geometrically, by half the current limit (at least a
+    // step), falling back to one step when the budget cannot fit that. With
+    // fixed steps a burst of allocation outran the grants and V8 died with
+    // "Reached heap limit" while most of the budget was unused, which aborts
+    // the whole process, not just the job.
+    let half = u64::try_from(current_limit / 2).unwrap_or(u64::MAX);
+    let wanted = half.max(DEFAULT_HEAP_GROW_STEP);
+    let charged = [wanted, DEFAULT_HEAP_GROW_STEP]
+        .into_iter()
+        .find(|&s| tracker.budget.try_charge(Pool::V8HeapReserved, s).is_ok());
+    match charged.ok_or(()) {
+        Ok(step) => {
             tracker.granted.fetch_add(step, Ordering::AcqRel);
             current_limit.saturating_add(step as usize)
         }
@@ -1041,9 +1072,11 @@ mod tests {
             .expect("env fits");
         assert!(res.clamped);
         // Default old-gen (64 MiB) fits, plus 8 MiB overhead and 16 MiB unwind slack.
-        assert_eq!(u64::from(res.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
-        assert_eq!(res.ceiling_bytes, 88 * MIB);
-        assert_eq!(budget.snapshot().v8_heap_reserved, 88 * MIB);
+        // Overhead (8) and unwind slack (16) leave 76 MiB, under the 256 MiB
+        // default, so the old generation takes all of it.
+        assert_eq!(u64::from(res.max_old), 76 * MIB);
+        assert_eq!(res.ceiling_bytes, 100 * MIB);
+        assert_eq!(budget.snapshot().v8_heap_reserved, 100 * MIB);
         assert_eq!(budget.live_isolates(), 1);
 
         budget.release_env(res.ceiling_bytes);
@@ -1054,7 +1087,7 @@ mod tests {
     #[test]
     fn env_reservation_clamps_old_gen_to_fit() {
         // Only 40 MiB: overhead (8) and unwind slack (16) leave 16 MiB for
-        // old-gen, below the 64 MiB default, so it is clamped to fit.
+        // old-gen, below the 256 MiB default, so it is clamped to fit.
         let budget = ResourceBudget::with_memory_limit(40 * MIB);
         let res = budget
             .try_reserve_env(RequestedHeap::default(), None)
@@ -1317,5 +1350,22 @@ mod external_accountant_tests {
         budget.uncharge(Pool::V8HeapReserved, 60);
         assert_eq!(accountant.memory_charged(), 40);
         assert_eq!(budget.snapshot().v8_heap_reserved, 0);
+    }
+
+    #[test]
+    fn env_reservation_gives_a_large_budget_the_default_young_generation() {
+        let budget = ResourceBudget::with_memory_limit(2048 * MIB);
+        let res = budget
+            .try_reserve_env(RequestedHeap::default(), None)
+            .expect("fits");
+        assert_eq!(u64::from(res.max_young), DEFAULT_YOUNG_GENERATION);
+        assert_eq!(u64::from(res.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
+        assert_eq!(
+            res.ceiling_bytes,
+            DEFAULT_PER_ISOLATE_OVERHEAD
+                + DEFAULT_UNWIND_SLACK
+                + DEFAULT_YOUNG_GENERATION
+                + DEFAULT_INITIAL_ISOLATE_HEAP
+        );
     }
 }

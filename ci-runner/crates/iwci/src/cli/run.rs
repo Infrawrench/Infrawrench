@@ -49,6 +49,9 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
             .ok_or("--cpus takes a number of vCPUs, at least 1")?,
         None => std::thread::available_parallelism().map_or(4, |n| n.get()),
     };
+    // V8's background threads (GC, compilation) for Node jobs, within the
+    // same vCPU limit as everything else.
+    iwci_runtime::set_node_worker_threads(cpus);
     // Four jobs share a vCPU unless told otherwise: CI work waits on its
     // own subprocesses and file reads often enough that a core interleaves
     // several jobs better than it runs one.

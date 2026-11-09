@@ -39,6 +39,22 @@ pub use iwci_vfs::DynFs;
 pub use tsc::TscOutcome;
 pub use wasix::{CRASH_EXIT_CODE, TIMEOUT_EXIT_CODE};
 
+/// Sizes V8's background pool (garbage collection, compilation) for jobs that
+/// run Node to the runner's vCPUs, so that work stays within `--cpus` instead
+/// of V8's default of every core on the machine. The pool is process-wide and
+/// fixed when the first isolate is made, so this runs at start-up. Without the
+/// `node` feature there is no V8 and nothing to size.
+pub fn set_node_worker_threads(cpus: usize) {
+    #[cfg(feature = "node")]
+    {
+        let count = u32::try_from(cpus.max(1)).unwrap_or(u32::MAX);
+        // Only fails when an isolate already exists, which start-up rules out.
+        let _ = wasmer_napi::set_v8_worker_threads(Some(count));
+    }
+    #[cfg(not(feature = "node"))]
+    let _ = cpus;
+}
+
 /// What each of stdout and stderr keeps before truncating.
 pub const DEFAULT_OUTPUT_CAP: usize = 8 << 20;
 
