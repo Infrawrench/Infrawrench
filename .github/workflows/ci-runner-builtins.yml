@@ -99,6 +99,16 @@ jobs:
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh typescript
 
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh
+
   oxfmt:
     name: oxfmt
     # The WASIX toolchain that cargo-wasix installs is published for x86_64
@@ -133,6 +143,16 @@ jobs:
         run: |
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh oxfmt
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh
 
       # The module, so a failure can be reproduced against a local runner
       # without the WASIX toolchain.
@@ -172,3 +192,13 @@ jobs:
 
       - name: Publish and run it through iwci
         run: SKIP_BUILD=1 bash builtins/test.sh bash-node
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/environment/bash-node/*

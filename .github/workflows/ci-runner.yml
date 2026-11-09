@@ -58,7 +58,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/lib.sh builtins/test.sh
+        run: shellcheck -x builtins/*/build.sh builtins/lib.sh builtins/test.sh builtins/publish.sh
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
@@ -112,3 +112,14 @@ jobs:
         run: |
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh gofmt bash tools
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        # bash-node is published by ci-runner-builtins.yml, whose job runs it under V8.
+        run: bash builtins/publish.sh dist/builtin/gofmt/* dist/environment/bash/*
