@@ -10,14 +10,21 @@
 #   dist/ after the libraries it depends on (turbo's `dependsOn: ["^build"]`),
 #   and its dist/ is handed on to everything downstream.
 # - Translations: `translations:audit` and `translations:status`.
+# - Vitest: `pnpm test`, one job per package, against the JavaScript of the
+#   packages it depends on, which tsdown builds as turbo would (`bundle`);
+#   tsc-rs writes their declarations (`build`), since tsdown's declaration
+#   bundler has no WebAssembly build.
 #
 # Every job is task-cached: one whose files, the shared config and what it
 # is handed have not changed since a passing run is not run again.
 #
+# rolldown (under Vite, Vitest and tsdown) runs as its wasm32-wasi build:
+# the runner installs the WebAssembly builds of native packages and gives
+# Node a working `node:wasi`. rolldown leaves that build out of its own
+# optional dependencies, so the root package.json lists it.
+#
 # Still on GitHub Actions only:
-# - Vitest, and the website's `astro check`: Vite 8 and Astro load rolldown,
-#   whose fallback without its native binary is WASI, and the runner's Node
-#   (Edge.js) has `node:wasi` without the binding behind it.
+# - The website's `astro check`.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
 name: Test
@@ -48,10 +55,37 @@ jobs:
       - app/packages
       - plugin-architecture/packages
     run: |
-      cp app/packages/desktop/env.example.ts app/packages/desktop/env.ts
+      cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
       node .infrawrench/ci/typescript-shims.mjs
+
+  # Each library's JavaScript, as `pnpm build` writes it, for the tests of
+  # the packages that use it. Declarations are `build`'s.
+  bundle:
+    name: Bundle ${{ package.name }}
+    packages: { scripts: { build: "tsdown*" } }
+    using: env:bash-node@24
+    run: node node_modules/tsdown/dist/run.mjs --no-dts
+    artifacts: [dist]
+    task-cache: { root-inputs: [tsconfig.base.json] }
+    memory: 3GiB
+    timeout: 20m
+
+  # Each package's `test` script, with the JavaScript of everything it
+  # depends on. The runner's installer writes no node_modules/.bin, so
+  # `vitest` in the script runs as its entry point.
+  test:
+    name: Test ${{ package.name }}
+    packages: { scripts: { test: "*vitest run*" } }
+    needs: [prep, bundle, "^bundle"]
+    using: env:bash-node@24
+    run: |
+      script="$(node -p 'require("./package.json").scripts.test')"
+      eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=2}"
+    task-cache: { root-inputs: [tsconfig.base.json] }
+    memory: 6GiB
+    timeout: 20m
 
   # Each library, after the libraries it depends on.
   build:
