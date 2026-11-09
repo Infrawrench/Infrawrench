@@ -1,4 +1,9 @@
-# `node:wasi` for environment jobs
+# Node preload for environment jobs
+
+The runner's Node is Edge.js. This directory fills three gaps between it and
+Node; each file can go once the pinned Edge.js closes its gap.
+
+## `node:wasi`
 
 Edge.js (`env:bash-node`) ships the `node:wasi` module without the binding
 behind it, so `new WASI()` throws. Every package whose native addon falls
@@ -28,3 +33,27 @@ the tarball against the registry's integrity, record both here, and redo the
 `NODE_DEBUG_NATIVE` line if the new build still hard-codes it. Remove
 the whole directory once the pinned Edge.js has a working `node:wasi`:
 `wasi.cjs` already prefers it, so nothing breaks in between.
+
+## Relative paths (#937)
+
+wasix-libc makes a relative path absolute in one buffer that every thread
+shares, so two of Node's `fs` calls on libuv's thread pool can trade paths: a
+read opens the working directory (EISDIR) or another file.
+`absolute-paths.cjs` resolves the path arguments of `fs`, `fs.promises` and
+their sync forms before they reach it, then calls
+`module.syncBuiltinESMExports()` so `import { readFile } from "node:fs"`
+sees the same functions. A symlink's target is left alone, because it is
+relative to the link. `builtins/test.sh`'s `relative-reads-pass` does 40,000
+concurrent reads of four files and checks each one's contents. Without the
+preload, 40 to 69 per run came back wrong. Remove it once Edge.js carries
+wasix-libc #142 and #145.
+
+## A pending WebAssembly compile (#943)
+
+Node does not exit while `WebAssembly.compile` or `instantiate` is compiling
+on V8's background threads. Edge.js can: under load, about one process in
+fifteen exited silently with the compile unfinished. It also does not wake
+its event loop when the compile finishes, so a long timer kept the process
+waiting forever. `wasm-keep-alive.cjs` holds a 5 ms interval while any of
+the four async entry points is pending, which keeps the process alive and
+picks up the result.

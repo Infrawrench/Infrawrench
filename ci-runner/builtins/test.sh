@@ -256,6 +256,36 @@ jobs:
       echo "$out"
       test "$(grep -c '^hi$' <<<"$out")" = 4
 
+  # Relative paths read from many threads at once (#937): wasix-libc makes
+  # them absolute in one buffer every thread shares, so a read could open
+  # the working directory (EISDIR) or another file. The runner's preload
+  # makes them absolute first. Four files of the same length, 40,000 reads,
+  # every one checked for its own contents.
+  relative-reads-pass:
+    using: env:bash-node@24
+    timeout: 3m
+    run: |
+      mkdir -p /tmp/reads && cd /tmp/reads
+      for n in a b c d; do printf '%s' "$n$n$n$n" > "$n.txt"; done
+      cat > /tmp/reads.js <<'JS'
+      const fs = require("node:fs");
+      const names = ["a.txt", "b.txt", "c.txt", "d.txt"];
+      let bad = 0;
+      (async () => {
+        for (let round = 0; round < 10; round++)
+          await Promise.all(Array.from({ length: 4000 }, (_, i) => {
+            const name = names[i % names.length];
+            return fs.promises.readFile(name, "utf8").then(
+              (text) => { if (text !== name[0].repeat(4)) bad++; },
+              () => bad++,
+            );
+          }));
+        console.log(`bad reads: ${bad}`);
+        process.exit(bad === 0 ? 0 : 1);
+      })();
+      JS
+      UV_THREADPOOL_SIZE=64 node /tmp/reads.js
+
   # Another job's spinning script must not hold this one up: Node jobs once
   # took turns behind the bridge's process-wide lock, so this `node`, started
   # while spin-fails runs for 40s, could not begin until it was stopped. Both

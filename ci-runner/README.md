@@ -475,6 +475,13 @@ package that leaves its WASI build out of its own optional dependencies, as
 rolldown does, needs it listed in the repository: an `optionalDependencies`
 entry pnpm records in the lockfile but installs on no real machine.
 
+The same preload covers two places where Edge.js and Node differ, until a
+pinned Edge.js fixes them: relative `fs` paths are made absolute first,
+because Edge.js's C library makes them absolute in one buffer that
+concurrent calls can trade (#937); and a pending async WebAssembly compile
+keeps the process alive and is looked for every 5 ms, because Edge.js could
+exit before it finished, or never notice that it had (#943).
+
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
 `main`, each builtin's CI job publishes what it just tested to the runner

@@ -9,6 +9,11 @@
 // future Edge.js with a working one is used as is.
 "use strict";
 
+// Relative paths to `fs`, made absolute first (absolute-paths.cjs, #937).
+require("./absolute-paths.cjs");
+// A pending WebAssembly compile keeps the process alive, as in Node (#943).
+require("./wasm-keep-alive.cjs");
+
 const mod = require("node:module");
 
 if (typeof mod.registerHooks === "function") {
