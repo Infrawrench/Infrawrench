@@ -10,8 +10,15 @@
 //
 // Anything it does not understand fails the run rather than being skipped,
 // so a new package shape cannot quietly go unchecked.
-import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 
 const LEVELS = 5; // l0 .. l4 in the pipeline
 const CHUNKS = ["a", "b", "c"]; // jobs per level
@@ -89,6 +96,37 @@ for (const [name, { dir, json }] of packages) {
   }
 }
 
+// tsc emits each source file's declarations beside where tsdown would put
+// them, except where tsdown renames an entry: `schemas: "src/schemas/index.ts"`
+// becomes `dist/schemas.d.ts`, while tsc writes `dist/schemas/index.d.ts`.
+// For each export whose types are not where tsc puts them, write a shim that
+// re-exports them. They are handed on to every job (the pipeline keeps what
+// this job writes under the package directories).
+let shims = 0;
+for (const dir of libraries.values()) {
+  const { json } = [...packages.values()].find((p) => p.dir === dir);
+  const typesPaths = new Set();
+  if (typeof json.types === "string") typesPaths.add(json.types);
+  for (const target of Object.values(json.exports ?? {})) {
+    const types = typeof target === "object" && target !== null ? target.types : undefined;
+    if (typeof types === "string") typesPaths.add(types);
+  }
+  for (const types of typesPaths) {
+    const m = types.match(/^\.\/dist\/(.+)\.d\.ts$/);
+    if (!m || m[1].includes("*")) continue;
+    const at = (p) => existsSync(join(root, dir, p));
+    if (at(`src/${m[1]}.ts`) || at(`src/${m[1]}.tsx`)) continue;
+    if (!at(`src/${m[1]}/index.ts`) && !at(`src/${m[1]}/index.tsx`)) {
+      fail(`${dir}: cannot tell which source ${types} is built from`);
+    }
+    const file = join(root, dir, "dist", `${m[1]}.d.ts`);
+    mkdirSync(dirname(file), { recursive: true });
+    const base = m[1].split("/").pop();
+    writeFileSync(file, `export * from "./${base}/index.js";\n`);
+    shims++;
+  }
+}
+
 // A library's level: one more than the deepest library it depends on.
 const depsOf = (json) =>
   Object.keys({ ...json.dependencies, ...json.devDependencies, ...json.peerDependencies });
@@ -128,6 +166,7 @@ for (const [name, value] of Object.entries(outputs)) {
   appendFileSync(process.env.IWCI_OUTPUT, `${name}=${JSON.stringify(value)}\n`);
 }
 console.log(
-  `${libraries.size} libraries in ${deepest + 1} level(s), ${checks.length} app project(s); ` +
+  `${libraries.size} libraries in ${deepest + 1} level(s), ${checks.length} app project(s), ` +
+    `${shims} declaration shim(s); ` +
     `checked by their own jobs: ${others.sort().join(", ")}`,
 );

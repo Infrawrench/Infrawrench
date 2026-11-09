@@ -33,6 +33,8 @@ jobs:
     using: env:bash-node@24
     deps: false
     outputs: [l0a, l0b, l0c, l1a, l1b, l1c, l2a, l2b, l2c, l3a, l3b, l3c, l4a, l4b, l4c, checks]
+    # The declaration shims it writes for renamed tsdown entries.
+    artifacts: [app/packages, plugin-architecture/packages]
     run: node .infrawrench/ci/typescript-plan.mjs
 
   # What the packages' typecheck scripts do before tsc: desktop's
@@ -410,7 +412,9 @@ jobs:
     needs: [prep, l4a, l4b, l4c]
     using: env:bash-node@24
     cwd: /app/app/packages/mobile
-    run: ./node_modules/.bin/tsc6 --noEmit
+    # The runner's installer writes no node_modules/.bin, so the package's
+    # own entry point, as `tsc6` would run it.
+    run: node node_modules/typescript/bin/tsc6 --noEmit
     memory: 6GiB
     timeout: 30m
 
@@ -418,7 +422,7 @@ jobs:
     name: plugingen (TypeScript 6)
     using: env:bash-node@24
     cwd: /app/plugingen
-    run: ./node_modules/.bin/tsc6 --noEmit
+    run: node node_modules/typescript/bin/tsc6 --noEmit
     memory: 4GiB
     timeout: 20m
 
@@ -427,6 +431,6 @@ jobs:
     needs: [l4a, l4b, l4c]
     using: env:bash-node@24
     cwd: /app/app/packages/website
-    run: ./node_modules/.bin/astro check
+    run: node node_modules/astro/bin/astro.mjs check
     memory: 6GiB
     timeout: 30m
