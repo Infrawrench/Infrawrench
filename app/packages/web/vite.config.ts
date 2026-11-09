@@ -72,8 +72,10 @@ function preloadAppChunk(): Plugin {
         // facade.
         const app = chunks.find((c) => c.moduleIds.some((id) => id.endsWith("/src/main.tsx")));
         if (!app) throw new Error("preloadAppChunk: no chunk for src/main.tsx");
-        const entry = chunks.find((c) => c.isEntry)?.fileName;
-        const scripts = [app.fileName, ...app.imports.filter((f) => f !== entry)];
+        const entry = chunks.find((c) => c.isEntry);
+        // Vite already preloads the entry and whatever it imports statically.
+        const preloaded = new Set([entry?.fileName, ...(entry?.imports ?? [])]);
+        const scripts = [app.fileName, ...app.imports.filter((f) => !preloaded.has(f))];
         const styles = [...(app.viteMetadata?.importedCss ?? [])];
         return [
           ...styles.map((href) => ({
@@ -90,6 +92,39 @@ function preloadAppChunk(): Plugin {
       },
     },
   };
+}
+
+/**
+ * Libraries every first load needs, in chunks of their own so a deploy does
+ * not make returning visitors download them again.
+ *
+ * Inside the app chunk they were renamed with it on every deploy (its hash
+ * covers all of its bytes), so each release re-sent React, recharts and the
+ * rest. A chunk's hash also covers the names of the chunks it imports, so
+ * these hold only libraries, which import only each other: React moves out of
+ * the entry chunk for that reason (the entry names the app chunk, which
+ * changes every deploy).
+ *
+ * An allowlist, never "everything in node_modules": a library only a lazily
+ * loaded panel uses (xterm, the markdown renderer, Monaco) would be pulled out
+ * of that panel's chunk into one the page loads up front. List only what the
+ * app chunk already contains.
+ */
+const VENDOR_CHUNKS: ReadonlyArray<readonly [chunk: string, packages: RegExp]> = [
+  ["vendor-react", /^(react|react-dom|scheduler|react-is|use-sync-external-store)$/],
+  [
+    "vendor-charts",
+    /^(recharts|victory-vendor|d3-(array|color|format|interpolate|path|scale|shape|time|time-format)|internmap|decimal\.js-light|@reduxjs\/toolkit|redux|react-redux|reselect|immer|es-toolkit|eventemitter3|tiny-invariant)$/,
+  ],
+  ["vendor-effect", /^(effect|zod)$/],
+  ["vendor-router", /^@tanstack\/(react-router|router-core|history|store|react-store)$/],
+  ["vendor-i18n", /^(gt-react|gt-i18n|generaltranslation|@generaltranslation\/.+)$/],
+];
+
+function vendorChunk(id: string): string | undefined {
+  const name = /.*\/node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(id)?.[1];
+  if (!name) return undefined;
+  return VENDOR_CHUNKS.find(([, packages]) => packages.test(name))?.[0];
 }
 
 export default defineConfig(({ command }) => ({
@@ -111,5 +146,6 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     outDir: "dist/client",
+    rollupOptions: { output: { manualChunks: vendorChunk } },
   },
 }));

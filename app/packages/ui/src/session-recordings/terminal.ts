@@ -29,8 +29,13 @@ export interface PlaybackTerminal {
  * the session was actually recorded at rather than whatever the viewport
  * happens to be: a session recorded at 200 columns must not reflow into 80,
  * because reflowed output is not what the operator saw.
+ *
+ * It may resolve later: web imports xterm on the first recording opened
+ * rather than shipping it in the app chunk (#912). The player shows no
+ * controls until the terminal exists, and disposes one that arrives after
+ * the recording was closed.
  */
 export type MountPlaybackTerminal = (
   container: HTMLElement,
   geometry: { cols: number; rows: number },
-) => PlaybackTerminal;
+) => PlaybackTerminal | Promise<PlaybackTerminal>;

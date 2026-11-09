@@ -73,13 +73,30 @@ export function RecordingPlayer({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const terminal = mount(container, { cols: cast.width, rows: cast.height });
-    terminalRef.current = terminal;
-    setReady(true);
+    let terminal: PlaybackTerminal | null = null;
+    let closed = false;
+    const attach = (mounted: PlaybackTerminal) => {
+      if (closed) {
+        mounted.dispose();
+        return;
+      }
+      terminal = mounted;
+      terminalRef.current = mounted;
+      setReady(true);
+    };
+    const mounted = mount(container, { cols: cast.width, rows: cast.height });
+    if (mounted instanceof Promise) {
+      mounted.then(attach, (error: unknown) => {
+        console.error("Could not load the recording player's terminal", error);
+      });
+    } else {
+      attach(mounted);
+    }
     return () => {
+      closed = true;
       terminalRef.current = null;
       setReady(false);
-      terminal.dispose();
+      terminal?.dispose();
     };
   }, [cast, mount]);
 

@@ -89,6 +89,7 @@ async function page(options: { path?: string; host?: string; referrer?: string; 
   analytics.initAnalytics({
     key: options.key === undefined ? "phc_test" : options.key || undefined,
   });
+  await analytics.analyticsLoaded();
   return { analytics, scripts, cookies, win, removed };
 }
 

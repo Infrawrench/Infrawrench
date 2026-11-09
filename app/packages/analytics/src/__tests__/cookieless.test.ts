@@ -25,8 +25,9 @@ beforeEach(() => {
 
 describe("cookieless surfaces", () => {
   it("run PostHog without storage or replay", async () => {
-    const { initAnalytics } = await load();
+    const { initAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: "phc_test", cookieless: true });
+    await analyticsLoaded();
     expect(posthog.init.mock.calls[0]![1]).toMatchObject({
       cookieless_mode: "always",
       disable_session_recording: true,
@@ -43,22 +44,34 @@ describe("cookieless surfaces", () => {
   });
 
   it("capture events without a consent answer", async () => {
-    const { initAnalytics, captureAnalytics } = await load();
+    const { initAnalytics, captureAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: "phc_test", cookieless: true });
     captureAnalytics("clicked", { target: "x" });
+    await analyticsLoaded();
     expect(posthog.capture).toHaveBeenCalledWith("clicked", { target: "x" });
   });
 
   it("register properties for every event", async () => {
-    const { initAnalytics } = await load();
+    const { initAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: "phc_test", cookieless: true, properties: { framed: true } });
+    await analyticsLoaded();
     expect(posthog.register).toHaveBeenCalledWith({ framed: true });
   });
 
+  it("queue events sent before the SDK has loaded, and send them once it has", async () => {
+    const { initAnalytics, captureAnalytics, analyticsLoaded } = await load();
+    initAnalytics({ key: "phc_test", cookieless: true });
+    captureAnalytics("early");
+    expect(posthog.capture).not.toHaveBeenCalled();
+    await analyticsLoaded();
+    expect(posthog.capture).toHaveBeenCalledWith("early", {});
+  });
+
   it("do nothing without a key", async () => {
-    const { initAnalytics, captureAnalytics } = await load();
+    const { initAnalytics, captureAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: undefined, cookieless: true });
     captureAnalytics("clicked");
+    await analyticsLoaded();
     expect(posthog.init).not.toHaveBeenCalled();
     expect(posthog.capture).not.toHaveBeenCalled();
   });
@@ -66,8 +79,9 @@ describe("cookieless surfaces", () => {
 
 describe("ordinary surfaces", () => {
   it("keep the consent flow and allow replay", async () => {
-    const { initAnalytics } = await load();
+    const { initAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: "phc_test" });
+    await analyticsLoaded();
     expect(posthog.init.mock.calls[0]![1]).toMatchObject({
       cookieless_mode: "on_reject",
       disable_session_recording: false,
@@ -76,9 +90,10 @@ describe("ordinary surfaces", () => {
   });
 
   it("drop events until consent is granted", async () => {
-    const { initAnalytics, captureAnalytics } = await load();
+    const { initAnalytics, captureAnalytics, analyticsLoaded } = await load();
     initAnalytics({ key: "phc_test" });
     captureAnalytics("clicked");
+    await analyticsLoaded();
     expect(posthog.capture).not.toHaveBeenCalled();
     posthog.get_explicit_consent_status.mockReturnValue("granted");
     captureAnalytics("clicked");

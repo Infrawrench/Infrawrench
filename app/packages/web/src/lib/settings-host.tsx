@@ -1,12 +1,23 @@
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { readRevnuMeasurement } from "@infrawrench/analytics";
-import { SettingsHostProvider, type SettingsHostValue } from "@infrawrench/ui";
+import {
+  SettingsHostProvider,
+  type MountPlaybackTerminal,
+  type SettingsHostValue,
+} from "@infrawrench/ui";
 import { apiGet, apiGetText, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { usePermissions } from "@/auth/permissions-context";
 import { createWebApprovalsClient } from "@/lib/approvals-client";
 import { dispatchChangeFreezeChanged } from "@/lib/change-freeze-events";
-import { mountPlaybackTerminal } from "@/lib/playback-terminal";
+
+/**
+ * xterm (about 290 KB) loads with the first recording opened, not with the
+ * app: the recording player is its only user outside the terminal tabs, which
+ * import it on demand already.
+ */
+const mountPlaybackTerminal: MountPlaybackTerminal = (container, geometry) =>
+  import("@/lib/playback-terminal").then((m) => m.mountPlaybackTerminal(container, geometry));
 
 /**
  * Web implementation of the settings host contract: cookie-auth fetch, the

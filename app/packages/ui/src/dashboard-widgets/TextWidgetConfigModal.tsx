@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { useGT } from "gt-react";
 import { TEXT_WIDGET_LIMITS, type TextWidgetConfig } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
-import { ChatMarkdown } from "../chat/ChatMarkdown.js";
+import { LazyChatMarkdown } from "../chat/LazyChatMarkdown.js";
 import { labelClass, selectClass, tabClass } from "../cost/form-styles.js";
 
 /** Write or edit a text card: a title and markdown, with a preview. */
@@ -95,7 +95,7 @@ export function TextWidgetConfigModal({
               className="min-h-[14rem] max-h-[24rem] overflow-y-auto rounded-lg border border-border bg-surface px-3 py-2"
             >
               {markdown.trim() ? (
-                <ChatMarkdown text={markdown} />
+                <LazyChatMarkdown text={markdown} />
               ) : (
                 <p className="text-sm text-on-surface-faint">{gt("Nothing to preview yet.")}</p>
               )}
