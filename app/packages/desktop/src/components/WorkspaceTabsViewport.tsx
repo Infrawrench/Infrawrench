@@ -18,8 +18,8 @@ import {
   vulnerabilitiesTabTarget,
   complianceTabTarget,
   servicesTabTarget,
-  DeploymentsPanel,
   IssueFilingProvider,
+  lazyPanel,
   useUIStore,
   workspaceTabTargetsEqual,
   type DeploymentClient,
@@ -35,9 +35,9 @@ import {
   settingsTabTarget,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
-import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
-import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
+import { type CostsClient } from "@infrawrench/ui/cost";
+import { type CostReportsClient } from "@infrawrench/ui/cost-reports";
+import { type InvoicesClient } from "@infrawrench/ui/invoices";
 import {
   type ExtendedSupportClient,
   type OrphansClient,
@@ -50,12 +50,9 @@ import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
-import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
+import { type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
-import {
-  KubernetesEfficiencyPanel,
-  type KubernetesEfficiencyClient,
-} from "@infrawrench/ui/k8s-efficiency";
+import { type KubernetesEfficiencyClient } from "@infrawrench/ui/k8s-efficiency";
 import { createDesktopKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
@@ -66,43 +63,139 @@ import { createDesktopSavingsFindingsClient } from "@/lib/savings-findings-clien
 import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
-import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
+import { type LogWorkspaceClient } from "@infrawrench/ui";
+// Static: the sidebar imports this module for its chat client anyway.
 import { CloudChatPanel } from "@/components/CloudChatPanel";
-import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
-import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
-import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
-import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
-import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
-import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccountLeakBanner } from "@/components/DesktopAccountLeakBanner";
-import { DesktopVulnerabilitiesPanel } from "@/components/DesktopVulnerabilitiesPanel";
-import { DesktopCompliancePanel } from "@/components/DesktopCompliancePanel";
-import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
-import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
-import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
-import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
-import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
-import { DesktopRunbooksPanel } from "@/components/DesktopRunbooksPanel";
-import { DesktopQueryMonitorsPanel } from "@/components/DesktopQueryMonitorsPanel";
-import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
-import { DesktopIacPanel } from "@/components/DesktopIacPanel";
-import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
-import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
-import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
-import { DesktopStatusPagesPanel } from "@/components/DesktopStatusPagesPanel";
-import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
-import { DesktopPriceCatalogPanel } from "@/components/DesktopPriceCatalogPanel";
-import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
-import { DesktopSlosPanel } from "@/components/DesktopSlosPanel";
-import { DesktopResourceReportsPanel } from "@/components/DesktopResourceReportsPanel";
-import { DesktopServicesPanel } from "@/components/DesktopServicesPanel";
-import { DesktopDeliveryPanel } from "@/components/DesktopDeliveryPanel";
-import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
-import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
+// Static: the resource detail's Apps view renders the launcher from it.
 import { AppWindowPanel } from "./AppsPanels";
-import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
-import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
 import { openExternalUrl } from "../lib/app-shell";
+
+// Each tab kind's panel loads the first time a tab of that kind mounts, not
+// with the app: the web rule (#912), kept here so the two viewports stay one
+// shape. Shared panels load by their `@infrawrench/ui` module subpath, never
+// the barrel, or nothing splits; see `lazyPanel`. The dashboard, account and
+// resource panels stay static: they live in route modules the route tree
+// imports anyway.
+const DeploymentsPanel = lazyPanel(() =>
+  import("@infrawrench/ui/deployments/DeploymentsPanel").then((m) => m.DeploymentsPanel),
+);
+const CostsPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost/CostsPanel").then((m) => m.CostsPanel),
+);
+const CostReportsPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost-reports/CostReportsPanel").then((m) => m.CostReportsPanel),
+);
+const CostCanvasesPanel = lazyPanel(() =>
+  import("@infrawrench/ui/cost-canvases/CostCanvasesPanel").then((m) => m.CostCanvasesPanel),
+);
+const KubernetesEfficiencyPanel = lazyPanel(() =>
+  import("@infrawrench/ui/k8s-efficiency/KubernetesEfficiencyPanel").then(
+    (m) => m.KubernetesEfficiencyPanel,
+  ),
+);
+const InvoicesPanel = lazyPanel(() =>
+  import("@infrawrench/ui/invoices/InvoicesPanel").then((m) => m.InvoicesPanel),
+);
+const LogWorkspacePanel = lazyPanel(() =>
+  import("@infrawrench/ui/logs/LogWorkspacePanel").then((m) => m.LogWorkspacePanel),
+);
+const DesktopWorkflowsPanel = lazyPanel(() =>
+  import("@/components/DesktopWorkflowsPanel").then((m) => m.DesktopWorkflowsPanel),
+);
+const DesktopGraphPanel = lazyPanel(() =>
+  import("@/components/DesktopGraphPanel").then((m) => m.DesktopGraphPanel),
+);
+const LocalDeploymentsPanel = lazyPanel(() =>
+  import("@/components/LocalDeploymentsPanel").then((m) => m.LocalDeploymentsPanel),
+);
+const DesktopChangesPanel = lazyPanel(() =>
+  import("@/components/DesktopChangesPanel").then((m) => m.DesktopChangesPanel),
+);
+const DesktopExpiryPanel = lazyPanel(() =>
+  import("@/components/DesktopExpiryPanel").then((m) => m.DesktopExpiryPanel),
+);
+const DesktopPosturePanel = lazyPanel(() =>
+  import("@/components/DesktopPosturePanel").then((m) => m.DesktopPosturePanel),
+);
+const DesktopVulnerabilitiesPanel = lazyPanel(() =>
+  import("@/components/DesktopVulnerabilitiesPanel").then((m) => m.DesktopVulnerabilitiesPanel),
+);
+const DesktopCompliancePanel = lazyPanel(() =>
+  import("@/components/DesktopCompliancePanel").then((m) => m.DesktopCompliancePanel),
+);
+const DesktopAccessReviewPanel = lazyPanel(() =>
+  import("@/components/DesktopAccessReviewPanel").then((m) => m.DesktopAccessReviewPanel),
+);
+const DesktopJitAccessPanel = lazyPanel(() =>
+  import("@/components/DesktopJitAccessPanel").then((m) => m.DesktopJitAccessPanel),
+);
+const DesktopBackupsPanel = lazyPanel(() =>
+  import("@/components/DesktopBackupsPanel").then((m) => m.DesktopBackupsPanel),
+);
+const DesktopWallboardPanel = lazyPanel(() =>
+  import("@/components/DesktopWallboardPanel").then((m) => m.DesktopWallboardPanel),
+);
+const DesktopCalendarPanel = lazyPanel(() =>
+  import("@/components/DesktopCalendarPanel").then((m) => m.DesktopCalendarPanel),
+);
+const DesktopRunbooksPanel = lazyPanel(() =>
+  import("@/components/DesktopRunbooksPanel").then((m) => m.DesktopRunbooksPanel),
+);
+const DesktopQueryMonitorsPanel = lazyPanel(() =>
+  import("@/components/DesktopQueryMonitorsPanel").then((m) => m.DesktopQueryMonitorsPanel),
+);
+const DesktopDnsPanel = lazyPanel(() =>
+  import("@/components/DesktopDnsPanel").then((m) => m.DesktopDnsPanel),
+);
+const DesktopIacPanel = lazyPanel(() =>
+  import("@/components/DesktopIacPanel").then((m) => m.DesktopIacPanel),
+);
+const DesktopEnvironmentDiffPanel = lazyPanel(() =>
+  import("@/components/DesktopEnvironmentDiffPanel").then((m) => m.DesktopEnvironmentDiffPanel),
+);
+const DesktopMetricAlertsPanel = lazyPanel(() =>
+  import("@/components/DesktopMetricAlertsPanel").then((m) => m.DesktopMetricAlertsPanel),
+);
+const DesktopProbesPanel = lazyPanel(() =>
+  import("@/components/DesktopProbesPanel").then((m) => m.DesktopProbesPanel),
+);
+const DesktopStatusPagesPanel = lazyPanel(() =>
+  import("@/components/DesktopStatusPagesPanel").then((m) => m.DesktopStatusPagesPanel),
+);
+const DesktopQuotasPanel = lazyPanel(() =>
+  import("@/components/DesktopQuotasPanel").then((m) => m.DesktopQuotasPanel),
+);
+const DesktopPriceCatalogPanel = lazyPanel(() =>
+  import("@/components/DesktopPriceCatalogPanel").then((m) => m.DesktopPriceCatalogPanel),
+);
+const DesktopIncidentsPanel = lazyPanel(() =>
+  import("@/components/DesktopIncidentsPanel").then((m) => m.DesktopIncidentsPanel),
+);
+const DesktopSlosPanel = lazyPanel(() =>
+  import("@/components/DesktopSlosPanel").then((m) => m.DesktopSlosPanel),
+);
+const DesktopResourceReportsPanel = lazyPanel(() =>
+  import("@/components/DesktopResourceReportsPanel").then((m) => m.DesktopResourceReportsPanel),
+);
+const DesktopServicesPanel = lazyPanel(() =>
+  import("@/components/DesktopServicesPanel").then((m) => m.DesktopServicesPanel),
+);
+const DesktopDeliveryPanel = lazyPanel(() =>
+  import("@/components/DesktopDeliveryPanel").then((m) => m.DesktopDeliveryPanel),
+);
+const DesktopEnvironmentsPanel = lazyPanel(() =>
+  import("@/components/DesktopEnvironmentsPanel").then((m) => m.DesktopEnvironmentsPanel),
+);
+const DesktopSshFanoutPanel = lazyPanel(() =>
+  import("@/components/DesktopSshFanoutPanel").then((m) => m.DesktopSshFanoutPanel),
+);
+const DesktopSettingsPanel = lazyPanel(() =>
+  import("@/components/DesktopSettingsPanel").then((m) => m.DesktopSettingsPanel),
+);
+const DesktopAgentsPanel = lazyPanel(() =>
+  import("@/components/DesktopAgentsPanel").then((m) => m.DesktopAgentsPanel),
+);
 
 // One client for every org: it resolves the active org per call, so switching
 // org under a mounted Deploy tab reaches the new org's repos and history.

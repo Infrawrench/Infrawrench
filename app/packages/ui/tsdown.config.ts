@@ -1,6 +1,14 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
+  // Unbundled: `dist/` mirrors `src/` one module per file, so an app's bundler
+  // can tree-shake the barrel and split each panel into its own chunk. Bundled
+  // into a single `index.js`, every panel and every library it imports landed
+  // in the web SPA's first download (#912). The named entries below are the
+  // roots the build walks from; every module they reach is emitted at its
+  // `src/` path, and `package.json`'s `./*` export serves any of them by path.
+  unbundle: true,
+  root: "src",
   entry: {
     index: "src/index.ts",
     // Standalone React-free entry so server-side consumers (the web API) can

@@ -1,5 +1,8 @@
 import { initializeGTSPA } from "gt-react";
-import { getStoredLocale } from "@infrawrench/ui";
+// By module path, not the `@infrawrench/ui` barrel: the barrel re-exports
+// packages that declare side effects, which would pull them into this entry
+// chunk, ahead of the app chunk, on every first visit.
+import { getStoredLocale } from "@infrawrench/ui/i18n/locale-preference";
 import gtConfig from "../gt.config.json";
 import loadTranslations from "./loadTranslations";
 import { startAnalytics } from "./lib/analytics";

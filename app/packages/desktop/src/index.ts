@@ -1,5 +1,8 @@
 import { initializeGTSPA } from "gt-react";
-import { getStoredLocale } from "@infrawrench/ui";
+// By module path, not the `@infrawrench/ui` barrel, as on web: the barrel
+// re-exports packages that declare side effects, which would load them before
+// the app module.
+import { getStoredLocale } from "@infrawrench/ui/i18n/locale-preference";
 import gtConfig from "../gt.config.json";
 import loadTranslations from "./loadTranslations";
 import { installCookieStoreShim } from "./lib/cookie-store-shim";
