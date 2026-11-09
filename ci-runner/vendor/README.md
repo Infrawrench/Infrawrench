@@ -25,6 +25,31 @@ and the job ran (and held its slot) indefinitely. The patch adds
 which already hold the Rust env registry lock that env release takes before
 freeing anything.
 
+**Also in the patch: no memory protection keys.** On a CPU with PKU (the
+runner host has it), V8 tags the
+process-wide JS dispatch table with a protection key and grants access in the
+PKRU register of the thread that first initialises V8, and of the threads it
+creates later. PKRU is per thread, so a second CI job's `node`, running on a
+thread from an older pool, faulted reading that table in `Isolate::Init`
+(SIGSEGV, PK in the error code) and took the whole runner down: two
+`env:bash-node` jobs started together crashed every time.
+`v8/src/unofficial_napi.cc` sets `--no-memory-protection-keys` before V8
+initialises, after any guest flags, so V8 protects those pages with mprotect,
+which every thread sees the same. Drop it once a release grants the key to
+every thread that runs an isolate; two `env:bash-node` jobs started together
+on a PKU host are the check.
+
+**And: heap sizes for budgeted isolates.** Under a memory budget, which the
+runner always sets (a job's `memory:`), an isolate's old generation started
+at 64 MiB and grew in 32 MiB steps through the near-heap-limit callback.
+V8 runs a full mark-compact before each grant, so Prettier over the monorepo
+ran about 4x slower than native Node, and a burst of allocation could outrun
+the grants: V8 died with "Reached heap limit" with most of the budget unused,
+aborting the whole process. `src/budget.rs` now starts at 256 MiB, grows by
+half the current limit per grant (at least 128 MiB), and gives a budget with
+room for it a 192 MiB young generation (64 MiB semi-spaces), all still
+charged against the budget. Revisit if a release makes these settings.
+
 **Still true with the patch.** `g_mu` is shared by every job in the process,
 so a long-running script in one job still serialises the lock-taking bridge
 calls (module evaluation, contextify) of other jobs' `node` processes until
