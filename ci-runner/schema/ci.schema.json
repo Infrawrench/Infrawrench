@@ -359,6 +359,12 @@
             "pattern": "^(builtin|repo):[a-z0-9_-]{1,64}@[0-9][0-9A-Za-z.-]*$"
           },
           "description": "Tools an `env:` job's script can run by name, such as `builtin:gofmt@1.27`. Each becomes a command named after the tool, first on PATH. Tools with the tsc-host ABI (`builtin:typescript`) cannot run as commands."
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Paths (relative to the clone, or absolute) whose files are handed on once the job passes: every job that needs this one, directly or through others, starts with them in its file system. They are not changes, count toward the run's `scratch:` limit, and may use `${{ matrix }}`."
         }
       }
     },

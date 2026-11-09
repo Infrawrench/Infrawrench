@@ -143,26 +143,27 @@ everything through.
 
 ### Jobs
 
-| Key       | Meaning                                                                                                                                                                        |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`   | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                            |
-| `args`    | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                               |
-| `run`     | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
-| `name`    | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
-| `matrix`  | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
-| `cwd`     | Working directory in the isolate. Defaults to the clone.                                                                                                                       |
-| `env`     | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
-| `clone`   | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
-| `deps`    | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
-| `changes` | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                      |
-| `needs`   | Jobs that must finish first. Naming a matrix job waits for all of its entries.                                                                                                 |
-| `if`      | When the job runs, given how its `needs` went. See below.                                                                                                                      |
-| `outputs` | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
-| `paths`   | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
-| `timeout` | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
-| `memory`  | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
-| `cache`   | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
-| `tools`   | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
+| Key         | Meaning                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `using`     | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                            |
+| `args`      | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                               |
+| `run`       | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
+| `name`      | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
+| `matrix`    | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
+| `cwd`       | Working directory in the isolate. Defaults to the clone.                                                                                                                       |
+| `env`       | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
+| `clone`     | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
+| `deps`      | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
+| `changes`   | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                      |
+| `needs`     | Jobs that must finish first. Naming a matrix job waits for all of its entries.                                                                                                 |
+| `if`        | When the job runs, given how its `needs` went. See below.                                                                                                                      |
+| `outputs`   | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
+| `paths`     | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
+| `timeout`   | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
+| `memory`    | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
+| `cache`     | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
+| `tools`     | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
+| `artifacts` | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                   |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
@@ -208,6 +209,39 @@ empty, it is gone when the run ends, it is held in memory and capped by the
 top-level `scratch:` (default 1 GiB), and nothing under it counts as a
 change to the repository. Jobs running at the same time share it as they
 would share a disk, so give them different paths.
+
+### Artifacts
+
+A job's `artifacts:` lists paths, relative to the clone or absolute, whose
+files are handed on once the job passes. Every job that needs it, directly
+or through other jobs, starts with those files in its own file system,
+where the producing job left them. That is how one job's build becomes
+another's input, as a monorepo's build order needs:
+
+```yaml
+jobs:
+  core:
+    using: builtin:typescript@7.1
+    cwd: /app/packages/core
+    args: [-p, ., --emitDeclarationOnly]
+    artifacts: [packages/core/dist]
+
+  web:
+    needs: [core] # starts with packages/core/dist
+    using: builtin:typescript@7.1
+    cwd: /app/packages/web
+    args: [--noEmit]
+```
+
+- Paths may use `${{ matrix }}` (quote them inside `[ ]`); a matrix job's
+  entries hand on all of their files together.
+- A job that fails, or is skipped, hands on nothing. A job only keeps what
+  it wrote itself, not the files it was handed.
+- Handed-on files are not the receiving job's changes, so `changes: fail`
+  and `changes: commit` ignore them. They count toward the receiving job's
+  `memory:`.
+- Everything kept lives in memory until the run ends and counts toward the
+  run's `scratch:` limit; a job whose artifacts would pass it fails.
 
 ### Outputs, dynamic matrices and `if:`
 

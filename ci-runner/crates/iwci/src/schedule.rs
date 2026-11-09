@@ -13,7 +13,8 @@
 //! the ordering, skipping, output and change-policy rules are tested on
 //! their own.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -23,7 +24,7 @@ use iwci_spec::{
     Action, ChangePolicy, JobResult, JobTemplate, NeedsValues, Plan, PlannedJob, ToolRef,
     WorkspaceSpec,
 };
-use iwci_vfs::{Change, JobFs, Snapshot, WriteBudget};
+use iwci_vfs::{Change, Entry, JobFs, Snapshot, WriteBudget};
 use serde::Serialize;
 
 /// Where a job writes its outputs, as `$IWCI_OUTPUT` tells it.
@@ -545,6 +546,8 @@ struct Finished {
     result: JobResult,
     blocks: bool,
     outputs: BTreeMap<String, String>,
+    /// What the key's `artifacts:` kept, every matrix entry's together.
+    artifacts: Arc<Vec<Entry>>,
 }
 
 struct State<'p> {
@@ -554,11 +557,19 @@ struct State<'p> {
     /// Expanded jobs ready to run.
     queue: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
-    /// Started templates: their instances' ids in matrix order, and the
-    /// reports of those finished so far.
-    open: HashMap<String, (Vec<String>, Vec<JobReport>)>,
+    /// Started templates: their instances' ids in matrix order, the reports
+    /// of those finished so far, and the artifacts they kept.
+    open: HashMap<String, OpenKey>,
     running: usize,
     reports: HashMap<String, Vec<JobReport>>,
+}
+
+/// A key whose entries are running.
+struct OpenKey {
+    /// Its instances' ids, in matrix order.
+    order: Vec<String>,
+    reports: Vec<JobReport>,
+    artifacts: Vec<Entry>,
 }
 
 struct ConditionEnv<'a> {
@@ -643,16 +654,18 @@ pub fn run<T: Tools>(
             refused: AtomicBool::new(false),
         }));
     let mask = Arc::new(Masker::new(options.secrets.values()));
+    let artifact_bytes = AtomicU64::new(0);
     let shared = RunShared {
         scratch: &scratch,
         mask: &mask,
+        artifact_bytes: &artifact_bytes,
     };
 
     std::thread::scope(|scope| {
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
-                    let (template, job) = {
+                    let (template, job, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // The newest job whose memory fits the runner's
@@ -666,9 +679,11 @@ pub fn run<T: Tools>(
                                     .rposition(|(_, j)| budget.try_take(j.memory_bytes)),
                             };
                             if let Some(pos) = fits {
-                                let next = s.queue.remove(pos);
+                                let (template, job) = s.queue.remove(pos);
                                 s.running += 1;
-                                break next;
+                                let inherited =
+                                    inherited_artifacts(plan, &template.key, &s.finished);
+                                break (template, job, inherited);
                             }
                             if s.running == 0 {
                                 // Nothing queued, nothing running: whatever is
@@ -697,8 +712,10 @@ pub fn run<T: Tools>(
                     let slot = options.slots.as_ref().map(|s| s.acquire());
                     let workspace = built[job.workspace]
                         .get_or_init(|| workspaces.build(&plan.workspaces[job.workspace]));
+                    let mut kept = Vec::new();
                     let report = run_job(
                         &job, plan, workspace, tools, executor, committer, options, &shared,
+                        &inherited, &mut kept,
                     );
                     drop(slot);
                     emit_finished(options, &report);
@@ -708,9 +725,14 @@ pub fn run<T: Tools>(
                     let mut s = state.lock().unwrap();
                     s.running -= 1;
                     let entry = s.open.get_mut(&template.key).expect("activated");
-                    entry.1.push(report);
-                    if entry.1.len() == entry.0.len() {
-                        let (order, mut reports) = s.open.remove(&template.key).expect("activated");
+                    entry.reports.push(report);
+                    entry.artifacts.extend(kept);
+                    if entry.reports.len() == entry.order.len() {
+                        let OpenKey {
+                            order,
+                            mut reports,
+                            artifacts,
+                        } = s.open.remove(&template.key).expect("activated");
                         // Matrix entries finish in any order; report them in
                         // matrix order. The order comes from the instances
                         // that ran, since a matrix another job set has none
@@ -721,7 +743,7 @@ pub fn run<T: Tools>(
                                 .position(|id| *id == r.id)
                                 .unwrap_or(usize::MAX)
                         });
-                        finish(&mut s, template, reports);
+                        finish(&mut s, template, reports, artifacts);
                         activate(&mut s, plan, options);
                     }
                     drop(s);
@@ -794,7 +816,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
         if let Some((reason, blocks)) = skip {
             let report = key_report(template, Status::Skipped { reason }, blocks);
             emit_finished(options, &report);
-            finish(s, template, vec![report]);
+            finish(s, template, vec![report], Vec::new());
             continue;
         }
 
@@ -820,7 +842,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     true,
                 );
                 emit_finished(options, &report);
-                finish(s, template, vec![report]);
+                finish(s, template, vec![report], Vec::new());
             }
             Ok(jobs) if jobs.is_empty() => {
                 let report = key_report(
@@ -831,7 +853,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     false,
                 );
                 emit_finished(options, &report);
-                finish(s, template, vec![report]);
+                finish(s, template, vec![report], Vec::new());
             }
             Ok(jobs)
                 if options
@@ -848,11 +870,18 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 );
                 let report = key_report(template, Status::Error { message }, true);
                 emit_finished(options, &report);
-                finish(s, template, vec![report]);
+                finish(s, template, vec![report], Vec::new());
             }
             Ok(jobs) => {
                 let order = jobs.iter().map(|j| j.id.clone()).collect();
-                s.open.insert(template.key.clone(), (order, Vec::new()));
+                s.open.insert(
+                    template.key.clone(),
+                    OpenKey {
+                        order,
+                        reports: Vec::new(),
+                        artifacts: Vec::new(),
+                    },
+                );
                 // The queue is a stack; push in reverse so entries start in
                 // matrix order.
                 for job in jobs.into_iter().rev() {
@@ -863,7 +892,12 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
     }
 }
 
-fn finish(s: &mut State<'_>, template: &JobTemplate, reports: Vec<JobReport>) {
+fn finish(
+    s: &mut State<'_>,
+    template: &JobTemplate,
+    reports: Vec<JobReport>,
+    artifacts: Vec<Entry>,
+) {
     let blocks = reports.iter().any(|r| r.blocks);
     let result = if reports
         .iter()
@@ -889,6 +923,7 @@ fn finish(s: &mut State<'_>, template: &JobTemplate, reports: Vec<JobReport>) {
             result,
             blocks,
             outputs,
+            artifacts: Arc::new(artifacts),
         },
     );
     s.reports.insert(template.key.clone(), reports);
@@ -920,6 +955,9 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
 struct RunShared<'a> {
     scratch: &'a JobFs,
     mask: &'a Arc<Masker>,
+    /// Bytes of artifacts kept so far, held to the run's `scratch:` limit:
+    /// both live in memory for the whole run.
+    artifact_bytes: &'a AtomicU64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -932,6 +970,8 @@ fn run_job<T: Tools>(
     committer: &dyn Committer,
     options: &Options,
     shared: &RunShared<'_>,
+    inherited: &[(String, Arc<Vec<Entry>>)],
+    kept: &mut Vec<Entry>,
 ) -> JobReport {
     let started = Instant::now();
     let workspace = match workspace {
@@ -976,6 +1016,26 @@ fn run_job<T: Tools>(
         .clone
         .as_ref()
         .map(|c| c.into.clone());
+
+    // What the jobs this one needs kept, oldest first, so a later job's
+    // copy of a file wins. They are inputs, never this job's changes.
+    let mut artifact_notes = Vec::new();
+    let mut restored: HashSet<PathBuf> = HashSet::new();
+    for (from, entries) in inherited {
+        if let Err(e) = fs.apply(entries) {
+            return errored(
+                job,
+                format!("could not write the artifacts of `{from}`: {e}"),
+                started.elapsed(),
+            );
+        }
+        let files = entries
+            .iter()
+            .filter(|e| matches!(e, Entry::File { .. }))
+            .count();
+        artifact_notes.push(format!("artifacts: {files} file(s) from `{from}`"));
+        restored.extend(entries.iter().map(|e| entry_path(e).to_path_buf()));
+    }
 
     // Restore caches before the job runs. A miss, or a store that cannot be
     // read, is a cold start, never a failure.
@@ -1036,7 +1096,7 @@ fn run_job<T: Tools>(
     merge_env(&mut env, &job.env);
     // Secrets last, read now so they are never part of the plan. A secret
     // the run does not have reads as empty, and the report says which.
-    let mut notes = Vec::new();
+    let mut notes = artifact_notes;
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
         let (value, missing) = entry.fill(|name| options.secrets.get(name).cloned());
@@ -1107,7 +1167,7 @@ fn run_job<T: Tools>(
         Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => fs
             .changes(root)
             .into_iter()
-            .filter(|c| !under_cache(c.path()))
+            .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()))
             .collect(),
         _ => Vec::new(),
     };
@@ -1137,7 +1197,7 @@ fn run_job<T: Tools>(
         });
 
     let mut commit = None;
-    let status = if execution.timed_out {
+    let mut status = if execution.timed_out {
         Status::Failed {
             reason: format!("timed out after {}s", job.timeout.as_secs()),
         }
@@ -1183,6 +1243,47 @@ fn run_job<T: Tools>(
             _ => Status::Passed,
         }
     };
+
+    // Keep this job's artifacts for the jobs that need it: only after a
+    // pass, without the files it was handed, and within the run's
+    // `scratch:` limit, since they stay in memory until the run ends.
+    if status == Status::Passed && !job.artifacts.is_empty() {
+        let entries: Vec<Entry> = fs
+            .entries_under(&job.artifacts)
+            .into_iter()
+            .filter(|e| !restored.contains(entry_path(e)))
+            .collect();
+        let files = entries
+            .iter()
+            .filter(|e| matches!(e, Entry::File { .. }))
+            .count();
+        let bytes: u64 = entries
+            .iter()
+            .map(|e| match e {
+                Entry::File { data, .. } => data.len() as u64,
+                _ => 0,
+            })
+            .sum();
+        let total = shared.artifact_bytes.fetch_add(bytes, Ordering::SeqCst) + bytes;
+        if total > plan.scratch_bytes {
+            shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
+            status = Status::Failed {
+                reason: format!(
+                    "its artifacts ({} KiB) would take the run past its `scratch:` limit of {} MiB",
+                    bytes.div_ceil(1024),
+                    plan.scratch_bytes >> 20
+                ),
+            };
+        } else if files == 0 {
+            notes.push("artifacts: nothing under its `artifacts:` paths".into());
+        } else {
+            notes.push(format!(
+                "artifacts: kept {files} file(s), {} KiB",
+                bytes.div_ceil(1024)
+            ));
+            *kept = entries;
+        }
+    }
 
     // Save caches only after a pass, and only when the job did not start
     // from an exact hit (that entry is already what it would save).
@@ -1233,6 +1334,44 @@ fn run_job<T: Tools>(
         duration_ms: millis(started.elapsed()),
         blocks,
     }
+}
+
+fn entry_path(entry: &Entry) -> &std::path::Path {
+    match entry {
+        Entry::Dir { path } | Entry::File { path, .. } | Entry::Symlink { path, .. } => path,
+    }
+}
+
+/// The artifacts a job of `key` starts with: those of every job it needs,
+/// directly or through others, each once, dependencies before dependents.
+fn inherited_artifacts(
+    plan: &Plan,
+    key: &str,
+    finished: &HashMap<String, Finished>,
+) -> Vec<(String, Arc<Vec<Entry>>)> {
+    fn visit<'p>(plan: &'p Plan, key: &str, seen: &mut HashSet<&'p str>, order: &mut Vec<&'p str>) {
+        let Some(template) = plan.jobs.iter().find(|t| t.key == key) else {
+            return;
+        };
+        for need in &template.needs {
+            if let Some(t) = plan.jobs.iter().find(|t| t.key == *need)
+                && seen.insert(t.key.as_str())
+            {
+                visit(plan, &t.key, seen, order);
+                order.push(t.key.as_str());
+            }
+        }
+    }
+    let mut seen = HashSet::new();
+    let mut order = Vec::new();
+    visit(plan, key, &mut seen, &mut order);
+    order
+        .into_iter()
+        .filter_map(|k| {
+            let f = finished.get(k)?;
+            (!f.artifacts.is_empty()).then(|| (k.to_string(), f.artifacts.clone()))
+        })
+        .collect()
 }
 
 /// Reads `$IWCI_OUTPUT` in the format CI systems commonly use for outputs:

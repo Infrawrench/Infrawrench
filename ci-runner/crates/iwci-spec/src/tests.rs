@@ -946,3 +946,37 @@ fn scratch_has_a_default_and_a_bound() {
         "between 16MiB and 16GiB",
     );
 }
+
+#[test]
+fn artifacts_resolve_paths_per_matrix_entry() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  d:
+    matrix: [web, ui]
+    using: builtin:t@1
+    artifacts: ["app/packages/${{ matrix }}/dist", /tmp/out]
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.job("d[ui]").unwrap().artifacts,
+        vec![
+            "/app/app/packages/ui/dist".to_string(),
+            "/tmp/out".to_string()
+        ]
+    );
+
+    let job = |artifacts: &str| {
+        format!("name: x\njobs:\n  t:\n    using: builtin:t@1\n    artifacts: {artifacts}\n")
+    };
+    assert_error(&job("[../x]"), "without `..`");
+    assert_error(&job("[/iwci/output]"), "not a path a job can keep");
+    assert_error(&job("[\"\"]"), "non-empty paths");
+    assert_error(
+        "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    artifacts: [dist]\n",
+        "can only keep absolute paths",
+    );
+}
