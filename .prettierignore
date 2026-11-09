@@ -54,3 +54,7 @@ app/packages/raycast/raycast-env.d.ts
 # Third-party crates vendored with a patch (ci-runner/vendor/README.md): they
 # must stay byte-for-byte as published apart from the patch file.
 ci-runner/vendor/wasmer-napi/
+
+# @tybys/wasm-util's published bundle, vendored unmodified for the runner's
+# `node:wasi` (ci-runner/crates/iwci-runtime/node/README.md).
+ci-runner/crates/iwci-runtime/node/wasm-util.cjs

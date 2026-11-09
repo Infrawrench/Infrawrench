@@ -457,9 +457,23 @@ isolate of its own, charged against the job's `memory:` like the main one,
 so a job that starts more workers than its memory holds gets
 `ERR_WORKER_INIT_FAILED` ("Failed to create worker env") for the rest, not
 a hang. A later isolate starts small (64 MiB old generation) and grows as
-it allocates; a 2 GiB job fits about fifteen idle workers. Edge.js 0.2.5
-has no `node:wasi`, so packages that fall back to a WASI build of a native
-addon (rolldown's `@rolldown/binding-wasm32-wasi`) still fail to load.
+it allocates; a 2 GiB job fits about fifteen idle workers.
+
+`node:wasi` works. Edge.js 0.2.5 ships the module but not the binding behind
+it, so the runner gives every environment job `/usr/local/lib/iwci/node`
+and puts `--require /usr/local/lib/iwci/node/preload.cjs` first in
+`NODE_OPTIONS` (anything the job sets is kept after it). The preload answers
+`node:wasi` with a WASI written in JavaScript ([`@tybys/wasm-util`], vendored
+in `crates/iwci-runtime/node/`), for `require` and `import` alike and in
+worker threads, and steps aside for a built-in one that works. That is what
+packages whose native addon falls back to a `wasm32-wasi` build need:
+rolldown, and with it Vite 8, Vitest and tsdown; oxc; the Astro compiler.
+The pnpm installer installs those `wasm32` builds: it treats a job as a
+platform with cpu `wasm32` and no operating system, so they are the
+optional dependencies it keeps and native ones the ones it leaves out. A
+package that leaves its WASI build out of its own optional dependencies, as
+rolldown does, needs it listed in the repository: an `optionalDependencies`
+entry pnpm records in the lockfile but installs on no real machine.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
@@ -470,6 +484,7 @@ shows a warning: a changed build needs a new version.
 
 [tsc-rs]: https://github.com/pingdotgg/ts-rust
 [`wasmer-napi`]: https://crates.io/crates/wasmer-napi
+[`@tybys/wasm-util`]: https://github.com/toyobayashi/wasm-util
 
 ### Tools in a script
 
@@ -587,8 +602,9 @@ from the environment only. `--base` gives the changed paths that `paths:`
 and `changed()` read. Caches (git, fetched packages, compiled modules,
 objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
-Jobs see `CI=true`, `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB`
-and `IWCI_OUTPUT`, plus `PWD` set to their `cwd` (Go's `wasip1` port reads
+Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
+`IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
+to their `cwd` (Go's `wasip1` port reads
 its working directory from it). Installers add their own: Go jobs get
 `GOMODCACHE`, `GOPROXY=off`, `GOFLAGS=-mod=readonly` and friends, Cargo jobs
 `CARGO_NET_OFFLINE=true`.

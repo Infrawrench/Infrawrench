@@ -103,7 +103,9 @@ impl fmt::Display for SpecErrors {
 impl std::error::Error for SpecErrors {}
 
 /// Limits that keep one pipeline file from asking for an unbounded run.
-pub const MAX_JOBS: usize = 512;
+/// A turbo-style graph of a monorepo is several jobs per package (build,
+/// bundle, test, format): 180 packages already make about 700.
+pub const MAX_JOBS: usize = 1024;
 pub const MAX_MATRIX_ENTRIES: usize = 64;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 10 * 60;
 pub const MAX_TIMEOUT_SECS: u64 = 60 * 60;

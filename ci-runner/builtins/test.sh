@@ -206,6 +206,55 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "y" + i }); console.log(k.length)'
+  # Edge.js has `node:wasi` without the binding behind it; the runner's
+  # support files (iwci-runtime/node) make it work, which the wasm32-wasi
+  # builds of native packages need (rolldown, and so Vite, Vitest and
+  # tsdown). A 131-byte WASI program that prints `hi` runs through it under
+  # `require`, under `import` (dynamic and named) and in a worker thread.
+  node-wasi-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    run: |
+      printf '%s' '0061736d01000000010c0260047f7f7f7f017f60000002230116776173695f736e617073686f745f70726576696577310866645f77726974650000030201010503010001071302066d656d6f72790200065f737461727400010a1d011b004110410836020041144103360200410141104101411810001a0b0b09010041080b0368690a' > /tmp/hi.hex
+      cat > /tmp/wasi.js <<'JS'
+      const { readFileSync } = require("node:fs");
+      const { Worker } = require("node:worker_threads");
+      const bytes = Buffer.from(readFileSync("/tmp/hi.hex", "utf8"), "hex");
+      async function run(WASI) {
+        const wasi = new WASI({ version: "preview1" });
+        const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
+        wasi.start(instance);
+      }
+      (async () => {
+        await run(require("node:wasi").WASI);
+        await run((await import("node:wasi")).WASI);
+        await new Promise((resolve, reject) => {
+          const worker = new Worker(
+            `const { WASI } = require("node:wasi");
+            const wasi = new WASI({ version: "preview1" });
+            const bytes = Buffer.from(require("node:fs").readFileSync("/tmp/hi.hex", "utf8"), "hex");
+            WebAssembly.instantiate(bytes, wasi.getImportObject()).then(({ instance }) => wasi.start(instance));`,
+            { eval: true },
+          );
+          worker.on("exit", resolve);
+          worker.on("error", reject);
+        });
+      })();
+      JS
+      # A static named import, as rolldown's worker threads write it: Node
+      # only offers a CommonJS module's names to one when it can see them.
+      cat > /tmp/wasi-named.mjs <<'JS'
+      import { readFileSync } from "node:fs";
+      import { WASI } from "node:wasi";
+      const wasi = new WASI({ version: "preview1" });
+      const bytes = Buffer.from(readFileSync("/tmp/hi.hex", "utf8"), "hex");
+      const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
+      wasi.start(instance);
+      JS
+      out="$(node /tmp/wasi.js 2>/dev/null; node /tmp/wasi-named.mjs 2>/dev/null)"
+      echo "$out"
+      test "$(grep -c '^hi$' <<<"$out")" = 4
+
   # Another job's spinning script must not hold this one up: Node jobs once
   # took turns behind the bridge's process-wide lock, so this `node`, started
   # while spin-fails runs for 40s, could not begin until it was stopped. Both

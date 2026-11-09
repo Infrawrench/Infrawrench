@@ -28,13 +28,16 @@
 //!
 //! # Platform
 //!
-//! Jobs run in a WebAssembly isolate with no Node, so native binaries are
-//! dead weight and so are the `wasm32` builds of native packages (they need
-//! Node's WASI to load). With [`PnpmOptions::platform`] left at `None`, the
-//! isolate is treated as a platform no package names: an optional
-//! dependency that declares any `os`, `cpu` or `libc` restriction other
-//! than pure exclusions (`!win32`) is skipped, along with everything only
-//! it depends on. A non-optional package with platform fields is installed
+//! Jobs run in a WebAssembly isolate, so native binaries are dead weight,
+//! but the `wasm32` builds of native packages (`@rolldown/binding-wasm32-wasi`,
+//! `@oxc-parser/binding-wasm32-wasi`) are exactly what a job's Node can load:
+//! the runner gives it a `node:wasi` (`iwci-runtime`'s `node/`). With
+//! [`PnpmOptions::platform`] left at `None`, the isolate is treated as a
+//! platform with cpu `wasm32` and no operating system or C library: an
+//! optional dependency is installed when it asks for `wasm32` (or declares
+//! nothing) and names no operating system or libc beyond exclusions
+//! (`!win32`). Anything else is skipped, along with everything only it
+//! depends on. A non-optional package with platform fields is installed
 //! regardless (pnpm would refuse the install on a real mismatched host;
 //! here the files are inert). Setting a [`Platform`] reproduces what pnpm
 //! installs on that host, which is what the comparison tests use.
@@ -389,7 +392,9 @@ pub fn platform_accepts(platform: Option<&Platform>, package: &Package) -> bool 
         None => axis_accepts(None, &libc),
     };
     axis_accepts(platform.map(|p| p.os.as_str()), &os)
-        && axis_accepts(platform.map(|p| p.cpu.as_str()), &cpu)
+        // The isolate's cpu is wasm32: what the `wasm32` builds of native
+        // packages are compiled for.
+        && axis_accepts(Some(platform.map_or("wasm32", |p| p.cpu.as_str())), &cpu)
         && libc_ok
 }
 
