@@ -1024,3 +1024,18 @@ fn a_script_runs_a_tool_on_path_by_name() {
         "/usr/local/bin/gofmt\nbad.go\n"
     );
 }
+
+#[test]
+fn node_options_put_the_support_preload_first() {
+    let preload = format!("--require {}/preload.cjs", wasix::NODE_SUPPORT_DIR);
+    assert_eq!(wasix::node_options(&[]), preload);
+    assert_eq!(
+        wasix::node_options(&[("NODE_OPTIONS".into(), "--max-old-space-size=512".into())]),
+        format!("{preload} --max-old-space-size=512"),
+        "what the job set is kept, after the preload"
+    );
+    assert_eq!(
+        wasix::node_options(&[("NODE_OPTIONS".into(), "  ".into())]),
+        preload
+    );
+}

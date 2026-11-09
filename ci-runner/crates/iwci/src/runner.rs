@@ -426,6 +426,9 @@ impl Runner {
             base_env: vec![
                 ("CI".into(), "true".into()),
                 ("IWCI".into(), "true".into()),
+                // Tools that read `os.homedir()` or `~` fail without one, and
+                // CI systems commonly set it. A job's own `HOME` wins.
+                ("HOME".into(), "/root".into()),
                 ("IWCI_COMMIT".into(), r.sha.clone()),
                 ("IWCI_BRANCH".into(), r.branch.clone()),
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),

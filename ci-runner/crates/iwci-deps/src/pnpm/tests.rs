@@ -566,12 +566,37 @@ fn platform_checks_follow_pnpm() {
         Some(&linux),
         &package(&["!win32"], &[], &[])
     ));
-    // The isolate: no platform list names it, exclusions pass.
-    assert!(!platform_accepts(None, &package(&[], &["wasm32"], &[])));
+    // The isolate is cpu wasm32 with no operating system or libc: the
+    // WebAssembly builds of native packages install, native ones do not.
+    assert!(platform_accepts(None, &package(&[], &["wasm32"], &[])));
+    assert!(platform_accepts(
+        None,
+        &named_cpu("@rolldown/binding-wasm32-wasi", &["wasm32"])
+    ));
+    assert!(!platform_accepts(None, &package(&[], &["x64"], &[])));
+    assert!(!platform_accepts(
+        None,
+        &package(&["linux"], &["wasm32"], &[])
+    ));
+    assert!(!platform_accepts(
+        None,
+        &named_cpu("@rolldown/binding-linux-x64-gnu", &[])
+    ));
     assert!(!platform_accepts(None, &package(&["linux"], &[], &[])));
     assert!(platform_accepts(None, &package(&["!win32"], &[], &[])));
     assert!(platform_accepts(None, &package(&[], &[], &[])));
     // Fields a registry dropped are read back from the name.
+    fn named_cpu(name: &str, cpu: &[&str]) -> Package {
+        Package {
+            name: name.into(),
+            version: "1.0.0".into(),
+            resolution: Resolution::Other(String::new()),
+            os: Vec::new(),
+            cpu: cpu.iter().map(|s| s.to_string()).collect(),
+            libc: Vec::new(),
+            has_bin: false,
+        }
+    }
     let named = |name: &str, os: &[&str]| Package {
         name: name.into(),
         ..package(os, &[], &[])

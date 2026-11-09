@@ -387,12 +387,46 @@ fn parse_package(
     Ok((summary, container))
 }
 
+/// Where an environment job finds the runner's support files for Node.
+pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
+
+/// The files under [`NODE_SUPPORT_DIR`]: a working `node:wasi` for
+/// Edge.js, whose own has no binding behind it (see `node/README.md`).
+const NODE_SUPPORT: &[(&str, &[u8])] = &[
+    ("preload.cjs", include_bytes!("../node/preload.cjs")),
+    (
+        "absolute-paths.cjs",
+        include_bytes!("../node/absolute-paths.cjs"),
+    ),
+    (
+        "wasm-keep-alive.cjs",
+        include_bytes!("../node/wasm-keep-alive.cjs"),
+    ),
+    ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
+    ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),
+    (
+        "wasm-util.LICENSE",
+        include_bytes!("../node/wasm-util.LICENSE"),
+    ),
+];
+
+/// `NODE_OPTIONS` for an environment job: the support preload first, then
+/// whatever the job set.
+pub(crate) fn node_options(env: &[(String, String)]) -> String {
+    let preload = format!("--require {NODE_SUPPORT_DIR}/preload.cjs");
+    match env.iter().rev().find(|(k, _)| k == "NODE_OPTIONS") {
+        Some((_, v)) if !v.trim().is_empty() => format!("{preload} {v}"),
+        _ => preload,
+    }
+}
+
 /// The root file system of a job: the job's own file system at `/`, with
 /// scratch mounts that keep WASIX's own files out of `JobFs::changes`.
 fn job_root(
     fs: crate::DynFs,
     scratch: Option<crate::DynFs>,
     commands: &[crate::PathCommand],
+    node_support: bool,
 ) -> Result<MountFileSystem> {
     let root = MountFileSystem::new();
     let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
@@ -421,6 +455,14 @@ fn job_root(
             write_command(&bin, &command.name, &command.module.bytes)?;
         }
         root.mount(Path::new("/usr/local/bin"), Arc::new(bin))
+            .map_err(mount_err)?;
+    }
+    if node_support {
+        let dir = TmpFileSystem::new();
+        for (name, bytes) in NODE_SUPPORT {
+            write_command(&dir, name, bytes)?;
+        }
+        root.mount(Path::new(NODE_SUPPORT_DIR), Arc::new(dir))
             .map_err(mount_err)?;
     }
     Ok(root)
@@ -520,12 +562,15 @@ pub(crate) fn run(
         Some(set) => binary_packages(shared, set, &runtime, tokio)?,
         None => Vec::new(),
     };
-    let job_keys: Vec<&str> = inv
-        .env
-        .iter()
-        .map(|(k, _)| k.as_str())
-        .chain(["PWD"])
-        .collect();
+    // An environment job's `node` gets the runner's support files.
+    let node_support = node.is_some() && matches!(entry, Entry::Command { .. });
+    let mut env = inv.env.clone();
+    if node_support {
+        let options = node_options(&env);
+        env.retain(|(k, _)| k != "NODE_OPTIONS");
+        env.push(("NODE_OPTIONS".into(), options));
+    }
+    let job_keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).chain(["PWD"]).collect();
     let uses = command_env_as_defaults(uses, &job_keys);
 
     let stdout = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stdout);
@@ -533,11 +578,11 @@ pub(crate) fn run(
 
     let mut builder = WasiEnvBuilder::new(program);
     builder.add_args(inv.args.iter());
-    builder.add_envs(inv.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    builder.add_envs(env.iter().map(|(k, v)| (k.clone(), v.clone())));
     // Go's wasip1 port takes its working directory from `$PWD`, not from
     // WASI, and treats a missing one as `/`: gofmt given `.` then walks the
     // whole file system. A shell would have set it, so set it to the cwd.
-    if !inv.env.iter().any(|(k, _)| k == "PWD") {
+    if !env.iter().any(|(k, _)| k == "PWD") {
         builder.add_env("PWD", inv.cwd.clone());
     }
     builder.set_runtime(runtime.clone());
@@ -545,6 +590,7 @@ pub(crate) fn run(
         inv.fs.clone(),
         inv.scratch.clone(),
         &inv.commands,
+        node_support,
     )?);
     builder.set_current_dir(&inv.cwd);
     builder
