@@ -18,6 +18,7 @@ import { ShellCommandRpcs } from "./shell-command";
 import { SshRpcs } from "./ssh";
 import { CloudAuthRpcs } from "./cloud-auth";
 import { CloudChatRpcs } from "./cloud-chat";
+import { CloudCiRpcs } from "./cloud-ci";
 import { CloudHttpRpcs } from "./cloud-http";
 import { CloudSshKeyRpcs } from "./cloud-ssh-keys";
 import { CloudSshRpcs } from "./cloud-ssh";
@@ -45,6 +46,7 @@ export class DesktopRpcs extends ShellCommandRpcs.merge(
   SshRpcs,
   CloudAuthRpcs,
   CloudChatRpcs,
+  CloudCiRpcs,
   CloudHttpRpcs,
   CloudSshKeyRpcs,
   CloudSshRpcs,

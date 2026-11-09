@@ -25,6 +25,7 @@ import { ShellCommandHandlers } from "./handlers/shell-command";
 import { SshHandlers } from "./handlers/ssh";
 import { CloudAuthHandlers, CloudSshKeyHandlers } from "./handlers/cloud-auth";
 import { CloudChatHandlers } from "./handlers/cloud-chat";
+import { CloudCiHandlers } from "./handlers/cloud-ci";
 import { CloudHttpHandlers } from "./handlers/cloud-http";
 import { CloudSshHandlers } from "./handlers/cloud-ssh";
 import { DeepLinkHandlers } from "./handlers/deep-links";
@@ -52,6 +53,7 @@ const DesktopRpcHandlers = Layer.mergeAll(
   SshHandlers,
   CloudAuthHandlers,
   CloudChatHandlers,
+  CloudCiHandlers,
   CloudSshKeyHandlers,
   CloudHttpHandlers,
   CloudSshHandlers,

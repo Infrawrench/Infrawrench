@@ -104,6 +104,12 @@ pub type OutputSink = Arc<dyn Fn(bool, &[u8]) + Send + Sync>;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event", rename_all = "kebab-case")]
 pub enum LogEvent {
+    /// Sent first for each pipeline of a run: its jobs and what each waits
+    /// for, so a client can draw the run before any job has finished.
+    PipelineStarted {
+        pipeline: String,
+        jobs: Vec<PlannedNode>,
+    },
     JobStarted {
         job: String,
         name: String,
@@ -125,6 +131,31 @@ pub enum LogEvent {
 }
 
 pub type LogFn = Arc<dyn Fn(LogEvent) + Send + Sync>;
+
+/// One job key of a pipeline, as [`LogEvent::PipelineStarted`] lists it.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlannedNode {
+    pub key: String,
+    pub name: String,
+    pub needs: Vec<String>,
+    /// The ids its entries will report under, or `None` while its matrix
+    /// waits on another job's outputs.
+    pub ids: Option<Vec<String>>,
+}
+
+impl PlannedNode {
+    fn of(template: &JobTemplate) -> Self {
+        let instances = template.instances.as_deref();
+        PlannedNode {
+            key: template.key.clone(),
+            name: instances
+                .and_then(|i| (i.len() == 1).then(|| i[0].display_name.clone()))
+                .unwrap_or_else(|| template.key.clone()),
+            needs: template.needs.clone(),
+            ids: instances.map(|i| i.iter().map(|j| j.id.clone()).collect()),
+        }
+    }
+}
 
 fn status_word(status: &Status) -> &'static str {
     match status {
@@ -316,6 +347,10 @@ pub struct JobReport {
     /// whose artifacts, outputs and log this report carries.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub cached: bool,
+    /// The job keys this one waited for (its `needs:`, as the plan expanded
+    /// them), so a client can draw the run as a graph.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub needs: Vec<String>,
     /// Whether jobs that need this one are held back by it: true for a
     /// failure and for a skip caused by a failure upstream, false for a
     /// skip by `paths:` or a false `if:`.
@@ -670,6 +705,12 @@ pub fn run<T: Tools>(
     options: &Options,
 ) -> RunReport {
     let started = Instant::now();
+    if let Some(logs) = &options.logs {
+        logs(LogEvent::PipelineStarted {
+            pipeline: plan.name.clone(),
+            jobs: plan.jobs.iter().map(PlannedNode::of).collect(),
+        });
+    }
     let built: Vec<OnceLock<Result<BuiltWorkspace, String>>> =
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
     let checkouts: Vec<OnceLock<Result<Snapshot, String>>> =
@@ -757,10 +798,11 @@ pub fn run<T: Tools>(
                         checkout: &checkouts[job.workspace],
                     };
                     let mut kept = Vec::new();
-                    let report = run_job(
+                    let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
                         &inherited, &mut kept,
                     );
+                    report.needs = template.needs.clone();
                     drop(slot);
                     emit_finished(options, &report);
                     if let Some(budget) = &options.memory {
@@ -993,6 +1035,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         duration_ms: 0,
         blocks,
         cached: false,
+        needs: template.needs.clone(),
     }
 }
 
@@ -1470,6 +1513,7 @@ fn run_job<T: Tools>(
         duration_ms: millis(started.elapsed()),
         blocks,
         cached: false,
+        needs: Vec::new(),
     }
 }
 
@@ -1716,6 +1760,7 @@ fn replay(
         memory_mib: 0,
         blocks: false,
         cached: true,
+        needs: Vec::new(),
     })
 }
 
@@ -1836,6 +1881,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         duration_ms: millis(elapsed),
         blocks: true,
         cached: false,
+        needs: Vec::new(),
     }
 }
 

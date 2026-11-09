@@ -1,16 +1,86 @@
 import { useUIStore } from "@infrawrench/ui";
 import type { CiClient } from "@infrawrench/ui/ci";
-import type {
-  CiAccount,
-  CiRun,
-  CiRunDetail,
-  CiStatus,
-  CiUsage,
-  CiValues,
+import { Effect, Stream } from "effect";
+import {
+  ciLogEvent,
+  type CiAccount,
+  type CiLogEvent,
+  type CiRun,
+  type CiRunDetail,
+  type CiStatus,
+  type CiUsage,
+  type CiValues,
 } from "@infrawrench/client-core";
 import { cloudClient } from "./cloud-client";
 import { getCloudGithubInstallUrl } from "./cloud-workflows";
-import { runRpc } from "./rpc/client";
+import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
+
+/**
+ * A running run's live log, over the `CloudCiRunLogs` RPC stream (the main
+ * process holds the SSE fetch, as it does for the chat turn), adapted into
+ * the AsyncIterable the shared CI panel reads. A log that never started
+ * throws its error; `signal` aborting, or the consumer leaving early,
+ * interrupts the stream, which cancels the fetch.
+ */
+async function* streamRunLogs(
+  orgId: string,
+  runId: string,
+  signal: AbortSignal,
+): AsyncIterable<CiLogEvent> {
+  const queue: CiLogEvent[] = [];
+  let wake: (() => void) | null = null;
+  let done = false;
+  let failure: Error | null = null;
+  const notify = () => wake?.();
+
+  const stop = forkRpc(
+    Effect.gen(function* () {
+      const rpc = yield* DesktopRpcClient;
+      yield* Stream.runForEach(rpc.CloudCiRunLogs({ orgId, runId }), (frame) =>
+        Effect.sync(() => {
+          const event = ciLogEvent(frame);
+          if (event) {
+            queue.push(event);
+            notify();
+          }
+        }),
+      );
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          failure = new Error(error.message);
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          done = true;
+          notify();
+        }),
+      ),
+    ),
+  );
+  const abort = () => {
+    stop();
+    done = true;
+    notify();
+  };
+  signal.addEventListener("abort", abort, { once: true });
+
+  try {
+    while (true) {
+      while (queue.length > 0) yield queue.shift()!;
+      if (done) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+      wake = null;
+    }
+    if (failure && !signal.aborted) throw failure;
+  } finally {
+    signal.removeEventListener("abort", abort);
+    if (!done) stop();
+  }
+}
 
 const ci = () => cloudClient("ci").ci;
 const github = () => cloudClient("github").github;
@@ -53,6 +123,7 @@ export function createDesktopCiClient(): CiClient {
     },
     getRun: (runId): Promise<CiRunDetail> =>
       runRpc(ci().getRun({ params: { orgId: requireOrgId(), runId } })),
+    streamRunLogs: (runId, signal) => streamRunLogs(requireOrgId(), runId, signal),
     approveRun: async (runId) => {
       await runRpc(ci().approveRun({ params: { orgId: requireOrgId(), runId } }));
     },

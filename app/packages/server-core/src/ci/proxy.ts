@@ -4,6 +4,8 @@
  * `CI_PROXY_KEY`; without them CI stays off, whatever the feature flags say.
  */
 
+import type { ProxyProgress } from "./job-checks.js";
+
 export function ciProxyConfigured(): boolean {
   return Boolean(process.env["CI_PROXY_URL"] && process.env["CI_PROXY_KEY"]);
 }
@@ -60,6 +62,8 @@ export interface ProxyRun {
   id: string;
   state: "running" | "finished" | "failed";
   error?: string;
+  /** While it runs (runner 0.3.1 and later): each pipeline's jobs and their states so far. */
+  progress?: ProxyProgress;
   result?: {
     passed?: boolean;
     usage?: { vcpu_seconds?: number; memory_gib_seconds?: number };
@@ -79,6 +83,8 @@ export interface ProxyRun {
           duration_ms?: number;
           /** Not run: the runner's task cache stood in for a passing run. */
           cached?: boolean;
+          /** The job keys it waited for (runner 0.3.1 and later). */
+          needs?: string[];
           execution?: { stdout?: string; stderr?: string } | null;
         }>;
       };

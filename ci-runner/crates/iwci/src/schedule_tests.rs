@@ -711,7 +711,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         }
     }
     let p = plan(
-        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n  b:\n    using: builtin:ok@1\n    if: false\n",
+        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n  b:\n    using: builtin:ok@1\n    needs: [a]\n    if: false\n",
     );
     let events: Arc<Mutex<Vec<LogEvent>>> = Arc::default();
     let sink = events.clone();
@@ -746,6 +746,11 @@ fn logs_stream_lines_and_job_events_in_order() {
         .map(|e| serde_json::to_string(e).unwrap())
         .collect();
     let text = lines.join("\n");
+    assert_eq!(
+        lines[0],
+        r#"{"event":"pipeline-started","pipeline":"x","jobs":[{"key":"a","name":"a","needs":[],"ids":["a"]},{"key":"b","name":"b","needs":["a"],"ids":["b"]}]}"#,
+        "the graph comes first, before any job"
+    );
     let expected = [
         r#"{"event":"job-started","job":"a","name":"a"}"#,
         r#"{"event":"output","job":"a","stream":"stdout","line":"hello"}"#,
@@ -1096,4 +1101,28 @@ fn a_run_whose_jobs_all_hit_installs_nothing() {
         "every job hit, so the workspace was never built"
     );
     assert!(report.installs.is_empty());
+}
+
+#[test]
+fn reports_say_what_each_job_needed() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n  b:\n    using: builtin:fail@1\n    needs: [a]\n  c:\n    using: builtin:ok@1\n    needs: [b]\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    let needs = |id: &str| {
+        report
+            .jobs
+            .iter()
+            .find(|j| j.id == id)
+            .unwrap()
+            .needs
+            .clone()
+    };
+    assert!(needs("a").is_empty());
+    assert_eq!(needs("b"), ["a"]);
+    assert_eq!(
+        needs("c"),
+        ["b"],
+        "a job skipped for a failure upstream says so too"
+    );
 }

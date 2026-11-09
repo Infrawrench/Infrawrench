@@ -33,6 +33,7 @@ import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
 import { upsertCheck } from "./checks.js";
+import { groupsFromJobs, groupsFromProgress, syncJobChecks } from "./job-checks.js";
 import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
@@ -357,6 +358,9 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
         status,
         reason: job.reason ?? job.message ?? (job.cached === true ? CACHED_REASON : null),
         durationMs: typeof job.duration_ms === "number" ? job.duration_ms : null,
+        ...(Array.isArray(job.needs) && job.needs.every((n) => typeof n === "string")
+          ? { needs: job.needs }
+          : {}),
       };
       out.push(
         withOutput
@@ -401,7 +405,11 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     }
     return;
   }
-  if (run.state === "running") return;
+  if (run.state === "running") {
+    // Each job's own check, as it starts and finishes.
+    if (run.progress) await syncJobChecks(row, groupsFromProgress(run.progress));
+    return;
+  }
   if (run.state === "failed") {
     const reason = run.error ?? "The runner could not run this commit.";
     await finish(row, "error", reason);
@@ -420,6 +428,8 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
+  // Every job's check finished, including any no poll saw running.
+  await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
   const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
   const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
   // No pipeline matched this event (a push to a branch when `on.push` only
@@ -566,6 +576,42 @@ export async function getRun(organizationId: string, id: string): Promise<CiRunD
     }
   }
   return { run: toWire(row), jobs };
+}
+
+/**
+ * A running run's live log from the proxy (`/v1/runs/{id}/logs`): the
+ * runner's events as Server-Sent Events, everything so far and then live,
+ * passed through unread. `signal` is the client's: the stream lasts as long
+ * as the run or the reader, not the proxy calls' usual 20 seconds.
+ */
+export async function openRunLogs(
+  organizationId: string,
+  id: string,
+  signal: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const [row] = await db
+    .select()
+    .from(ciRuns)
+    .where(and(eq(ciRuns.id, id), eq(ciRuns.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw new CiInputError("No such run.", 404);
+  if (row.status !== "running" || !row.proxyRunId) {
+    throw new CiInputError("The run is not running; its jobs' output is in the run.", 409);
+  }
+  const res = await proxyFetch(
+    `/v1/runs/${encodeURIComponent(row.proxyRunId)}/logs?owner=${encodeURIComponent(row.ownerKey)}`,
+    { signal },
+  );
+  if (!res.ok || res.body === null) {
+    // The runner can lose a run's log (a restart), or the run can end in
+    // between: the finished run's report has the output.
+    await res.body?.cancel().catch(() => {});
+    throw new CiInputError(
+      `The run's log is not available (the CI proxy answered ${res.status}).`,
+      409,
+    );
+  }
+  return res.body;
 }
 
 /** Rows the poller pass works on. */

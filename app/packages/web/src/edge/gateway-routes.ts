@@ -56,6 +56,9 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // finished file streams out of Postgres for as long as a large download
   // takes. Polling a job's status (`/costs/exports/jobs/{id}`) stays on the edge.
   new RegExp(`${ORG}/costs/exports/jobs(/[^/]+/download)?$`),
+  // A running CI run's live log: relayed from the CI proxy for as long as
+  // the run lasts, past Lambda's 15 minutes.
+  new RegExp(`${ORG}/ci/runs/[^/]+/logs$`),
   new RegExp(
     `${ORG}/(` +
       [

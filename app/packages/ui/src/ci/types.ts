@@ -2,6 +2,7 @@
 // the client seam a host must provide.
 import type {
   CiAccount,
+  CiLogEvent,
   CiRun,
   CiRunDetail,
   CiRunStatus,
@@ -18,6 +19,12 @@ export interface CiClient {
   installUrl(): Promise<string | null>;
   listRuns(status?: CiRunStatus): Promise<CiRun[]>;
   getRun(id: string): Promise<CiRunDetail>;
+  /**
+   * A running run's live log: the runner's events as they happen, from the
+   * first (each pipeline's job graph). Ends with the run; throws when the
+   * log cannot be followed (the run is not running, the network).
+   */
+  streamRunLogs(id: string, signal: AbortSignal): AsyncIterable<CiLogEvent>;
   approveRun(id: string): Promise<void>;
   rejectRun(id: string): Promise<void>;
   usage(): Promise<CiUsage>;

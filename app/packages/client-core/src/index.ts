@@ -18,7 +18,7 @@ export {
   GithubPermissionRequiredClientError,
   type GithubPermissionRequiredPayload,
 } from "./api-errors";
-export { parseSseStream, parseNdjsonStream } from "./sse";
+export { parseSseStream, parseSseFrames, parseNdjsonStream, type SseFrame } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
 export {
   fetchOrgPermissions,
@@ -30,6 +30,7 @@ export {
 export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./org-features";
 export * from "./ci";
+export * from "./ci-live";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.
 export * as PricingWarehouse from "./pricing-warehouse";

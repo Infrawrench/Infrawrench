@@ -569,7 +569,19 @@ impl Server {
 
     fn run_status(&self, id: &str, owner: Option<&String>) -> Response<std::io::Cursor<Vec<u8>>> {
         if let Some(entry) = self.runs.lock().unwrap().get(id) {
-            return json_response(200, &serde_json::to_value(entry).unwrap_or_default());
+            let mut value = serde_json::to_value(entry).unwrap_or_default();
+            // A running run's jobs so far; a finished one has its report.
+            if entry.state == "running"
+                && let Some(hub) = self.logs.lock().unwrap().get(id)
+                && let Some(map) = value.as_object_mut()
+            {
+                let progress = hub.state.lock().unwrap().progress.clone();
+                map.insert(
+                    "progress".into(),
+                    serde_json::to_value(progress).unwrap_or_default(),
+                );
+            }
+            return json_response(200, &value);
         }
         // Not on this runner, or long finished: the store has every
         // report, under its owner.
@@ -692,6 +704,76 @@ struct HubState {
     bytes: usize,
     truncated: bool,
     done: bool,
+    progress: Progress,
+}
+
+/// Where a running run is, from its log events: each pipeline's plan and
+/// every job's state so far. `GET /v1/runs/{id}` answers it while the run
+/// is going, so a client that polls (the app's GitHub checks) follows the
+/// jobs without holding the log open.
+#[derive(Debug, Default, Clone, Serialize)]
+struct Progress {
+    pipelines: Vec<PipelineProgress>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PipelineProgress {
+    name: String,
+    jobs: Vec<crate::schedule::PlannedNode>,
+    /// By job id: `running`, or how it finished.
+    states: std::collections::BTreeMap<String, JobProgress>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct JobProgress {
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    cached: bool,
+}
+
+impl Progress {
+    fn apply(&mut self, event: &crate::schedule::LogEvent) {
+        use crate::schedule::LogEvent;
+        match event {
+            LogEvent::PipelineStarted { pipeline, jobs } => self.pipelines.push(PipelineProgress {
+                name: pipeline.clone(),
+                jobs: jobs.clone(),
+                states: Default::default(),
+            }),
+            LogEvent::JobStarted { job, .. } => {
+                if let Some(p) = self.pipelines.last_mut() {
+                    p.states.insert(
+                        job.clone(),
+                        JobProgress {
+                            status: "running".into(),
+                            duration_ms: None,
+                            cached: false,
+                        },
+                    );
+                }
+            }
+            LogEvent::JobFinished {
+                job,
+                status,
+                duration_ms,
+                cached,
+            } => {
+                if let Some(p) = self.pipelines.last_mut() {
+                    p.states.insert(
+                        job.clone(),
+                        JobProgress {
+                            status: status.clone(),
+                            duration_ms: Some(*duration_ms),
+                            cached: *cached,
+                        },
+                    );
+                }
+            }
+            LogEvent::Output { .. } => {}
+        }
+    }
 }
 
 fn frame(event: &str, data: &serde_json::Value) -> Vec<u8> {
@@ -708,6 +790,7 @@ impl LogHub {
             .to_string();
         let bytes = frame(&name, &value);
         let mut state = self.state.lock().unwrap();
+        state.progress.apply(event);
         let is_output = matches!(event, crate::schedule::LogEvent::Output { .. });
         if is_output && state.bytes + bytes.len() > MAX_LOG_BYTES {
             if !state.truncated {
@@ -805,6 +888,52 @@ fn read_request_any(request: &mut Request) -> Result<RunRequest, String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn progress_follows_each_pipeline_and_its_jobs() {
+        use crate::schedule::{LogEvent, PlannedNode};
+        let mut p = Progress::default();
+        let plan = |name: &str| LogEvent::PipelineStarted {
+            pipeline: name.into(),
+            jobs: vec![PlannedNode {
+                key: "a".into(),
+                name: "a".into(),
+                needs: vec![],
+                ids: Some(vec!["a".into()]),
+            }],
+        };
+        p.apply(&plan("Test"));
+        p.apply(&LogEvent::JobStarted {
+            job: "a".into(),
+            name: "a".into(),
+        });
+        p.apply(&LogEvent::Output {
+            job: "a".into(),
+            stream: "stdout",
+            line: "hi".into(),
+        });
+        let running = serde_json::to_value(&p).unwrap();
+        assert_eq!(running["pipelines"][0]["states"]["a"]["status"], "running");
+        p.apply(&LogEvent::JobFinished {
+            job: "a".into(),
+            status: "passed".into(),
+            duration_ms: 12,
+            cached: true,
+        });
+        p.apply(&plan("Lint"));
+        let value = serde_json::to_value(&p).unwrap();
+        assert_eq!(
+            value["pipelines"][0]["states"]["a"],
+            serde_json::json!({ "status": "passed", "duration_ms": 12, "cached": true })
+        );
+        assert_eq!(value["pipelines"][1]["name"], "Lint");
+        assert!(
+            value["pipelines"][1]["states"]
+                .as_object()
+                .unwrap()
+                .is_empty()
+        );
+    }
     use super::*;
 
     #[test]

@@ -7,7 +7,10 @@ vi.mock("../../db/client.js", () => {
   const set = () => ({ where });
   return { db: { update: () => ({ set }) } };
 });
-vi.mock("../../github/app.js", () => ({ getInstallationToken: vi.fn() }));
+vi.mock("../../github/app.js", () => ({
+  getInstallationToken: vi.fn(),
+  githubInstallationFetch: vi.fn(async () => new Response(JSON.stringify({ id: 1 }))),
+}));
 const mockUpsert = vi.fn();
 vi.mock("../checks.js", async (orig) => ({
   ...(await orig<typeof import("../checks.js")>()),
@@ -20,7 +23,7 @@ vi.mock("../proxy.js", async (orig) => ({
 }));
 
 const { checkName } = await vi.importActual<typeof import("../checks.js")>("../checks.js");
-const { syncRun } = await import("../runs");
+const { syncRun, jobsOf } = await import("../runs");
 
 const row = (event: "push" | "pull-request") =>
   ({
@@ -102,5 +105,17 @@ describe("CI checks on GitHub", () => {
         summary: expect.stringContaining("Cached: nothing it reads changed"),
       }),
     );
+  });
+
+  it("passes on what each job waited for, so the run can be drawn as a graph", () => {
+    const run = finished([{ id: "build", status: "passed" }]);
+    const report = run.result.pipelines[0]!.report as { jobs: Record<string, unknown>[] };
+    report.jobs = [
+      { id: "build", name: "build", status: "passed", needs: ["prep"] },
+      { id: "old", name: "old", status: "passed" },
+      { id: "odd", name: "odd", status: "passed", needs: [1] },
+    ];
+    const jobs = jobsOf(run as never, false);
+    expect(jobs.map((j) => j.needs)).toEqual([["prep"], undefined, undefined]);
   });
 });

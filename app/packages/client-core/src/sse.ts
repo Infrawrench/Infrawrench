@@ -37,6 +37,55 @@ export async function* parseSseStream<T>(stream: ReadableStream<Uint8Array>): As
   }
 }
 
+/** One server-sent event: its `event:` name (`message` when it has none) and parsed `data`. */
+export interface SseFrame<T = unknown> {
+  event: string;
+  data: T;
+}
+
+/**
+ * {@link parseSseStream} that keeps each event's name, for streams whose
+ * events say what they are only in their `event:` line.
+ */
+export async function* parseSseFrames<T>(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<SseFrame<T>> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (;;) {
+        const sep = buffer.search(/\r?\n\r?\n/);
+        if (sep === -1) break;
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(sep).replace(/^\r?\n\r?\n/, "");
+        const lines = raw.split(/\r?\n/);
+        const event =
+          lines
+            .find((line) => line.startsWith("event:"))
+            ?.slice(6)
+            .trim() || "message";
+        const data = lines
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) continue;
+        try {
+          yield { event, data: JSON.parse(data) as T };
+        } catch {
+          // A comment or keep-alive, not an event.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /** Parse an NDJSON stream (one JSON object per line). */
 export async function* parseNdjsonStream<T>(stream: ReadableStream<Uint8Array>): AsyncGenerator<T> {
   const reader = stream.getReader();
