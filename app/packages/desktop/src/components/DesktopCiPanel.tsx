@@ -44,7 +44,8 @@ export function DesktopCiPanel({ runId }: { runId?: string | undefined }) {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    // A run uses the tab's whole width: its graph needs it.
+    <div className={runId ? "p-6" : "p-6 max-w-6xl mx-auto"}>
       {/* Keyed by org so switching org remounts and refetches. */}
       <CiPanel
         key={activeCloudOrgId}

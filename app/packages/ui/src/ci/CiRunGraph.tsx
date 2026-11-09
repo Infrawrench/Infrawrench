@@ -12,6 +12,9 @@ import {
 } from "./graph.js";
 
 const MIN_ZOOM = 0.2;
+/** Room around a fitted graph, in screen pixels. */
+const FIT_PADDING = 16;
+const MIN_BOX_HEIGHT = 160;
 const MAX_ZOOM = 2;
 
 /** A job's time: what it took, or for one still running how long it has been going. */
@@ -147,19 +150,42 @@ export function CiRunGraph({
   const [fullscreen, setFullscreen] = useState(false);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
 
+  // The box's height when not full screen: as tall as the graph at the
+  // zoom that fits its width, so a small pipeline takes a small box, up to
+  // three quarters of the window.
+  const [boxHeight, setBoxHeight] = useState(MIN_BOX_HEIGHT);
+  // Once someone pans or zooms, resizing the view leaves their view alone.
+  const touched = useRef(false);
+
   const fit = useCallback(() => {
     const el = viewport.current;
     if (!el) return;
-    const scale = Math.min(el.clientWidth / layout.width, el.clientHeight / layout.height, 1);
-    const z = Math.max(MIN_ZOOM, scale);
+    touched.current = false;
+    const width = el.clientWidth;
+    const byWidth = Math.min(1, (width - FIT_PADDING * 2) / layout.width);
+    let z: number;
+    let height: number;
+    if (fullscreen) {
+      height = el.clientHeight;
+      z = Math.min(byWidth, (height - FIT_PADDING * 2) / layout.height);
+    } else {
+      const most = Math.max(MIN_BOX_HEIGHT, window.innerHeight * 0.75);
+      const natural = layout.height * byWidth + FIT_PADDING * 2;
+      height = Math.min(most, Math.max(MIN_BOX_HEIGHT, natural));
+      z = Math.min(byWidth, (height - FIT_PADDING * 2) / layout.height);
+      setBoxHeight(height);
+    }
+    z = Math.max(MIN_ZOOM, z);
     setZoom(z);
-    setPan({
-      x: (el.clientWidth - layout.width * z) / 2,
-      y: Math.max(0, (el.clientHeight - layout.height * z) / 2),
-    });
-  }, [layout.width, layout.height]);
+    // Centred across, from the top down.
+    setPan({ x: (width - layout.width * z) / 2, y: FIT_PADDING });
+  }, [layout.width, layout.height, fullscreen]);
 
-  // Fit when the graph first has a shape, and when the view changes size.
+  // Fit when the graph first has a shape, when going in or out of full
+  // screen, and when the view changes width, unless someone has moved it
+  // since. Not on every change of shape, which expanding a group is.
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
   const fitted = useRef(false);
   useLayoutEffect(() => {
     if (!fitted.current && layout.groups.length > 0) {
@@ -167,16 +193,25 @@ export function CiRunGraph({
       fit();
     }
   }, [fit, layout.groups.length]);
-  // And when going in or out of full screen (not on every change of shape,
-  // which expanding a group is).
-  const fitRef = useRef(fit);
-  fitRef.current = fit;
   useLayoutEffect(() => {
     fitRef.current();
   }, [fullscreen]);
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      if (!touched.current) fitRef.current();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const zoomAt = useCallback((factor: number, cx?: number, cy?: number) => {
     const el = viewport.current;
+    touched.current = true;
     setZoom((z) => {
       const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor));
       const px = cx ?? (el ? el.clientWidth / 2 : 0);
@@ -201,6 +236,7 @@ export function CiRunGraph({
         const rect = el.getBoundingClientRect();
         zoomAt(Math.exp(-e.deltaY / 300), e.clientX - rect.left, e.clientY - rect.top);
       } else {
+        touched.current = true;
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
       }
     };
@@ -272,8 +308,9 @@ export function CiRunGraph({
       <div
         ref={viewport}
         className={`relative cursor-grab touch-none select-none overflow-hidden bg-surface-sunken active:cursor-grabbing ${
-          fullscreen ? "flex-1" : "h-[70vh] min-h-[480px]"
+          fullscreen ? "flex-1" : ""
         }`}
+        style={fullscreen ? undefined : { height: boxHeight }}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           drag.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
@@ -282,6 +319,7 @@ export function CiRunGraph({
         onPointerMove={(e) => {
           const d = drag.current;
           if (!d) return;
+          touched.current = true;
           setPan({ x: d.panX + e.clientX - d.x, y: d.panY + e.clientY - d.y });
         }}
         onPointerUp={() => {
