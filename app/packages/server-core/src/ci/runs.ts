@@ -413,6 +413,18 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
   const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  // No pipeline matched this event (a push to a branch when `on.push` only
+  // names main): skipped, not a green pass for code nothing checked.
+  if (passed && jobs.length === 0) {
+    const what = row.event === "pull-request" ? "pull request" : "push";
+    await upsertCheck(row, {
+      status: "completed",
+      conclusion: "skipped",
+      title: `No pipeline runs on this ${what}`,
+      summary: `No pipeline in \`.infrawrench/ci\` runs on this ${what}.`,
+    });
+    return;
+  }
   await upsertCheck(row, {
     status: "completed",
     conclusion: passed ? "success" : "failure",

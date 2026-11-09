@@ -10,9 +10,18 @@ import { db } from "../db/client.js";
 import { ciRuns } from "../db/schema.js";
 import { githubInstallationFetch } from "../github/app.js";
 
-export const CHECK_NAME = "Infrawrench CI";
+/**
+ * One check per event: a branch with an open pull request gets a push run
+ * and a pull request run for the same commit, and GitHub shows only the
+ * newest check of a name. With one name, a push run that matched no
+ * pipeline (`on.push` limited to main) finished first and hid the pull
+ * request's run, showing "0 job(s) passed" while it was still running.
+ */
+export function checkName(event: "push" | "pull-request"): string {
+  return event === "pull-request" ? "Infrawrench CI / pull request" : "Infrawrench CI / push";
+}
 
-type Conclusion = "success" | "failure" | "cancelled" | "action_required" | "neutral";
+type Conclusion = "success" | "failure" | "cancelled" | "action_required" | "neutral" | "skipped";
 
 export interface CheckUpdate {
   status: "queued" | "in_progress" | "completed";
@@ -24,6 +33,7 @@ export interface CheckUpdate {
 
 interface CheckTarget {
   id: string;
+  event: "push" | "pull-request";
   organizationId: string;
   installationId: number;
   repoFullName: string;
@@ -52,7 +62,12 @@ export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promis
     if (run.checkRunId === null) {
       const res = await githubInstallationFetch(run.installationId, `/repos/${repo}/check-runs`, {
         method: "POST",
-        body: JSON.stringify({ name: CHECK_NAME, head_sha: run.sha, external_id: run.id, ...body }),
+        body: JSON.stringify({
+          name: checkName(run.event),
+          head_sha: run.sha,
+          external_id: run.id,
+          ...body,
+        }),
       });
       if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
       const created = (await res.json()) as { id?: number };

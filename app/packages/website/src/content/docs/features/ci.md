@@ -40,7 +40,7 @@ jobs:
     needs: [typecheck]
 ```
 
-The next push runs it. Each run shows on the commit or pull request on GitHub as the **Infrawrench CI** check, whose **Details** link opens the run in Infrawrench.
+The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. A run whose pipelines all skip that event (for example `on.push` limited to `main`) shows as skipped, not passed. The check's **Details** link opens the run in Infrawrench.
 
 Choosing accounts takes the `ci:write` permission; everyone in the organization can see runs (`ci:read`). See [Roles and permissions](../team-and-billing/roles-and-permissions.md).
 
