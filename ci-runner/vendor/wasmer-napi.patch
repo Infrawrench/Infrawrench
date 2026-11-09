@@ -1,6 +1,6 @@
 --- a/src/budget.rs
 +++ b/src/budget.rs
-@@ -53,9 +53,22 @@
+@@ -53,9 +53,31 @@
  const MIB: u64 = 1024 * 1024;
  
  /// Initial `max_old_generation_size` charged per V8 isolate at env creation.
@@ -23,11 +23,39 @@
 +/// third as often as with V8's default. Reserved up front like any explicit
 +/// young-generation request.
 +pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
++/// iwci patch: the old generation an isolate starts with when others are
++/// already live (a `worker_threads` Worker, or a second `node` of the job):
++/// the published default, so a pool of workers fits in a job's memory; each
++/// grows through the near-heap-limit grants like the first.
++pub const DEFAULT_LATER_ISOLATE_HEAP: u64 = 64 * MIB;
++/// iwci patch: the least old generation a clamped default reservation may
++/// get. Less is refused, so the guest reports a clean "cannot create" error
++/// instead of an isolate that is terminated by its first allocation.
++pub const MIN_CLAMPED_ISOLATE_HEAP: u64 = 16 * MIB;
  /// One-time V8 heap slack reserved up front so a denied growth callback can
  /// terminate and unwind without entering V8s fatal out-of-memory path.
  pub const DEFAULT_UNWIND_SLACK: u64 = 16 * MIB;
-@@ -481,8 +494,16 @@
+@@ -479,17 +501,41 @@
+                 clamped: false,
+             });
          }
++
++        // iwci patch: an isolate created while others are live (a
++        // `worker_threads` Worker, or a second `node` of the same job) starts
++        // from the published 64 MiB old generation and plans against a
++        // quarter of what is left, not all of it; it grows from there through
++        // the near-heap-limit grants like any other. Every isolate taking the
++        // full defaults (472 MiB with the young generation) let a 2 GiB job
++        // start four workers and fail the fifth with "Failed to create
++        // worker env", most of it never used. The first isolate
++        // (`try_acquire_isolate` has already counted this one) plans against
++        // everything with the larger defaults, as before.
++        let later = self.live_isolates() > 1;
++        let remaining = if later {
++            self.memory_remaining() / 4
++        } else {
++            self.memory_remaining()
++        };
  
          // Explicit young/code plus a fixed overhead are reserved first; the
 -        // overhead also covers V8's own metadata and any unset young/code.
@@ -37,7 +65,7 @@
 +        // budget for the old one; a small budget keeps V8's own default.
 +        let young = if req.max_young > 0 {
 +            u64::from(req.max_young)
-+        } else if self.memory_remaining() >= 4 * DEFAULT_YOUNG_GENERATION {
++        } else if remaining >= 4 * DEFAULT_YOUNG_GENERATION {
 +            DEFAULT_YOUNG_GENERATION
 +        } else {
 +            0
@@ -45,7 +73,26 @@
          let code = u64::from(req.code_range);
          let fixed = DEFAULT_PER_ISOLATE_OVERHEAD
              .checked_add(DEFAULT_UNWIND_SLACK)?
-@@ -506,7 +527,7 @@
+             .checked_add(young)?
+             .checked_add(code)?;
+ 
+-        let remaining = self.memory_remaining();
+         if remaining <= fixed {
+             return None;
+         }
+@@ -497,16 +543,18 @@
+         let old_available = remaining - fixed;
+         let requested_old = if req.max_old > 0 {
+             u64::from(req.max_old)
++        } else if later {
++            DEFAULT_LATER_ISOLATE_HEAP
+         } else {
+             DEFAULT_INITIAL_ISOLATE_HEAP
+         };
+         let old = requested_old.min(old_available);
+-        if old == 0 {
++        if old == 0 || (old < requested_old && old < MIN_CLAMPED_ISOLATE_HEAP) {
+             return None;
          }
  
          Some(HeapReservation {
@@ -54,7 +101,7 @@
              max_old: u32::try_from(old).unwrap_or(u32::MAX),
              code_range: req.code_range,
              ceiling_bytes: fixed + old,
-@@ -533,8 +554,9 @@
+@@ -533,8 +581,9 @@
  /// Host-owned near-heap-limit callback for a budgeted V8 isolate.
  ///
  /// When V8 approaches a heap ceiling it invokes this on the isolate's JS
@@ -66,7 +113,7 @@
  /// isolate termination and expose the pre-reserved unwind slack once. A second
  /// denial leaves the limit unchanged, so the quota cannot be expanded repeatedly. The budget is atomic, so this is safe
  /// to call concurrently with charges on other threads.
-@@ -555,9 +577,18 @@
+@@ -555,9 +604,18 @@
      }
      // SAFETY: see the function's safety contract.
      let tracker = unsafe { &*(data as *const EnvHeapCharge) };
@@ -88,7 +135,7 @@
              tracker.granted.fetch_add(step, Ordering::AcqRel);
              current_limit.saturating_add(step as usize)
          }
-@@ -1041,9 +1072,11 @@
+@@ -1041,9 +1099,11 @@
              .expect("env fits");
          assert!(res.clamped);
          // Default old-gen (64 MiB) fits, plus 8 MiB overhead and 16 MiB unwind slack.
@@ -103,7 +150,7 @@
          assert_eq!(budget.live_isolates(), 1);
  
          budget.release_env(res.ceiling_bytes);
-@@ -1054,7 +1087,7 @@
+@@ -1054,7 +1114,7 @@
      #[test]
      fn env_reservation_clamps_old_gen_to_fit() {
          // Only 40 MiB: overhead (8) and unwind slack (16) leave 16 MiB for
@@ -112,7 +159,7 @@
          let budget = ResourceBudget::with_memory_limit(40 * MIB);
          let res = budget
              .try_reserve_env(RequestedHeap::default(), None)
-@@ -1318,4 +1351,21 @@
+@@ -1318,4 +1378,50 @@
          assert_eq!(accountant.memory_charged(), 40);
          assert_eq!(budget.snapshot().v8_heap_reserved, 0);
      }
@@ -133,21 +180,171 @@
 +                + DEFAULT_INITIAL_ISOLATE_HEAP
 +        );
 +    }
++
++    #[test]
++    fn env_reservation_while_others_are_live_plans_against_a_quarter() {
++        let budget = ResourceBudget::with_memory_limit(2048 * MIB);
++        let first = budget
++            .try_reserve_env(RequestedHeap::default(), None)
++            .expect("fits");
++        assert_eq!(u64::from(first.max_young), DEFAULT_YOUNG_GENERATION);
++        // 2048 - 472 = 1576 MiB left; a quarter (394) is under four young
++        // generations, so none, and the smaller later default fits in it.
++        let second = budget
++            .try_reserve_env(RequestedHeap::default(), None)
++            .expect("fits");
++        assert_eq!(second.max_young, 0);
++        assert_eq!(u64::from(second.max_old), DEFAULT_LATER_ISOLATE_HEAP);
++        // A pool of workers fits where full defaults stopped at four more,
++        // and none is created with an old generation it cannot start in.
++        let mut workers = vec![second];
++        while let Ok(res) = budget.try_reserve_env(RequestedHeap::default(), None) {
++            assert!(u64::from(res.max_old) >= MIN_CLAMPED_ISOLATE_HEAP);
++            workers.push(res);
++        }
++        assert!(workers.len() >= 12, "only {} workers fit", workers.len());
++        for res in workers {
++            budget.release_env(res.ceiling_bytes);
++        }
++        budget.release_env(first.ceiling_bytes);
++        assert_eq!(budget.snapshot().v8_heap_reserved, 0);
++    }
  }
 --- a/src/ctx.rs
 +++ b/src/ctx.rs
-@@ -95,7 +95,7 @@
+@@ -1,10 +1,7 @@
+ use anyhow::{Context, Result, bail};
+-use std::{
+-    collections::HashSet,
+-    sync::{
+-        Arc, Mutex,
+-        atomic::{AtomicBool, AtomicUsize, Ordering},
+-    },
++use std::sync::{
++    Arc, Mutex,
++    atomic::{AtomicBool, AtomicUsize, Ordering},
+ };
+ use wasmer::{Extern, ExternType, FunctionEnv, Imports, Instance, Module, StoreMut, Table, Value};
+ 
+@@ -74,7 +71,7 @@
+ /// Opaque control surface for stopping every V8 isolate owned by a context.
+ #[derive(Clone, Debug)]
+ pub struct NapiRuntimeControl {
+-    envs: Arc<Mutex<HashSet<usize>>>,
++    envs: Arc<Mutex<crate::env::EnvRegistry>>,
+     host_stopped: Arc<AtomicBool>,
+ }
+ 
+@@ -93,9 +90,9 @@
+     pub fn terminate_all(&self) {
+         self.host_stopped.store(true, Ordering::Release);
          let envs = self.envs.lock().expect("poisoned N-API env registry");
-         for env in envs.iter().copied() {
+-        for env in envs.iter().copied() {
++        for env in envs.envs.values().copied() {
              unsafe {
 -                crate::snapi::snapi_bridge_unofficial_terminate_execution(
 +                crate::snapi::snapi_bridge_host_terminate_execution(
                      env as crate::snapi::SnapiEnv,
                  );
              }
+@@ -111,7 +108,7 @@
+     /// tunables (guest wasm linear memory) and, in later phases, the V8 heap,
+     /// external-memory, and CPU paths.
+     budget: Arc<ResourceBudget>,
+-    envs: Arc<Mutex<HashSet<usize>>>,
++    envs: Arc<Mutex<crate::env::EnvRegistry>>,
+     host_stopped: Arc<AtomicBool>,
+ }
+ 
+@@ -181,7 +178,7 @@
+                 limits: self.limits,
+                 active_sessions: AtomicUsize::new(0),
+                 budget,
+-                envs: Arc::new(Mutex::new(HashSet::new())),
++                envs: Arc::new(Mutex::new(crate::env::EnvRegistry::default())),
+                 host_stopped: Arc::new(AtomicBool::new(false)),
+             }),
+         }
 --- a/src/env.rs
 +++ b/src/env.rs
-@@ -288,7 +288,7 @@
+@@ -1,4 +1,4 @@
+-use std::collections::{HashMap, HashSet};
++use std::collections::HashMap;
+ use std::ffi::c_void;
+ use std::sync::Arc;
+ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+@@ -87,6 +87,25 @@
+     tracker: usize,
+ }
+ 
++/// The live envs of one application, shared by all of its stores.
++///
++/// iwci patch: a WASIX application runs one store (and so one `NapiEnv`) per
++/// thread over one shared guest memory, and Edge.js keeps its per-env state
++/// in that memory keyed by the env id. Ids allocated per store made a
++/// `worker_threads` Worker's env reuse its parent's id, so the worker's
++/// bootstrap overwrote the parent's state and both failed. Native ids are
++/// allocated here instead, once per application and never reused, and the
++/// map lets a thread stop another thread's env (`Worker.terminate()`).
++/// Backported from wasmerio/napi 9219367 ("Allocate env ids per application
++/// and let stores stop each other's envs"), without its interrupt change.
++#[derive(Debug, Default)]
++pub(crate) struct EnvRegistry {
++    #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
++    next_native_id: u32,
++    /// Guest env id to bridge env, for every live env of the application.
++    pub(crate) envs: HashMap<u32, usize>,
++}
++
+ pub(crate) struct NapiEnv {
+     /// The app's shared accountant. V8 env (isolate) heap ceilings and the
+     /// `max_envs` isolate count are charged against it; workers share the same
+@@ -94,7 +113,7 @@
+     pub(crate) budget: Arc<ResourceBudget>,
+     /// Per-app cap on live V8 isolates (`None` = unlimited).
+     pub(crate) max_envs: Option<usize>,
+-    env_registry: Arc<std::sync::Mutex<HashSet<usize>>>,
++    env_registry: Arc<std::sync::Mutex<EnvRegistry>>,
+     host_stopped: Arc<AtomicBool>,
+     /// Heap charge per live V8 env, keyed by guest env id, so teardown releases
+     /// exactly what creation charged plus what the callback later granted.
+@@ -129,7 +148,7 @@
+     /// unconditional store growth. See `guest::callback::call_guest_callback`.
+     pub(crate) func_cache: HashMap<u32, Function>,
+     pub(crate) default_napi_env_id: Option<u32>,
+-    pub(crate) next_napi_env_id: u32,
++    #[cfg(all(target_arch = "wasm32", feature = "js"))]
+     pub(crate) next_napi_scope_id: u32,
+     pub(crate) napi_envs: HashMap<u32, usize>,
+     pub(crate) napi_state_to_guest_env: HashMap<usize, u32>,
+@@ -168,7 +187,7 @@
+     pub(crate) fn new(
+         budget: Arc<ResourceBudget>,
+         max_envs: Option<usize>,
+-        env_registry: Arc<std::sync::Mutex<HashSet<usize>>>,
++        env_registry: Arc<std::sync::Mutex<EnvRegistry>>,
+         host_stopped: Arc<AtomicBool>,
+     ) -> Self {
+         Self {
+@@ -187,7 +206,7 @@
+             table: None,
+             func_cache: HashMap::new(),
+             default_napi_env_id: None,
+-            next_napi_env_id: 0,
++            #[cfg(all(target_arch = "wasm32", feature = "js"))]
+             next_napi_scope_id: 0,
+             napi_envs: HashMap::new(),
+             napi_state_to_guest_env: HashMap::new(),
+@@ -277,7 +296,7 @@
+                 .env_registry
+                 .lock()
+                 .expect("poisoned N-API env registry");
+-            registry.insert(env as usize);
++            registry.envs.insert(env_id, env as usize);
+ 
+             // If the host already stopped this app's JS, an isolate created
+             // afterwards must not start running either. Checking under the
+@@ -288,7 +307,7 @@
              if self.host_stopped.load(Ordering::Acquire) {
                  // SAFETY: `env` is the isolate just created and is still live.
                  unsafe {
@@ -156,6 +353,134 @@
                  }
              }
          }
+@@ -388,18 +407,30 @@
+     }
+ 
+     pub(crate) fn register_napi_env(&mut self, env: SnapiEnv) -> (u32, u32) {
++        // iwci patch: native ids come from the application (see
++        // `EnvRegistry`), and an env's one owner scope reuses its id, so
++        // neither an env id nor a scope token means different envs in
++        // different threads.
+         #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
+-        let env_id = {
+-            let env_id = self.next_napi_env_id.max(1);
+-            self.next_napi_env_id = env_id.saturating_add(1);
+-            env_id
++        let (env_id, scope_id) = {
++            let mut registry = self
++                .env_registry
++                .lock()
++                .expect("poisoned N-API env registry");
++            let env_id = registry
++                .next_native_id
++                .checked_add(1)
++                .expect("N-API application environment ID space exhausted");
++            registry.next_native_id = env_id;
++            (env_id, env_id)
+         };
+         #[cfg(all(target_arch = "wasm32", feature = "js"))]
+-        let env_id = next_js_napi_env_id();
++        let (env_id, scope_id) = {
++            let scope_id = self.next_napi_scope_id.max(1);
++            self.next_napi_scope_id = scope_id.saturating_add(1);
++            (next_js_napi_env_id(), scope_id)
++        };
+ 
+-        let scope_id = self.next_napi_scope_id.max(1);
+-        self.next_napi_scope_id = scope_id.saturating_add(1);
+-
+         self.napi_envs.insert(env_id, env as usize);
+         self.napi_state_to_guest_env.insert(env as usize, env_id);
+         self.napi_scopes.insert(scope_id, env_id);
+@@ -460,7 +491,8 @@
+         self.env_registry
+             .lock()
+             .expect("poisoned N-API env registry")
+-            .remove(&env);
++            .envs
++            .remove(&env_id);
+ 
+         // Leases are environment-owned resources. Explicit release publishes
+         // writes; environment teardown only discards snapshots and returns any
+@@ -502,6 +534,28 @@
+         Some(env)
+     }
+ 
++    /// iwci patch: runs `f` on any live env of this application, including
++    /// one owned by another store and thread, while the registry lock keeps
++    /// it from being released. `f` may only make a thread-safe control
++    /// request (termination); it must not run JavaScript or touch the env's
++    /// state.
++    #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
++    pub(crate) fn with_control_env<R>(
++        &self,
++        guest_env: u32,
++        f: impl FnOnce(SnapiEnv) -> R,
++    ) -> Option<R> {
++        if guest_env == 0 {
++            return None;
++        }
++        let registry = self
++            .env_registry
++            .lock()
++            .expect("poisoned N-API env registry");
++        let raw = *registry.envs.get(&guest_env)?;
++        Some(f(raw as SnapiEnv))
++    }
++
+     pub(crate) fn resolve_napi_env(&self, guest_env: i32) -> SnapiEnv {
+         let env_id = if guest_env > 0 {
+             guest_env as u32
+@@ -546,7 +600,7 @@
+         let mut env = NapiEnv::new(
+             Arc::clone(&budget),
+             None,
+-            Arc::new(std::sync::Mutex::new(HashSet::new())),
++            Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
+             Arc::new(AtomicBool::new(false)),
+         );
+ 
+@@ -575,7 +629,7 @@
+             let mut env = NapiEnv::new(
+                 Arc::clone(&budget),
+                 None,
+-                Arc::new(std::sync::Mutex::new(HashSet::new())),
++                Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
+                 Arc::new(AtomicBool::new(false)),
+             );
+             assert!(env.charge_declared_external(4 * MIB));
+@@ -593,7 +647,7 @@
+         let mut env = NapiEnv::new(
+             ResourceBudget::unlimited(),
+             None,
+-            Arc::new(std::sync::Mutex::new(HashSet::new())),
++            Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
+             Arc::new(AtomicBool::new(false)),
+         );
+         let max = crate::guest::MAX_CALLBACK_DEPTH;
+--- a/src/guest/napi.rs
++++ b/src/guest/napi.rs
+@@ -597,8 +597,18 @@
+ }
+ 
+ fn guest_unofficial_napi_terminate_execution(env: FunctionEnvMut<NapiEnv>, napi_env: i32) -> i32 {
+-    let env_handle = snapi_env(&env, napi_env);
+-    unsafe { snapi_bridge_unofficial_terminate_execution(env_handle) }
++    // iwci patch: any env of this application, including one another thread's
++    // store owns, which is how a parent's `Worker.terminate()` stops a busy
++    // worker. Termination is thread-safe in V8, and the registry lock keeps
++    // the target alive for the call.
++    if napi_env <= 0 {
++        return 1;
++    }
++    env.data()
++        .with_control_env(napi_env as u32, |target| unsafe {
++            snapi_bridge_host_terminate_execution(target)
++        })
++        .unwrap_or(1)
+ }
+ 
+ fn guest_unofficial_napi_cancel_terminate_execution(
 --- a/src/napi_bridge_init.cc
 +++ b/src/napi_bridge_init.cc
 @@ -29,6 +29,15 @@

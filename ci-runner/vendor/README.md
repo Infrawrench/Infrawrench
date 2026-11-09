@@ -61,11 +61,43 @@ shares, the env registry and the cross-env message table (6 sites; 62 per-env
 sites no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
 main reworked `g_mu` the same way, with per-thread env ownership.
 
+**And: env ids per application, so `worker_threads` work.** A WASIX
+program runs one Wasmer store per thread over one shared linear memory, and
+the bridge allocated N-API env ids per store. A Worker's isolate is created
+on the worker's thread, so its env got the same id as its parent's, and
+Edge.js, which keys its per-env state by that id in the shared memory,
+overwrote the parent's state with the worker's: the worker's bootstrap threw
+(`MessagePort` without its listener map) and the parent then failed to load
+builtins (`primordials` undefined), so a `new Worker(...)` printed "Failed to
+execute builtin 'internal/main/worker_thread':" and hung until the job's
+timeout. `src/env.rs` allocates native ids from the application's shared
+`EnvRegistry` instead, never reusing one, with each env's owner scope taking
+its env's id, and `src/guest/napi.rs` resolves
+`unofficial_napi_terminate_execution` through that registry, so a parent's
+`Worker.terminate()` stops a busy worker on another thread (through the
+lock-free terminate above, under the registry lock that keeps the target
+alive). This is wasmerio/napi 9219367 ("Allocate env ids per application and
+let stores stop each other's envs") without its `request_interrupt` change,
+which needs the later callback rework; Edge.js 0.2.5 queues worker tasks
+through its own environment, not that import.
+
+With workers working, the heap reservations above made a pool of them
+impossible: every isolate reserved 472 MiB up front, so a 2 GiB job started
+four workers and refused the fifth. `src/budget.rs` now plans an isolate
+created while others are live (a worker, or a second `node` of the job)
+against a quarter of the remaining budget and from a 64 MiB old generation,
+the published default, growing through the same grants; the first isolate
+keeps the larger defaults. A clamped default reservation under 16 MiB is
+refused, so the guest reports "cannot create" instead of getting an isolate
+its first allocation terminates.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
-lock): delete `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in
-`../Cargo.toml`, and bump the version. `builtins/test.sh bash-node` has a job
-that must time out, which is the check.
+lock) and its per-application env ids (9219367): delete `vendor/wasmer-napi*`,
+the `[patch.crates-io]` entry in `../Cargo.toml`, and bump the version.
+`builtins/test.sh bash-node` has a job that must time out and one that runs
+Workers, which are the checks; check the heap sizes against a Worker pool
+too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.

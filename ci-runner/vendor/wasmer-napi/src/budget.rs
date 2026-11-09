@@ -69,6 +69,15 @@ pub const DEFAULT_HEAP_GROW_STEP: u64 = 128 * MIB;
 /// third as often as with V8's default. Reserved up front like any explicit
 /// young-generation request.
 pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
+/// iwci patch: the old generation an isolate starts with when others are
+/// already live (a `worker_threads` Worker, or a second `node` of the job):
+/// the published default, so a pool of workers fits in a job's memory; each
+/// grows through the near-heap-limit grants like the first.
+pub const DEFAULT_LATER_ISOLATE_HEAP: u64 = 64 * MIB;
+/// iwci patch: the least old generation a clamped default reservation may
+/// get. Less is refused, so the guest reports a clean "cannot create" error
+/// instead of an isolate that is terminated by its first allocation.
+pub const MIN_CLAMPED_ISOLATE_HEAP: u64 = 16 * MIB;
 /// One-time V8 heap slack reserved up front so a denied growth callback can
 /// terminate and unwind without entering V8s fatal out-of-memory path.
 pub const DEFAULT_UNWIND_SLACK: u64 = 16 * MIB;
@@ -493,13 +502,30 @@ impl ResourceBudget {
             });
         }
 
+        // iwci patch: an isolate created while others are live (a
+        // `worker_threads` Worker, or a second `node` of the same job) starts
+        // from the published 64 MiB old generation and plans against a
+        // quarter of what is left, not all of it; it grows from there through
+        // the near-heap-limit grants like any other. Every isolate taking the
+        // full defaults (472 MiB with the young generation) let a 2 GiB job
+        // start four workers and fail the fifth with "Failed to create
+        // worker env", most of it never used. The first isolate
+        // (`try_acquire_isolate` has already counted this one) plans against
+        // everything with the larger defaults, as before.
+        let later = self.live_isolates() > 1;
+        let remaining = if later {
+            self.memory_remaining() / 4
+        } else {
+            self.memory_remaining()
+        };
+
         // Explicit young/code plus a fixed overhead are reserved first; the
         // overhead also covers V8's own metadata and any unset code range.
         // The default young generation only where it leaves most of the
         // budget for the old one; a small budget keeps V8's own default.
         let young = if req.max_young > 0 {
             u64::from(req.max_young)
-        } else if self.memory_remaining() >= 4 * DEFAULT_YOUNG_GENERATION {
+        } else if remaining >= 4 * DEFAULT_YOUNG_GENERATION {
             DEFAULT_YOUNG_GENERATION
         } else {
             0
@@ -510,7 +536,6 @@ impl ResourceBudget {
             .checked_add(young)?
             .checked_add(code)?;
 
-        let remaining = self.memory_remaining();
         if remaining <= fixed {
             return None;
         }
@@ -518,11 +543,13 @@ impl ResourceBudget {
         let old_available = remaining - fixed;
         let requested_old = if req.max_old > 0 {
             u64::from(req.max_old)
+        } else if later {
+            DEFAULT_LATER_ISOLATE_HEAP
         } else {
             DEFAULT_INITIAL_ISOLATE_HEAP
         };
         let old = requested_old.min(old_available);
-        if old == 0 {
+        if old == 0 || (old < requested_old && old < MIN_CLAMPED_ISOLATE_HEAP) {
             return None;
         }
 
@@ -1367,5 +1394,34 @@ mod external_accountant_tests {
                 + DEFAULT_YOUNG_GENERATION
                 + DEFAULT_INITIAL_ISOLATE_HEAP
         );
+    }
+
+    #[test]
+    fn env_reservation_while_others_are_live_plans_against_a_quarter() {
+        let budget = ResourceBudget::with_memory_limit(2048 * MIB);
+        let first = budget
+            .try_reserve_env(RequestedHeap::default(), None)
+            .expect("fits");
+        assert_eq!(u64::from(first.max_young), DEFAULT_YOUNG_GENERATION);
+        // 2048 - 472 = 1576 MiB left; a quarter (394) is under four young
+        // generations, so none, and the smaller later default fits in it.
+        let second = budget
+            .try_reserve_env(RequestedHeap::default(), None)
+            .expect("fits");
+        assert_eq!(second.max_young, 0);
+        assert_eq!(u64::from(second.max_old), DEFAULT_LATER_ISOLATE_HEAP);
+        // A pool of workers fits where full defaults stopped at four more,
+        // and none is created with an old generation it cannot start in.
+        let mut workers = vec![second];
+        while let Ok(res) = budget.try_reserve_env(RequestedHeap::default(), None) {
+            assert!(u64::from(res.max_old) >= MIN_CLAMPED_ISOLATE_HEAP);
+            workers.push(res);
+        }
+        assert!(workers.len() >= 12, "only {} workers fit", workers.len());
+        for res in workers {
+            budget.release_env(res.ceiling_bytes);
+        }
+        budget.release_env(first.ceiling_bytes);
+        assert_eq!(budget.snapshot().v8_heap_reserved, 0);
     }
 }
