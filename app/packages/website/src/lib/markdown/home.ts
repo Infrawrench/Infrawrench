@@ -12,6 +12,7 @@
  */
 import { featureSections } from "../../data/feature-sections";
 import { providerGroups } from "../../data/provider-groups";
+import { PROVIDER_COUNT_COPY } from "../../data/home";
 
 /** `app.` origin, derived from the marketing origin so previews stay coherent. */
 export function appOrigin(site: URL | undefined): string {
@@ -40,10 +41,10 @@ export function renderHomeMarkdown(site: URL | undefined): string {
 
   return `# Infrawrench
 
-One app for every cloud you use. Connect AWS, GCP, Azure, Kubernetes and 45+
-other providers, then browse resources, SSH in, query databases, watch costs and
-create infrastructure from typed forms — without opening a single provider
-console.
+Every cloud you run on, in one window. Connect any of ${PROVIDER_COUNT_COPY} providers, from
+AWS, GCP, Azure and Kubernetes to Hetzner, Cloudflare and Supabase, then browse
+resources, SSH in, query databases, watch costs and create infrastructure from
+typed forms, without opening a single provider console.
 
 Available as a web app, a desktop app (macOS, Windows, Linux) and a CLI.
 

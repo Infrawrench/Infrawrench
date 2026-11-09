@@ -19,7 +19,6 @@
     "astro": "~7.2.10",
     "lucide-astro": "^0.556.0",
     "tailwindcss": "^4.3.3",
-    "typewriter-effect": "^2.22.0",
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {

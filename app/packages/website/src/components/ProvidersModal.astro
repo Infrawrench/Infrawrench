@@ -1,6 +1,13 @@
 ---
 import { providerGroups } from '../data/provider-groups';
 
+interface Props {
+  /** Render the "Supported providers" bar that opens the modal. */
+  showBar?: boolean;
+}
+
+const { showBar = true } = Astro.props;
+
 const totalProviders = providerGroups.reduce((sum, g) => sum + g.providers.length, 0);
 const totalResources = providerGroups.reduce(
   (sum, g) => sum + g.providers.reduce((s, p) => s + p.resources.length, 0),
@@ -9,6 +16,7 @@ const totalResources = providerGroups.reduce(
 ---
 
 <!-- Trigger bar -->
+{showBar && (
 <div class="providers-bar">
   <p class="section-eyebrow" style="margin-bottom: 16px;">Supported providers</p>
   <p class="section-subtitle" style="margin-bottom: 24px;">
@@ -18,6 +26,7 @@ const totalResources = providerGroups.reduce(
     View all supported providers &amp; resource types →
   </button>
 </div>
+)}
 
 <!-- Modal -->
 <div class="modal-overlay" id="providers-modal" role="dialog" aria-modal="true" aria-label="Supported providers">
@@ -76,7 +85,7 @@ const totalResources = providerGroups.reduce(
 
 <script>
   const modal = document.getElementById('providers-modal')!;
-  const openBtn = document.getElementById('open-providers-modal')!;
+  const openBtn = document.getElementById('open-providers-modal');
   const navBtn = document.getElementById('nav-providers-btn');
   const closeBtn = document.getElementById('close-providers-modal')!;
   const searchInput = document.getElementById('provider-search') as HTMLInputElement;
@@ -105,8 +114,9 @@ const totalResources = providerGroups.reduce(
     });
   }
 
-  openBtn.addEventListener('click', openModal);
+  openBtn?.addEventListener('click', openModal);
   navBtn?.addEventListener('click', openModal);
+  document.querySelectorAll('[data-open-providers]').forEach((b) => b.addEventListener('click', openModal));
   closeBtn.addEventListener('click', closeModal);
 
   modal.addEventListener('click', (e) => {

@@ -1,9 +1,3 @@
-interface Screenshot {
-  label: string;
-  tall: boolean;
-  filename: string;
-}
-
 interface FeatureSection {
   id: string;
   label: string;
@@ -11,7 +5,6 @@ interface FeatureSection {
   heading: string;
   description: string;
   bullets: string[];
-  screenshots: Screenshot[];
 }
 
 export const featureSections: FeatureSection[] = [
@@ -29,13 +22,6 @@ export const featureSections: FeatureSection[] = [
       "Drag-and-drop to attach disks, volumes, and Elastic IPs to compute resources",
       "Spotlight search (⌘K) across all accounts and resource types at once",
     ],
-    screenshots: [
-      {
-        label: "Account overview showing resource groups and types",
-        tall: false,
-        filename: "overview-accounts.png",
-      },
-    ],
   },
   {
     id: "ssh",
@@ -50,13 +36,6 @@ export const featureSections: FeatureSection[] = [
       "One-click SSH from any VM resource (EC2, GCE, Droplet, Hetzner, and more)",
       "SSH tunnels: proxy a database port through a bastion host with service presets",
       "Windows Pageant SSH agent support on desktop",
-    ],
-    screenshots: [
-      {
-        label: "SSH terminal embedded in a resource detail tab",
-        tall: true,
-        filename: "ssh-terminal.png",
-      },
     ],
   },
   {
@@ -74,11 +53,6 @@ export const featureSections: FeatureSection[] = [
       "Monaco manifest editor for live resource config editing",
       "Ephemeral scratch pods with configurable TTL (auto-terminated by the cluster)",
     ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "Kubernetes pod list with exec and logs buttons", tall: false, filename: "k8s-pods.png" },
-      // { label: "Pod log stream in the web browser", tall: true, filename: "k8s-logs.png" },
-    ],
   },
   {
     id: "sql",
@@ -94,11 +68,6 @@ export const featureSections: FeatureSection[] = [
       "Query cost estimation for BigQuery (dry-run API, no quota consumed)",
       "Connection strings resolved automatically from resource outputs",
     ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "SQL editor with schema autocomplete active", tall: true, filename: "sql-editor.png" },
-      // { label: "Database resource detail with embedded SQL tab", tall: false, filename: "sql-detail.png" },
-    ],
   },
   {
     id: "storage",
@@ -112,10 +81,6 @@ export const featureSections: FeatureSection[] = [
       "File upload with progress tracking",
       "Batch download of multiple objects (desktop)",
       "Storage stats: object count and total size on the dashboard card",
-    ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "S3 bucket file browser with upload panel open", tall: false, filename: "storage-browser.png" },
     ],
   },
   {
@@ -131,10 +96,6 @@ export const featureSections: FeatureSection[] = [
       "Metric ping alerts: native OS notification when a metric leaves a min/max range",
       "Multiple named dashboards with a configurable default",
     ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "Dashboard with pinned resource cards from multiple providers", tall: false, filename: "dashboards.png" },
-    ],
   },
   {
     id: "secrets",
@@ -148,10 +109,6 @@ export const featureSections: FeatureSection[] = [
       "Credential export: IAM access keys, GCP service account JSON, Azure client secrets, Cloudflare tunnel tokens",
       "Kubernetes-ready secret export templates on S3, R2, Cloudflare Tunnel, and more",
       "Credentials encrypted at rest. Keys never leave the device (desktop)",
-    ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "Secret version manager for AWS Secrets Manager", tall: false, filename: "secrets-versions.png" },
     ],
   },
   {
@@ -168,11 +125,6 @@ export const featureSections: FeatureSection[] = [
       "IAM policy picker with live search and categorised results",
       "Supported across AWS, GCP, Azure, DigitalOcean, Hetzner, Kubernetes, and more",
     ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "VM creation form with real-time cost estimate badge", tall: true, filename: "create-vm.png" },
-      // { label: "Region picker with search and flag display", tall: false, filename: "create-region.png" },
-    ],
   },
   {
     id: "sync",
@@ -187,10 +139,6 @@ export const featureSections: FeatureSection[] = [
       "API keys for programmatic and CI pipeline access",
       "Team management with per-seat billing ($20/seat/month)",
       "Full audit trail for all mutations in the cloud app",
-    ],
-    // TODO: add screenshots
-    screenshots: [
-      // { label: "Cloud sync status and team management panel", tall: false, filename: "sync-cloud.png" },
     ],
   },
 ];
