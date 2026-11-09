@@ -88,6 +88,11 @@ pub struct RunRequest {
     /// Variables for `${{ vars.<name> }}`. Not secret.
     #[serde(default)]
     pub vars: BTreeMap<String, String>,
+    /// The ref `sha` is reachable from, when it is not `refs/heads/<branch>`:
+    /// `refs/pull/12/head` for a pull request from a fork, whose commits only
+    /// the base repository's pull ref carries.
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
 }
 
 /// A run's secrets. Its `Debug` lists names only, so logging a request
@@ -268,6 +273,8 @@ struct Target {
     remote: RemoteCache,
     sha: String,
     branch: String,
+    /// Where `sha` is fetched from.
+    git_ref: String,
     auth: Option<Auth>,
     pipelines: Vec<(String, String)>,
     owner: RepoId,
@@ -289,6 +296,7 @@ impl Runner {
             .map(Auth::token);
         let remote = self.git.remote(&req.repo).map_err(|e| e.to_string())?;
         let branch = req.branch.clone().unwrap_or_else(|| "main".to_string());
+        let git_ref = fetch_ref(req.git_ref.as_deref(), &branch)?;
         let sha = match &req.sha {
             Some(sha) => {
                 let sha = sha.to_ascii_lowercase();
@@ -297,7 +305,7 @@ impl Runner {
                         &sha,
                         iwci_git::Depth::Shallow(1),
                         auth.as_ref(),
-                        Some(&format!("refs/heads/{branch}")),
+                        Some(&git_ref),
                     )
                     .map_err(|e| format!("fetch {sha}: {e}"))?;
                 sha
@@ -317,6 +325,7 @@ impl Runner {
             remote,
             sha,
             branch,
+            git_ref,
             auth,
             pipelines,
             owner,
@@ -341,7 +350,7 @@ impl Runner {
             remote: r.remote.clone(),
             commit: r.sha.clone(),
             auth: r.auth.clone(),
-            ref_hint: Some(format!("refs/heads/{}", r.branch)),
+            ref_hint: Some(r.git_ref.clone()),
             fetcher: self.fetcher.clone(),
             layers: self.layers.clone(),
             threads: self.cpus,
@@ -686,9 +695,36 @@ fn read_pipelines(remote: &RemoteCache, sha: &str) -> Result<Vec<(String, String
     Ok(out)
 }
 
+/// The ref a run's commit is fetched from: the request's `ref` (a pull
+/// request's `refs/pull/<n>/head`, which carries a fork's commits), or the
+/// branch's own.
+fn fetch_ref(requested: Option<&str>, branch: &str) -> Result<String, String> {
+    match requested {
+        Some(r) if r.starts_with("refs/") => Ok(r.to_string()),
+        Some(r) => Err(format!(
+            "`ref` is a full ref such as refs/pull/12/head, not `{r}`"
+        )),
+        None => Ok(format!("refs/heads/{branch}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pull_request_is_fetched_from_its_ref_and_a_push_from_its_branch() {
+        let req: RunRequest = serde_json::from_str(
+            r#"{"repo": "r", "branch": "pull/12", "ref": "refs/pull/12/head"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            fetch_ref(req.git_ref.as_deref(), "pull/12").unwrap(),
+            "refs/pull/12/head"
+        );
+        assert_eq!(fetch_ref(None, "main").unwrap(), "refs/heads/main");
+        assert!(fetch_ref(Some("pull/12/head"), "x").is_err());
+    }
 
     #[test]
     fn a_request_takes_its_quota_in_bytes_or_as_a_size() {

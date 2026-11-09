@@ -184,6 +184,9 @@ const DesktopServicesPanel = lazyPanel(() =>
 const DesktopDeliveryPanel = lazyPanel(() =>
   import("@/components/DesktopDeliveryPanel").then((m) => m.DesktopDeliveryPanel),
 );
+const DesktopCiPanel = lazyPanel(() =>
+  import("@/components/DesktopCiPanel").then((m) => m.DesktopCiPanel),
+);
 const DesktopEnvironmentsPanel = lazyPanel(() =>
   import("@/components/DesktopEnvironmentsPanel").then((m) => m.DesktopEnvironmentsPanel),
 );
@@ -916,6 +919,8 @@ function renderPanel(
       return <DesktopServicesPanel serviceId={t.serviceId} view={t.view} />;
     case "delivery":
       return <DesktopDeliveryPanel />;
+    case "ci":
+      return <DesktopCiPanel runId={t.runId} />;
     case "settings":
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":

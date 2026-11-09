@@ -69,6 +69,7 @@ const ALWAYS_VALID_TAB_KINDS: ReadonlySet<string> = new Set([
   "slos",
   "services",
   "delivery",
+  "ci",
   "workflows",
   "deployments",
   "settings",

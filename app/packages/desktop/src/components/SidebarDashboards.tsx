@@ -18,6 +18,7 @@ import {
   SlosIcon,
   ServicesIcon,
   DeliveryIcon,
+  CiIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -82,6 +83,9 @@ import {
 } from "../lib/workspace-tabs";
 import { listCloudDashboards, createCloudDashboard, deleteCloudDashboard } from "../lib/cloud-api";
 import { getDesktopChatClient } from "./CloudChatPanel";
+import type { OrgFeature } from "@infrawrench/client-core";
+import { cloudClient } from "../lib/cloud-client";
+import { runRpc } from "../lib/rpc/client";
 
 interface DashboardRow {
   id: string;
@@ -103,6 +107,20 @@ export function SidebarDashboards() {
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  // Features a platform admin rolls out per organization (CI): their entry
+  // points show only once the active cloud organization has them.
+  const [orgFeatures, setOrgFeatures] = useState<readonly OrgFeature[]>([]);
+  useEffect(() => {
+    setOrgFeatures([]);
+    if (!activeCloudOrgId) return;
+    let cancelled = false;
+    runRpc(cloudClient("orgFeatures").orgFeatures.list({ params: { orgId: activeCloudOrgId } }))
+      .then((r) => !cancelled && setOrgFeatures(r.features))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId]);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
@@ -405,6 +423,18 @@ export function SidebarDashboards() {
             icon: <DeliveryIcon />,
             onClick: () => void navigate({ to: "/delivery" }),
           },
+          // Cloud-only and rolled out per organization: runs come from the
+          // GitHub App's webhooks.
+          ...(orgFeatures.includes("ci")
+            ? [
+                {
+                  key: "ci",
+                  label: gt("CI"),
+                  icon: <CiIcon />,
+                  onClick: () => void navigate({ to: "/ci", search: {} }),
+                },
+              ]
+            : []),
           {
             key: "status-pages",
             label: gt("Status pages"),

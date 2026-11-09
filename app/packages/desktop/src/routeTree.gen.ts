@@ -16,6 +16,7 @@ import { Route as BackupsRouteImport } from './routes/backups'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as CiRouteImport } from './routes/ci'
 import { Route as ComplianceRouteImport } from './routes/compliance'
 import { Route as CostCanvasesRouteImport } from './routes/cost-canvases'
 import { Route as CostReportsRouteImport } from './routes/cost-reports'
@@ -88,6 +89,11 @@ const ChangesRoute = ChangesRouteImport.update({
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CiRoute = CiRouteImport.update({
+  id: '/ci',
+  path: '/ci',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComplianceRoute = ComplianceRouteImport.update({
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/ci': typeof CiRoute
   '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
@@ -337,6 +344,7 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/ci': typeof CiRoute
   '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
@@ -385,6 +393,7 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/ci': typeof CiRoute
   '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
@@ -434,6 +443,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/ci'
     | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
@@ -481,6 +491,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/ci'
     | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
@@ -528,6 +539,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/ci'
     | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
@@ -576,6 +588,7 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
+  CiRoute: typeof CiRoute
   ComplianceRoute: typeof ComplianceRoute
   CostCanvasesRoute: typeof CostCanvasesRoute
   CostReportsRoute: typeof CostReportsRoute
@@ -665,6 +678,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ci': {
+      id: '/ci'
+      path: '/ci'
+      fullPath: '/ci'
+      preLoaderRoute: typeof CiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/compliance': {
@@ -944,6 +964,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
+  CiRoute: CiRoute,
   ComplianceRoute: ComplianceRoute,
   CostCanvasesRoute: CostCanvasesRoute,
   CostReportsRoute: CostReportsRoute,

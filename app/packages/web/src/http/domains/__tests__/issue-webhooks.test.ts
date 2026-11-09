@@ -38,6 +38,17 @@ vi.mock("@infrawrench/server-core/issue-status/sync", () => ({
   applyGithubWebhook: (...a: unknown[]) => mockApplyGithub(...a),
 }));
 
+// CI's acceptance and dispatch reach Postgres and the runner pool; the event
+// parser is real, so these tests pin which deliveries become runs.
+const mockAccept = vi.fn();
+const mockDispatch = vi.fn();
+const mockAnnounce = vi.fn();
+vi.mock("@infrawrench/server-core/ci/runs", () => ({
+  acceptCiEvent: (...a: unknown[]) => mockAccept(...a),
+  dispatchRun: (...a: unknown[]) => mockDispatch(...a),
+  announceAwaitingApproval: (...a: unknown[]) => mockAnnounce(...a),
+}));
+
 const { issueWebhooksDomain } = await import("@/http/domains/issue-webhooks/index");
 
 const app = buildTestApi(issueWebhooksDomain);
@@ -210,5 +221,71 @@ describe("POST /api/issue-webhooks/github", () => {
     process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
     const res = await post("/api/issue-webhooks/github", body, { "x-github-event": "issues" });
     expect(res.status).toBe(401);
+  });
+
+  const signed = (event: string, payload: unknown) => {
+    const raw = JSON.stringify(payload);
+    return post("/api/issue-webhooks/github", raw, {
+      "x-github-event": event,
+      "x-hub-signature-256": hub(raw, GITHUB_SECRET),
+    });
+  };
+  const repository = { full_name: "acme/infra", name: "infra", default_branch: "main" };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("dispatches a push to a CI repository after answering", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    mockAccept.mockResolvedValue({ id: "run-1", status: "queued" });
+    const res = await signed("push", {
+      ref: "refs/heads/main",
+      after: "a".repeat(40),
+      deleted: false,
+      installation: { id: 7 },
+      repository,
+      sender: { login: "octo" },
+    });
+    expect(res.status).toBe(202);
+    expect(mockAccept).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "push", installationId: 7, repoFullName: "acme/infra" }),
+    );
+    await settle();
+    expect(mockDispatch).toHaveBeenCalledWith("run-1");
+    expect(mockAnnounce).not.toHaveBeenCalled();
+  });
+
+  it("holds a fork's pull request for approval instead of dispatching it", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    mockAccept.mockResolvedValue({ id: "run-2", status: "awaiting_approval" });
+    const res = await signed("pull_request", {
+      action: "opened",
+      number: 4,
+      installation: { id: 7 },
+      repository,
+      sender: { login: "stranger" },
+      pull_request: {
+        number: 4,
+        head: { ref: "patch-1", sha: "b".repeat(40), repo: { full_name: "stranger/infra" } },
+        base: { ref: "main", sha: "c".repeat(40), repo: { full_name: "acme/infra" } },
+        user: { login: "stranger" },
+      },
+    });
+    expect(res.status).toBe(202);
+    expect(mockAccept).toHaveBeenCalledWith(expect.objectContaining({ fromFork: true }));
+    await settle();
+    expect(mockAnnounce).toHaveBeenCalledWith("run-2");
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing for a branch deletion", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    const res = await signed("push", {
+      ref: "refs/heads/old",
+      after: "0".repeat(40),
+      deleted: true,
+      installation: { id: 7 },
+      repository,
+    });
+    expect(res.status).toBe(202);
+    expect(mockAccept).not.toHaveBeenCalled();
   });
 });

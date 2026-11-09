@@ -146,7 +146,8 @@ app_env = {
   # <APP_URL>/api/issue-webhooks/github, set the same random secret there and
   # here, and subscribe to the "Issues" event. Without it the receiver answers
   # 404 and statuses refresh through the poller instead (every 30 minutes per
-  # open issue).
+  # open issue). Required for CI: also subscribe to "Push" and "Pull request"
+  # and grant "Checks: Read and write" and "Contents: Read".
   # GITHUB_APP_WEBHOOK_SECRET = "..."
 
   # Optional: comma-separated emails allowed on /api/admin + the /admin page
@@ -318,6 +319,22 @@ app_env = {
   # attaches it to new ones.
   INFRAWRENCH_STRIPE_BUILD_METER_EVENT = "hosted_build_seconds"
   STRIPE_BUILD_PRICE_ID                = "price_..."
+
+  # Optional: CI (app/packages/ci-proxy in front of the runners that
+  # infra/ci-runners provisions). Without CI_PROXY_URL and CI_PROXY_KEY (the
+  # proxy's PROXY_KEY) CI stays off for every org; with them it is still on
+  # only for orgs a platform admin picks in /admin. The GitHub App's webhook
+  # must subscribe to "Push" and "Pull request", with "Checks: write".
+  CI_PROXY_URL = "https://ci-proxy.example.com"
+  CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
+  # Optional: billing CI. Each meter reports its unit (decimals allowed) and
+  # its price carries the unit price; an unset pair goes unbilled.
+  INFRAWRENCH_STRIPE_CI_VCPU_METER_EVENT    = "ci_vcpu_seconds"
+  INFRAWRENCH_STRIPE_CI_MEMORY_METER_EVENT  = "ci_memory_gib_seconds"
+  INFRAWRENCH_STRIPE_CI_STORAGE_METER_EVENT = "ci_storage_gib_hours"
+  STRIPE_CI_VCPU_PRICE_ID                   = "price_..."
+  STRIPE_CI_MEMORY_PRICE_ID                 = "price_..."
+  STRIPE_CI_STORAGE_PRICE_ID                = "price_..."
 
   # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
   # fetch(), the chat agent's web_fetch, the poller's provider status-feed

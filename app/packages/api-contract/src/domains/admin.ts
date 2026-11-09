@@ -14,6 +14,7 @@ import { BadRequest, Forbidden, NotFound } from "../http/errors";
 import { SessionAuth } from "../http/middleware-tags";
 import { IsoDate } from "../http/schemas/common";
 import { optionalRequestBody } from "../http/schemas/documented";
+import { OrgFeatureName } from "./org-features";
 
 export const AdminOrganization = Schema.Struct({
   id: Schema.String.annotate({ description: "WorkOS organization id" }),
@@ -21,6 +22,9 @@ export const AdminOrganization = Schema.Struct({
   complimentary: Schema.Boolean,
   createdAt: IsoDate,
   memberCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  features: Schema.Array(OrgFeatureName).annotate({
+    description: "Rolled-out features a platform admin has turned on for the org",
+  }),
   subscriptionStatus: Schema.NullOr(
     Schema.Literals(["trialing", "active", "past_due", "canceled", "unpaid"]),
   ).annotate({
@@ -36,6 +40,15 @@ export const ComplimentaryResult = Schema.Struct({
   id: Schema.String,
   complimentary: Schema.Boolean,
 }).annotate({ identifier: "ComplimentaryResult" });
+
+const FeatureUpdate = Schema.Struct({ enabled: Schema.Boolean }).annotate({
+  identifier: "AdminFeatureUpdate",
+});
+
+export const FeatureResult = Schema.Struct({
+  id: Schema.String,
+  features: Schema.Array(OrgFeatureName),
+}).annotate({ identifier: "AdminFeatureResult" });
 
 const ALLOWLIST_NOTE =
   "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). 403 for everyone else.";
@@ -62,6 +75,18 @@ export class AdminGroup extends HttpApiGroup.make("admin")
       )
       .annotate(SuccessDescription, "Updated flag")
       .annotate(OpenApi.Transform, optionalRequestBody),
+    HttpApiEndpoint.put("setFeature", "/organizations/:orgId/features/:feature", {
+      params: {
+        orgId: Schema.String.annotate({ description: "Organization id" }),
+        feature: OrgFeatureName,
+      },
+      payload: FeatureUpdate,
+      success: FeatureResult,
+      error: [BadRequest, Forbidden, NotFound],
+    })
+      .annotate(OpenApi.Summary, "Turn a rolled-out feature on or off for an org")
+      .annotate(OpenApi.Description, ALLOWLIST_NOTE)
+      .annotate(SuccessDescription, "The org's features after the change"),
   )
   .prefix("/api/admin")
   .middleware(SessionAuth)

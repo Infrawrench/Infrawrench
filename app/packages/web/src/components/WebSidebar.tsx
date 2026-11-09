@@ -25,6 +25,7 @@ import {
   SettingsIcon,
   usePaletteIntent,
 } from "@infrawrench/ui";
+import type { OrgFeature } from "@infrawrench/client-core";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
@@ -61,6 +62,7 @@ import {
   SlosIcon,
   ServicesIcon,
   DeliveryIcon,
+  CiIcon,
   EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
@@ -201,6 +203,21 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     if (!apiBase) return;
     apiGet<Dashboard[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
   }, [apiBase, dashboardPinsVersion]);
+
+  // Features a platform admin rolls out per organization (CI): their
+  // entry points show only once the organization has them.
+  const [orgFeatures, setOrgFeatures] = useState<readonly OrgFeature[]>([]);
+  useEffect(() => {
+    setOrgFeatures([]);
+    if (!apiBase) return;
+    let cancelled = false;
+    apiGet<{ features: OrgFeature[] }>(`${apiBase}/features`)
+      .then((r) => !cancelled && setOrgFeatures(r.features))
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
 
   // Chat sessions: load on org change and refresh when conversations change
   // (new chat, archive, rename after the first turn).
@@ -800,6 +817,17 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/delivery", params: { orgId: orgId! } }),
               },
+              ...(orgFeatures.includes("ci")
+                ? [
+                    {
+                      key: "ci",
+                      label: gt("CI"),
+                      icon: <CiIcon />,
+                      onClick: () =>
+                        void navigate({ to: "/org/$orgId/ci", params: { orgId: orgId! } }),
+                    },
+                  ]
+                : []),
               {
                 key: "status-pages",
                 label: gt("Status pages"),

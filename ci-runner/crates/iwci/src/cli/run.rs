@@ -153,6 +153,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
         storage_quota: None,
         // From the environment only, never a flag (see `Runner::resolve`).
         token: None,
+        git_ref: args.value("--ref")?,
         secrets: crate::runner::Secrets(
             std::env::vars()
                 .filter_map(|(k, v)| {

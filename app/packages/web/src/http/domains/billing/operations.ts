@@ -23,6 +23,7 @@ import {
   getStripeCapacitySlotPriceId,
   getStripeChatPriceId,
   getStripePriceId,
+  getStripeCiPriceIds,
 } from "../../../services/stripe";
 import { saveCheckoutHandoff } from "../../../services/revnu-checkout";
 
@@ -140,6 +141,9 @@ export async function openSubscriptionCheckout(
   const url = billingUrl(orgId);
   const chatPriceId = getStripeChatPriceId();
   const buildPriceId = getStripeBuildPriceId();
+  // CI's metered prices too, so an organization that later gets CI is
+  // billed for it without touching its subscription.
+  const ciPriceIds = getStripeCiPriceIds();
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
@@ -148,6 +152,7 @@ export async function openSubscriptionCheckout(
       { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
       ...(buildPriceId ? [{ price: buildPriceId }] : []),
+      ...ciPriceIds.map((price) => ({ price })),
     ],
     // organizationId lets a later paid webhook find this checkout. The Revnu
     // visitor id is a spare field; consent is stored on our row, not here.
@@ -246,4 +251,31 @@ export async function openPortal(orgId: string): Promise<string | null> {
     return_url: billingUrl(orgId),
   });
   return portalSession.url;
+}
+
+/**
+ * Adds CI's metered prices to the organization's existing subscription when
+ * they are missing, so turning CI on bills it. Subscriptions made by
+ * checkout before CI existed lack them. Returns the prices added; nothing
+ * when there is no subscription (checkout will add them) or no CI prices.
+ */
+export async function ensureCiPrices(orgId: string): Promise<string[]> {
+  const priceIds = getStripeCiPriceIds();
+  if (priceIds.length === 0 || !process.env["STRIPE_SECRET_KEY"]) return [];
+  const [sub] = await db
+    .select({ stripeSubscriptionId: subscriptions.stripeSubscriptionId })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, orgId))
+    .limit(1);
+  if (!sub?.stripeSubscriptionId) return [];
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+  const have = new Set(subscription.items.data.map((item) => item.price.id));
+  const added: string[] = [];
+  for (const price of priceIds) {
+    if (have.has(price)) continue;
+    await stripe.subscriptionItems.create({ subscription: subscription.id, price });
+    added.push(price);
+  }
+  return added;
 }

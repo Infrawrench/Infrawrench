@@ -453,6 +453,7 @@ export {
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
+  ciTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -1227,6 +1228,7 @@ export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { SlosIcon } from "./components/icons/SlosIcon.js";
 export { ServicesIcon } from "./components/icons/ServicesIcon.js";
 export { DeliveryIcon } from "./components/icons/DeliveryIcon.js";
+export { CiIcon } from "./components/icons/CiIcon.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 
@@ -1306,6 +1308,7 @@ export * from "./incidents/index.js";
 export * from "./slos/index.js";
 export * from "./services/index.js";
 export * from "./dora/index.js";
+export * from "./ci/index.js";
 export * from "./environments/index.js";
 export * from "./savings/index.js";
 // Issue filing (Jira and Linear): the tracker-aware provider a host mounts

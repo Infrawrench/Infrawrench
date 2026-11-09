@@ -71,6 +71,11 @@ export type WorkspaceTabTarget =
   | { kind: "services"; serviceId?: string; view?: "scorecards" }
   /** Delivery: DORA metrics over deploys and incidents. Single-instance, no state. */
   | { kind: "delivery" }
+  /**
+   * CI: GitHub accounts, runs and approvals. Single-instance, remembering
+   * the open run, so reactivation and reload return to it.
+   */
+  | { kind: "ci"; runId?: string }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -239,6 +244,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "services";
     case "delivery":
       return "delivery";
+    case "ci":
+      return "ci";
     case "workflows":
       // Not keyed by workflow: opening a second workflow should retarget the
       // open Workflows tab rather than pile up a tab per workflow. The id on
@@ -348,6 +355,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Services";
     case "delivery":
       return "Delivery";
+    case "ci":
+      return "CI";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -416,6 +425,9 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // Same trick: one tab by id, the SLO compared so the route sync records
       // which detail is open.
       return a.sloId === (b as { sloId?: string }).sloId;
+    case "ci":
+      // And again for the open run.
+      return a.runId === (b as { runId?: string }).runId;
     case "services": {
       // Same trick again, over both the open service and the view.
       const other = b as { serviceId?: string; view?: "scorecards" };

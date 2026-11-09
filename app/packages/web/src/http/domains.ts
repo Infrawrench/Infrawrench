@@ -115,6 +115,8 @@ import { businessMetricsDomain } from "./domains/business-metrics/index";
 import { dashboardsDomain } from "./domains/dashboards/index";
 import { searchDomain } from "./domains/search/index";
 import { starredDomain } from "./domains/starred/index";
+import { orgFeaturesDomain } from "./domains/org-features/index";
+import { ciDomain } from "./domains/ci/index";
 import { orgConfigDomain } from "./domains/org-config/index";
 import { costVisibilityDomain } from "./domains/cost-visibility/index";
 import { sharingDomain } from "./domains/sharing/index";
@@ -269,6 +271,8 @@ export const DOMAINS: readonly Domain[] = [
   savingsFindingsDomain,
   searchDomain,
   starredDomain,
+  orgFeaturesDomain,
+  ciDomain,
   orgConfigDomain,
   costVisibilityDomain,
   sharingDomain,

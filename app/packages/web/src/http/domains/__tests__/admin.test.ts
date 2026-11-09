@@ -10,6 +10,19 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
+const mockFeaturesByOrg = vi.fn(async () => new Map<string, string[]>());
+const mockSetFeature = vi.fn();
+const mockOrgFeatures = vi.fn();
+vi.mock("@infrawrench/server-core/features", () => ({
+  featuresByOrg: (...a: unknown[]) => mockFeaturesByOrg(...(a as [])),
+  setOrgFeature: (...a: unknown[]) => mockSetFeature(...a),
+  orgFeatures: (...a: unknown[]) => mockOrgFeatures(...a),
+}));
+const mockEnsureCiPrices = vi.fn();
+vi.mock("../billing/operations", () => ({
+  ensureCiPrices: (...a: unknown[]) => mockEnsureCiPrices(...a),
+}));
+
 const { adminDomain } = await import("@/http/domains/admin/index");
 const buildApp = () => buildTestApi(adminDomain, { basePath: "/api/admin" });
 
@@ -115,5 +128,63 @@ describe("Admin routes", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(404);
+  });
+
+  describe("per-org features", () => {
+    function orgExists(found: boolean) {
+      const limit = vi.fn().mockResolvedValue(found ? [{ id: "org-1" }] : []);
+      const where = vi.fn().mockReturnValue({ limit });
+      const from = vi.fn().mockReturnValue({ where });
+      mockSelect.mockReturnValue({ from });
+    }
+
+    it("turns CI on for an org and adds its prices to the subscription", async () => {
+      orgExists(true);
+      mockEnsureCiPrices.mockResolvedValue(["price_ci_vcpu"]);
+      mockOrgFeatures.mockResolvedValue(["ci"]);
+      const res = await buildApp().request("/organizations/org-1/features/ci", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ id: "org-1", features: ["ci"] });
+      expect(mockSetFeature).toHaveBeenCalledWith("org-1", "ci", true, "test@example.com");
+      expect(mockEnsureCiPrices).toHaveBeenCalledWith("org-1");
+    });
+
+    it("still turns CI on when Stripe refuses the prices", async () => {
+      orgExists(true);
+      mockEnsureCiPrices.mockRejectedValue(new Error("stripe down"));
+      mockOrgFeatures.mockResolvedValue(["ci"]);
+      const res = await buildApp().request("/organizations/org-1/features/ci", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("turns CI off without touching billing, and refuses unknown features and orgs", async () => {
+      orgExists(true);
+      mockOrgFeatures.mockResolvedValue([]);
+      const off = await buildApp().request("/organizations/org-1/features/ci", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(off.status).toBe(200);
+      expect(mockEnsureCiPrices).not.toHaveBeenCalled();
+
+      const unknown = await buildApp().request("/organizations/org-1/features/teleport", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(unknown.status).toBe(400);
+
+      orgExists(false);
+      const missing = await buildApp().request("/organizations/nope/features/ci", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(missing.status).toBe(404);
+    });
   });
 });

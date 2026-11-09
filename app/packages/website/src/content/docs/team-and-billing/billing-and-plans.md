@@ -109,3 +109,13 @@ These are never billed:
 - Plan-only previews, which don't build anything.
 - Builds on your own machine (`infrawrench deploy` locally) or on a `buildOn` host you provide.
 - Complimentary organizations.
+
+## CI
+
+[CI](../features/ci.md) is part of paid plans and is billed by what your pipelines use, on the same invoice as your seats:
+
+- **vCPU time**, per second: each job's running time at its share of a vCPU.
+- **Memory**, per GiB-second: the memory each job reserves while it runs.
+- **Cache storage**, per GiB-hour: the space your caches take on the runners, measured every hour.
+
+The **CI** page shows this month's runs, compute and cache storage. Complimentary organizations are never billed for CI.

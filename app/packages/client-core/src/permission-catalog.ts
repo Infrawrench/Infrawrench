@@ -43,6 +43,12 @@ export const ALL_PERMISSIONS = [
   "freezes:read",
   "freezes:write",
   "freezes:override",
+  // CI (rolled out per organization). `approve` is its own permission
+  // because approving a fork's commit runs a stranger's code on the
+  // organization's runners: members can watch runs, maintainers decide.
+  "ci:read",
+  "ci:write",
+  "ci:approve",
   // Declared incidents (incident mode), not provider status incidents, which
   // ride `resources:read` with the rest of the correlation feeds.
   //

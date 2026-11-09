@@ -427,4 +427,9 @@
 // Hono `HTTPException` are JSON `{ error }` instead of plain text, a schema refusal is
 // `{ error, issues }`, a trailing slash routes like the path without one, and an unknown
 // `/api/...` path on a Node pod answers 404 rather than the SPA shell, as the edge did.
-export const API_VERSION = "1.99.0";
+// 1.100.0: CI (`/api/org/:orgId/ci`: GitHub accounts, runs, fork approvals,
+// usage), the organization's rolled-out features (`/api/org/:orgId/features`),
+// a platform admin's per-org feature switch, `ci` in the tab kinds with its
+// `runId`, `ci` and `settings/pr-checks` as GitHub install return pages, and
+// the `ci:read`, `ci:write` and `ci:approve` permissions.
+export const API_VERSION = "1.100.0";

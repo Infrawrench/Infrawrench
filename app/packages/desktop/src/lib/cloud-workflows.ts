@@ -157,11 +157,12 @@ export async function listCloudGithubRepos(orgId: string): Promise<GitRepoOption
 
 /**
  * `returnTo` is where the GitHub App install flow sends the user back to:
- * "workflows" for git triggers, "agents" for the session repo picker.
+ * "workflows" for git triggers, "agents" for the session repo picker, "ci"
+ * for the CI tab.
  */
 export async function getCloudGithubInstallUrl(
   orgId: string,
-  returnTo: "workflows" | "agents" = "workflows",
+  returnTo: "workflows" | "agents" | "ci" = "workflows",
 ): Promise<string | null> {
   const { url } = await runRpc(
     github().installUrl({ params: { orgId }, query: { return: returnTo } }),

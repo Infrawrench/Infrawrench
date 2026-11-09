@@ -10,6 +10,7 @@
   "compatibility_date": "2026-10-30",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "routes": [{ "pattern": "ci-proxy.infrawrench.com", "custom_domain": true }],
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
   // Once a minute: the proxy decides which registered schedules are due.
@@ -21,8 +22,7 @@
     {
       "binding": "DB",
       "database_name": "infrawrench-ci-proxy",
-      // Set when the database is created: `wrangler d1 create infrawrench-ci-proxy`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "86de677f-0668-466d-98c2-ae1678d08f63",
       "migrations_dir": "migrations",
     },
   ],

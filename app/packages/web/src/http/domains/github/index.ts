@@ -59,7 +59,13 @@ function setupCallbackUrl(): string {
 }
 
 /** Pages the setup callback may send the user back to (path under /org/:orgId). */
-const INSTALL_RETURN_PAGES = new Set(["agents", "workflows", "settings/github-issues"]);
+const INSTALL_RETURN_PAGES = new Set([
+  "agents",
+  "workflows",
+  "settings/github-issues",
+  "settings/pr-checks",
+  "ci",
+]);
 
 const orgInstallations = (organizationId: string) =>
   legacy(() =>
