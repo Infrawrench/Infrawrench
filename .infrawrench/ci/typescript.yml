@@ -405,8 +405,11 @@ jobs:
     memory: 6GiB
     timeout: 30m
 
-  # The packages that pin TypeScript 6 (website, mobile, plugingen) run their
-  # own compiler, which is JavaScript, under Node.
+  # The packages that pin TypeScript 6 (mobile, plugingen) run their own
+  # compiler, which is JavaScript, under Node. The website's `astro check`
+  # stays on GitHub Actions: it starts rolldown, which needs Node worker
+  # threads, and the runner's Node (Edge.js) cannot start one, so the job
+  # waited for a worker until its timeout.
   mobile:
     name: Mobile (TypeScript 6)
     needs: [prep, l4a, l4b, l4c]
@@ -425,12 +428,3 @@ jobs:
     run: node node_modules/typescript/bin/tsc6 --noEmit
     memory: 4GiB
     timeout: 20m
-
-  website:
-    name: Website (astro check)
-    needs: [l4a, l4b, l4c]
-    using: env:bash-node@24
-    cwd: /app/app/packages/website
-    run: node node_modules/astro/bin/astro.mjs check
-    memory: 6GiB
-    timeout: 30m
