@@ -68,7 +68,7 @@ describe("KpiWidgetCard", () => {
 });
 
 describe("TextWidgetCard", () => {
-  it("renders markdown without raw HTML", () => {
+  it("renders markdown without raw HTML", async () => {
     render(
       <TextWidgetCard
         title="Notes"
@@ -78,7 +78,10 @@ describe("TextWidgetCard", () => {
         }}
       />,
     );
-    expect(screen.getByRole("heading", { name: "Heading" })).toBeTruthy();
+    // Before the renderer loads, the source shows as plain text: never as HTML.
+    expect(document.querySelector("b")).toBeNull();
+    // The renderer is imported on first use.
+    expect(await screen.findByRole("heading", { name: "Heading" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "a link" }).getAttribute("target")).toBe("_blank");
     expect(document.querySelector("b")).toBeNull();
   });

@@ -14,7 +14,7 @@ import {
 import { CostGraphCard } from "../cost/CostGraphCard.js";
 import { BudgetCard } from "../cost/BudgetCard.js";
 import type { CostApi } from "../cost/types.js";
-import { ChatMarkdown } from "../chat/ChatMarkdown.js";
+import { LazyChatMarkdown } from "../chat/LazyChatMarkdown.js";
 import { CustomGraphChart } from "../custom-graphs/CustomGraphChart.js";
 import { useDataString } from "../i18n/data-strings.js";
 
@@ -194,7 +194,7 @@ function BlockBody({
     case "text":
       return (
         <div className="px-1 py-1">
-          <ChatMarkdown text={result.text} />
+          <LazyChatMarkdown text={result.text} />
         </div>
       );
     case "kpi": {

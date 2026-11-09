@@ -1,6 +1,6 @@
 import { useGT } from "gt-react";
 import type { TextWidgetConfig } from "@infrawrench/client-core";
-import { ChatMarkdown } from "../chat/ChatMarkdown.js";
+import { LazyChatMarkdown } from "../chat/LazyChatMarkdown.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 /**
@@ -62,7 +62,7 @@ export function TextWidgetCard({
             {onEdit ? gt("Nothing written yet. Edit this card to add notes.") : gt("No text.")}
           </p>
         ) : (
-          <ChatMarkdown text={config.markdown} />
+          <LazyChatMarkdown text={config.markdown} />
         )}
       </div>
     </div>

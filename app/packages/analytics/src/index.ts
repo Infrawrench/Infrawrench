@@ -1,4 +1,4 @@
-import posthog, { type CaptureResult, type Properties } from "posthog-js";
+import type { CaptureResult, PostHog, Properties } from "posthog-js";
 import { visitorNeedsConsent } from "./region";
 import {
   REVNU_TAG_ENDPOINT,
@@ -26,6 +26,12 @@ export { countryNeedsConsent, parseTraceCountry } from "./region";
  * `on_reject` cookieless mode, which stores nothing and sends nothing; visitors
  * outside the EEA, UK and Switzerland are opted in without a prompt (see
  * `region.ts`), and anyone can change their answer with `openConsentPrompt`.
+ *
+ * The SDK (about 330 KB) is imported by `initAnalytics` rather than with this
+ * module, so it never holds up a page's first render. Until it arrives the
+ * consent answer reads as pending (which sends, stores and loads nothing),
+ * identity waits in this module as it does for consent, and events and consent
+ * changes queue and run, re-checking consent, once it has.
  */
 export interface AnalyticsOptions {
   /** PostHog project API key (`phc_…`). Without one, everything here is a no-op. */
@@ -65,6 +71,13 @@ const DEFAULT_HOST = "https://hedgehogs.infrawrench.com";
 const UI_HOST = "https://us.posthog.com";
 
 let enabled = false;
+/** The SDK, once `initAnalytics` has imported and initialised it. */
+let posthog: PostHog | null = null;
+let loaded: Promise<void> = Promise.resolve();
+/** Work that needs the SDK, run in order once it has loaded. */
+const queued: Array<(sdk: PostHog) => void> = [];
+/** A page that never loads the SDK (blocked, offline) must not grow without bound. */
+const MAX_QUEUED = 200;
 let cookielessOnly = false;
 let promptVisible = false;
 const promptListeners = new Set<() => void>();
@@ -98,8 +111,19 @@ function redactEvent(event: CaptureResult, redact: (url: string) => string): Cap
   return event;
 }
 
+/** Run `work` with the SDK now, or once it has loaded; nothing before `initAnalytics`. */
+function withPostHog(work: (sdk: PostHog) => void): void {
+  if (posthog) work(posthog);
+  else if (enabled && queued.length < MAX_QUEUED) queued.push(work);
+}
+
+/** Resolves once the SDK has loaded and initialised (or failed to); for tests. */
+export function analyticsLoaded(): Promise<void> {
+  return loaded;
+}
+
 function consentGranted(): boolean {
-  return enabled && posthog.get_explicit_consent_status() === "granted";
+  return enabled && posthog?.get_explicit_consent_status() === "granted";
 }
 
 /**
@@ -108,7 +132,7 @@ function consentGranted(): boolean {
  * to avoid. `opt_in_capturing` also resets the instance, so this runs after it.
  */
 function applyIdentity(): void {
-  if (!consentGranted()) return;
+  if (!posthog || !consentGranted()) return;
   if (identity && posthog.get_distinct_id() !== identity.id) {
     posthog.identify(identity.id, identity.properties);
   }
@@ -128,7 +152,7 @@ function notifyRevnuBinders(): void {
   }
 }
 
-async function settleConsent(): Promise<void> {
+async function settleConsent(posthog: PostHog): Promise<void> {
   try {
     if (posthog.get_explicit_consent_status() !== "pending") {
       applyIdentity();
@@ -149,10 +173,28 @@ async function settleConsent(): Promise<void> {
 export function initAnalytics(options: AnalyticsOptions): void {
   if (enabled || !options.key || typeof window === "undefined") return;
   enabled = true;
-  const { redactUrl, sensitive = false, cookieless = false, properties } = options;
+  const cookieless = options.cookieless ?? false;
   cookielessOnly = cookieless;
+  const key = options.key;
 
-  posthog.init(options.key, {
+  loaded = import("posthog-js").then(
+    ({ default: sdk }) => {
+      start(sdk, key, options);
+      posthog = sdk;
+      for (const work of queued.splice(0)) work(sdk);
+      // Nothing to settle: the prompt never shows and no consent answer is read.
+      if (!cookieless) void settleConsent(sdk);
+    },
+    () => {
+      // Blocked or offline: analytics stays off for this page, as without a key.
+      queued.length = 0;
+    },
+  );
+}
+
+function start(posthog: PostHog, key: string, options: AnalyticsOptions): void {
+  const { redactUrl, sensitive = false, cookieless = false, properties } = options;
+  posthog.init(key, {
     api_host: options.host || DEFAULT_HOST,
     ui_host: UI_HOST,
     defaults: "2026-08-30",
@@ -184,8 +226,6 @@ export function initAnalytics(options: AnalyticsOptions): void {
   });
 
   if (properties) posthog.register(properties);
-  // Nothing to settle: the prompt never shows and no consent answer is read.
-  if (!cookieless) void settleConsent();
 }
 
 /**
@@ -193,8 +233,10 @@ export function initAnalytics(options: AnalyticsOptions): void {
  * time on a `cookieless` surface, where the event carries no stored identity.
  */
 export function captureAnalytics(event: string, properties: Properties = {}): void {
-  if (!enabled || (!cookielessOnly && !consentGranted())) return;
-  posthog.capture(event, properties);
+  withPostHog((sdk) => {
+    if (!cookielessOnly && !consentGranted()) return;
+    sdk.capture(event, properties);
+  });
 }
 
 /** True once `initAnalytics` has run with a key; surfaces hide the preferences link otherwise. */
@@ -220,18 +262,22 @@ export function openConsentPrompt(): void {
 
 export function acceptAnalytics(): void {
   setPrompt(false);
-  if (!enabled || posthog.get_explicit_consent_status() === "granted") return;
-  posthog.opt_in_capturing();
-  applyIdentity();
-  notifyRevnuBinders();
+  withPostHog((sdk) => {
+    if (sdk.get_explicit_consent_status() === "granted") return;
+    sdk.opt_in_capturing();
+    applyIdentity();
+    notifyRevnuBinders();
+  });
 }
 
 export function declineAnalytics(): void {
   setPrompt(false);
-  if (!enabled || posthog.get_explicit_consent_status() === "denied") return;
-  posthog.opt_out_capturing();
-  appliedOrganization = null;
-  notifyRevnuBinders();
+  withPostHog((sdk) => {
+    if (sdk.get_explicit_consent_status() === "denied") return;
+    sdk.opt_out_capturing();
+    appliedOrganization = null;
+    notifyRevnuBinders();
+  });
 }
 
 /** Ties events to the signed-in user. Held until consent if it has not been given yet. */
@@ -251,13 +297,14 @@ export function resetAnalytics(): void {
   identity = null;
   organization = null;
   appliedOrganization = null;
-  if (!enabled) return;
-  const status = posthog.get_explicit_consent_status();
-  // reset() also clears the stored consent, which belongs to the visitor, not the account.
-  posthog.reset();
-  if (status === "granted") posthog.opt_in_capturing({ captureEventName: false });
-  else if (status === "denied") posthog.opt_out_capturing();
-  notifyRevnuBinders();
+  withPostHog((sdk) => {
+    const status = sdk.get_explicit_consent_status();
+    // reset() also clears the stored consent, which belongs to the visitor, not the account.
+    sdk.reset();
+    if (status === "granted") sdk.opt_in_capturing({ captureEventName: false });
+    else if (status === "denied") sdk.opt_out_capturing();
+    notifyRevnuBinders();
+  });
 }
 
 export interface RevnuConsentSnapshot {
@@ -267,6 +314,9 @@ export interface RevnuConsentSnapshot {
 
 function analyticsConsentState(): "granted" | "denied" | "pending" | "inactive" {
   if (!enabled) return "inactive";
+  // Not loaded yet: pending, which stores, sends and loads nothing. Loading
+  // settles consent, which tells the Revnu binders the real answer.
+  if (!posthog) return "pending";
   const status = posthog.get_explicit_consent_status();
   if (status === "granted" || status === "denied" || status === "pending") return status;
   return "pending";

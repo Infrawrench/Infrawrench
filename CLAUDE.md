@@ -75,7 +75,7 @@ TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `types
 
 ## Analytics (PostHog)
 
-The web SPA, website and instances site share `@infrawrench/analytics` (source-only; KNOWLEDGE.md "PostHog analytics" has the consent model). A new browser surface uses it rather than calling `posthog-js` directly, and adds the package path to its deploy workflow's `paths`. The privacy policy (`website/src/pages/privacy.astro`, `#posthog`) describes exactly what is collected; a change to what PostHog records (masking, identify properties, a new surface) changes that page in the same commit. A new web route with a secret in its path goes in `TOKEN_SEGMENT` (`web/src/lib/analytics.ts`) so the token never reaches PostHog.
+The web SPA, website and instances site share `@infrawrench/analytics` (source-only; KNOWLEDGE.md "PostHog analytics" has the consent model). A new browser surface uses it rather than calling `posthog-js` directly, and adds the package path to its deploy workflow's `paths`. The package imports the SDK inside `initAnalytics`, after first render; nothing imports `posthog-js` statically, or it is back in every first download. The privacy policy (`website/src/pages/privacy.astro`, `#posthog`) describes exactly what is collected; a change to what PostHog records (masking, identify properties, a new surface) changes that page in the same commit. A new web route with a secret in its path goes in `TOKEN_SEGMENT` (`web/src/lib/analytics.ts`) so the token never reaches PostHog.
 
 ## Workspace tabs
 
