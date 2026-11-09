@@ -7,7 +7,8 @@ import type {
   ScheduledController,
 } from "@cloudflare/workers-types/index";
 import { handle, tick, type Deps } from "./app";
-import { Pool } from "./pool";
+import { Pool, parseRunnerList } from "./pool";
+import { D1RunnerList } from "./runners";
 import { D1Store } from "./store";
 import { D1Values, secretsKey } from "./values";
 
@@ -24,8 +25,12 @@ export interface Env {
 }
 
 async function deps(env: Env): Promise<Deps> {
+  const runnerList = new D1RunnerList(env.DB);
+  const stored = await runnerList.list();
+  const runners = stored.length > 0 ? stored : parseRunnerList(env.RUNNERS);
   return {
-    pool: Pool.fromList(env.RUNNERS, env.RUNNER_KEY, (input, init) => fetch(input, init)),
+    pool: new Pool(runners, env.RUNNER_KEY, (input, init) => fetch(input, init)),
+    runnerList,
     store: new D1Store(env.DB),
     values: new D1Values(env.DB),
     secretsKey: await secretsKey(env.SECRETS_KEY),

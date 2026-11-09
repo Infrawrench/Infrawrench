@@ -1,0 +1,28 @@
+# Written by infra/ci-runners (Terraform); edits here are overwritten.
+[Unit]
+Description=Infrawrench CI runner (iwci serve)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=iwci
+Group=iwci
+EnvironmentFile=/etc/iwci/iwci.env
+ExecStart=/opt/iwci/bin/iwci serve --listen ${listen} --cache /var/lib/iwci/cache --storage-quota ${storage_quota} ${update_flags}
+Restart=always
+RestartSec=5
+# SIGTERM drains: no new runs, and running ones finish before it exits. The
+# longest a job may run is 60 minutes.
+KillSignal=SIGTERM
+TimeoutStopSec=65min
+# An update replaces /opt/iwci/bin/iwci in place and execs it, so that
+# directory is writable; nothing else outside the cache is.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/iwci/bin /var/lib/iwci
+ProtectHome=yes
+PrivateTmp=yes
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

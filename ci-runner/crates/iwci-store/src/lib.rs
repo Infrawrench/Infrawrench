@@ -24,6 +24,8 @@
 //! | `repos/<repo_id>/tools/<name>/<version>.json` | [`ToolManifest`] | never |
 //! | `caches/<repo_id>/<scope>/entries/<hash>.zst` | a job cache: zstd stream of `iwci_vfs::archive` entries | yes, by the runner |
 //! | `caches/<repo_id>/<scope>/prefixes/<hash>` | the newest key saved under a `restore-keys` prefix | yes, by the runner |
+//! | `releases/iwci/<version>/<target>` | an `iwci` binary (`iwci release`) | never |
+//! | `releases/iwci/channels/<channel>.json` | a signed release manifest that servers update from | yes, by `iwci release` |
 //!
 //! Job caches (written by `iwci`, not this crate) are scoped by branch:
 //! `<scope>` is `b-<hash>` for pushes to a branch and `pr-<hash>` for pull

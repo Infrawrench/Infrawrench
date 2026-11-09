@@ -5,7 +5,13 @@
 //!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>]
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
 //!     [--warm-every 10m | --no-warm]
+//!     [--update-channel stable [--update-every 5m]]
 //! ```
+//!
+//! SIGTERM and SIGINT drain (no new runs, running ones finish) and then
+//! exit. With `--update-channel`, the server installs the channel's signed
+//! release (`IWCI_RELEASE_PUBLIC_KEY`) the same way: drain, then `exec`
+//! the new binary in place. See `server_lifecycle.rs`.
 //!
 //! Every published builtin and environment is downloaded and compiled when
 //! the server starts and again every `--warm-every`, so jobs never wait on
@@ -24,6 +30,9 @@ const DEFAULT_STORAGE_QUOTA: u64 = 10 << 30;
 
 /// How often a server looks for newly published builtins to warm.
 const DEFAULT_WARM_EVERY_SECS: u64 = 600;
+
+/// How often a server checks its release channel.
+const DEFAULT_UPDATE_EVERY_SECS: u64 = 300;
 
 pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     // Loopback by default: exposing it is a decision, made with --listen.
@@ -44,10 +53,35 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
                 format!("--warm-every takes a duration of at least 1m, such as `10m`, not `{text}`")
             })?,
     };
+    let update_channel = args.value("--update-channel")?;
+    let update_every = match args.value("--update-every")? {
+        None => DEFAULT_UPDATE_EVERY_SECS,
+        Some(text) => iwci_spec::parse_duration_secs(&text)
+            .filter(|&s| s >= 30)
+            .ok_or_else(|| {
+                format!("--update-every takes a duration of at least 30s, not `{text}`")
+            })?,
+    };
+    let release_key = match &update_channel {
+        Some(_) => Some(crate::server::lifecycle::verifying_key(
+            &std::env::var("IWCI_RELEASE_PUBLIC_KEY").map_err(|_| {
+                "--update-channel needs IWCI_RELEASE_PUBLIC_KEY, the key releases are signed with"
+            })?,
+        )?),
+        None => None,
+    };
     if !args.rest().is_empty() {
         return Err("unexpected arguments; see `iwci help`".into());
     }
     let server = Arc::new(Server::new(runner, key)?);
+    server.stop_gracefully_on_signals()?;
+    if let (Some(channel), Some(key)) = (update_channel, release_key) {
+        eprintln!(
+            "iwci serve: {} following channel `{channel}`",
+            crate::server::lifecycle::VERSION
+        );
+        server.keep_updated(channel, key, std::time::Duration::from_secs(update_every));
+    }
     if !no_warm {
         server.keep_warm(std::time::Duration::from_secs(warm_every));
     }

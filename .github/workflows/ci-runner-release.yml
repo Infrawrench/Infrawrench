@@ -1,0 +1,110 @@
+name: CI runner release
+
+# Publishes `iwci` to the runners' release channel. Bump ci-runner/VERSION
+# and merge: this builds it, uploads it to R2 under releases/iwci/<version>/,
+# signs the `stable` channel to point at it, and tags ci-runner-v<version>.
+# Runners following the channel (infra/ci-runners) pick it up within five
+# minutes and swap themselves in place once their running jobs finish.
+#
+# A released version never changes (`iwci release` refuses different bytes
+# for one), so a version that is already tagged is skipped, not rebuilt.
+on:
+  push:
+    branches: [main]
+    paths: ["ci-runner/VERSION"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-runner-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and publish iwci
+    # x86_64, because the `node` feature's prebuilt V8 exists only there.
+    # 22.04 for its older glibc, so the binary also runs on older hosts.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Read the version
+        id: version
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ci-runner/VERSION must be a version such as 0.2.0, not '$version'" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/ci-runner-v$version" >/dev/null; then
+            echo "ci-runner-v$version is already released; bump ci-runner/VERSION for a new release."
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the publishing secrets
+        if: steps.version.outputs.released != 'true'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          IWCI_RELEASE_SIGNING_KEY: ${{ secrets.IWCI_RELEASE_SIGNING_KEY }}
+        run: |
+          missing=()
+          for name in IWCI_R2_ACCOUNT_ID IWCI_R2_BUCKET IWCI_R2_ACCESS_KEY_ID IWCI_R2_SECRET_ACCESS_KEY IWCI_RELEASE_SIGNING_KEY; do
+            [[ -n "${!name}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Set these repository secrets to publish: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Install Rust
+        if: steps.version.outputs.released != 'true'
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.version.outputs.released != 'true'
+        with:
+          workspaces: ci-runner
+          key: release
+
+      - name: Build
+        if: steps.version.outputs.released != 'true'
+        env:
+          IWCI_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cargo build --release -p iwci --features node
+          test "$(./target/release/iwci version)" = "$IWCI_VERSION"
+
+      - name: Publish and point the stable channel at it
+        if: steps.version.outputs.released != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          IWCI_RELEASE_SIGNING_KEY: ${{ secrets.IWCI_RELEASE_SIGNING_KEY }}
+        run: |
+          ./target/release/iwci release ./target/release/iwci \
+            --version "$VERSION" --target x86_64-linux --channel stable \
+            --cache "$RUNNER_TEMP/iwci-cache"
+
+      - name: Tag the release
+        if: steps.version.outputs.released != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "ci-runner-v$VERSION"
+          git push origin "ci-runner-v$VERSION"

@@ -29,5 +29,14 @@ rayon = "1"
 # `iwci serve`: a small synchronous HTTP server; each request gets a thread,
 # as runs already do.
 tiny_http = "0.12"
+# Releases: channel manifests are signed (Ed25519) so a host's own store
+# credentials cannot push a binary to the other hosts; keys are base64.
+ed25519-dalek = "3"
+base64 = "0.22"
+getrandom = "0.3"
+# Draining on SIGTERM instead of dying with running jobs. Both are already
+# in the tree through tokio.
+libc = "0.2"
+signal-hook-registry = "1"
 # Job caches are stored as one zstd stream each.
 zstd = { version = "0.13", default-features = false }

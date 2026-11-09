@@ -512,6 +512,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                        |
 | `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text. |
+| `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.               |
 
 A request body (for `runs` and `prepare`):
 
@@ -621,6 +622,35 @@ schedule once per runner. Its README has the routes; the short version:
   integration: the commit is written to the git cache, and
   `RemoteCache::export_objects` lists its objects for the forge's API.
 
+### Deploying, draining and updating
+
+`infra/ci-runners` (Terraform) provisions runner hosts over SSH and tells
+the proxy about them; its README has the steps. Two things in `iwci serve`
+make that safe to do while jobs run:
+
+- **Draining.** SIGTERM, SIGINT and `POST /v1/drain` stop new runs from
+  being admitted (`429`, and `draining` in `/v1/capacity`, which the proxy
+  reads to place work elsewhere) and let the running ones finish; on a
+  signal the server then exits 0. A systemd unit's stop timeout therefore
+  has to cover the longest job (60 minutes).
+- **Updating itself.** With `--update-channel stable`, the server reads
+  `releases/iwci/channels/stable.json` every `--update-every` (default 5m).
+  It only believes a manifest signed by the release key
+  (`IWCI_RELEASE_PUBLIC_KEY`): every host's store credentials can write to
+  the bucket, and an unsigned channel would let one host push a native
+  binary to all of them. When the channel names another version, the server
+  downloads that version's binary for its platform, checks the signed size
+  and sha256 and that it reports the right version, drains, and `exec`s it
+  with the same arguments. The process id stays the same, nothing is
+  killed, and pointing the channel back at an older version rolls back.
+
+Releases are published with `iwci release <binary> --version <v>
+[--target x86_64-linux] [--channel stable]` (signing key from
+`IWCI_RELEASE_SIGNING_KEY`), normally by `.github/workflows/ci-runner-release.yml`
+when `ci-runner/VERSION` changes. `iwci release-keygen` makes a key pair,
+and `iwci version` prints the build's version (`IWCI_VERSION` at build
+time). A version's binary is uploaded once and never replaced.
+
 ## Storage layout (R2)
 
 The `iwci-store` crate documents the exact key layout and manifest formats;
@@ -630,8 +660,10 @@ live under their own prefixes, and a repository's uploaded tools live under
 `repos/<repo-id>/tools/`, which is the only place a `repo:` reference looks.
 Uploading is not implemented: the layout is the contract the upload API
 will write to. Job caches are under `caches/<owner>/<repo-id>/<scope>/`,
-billing records under `usage/<owner>/`, and run reports under
-`runs/<owner>/`.
+billing records under `usage/<owner>/`, run reports under
+`runs/<owner>/`, and releases of `iwci` itself under
+`releases/iwci/<version>/<target>` (immutable) with signed channel
+manifests at `releases/iwci/channels/<channel>.json`.
 
 ## Crates
 

@@ -1,0 +1,44 @@
+# Copy to terraform.tfvars (gitignored). See README.md.
+
+# Required. The hosts that run `iwci serve`. Terraform needs SSH and
+# passwordless sudo on each; `url` is how the proxy reaches the runner.
+hosts = [
+  { name = "ci-1", ssh_host = "203.0.113.10", url = "https://ci-1.example.com" },
+  # With a Cloudflare Tunnel (no open port; point the tunnel's hostname at
+  # http://127.0.0.1:8547), and explicit limits:
+  # { name = "ci-2", ssh_host = "203.0.113.11", ssh_user = "ubuntu", url = "https://ci-2.example.com",
+  #   cpus = 8, memory = "24GiB", tunnel_token = "<from the Cloudflare dashboard>" },
+]
+
+# Optional. The key Terraform connects with; empty uses the SSH agent.
+# ssh_private_key_path = "~/.ssh/ci_runners"
+
+# Required. An iwci built for the hosts (linux x86_64): installed only on a
+# host that has none. Later versions arrive through update_channel.
+iwci_binary_path = "../../ci-runner/target/release/iwci"
+
+# Required. The bearer key the proxy sends runners (its RUNNER_KEY), 32+ chars.
+server_key = "<openssl rand -hex 32>"
+
+# Required. The R2 bucket runners share. Without it, runners have no tools,
+# caches or reports.
+r2 = {
+  account_id        = "<cloudflare account id>"
+  bucket            = "<bucket>"
+  access_key_id     = "<R2 access key id>"
+  secret_access_key = "<R2 secret access key>"
+}
+
+# Optional (default "stable"). The release channel runners follow; "" to
+# turn self-updates off.
+# update_channel = "stable"
+
+# Required while update_channel is set. The public half of
+# `iwci release-keygen`; the private half is the release workflow's
+# IWCI_RELEASE_SIGNING_KEY secret.
+release_public_key = "<IWCI_RELEASE_PUBLIC_KEY>"
+
+# Optional. Tell the proxy the runner list after the hosts are up
+# (PUT /v1/runners). Without it, set the proxy's RUNNERS yourself.
+# proxy_url = "https://ci-proxy.example.com"
+# proxy_key = "<the proxy's PROXY_KEY>"
