@@ -16,7 +16,7 @@ function LanguagePicker() {
   return (
     <select
       aria-label={gt("Language")}
-      className="rounded-md border border-[#1a1a1a] bg-transparent px-2 py-1.5 text-base text-[#9ca3af] sm:text-[13px] hover:border-[#333] focus-visible:outline-2 focus-visible:outline-[#2563eb]"
+      className="rounded-lg border border-line bg-surface px-2 py-1.5 text-base text-ink-2 sm:text-[13px] hover:border-ink-3 focus-visible:outline-2 focus-visible:outline-accent"
       value={locale}
       onChange={(e) => {
         const next = e.target.value;
@@ -29,7 +29,7 @@ function LanguagePicker() {
       }}
     >
       {LOCALES.map((code) => (
-        <option key={code} value={code} className="bg-[#0b0b0b]">
+        <option key={code} value={code}>
           {nativeName(code)}
         </option>
       ))}
@@ -37,7 +37,7 @@ function LanguagePicker() {
   );
 }
 
-/** The infrawrench.com nav (app/packages/website/src/components/Nav.astro), for the instances site. */
+/** The infrawrench.com home page nav (`.hm-nav` in app/packages/website/src/pages/index.astro), for the instances site. */
 export function Nav() {
   const gt = useGT();
   const locale = useLocale();

@@ -146,7 +146,7 @@ export function InstanceView({
 
       <div className="gap-8 md:flex">
         <div className="md:w-sm md:shrink-0">
-          <h1 className="mb-2 text-2xl font-bold">{m.name}</h1>
+          <h1 className="mb-2 text-3xl font-semibold tracking-[-0.03em]">{m.name}</h1>
           <p className="mb-4 text-sm text-ink-2">{description}</p>
 
           <section aria-labelledby="pricing-heading">
@@ -214,7 +214,7 @@ export function InstanceView({
               <table
                 key={section.slug}
                 id={section.slug}
-                className="mt-4 w-full border-collapse border border-line text-sm"
+                className="mt-4 w-full border-collapse border border-line bg-surface text-sm"
               >
                 <thead>
                   <tr className="bg-surface-2">
@@ -444,7 +444,7 @@ function ReservedTable({
         {gt("Every reserved term")}
       </summary>
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full border-collapse text-xs">
+        <table className="w-full border-collapse bg-surface text-xs">
           <thead>
             <tr className="bg-surface-2 text-start">
               <th className="p-1">{gt("Term")}</th>
@@ -496,7 +496,7 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
       <h3 id="family-heading" className="flex items-center gap-2 font-semibold">
         <ServerIcon /> {gt("Family sizes")}
       </h3>
-      <table className="mt-2 w-full border-collapse text-sm">
+      <table className="mt-2 w-full border-collapse bg-surface text-sm">
         <thead>
           <tr>
             <th className="pb-1 ps-2 text-start font-medium">{gt("Size")}</th>

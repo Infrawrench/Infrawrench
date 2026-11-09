@@ -32,6 +32,15 @@ export default async function EmbedLayout({
   const translations = { [locale]: await loadTranslations(locale) };
   return (
     <html lang={locale} dir={localeDir(locale)}>
+      <head>
+        {/* Geist, as on the site (app/[locale]/layout.tsx). */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+        />
+      </head>
       <body className="overflow-hidden">
         <EmbedI18nProvider locale={locale} translations={translations}>
           {children}

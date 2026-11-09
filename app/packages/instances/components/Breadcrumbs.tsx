@@ -47,7 +47,7 @@ export function Breadcrumbs({
       {ask && (
         <Link
           href={`${localePath(locale, "/")}?draft=${encodeURIComponent(`${ask} `)}`}
-          className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
+          className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
         >
           <MessageIcon className="h-3.5 w-3.5 text-ink-3 group-hover:text-accent" />
           {gt("Ask about {name}", { name: ask })}

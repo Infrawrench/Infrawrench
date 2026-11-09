@@ -40,7 +40,7 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
         ]}
         ask={listing.label}
       />
-      <h1 className="text-2xl font-bold">
+      <h1 className="text-3xl font-semibold tracking-[-0.03em]">
         {gt("{platform} instance types", { platform: fullLabel(listing.platform) })}
       </h1>
       <p className="mt-1 text-ink-2">{tr(listing.summary)}</p>
@@ -65,7 +65,7 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
       ) : (
         <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {families.map((f) => (
-            <li key={f.key} className="rounded-lg border border-line p-3">
+            <li key={f.key} className="rounded-xl border border-line bg-surface p-3">
               <h2 className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">
                   {f.key ? f.label : listing.otherLabel ? tr(listing.otherLabel) : gt("Other")}

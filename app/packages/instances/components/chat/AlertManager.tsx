@@ -60,7 +60,7 @@ export function AlertManager({ id }: { id: string }) {
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-xl px-4 py-16 sm:px-7">
-      <div className="rounded-xl border border-line p-6">
+      <div className="rounded-xl border border-line bg-surface p-6">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <BellIcon className="h-5 w-5 text-ink-3" />
           {gt("Email alert")}
