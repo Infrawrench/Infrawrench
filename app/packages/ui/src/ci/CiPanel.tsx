@@ -595,13 +595,21 @@ export function CiPanel({
     };
   }, [client, filter, nonce, gt]);
 
-  // Follow runs that are still going.
+  // Keep the list current while the tab is open: new runs arrive from
+  // webhooks at any time, so it polls even when nothing is running, faster
+  // while something is. Not while a run's detail is open (it follows its own
+  // run) or while the window is hidden.
   const anyActive = useMemo(() => (runs ?? []).some((r) => ACTIVE.includes(r.status)), [runs]);
   useEffect(() => {
-    if (!anyActive || selectedRunId) return;
-    const timer = setInterval(refresh, 10_000);
+    if (selectedRunId || status?.enabled !== true) return;
+    const timer = setInterval(
+      () => {
+        if (typeof document === "undefined" || document.visibilityState === "visible") refresh();
+      },
+      anyActive ? 5_000 : 15_000,
+    );
     return () => clearInterval(timer);
-  }, [anyActive, selectedRunId, refresh]);
+  }, [anyActive, selectedRunId, status?.enabled, refresh]);
 
   return (
     <div className="space-y-6">
