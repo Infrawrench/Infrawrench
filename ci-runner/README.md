@@ -321,7 +321,11 @@ patched so a job timeout can stop a script that never yields (see
 only for x86_64.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
-it. Every package and source is pinned to a tag or a content hash.
+it. Every package and source is pinned to a tag or a content hash. On
+`main`, each builtin's CI job publishes what it just tested to the runner
+pool's bucket (`builtins/publish.sh`, with the `IWCI_R2_*` secrets). A
+version already published with other bytes stays as it is and the run
+shows a warning: a changed build needs a new version.
 
 [tsc-rs]: https://github.com/pingdotgg/ts-rust
 [`wasmer-napi`]: https://crates.io/crates/wasmer-napi
