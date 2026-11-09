@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# `pnpm format:check` (test.yml's Prettier job) on Infrawrench CI: the
+# repository's own Prettier, from its lockfile, on Node under bash-node.
+name: Prettier
+
+on:
+  push:
+    branches: [main]
+  pull-request: {}
+
+workspace:
+  deps:
+    # Prettier is a root devDependency: install just the root importer's
+    # closure, not all 180 packages'.
+    - pnpm:
+        only: ["."]
+
+jobs:
+  prettier:
+    name: Prettier
+    using: env:bash-node@24
+    run: node node_modules/prettier/bin/prettier.cjs --check .
+    timeout: 20m
+    memory: 4GiB
