@@ -108,6 +108,17 @@ The role picker offers the cluster's ClusterRoles (except the `system:` ones) an
 
 The kubeconfig needs permission to create, get and delete RoleBindings and ClusterRoleBindings, to list namespaces, ClusterRoles and Roles, and `bind` on the roles offered (or to already hold them).
 
+## Troubleshooting a cluster
+
+When a workload misbehaves, start with the pod's status, its logs and the namespace's events. The [Kubernetes troubleshooting guide for pods, logs and events](https://infrawrench.com/blog/kubernetes-troubleshooting-pods-logs-and-events) walks through that routine and links a guide for each symptom. The most common ones:
+
+- [CrashLoopBackOff](https://infrawrench.com/blog/kubernetes-crashloopbackoff)
+- [ImagePullBackOff](https://infrawrench.com/blog/kubernetes-imagepullbackoff)
+- [OOMKilled](https://infrawrench.com/blog/kubernetes-oomkilled)
+- [Pod stuck in Pending](https://infrawrench.com/blog/kubernetes-pod-pending)
+- [Service has no endpoints](https://infrawrench.com/blog/kubernetes-service-no-endpoints)
+- [kubectl can't connect to the server](https://infrawrench.com/blog/kubectl-unable-to-connect-to-the-server)
+
 ## Tips and limits
 
 - In the web app, terminals and port forwards go through Infrawrench's servers. Long sessions are fine, but heavy streaming over days (a continuous log tail, say) may reconnect.
