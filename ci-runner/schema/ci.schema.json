@@ -302,7 +302,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Jobs (all of their matrix entries) that must pass first."
+          "description": "Jobs that must pass first: every matrix entry, or every package of a `packages:` job. In a `packages:` job, `^<job>` waits for that job in each workspace package this one depends on, and a `packages:` job's plain name means the same package's."
         },
         "if": {
           "type": "string",
@@ -367,8 +367,33 @@
         "artifacts": {
           "type": "array",
           "maxItems": 64,
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "description": "Paths (relative to the clone, or absolute) whose files are handed on once the job passes: every job that needs this one, directly or through others, starts with them in its file system. They are not changes, count toward the run's `scratch:` limit, and may use `${{ matrix }}`."
+        },
+        "packages": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/packageFilter"
+            }
+          ],
+          "description": "One job per workspace package (from `pnpm-workspace.yaml`, or the root `package.json`'s `workspaces`): `true` for every package, or a filter. Each runs in its package's directory, reads `${{ package.dir }}` and `${{ package.name }}`, and resolves relative `artifacts`, `cache` paths and `task-cache` inputs against the package."
+        },
+        "task-cache": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/taskCacheInputs"
+            }
+          ],
+          "description": "Skip the job when nothing it reads has changed since a run that passed, handing on that run's artifacts, outputs and log. The key covers the job's definition, its input files, the lockfiles and the artifacts it is handed, so a change upstream reaches every job after it. Not for jobs that read secrets or commit."
         }
       }
     },
@@ -401,6 +426,66 @@
             "minLength": 1
           },
           "description": "What to keep: paths relative to the clone, or absolute (such as /root/.cache/go-build)."
+        }
+      }
+    },
+    "packageFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "only": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Globs over each package's directory or name (`app/packages/*`, `@scope/*`), read in order; `!` excludes. Default: every package."
+        },
+        "has": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Names that must all be directly in the package's directory, such as `tsconfig.json`."
+        },
+        "has-script": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Scripts its `package.json` must all define."
+        },
+        "scripts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Script name to a glob its command must match (`*` matches anything, `/` included), such as `build: \"tsdown*\"`. A glob starting with `!` selects packages whose script does not match or is missing."
+        }
+      }
+    },
+    "taskCacheInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Globs of the files the job reads, relative to its package (or the clone); `!` excludes. Default: every file, `node_modules` never."
+        },
+        "root-inputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Globs relative to the clone that the job reads too, such as `tsconfig.base.json`."
         }
       }
     }

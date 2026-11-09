@@ -88,6 +88,9 @@ pub enum LogEvent {
         job: String,
         status: String,
         duration_ms: u64,
+        /// Replayed from the task cache rather than run.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        cached: bool,
     },
 }
 
@@ -108,6 +111,7 @@ fn emit_finished(options: &Options, report: &JobReport) {
             job: report.id.clone(),
             status: status_word(&report.status).to_string(),
             duration_ms: report.duration_ms,
+            cached: report.cached,
         });
     }
 }
@@ -278,6 +282,10 @@ pub struct JobReport {
     /// The memory the job reserved while it ran (its `memory:`), for
     /// billing; 0 for a job that never ran.
     pub memory_mib: u64,
+    /// Not run: its `task-cache:` found a passing run with the same inputs,
+    /// whose artifacts, outputs and log this report carries.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cached: bool,
     /// Whether jobs that need this one are held back by it: true for a
     /// failure and for a skip caused by a failure upstream, false for a
     /// skip by `paths:` or a false `if:`.
@@ -948,6 +956,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         memory_mib: 0,
         duration_ms: 0,
         blocks,
+        cached: false,
     }
 }
 
@@ -984,6 +993,29 @@ fn run_job<T: Tools>(
             );
         }
     };
+    // A task-cached job whose inputs are what a passing run saw is not
+    // run: that run's artifacts, outputs and log stand in for it. A miss,
+    // or an entry that cannot be used, runs the job.
+    let task_key = task_cache_key(job, plan, workspace, inherited);
+    let mut task_lines = Vec::new();
+    if let (Some(key), Some(store)) = (&task_key, &options.caches) {
+        match store.restore(key, &[], plan.scratch_bytes + MAX_TASK_LOG) {
+            Ok(Some(hit)) => {
+                match replay(job, plan, options, shared, key, hit.entries, started, kept) {
+                    Ok(report) => return report,
+                    Err(e) => task_lines.push(format!(
+                        "task cache `{}`: could not use the entry ({e}); running it",
+                        short_key(key)
+                    )),
+                }
+            }
+            Ok(None) => task_lines.push(format!("task cache `{}`: miss", short_key(key))),
+            Err(e) => task_lines.push(format!(
+                "task cache `{}`: could not read the cache ({e}); running it",
+                short_key(key)
+            )),
+        }
+    }
     let tool = match tools.resolve(&job.tool) {
         Ok(t) => t,
         Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
@@ -1039,7 +1071,7 @@ fn run_job<T: Tools>(
 
     // Restore caches before the job runs. A miss, or a store that cannot be
     // read, is a cold start, never a failure.
-    let mut cache_lines = Vec::new();
+    let mut cache_lines = task_lines;
     let mut cache_keys = Vec::new();
     for cache in &job.caches {
         let hash = |globs: &[String]| hash_files(&workspace.snapshot, root.as_deref(), globs);
@@ -1339,6 +1371,40 @@ fn run_job<T: Tools>(
         }
     }
 
+    // Record a pass for the task cache: what it kept, its outputs and its
+    // log, under the key of everything it read.
+    if status == Status::Passed
+        && let (Some(key), Some(store)) = (&task_key, &options.caches)
+    {
+        let record = TaskRecord {
+            exit_code: execution.exit_code,
+            stdout: execution.stdout.clone(),
+            stderr: execution.stderr.clone(),
+            outputs: outputs.clone().unwrap_or_default(),
+            duration_ms: millis(started.elapsed()),
+        };
+        let mut entries = kept.clone();
+        let saved: u64 = entries
+            .iter()
+            .map(|e| match e {
+                Entry::File { data, .. } => data.len() as u64,
+                _ => 0,
+            })
+            .sum();
+        entries.push(Entry::File {
+            path: TASK_RECORD.into(),
+            data: serde_json::to_vec(&record).expect("serialisable").into(),
+        });
+        cache_lines.push(match store.save(key, &[], &entries) {
+            Ok(()) => format!(
+                "task cache `{}`: saved {} KiB",
+                short_key(key),
+                saved.div_ceil(1024)
+            ),
+            Err(e) => format!("task cache `{}`: could not save ({e})", short_key(key)),
+        });
+    }
+
     let blocks = !status.is_success();
     JobReport {
         id: job.id.clone(),
@@ -1354,7 +1420,255 @@ fn run_job<T: Tools>(
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(started.elapsed()),
         blocks,
+        cached: false,
     }
+}
+
+/// Where a task cache entry keeps the run it stands for, beside the
+/// artifacts. Under `/iwci`, which no job's artifacts can name.
+const TASK_RECORD: &str = "/iwci/task-cache.json";
+/// Room for a task cache entry's log and outputs beyond its artifacts.
+const MAX_TASK_LOG: u64 = 64 << 20;
+
+#[derive(Serialize, serde::Deserialize)]
+struct TaskRecord {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+    outputs: BTreeMap<String, String>,
+    duration_ms: u64,
+}
+
+fn short_key(key: &str) -> &str {
+    let hash = key.rsplit('/').next().unwrap_or(key);
+    &hash[..hash.len().min(12)]
+}
+
+/// The task cache key of a `task-cache:` job: everything that decides what
+/// it does and what it reads. Its definition (tool, arguments or script,
+/// environment, directory, what it keeps), its workspace's settings and
+/// lockfiles, the files its inputs match as the commit has them (never
+/// under `node_modules`), and the artifacts it is handed, by content, so a
+/// change to a package reaches every job downstream of it. `None` for a
+/// job without one.
+fn task_cache_key(
+    job: &PlannedJob,
+    plan: &Plan,
+    workspace: &BuiltWorkspace,
+    inherited: &[(String, Arc<Vec<Entry>>)],
+) -> Option<String> {
+    use sha2::Digest;
+    let spec = job.task_cache.as_ref()?;
+    let ws = &plan.workspaces[job.workspace];
+    let root = ws.clone.as_ref()?.into.clone();
+    #[derive(Serialize)]
+    struct Definition<'a> {
+        tool: &'a ToolRef,
+        tools: &'a [ToolRef],
+        action: &'a Action,
+        cwd: &'a str,
+        env: &'a [(String, String)],
+        artifacts: &'a [String],
+        outputs: &'a [String],
+        network: bool,
+        changes: &'a ChangePolicy,
+        workspace: &'a WorkspaceSpec,
+        inputs: &'a [String],
+    }
+    let definition = Definition {
+        tool: &job.tool,
+        tools: &job.tools,
+        action: &job.action,
+        cwd: &job.cwd,
+        env: &job.env,
+        artifacts: &job.artifacts,
+        outputs: &job.outputs,
+        network: job.network,
+        changes: &job.changes,
+        workspace: ws,
+        inputs: &spec.inputs,
+    };
+    let snapshot = &workspace.snapshot;
+    let mut hash = sha2::Sha256::new();
+    let add_file = |hash: &mut sha2::Sha256, label: &str, content: &[u8]| {
+        hash.update(label.as_bytes());
+        hash.update([0]);
+        hash.update(sha2::Sha256::digest(content));
+    };
+    hash.update(b"iwci task cache 1\0");
+    hash.update(serde_json::to_vec(&definition).ok()?);
+    for dep in &ws.deps {
+        let names: &[&str] = match dep.ecosystem {
+            iwci_spec::Ecosystem::Pnpm => &["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+            iwci_spec::Ecosystem::Go => &["go.mod", "go.sum"],
+            iwci_spec::Ecosystem::Cargo => &["Cargo.lock"],
+        };
+        for name in names {
+            let path = format!("{}/{name}", dep.dir);
+            if let Ok(content) = snapshot.read(&path) {
+                add_file(&mut hash, &path, &content);
+            }
+        }
+    }
+    hash.update(b"\0inputs\0");
+    let filter = iwci_spec::PathFilter::new(&spec.inputs);
+    let (dirs, files) = filter.bases(&spec.inputs);
+    let prefix = format!("{root}/");
+    let mut matched = std::collections::BTreeSet::new();
+    for dir in dirs {
+        let base = if dir.is_empty() {
+            root.clone()
+        } else {
+            format!("{root}/{dir}")
+        };
+        for path in snapshot.list_files_skipping(&base, |n| n == "node_modules" || n == ".git") {
+            let text = path.display().to_string();
+            if let Some(rel) = text.strip_prefix(&prefix)
+                && filter.matches(rel)
+            {
+                matched.insert(rel.to_string());
+            }
+        }
+    }
+    for file in files {
+        if snapshot.is_file(format!("{root}/{file}")) && filter.matches(&file) {
+            matched.insert(file);
+        }
+    }
+    for rel in &matched {
+        let content = snapshot.read(format!("{root}/{rel}")).unwrap_or_default();
+        add_file(&mut hash, rel, &content);
+    }
+    hash.update(b"\0artifacts\0");
+    for (from, entries) in inherited {
+        hash.update(from.as_bytes());
+        hash.update([0]);
+        for entry in entries.iter() {
+            match entry {
+                Entry::File { path, data } => {
+                    add_file(&mut hash, &path.display().to_string(), data)
+                }
+                Entry::Dir { path } => {
+                    hash.update(path.display().to_string().as_bytes());
+                    hash.update(b"/\0");
+                }
+                Entry::Symlink { path, target } => {
+                    hash.update(path.display().to_string().as_bytes());
+                    hash.update(b" -> ");
+                    hash.update(target.display().to_string().as_bytes());
+                    hash.update([0]);
+                }
+            }
+        }
+    }
+    Some(format!(
+        "task/{}/{}",
+        job.id,
+        hex::encode(&hash.finalize()[..16])
+    ))
+}
+
+/// A job's report from a task cache entry, its artifacts kept for the jobs
+/// that need it as if it had run.
+#[allow(clippy::too_many_arguments)]
+fn replay(
+    job: &PlannedJob,
+    plan: &Plan,
+    options: &Options,
+    shared: &RunShared<'_>,
+    key: &str,
+    entries: Vec<Entry>,
+    started: Instant,
+    kept: &mut Vec<Entry>,
+) -> Result<JobReport, String> {
+    let (record, files): (Vec<Entry>, Vec<Entry>) = entries
+        .into_iter()
+        .partition(|e| entry_path(e) == std::path::Path::new(TASK_RECORD));
+    let record = record
+        .into_iter()
+        .find_map(|e| match e {
+            Entry::File { data, .. } => Some(data),
+            _ => None,
+        })
+        .ok_or("the entry has no record of its run")?;
+    let record: TaskRecord = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
+    if files
+        .iter()
+        .any(|e| !job.artifacts.iter().any(|a| entry_path(e).starts_with(a)))
+    {
+        // Only ever what the job kept: anything else is not this job's.
+        return Err("the entry holds files outside the job's `artifacts:`".into());
+    }
+    let count = files
+        .iter()
+        .filter(|e| matches!(e, Entry::File { .. }))
+        .count();
+    let bytes: u64 = files
+        .iter()
+        .map(|e| match e {
+            Entry::File { data, .. } => data.len() as u64,
+            _ => 0,
+        })
+        .sum();
+    let total = shared.artifact_bytes.fetch_add(bytes, Ordering::SeqCst) + bytes;
+    if total > plan.scratch_bytes {
+        shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
+        return Err("its artifacts would take the run past its `scratch:` limit".into());
+    }
+    let stdout = shared.mask.mask(&record.stdout);
+    let stderr = shared.mask.mask(&record.stderr);
+    if let Some(logs) = &options.logs {
+        logs(LogEvent::JobStarted {
+            job: job.id.clone(),
+            name: job.display_name.clone(),
+        });
+        for (stream, text) in [("stdout", &stdout), ("stderr", &stderr)] {
+            for line in text.lines() {
+                logs(LogEvent::Output {
+                    job: job.id.clone(),
+                    stream,
+                    line: line.to_string(),
+                });
+            }
+        }
+    }
+    let mut notes = vec![format!(
+        "task cache: nothing it reads changed since a run that passed in {:.1}s, so it did not run; that run's log is shown",
+        record.duration_ms as f64 / 1000.0
+    )];
+    if count > 0 {
+        notes.push(format!(
+            "artifacts: kept {count} file(s), {} KiB, from the task cache",
+            bytes.div_ceil(1024)
+        ));
+    }
+    *kept = files;
+    Ok(JobReport {
+        id: job.id.clone(),
+        name: job.display_name.clone(),
+        tool: job.tool.to_string(),
+        status: Status::Passed,
+        execution: Some(Execution {
+            exit_code: record.exit_code,
+            stdout,
+            stderr,
+            timed_out: false,
+            out_of_memory: false,
+        }),
+        changes: Vec::new(),
+        commit: None,
+        outputs: record
+            .outputs
+            .into_iter()
+            .map(|(k, v)| (k, shared.mask.mask(&v)))
+            .collect(),
+        caches: vec![format!("task cache `{}`: hit", short_key(key))],
+        notes,
+        duration_ms: millis(started.elapsed()),
+        memory_mib: 0,
+        blocks: false,
+        cached: true,
+    })
 }
 
 fn entry_path(entry: &Entry) -> &std::path::Path {
@@ -1473,6 +1787,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(elapsed),
         blocks: true,
+        cached: false,
     }
 }
 

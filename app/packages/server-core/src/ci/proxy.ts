@@ -77,6 +77,8 @@ export interface ProxyRun {
           reason?: string;
           message?: string;
           duration_ms?: number;
+          /** Not run: the runner's task cache stood in for a passing run. */
+          cached?: boolean;
           execution?: { stdout?: string; stderr?: string } | null;
         }>;
       };

@@ -542,6 +542,61 @@ impl Snapshot {
         list_files(self.fs.as_ref(), root)
     }
 
+    /// The names directly in `dir`, and whether each is a directory
+    /// (symlinks are not followed, so a link to one is not).
+    pub fn list_dir(&self, dir: impl AsRef<Path>) -> Vec<(String, bool)> {
+        let fs = self.fs.as_ref();
+        let Ok(children) = fs.read_dir(dir.as_ref()) else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, bool)> = children
+            .flatten()
+            .filter_map(|c| {
+                let name = c.path.file_name()?.to_str()?.to_string();
+                let is_dir = fs.symlink_metadata(&c.path).is_ok_and(|m| m.is_dir());
+                Some((name, is_dir))
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// [`Snapshot::list_files`] without descending into directories
+    /// `skip_dir` names (by their name alone), such as `node_modules`.
+    pub fn list_files_skipping(
+        &self,
+        root: impl AsRef<Path>,
+        skip_dir: impl Fn(&str) -> bool,
+    ) -> Vec<PathBuf> {
+        let fs = self.fs.as_ref();
+        let mut out = Vec::new();
+        let mut stack = vec![root.as_ref().to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(children) = fs.read_dir(&dir) else {
+                continue;
+            };
+            for child in children.flatten() {
+                let Ok(meta) = fs.symlink_metadata(&child.path) else {
+                    continue;
+                };
+                if meta.is_dir() {
+                    let skip = child
+                        .path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(&skip_dir);
+                    if !skip {
+                        stack.push(child.path);
+                    }
+                } else if meta.is_file() {
+                    out.push(child.path);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
     /// A writable view for one job: a fresh in-memory layer over this
     /// snapshot. Constant time; nothing is copied until the job writes.
     pub fn fork(&self) -> JobFs {

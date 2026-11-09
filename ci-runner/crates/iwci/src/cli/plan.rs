@@ -17,7 +17,7 @@ pub fn validate(mut args: Args) -> Result<ExitCode, String> {
     let mut results = Vec::new();
     for file in &files {
         let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
-        match iwci_spec::parse(&text, &placeholder_context()) {
+        match iwci_spec::parse(&text, &placeholder_context(file)) {
             Ok(plan) => {
                 if !json {
                     println!("{} {file}: {} job(s)", style::ok("ok"), plan.jobs.len());
@@ -73,7 +73,7 @@ pub fn plan(mut args: Args) -> Result<ExitCode, String> {
         );
     };
     let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
-    let mut ctx = placeholder_context();
+    let mut ctx = placeholder_context(file);
     if let Some(sha) = sha {
         ctx.commit_sha = sha;
     }
@@ -96,14 +96,56 @@ pub fn plan(mut args: Args) -> Result<ExitCode, String> {
 }
 
 /// Values that make `${{ commit.* }}` visible in a plan printed without a
-/// real commit, rather than empty.
-fn placeholder_context() -> Context {
+/// real commit, rather than empty. `packages:` jobs expand over the
+/// workspace of the git checkout `file` is in, as it is on disk; outside
+/// one, over a placeholder package.
+fn placeholder_context(file: &str) -> Context {
     Context {
         commit_sha: "0000000000000000000000000000000000000000".into(),
         branch: "main".into(),
         repo_id: "local".into(),
         event: iwci_spec::Event::Push,
         vars: Default::default(),
+        packages: match repo_root(std::path::Path::new(file)) {
+            Some(root) => iwci_spec::PackagesSource::from_discovery(
+                iwci_spec::workspace::discover(&LocalFiles(root)),
+            ),
+            None => iwci_spec::PackagesSource::Unknown,
+        },
+    }
+}
+
+/// The nearest directory above `file` with a `.git`.
+fn repo_root(file: &std::path::Path) -> Option<std::path::PathBuf> {
+    let file = std::fs::canonicalize(file).ok()?;
+    file.ancestors()
+        .skip(1)
+        .find(|d| d.join(".git").exists())
+        .map(std::path::Path::to_path_buf)
+}
+
+/// A checkout on disk, for workspace discovery.
+struct LocalFiles(std::path::PathBuf);
+
+impl iwci_spec::workspace::RepoFiles for LocalFiles {
+    fn read(&self, path: &str) -> Option<Vec<u8>> {
+        std::fs::read(self.0.join(path)).ok()
+    }
+    fn list(&self, dir: &str) -> Vec<(String, bool)> {
+        let Ok(entries) = std::fs::read_dir(self.0.join(dir)) else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, bool)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                // `file_type` does not follow symlinks.
+                let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+                Some((name, is_dir))
+            })
+            .collect();
+        out.sort();
+        out
     }
 }
 

@@ -39,7 +39,7 @@ const row = (event: "push" | "pull-request") =>
     startedAt: new Date(),
   }) as unknown as Parameters<typeof syncRun>[0];
 
-const finished = (jobs: Array<{ id: string; status: string }>) => ({
+const finished = (jobs: Array<{ id: string; status: string; cached?: boolean }>) => ({
   id: "ci-1.abc",
   state: "finished",
   result: {
@@ -83,6 +83,24 @@ describe("CI checks on GitHub", () => {
     expect(mockUpsert).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ conclusion: "success", title: "1 job(s) passed" }),
+    );
+  });
+
+  it("says which jobs the task cache stood in for", async () => {
+    mockProxyJson.mockResolvedValue(
+      finished([
+        { id: "build", status: "passed", cached: true },
+        { id: "check", status: "passed" },
+      ]),
+    );
+    await syncRun(row("push"));
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        conclusion: "success",
+        title: "2 job(s) passed, 1 from the task cache",
+        summary: expect.stringContaining("Cached: nothing it reads changed"),
+      }),
     );
   });
 });

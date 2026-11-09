@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 struct FakeWorkspaces {
     builds: AtomicUsize,
     fail: bool,
+    /// What the commit's `src/a.ts` holds.
+    source: &'static str,
 }
 
 impl Workspaces for FakeWorkspaces {
@@ -16,7 +18,13 @@ impl Workspaces for FakeWorkspaces {
         }
         let b = SnapshotBuilder::new();
         if let Some(c) = &spec.clone {
-            b.write(format!("{}/src/a.ts", c.into), b"a").unwrap();
+            b.write(format!("{}/src/a.ts", c.into), self.source.as_bytes())
+                .unwrap();
+            b.write(
+                format!("{}/node_modules/dep/index.js", c.into),
+                b"installed",
+            )
+            .unwrap();
         }
         Ok(BuiltWorkspace {
             snapshot: b.freeze(),
@@ -236,6 +244,7 @@ fn run_full(
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         fail: fail_ws,
+        source: "a",
     };
     let exec = FakeExecutor {
         seen_env: Mutex::default(),
@@ -647,6 +656,7 @@ fn runs_share_the_runners_slots() {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         fail: false,
+        source: "a",
     };
     let commits = FakeCommitter(Mutex::default());
     let options = Options {
@@ -711,6 +721,7 @@ fn logs_stream_lines_and_job_events_in_order() {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         fail: false,
+        source: "a",
     };
     run(
         &p,
@@ -902,4 +913,151 @@ fn an_artifact_path_can_name_a_single_file() {
     assert!(report.passed(), "{:#?}", report.jobs);
     assert!(notes_of(&report, "gen").contains(&"artifacts: kept 1 file(s), 1 KiB".to_string()));
     assert_eq!(stdout_of(&report, "use"), "a.ts,new.ts");
+}
+
+/// A run with caches and the commit's `src/a.ts` holding `source`.
+fn run_cached(
+    plan: &Plan,
+    caches: &Arc<MemoryCaches>,
+    source: &'static str,
+) -> (RunReport, Vec<String>) {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        fail: false,
+        source,
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let options = Options {
+        parallelism: 4,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory: None,
+        caches: Some(caches.clone()),
+        logs: None,
+        slots: None,
+        secrets: BTreeMap::new(),
+    };
+    let report = run(
+        plan,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    let ran = ran(&exec);
+    (report, ran)
+}
+
+fn cached(report: &RunReport, id: &str) -> bool {
+    report.jobs.iter().find(|j| j.id == id).unwrap().cached
+}
+
+#[test]
+fn the_task_cache_skips_jobs_whose_inputs_have_not_changed() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    task-cache: { inputs: [src/**] }\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: { inputs: [docs/**] }\n  other:\n    using: builtin:print@1\n",
+    );
+    let store = Arc::new(MemoryCaches::default());
+    let (first, ran) = run_cached(&p, &store, "a");
+    assert!(first.passed(), "{:#?}", first.jobs);
+    assert_eq!(ran.len(), 3);
+    assert!(!cached(&first, "lib") && !cached(&first, "check"));
+    assert_eq!(stdout_of(&first, "check"), "lib.txt");
+    assert_eq!(
+        store.saved.lock().unwrap().len(),
+        2,
+        "one entry per task-cached job"
+    );
+
+    // Nothing changed: neither cached job runs, and `check` still gets
+    // `lib`'s artifacts and shows the log of the run it stands for.
+    let (second, ran) = run_cached(&p, &store, "a");
+    assert!(second.passed(), "{:#?}", second.jobs);
+    assert_eq!(ran, ["other"], "only the job without a task cache ran");
+    assert!(cached(&second, "lib") && cached(&second, "check"));
+    assert_eq!(stdout_of(&second, "check"), "lib.txt");
+    let lib = second.jobs.iter().find(|j| j.id == "lib").unwrap();
+    assert_eq!(
+        lib.memory_mib, 0,
+        "a job that did not run is not billed memory"
+    );
+    assert!(
+        lib.caches.iter().any(|l| l.ends_with(": hit")),
+        "{:?}",
+        lib.caches
+    );
+    assert!(
+        notes_of(&second, "lib")
+            .iter()
+            .any(|n| n.contains("from the task cache")),
+        "{:?}",
+        notes_of(&second, "lib")
+    );
+
+    // An input changes: `lib` runs again; its artifacts are the same bytes,
+    // so `check`, which reads only them (and `docs/`), still does not.
+    let (third, ran) = run_cached(&p, &store, "changed");
+    assert!(third.passed(), "{:#?}", third.jobs);
+    assert!(
+        ran.contains(&"lib".to_string()) && !ran.contains(&"check".to_string()),
+        "{ran:?}"
+    );
+}
+
+#[test]
+fn a_changed_artifact_reaches_the_jobs_downstream() {
+    // `lib` writes its job id: a matrix entry renamed upstream changes
+    // what `check` is handed, and so its key.
+    let first = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [a]\n    artifacts: [dist]\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: true\n",
+    );
+    let second = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [b]\n    artifacts: [dist]\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: true\n",
+    );
+    let store = Arc::new(MemoryCaches::default());
+    run_cached(&first, &store, "a");
+    let (again, _) = run_cached(&first, &store, "a");
+    assert!(cached(&again, "check"));
+    let (changed, ran) = run_cached(&second, &store, "a");
+    assert!(!cached(&changed, "check") && ran.contains(&"check".to_string()));
+    assert_eq!(stdout_of(&changed, "check"), "lib_b_.txt");
+}
+
+#[test]
+fn the_task_cache_keys_on_the_job_and_ignores_node_modules() {
+    let store = Arc::new(MemoryCaches::default());
+    let a = plan(
+        "name: x\njobs:\n  t:\n    using: builtin:print@1\n    args: [one]\n    task-cache: true\n",
+    );
+    let b = plan(
+        "name: x\njobs:\n  t:\n    using: builtin:print@1\n    args: [two]\n    task-cache: true\n",
+    );
+    run_cached(&a, &store, "a");
+    let (again, _) = run_cached(&a, &store, "a");
+    assert!(cached(&again, "t"));
+    let (other, _) = run_cached(&b, &store, "a");
+    assert!(
+        !cached(&other, "t"),
+        "different arguments are a different task"
+    );
+    let keys = store.saved.lock().unwrap().clone();
+    assert!(keys.iter().all(|k| k.starts_with("task/t/")), "{keys:?}");
+}
+
+#[test]
+fn failures_are_not_cached() {
+    let store = Arc::new(MemoryCaches::default());
+    let p = plan("name: x\njobs:\n  t:\n    using: builtin:fail@1\n    task-cache: true\n");
+    run_cached(&p, &store, "a");
+    let (again, ran) = run_cached(&p, &store, "a");
+    assert_eq!(ran, ["t"]);
+    assert!(!again.passed());
+    assert!(store.saved.lock().unwrap().is_empty());
 }

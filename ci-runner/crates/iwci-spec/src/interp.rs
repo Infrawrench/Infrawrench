@@ -38,6 +38,8 @@ pub(crate) struct Scope<'a> {
     /// Set while substituting a cache key: `hashFiles()` is only meaningful
     /// there, and is left in place for the run to fill in.
     pub hash_files: Cell<bool>,
+    /// The package of a job a `packages:` job made, for `package.*`.
+    pub package: Option<&'a crate::PackageRef>,
 }
 
 /// The globs of a `hashFiles('a', 'b')` expression, or why it is malformed.
@@ -164,6 +166,18 @@ impl Scope<'_> {
         }
         if text == "matrix" || text.starts_with("matrix.") {
             return self.matrix_value(text);
+        }
+        if let Some(field) = text.strip_prefix("package.") {
+            let Some(p) = self.package else {
+                return Err(format!("`{text}` only exists in a job with `packages:`"));
+            };
+            return match field {
+                "dir" => Ok(p.dir.clone()),
+                "name" => Ok(p.name.clone()),
+                _ => Err(format!(
+                    "a package has `package.dir` and `package.name`, not `{text}`"
+                )),
+            };
         }
         if let Some(name) = text.strip_prefix("vars.") {
             check_ref_name("vars", name)?;

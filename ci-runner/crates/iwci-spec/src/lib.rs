@@ -16,16 +16,19 @@ pub mod cron;
 pub mod expr;
 mod glob;
 mod interp;
+pub mod packages;
 pub mod plan;
 pub mod raw;
 mod shell;
 mod units;
+pub mod workspace;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use sha2::Digest;
 
+pub use glob::PathFilter;
 pub use plan::*;
 
 /// Where a parsed file runs: substituted for `${{ commit.* }}` and
@@ -40,6 +43,34 @@ pub struct Context {
     /// repository's), for `${{ vars.<name> }}`. Not secret: they are
     /// substituted into the plan like any other name.
     pub vars: std::collections::BTreeMap<String, String>,
+    /// The repository's workspace packages, for `packages:` jobs.
+    pub packages: PackagesSource,
+}
+
+/// What `packages:` jobs expand over.
+#[derive(Debug, Clone, Default)]
+#[allow(clippy::large_enum_variant)]
+pub enum PackagesSource {
+    /// Not looked at (`iwci validate`): each `packages:` job is checked
+    /// with one placeholder package.
+    #[default]
+    Unknown,
+    /// The repository declares no workspace.
+    Missing,
+    /// Its workspace files could not be read.
+    Invalid(String),
+    Found(std::sync::Arc<workspace::WorkspacePackages>),
+}
+
+impl PackagesSource {
+    /// From what [`workspace::discover`] made of a commit.
+    pub fn from_discovery(found: Result<Option<workspace::WorkspacePackages>, String>) -> Self {
+        match found {
+            Ok(Some(ws)) => PackagesSource::Found(std::sync::Arc::new(ws)),
+            Ok(None) => PackagesSource::Missing,
+            Err(e) => PackagesSource::Invalid(e),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +103,7 @@ impl fmt::Display for SpecErrors {
 impl std::error::Error for SpecErrors {}
 
 /// Limits that keep one pipeline file from asking for an unbounded run.
-pub const MAX_JOBS: usize = 256;
+pub const MAX_JOBS: usize = 512;
 pub const MAX_MATRIX_ENTRIES: usize = 64;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 10 * 60;
 pub const MAX_TIMEOUT_SECS: u64 = 60 * 60;
@@ -124,12 +155,14 @@ pub fn parse_duration_secs(text: &str) -> Option<u64> {
 
 /// Parses and validates a pipeline file for one commit.
 pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
-    let raw: raw::Pipeline = serde_yaml_ng::from_str(yaml).map_err(|e| {
+    let mut raw: raw::Pipeline = serde_yaml_ng::from_str(yaml).map_err(|e| {
         SpecErrors(vec![SpecError {
             path: String::new(),
             message: e.to_string(),
         }])
     })?;
+    let mut expand_errors = Vec::new();
+    let generated = packages::expand(&mut raw, &ctx.packages, &mut expand_errors);
     let decls: HashMap<String, JobDecl> = raw
         .jobs
         .iter()
@@ -144,9 +177,10 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         })
         .collect();
     let mut v = Validator {
-        errors: Vec::new(),
+        errors: expand_errors,
         ctx,
         decls: &decls,
+        generated: &generated,
     };
     let plan = v.pipeline(raw);
     if v.errors.is_empty() {
@@ -244,6 +278,8 @@ struct Validator<'a> {
     errors: Vec<SpecError>,
     ctx: &'a Context,
     decls: &'a HashMap<String, JobDecl>,
+    /// The jobs `packages:` jobs became, by key.
+    generated: &'a packages::Generated,
 }
 
 /// The parts of a job that do not depend on its matrix entry or on other
@@ -285,10 +321,16 @@ pub(crate) fn instantiate(
         .raw
         .as_ref()
         .expect("deferred templates keep their source");
+    let generated: packages::Generated = template
+        .package
+        .iter()
+        .map(|p| (template.key.clone(), p.clone()))
+        .collect();
     let mut v = Validator {
         errors: Vec::new(),
         ctx: &plan.ctx,
         decls: &plan.decls,
+        generated: &generated,
     };
     let st = v.job_static(
         &format!("jobs.{}", template.key),
@@ -376,7 +418,8 @@ impl Validator<'_> {
         let mut jobs: Vec<JobTemplate> = Vec::new();
         for (key, job) in raw.jobs {
             let path = format!("jobs.{key}");
-            if !is_name(&key) {
+            let package = self.generated.get(&key).cloned();
+            if package.is_none() && !is_name(&key) {
                 self.error(
                     &path,
                     "job keys use lowercase letters, digits, `-` and `_`, up to 64",
@@ -439,6 +482,7 @@ impl Validator<'_> {
                 tool,
                 tools: path_tools,
                 instances: (!deferred).then_some(instances),
+                package,
                 raw: deferred.then(|| job.clone()),
             });
         }
@@ -1013,6 +1057,29 @@ impl Validator<'_> {
                 "a job without a clone can only keep absolute paths",
             );
         }
+        if matches!(
+            job.task_cache,
+            Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))
+        ) {
+            let at = format!("{path}.task-cache");
+            if workspace.clone.is_none() {
+                self.error(
+                    &at,
+                    "a job without a clone has no files to key its cache on",
+                );
+            }
+            if job
+                .env
+                .values()
+                .any(|v| matches!(interp::secret_parts(v), Ok(Some(_))))
+            {
+                // Its result could depend on a secret the key cannot hold.
+                self.error(&at, "a job that reads secrets cannot be task-cached");
+            }
+            if matches!(changes, ChangePolicy::Commit { .. }) {
+                self.error(&at, "a job that commits its changes cannot be task-cached");
+            }
+        }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
             self.error(
@@ -1070,6 +1137,7 @@ impl Validator<'_> {
         needs: Option<&NeedsValues>,
     ) -> (Vec<PlannedJob>, bool) {
         let path = format!("jobs.{key}");
+        let package = self.generated.get(key).cloned();
         let matrix_scope = interp::Scope {
             ctx: self.ctx,
             matrix: interp::MatrixScope::None,
@@ -1078,14 +1146,18 @@ impl Validator<'_> {
             needs,
             deferred: std::cell::Cell::new(false),
             hash_files: std::cell::Cell::new(false),
+            package: package.as_ref(),
         };
         let (entries, shape) = self.matrix(&path, job.matrix.as_ref(), &matrix_scope);
         let mut deferred = matrix_scope.deferred.get();
         let workspace = &workspaces[ws_index];
-        let default_cwd = workspace
-            .clone
-            .as_ref()
-            .map_or_else(|| "/".to_string(), |c| c.into.clone());
+        // A package's job starts in, and resolves relative paths against,
+        // its package's directory.
+        let default_cwd = match (&workspace.clone, &package) {
+            (Some(c), Some(p)) => format!("{}/{}", c.into, p.dir),
+            (Some(c), None) => c.into.clone(),
+            (None, _) => "/".to_string(),
+        };
 
         let mut out: Vec<PlannedJob> = Vec::new();
         for entry in &entries {
@@ -1103,6 +1175,7 @@ impl Validator<'_> {
                 needs,
                 deferred: std::cell::Cell::new(false),
                 hash_files: std::cell::Cell::new(false),
+                package: package.as_ref(),
             };
             // Errors from this entry, gathered locally because `sub` borrows
             // them while the rest of the loop also reports.
@@ -1128,10 +1201,11 @@ impl Validator<'_> {
             } else {
                 format!("{key}[{}]", values.join(","))
             };
-            let display_name = match &job.name {
-                Some(n) => sub("name", n),
-                None if values.is_empty() => key.to_string(),
-                None => format!("{key} ({})", values.join(", ")),
+            let display_name = match (&job.name, &package) {
+                (Some(n), _) => sub("name", n),
+                (None, Some(p)) => format!("{} ({})", p.job, p.dir),
+                (None, None) if values.is_empty() => key.to_string(),
+                (None, None) => format!("{key} ({})", values.join(", ")),
             };
             let cwd_raw = job.cwd.as_deref().map(|c| sub("cwd", c));
             let action = match (&job.args, &job.run) {
@@ -1172,7 +1246,7 @@ impl Validator<'_> {
                     Err(e) => report(&field, e),
                 }
             }
-            let clone_root = workspace.clone.as_ref().map(|c| c.into.clone());
+            let clone_root = workspace.clone.as_ref().map(|_| default_cwd.clone());
             // A `cache:` or `artifacts:` path: substituted, then relative to
             // the clone or absolute, without `..`, and never the runner's own.
             let guest_path = |field: &str, p: &str, what: &str| -> Option<String> {
@@ -1239,6 +1313,48 @@ impl Validator<'_> {
                     }
                 })
                 .collect();
+            let task_cache = match &job.task_cache {
+                None | Some(raw::TaskCache::Enabled(false)) => None,
+                Some(t) => {
+                    let (inputs, root_inputs) = match t {
+                        raw::TaskCache::Inputs(i) => (i.inputs.clone(), i.root_inputs.clone()),
+                        _ => (Vec::new(), Vec::new()),
+                    };
+                    let prefix = package.as_ref().map(|p| format!("{}/", p.dir));
+                    let mut globs = Vec::new();
+                    let mut check = |field: &str, glob: String| {
+                        let body = glob.strip_prefix('!').unwrap_or(&glob);
+                        if body.starts_with('/') || body.split('/').any(|c| c == "..") {
+                            report(
+                                field,
+                                format!("`{glob}` must be a glob inside the clone, without `..`"),
+                            );
+                        } else if let Err(e) = glob::check_filter(&glob) {
+                            report(field, e);
+                        } else {
+                            globs.push(glob);
+                        }
+                    };
+                    if inputs.is_empty() {
+                        globs_default(&prefix, &mut check);
+                    }
+                    for g in &inputs {
+                        let g = sub("task-cache.inputs", g);
+                        let (neg, body) = match g.strip_prefix('!') {
+                            Some(b) => ("!", b.to_string()),
+                            None => ("", g.clone()),
+                        };
+                        check(
+                            "task-cache.inputs",
+                            format!("{neg}{}{body}", prefix.as_deref().unwrap_or("")),
+                        );
+                    }
+                    for g in &root_inputs {
+                        check("task-cache.root-inputs", sub("task-cache.root-inputs", g));
+                    }
+                    Some(TaskCacheSpec { inputs: globs })
+                }
+            };
             deferred |= scope.deferred.get();
             let cwd = match cwd_raw {
                 None => default_cwd.clone(),
@@ -1299,11 +1415,22 @@ impl Validator<'_> {
                     caches,
                     artifacts,
                     network: job.network.unwrap_or(true),
+                    package: package.clone(),
+                    task_cache,
                 });
             }
         }
         (out, deferred)
     }
+}
+
+/// A task cache's inputs when it names none: every file of its package, or
+/// of the clone.
+fn globs_default(prefix: &Option<String>, add: &mut impl FnMut(&str, String)) {
+    add(
+        "task-cache",
+        format!("{}**", prefix.as_deref().unwrap_or("")),
+    );
 }
 
 fn short(text: &str) -> String {

@@ -65,6 +65,14 @@ fn schema_matches_the_structs() {
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    cache: { zzz: 1 }\n",
             "/$defs/cacheEntry",
         ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    packages: { zzz: 1 }\n",
+            "/$defs/packageFilter",
+        ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    task-cache: { zzz: 1 }\n",
+            "/$defs/taskCacheInputs",
+        ),
     ];
     for (yaml, pointer) in cases {
         assert_eq!(

@@ -277,6 +277,8 @@ struct Target {
     git_ref: String,
     auth: Option<Auth>,
     pipelines: Vec<(String, String)>,
+    /// The commit's workspace packages, for `packages:` jobs.
+    packages: iwci_spec::PackagesSource,
     owner: RepoId,
     repo_id: RepoId,
     event: Event,
@@ -317,9 +319,10 @@ impl Runner {
                     .commit
             }
         };
+        let (files, packages) = read_commit(&remote, &sha)?;
         let pipelines = match &req.pipeline {
             Some(text) => vec![("request".to_string(), text.clone())],
-            None => read_pipelines(&remote, &sha)?,
+            None => files,
         };
         Ok(Target {
             remote,
@@ -328,6 +331,7 @@ impl Runner {
             git_ref,
             auth,
             pipelines,
+            packages,
             owner,
             repo_id,
             event,
@@ -408,6 +412,7 @@ impl Runner {
             repo_id: r.repo_id.as_str().to_string(),
             event: r.event,
             vars: req.vars.clone(),
+            packages: r.packages.clone(),
         };
         let (tools, executor, workspaces, committer) = self.parts(&r, req);
         let default_branch = req
@@ -490,11 +495,16 @@ impl Runner {
         })
     }
 
-    /// What a report's jobs used. Only jobs that ran are charged.
+    /// What a report's jobs used. Only jobs that ran are charged: not one
+    /// the task cache stood in for.
     pub fn usage_of(&self, report: &RunReport) -> Usage {
         let mut usage = Usage::default();
         let share = self.jobs_per_cpu.max(1) as f64;
-        for job in report.jobs.iter().filter(|j| j.execution.is_some()) {
+        for job in report
+            .jobs
+            .iter()
+            .filter(|j| j.execution.is_some() && !j.cached)
+        {
             let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
             usage.jobs += 1;
             usage.wall_seconds += secs;
@@ -516,6 +526,7 @@ impl Runner {
             repo_id: r.repo_id.as_str().to_string(),
             event: r.event,
             vars: req.vars.clone(),
+            packages: r.packages.clone(),
         };
         let (tools, _, workspaces, _) = self.parts(&r, req);
         let mut out = PrepareOutput {
@@ -667,14 +678,38 @@ impl Runner {
     }
 }
 
-/// Every `.yml`/`.yaml` directly in the commit's pipeline directory, read
-/// through a checkout into a scratch snapshot (the cache has no work tree).
-fn read_pipelines(remote: &RemoteCache, sha: &str) -> Result<Vec<(String, String)>, String> {
+/// The commit's files under `/src` of a scratch snapshot, for workspace
+/// discovery.
+struct CheckoutFiles<'a>(&'a iwci_vfs::Snapshot);
+
+impl iwci_spec::workspace::RepoFiles for CheckoutFiles<'_> {
+    fn read(&self, path: &str) -> Option<Vec<u8>> {
+        self.0.read(format!("/src/{path}")).ok()
+    }
+    fn list(&self, dir: &str) -> Vec<(String, bool)> {
+        self.0.list_dir(if dir.is_empty() {
+            "/src".to_string()
+        } else {
+            format!("/src/{dir}")
+        })
+    }
+}
+
+/// Every `.yml`/`.yaml` directly in the commit's pipeline directory, and
+/// its workspace packages, read through a checkout into a scratch snapshot
+/// (the cache has no work tree).
+fn read_commit(
+    remote: &RemoteCache,
+    sha: &str,
+) -> Result<(Vec<(String, String)>, iwci_spec::PackagesSource), String> {
     let scratch = SnapshotBuilder::new();
     remote
         .checkout_into(sha, &scratch, "/src")
         .map_err(|e| format!("checkout: {e}"))?;
     let snapshot = scratch.freeze();
+    let packages = iwci_spec::PackagesSource::from_discovery(iwci_spec::workspace::discover(
+        &CheckoutFiles(&snapshot),
+    ));
     let dir = format!("/src/{PIPELINE_DIR}");
     let mut out = Vec::new();
     for path in snapshot.list_files(&dir) {
@@ -692,7 +727,7 @@ fn read_pipelines(remote: &RemoteCache, sha: &str) -> Result<Vec<(String, String
             String::from_utf8(bytes).map_err(|_| format!("{name} is not UTF-8"))?,
         ));
     }
-    Ok(out)
+    Ok((out, packages))
 }
 
 /// The ref a run's commit is fetched from: the request's `ref` (a pull
