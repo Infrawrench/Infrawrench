@@ -1,19 +1,26 @@
 # yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
 #
-# `pnpm typecheck` (test.yml's TypeScript job) on Infrawrench CI.
+# test.yml (the GitHub Actions workflow) on Infrawrench CI: everything in it
+# that runs on Node alone.
 #
-# turbo builds every library's dist/ with tsdown before typechecking, and
-# tsdown is a native binary the isolate cannot run. So each library is
-# typechecked by tsc-rs (the same v0.8.0 the catalog pins) with
-# --emitDeclarationOnly into dist/, after the libraries it depends on, as
-# turbo's `dependsOn: ["^build"]` would order it; its dist/ is handed on to
-# everything downstream. Then each app is checked against them.
+# - Prettier: `pnpm format:check`, one job per workspace package.
+# - TypeScript: `pnpm typecheck`. turbo builds every library's dist/ with
+#   tsdown first, and tsdown is a native binary the isolate cannot run, so
+#   each library is typechecked by tsc-rs with --emitDeclarationOnly into
+#   dist/ after the libraries it depends on (turbo's `dependsOn: ["^build"]`),
+#   and its dist/ is handed on to everything downstream.
+# - Translations: `translations:audit` and `translations:status`.
 #
-# Every job here is task-cached: one whose package, the shared tsconfig and
-# the declarations it is handed have not changed since a passing run does
-# not run again, so a change to one package rechecks that package and what
-# depends on it.
-name: TypeScript
+# Every job is task-cached: one whose files, the shared config and what it
+# is handed have not changed since a passing run is not run again.
+#
+# Still on GitHub Actions only:
+# - Vitest, and the website's `astro check`: Vite 8 and Astro load rolldown,
+#   whose fallback without its native binary is WASI, and the runner's Node
+#   (Edge.js) has `node:wasi` without the binding behind it.
+# - Database migrations and database tests: they need Postgres and
+#   ClickHouse services, which a job cannot start.
+name: Test
 
 on:
   push:
@@ -73,7 +80,7 @@ jobs:
   # Every other package whose typecheck is plain `tsc --noEmit`, against the
   # declarations of what it depends on.
   check:
-    name: ${{ package.name }}
+    name: Typecheck ${{ package.name }}
     packages:
       scripts: { build: "!tsdown*", typecheck: "tsc --noEmit*" }
     needs: [prep, "^build"]
@@ -85,7 +92,7 @@ jobs:
 
   # The Worker entry points (`tsc --noEmit -p edge`).
   edge:
-    name: ${{ package.name }} (edge)
+    name: Typecheck ${{ package.name }} (edge)
     packages:
       has: [edge]
       scripts: { typecheck: "*tsc --noEmit -p edge*" }
@@ -99,7 +106,7 @@ jobs:
   # Desktop's typecheck runs ensure-env first (prep does that), then two
   # projects.
   desktop:
-    name: desktop (${{ matrix }})
+    name: Typecheck desktop (${{ matrix }})
     matrix: [tsconfig.node.json, tsconfig.web.json]
     needs: [prep, build]
     using: builtin:typescript@7.1
@@ -116,7 +123,7 @@ jobs:
   # stays on GitHub Actions until the runner's Node can start worker threads,
   # which rolldown needs.
   mobile:
-    name: Mobile (TypeScript 6)
+    name: Typecheck mobile (TypeScript 6)
     needs: [prep, build]
     using: env:bash-node@24
     cwd: /app/app/packages/mobile
@@ -130,10 +137,76 @@ jobs:
     timeout: 30m
 
   plugingen:
-    name: plugingen (TypeScript 6)
+    name: Typecheck plugingen (TypeScript 6)
     using: env:bash-node@24
     cwd: /app/plugingen
     run: node node_modules/typescript/bin/tsc6 --noEmit
     task-cache: { inputs: [plugingen/**] }
     memory: 4GiB
     timeout: 20m
+
+  # Both are plain Node scripts over the sources and catalogs. They read
+  # `os.homedir()`, which fails without HOME, and a job's environment has
+  # none.
+  translations-audit:
+    name: Translations audit
+    using: env:bash-node@24
+    cwd: /app/app/packages/web
+    env: { HOME: /tmp }
+    run: node scripts/translation-audit.mjs
+    task-cache: true
+    memory: 4GiB
+    timeout: 20m
+
+  translations-status:
+    name: Translations status
+    using: env:bash-node@24
+    cwd: /app/app/packages/web
+    env: { HOME: /tmp }
+    run: node scripts/translation-status.mjs
+    task-cache: true
+    memory: 4GiB
+    timeout: 20m
+
+  prettier:
+    name: Prettier ${{ package.name }}
+    packages: true
+    # Prettier is a root devDependency: install just the root importer's
+    # closure, not all 180 packages'.
+    deps: &prettier-deps
+      - pnpm:
+          only: ["."]
+    using: env:bash-node@24
+    cwd: /app
+    run: >-
+      node node_modules/prettier/bin/prettier.cjs --check
+      --no-error-on-unmatched-pattern "${{ package.dir }}"
+    task-cache: { root-inputs: [.prettierrc, .prettierignore] }
+    timeout: 10m
+    memory: 1GiB
+
+  # The rest of the repository: every top-level path outside the package
+  # directories (pnpm-workspace.yaml's globs), named rather than found by
+  # walking `.`, which would read every package only to ignore it.
+  prettier-rest:
+    name: Prettier (outside the packages)
+    deps: *prettier-deps
+    using: env:bash-node@24
+    run: |
+      shopt -s dotglob nullglob
+      paths=()
+      for p in * app/* plugin-architecture/*; do
+        case "$p" in
+          app | plugin-architecture | app/packages | plugin-architecture/packages | plugingen | node_modules | .git) ;;
+          *) paths+=("$p") ;;
+        esac
+      done
+      node node_modules/prettier/bin/prettier.cjs --check --ignore-unknown --no-error-on-unmatched-pattern "${paths[@]}"
+    task-cache:
+      inputs:
+        - "**"
+        - "!app/packages/*/**"
+        - "!plugin-architecture/packages/*/**"
+        - "!plugingen/**"
+    timeout: 20m
+    memory: 2GiB
