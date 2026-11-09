@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getDocsNav } from "../lib/docs-nav";
-import { blogPostHref, getBlogPosts } from "../lib/blog";
+import { blogPostHref, getBlogPosts, isoPostDate } from "../lib/blog";
 import { escapeXml } from "../lib/xml";
 
 export const prerender = true;
@@ -36,14 +36,19 @@ export const GET: APIRoute = async ({ site }) => {
 
   const sections = await getDocsNav();
   const posts = await getBlogPosts();
-  const paths = [
-    ...staticPaths(),
-    ...sections.flatMap((s) => s.pages.map((p) => p.href)),
-    ...posts.map((post) => blogPostHref(post.id)),
+  // Posts carry their publication date as `lastmod` so crawlers can tell a new
+  // guide from pages they have already seen. Other pages have no reliable date.
+  const entries: { path: string; lastmod?: string }[] = [
+    ...staticPaths().map((path) => ({ path })),
+    ...sections.flatMap((s) => s.pages.map((p) => ({ path: p.href }))),
+    ...posts.map((post) => ({ path: blogPostHref(post.id), lastmod: isoPostDate(post.data.date) })),
   ];
 
-  const urls = paths
-    .map((path) => `  <url><loc>${escapeXml(new URL(path, site).href)}</loc></url>`)
+  const urls = entries
+    .map(({ path, lastmod }) => {
+      const loc = `<loc>${escapeXml(new URL(path, site).href)}</loc>`;
+      return `  <url>${loc}${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}</url>`;
+    })
     .join("\n");
 
   const body = `<?xml version="1.0" encoding="UTF-8"?>
