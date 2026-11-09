@@ -1,0 +1,18 @@
+diff --git a/dist/i18n-store/useI18nStore.cjs b/dist/i18n-store/useI18nStore.cjs
+index c4b1173..2089cb7 100644
+--- a/dist/i18n-store/useI18nStore.cjs
++++ b/dist/i18n-store/useI18nStore.cjs
+@@ -1,2 +1,2 @@
+-const e=require(`./singleton-operations.cjs`),t=require(`../context/context.cjs`);function n(){return t.useGTContext()?.i18nStore||e.getI18nStore()}function r(){return t.useGTContext()?.translationsSnapshot||{}}function i(){return t.useGTContext()?.dictionariesSnapshot||{}}exports.useDictionariesSnapshot=i,exports.useI18nStore=n,exports.useTranslationsSnapshot=r;
++const e=require(`./singleton-operations.cjs`),t=require(`../context/context.cjs`);const EMPTY_SNAPSHOT=Object.freeze({});function n(){return t.useGTContext()?.i18nStore||e.getI18nStore()}function r(){return t.useGTContext()?.translationsSnapshot||EMPTY_SNAPSHOT}function i(){return t.useGTContext()?.dictionariesSnapshot||EMPTY_SNAPSHOT}exports.useDictionariesSnapshot=i,exports.useI18nStore=n,exports.useTranslationsSnapshot=r;
+ //# sourceMappingURL=useI18nStore.cjs.map
+\ No newline at end of file
+diff --git a/dist/i18n-store/useI18nStore.mjs b/dist/i18n-store/useI18nStore.mjs
+index 0b9b050..1a0850a 100644
+--- a/dist/i18n-store/useI18nStore.mjs
++++ b/dist/i18n-store/useI18nStore.mjs
+@@ -1,2 +1,2 @@
+-import{getI18nStore as e}from"./singleton-operations.mjs";import{useGTContext as t}from"../context/context.mjs";function n(){return t()?.i18nStore||e()}function r(){return t()?.translationsSnapshot||{}}function i(){return t()?.dictionariesSnapshot||{}}export{i as useDictionariesSnapshot,n as useI18nStore,r as useTranslationsSnapshot};
++import{getI18nStore as e}from"./singleton-operations.mjs";import{useGTContext as t}from"../context/context.mjs";const EMPTY_SNAPSHOT=Object.freeze({});function n(){return t()?.i18nStore||e()}function r(){return t()?.translationsSnapshot||EMPTY_SNAPSHOT}function i(){return t()?.dictionariesSnapshot||EMPTY_SNAPSHOT}export{i as useDictionariesSnapshot,n as useI18nStore,r as useTranslationsSnapshot};
+ //# sourceMappingURL=useI18nStore.mjs.map
+\ No newline at end of file

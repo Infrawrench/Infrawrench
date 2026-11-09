@@ -24,6 +24,7 @@ overrides:
 packageExtensionsChecksum: sha256-ei3jLnUxokONz+I93eRBuhBqNFJfDTawJfQ/7MmPYu4=
 
 patchedDependencies:
+  '@generaltranslation/react-core@11.1.6': 78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017
   '@tsc-rs/typescript@0.8.0': 9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b
   drizzle-orm@0.45.2: af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba
 
@@ -20785,14 +20786,14 @@ snapshots:
     transitivePeerDependencies:
       - tree-sitter
 
-  '@generaltranslation/react-core@11.1.6(react@19.2.8)':
+  '@generaltranslation/react-core@11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.2.8)':
     dependencies:
       '@generaltranslation/format': 0.1.4
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.2.8
 
-  '@generaltranslation/react-core@11.1.6(react@19.3.1)':
+  '@generaltranslation/react-core@11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.3.1)':
     dependencies:
       '@generaltranslation/format': 0.1.4
       generaltranslation: 9.1.2
@@ -26861,7 +26862,7 @@ snapshots:
 
   gt-react@11.1.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
-      '@generaltranslation/react-core': 11.1.6(react@19.2.8)
+      '@generaltranslation/react-core': 11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.2.8)
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.2.8
@@ -26869,7 +26870,7 @@ snapshots:
 
   gt-react@11.1.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      '@generaltranslation/react-core': 11.1.6(react@19.3.1)
+      '@generaltranslation/react-core': 11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.3.1)
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.3.1
