@@ -219,6 +219,44 @@ jobs:
     run: |
       sleep 2
       node -e 'console.log("not held up")'
+  # worker_threads: a round trip, a pool sharing work, a worker that throws
+  # (reported as an error, not a hang) and a busy worker stopped by
+  # terminate(). Each Worker's isolate is created on another WASIX thread,
+  # whose store once allocated the same env id as its parent's, so the
+  # worker's bootstrap failed and the parent waited forever; the generous
+  # timeout is for a debug build, a hang still fails it. See vendor/README.md.
+  worker-threads-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 180s
+    run: |
+      cat > /tmp/workers.js <<'JS'
+      const assert = require("assert");
+      const { Worker } = require("worker_threads");
+      const run = (src, opts = {}) => new Worker(src, { eval: true, ...opts });
+      const once = (w, ev) => new Promise((resolve) => w.once(ev, resolve));
+      (async () => {
+        const echo = run('const { parentPort } = require("worker_threads"); parentPort.once("message", (m) => parentPort.postMessage(m * 2))');
+        echo.postMessage(21);
+        assert.equal(await once(echo, "message"), 42);
+        assert.equal(await once(echo, "exit"), 0);
+
+        const sab = new SharedArrayBuffer(4);
+        const pool = [1, 2, 3, 4].map(() => run('const { workerData } = require("worker_threads"); const a = new Int32Array(workerData); for (let i = 0; i < 1e5; i++) Atomics.add(a, 0, 1)', { workerData: sab }));
+        assert.deepEqual(await Promise.all(pool.map((w) => once(w, "exit"))), [0, 0, 0, 0]);
+        assert.equal(Atomics.load(new Int32Array(sab), 0), 4e5);
+
+        const thrower = run('throw new Error("from the worker")');
+        assert.equal((await once(thrower, "error")).message, "from the worker");
+        assert.equal(await once(thrower, "exit"), 1);
+
+        const busy = run('require("worker_threads").parentPort.postMessage("busy"); for (;;) {}');
+        assert.equal(await once(busy, "message"), "busy");
+        assert.equal(await busy.terminate(), 1);
+        console.log("worker threads ok");
+      })().catch((e) => { console.error(e); process.exit(1); });
+      JS
+      node /tmp/workers.js
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24

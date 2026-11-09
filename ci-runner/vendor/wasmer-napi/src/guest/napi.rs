@@ -597,8 +597,18 @@ fn guest_unofficial_napi_notify_datetime_configuration_change(
 }
 
 fn guest_unofficial_napi_terminate_execution(env: FunctionEnvMut<NapiEnv>, napi_env: i32) -> i32 {
-    let env_handle = snapi_env(&env, napi_env);
-    unsafe { snapi_bridge_unofficial_terminate_execution(env_handle) }
+    // iwci patch: any env of this application, including one another thread's
+    // store owns, which is how a parent's `Worker.terminate()` stops a busy
+    // worker. Termination is thread-safe in V8, and the registry lock keeps
+    // the target alive for the call.
+    if napi_env <= 0 {
+        return 1;
+    }
+    env.data()
+        .with_control_env(napi_env as u32, |target| unsafe {
+            snapi_bridge_host_terminate_execution(target)
+        })
+        .unwrap_or(1)
 }
 
 fn guest_unofficial_napi_cancel_terminate_execution(

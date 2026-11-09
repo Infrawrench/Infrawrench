@@ -357,6 +357,15 @@ patched so a job timeout can stop a script that never yields (see
 `vendor/README.md`). On Linux, the V8 that `wasmer-napi` downloads exists
 only for x86_64.
 
+`worker_threads` work: each Worker is a WASIX thread of its `node` with an
+isolate of its own, charged against the job's `memory:` like the main one,
+so a job that starts more workers than its memory holds gets
+`ERR_WORKER_INIT_FAILED` ("Failed to create worker env") for the rest, not
+a hang. A later isolate starts small (64 MiB old generation) and grows as
+it allocates; a 2 GiB job fits about fifteen idle workers. Edge.js 0.2.5
+has no `node:wasi`, so packages that fall back to a WASI build of a native
+addon (rolldown's `@rolldown/binding-wasm32-wasi`) still fail to load.
+
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
 `main`, each builtin's CI job publishes what it just tested to the runner

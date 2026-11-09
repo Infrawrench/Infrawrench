@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -87,6 +87,25 @@ struct EnvHeapChargeHandle {
     tracker: usize,
 }
 
+/// The live envs of one application, shared by all of its stores.
+///
+/// iwci patch: a WASIX application runs one store (and so one `NapiEnv`) per
+/// thread over one shared guest memory, and Edge.js keeps its per-env state
+/// in that memory keyed by the env id. Ids allocated per store made a
+/// `worker_threads` Worker's env reuse its parent's id, so the worker's
+/// bootstrap overwrote the parent's state and both failed. Native ids are
+/// allocated here instead, once per application and never reused, and the
+/// map lets a thread stop another thread's env (`Worker.terminate()`).
+/// Backported from wasmerio/napi 9219367 ("Allocate env ids per application
+/// and let stores stop each other's envs"), without its interrupt change.
+#[derive(Debug, Default)]
+pub(crate) struct EnvRegistry {
+    #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
+    next_native_id: u32,
+    /// Guest env id to bridge env, for every live env of the application.
+    pub(crate) envs: HashMap<u32, usize>,
+}
+
 pub(crate) struct NapiEnv {
     /// The app's shared accountant. V8 env (isolate) heap ceilings and the
     /// `max_envs` isolate count are charged against it; workers share the same
@@ -94,7 +113,7 @@ pub(crate) struct NapiEnv {
     pub(crate) budget: Arc<ResourceBudget>,
     /// Per-app cap on live V8 isolates (`None` = unlimited).
     pub(crate) max_envs: Option<usize>,
-    env_registry: Arc<std::sync::Mutex<HashSet<usize>>>,
+    env_registry: Arc<std::sync::Mutex<EnvRegistry>>,
     host_stopped: Arc<AtomicBool>,
     /// Heap charge per live V8 env, keyed by guest env id, so teardown releases
     /// exactly what creation charged plus what the callback later granted.
@@ -129,7 +148,7 @@ pub(crate) struct NapiEnv {
     /// unconditional store growth. See `guest::callback::call_guest_callback`.
     pub(crate) func_cache: HashMap<u32, Function>,
     pub(crate) default_napi_env_id: Option<u32>,
-    pub(crate) next_napi_env_id: u32,
+    #[cfg(all(target_arch = "wasm32", feature = "js"))]
     pub(crate) next_napi_scope_id: u32,
     pub(crate) napi_envs: HashMap<u32, usize>,
     pub(crate) napi_state_to_guest_env: HashMap<usize, u32>,
@@ -168,7 +187,7 @@ impl NapiEnv {
     pub(crate) fn new(
         budget: Arc<ResourceBudget>,
         max_envs: Option<usize>,
-        env_registry: Arc<std::sync::Mutex<HashSet<usize>>>,
+        env_registry: Arc<std::sync::Mutex<EnvRegistry>>,
         host_stopped: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -187,7 +206,7 @@ impl NapiEnv {
             table: None,
             func_cache: HashMap::new(),
             default_napi_env_id: None,
-            next_napi_env_id: 0,
+            #[cfg(all(target_arch = "wasm32", feature = "js"))]
             next_napi_scope_id: 0,
             napi_envs: HashMap::new(),
             napi_state_to_guest_env: HashMap::new(),
@@ -277,7 +296,7 @@ impl NapiEnv {
                 .env_registry
                 .lock()
                 .expect("poisoned N-API env registry");
-            registry.insert(env as usize);
+            registry.envs.insert(env_id, env as usize);
 
             // If the host already stopped this app's JS, an isolate created
             // afterwards must not start running either. Checking under the
@@ -388,17 +407,29 @@ impl NapiEnv {
     }
 
     pub(crate) fn register_napi_env(&mut self, env: SnapiEnv) -> (u32, u32) {
+        // iwci patch: native ids come from the application (see
+        // `EnvRegistry`), and an env's one owner scope reuses its id, so
+        // neither an env id nor a scope token means different envs in
+        // different threads.
         #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
-        let env_id = {
-            let env_id = self.next_napi_env_id.max(1);
-            self.next_napi_env_id = env_id.saturating_add(1);
-            env_id
+        let (env_id, scope_id) = {
+            let mut registry = self
+                .env_registry
+                .lock()
+                .expect("poisoned N-API env registry");
+            let env_id = registry
+                .next_native_id
+                .checked_add(1)
+                .expect("N-API application environment ID space exhausted");
+            registry.next_native_id = env_id;
+            (env_id, env_id)
         };
         #[cfg(all(target_arch = "wasm32", feature = "js"))]
-        let env_id = next_js_napi_env_id();
-
-        let scope_id = self.next_napi_scope_id.max(1);
-        self.next_napi_scope_id = scope_id.saturating_add(1);
+        let (env_id, scope_id) = {
+            let scope_id = self.next_napi_scope_id.max(1);
+            self.next_napi_scope_id = scope_id.saturating_add(1);
+            (next_js_napi_env_id(), scope_id)
+        };
 
         self.napi_envs.insert(env_id, env as usize);
         self.napi_state_to_guest_env.insert(env as usize, env_id);
@@ -460,7 +491,8 @@ impl NapiEnv {
         self.env_registry
             .lock()
             .expect("poisoned N-API env registry")
-            .remove(&env);
+            .envs
+            .remove(&env_id);
 
         // Leases are environment-owned resources. Explicit release publishes
         // writes; environment teardown only discards snapshots and returns any
@@ -500,6 +532,28 @@ impl NapiEnv {
         let (env_id, env) = self.begin_unregister_napi_scope(scope_id)?;
         self.finish_unregister_napi_env(env_id, env);
         Some(env)
+    }
+
+    /// iwci patch: runs `f` on any live env of this application, including
+    /// one owned by another store and thread, while the registry lock keeps
+    /// it from being released. `f` may only make a thread-safe control
+    /// request (termination); it must not run JavaScript or touch the env's
+    /// state.
+    #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
+    pub(crate) fn with_control_env<R>(
+        &self,
+        guest_env: u32,
+        f: impl FnOnce(SnapiEnv) -> R,
+    ) -> Option<R> {
+        if guest_env == 0 {
+            return None;
+        }
+        let registry = self
+            .env_registry
+            .lock()
+            .expect("poisoned N-API env registry");
+        let raw = *registry.envs.get(&guest_env)?;
+        Some(f(raw as SnapiEnv))
     }
 
     pub(crate) fn resolve_napi_env(&self, guest_env: i32) -> SnapiEnv {
@@ -546,7 +600,7 @@ mod tests {
         let mut env = NapiEnv::new(
             Arc::clone(&budget),
             None,
-            Arc::new(std::sync::Mutex::new(HashSet::new())),
+            Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
             Arc::new(AtomicBool::new(false)),
         );
 
@@ -575,7 +629,7 @@ mod tests {
             let mut env = NapiEnv::new(
                 Arc::clone(&budget),
                 None,
-                Arc::new(std::sync::Mutex::new(HashSet::new())),
+                Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
                 Arc::new(AtomicBool::new(false)),
             );
             assert!(env.charge_declared_external(4 * MIB));
@@ -593,7 +647,7 @@ mod tests {
         let mut env = NapiEnv::new(
             ResourceBudget::unlimited(),
             None,
-            Arc::new(std::sync::Mutex::new(HashSet::new())),
+            Arc::new(std::sync::Mutex::new(EnvRegistry::default())),
             Arc::new(AtomicBool::new(false)),
         );
         let max = crate::guest::MAX_CALLBACK_DEPTH;
