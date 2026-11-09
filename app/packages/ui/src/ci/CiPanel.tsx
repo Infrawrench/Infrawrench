@@ -408,6 +408,9 @@ function RunDetailView({
   onBack: () => void;
 }) {
   const gt = useGT();
+  // A string, not `gt`, in the effect's deps: `gt` is not referentially
+  // stable, and depending on it refetched on every render.
+  const loadFailed = gt("Failed to load the run");
   const [detail, setDetail] = useState<CiRunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -417,14 +420,11 @@ function RunDetailView({
     client
       .getRun(runId)
       .then((d) => !cancelled && setDetail(d))
-      .catch(
-        (e) =>
-          !cancelled && setError(e instanceof Error ? e.message : gt("Failed to load the run")),
-      );
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : loadFailed));
     return () => {
       cancelled = true;
     };
-  }, [client, runId, nonce, gt]);
+  }, [client, runId, nonce, loadFailed]);
 
   // Follow a run that has not finished.
   const status = detail?.run.status;
@@ -565,6 +565,9 @@ export function CiPanel({
   onOpenUrl,
 }: CiPanelProps) {
   const gt = useGT();
+  // A string, not `gt`, in the effect's deps: `gt` is not referentially
+  // stable, and depending on it refetched on every render.
+  const loadFailed = gt("Failed to load CI");
   const [status, setStatus] = useState<CiStatus | null>(null);
   const [runs, setRuns] = useState<CiRun[] | null>(null);
   const [usage, setUsage] = useState<CiUsage | null>(null);
@@ -587,13 +590,11 @@ export function CiPanel({
         setRuns(r);
         setUsage(u);
       })
-      .catch(
-        (e) => !cancelled && setError(e instanceof Error ? e.message : gt("Failed to load CI")),
-      );
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : loadFailed));
     return () => {
       cancelled = true;
     };
-  }, [client, filter, nonce, gt]);
+  }, [client, filter, nonce, loadFailed]);
 
   // Keep the list current while the tab is open: new runs arrive from
   // webhooks at any time, so it polls even when nothing is running, faster

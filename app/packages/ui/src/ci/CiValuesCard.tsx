@@ -12,6 +12,9 @@ type Kind = "secrets" | "variables";
  */
 export function CiValuesCard({ client, accounts }: { client: CiClient; accounts: CiAccount[] }) {
   const gt = useGT();
+  // A string, not `gt`, in the effect's deps: `gt` is not referentially
+  // stable, and depending on it refetched on every render.
+  const loadFailed = gt("Failed to load secrets and variables");
   const enabled = useMemo(() => accounts.filter((a) => a.ciEnabled), [accounts]);
   const [installationId, setInstallationId] = useState<number | null>(
     enabled[0]?.installationId ?? null,
@@ -55,15 +58,11 @@ export function CiValuesCard({ client, accounts }: { client: CiClient; accounts:
     client
       .listValues(installationId, repo || null)
       .then((v) => !cancelled && setValues(v))
-      .catch(
-        (e) =>
-          !cancelled &&
-          setError(e instanceof Error ? e.message : gt("Failed to load secrets and variables")),
-      );
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : loadFailed));
     return () => {
       cancelled = true;
     };
-  }, [client, installationId, repo, nonce, gt]);
+  }, [client, installationId, repo, nonce, loadFailed]);
 
   if (enabled.length === 0 || installationId === null) return null;
 
