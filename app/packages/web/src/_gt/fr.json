@@ -23149,5 +23149,19 @@
   "ff56cf8f9edaf9d2": "Rien de défini dans ce périmètre pour l'instant.",
   "385e385d8d8afa11": "Les noms se composent de lettres, de chiffres et de _, sans commencer par un chiffre.",
   "afd16a14614d7645": "La CI est déployée organisation par organisation : l'activer ajoute les tarifs mesurés de la CI à l'abonnement de l'organisation.",
-  "468c01881905d4a8": "CI pour {org}"
+  "468c01881905d4a8": "CI pour {org}",
+  "9c8967d409987eef": "Les jobs s'affichent ici au démarrage de l'exécution.",
+  "0acda50d59bcceb7": "{count} jobs",
+  "419719298a7acaea": "Zoom arrière",
+  "8c32e9085e525c19": "Zoom avant",
+  "bbfcdcd8bcb82940": "Ajuster",
+  "4defc696da974b7a": "Tous les jobs",
+  "2cdf781596ffa72d": "L'exécution a produit plus de sortie que le journal en direct n'en conserve ; la suite s'affichera une fois l'exécution terminée.",
+  "2f0b75d1b8ea87d6": "Ce job n'a pas encore démarré.",
+  "686b1728a7290b29": "Aucune sortie pour l'instant.",
+  "e23efd15da628546": "Ce job n'a rien produit en sortie.",
+  "880229b7c07d2743": "Déclenché par : pull request #{number}",
+  "d3ddec6219035d39": "Déclenché par : push sur {branch}",
+  "a16d84379207d733": "Le journal en direct s'est arrêté : {error}",
+  "e094f50f8daf60b5": "En attente du démarrage des pipelines par le runner…"
 }

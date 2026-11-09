@@ -8,7 +8,7 @@
  * secrets once approved.
  */
 import { Schema } from "effect";
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { CI_JOB_STATUSES, CI_RUN_STATUSES } from "@infrawrench/client-core";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
@@ -28,7 +28,16 @@ export const CiJobSummarySchema = Schema.Struct({
   status: Schema.Literals(CI_JOB_STATUSES),
   reason: Schema.NullOr(Schema.String),
   durationMs: Schema.NullOr(Schema.Number),
+  needs: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description:
+        "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1.",
+    }),
+  ),
 }).annotate({ identifier: "CiJobSummary" });
+
+/** The run's live log: the runner's events as `event:` / `data:` frames. */
+const RunLogStream = Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/event-stream" }));
 
 export const CiJobOutputSchema = Schema.Struct({
   ...CiJobSummarySchema.fields,
@@ -157,6 +166,14 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:read")
       .annotate(OpenApi.Summary, "A CI run, with each job's output once it has finished")
       .annotate(SuccessDescription, "The run"),
+    HttpApiEndpoint.get("runLogs", "/runs/:runId/logs", {
+      params: RunParams,
+      success: RunLogStream,
+      error: [NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "A running CI run's log, streamed as SSE")
+      .annotate(OpenApi.Exclude, true),
     HttpApiEndpoint.post("approveRun", "/runs/:runId/approve", {
       params: RunParams,
       success: Ok,

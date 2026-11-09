@@ -36,7 +36,9 @@ const mockList = vi.fn();
 const mockApprove = vi.fn();
 const mockReject = vi.fn();
 const mockDispatch = vi.fn();
+const mockOpenLogs = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
+  openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
   CiInputError: FakeCiInputError,
   listRuns: (...a: unknown[]) => mockList(...a),
   getRun: vi.fn(),
@@ -109,6 +111,28 @@ describe("CI routes", () => {
     expect(mockLogAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "ci.run.approve", entityId: RUN }),
     );
+  });
+
+  it("relays a running run's live log as it comes, under ci:read", async () => {
+    const frames =
+      'event: pipeline-started\ndata: {"event":"pipeline-started","pipeline":"Test","jobs":[]}\n\n' +
+      'event: job-started\ndata: {"event":"job-started","job":"a","name":"a"}\n\n';
+    mockOpenLogs.mockResolvedValue(new Response(frames).body);
+    const res = await app(["ci:read"]).request(`/runs/${RUN}/logs`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    // The proxy's frames, byte for byte: the clients parse the runner's framing.
+    expect(await res.text()).toBe(frames);
+    expect(mockOpenLogs).toHaveBeenCalledWith("org-1", RUN, expect.any(AbortSignal));
+
+    const denied = await app([]).request(`/runs/${RUN}/logs`);
+    expect(denied.status).toBe(403);
+
+    mockOpenLogs.mockRejectedValue(
+      new FakeCiInputError("The run is not running; its jobs' output is in the run.", 409),
+    );
+    const finished = await app().request(`/runs/${RUN}/logs`);
+    expect(finished.status).toBe(409);
   });
 
   it("answers a decision on a run that is not waiting as 409", async () => {

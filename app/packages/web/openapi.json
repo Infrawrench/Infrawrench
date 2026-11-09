@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.100.0",
+    "version": "1.101.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -62558,6 +62558,13 @@
               }
             ]
           },
+          "needs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
+          },
           "stdout": {
             "type": "string"
           },
@@ -62796,6 +62803,13 @@
                 "type": "null"
               }
             ]
+          },
+          "needs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
           }
         },
         "required": [

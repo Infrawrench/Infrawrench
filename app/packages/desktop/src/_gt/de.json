@@ -22933,5 +22933,19 @@
   "40b8f757dfcda260": "Jedes Repository",
   "ff56cf8f9edaf9d2": "In diesem Bereich ist noch nichts festgelegt.",
   "385e385d8d8afa11": "Namen bestehen aus Buchstaben, Ziffern und _ und beginnen nicht mit einer Ziffer.",
-  "f68e5477af67ad6a": "CI erfordert den Cloud-Modus: Melden Sie sich an, um zu synchronisieren."
+  "f68e5477af67ad6a": "CI erfordert den Cloud-Modus: Melden Sie sich an, um zu synchronisieren.",
+  "9c8967d409987eef": "Jobs werden hier angezeigt, sobald der Lauf startet.",
+  "0acda50d59bcceb7": "{count} Jobs",
+  "419719298a7acaea": "Verkleinern",
+  "8c32e9085e525c19": "Vergrößern",
+  "bbfcdcd8bcb82940": "Einpassen",
+  "4defc696da974b7a": "Alle Jobs",
+  "2cdf781596ffa72d": "Der Lauf hat mehr ausgegeben, als das Live-Log aufbewahrt; die weitere Ausgabe erscheint, sobald er abgeschlossen ist.",
+  "2f0b75d1b8ea87d6": "Dieser Job wurde noch nicht gestartet.",
+  "686b1728a7290b29": "Noch keine Ausgabe.",
+  "e23efd15da628546": "Dieser Job hat nichts ausgegeben.",
+  "880229b7c07d2743": "Ausgelöst durch: Pull Request #{number}",
+  "d3ddec6219035d39": "Ausgelöst durch: Push auf {branch}",
+  "a16d84379207d733": "Das Live-Log wurde abgebrochen: {error}",
+  "e094f50f8daf60b5": "Warten, bis der Runner die Pipelines startet…"
 }

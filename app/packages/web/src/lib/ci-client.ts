@@ -1,11 +1,14 @@
 import type { CiClient } from "@infrawrench/ui/ci";
-import type {
-  CiAccount,
-  CiRun,
-  CiRunDetail,
-  CiStatus,
-  CiUsage,
-  CiValues,
+import {
+  ciLogEvent,
+  parseSseFrames,
+  type CiAccount,
+  type CiLogEvent,
+  type CiRun,
+  type CiRunDetail,
+  type CiStatus,
+  type CiUsage,
+  type CiValues,
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
@@ -36,6 +39,28 @@ export function createWebCiClient(orgId: string): CiClient {
       return res.runs;
     },
     getRun: (id) => apiGet<CiRunDetail>(`${base}/runs/${encodeURIComponent(id)}`),
+    async *streamRunLogs(id, signal): AsyncIterable<CiLogEvent> {
+      const res = await fetch(`${base}/runs/${encodeURIComponent(id)}/logs`, {
+        credentials: "include",
+        headers: { Accept: "text/event-stream" },
+        signal,
+      });
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => "");
+        let message = text || `HTTP ${res.status}`;
+        try {
+          const body = JSON.parse(text) as { error?: unknown };
+          if (typeof body.error === "string") message = body.error;
+        } catch {
+          // Not JSON: the text itself.
+        }
+        throw new Error(message);
+      }
+      for await (const frame of parseSseFrames(res.body)) {
+        const event = ciLogEvent(frame);
+        if (event) yield event;
+      }
+    },
     approveRun: async (id) => {
       await apiPost(`${base}/runs/${encodeURIComponent(id)}/approve`);
     },

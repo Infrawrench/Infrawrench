@@ -4,6 +4,7 @@
  * organization's `ci` feature, map its errors and audit the decisions.
  */
 import { Effect, Schema } from "effect";
+import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import {
   CiAccountSchema,
@@ -26,6 +27,7 @@ import {
   dispatchRun,
   getRun,
   listRuns,
+  openRunLogs,
   rejectRun,
 } from "@infrawrench/server-core/ci/runs";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
@@ -58,6 +60,37 @@ const valueScope = (query: { installationId: string; repo?: string }) =>
     }
     return { installationId, repo: query.repo ? query.repo : null };
   });
+
+/**
+ * A running run's live log as a response body, relayed from the CI proxy.
+ * The stream outlives the handler, which returns at once, so it is tied to
+ * its reader rather than to an Effect scope: the client going away cancels
+ * the body, which aborts the proxy's stream and with it the runner's
+ * follower. The proxy going away ends it; the client then re-reads the run.
+ */
+async function relayRunLogs(
+  organizationId: string,
+  runId: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const abort = new AbortController();
+  const upstream = await openRunLogs(organizationId, runId, abort.signal);
+  const reader = upstream.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch {
+        controller.close();
+      }
+    },
+    cancel() {
+      abort.abort();
+      return reader.cancel().catch(() => {});
+    },
+  });
+}
 
 const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
   handlers
@@ -113,6 +146,21 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
         const { organizationId } = yield* requireCi;
         const detail = yield* legacyTry(() => getRun(organizationId, params.runId), refusal);
         return yield* respond(CiRunDetailSchema)(detail);
+      }),
+    )
+    .handle("runLogs", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const body = yield* legacyTry(() => relayRunLogs(organizationId, params.runId), refusal);
+        return HttpServerResponse.raw(
+          new Response(body, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          }),
+        );
       }),
     )
     .handle("approveRun", ({ params }) =>

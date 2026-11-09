@@ -79,6 +79,8 @@ export interface ProxyRun {
           duration_ms?: number;
           /** Not run: the runner's task cache stood in for a passing run. */
           cached?: boolean;
+          /** The job keys it waited for (runner 0.3.1 and later). */
+          needs?: string[];
           execution?: { stdout?: string; stderr?: string } | null;
         }>;
       };

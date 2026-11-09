@@ -26,6 +26,7 @@ describe("routeRequest", () => {
       "/api/agent/claim",
       "/api/internal/relay",
       "/api/org/org_1/chat/stream",
+      "/api/org/org_1/ci/runs/run_1/logs",
       "/api/org/org_1/bastions",
       "/api/org/org_1/shared-consoles/abc",
       "/api/org/org_1/apps/start",

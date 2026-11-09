@@ -12,6 +12,8 @@ import {
 } from "@infrawrench/client-core";
 import type { CiClient } from "./types.js";
 import { CiValuesCard } from "./CiValuesCard.js";
+import { CiRunView, useCiLiveRun } from "./CiRunView.js";
+import { formatDuration } from "./format.js";
 
 export interface CiPanelProps {
   client: CiClient;
@@ -52,19 +54,6 @@ export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
   }
 }
 
-function jobStatusLabel(status: CiJobOutput["status"], gt: Gt): string {
-  switch (status) {
-    case "passed":
-      return gt("Passed");
-    case "failed":
-      return gt("Failed");
-    case "skipped":
-      return gt("Skipped");
-    case "error":
-      return gt("Error");
-  }
-}
-
 function statusClass(status: CiRunStatus | CiJobOutput["status"]): string {
   switch (status) {
     case "passed":
@@ -80,14 +69,6 @@ function statusClass(status: CiRunStatus | CiJobOutput["status"]): string {
     default:
       return "bg-surface-sunken text-on-surface-faint";
   }
-}
-
-function formatDuration(ms: number | null): string {
-  if (ms === null || !Number.isFinite(ms)) return "";
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 function runDuration(run: CiRun): number | null {
@@ -426,6 +407,12 @@ function RunDetailView({
     };
   }, [client, runId, nonce, loadFailed]);
 
+  // A running run's jobs come from its live log; when the log ends the run
+  // has finished, so load it again for its jobs' reports.
+  const live = useCiLiveRun(client, runId, detail?.run.status === "running", () =>
+    setNonce((n) => n + 1),
+  );
+
   // Follow a run that has not finished.
   const status = detail?.run.status;
   useEffect(() => {
@@ -480,79 +467,22 @@ function RunDetailView({
               )}
             </Notice>
           ) : null}
-          {detail.jobs === null ? (
-            run.jobs ? (
-              <JobTable jobs={run.jobs} />
-            ) : (
-              <p className="text-xs text-on-surface-faint">
-                {ACTIVE.includes(run.status)
-                  ? gt("Jobs show here when the run finishes.")
-                  : gt("No jobs ran.")}
-              </p>
-            )
-          ) : detail.jobs.length === 0 ? (
+          {run.status === "running" ? (
+            <CiRunView run={run} jobs={null} live={live.run} liveError={live.error} />
+          ) : (detail.jobs ?? run.jobs) === null ? (
+            <p className="text-xs text-on-surface-faint">
+              {ACTIVE.includes(run.status)
+                ? gt("Jobs show here when the run starts.")
+                : gt("No jobs ran.")}
+            </p>
+          ) : (detail.jobs ?? run.jobs)!.length === 0 ? (
             <p className="text-xs text-on-surface-faint">{gt("No pipeline ran for this event.")}</p>
           ) : (
-            <ul className="space-y-2">
-              {detail.jobs.map((job) => (
-                <li key={`${job.pipeline}/${job.id}`} className="rounded border border-border">
-                  <details open={job.status === "failed" || job.status === "error"}>
-                    <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[11px] ${statusClass(job.status)}`}
-                      >
-                        {jobStatusLabel(job.status, gt)}
-                      </span>
-                      <span className="text-on-surface">{job.name}</span>
-                      <span className="text-xs text-on-surface-faint">{job.pipeline}</span>
-                      <span className="ml-auto text-xs text-on-surface-faint">
-                        {formatDuration(job.durationMs)}
-                      </span>
-                    </summary>
-                    {job.reason ? (
-                      <p className="px-3 text-xs text-on-surface-muted">{job.reason}</p>
-                    ) : null}
-                    {job.stdout || job.stderr ? (
-                      <pre className="max-h-96 overflow-auto bg-surface-sunken px-3 py-2 text-[11px] text-on-surface">
-                        {job.stdout}
-                        {job.stderr}
-                      </pre>
-                    ) : null}
-                  </details>
-                </li>
-              ))}
-            </ul>
+            <CiRunView run={run} jobs={detail.jobs ?? run.jobs} live={null} liveError={null} />
           )}
         </>
       )}
     </div>
-  );
-}
-
-function JobTable({ jobs }: { jobs: NonNullable<CiRun["jobs"]> }) {
-  const gt = useGT();
-  return (
-    <table className="w-full text-xs">
-      <caption className="sr-only">{gt("Jobs")}</caption>
-      <thead>
-        <tr className="text-left text-on-surface-faint">
-          <th scope="col" className="py-1">
-            {gt("Job")}
-          </th>
-          <th scope="col">{gt("Status")}</th>
-          <th scope="col">{gt("Duration")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {jobs.map((job) => (
-          <tr key={`${job.pipeline}/${job.id}`} className="border-t border-border">
-            <td className="py-1 text-on-surface">{job.name}</td>
-            <td>{jobStatusLabel(job.status, gt)}</td>
-            <td>{formatDuration(job.durationMs)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

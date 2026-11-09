@@ -29,6 +29,11 @@ export interface CiJobSummary {
   /** Why it failed, was skipped or errored. */
   reason: string | null;
   durationMs: number | null;
+  /**
+   * The job keys it waited for, as the pipeline's `needs:` expanded them
+   * (`build[app/packages/ui]`, `prep`). Absent from runs before runner 0.3.1.
+   */
+  needs?: string[] | undefined;
 }
 
 export interface CiJobOutput extends CiJobSummary {

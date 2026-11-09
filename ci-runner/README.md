@@ -694,8 +694,11 @@ A request body (for `runs` and `prepare`):
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
-- **Logs.** `job-started`, `output` (one line, with its stream) and
-  `job-finished` events, then `run-finished`. A client that connects late
+- **Logs.** For each pipeline, `pipeline-started` (its jobs: `key`, `name`,
+  `needs` and the `ids` their entries report under, or `null` while a matrix
+  waits on another job), then `job-started`, `output` (one line, with its
+  stream) and `job-finished` events; then `run-finished`. A finished job's
+  report carries its `needs` too. A client that connects late
   gets the backlog first. Up to 8 MiB of output is kept per run; past that a
   `truncated` event says so and job events still flow. A comment every 15 s
   keeps idle connections open through proxies.

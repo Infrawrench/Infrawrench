@@ -22935,5 +22935,19 @@
   "40b8f757dfcda260": "Todos los repositorios",
   "ff56cf8f9edaf9d2": "Aún no hay nada definido en este ámbito.",
   "385e385d8d8afa11": "Los nombres admiten letras, dígitos y _, y no pueden empezar por un dígito.",
-  "f68e5477af67ad6a": "CI requiere el modo en la nube: inicie sesión para sincronizar."
+  "f68e5477af67ad6a": "CI requiere el modo en la nube: inicie sesión para sincronizar.",
+  "9c8967d409987eef": "Los trabajos aparecerán aquí cuando se inicie la ejecución.",
+  "0acda50d59bcceb7": "{count} trabajos",
+  "419719298a7acaea": "Alejar",
+  "8c32e9085e525c19": "Acercar",
+  "bbfcdcd8bcb82940": "Ajustar",
+  "4defc696da974b7a": "Todos los trabajos",
+  "2cdf781596ffa72d": "La ejecución imprimió más de lo que conserva el log en vivo; el resto de la salida se mostrará cuando termine.",
+  "2f0b75d1b8ea87d6": "Este trabajo aún no ha comenzado.",
+  "686b1728a7290b29": "Aún no hay salida.",
+  "e23efd15da628546": "Este trabajo no imprimió nada.",
+  "880229b7c07d2743": "Activado por: pull request #{number}",
+  "d3ddec6219035d39": "Activado por: push a {branch}",
+  "a16d84379207d733": "El log en vivo se detuvo: {error}",
+  "e094f50f8daf60b5": "Esperando a que el runner inicie los pipelines…"
 }

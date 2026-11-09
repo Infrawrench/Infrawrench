@@ -432,4 +432,7 @@
 // a platform admin's per-org feature switch, `ci` in the tab kinds with its
 // `runId`, `ci` and `settings/pr-checks` as GitHub install return pages, and
 // the `ci:read`, `ci:write` and `ci:approve` permissions.
-export const API_VERSION = "1.100.0";
+// 1.101.0: a CI job says what it waited for (`needs` on `CiJobSummary`), and
+// a running run's live log (`GET /ci/runs/{runId}/logs`, Server-Sent Events,
+// not in the document, like the chat turn stream). Additive.
+export const API_VERSION = "1.101.0";
