@@ -1298,6 +1298,7 @@ impl Validator<'_> {
                     memory_bytes: st.memory,
                     caches,
                     artifacts,
+                    network: job.network.unwrap_or(true),
                 });
             }
         }

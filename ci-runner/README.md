@@ -30,14 +30,13 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    exactly what they pin, verified against the lockfile's hashes and cached
    by content: pnpm (laid out like pnpm's isolated `node_modules`), Go
    modules (a `GOMODCACHE`) and Cargo crates (a `vendor/` directory). No
-   package manager runs and no install script executes. This is the only
-   step with network access, and both its results are cached: see
-   [Caching](#caching).
+   package manager runs and no install script executes. Both its results
+   are cached: see [Caching](#caching).
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
    and content-addressed blobs in R2, verified by sha256.
 5. **Run** (`iwci-runtime`). Jobs run in parallel as soon as their `needs`
    finish and their `paths:` and `if:` allow it, each in a fresh Wasmer instance with no host file system and
-   only a private loopback for a network (see [Networking](#networking)), under a timeout and a memory limit. Compiled modules are cached
+   a private loopback plus the public internet for a network (see [Networking](#networking)), under a timeout and a memory limit. Compiled modules are cached
    on disk, so a tool is compiled once per runner, not once per job.
 6. **Changes.** What a job wrote is read back from its overlay layer.
    `changes: fail` fails the job if it changed anything; `changes: commit`
@@ -163,6 +162,7 @@ everything through.
 | `memory`    | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
 | `cache`     | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
 | `tools`     | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
+| `network`   | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                          |
 | `artifacts` | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                   |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
@@ -438,15 +438,25 @@ shares them.
 
 ## Networking
 
-Each job has a network of its own: an in-memory loopback, shared by that
-job's processes and nothing else. A test suite can start a server on
-`127.0.0.1` (or `0.0.0.0`, which means the same here) and connect to it;
-`localhost` resolves to it. Nothing else is reachable: connections to any
-other address fail as an unreachable network, a closed port refuses rather
-than reaching some other listener, there is no DNS beyond `localhost`, and
-UDP is not offered. No host socket is ever opened, so a job cannot reach
-anything on the runner's own localhost, nothing a job listens on appears on
-the host, and two jobs never see each other's ports.
+Each job has a loopback of its own, in memory, shared by that job's
+processes and nothing else. A test suite can start a server on `127.0.0.1`
+(or `0.0.0.0`, which means the same here) and connect to it; `localhost`
+resolves to it, a closed port refuses rather than reaching some other
+listener, and two jobs never see each other's ports. Nothing a job listens
+on appears on the host.
+
+Jobs also reach the **public internet** by default: names resolve through
+the host and connections to public addresses go out over host sockets, so a
+job can fetch from a registry or call an API. Only public unicast addresses
+qualify, checked on the address actually connected to: never the runner's
+own loopback (where its API listens), private ranges, link-local addresses
+(including cloud metadata at `169.254.169.254`), shared, multicast,
+documentation or reserved ranges, in IPv4, IPv6 or IPv4 inside IPv6, nor the host's own addresses, which from the host itself would skip any outside firewall. DNS
+answers that point inside are dropped. UDP is not offered.
+
+`network: false` on a job keeps it off the internet, leaving only its
+loopback. The `iwci` command turns the internet on for its jobs; the
+runtime's own tests never use it.
 
 ## The `iwci` command
 

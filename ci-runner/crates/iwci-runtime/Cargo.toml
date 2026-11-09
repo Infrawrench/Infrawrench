@@ -21,12 +21,15 @@ wasmer = { workspace = true, features = ["experimental-host-interrupt"] }
 # wasmer-wasix refuses to build without one of `sys`, `js` or `sys-minimal`.
 # `sys-minimal` is the one without host networking, host file system access
 # or an HTTP client.
-wasmer-wasix = { workspace = true, features = ["sys-minimal"] }
+# `host-vnet`: host sockets for a job's outbound connections (network.rs).
+wasmer-wasix = { workspace = true, features = ["sys-minimal", "host-vnet"] }
 virtual-fs.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
 futures.workspace = true
+# getifaddrs, for the host's own addresses (network.rs). Already in the tree.
+libc = "0.2"
 # The versions below are the ones wasmer-wasix itself pins or resolves, named
 # here because their types appear in the traits this crate implements.
 wasmer-types = "=7.5.0"

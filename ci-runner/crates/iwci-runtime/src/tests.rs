@@ -76,6 +76,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         log: None,
         scratch: None,
         commands: Vec::new(),
+        internet: false,
     }
 }
 

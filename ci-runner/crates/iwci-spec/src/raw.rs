@@ -150,6 +150,10 @@ pub struct Job {
     /// Tools (`builtin:`, `repo:`) an `env:` job's script can run by name.
     #[serde(default)]
     pub tools: Vec<String>,
+    /// `false` keeps the job off the internet: only its own loopback.
+    /// Default: on.
+    #[serde(default)]
+    pub network: Option<bool>,
     /// Files handed on to the jobs that need this one: paths relative to the
     /// clone, or absolute. Kept once the job passes, then written into the
     /// file system of every job that needs it, directly or through others.

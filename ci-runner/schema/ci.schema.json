@@ -360,6 +360,10 @@
           },
           "description": "Tools an `env:` job's script can run by name, such as `builtin:gofmt@1.27`. Each becomes a command named after the tool, first on PATH. Tools with the tsc-host ABI (`builtin:typescript`) cannot run as commands."
         },
+        "network": {
+          "type": "boolean",
+          "description": "Whether the job may reach the public internet (default true). Never the runner's own loopback or private, link-local or reserved addresses; `false` leaves only the job's private loopback."
+        },
         "artifacts": {
           "type": "array",
           "maxItems": 64,

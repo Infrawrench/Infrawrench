@@ -891,3 +891,15 @@ fn a_job_keeps_only_the_files_it_wrote() {
     assert!(notes_of(&report, "use").contains(&"artifacts: 1 file(s) from `gen`".to_string()));
     assert_eq!(stdout_of(&report, "use"), "a.ts,new.ts");
 }
+
+#[test]
+fn an_artifact_path_can_name_a_single_file() {
+    // `gen` writes src/new.ts; only that file is listed, and only it travels.
+    let p = plan(
+        "name: x\njobs:\n  gen:\n    using: builtin:src-write@1\n    artifacts: [src/new.ts]\n  use:\n    using: builtin:src-list@1\n    needs: [gen]\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert!(notes_of(&report, "gen").contains(&"artifacts: kept 1 file(s), 1 KiB".to_string()));
+    assert_eq!(stdout_of(&report, "use"), "a.ts,new.ts");
+}

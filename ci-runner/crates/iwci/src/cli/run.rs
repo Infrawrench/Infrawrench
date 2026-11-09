@@ -114,8 +114,11 @@ pub(super) fn open_runner(
     )?;
     let cache = super::cache_dir(args)?;
     let store = super::store::open(args, &cache)?;
+    // Jobs reach the public internet (registries, APIs), never the host's
+    // loopback or private addresses; see iwci-runtime's network.rs.
     let runtime = iwci_runtime::Runtime::with_threads(cache.join("modules"), Some(limits.cpus))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .with_internet();
     let slots = limits.cpus * limits.jobs_per_cpu;
     Ok(Runner {
         runtime: Arc::new(runtime),

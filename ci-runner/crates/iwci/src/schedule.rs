@@ -1251,14 +1251,22 @@ fn run_job<T: Tools>(
         // Only what the job wrote: files it added or changed under the
         // paths, not the checkout's own files there or the ones it was
         // handed. Parents are created when the files are written.
-        let written: HashSet<PathBuf> = job
+        // `changes` walks a directory, so a path naming one file would find
+        // nothing: read every change once (only what the job wrote lives in
+        // its upper layer) and keep those at or under an artifact path.
+        let wanted: Vec<&std::path::Path> = job
             .artifacts
             .iter()
-            .flat_map(|p| fs.changes(p))
+            .map(|p| std::path::Path::new(p.as_str()))
+            .collect();
+        let written: HashSet<PathBuf> = fs
+            .changes("/")
+            .into_iter()
             .filter_map(|c| match c {
                 Change::Added { path, .. } | Change::Modified { path, .. } => Some(path),
                 Change::Deleted { .. } => None,
             })
+            .filter(|p| wanted.iter().any(|w| p.starts_with(w)))
             .filter(|p| !restored.contains(p))
             .collect();
         let entries: Vec<Entry> = fs

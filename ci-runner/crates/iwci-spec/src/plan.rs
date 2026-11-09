@@ -326,6 +326,10 @@ pub struct PlannedJob {
     pub memory_bytes: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
+    /// Whether the job may reach the public internet (`network:`, default
+    /// on). Its loopback is always there.
+    #[serde(skip_serializing_if = "is_true")]
+    pub network: bool,
     /// `artifacts:`: absolute, normalised guest paths whose files are handed
     /// to the jobs that need this one once it passes.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -433,4 +437,8 @@ mod duration_secs {
     pub fn serialize<S: Serializer>(d: &Duration, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_u64(d.as_secs())
     }
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }

@@ -184,6 +184,9 @@ pub struct Invocation {
     /// Wasm commands a script can run by name, written to `/usr/local/bin`
     /// (first on the default `PATH`). Only scripts use them.
     pub commands: Vec<PathCommand>,
+    /// Whether the job may reach the public internet, when the runtime
+    /// offers it (`Runtime::with_internet`). Off leaves only its loopback.
+    pub internet: bool,
 }
 
 /// Where [`Invocation::scratch`] is mounted.
@@ -207,6 +210,7 @@ impl std::fmt::Debug for Invocation {
             .field("limits", &self.limits)
             .field("log", &self.log.is_some())
             .field("scratch", &self.scratch.is_some())
+            .field("internet", &self.internet)
             .field(
                 "commands",
                 &self
@@ -301,6 +305,21 @@ impl Runtime {
             tokio,
             output_cap: DEFAULT_OUTPUT_CAP,
         })
+    }
+
+    /// Lets jobs connect to the public internet (see `network.rs`: never the
+    /// host's loopback or any private, link-local or reserved address). Off
+    /// by default, so tests never reach the network; the `iwci` command
+    /// turns it on.
+    pub fn with_internet(mut self) -> Self {
+        // LocalNetworking takes the runtime's handle when it is made.
+        let _enter = self.tokio.enter();
+        let host = wasmer_wasix::virtual_net::host::LocalNetworking::new();
+        self.wasix.outside = Some(Arc::new(network::OutsideNet::new(
+            Arc::new(host),
+            network::host_addresses(),
+        )));
+        self
     }
 
     /// Changes what each of stdout and stderr keeps (default 8 MiB).
