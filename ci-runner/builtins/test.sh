@@ -251,7 +251,8 @@ jobs:
       const { instance } = await WebAssembly.instantiate(bytes, wasi.getImportObject());
       wasi.start(instance);
       JS
-      out="$(node /tmp/wasi.js 2>/dev/null; node /tmp/wasi-named.mjs 2>/dev/null)"
+      # stderr stays on: a failure's reason is all a log has to go on.
+      out="$(node /tmp/wasi.js; node /tmp/wasi-named.mjs)"
       echo "$out"
       test "$(grep -c '^hi$' <<<"$out")" = 4
 
