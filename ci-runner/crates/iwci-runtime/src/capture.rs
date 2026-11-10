@@ -63,6 +63,17 @@ impl Capture {
             .extend_from_slice(&data[..data.len().min(room)]);
     }
 
+    /// Sends the runner's own words about the job to the live log, as the
+    /// job's output on this stream. The caller keeps them for the report:
+    /// they are not counted against the cap.
+    pub(crate) fn note(&self, data: &[u8]) {
+        if let Some((stream, sink)) = &self.sink
+            && !data.is_empty()
+        {
+            sink(*stream, data);
+        }
+    }
+
     pub(crate) fn take(&self) -> Captured {
         std::mem::take(&mut *self.inner.lock().unwrap_or_else(|e| e.into_inner()))
     }

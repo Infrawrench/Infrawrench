@@ -86,6 +86,8 @@ While a run is going, the page follows it live: jobs change state as they start 
 
 A run is **Queued** while every runner is busy and starts as soon as one is free. A run that cannot start is marked **Error** with the reason, for example that your plan does not include CI.
 
+When a job fails because one of its processes was ended by a signal, or crashed, its output ends with a few lines starting `iwci:` that say what the runner saw: which signal it was and what sent it, or the crash itself. They are there to go in a bug report; your own commands' output is above them.
+
 ## Pull requests from forks
 
 A pull request from a fork runs code you have not reviewed, so it never runs on its own:

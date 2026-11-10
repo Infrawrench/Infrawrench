@@ -1020,6 +1020,103 @@ fn output_is_handed_to_the_log_sink_as_it_is_written() {
     );
 }
 
+/// A process that dies of a signal leaves the runner's account of it at the
+/// end of its stderr, in the live log too: here one that raises SIGABRT on
+/// itself with no handler, which the host ends with 128 + 6 (#955).
+#[test]
+fn a_job_killed_by_a_signal_says_who_sent_it() {
+    let rt = runtime();
+    let module = wat_module(
+        "raise",
+        r#"(module
+  (import "wasi_snapshot_preview1" "proc_raise" (func $raise (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "sched_yield" (func $yield (result i32)))
+  (memory (export "memory") 1)
+  (func (export "_start")
+    (drop (call $raise (i32.const 6)))
+    ;; Signals are acted on at a syscall.
+    (drop (call $yield))
+    (drop (call $yield))))"#,
+    );
+    let job = snapshot(&[]).fork();
+    type Chunks = Vec<(Stream, Vec<u8>)>;
+    let seen: Arc<std::sync::Mutex<Chunks>> = Arc::default();
+    let sink_seen = seen.clone();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.log = Some(Arc::new(move |stream, data: &[u8]| {
+        sink_seen.lock().unwrap().push((stream, data.to_vec()))
+    }));
+    let outcome = rt.run_command(&module, inv).unwrap();
+    assert_eq!(outcome.exit_code, 134, "{outcome:?}");
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.contains("iwci: the job exited with 134 after a signal."),
+        "{stderr}"
+    );
+    assert!(stderr.contains("a guest called proc_raise"), "{stderr}");
+    // The live log gets the same words, as stderr.
+    let streamed: Vec<u8> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(s, _)| *s == Stream::Stderr)
+        .flat_map(|(_, d)| d.clone())
+        .collect();
+    assert_eq!(streamed, outcome.stderr);
+
+    // A job that just fails says nothing more.
+    let exit = wat_module(
+        "exit",
+        r#"(module
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (func (export "_start") (call $exit (i32.const 3))))"#,
+    );
+    let outcome = rt
+        .run_command(&exit, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+    assert!(outcome.stderr.is_empty(), "{outcome:?}");
+}
+
+/// wasix-libc's own death by signal: bash sends itself SIGSYS, which it
+/// does not handle, so libc prints its line and aborts with 127, as #955's
+/// `node` did. The log names the syscall that sent it.
+#[test]
+fn a_script_killed_by_sigsys_names_the_syscall_that_sent_it() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "kill -s SYS $$; echo unreachable",
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 127, "{outcome:?} {stderr}");
+    assert!(outcome.stdout.is_empty(), "{outcome:?}");
+    assert!(
+        stderr.contains("Program recieved fatal signal: Bad system call"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("iwci: the job exited with 127 after a signal."),
+        "{stderr}"
+    );
+    assert!(stderr.contains("a guest called "), "{stderr}");
+    assert!(stderr.contains("Sigsys"), "{stderr}");
+    assert!(
+        stderr.contains("its thread's task had started "),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("came from the host runtime"), "{stderr}");
+}
+
 /// The run's scratch is one file system mounted into every job, inside the
 /// job's own `/tmp`, and it outlives each job.
 #[test]
@@ -1092,6 +1189,60 @@ fn a_script_runs_a_tool_on_path_by_name() {
         String::from_utf8_lossy(&outcome.stdout),
         "/usr/local/bin/gofmt\nbad.go\n"
     );
+}
+
+/// A command a script runs that traps, in a script that handles its
+/// failure and then fails for its own reasons: the log still says what
+/// crashed. (Unhandled, the script ends with the command's status and the
+/// job is already reported as a crash.)
+#[test]
+fn a_trap_in_a_child_process_is_in_the_jobs_log() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.commands = vec![PathCommand {
+        name: "boom".into(),
+        module: wat_module(
+            "boom",
+            r#"(module (memory (export "memory") 1) (func (export "_start") unreachable))"#,
+        ),
+    }];
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "boom || echo \"boom exited $?\"\nexit 3",
+            inv,
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 3, "stderr {stderr:?} {outcome:?}");
+    assert!(outcome.error.is_none(), "{outcome:?}");
+    assert!(
+        stderr.contains(
+            "iwci: a process or thread of the job crashed, which its exit status (3) does not say:"
+        ),
+        "{stderr}"
+    );
+    assert!(stderr.contains("unreachable"), "{stderr}");
+
+    // The same command in a script that passes leaves the log alone.
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.commands = vec![PathCommand {
+        name: "boom".into(),
+        module: wat_module(
+            "boom",
+            r#"(module (memory (export "memory") 1) (func (export "_start") unreachable))"#,
+        ),
+    }];
+    let outcome = rt
+        .run_script(&packages, "bash", "boom || true", inv)
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert!(outcome.stderr.is_empty(), "{outcome:?}");
 }
 
 #[test]

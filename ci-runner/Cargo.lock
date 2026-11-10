@@ -2953,6 +2953,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
+ "tracing",
  "url",
  "virtual-fs",
  "virtual-net",
