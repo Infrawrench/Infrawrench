@@ -25,6 +25,8 @@ vi.mock("../proxy.js", async (orig) => ({
 const { checkName, fitCheckText } =
   await vi.importActual<typeof import("../checks.js")>("../checks.js");
 const { syncRun, jobsOf, checkSummary, CACHED_REASON } = await import("../runs");
+const { CiProxyError } = await vi.importActual<typeof import("../proxy.js")>("../proxy.js");
+const { githubInstallationFetch } = await import("../../github/app.js");
 
 const row = (event: "push" | "pull-request") =>
   ({
@@ -138,5 +140,42 @@ describe("CI checks on GitHub", () => {
     // Cut between rows, with a note of what was left out.
     expect(fitted).toMatch(/\|\n\n_…and \d+ more line\(s\)/);
     expect(fitCheckText("short")).toBe("short");
+  });
+
+  it("gives up on a run its runner no longer has, closing its unfinished job checks", async () => {
+    mockProxyJson.mockRejectedValue(new CiProxyError("no such run", 404));
+    const gone = {
+      ...row("pull-request"),
+      checkRunId: 9,
+      startedAt: new Date(Date.now() - 10 * 60_000),
+      jobChecks: {
+        a: { id: 11, sent: "completed:1" },
+        b: { id: 12, sent: "in_progress:2" },
+      },
+    } as unknown as Parameters<typeof syncRun>[0];
+    await syncRun(gone);
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "completed",
+        conclusion: "failure",
+        summary: expect.stringContaining("runner restarted"),
+      }),
+    );
+    // Only the job check still going is closed.
+    const fetch = vi.mocked(githubInstallationFetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [, path, init] = fetch.mock.calls[0]!;
+    expect(path).toBe("/repos/acme/web/check-runs/12");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      status: "completed",
+      conclusion: "cancelled",
+    });
+  });
+
+  it("waits out a 404 just after the run started", async () => {
+    mockProxyJson.mockRejectedValue(new CiProxyError("no such run", 404));
+    await syncRun(row("pull-request"));
+    expect(mockUpsert).not.toHaveBeenCalled();
   });
 });

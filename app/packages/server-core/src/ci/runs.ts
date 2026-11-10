@@ -33,7 +33,12 @@ import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
 import { upsertCheck } from "./checks.js";
-import { groupsFromJobs, groupsFromProgress, syncJobChecks } from "./job-checks.js";
+import {
+  abandonJobChecks,
+  groupsFromJobs,
+  groupsFromProgress,
+  syncJobChecks,
+} from "./job-checks.js";
 import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
@@ -46,6 +51,16 @@ const CLAIM_MS = 2 * 60_000;
 const MAX_ATTEMPTS = 40;
 /** A run the runners have not reported on for this long is given up on. */
 const LOST_AFTER_MS = 2 * 60 * 60_000;
+/**
+ * A run its runner answers 404 for, this long after it started, is gone:
+ * the read names the owner, so a finished run is found in the store, and a
+ * running one is in the runner's memory. A runner that restarts (a crash,
+ * a deploy) loses what it was running. The wait covers a read racing the
+ * dispatch, never a live run.
+ */
+const GONE_AFTER_MS = 2 * 60_000;
+const GONE_REASON =
+  "The runner restarted while this run was going, and the run went with it. Push again to run it again.";
 /** A fork's run nobody approved in this long is closed. */
 export const APPROVAL_EXPIRES_MS = 14 * 24 * 60 * 60_000;
 
@@ -404,15 +419,19 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     );
   } catch (err) {
     const started = (row.startedAt ?? row.createdAt).getTime();
-    if (Date.now() - started > LOST_AFTER_MS) {
-      await finish(row, "error", "The runner stopped reporting on this run.");
+    const gone = err instanceof CiProxyError && err.status === 404;
+    if (Date.now() - started > (gone ? GONE_AFTER_MS : LOST_AFTER_MS)) {
+      const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
+      await finish(row, "error", reason);
+      // Its jobs' checks would otherwise say "in progress" for good.
+      await abandonJobChecks(row, reason);
       await upsertCheck(row, {
         status: "completed",
         conclusion: "failure",
         title: "Lost",
-        summary: "The runner stopped reporting on this run.",
+        summary: reason,
       });
-    } else if (!(err instanceof CiProxyError) || err.status !== 404) {
+    } else if (!gone) {
       console.warn(`[ci] could not read run ${row.id}:`, err);
     }
     return;
