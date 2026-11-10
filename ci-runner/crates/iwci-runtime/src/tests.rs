@@ -180,8 +180,9 @@ const PREOPENS: &str = r#"
     (call $proc_exit (i32.const 0))))
 "#;
 
-/// Pins the preopen layout every command gets: the job's root as `/` and
-/// nothing else, whatever the `cwd`, with the `cwd` handed over as `$PWD`.
+/// Pins the preopen layout every command gets, whatever the `cwd`: fd 3 is
+/// wasmer-wasix's virtual root (`create_rootfd`) and fd 4 the job's root,
+/// both named `/` and nothing else, with the `cwd` handed over as `$PWD`.
 ///
 /// Do not add the `cwd` as a preopen named `.` to give plain WASI tools a
 /// working directory (#906). wasi-libc strips `/` and `.` from preopen names,
@@ -204,7 +205,7 @@ fn a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd() {
             .run_command(&wat_module("preopens", PREOPENS), inv.clone())
             .unwrap();
         assert!(outcome.success(), "{cwd}: {outcome:?}");
-        assert_eq!(String::from_utf8_lossy(&outcome.stdout), "/\n", "cwd {cwd}");
+        assert_eq!(String::from_utf8_lossy(&outcome.stdout), "/\n/\n", "cwd {cwd}");
 
         let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
         let stdout = String::from_utf8_lossy(&outcome.stdout);
