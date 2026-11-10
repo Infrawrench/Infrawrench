@@ -215,7 +215,15 @@ jobs:
     cwd: /app/app/packages/web
     env: { HOME: /tmp }
     run: node scripts/translation-audit.mjs
-    task-cache: true
+    # What the audit reads: the sources of the four translated packages.
+    # `task-cache: true` would key it on every file in the repository, and
+    # rerun it for a change to anything.
+    task-cache: &translation-inputs
+      inputs:
+        - app/packages/ui/**
+        - app/packages/web/**
+        - app/packages/desktop/**
+        - app/packages/instances/**
     memory: 4GiB
     timeout: 20m
 
@@ -225,7 +233,8 @@ jobs:
     cwd: /app/app/packages/web
     env: { HOME: /tmp }
     run: node scripts/translation-status.mjs
-    task-cache: true
+    # The same packages: their sources, gt.config.json and _gt catalogs.
+    task-cache: *translation-inputs
     memory: 4GiB
     timeout: 20m
 
