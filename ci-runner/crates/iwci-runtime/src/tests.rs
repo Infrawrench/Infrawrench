@@ -233,6 +233,114 @@ fn an_infinite_loop_is_stopped_by_the_timeout() {
     assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
 }
 
+/// Sleeps in `poll_oneoff` for `$ns` nanoseconds, `$n` times, writing a
+/// dot to stdout after each sleep when `$print` is set.
+fn sleeper(ns: u64, times: u32, print: bool) -> WasmModule {
+    let wat = format!(
+        r#"(module
+  (import "wasi_snapshot_preview1" "poll_oneoff" (func $poll (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 200) ".")
+  (func (export "_start") (local $i i32)
+    ;; one clock subscription at 0: userdata, tag 0 (clock), clock id 1
+    ;; (monotonic), relative timeout
+    (i32.store8 (i32.const 8) (i32.const 0))
+    (i32.store (i32.const 16) (i32.const 1))
+    (i64.store (i32.const 24) (i64.const {ns}))
+    (i32.store (i32.const 220) (i32.const 200))
+    (i32.store (i32.const 224) (i32.const 1))
+    (loop $l
+      (drop (call $poll (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 128)))
+      (if (i32.const {print})
+        (then (drop (call $fd_write (i32.const 1) (i32.const 220) (i32.const 1) (i32.const 232)))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $l (i32.lt_u (local.get $i) (i32.const {times}))))))"#,
+        print = i32::from(print),
+    );
+    wat_module("sleeper", &wat)
+}
+
+/// A job that waits on nothing, using no CPU and printing nothing, is
+/// stopped as stalled long before its timeout (#938).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_job_that_waits_on_nothing_is_stopped_as_stalled() {
+    let base = runtime();
+    let rt = Runtime::new(base.dir.join("stall"))
+        .unwrap()
+        .with_stall_after(Some(Duration::from_secs(1)));
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(60);
+    let outcome = rt
+        .run_command(&sleeper(3_600_000_000_000, 1, false), inv)
+        .unwrap();
+    assert_eq!(
+        outcome.stalled_after,
+        Some(Duration::from_secs(1)),
+        "{outcome:?}"
+    );
+    assert!(!outcome.timed_out && !outcome.success(), "{outcome:?}");
+    assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
+    assert!(outcome.duration < Duration::from_secs(20), "{outcome:?}");
+}
+
+/// A compile holds the shared engine's lock, which a job needs to start a
+/// process: a job waiting behind another job's compile is not hung, however
+/// long the compile takes.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_module_loading_for_any_job_keeps_every_job_from_stalling() {
+    let base = runtime();
+    let rt = Runtime::new(base.dir.join("stall"))
+        .unwrap()
+        .with_stall_after(Some(Duration::from_millis(500)));
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(60);
+    // Someone's module is loading for as long as this job sleeps: three
+    // seconds, six times the window.
+    let loading = rt.store.working();
+    let outcome = rt
+        .run_command(&sleeper(3_000_000_000, 1, false), inv)
+        .unwrap();
+    drop(loading);
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(outcome.stalled_after, None, "{outcome:?}");
+    assert!(!rt.store.is_working());
+}
+
+/// Output keeps a job that uses no CPU alive, and a silent job that keeps
+/// computing is left to its timeout: neither is a hang.
+#[test]
+fn output_or_cpu_use_keeps_a_job_from_stalling() {
+    let base = runtime();
+    let rt = Runtime::new(base.dir.join("stall"))
+        .unwrap()
+        .with_stall_after(Some(Duration::from_secs(2)));
+    let job = snapshot(&[]).fork();
+    // A dot every 200 ms for 6 s: three times the window, never idle for
+    // it, with room for a busy machine to hold a dot up.
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(120);
+    let outcome = rt
+        .run_command(&sleeper(200_000_000, 30, true), inv)
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(outcome.stdout, ".".repeat(30).as_bytes());
+
+    let spin = wat_module(
+        "spin",
+        r#"(module (memory (export "memory") 1) (func (export "_start") (loop $l (br $l))))"#,
+    );
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(5);
+    let outcome = rt.run_command(&spin, inv).unwrap();
+    assert!(outcome.timed_out, "{outcome:?}");
+    assert_eq!(outcome.stalled_after, None, "{outcome:?}");
+}
+
 #[test]
 fn growing_memory_past_the_limit_fails_and_is_reported() {
     let rt = runtime();
@@ -960,6 +1068,58 @@ fn a_spinning_bash_script_is_stopped_by_the_timeout() {
         .unwrap();
     assert!(outcome.timed_out, "{outcome:?}");
     assert!(outcome.duration < Duration::from_secs(10), "{outcome:?}");
+}
+
+/// A script whose processes all wait on nothing is stalled; one with a
+/// process computing in silence is not, for as long as it computes. Every
+/// process of the job counts: here bash waits in `sleep` while a subshell
+/// it forked loops.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_script_stalls_only_when_all_of_it_is_idle() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let base = runtime();
+    let rt = Runtime::new(base.dir.join("stall"))
+        .unwrap()
+        .with_stall_after(Some(Duration::from_secs(2)));
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(120);
+    let outcome = rt
+        .run_script(&packages, "bash", "echo started; sleep 600", inv)
+        .unwrap();
+    assert_eq!(
+        outcome.stalled_after,
+        Some(Duration::from_secs(2)),
+        "{outcome:?}"
+    );
+    assert_eq!(outcome.stdout, b"started\n");
+    assert!(outcome.duration < Duration::from_secs(60), "{outcome:?}");
+
+    // The same wait beside a subshell that computes for six seconds, three
+    // windows, without a word: the job is left alone while it does, and
+    // stalls once it has finished. (The subshell ends by itself: a
+    // spinning one would have to be killed with the job.)
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(120);
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "(while [ $SECONDS -lt 6 ]; do :; done) & sleep 600",
+            inv,
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.stalled_after,
+        Some(Duration::from_secs(2)),
+        "{outcome:?}"
+    );
+    assert!(!outcome.timed_out, "{outcome:?}");
+    assert!(outcome.duration >= Duration::from_secs(7), "{outcome:?}");
+    assert!(outcome.duration < Duration::from_secs(90), "{outcome:?}");
 }
 
 /// The real compiler: set IWCI_TEST_TS_RUST_WASM to ts-rust's

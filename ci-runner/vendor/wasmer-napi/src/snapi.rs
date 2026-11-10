@@ -53,6 +53,13 @@ pub struct SnapiUnofficialHeapCodeStatistics {
 unsafe extern "C" {
     pub fn snapi_bridge_init() -> i32;
     pub fn snapi_bridge_set_v8_worker_thread_count(count: u32) -> i32;
+    // iwci patch (#938)
+    pub fn snapi_bridge_set_worker_task_hooks(
+        capture: unsafe extern "C" fn() -> *mut core::ffi::c_void,
+        enter: unsafe extern "C" fn(*mut core::ffi::c_void),
+        exit: unsafe extern "C" fn(*mut core::ffi::c_void),
+        release: unsafe extern "C" fn(*mut core::ffi::c_void),
+    );
     pub fn snapi_bridge_unofficial_configure_runtime(
         engine_flags: *const std::ffi::c_char,
         engine_flags_length: u32,

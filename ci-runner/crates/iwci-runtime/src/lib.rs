@@ -24,6 +24,7 @@ mod limits;
 mod network;
 mod node;
 mod signals;
+mod stall;
 pub mod tsc;
 mod wasix;
 mod watchdog;
@@ -37,6 +38,7 @@ use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
 
 pub use cache::CacheStats;
 pub use iwci_vfs::DynFs;
+pub use stall::DEFAULT_STALL_AFTER;
 pub use tsc::TscOutcome;
 pub use wasix::{CRASH_EXIT_CODE, TIMEOUT_EXIT_CODE};
 
@@ -245,6 +247,11 @@ pub struct Outcome {
     pub truncated: bool,
     pub duration: Duration,
     pub timed_out: bool,
+    /// The job was stopped before its timeout because it had gone this
+    /// long without writing output or using CPU time: hung, not working
+    /// (see [`Runtime::with_stall_after`]). Its exit code is
+    /// [`TIMEOUT_EXIT_CODE`], as for a timeout.
+    pub stalled_after: Option<Duration>,
     /// A memory of the job was refused growth by the memory limit. The job
     /// may still have exited cleanly if it handled the failure.
     pub out_of_memory: bool,
@@ -254,7 +261,10 @@ pub struct Outcome {
 
 impl Outcome {
     pub fn success(&self) -> bool {
-        self.exit_code == 0 && !self.timed_out && self.error.is_none()
+        self.exit_code == 0
+            && !self.timed_out
+            && self.stalled_after.is_none()
+            && self.error.is_none()
     }
 }
 
@@ -265,6 +275,7 @@ pub struct Runtime {
     // dropped before the runtime it points into.
     tokio: tokio::runtime::Runtime,
     output_cap: usize,
+    stall_after: Option<Duration>,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -305,6 +316,7 @@ impl Runtime {
             store,
             tokio,
             output_cap: DEFAULT_OUTPUT_CAP,
+            stall_after: Some(DEFAULT_STALL_AFTER),
         })
     }
 
@@ -326,6 +338,18 @@ impl Runtime {
     /// Changes what each of stdout and stderr keeps (default 8 MiB).
     pub fn with_output_cap(mut self, bytes: usize) -> Self {
         self.output_cap = bytes;
+        self
+    }
+
+    /// Stops a WASI, WASIX or script job that has gone `after` without
+    /// writing output or using CPU time (default [`DEFAULT_STALL_AFTER`];
+    /// `None` leaves every job to its timeout). A job that computes in
+    /// silence keeps using CPU and is never stopped by this; one that waits
+    /// on nothing, such as a process whose exit hangs (#938), is. Only
+    /// measured on Linux; elsewhere jobs wait for their timeout. tsc jobs are
+    /// single-threaded compiles and are not watched.
+    pub fn with_stall_after(mut self, after: Option<Duration>) -> Self {
+        self.stall_after = after.filter(|d| !d.is_zero());
         self
     }
 
@@ -358,6 +382,7 @@ impl Runtime {
             inv,
             wasix::Caps {
                 output_bytes: self.output_cap,
+                stall_after: self.stall_after,
             },
             None,
         )
@@ -425,6 +450,7 @@ impl Runtime {
             inv,
             wasix::Caps {
                 output_bytes: self.output_cap,
+                stall_after: self.stall_after,
             },
             node.as_ref(),
         )

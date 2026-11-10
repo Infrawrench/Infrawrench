@@ -2,6 +2,7 @@
 
 use std::io::{self, SeekFrom};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
@@ -22,6 +23,8 @@ pub(crate) struct Capture {
     cap: usize,
     /// Where output also goes as it is written, for live logs.
     sink: Option<(crate::Stream, crate::LogSink)>,
+    /// Counts every byte written, past the cap too (the stall check).
+    written: Option<Arc<AtomicU64>>,
 }
 
 impl std::fmt::Debug for Capture {
@@ -39,6 +42,7 @@ impl Capture {
             inner: Arc::default(),
             cap,
             sink: None,
+            written: None,
         }
     }
 
@@ -49,7 +53,16 @@ impl Capture {
         self
     }
 
+    /// Also adds the length of every chunk to `written`.
+    pub(crate) fn counting(mut self, written: Arc<AtomicU64>) -> Self {
+        self.written = Some(written);
+        self
+    }
+
     pub(crate) fn push(&self, data: &[u8]) {
+        if let Some(written) = &self.written {
+            written.fetch_add(data.len() as u64, Ordering::Relaxed);
+        }
         if let Some((stream, sink)) = &self.sink {
             sink(*stream, data);
         }

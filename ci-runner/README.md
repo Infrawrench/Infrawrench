@@ -158,7 +158,7 @@ everything through.
 | `if`         | When the job runs, given how its `needs` went. See below.                                                                                                                      |
 | `outputs`    | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
 | `paths`      | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
-| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`.                                                                                                                              |
+| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                 |
 | `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
 | `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
 | `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
@@ -642,7 +642,7 @@ iwci plan .infrawrench/ci/tests.yml [--json]      # the expanded jobs
 iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
-         [--memory <size>] [--storage-quota <size>] [--json] [--store <dir>]
+         [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
@@ -718,6 +718,23 @@ first compilation) and came from the cache in 0.25 s for the whole pipeline.
 - **A task cache lookup takes neither.** A `task-cache:` job holds a slot
   and its `memory:` only if it misses and runs (see
   [The task cache](#the-task-cache)).
+- **`--stall-after`** (or `IWCI_STALL_AFTER`, default `5m`, `0` for
+  never) stops a job that has written no output and used no CPU time for
+  that long, instead of letting it hold its slot until its timeout. Its
+  report's reason starts `stalled: no output and no CPU use for`, and its
+  `execution.stalled_after` holds the seconds. CPU time is read from the
+  CPU clock of every thread working for the job: the ones running its
+  processes and their threads (bash and each command it spawns, libuv's
+  pool, `worker_threads`), the one driving the job, and V8's worker
+  threads while they run its garbage collection or background
+  compilation. A process being instantiated counts as work as well, and
+  so does a module being compiled, for every job at once: a compile holds
+  the engine all jobs share, so the others wait for it. So a silent
+  compile or test run keeps using CPU and is never stopped, and a process
+  waiting on a wake-up that never comes (#938) is. Waiting is not work: a
+  job that only sleeps or waits on the network in silence for that long
+  is stopped too, so print something now and then. Measured on Linux
+  only; elsewhere jobs wait for their timeout. tsc jobs are not watched.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without

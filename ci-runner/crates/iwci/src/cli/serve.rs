@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! IWCI_SERVER_KEY=<32+ chars> iwci serve [--listen 127.0.0.1:8547]
-//!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>]
+//!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>] [--stall-after 5m]
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
 //!     [--warm-every 10m | --no-warm]
 //!     [--update-channel stable [--update-every 5m]]

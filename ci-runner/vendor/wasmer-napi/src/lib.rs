@@ -82,6 +82,37 @@ pub fn set_v8_worker_threads(count: Option<u32>) -> Result<(), WorkerThreadsAlre
     Ok(())
 }
 
+/// iwci patch (#938): how an embedder learns whose work a V8 worker task is.
+///
+/// V8's background tasks (garbage collection, compilation) run on one
+/// process-wide pool. `capture` is called on the thread that posts a task and
+/// returns a token naming whoever that thread works for, or null for no one;
+/// `enter` and `exit` are called on the pool thread around the task with
+/// that token, and a task posted between them is captured on that thread in
+/// turn; `release` is called once when the task is destroyed, whether or not
+/// it ran.
+#[derive(Debug, Clone, Copy)]
+pub struct WorkerTaskHooks {
+    pub capture: unsafe extern "C" fn() -> *mut core::ffi::c_void,
+    pub enter: unsafe extern "C" fn(*mut core::ffi::c_void),
+    pub exit: unsafe extern "C" fn(*mut core::ffi::c_void),
+    pub release: unsafe extern "C" fn(*mut core::ffi::c_void),
+}
+
+/// Installs `hooks` for every V8 worker task posted from now on,
+/// process-wide. Call it before the first isolate is created.
+pub fn set_worker_task_hooks(hooks: WorkerTaskHooks) {
+    // Safety: the callee only stores the four function pointers.
+    unsafe {
+        snapi::snapi_bridge_set_worker_task_hooks(
+            hooks.capture,
+            hooks.enter,
+            hooks.exit,
+            hooks.release,
+        )
+    };
+}
+
 /// The V8 platform already exists, so its worker pool can no longer be resized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkerThreadsAlreadyFixed;

@@ -441,6 +441,27 @@ jobs:
       node churn.mjs > b.out &
       wait
       test "$(cat a.out b.out | grep -c '^churned$')" = 2
+  # A `node` that waits on nothing, as #938's never exited: no output, no
+  # CPU, a timer far in the future. It is stopped as stalled long before its
+  # timeout, and says so (this pipeline runs with --stall-after 15s).
+  hang-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 10m
+    run: |
+      echo waiting
+      node -e 'setTimeout(() => {}, 2 ** 31 - 1)'
+  # Silent work is not a hang: 25s of computing that prints only at the
+  # end, longer than the stall window, must pass. It waits for the jobs
+  # that churn threads: a core spinning beside them makes the guest's
+  # thread exit race (#967) fail them more often, as it did on GitHub's
+  # four cores.
+  quiet-work-passes:
+    using: env:bash-node@24
+    needs: [worker-threads-passes, env-churn-passes]
+    timeout: 3m
+    run: |
+      node -e 'let n = 0; const end = Date.now() + 25000; while (Date.now() < end) n++; console.log(n > 0)'
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
@@ -461,6 +482,7 @@ want_reason() {
     bash/false-fails | bash-node/throw-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
+    bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     *) echo "" ;;
   esac
 }
@@ -481,8 +503,14 @@ for name in "$@"; do
   # iwci exits non-zero when any job fails, which some jobs here must do,
   # so its status only matters when there is no report.
   status=0
+  # A short stall window where a job checks it (hang-fails); the default
+  # is minutes.
+  stall_after=5m
+  if [[ "$name" == bash-node ]]; then
+    stall_after=15s
+  fi
   out="$("$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
-    --store "$SCRATCH/store" --cache "$SCRATCH/cache")" || status=$?
+    --store "$SCRATCH/store" --cache "$SCRATCH/cache" --stall-after "$stall_after")" || status=$?
   if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null 2>&1 <<<"$out"; then
     if ((status > 128)); then
       echo "error: iwci was killed by signal $((status - 128)) before reporting" >&2

@@ -99,6 +99,14 @@ impl Executor<String> for FakeExecutor {
         if tool.contains(":slow@") {
             std::thread::sleep(Duration::from_millis(50));
         }
+        // What the runtime reports for a job it stopped as hung.
+        if tool.contains(":hang@") {
+            return Ok(Execution {
+                exit_code: iwci_runtime::TIMEOUT_EXIT_CODE,
+                stalled_after: Some(300),
+                ..Default::default()
+            });
+        }
         if tool.contains(":bigwrite@") {
             // One byte more than the job's memory: refused, as a full disk
             // would refuse it, and the program then fails.
@@ -298,6 +306,22 @@ fn needs_order_jobs_and_failures_skip_the_chain_below() {
     let order = exec.order.lock().unwrap().clone();
     assert!(order.iter().position(|j| j == "a") < order.iter().position(|j| j == "b"));
     assert!(!order.contains(&"c".to_string()));
+}
+
+#[test]
+fn a_stalled_job_fails_naming_the_stall_and_blocks_its_dependents() {
+    let p = plan(
+        "name: x\njobs:\n  hang:\n    using: builtin:hang@1\n    timeout: 20m\n  after:\n    using: builtin:ok@1\n    needs: [hang]\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    let Status::Failed { reason } = status(&report, "hang") else {
+        panic!("{:?}", status(&report, "hang"));
+    };
+    assert_eq!(
+        reason,
+        "stalled: no output and no CPU use for 5 minutes, so it was stopped before its 1200s timeout"
+    );
+    assert!(matches!(status(&report, "after"), Status::Skipped { .. }));
 }
 
 #[test]

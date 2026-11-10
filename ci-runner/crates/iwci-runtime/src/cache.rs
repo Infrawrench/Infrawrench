@@ -21,7 +21,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use sha2::{Digest, Sha256};
@@ -48,7 +48,25 @@ pub(crate) struct ModuleStore {
     /// One lock per module being loaded, so two jobs that need the same
     /// uncached module wait for one compile instead of running two.
     loading: Mutex<HashMap<WasmHash, Arc<Mutex<()>>>>,
+    /// Modules being loaded or compiled now, by anyone (see [`Working`]).
+    working: AtomicUsize,
     stats: Stats,
+}
+
+/// Held while a module is loaded or compiled with the shared engine.
+///
+/// A compile holds the engine's lock from start to finish, and so does
+/// every instantiation and every artifact load: while one job's module
+/// compiles, another job that starts a process waits on that lock, using no
+/// CPU and printing nothing, for as long as the compile takes. The stall
+/// check (stall.rs) therefore treats every job as busy while this is held
+/// by anyone.
+pub(crate) struct Working(Arc<ModuleStore>);
+
+impl Drop for Working {
+    fn drop(&mut self) {
+        self.0.working.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 #[derive(Default)]
@@ -143,8 +161,20 @@ impl ModuleStore {
             fingerprint,
             memory: Mutex::default(),
             loading: Mutex::default(),
+            working: AtomicUsize::new(0),
             stats: Stats::default(),
         })
+    }
+
+    /// Marks a module as being loaded or compiled until the guard drops.
+    pub(crate) fn working(self: &Arc<Self>) -> Working {
+        self.working.fetch_add(1, Ordering::AcqRel);
+        Working(self.clone())
+    }
+
+    /// Whether any module is being loaded or compiled.
+    pub(crate) fn is_working(&self) -> bool {
+        self.working.load(Ordering::Acquire) > 0
     }
 
     pub(crate) fn engine(&self) -> &Engine {
@@ -169,10 +199,11 @@ impl ModuleStore {
     }
 
     /// The compiled module for `wasm`, whose sha256 is `key`.
-    pub(crate) fn get(&self, key: WasmHash, wasm: &[u8]) -> Result<Module> {
+    pub(crate) fn get(self: &Arc<Self>, key: WasmHash, wasm: &[u8]) -> Result<Module> {
         if let Some(module) = self.in_memory(&key) {
             return Ok(module);
         }
+        let _working = self.working();
         let slot = {
             let mut loading = self.loading.lock().unwrap_or_else(|e| e.into_inner());
             loading.entry(key).or_default().clone()
