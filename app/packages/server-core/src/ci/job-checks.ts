@@ -24,6 +24,7 @@ import { orgAppUrl } from "../app-url.js";
 import { db } from "../db/client.js";
 import { ciRuns } from "../db/schema.js";
 import { githubInstallationFetch } from "../github/app.js";
+import { fitCheckText, githubError } from "./checks.js";
 
 /** What the runner reports of a running run (`GET /v1/runs/{id}`'s `progress`). */
 export interface ProxyProgress {
@@ -256,7 +257,7 @@ export async function syncJobChecks(
     const now = new Date().toISOString();
     const body: Record<string, unknown> = {
       status: state.status,
-      output: { title: state.title.slice(0, 255), summary: state.summary.slice(0, 65_000) },
+      output: { title: state.title.slice(0, 255), summary: fitCheckText(state.summary) },
       ...(detailsUrl ? { details_url: detailsUrl } : {}),
       ...(state.status === "in_progress" && !known?.sent.startsWith("in_progress")
         ? { started_at: now }
@@ -276,7 +277,7 @@ export async function syncJobChecks(
             ...body,
           }),
         });
-        if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+        if (!res.ok) throw await githubError(res);
         const created = (await res.json()) as { id?: number };
         if (typeof created.id !== "number") continue;
         next[key] = { id: created.id, sent };
@@ -286,7 +287,7 @@ export async function syncJobChecks(
           `/repos/${repo}/check-runs/${known.id}`,
           { method: "PATCH", body: JSON.stringify(body) },
         );
-        if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+        if (!res.ok) throw await githubError(res);
         next[key] = { id: known.id, sent };
       }
       changed = true;
