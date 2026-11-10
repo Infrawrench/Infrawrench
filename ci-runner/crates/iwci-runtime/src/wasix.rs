@@ -592,6 +592,12 @@ pub(crate) fn run(
         &inv.commands,
         node_support,
     )?);
+    // WASIX programs ask the runtime for their working directory. Plain WASI
+    // ones built on wasi-libc cannot be given one: their cwd is always `/`,
+    // and a preopen of the cwd named `.` either changes nothing or sends
+    // every absolute path into the cwd (#906, and the test
+    // `a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd`). `$PWD` is
+    // how they learn it.
     builder.set_current_dir(&inv.cwd);
     builder
         .add_preopen_dir("/")

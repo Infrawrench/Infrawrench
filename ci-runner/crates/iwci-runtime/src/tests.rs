@@ -148,6 +148,70 @@ fn a_command_gets_args_env_and_the_job_fs_and_reports_its_exit() {
     );
 }
 
+/// Prints the name of every preopened directory, one per line, walking the
+/// descriptors from 3 up to the first that is not a preopen.
+const PREOPENS: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_prestat_get" (func $prestat_get (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_prestat_dir_name" (func $prestat_dir_name (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 32) "\n")
+  (func $write (param $ptr i32) (param $len i32)
+    (i32.store (i32.const 0) (local.get $ptr))
+    (i32.store (i32.const 4) (local.get $len))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8))))
+  (func (export "_start") (local $fd i32) (local $len i32)
+    (local.set $fd (i32.const 3))
+    (block $done
+      (loop $next
+        ;; prestat: tag at 16, name length at 20; EBADF ends the list
+        (br_if $done (call $prestat_get (local.get $fd) (i32.const 16)))
+        (local.set $len (i32.load (i32.const 20)))
+        (if (i32.gt_u (local.get $len) (i32.const 1024))
+          (then (call $proc_exit (i32.const 2))))
+        (if (call $prestat_dir_name (local.get $fd) (i32.const 1024) (local.get $len))
+          (then (call $proc_exit (i32.const 3))))
+        (call $write (i32.const 1024) (local.get $len))
+        (call $write (i32.const 32) (i32.const 1))
+        (local.set $fd (i32.add (local.get $fd) (i32.const 1)))
+        (br_if $next (i32.lt_u (local.get $fd) (i32.const 64)))))
+    (call $proc_exit (i32.const 0))))
+"#;
+
+/// Pins the preopen layout every command gets: the job's root as `/` and
+/// nothing else, whatever the `cwd`, with the `cwd` handed over as `$PWD`.
+///
+/// Do not add the `cwd` as a preopen named `.` to give plain WASI tools a
+/// working directory (#906). wasi-libc strips `/` and `.` from preopen names,
+/// so both become the empty prefix; it makes a relative path absolute against
+/// its own cwd, which is always `/`, before looking it up; and of equal
+/// matches it takes the preopen registered last. Measured with a Rust
+/// `wasm32-wasip1` program run with `cwd: /work`: with `.` before `/` nothing
+/// changes (`.` is still the root), and with `.` after `/` relative paths
+/// work but `/`, `/tmp` and every other absolute path resolve inside `/work`,
+/// which breaks the scratch mount and tools' data files. See the README's
+/// known limitations.
+#[test]
+fn a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd() {
+    let rt = runtime();
+    for cwd in ["/work", "/work/nested/deeper", "/"] {
+        let job = snapshot(&[("/work/nested/deeper/a.txt", "x")]).fork();
+        let mut inv = invocation(job.as_dyn(), &[]);
+        inv.cwd = cwd.into();
+        let outcome = rt
+            .run_command(&wat_module("preopens", PREOPENS), inv.clone())
+            .unwrap();
+        assert!(outcome.success(), "{cwd}: {outcome:?}");
+        assert_eq!(String::from_utf8_lossy(&outcome.stdout), "/\n", "cwd {cwd}");
+
+        let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+        let stdout = String::from_utf8_lossy(&outcome.stdout);
+        assert!(stdout.contains(&format!("\0PWD={cwd}\0")), "{stdout:?}");
+    }
+}
+
 #[test]
 fn an_infinite_loop_is_stopped_by_the_timeout() {
     let rt = runtime();

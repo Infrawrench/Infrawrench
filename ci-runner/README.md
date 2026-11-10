@@ -149,7 +149,7 @@ everything through.
 | `run`        | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
 | `name`       | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
 | `matrix`     | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
-| `cwd`        | Working directory in the isolate. Defaults to the clone.                                                                                                                       |
+| `cwd`        | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                 |
 | `env`        | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
 | `clone`      | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
 | `deps`       | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
@@ -611,10 +611,11 @@ objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
 Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
 `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
-to their `cwd` (Go's `wasip1` port reads
-its working directory from it). Installers add their own: Go jobs get
-`GOMODCACHE`, `GOPROXY=off`, `GOFLAGS=-mod=readonly` and friends, Cargo jobs
-`CARGO_NET_OFFLINE=true`.
+to their `cwd`. That is the only way a plain WASI tool learns its working
+directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
+[Known limitations](#known-limitations)). Installers add their own: Go
+jobs get `GOMODCACHE`, `GOPROXY=off`, `GOFLAGS=-mod=readonly` and friends,
+Cargo jobs `CARGO_NET_OFFLINE=true`.
 
 On a warm cache, a five-job pipeline (bash, a dynamic matrix, gofmt with a
 commit) runs in about 0.35 s.
@@ -779,6 +780,24 @@ schedule once per runner. Its README has the routes; the short version:
   such file or directory"); it writes into one that exists, and
   `head -c N /dev/zero > file` creates one. Writing to stdout fails too,
   because it tries to truncate it.
+- **Plain WASI tools resolve relative paths from `/`.** A `wasm32-wasip1`
+  tool built on wasi-libc (Rust, C, TinyGo) starts in `/` whatever the
+  job's `cwd`, so `.` is the root of the job's file system. The `cwd`
+  reaches it only as `$PWD`: a `repo:` tool joins relative paths onto
+  `$PWD`, or the job passes absolute paths. WASIX tools (oxfmt) ask the
+  runtime for their working directory and Go's `wasip1` port reads `$PWD`,
+  so neither is affected. Preopening the `cwd` as `.` cannot fix this, so
+  do not retry it
+  ([#906](https://github.com/Infrawrench/Infrawrench/issues/906)):
+  wasi-libc strips `/` and `.` from preopen names, so both become the
+  empty prefix; it makes a relative path
+  absolute against its own cwd, which is always `/`, before looking it up,
+  so `foo` and `/foo` arrive as the same path; and of equal matches it
+  takes the preopen registered last. With `.` before `/` nothing changes;
+  with `.` after `/` relative paths work but every absolute path
+  (`/tmp/workflow`, a tool's data files) resolves inside the `cwd`. The
+  runtime test `a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd`
+  pins the layout.
 - **A refused write reads as an I/O error** to the program (`EIO`), not
   "no space left", because Wasmer does not carry the error kind through.
   The job's report names the limit.
