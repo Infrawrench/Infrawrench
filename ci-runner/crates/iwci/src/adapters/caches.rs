@@ -234,14 +234,39 @@ impl Caches for StoreCaches {
         restore_keys: &[String],
         max_bytes: u64,
     ) -> Result<Option<Restored>, String> {
-        for scope in &self.read_scopes {
-            if let Some(entries) = self.load(&self.entry_key(scope, key), key, max_bytes)? {
-                return Ok(Some(Restored {
-                    key: key.to_string(),
-                    exact: true,
-                    entries,
-                }));
-            }
+        // The exact key is read in every scope at once (a pull request has
+        // two: its own, then the default branch's), so an entry the default
+        // branch saved does not cost a miss in the other first. The answer
+        // is still the first scope's that has one, and an error in a scope
+        // only counts if no scope before it had the entry.
+        let found = match self.read_scopes.as_slice() {
+            [only] => self.load(&self.entry_key(only, key), key, max_bytes)?,
+            scopes => std::thread::scope(|threads| {
+                let loads: Vec<_> = scopes[1..]
+                    .iter()
+                    .map(|scope| {
+                        let object = self.entry_key(scope, key);
+                        threads.spawn(move || self.load(&object, key, max_bytes))
+                    })
+                    .collect();
+                let mut found = self.load(&self.entry_key(&scopes[0], key), key, max_bytes);
+                for load in loads {
+                    let next = load
+                        .join()
+                        .unwrap_or_else(|_| Err("the cache read panicked".into()));
+                    if matches!(found, Ok(None)) {
+                        found = next;
+                    }
+                }
+                found
+            })?,
+        };
+        if let Some(entries) = found {
+            return Ok(Some(Restored {
+                key: key.to_string(),
+                exact: true,
+                entries,
+            }));
         }
         for prefix in restore_keys {
             for scope in &self.read_scopes {

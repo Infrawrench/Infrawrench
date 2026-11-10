@@ -325,13 +325,22 @@ task-cache:
   stands for what was installed. Files a job reads that its inputs leave
   out are not in the key: name them, or the job can be skipped when they
   change.
-- **On a hit** the job does not run, start a tool or take memory: it
-  passes, its report says `cached` and replays the log of the run it stands
-  for, its `outputs:` read as that run wrote them, and its artifacts reach
-  the jobs that need it. It is not billed. Keys read the bare checkout, so
-  a run whose jobs all hit never installs its workspace's dependencies.
-- **On a miss** it runs as usual, and after it passes its kept artifacts,
-  outputs and log are saved under the key. Failures are never cached.
+- **On a hit** the job does not run, start a tool, wait for a job slot or
+  take memory: it passes, its report says `cached` and replays the log of
+  the run it stands for, its `outputs:` read as that run wrote them, and
+  its artifacts reach the jobs that need it. It is not billed. Keys read
+  the bare checkout, so a run whose jobs all hit never installs its
+  workspace's dependencies.
+- **The lookup comes before the queue.** As soon as a job's `needs` have
+  finished, its key is computed and its entry read from the object store,
+  up to 64 jobs of a run at a time, whatever `--cpus` and `--memory` are
+  and whatever else the runner is doing. So a hit costs one read of the
+  store (two at once for a pull request, see [Job caches](#job-caches)),
+  and its `duration_ms` is that read.
+- **On a miss** it joins the queue and runs as usual, taking a slot and
+  its `memory:` only then, and after it passes its kept artifacts, outputs
+  and log are saved under the key it was looked up by. Its `duration_ms`
+  is the run's, without the lookup. Failures are never cached.
 - Entries are kept with the [job caches](#job-caches), scoped and counted
   the same way: a pull request's entries are never read by a push to the
   default branch.
@@ -578,6 +587,8 @@ jobs:
   branch.** A push saves into its branch's scope and reads that, then the
   default branch's (`--default-branch`, default `main`). A pull request
   saves into a scope of its own, which nothing on the default branch reads.
+  The exact `key` is read in both scopes at once, and the run's own scope
+  wins when both have it; `restore-keys` are read one scope after another.
 - **Counted against the owner's storage quota** (see below). A save that
   would pass the quota evicts the owner's oldest caches first; one larger
   than the whole quota is refused.
@@ -690,6 +701,9 @@ first compilation) and came from the cache in 0.25 s for the whole pipeline.
   stands for the job's program and its files together. The frozen workspace
   snapshots are not counted: they are built once and shared. Default: no
   budget.
+- **A task cache lookup takes neither.** A `task-cache:` job holds a slot
+  and its `memory:` only if it misses and runs (see
+  [The task cache](#the-task-cache)).
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without

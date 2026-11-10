@@ -104,6 +104,10 @@ impl RetryPolicy {
     }
 }
 
+/// Connections kept open to the bucket between requests. They close on
+/// their own after ureq's idle age (15 s), so this costs nothing at rest.
+const IDLE_CONNECTIONS: usize = 128;
+
 /// Knobs for [`R2Store`].
 #[derive(Debug, Clone)]
 pub struct R2Options {
@@ -290,6 +294,12 @@ impl R2Store {
             ));
         }
         let agent = ureq::Agent::config_builder()
+            // One bucket is one host, and a run reads many small objects at
+            // once (task cache lookups, two scopes each for a pull request).
+            // ureq keeps three idle connections to a host by default, so
+            // most of those reads would pay for a TLS handshake.
+            .max_idle_connections(IDLE_CONNECTIONS)
+            .max_idle_connections_per_host(IDLE_CONNECTIONS)
             // Statuses are classified here, not turned into errors by ureq.
             .http_status_as_error(false)
             // S3 does not redirect a correctly addressed request; following
