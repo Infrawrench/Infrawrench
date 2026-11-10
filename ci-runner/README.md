@@ -578,8 +578,10 @@ Each job has a loopback of its own, in memory, shared by that job's
 processes and nothing else. A test suite can start a server on `127.0.0.1`
 (or `0.0.0.0`, which means the same here) and connect to it; `localhost`
 resolves to it, a closed port refuses rather than reaching some other
-listener, and two jobs never see each other's ports. Nothing a job listens
-on appears on the host.
+listener, and two jobs never see each other's ports. A listener on `::`,
+which is where Node listens when it is given no host, takes connections to
+`127.0.0.1` as well as `::1`, as a dual-stack socket does. Nothing a job
+listens on appears on the host.
 
 Jobs also reach the **public internet** by default: names resolve through
 the host and connections to public addresses go out over host sockets, so a
