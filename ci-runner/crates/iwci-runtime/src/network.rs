@@ -17,7 +17,9 @@
 //! one, which means the loopback), and a connection only goes to a loopback
 //! address something in the job is listening on. Anything else is refused,
 //! exactly as an unreachable network or a closed port would be. `localhost`
-//! resolves to the loopback.
+//! resolves to the loopback. A listener on `::` takes IPv4 connections too,
+//! as a dual-stack socket does: that is where Node listens when it is given
+//! no host, and its tests then connect to `127.0.0.1`.
 //!
 //! Outbound connections to the public internet go through a host socket
 //! (wasmer's `LocalNetworking`), when the runtime has one: a job can fetch
@@ -107,15 +109,26 @@ type Result<T> = std::result::Result<T, NetworkError>;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JobNetwork {
     inner: LoopbackNetworking,
-    /// Addresses something in the job is listening on, normalised.
-    listening: Arc<Mutex<HashSet<SocketAddr>>>,
+    listening: Arc<Mutex<Listening>>,
     /// The public internet, when the runtime offers it.
     outside: Option<Outside>,
 }
 
+/// What the job is listening on.
+#[derive(Debug, Default)]
+struct Listening {
+    /// Addresses something in the job is listening on, normalised.
+    addrs: HashSet<SocketAddr>,
+    /// Ports with a listener on `::` that was not made IPv6-only. Such a
+    /// socket is dual-stack: it also takes connections to the IPv4 loopback,
+    /// unless an IPv4 listener has that port.
+    dual_stack: HashSet<u16>,
+}
+
 /// Where a connection goes.
 enum Route {
-    Loopback,
+    /// The job's own listener, at the address the inner loopback knows it by.
+    Loopback(SocketAddr),
     Outside(Arc<dyn VirtualNetworking + Send + Sync>),
 }
 
@@ -130,20 +143,27 @@ impl JobNetwork {
     fn register(
         &self,
         listener: Box<dyn VirtualTcpListener + Sync>,
+        dual_stack: bool,
     ) -> Result<Box<dyn VirtualTcpListener + Sync>> {
         let addr = normalise(listener.addr_local()?);
-        self.listening.lock().expect("listener set").insert(addr);
+        {
+            let mut listening = self.listening.lock().expect("listener set");
+            listening.addrs.insert(addr);
+            if dual_stack {
+                listening.dual_stack.insert(addr.port());
+            }
+        }
         Ok(Box::new(Listener {
             inner: listener,
             addr,
+            dual_stack,
             listening: self.listening.clone(),
         }))
     }
 
     fn route(&self, peer: SocketAddr) -> Result<Route> {
         if peer.ip().is_loopback() {
-            self.check_peer(peer)?;
-            return Ok(Route::Loopback);
+            return Ok(Route::Loopback(self.listener_for(peer)?));
         }
         match &self.outside {
             Some(outside) if outside.allows(peer.ip()) => Ok(Route::Outside(outside.net.clone())),
@@ -151,20 +171,28 @@ impl JobNetwork {
         }
     }
 
-    fn check_peer(&self, peer: SocketAddr) -> Result<()> {
-        if !peer.ip().is_loopback() {
-            return Err(NetworkError::NetworkUnreachable);
+    /// The listener a connection to the loopback address `peer` reaches:
+    /// the one on that address, or for the IPv4 loopback a dual-stack one on
+    /// the same port.
+    fn listener_for(&self, peer: SocketAddr) -> Result<SocketAddr> {
+        let peer = normalise(peer);
+        let listening = self.listening.lock().expect("listener set");
+        if listening.addrs.contains(&peer) {
+            return Ok(peer);
         }
-        if !self
-            .listening
-            .lock()
-            .expect("listener set")
-            .contains(&normalise(peer))
+        if peer.ip() == IpAddr::V4(Ipv4Addr::LOCALHOST)
+            && listening.dual_stack.contains(&peer.port())
         {
-            return Err(NetworkError::ConnectionRefused);
+            return Ok(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), peer.port()));
         }
-        Ok(())
+        Err(NetworkError::ConnectionRefused)
     }
+}
+
+/// Whether a socket bound to `addr` takes IPv4 connections as well: one on
+/// the IPv6 unspecified address that was not made IPv6-only.
+fn dual_stack(addr: SocketAddr, only_v6: bool) -> bool {
+    !only_v6 && matches!(addr.ip(), IpAddr::V6(ip) if ip.is_unspecified())
 }
 
 /// The unspecified address means the loopback here, as the inner loopback
@@ -259,7 +287,7 @@ impl VirtualNetworking for JobNetwork {
             .inner
             .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
             .await?;
-        self.register(listener)
+        self.register(listener, dual_stack(addr, only_v6))
     }
 
     async fn bind_tcp(
@@ -278,6 +306,7 @@ impl VirtualNetworking for JobNetwork {
             .await?;
         Ok(Box::new(Bound {
             inner,
+            dual_stack: dual_stack(addr, only_v6),
             network: self.clone(),
         }))
     }
@@ -345,6 +374,8 @@ impl VirtualNetworking for JobNetwork {
 #[derive(Debug)]
 struct Bound {
     inner: Box<dyn VirtualTcpBoundSocket + Sync>,
+    /// Whether a listener made from this socket takes IPv4 as well.
+    dual_stack: bool,
     network: JobNetwork,
 }
 
@@ -355,12 +386,12 @@ impl VirtualTcpBoundSocket for Bound {
 
     fn listen(&mut self) -> Result<Box<dyn VirtualTcpListener + Sync>> {
         let listener = self.inner.listen()?;
-        self.network.register(listener)
+        self.network.register(listener, self.dual_stack)
     }
 
     fn connect(&mut self, peer: SocketAddr) -> Result<Box<dyn VirtualTcpSocket + Sync>> {
         match self.network.route(peer)? {
-            Route::Loopback => self.inner.connect(peer),
+            Route::Loopback(listener) => self.inner.connect(listener),
             // A socket bound first (to the loopback) and then connected
             // outside leaves by a host socket of its own. The host connect
             // does not wait on anything, so blocking on it is immediate.
@@ -390,15 +421,17 @@ impl VirtualTcpBoundSocket for Bound {
 struct Listener {
     inner: Box<dyn VirtualTcpListener + Sync>,
     addr: SocketAddr,
-    listening: Arc<Mutex<HashSet<SocketAddr>>>,
+    dual_stack: bool,
+    listening: Arc<Mutex<Listening>>,
 }
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        self.listening
-            .lock()
-            .expect("listener set")
-            .remove(&self.addr);
+        let mut listening = self.listening.lock().expect("listener set");
+        listening.addrs.remove(&self.addr);
+        if self.dual_stack {
+            listening.dual_stack.remove(&self.addr.port());
+        }
     }
 }
 
@@ -524,6 +557,82 @@ mod tests {
             block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:8080"))),
             Err(NetworkError::ConnectionRefused)
         ));
+    }
+
+    #[test]
+    fn a_listener_on_the_ipv6_unspecified_address_takes_ipv4_too() {
+        // Where Node listens when it is given no host; its callers then
+        // connect to 127.0.0.1.
+        let net = JobNetwork::new(None);
+        let mut listener =
+            block_on(net.listen_tcp(addr("[::]:8080"), false, false, false)).unwrap();
+        for peer in ["127.0.0.1:8080", "[::1]:8080"] {
+            let mut client = block_on(net.connect_tcp(any_v4(), addr(peer))).unwrap();
+            let (mut server, _) = listener.try_accept().unwrap();
+            assert_eq!(
+                round_trip(client.as_mut(), server.as_mut(), b"ping"),
+                b"ping",
+                "{peer}"
+            );
+        }
+        // The same through a socket bound first, as libuv makes its
+        // listeners and its connections.
+        let mut bound = block_on(net.bind_tcp(addr("[::]:9000"), false, false, false)).unwrap();
+        let mut listener = bound.listen().unwrap();
+        let mut from = block_on(net.bind_tcp(addr("127.0.0.1:0"), false, false, false)).unwrap();
+        let mut client = from.connect(addr("127.0.0.1:9000")).unwrap();
+        let (mut server, _) = listener.try_accept().unwrap();
+        assert_eq!(
+            round_trip(client.as_mut(), server.as_mut(), b"ping"),
+            b"ping"
+        );
+
+        // A closed port is still refused, and the port goes with the listener.
+        assert!(matches!(
+            block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:8081"))),
+            Err(NetworkError::ConnectionRefused)
+        ));
+        drop(listener);
+        assert!(matches!(
+            block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:9000"))),
+            Err(NetworkError::ConnectionRefused)
+        ));
+    }
+
+    #[test]
+    fn only_a_dual_stack_listener_crosses_families() {
+        let net = JobNetwork::new(None);
+        // IPv6-only, the IPv6 loopback itself, and IPv4 listeners do not.
+        let _only_v6 = block_on(net.listen_tcp(addr("[::]:7001"), true, false, false)).unwrap();
+        let _v6_loopback =
+            block_on(net.listen_tcp(addr("[::1]:7002"), false, false, false)).unwrap();
+        for port in [7001, 7002] {
+            assert!(
+                matches!(
+                    block_on(
+                        net.connect_tcp(
+                            any_v4(),
+                            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), port)
+                        )
+                    ),
+                    Err(NetworkError::ConnectionRefused)
+                ),
+                "{port}"
+            );
+        }
+        let _v4 = block_on(net.listen_tcp(addr("0.0.0.0:7003"), false, false, false)).unwrap();
+        assert!(matches!(
+            block_on(net.connect_tcp(addr("[::]:0"), addr("[::1]:7003"))),
+            Err(NetworkError::ConnectionRefused)
+        ));
+
+        // An IPv4 listener on the port of a dual-stack one keeps its own
+        // connections.
+        let mut dual = block_on(net.listen_tcp(addr("[::]:7004"), false, false, false)).unwrap();
+        let mut v4 = block_on(net.listen_tcp(addr("127.0.0.1:7004"), false, false, false)).unwrap();
+        let _client = block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:7004"))).unwrap();
+        assert!(v4.try_accept().is_ok());
+        assert!(dual.try_accept().is_err());
     }
 
     #[test]
