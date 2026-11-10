@@ -27,7 +27,7 @@ After you rotate a token or tighten a policy, open the account page and click **
 
 ## Generate a least-privilege policy
 
-The same panel builds the exact credential template for the capabilities you want. Tick the capabilities the account should have, then copy the result:
+The same panel builds the exact credential template for what the account should do. When a provider powers several apps, the template follows the apps you ticked under **Use this connection for** (see [Choose what the connection is for](../getting-started/add-first-account.md#choose-what-the-connection-is-for)) and lists the capabilities it covers. Otherwise, tick the capabilities the account should have. Then copy the result:
 
 - **AWS**: an IAM policy JSON document. Attach it as an inline policy on the IAM user or role whose keys you entered.
 - **GCP**: a custom role definition in YAML for `gcloud iam roles create --file`. Then grant the role to the service account. Cost reporting also needs the role or BigQuery Data Viewer on the billing export dataset.
@@ -44,7 +44,7 @@ The same panel builds the exact credential template for the capabilities you wan
 
 ![Least-privilege template generator with the costs capability deselected and the generated AWS IAM policy JSON shown with a Copy button](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/credential-preflight/policy-template-generator.png)
 
-Untick a capability and its permissions drop out of the template. The AWS template also includes `iam:SimulatePrincipalPolicy`, so later checks can report exact per-permission results.
+Untick an app or a capability and its permissions drop out of the template. The AWS template also includes `iam:SimulatePrincipalPolicy`, so later checks can report exact per-permission results.
 
 ## Supported plugins
 

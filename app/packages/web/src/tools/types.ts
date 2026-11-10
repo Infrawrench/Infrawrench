@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from "zod";
+import type { ProductId } from "@infrawrench/client-core";
 import type { Permission } from "@infrawrench/server-core/permissions/catalog";
 
 /**
@@ -118,6 +119,16 @@ export interface ToolDefinition {
    * host the caller types). A provider-narrowed principal can never use it.
    */
   spansProviders?: boolean;
+  /**
+   * The app ("product") this tool belongs to, when it belongs to one. An
+   * organization that has turned the app off is neither offered the tool nor
+   * allowed to call it ({@link authorizeToolCall}). Set in `./registry` by
+   * factory (`forProduct`) or by name (`./products`), not on each definition.
+   * Unset means the tool is always available: resources, accounts, DNS and
+   * the rest of Infrastructure, which cannot be turned off, plus the tools
+   * that cut across apps.
+   */
+  product?: ProductId;
   handler(input: Record<string, unknown>, auth: ToolAuthContext): Promise<ToolResult>;
 }
 

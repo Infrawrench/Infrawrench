@@ -1,13 +1,16 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import {
   buildPreflightChecklist,
+  capabilityIdsForProducts,
   defaultTemplateCapabilityIds,
+  offersProductChoice,
   summarizePreflight,
   type PolicyTemplate,
   type PreflightChecklistRow,
   type PreflightDeclaration,
   type PreflightReport,
+  type ProductId,
 } from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
 import { Modal } from "./Modal.js";
@@ -30,6 +33,15 @@ export interface CredentialPreflightPanelProps {
   fetchPolicyTemplate?: ((capabilityIds: string[]) => Promise<PolicyTemplate>) | undefined;
   /** Desktop routes external links through the shell instead of the renderer. */
   onOpenExternal?: ((url: string) => void) | undefined;
+  /**
+   * The apps the connection is for (`null` is every app). When given, and
+   * the plugin offers a choice of apps, the panel covers only what those
+   * apps need: the checklist lists their capabilities, the template is
+   * scoped to them, and the capability checkboxes give way to a read-only
+   * list. Left out, the panel covers every capability and keeps the
+   * checkboxes.
+   */
+  products?: readonly ProductId[] | null | undefined;
 }
 
 function StatusGlyph({ status }: { status: PreflightChecklistRow["status"] }) {
@@ -110,6 +122,7 @@ export function CredentialPreflightPanel({
   runPreflight,
   fetchPolicyTemplate,
   onOpenExternal,
+  products,
 }: CredentialPreflightPanelProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -126,7 +139,24 @@ export function CredentialPreflightPanel({
   const [generatorError, setGeneratorError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const rows = useMemo(() => buildPreflightChecklist(declaration, report), [declaration, report]);
+  // The apps decide the capabilities when the host passes them and the plugin
+  // offers a choice; the key keeps the memo stable across equal selections.
+  const derived = products !== undefined && offersProductChoice(declaration);
+  const derivedKey = derived ? capabilityIdsForProducts(declaration, products).join("\n") : null;
+  const scoped = useMemo(() => {
+    if (derivedKey === null) return declaration;
+    const wanted = new Set(derivedKey === "" ? [] : derivedKey.split("\n"));
+    return {
+      ...declaration,
+      capabilities: declaration.capabilities.filter((cap) => wanted.has(cap.id)),
+    };
+  }, [declaration, derivedKey]);
+  const activeIds = useMemo(
+    () => (derivedKey === null ? selectedIds : scoped.capabilities.map((cap) => cap.id)),
+    [derivedKey, scoped, selectedIds],
+  );
+
+  const rows = useMemo(() => buildPreflightChecklist(scoped, report), [scoped, report]);
   const summary = useMemo(() => summarizePreflight(rows), [rows]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -162,6 +192,25 @@ export function CredentialPreflightPanel({
       if (seq === generateSeq.current) setGenerating(false);
     }
   }
+
+  // A change of apps makes the shown template stale: rebuild it when the
+  // generator is open, drop it otherwise (opening the generator builds it).
+  const templateKey = useRef(derivedKey);
+  useEffect(() => {
+    if (templateKey.current === derivedKey) return;
+    templateKey.current = derivedKey;
+    if (derivedKey === null) return;
+    if (showGenerator && activeIds.length > 0) {
+      void generate(activeIds);
+    } else {
+      generateSeq.current++;
+      setTemplate(null);
+      setGeneratorError(null);
+      setGenerating(false);
+    }
+    // `generate` is recreated every render; the key above is what gates this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedKey, showGenerator, activeIds]);
 
   async function copyTemplate() {
     if (!template) return;
@@ -253,7 +302,7 @@ export function CredentialPreflightPanel({
             onClick={() => {
               const next = !showGenerator;
               setShowGenerator(next);
-              if (next && !template) void generate(selectedIds);
+              if (next && !template && activeIds.length > 0) void generate(activeIds);
             }}
             className="text-xs text-info hover:text-info-strong"
           >
@@ -266,42 +315,51 @@ export function CredentialPreflightPanel({
 
           {showGenerator && (
             <div className="mt-2 space-y-2">
-              <fieldset>
-                <legend className="text-xs text-on-surface-faint mb-1">
-                  {gt("Scope the credential to:")}
-                </legend>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {declaration.capabilities.map((cap) => (
-                    <label
-                      key={cap.id}
-                      className="inline-flex items-center gap-1.5 text-xs text-on-surface-secondary"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedIdSet.has(cap.id)}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...selectedIds, cap.id]
-                            : selectedIds.filter((id) => id !== cap.id);
-                          setSelectedIds(next);
-                          if (next.length > 0) {
-                            void generate(next);
-                          } else {
-                            // Unchecking everything invalidates any in-flight
-                            // generate: a late resolution must not resurrect
-                            // a template for a now-empty selection.
-                            generateSeq.current++;
-                            setTemplate(null);
-                            setGeneratorError(null);
-                            setGenerating(false);
-                          }
-                        }}
-                      />
-                      {gtData(cap.label)}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+              {derived ? (
+                <p className="text-xs text-on-surface-faint">
+                  {gt("Covers what the chosen apps need:")}{" "}
+                  <span className="text-on-surface-secondary">
+                    {scoped.capabilities.map((cap) => gtData(cap.label)).join(", ")}
+                  </span>
+                </p>
+              ) : (
+                <fieldset>
+                  <legend className="text-xs text-on-surface-faint mb-1">
+                    {gt("Scope the credential to:")}
+                  </legend>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {declaration.capabilities.map((cap) => (
+                      <label
+                        key={cap.id}
+                        className="inline-flex items-center gap-1.5 text-xs text-on-surface-secondary"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIdSet.has(cap.id)}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...selectedIds, cap.id]
+                              : selectedIds.filter((id) => id !== cap.id);
+                            setSelectedIds(next);
+                            if (next.length > 0) {
+                              void generate(next);
+                            } else {
+                              // Unchecking everything invalidates any in-flight
+                              // generate: a late resolution must not resurrect
+                              // a template for a now-empty selection.
+                              generateSeq.current++;
+                              setTemplate(null);
+                              setGeneratorError(null);
+                              setGenerating(false);
+                            }
+                          }}
+                        />
+                        {gtData(cap.label)}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
 
               {generatorError && <p className="text-xs text-danger">{generatorError}</p>}
               {generating && <p className="text-xs text-on-surface-faint">{gt("Generating…")}</p>}

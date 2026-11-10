@@ -73,16 +73,18 @@ const GLYPHS: Record<ProductId | "dashboards" | "chat", React.ReactNode> = {
 
 /**
  * Each product's own colour, so the grid reads as several apps rather than
- * one list. Literal class names: Tailwind only emits classes it can see.
+ * one list. The chart series tokens, because fixed palette colours cannot
+ * clear contrast in both schemes (theme-contrast.test.ts). Literal class
+ * names: Tailwind only emits classes it can see.
  */
 const TINTS: Record<ProductId | "dashboards" | "chat", string> = {
-  infrastructure: "bg-sky-500/10 text-sky-400",
-  costs: "bg-emerald-500/10 text-emerald-400",
-  observability: "bg-violet-500/10 text-violet-400",
-  incidents: "bg-rose-500/10 text-rose-400",
-  security: "bg-amber-500/10 text-amber-400",
-  delivery: "bg-orange-500/10 text-orange-400",
-  automation: "bg-teal-500/10 text-teal-400",
+  infrastructure: "bg-surface-overlay text-series-1",
+  costs: "bg-surface-overlay text-series-2",
+  observability: "bg-surface-overlay text-series-3",
+  incidents: "bg-surface-overlay text-series-4",
+  security: "bg-surface-overlay text-series-5",
+  delivery: "bg-surface-overlay text-series-6",
+  automation: "bg-surface-overlay text-series-7",
   dashboards: "bg-surface-overlay text-on-surface-secondary",
   chat: "bg-surface-overlay text-on-surface-secondary",
 };

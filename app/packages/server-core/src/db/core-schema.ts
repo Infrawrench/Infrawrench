@@ -172,6 +172,14 @@ export const accounts = pgTable(
      * UI show a Reconnect prompt without decrypting.
      */
     oauthStatus: text("oauth_status"),
+    /**
+     * The apps this connection is for, as product ids (`costs`, `security`,
+     * ...). NULL means every app the plugin offers, which is what every
+     * account connected before the choice existed has. The poller's claims
+     * read it (`account-products.ts`): a costs-only connection is never
+     * resource-synced, and one without `costs` never has its bill read.
+     */
+    products: jsonb("products").$type<string[]>(),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

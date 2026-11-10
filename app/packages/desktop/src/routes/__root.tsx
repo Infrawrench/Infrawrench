@@ -16,6 +16,8 @@ import {
   toast,
   TunnelSshAttachModal,
   useUIStore,
+  ManageAccountsModal,
+  type ManagedAccountGroup,
   useShowsInfrastructureSidebar,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
@@ -72,6 +74,7 @@ import {
   type CloudOrg,
 } from "../lib/cloud-api";
 import {
+  accountTabTarget,
   homeTabTarget,
   dashboardTabTarget,
   settingsTabTarget,
@@ -291,6 +294,8 @@ function RootLayout() {
   // window.location.search is always empty: read it from router state.
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showManageAccounts, setShowManageAccounts] = useState(false);
+  const [accountGroups, setAccountGroups] = useState<ManagedAccountGroup[]>([]);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
   const [tunnelAttach, setTunnelAttach] = useState<{
@@ -706,18 +711,38 @@ function RootLayout() {
                       context. Hidden rather than unmounted so expanded
                       accounts and their refresh timers survive. */}
                   <div hidden={!showAccounts}>
-                    <SidebarAccounts refreshKey={accountsVersion} />
+                    <SidebarAccounts
+                      refreshKey={accountsVersion}
+                      onGroupsChange={setAccountGroups}
+                    />
                   </div>
                 </div>
 
                 <div className="border-t border-border p-2">
                   <button
                     type="button"
-                    onClick={() => setShowAddAccount(true)}
+                    onClick={() => setShowManageAccounts(true)}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
-                    <span className="text-base leading-none">+</span>
-                    {gt("Add account")}
+                    {/* lucide: plug */}
+                    <svg
+                      aria-hidden="true"
+                      width={14}
+                      height={14}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="opacity-60"
+                    >
+                      <path d="M12 22v-5" />
+                      <path d="M9 8V2" />
+                      <path d="M15 8V2" />
+                      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+                    </svg>
+                    {gt("Manage accounts")}
                   </button>
                   {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections
@@ -800,6 +825,18 @@ function RootLayout() {
               <Outlet />
             </main>
 
+            {showManageAccounts && (
+              <ManageAccountsModal
+                groups={accountGroups}
+                onClose={() => setShowManageAccounts(false)}
+                onAddAccount={() => setShowAddAccount(true)}
+                onOpenAccount={(accountId, displayName) =>
+                  void navigateToWorkspaceTarget(navigate, accountTabTarget(accountId), {
+                    label: displayName,
+                  })
+                }
+              />
+            )}
             {showAddAccount && (
               <AddAccountModal
                 onClose={() => setShowAddAccount(false)}

@@ -30,6 +30,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { accountNetworkFlowPolls } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
+import { accountProductCondition, pluginIdsOffering } from "../runtime/account-products";
 import { NetworkFlowSetupError } from "@infrawrench/plugin-base";
 
 import { collectAccountNetworkFlows, type NetworkFlowCollectionResult } from "./collect";
@@ -103,10 +104,15 @@ export interface ClaimedNetworkFlowAccount {
  * present the identity it held the first time; one token covers every row in
  * one statement because a renewal names its account too, and the accounts in a
  * batch are distinct by construction.
+ *
+ * Flow attribution is spend, so an account connected without Costs is left
+ * out: `costChoicePluginIds` are the plugins that offer Costs as a choice
+ * (`runtime/account-products.ts`).
  */
 export async function claimDueNetworkFlowAccounts(
   limit: number,
   flowCapablePluginIds: string[],
+  costChoicePluginIds: readonly string[],
 ): Promise<ClaimedNetworkFlowAccount[]> {
   if (flowCapablePluginIds.length === 0) return [];
   const owner = randomUUID();
@@ -126,6 +132,7 @@ export async function claimDueNetworkFlowAccounts(
       -- placeholder list, which is what IN takes. See claimDueCostAccounts.
       AND a.plugin_id IN ${flowCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+      ${accountProductCondition("costs", costChoicePluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -288,6 +295,7 @@ export async function runNetworkFlowPass(
   const claimed = await claimDueNetworkFlowAccounts(
     opts.limit ?? NETWORK_FLOWS_PER_TICK,
     flowCapable,
+    pluginIdsOffering(loaded, "costs"),
   );
   if (claimed.length === 0) return { claimed: 0 };
   await Promise.allSettled(claimed.map((row) => runOne(row, claimedAt)));

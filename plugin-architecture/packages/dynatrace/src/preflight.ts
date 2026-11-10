@@ -43,12 +43,14 @@ export const CAPABILITIES: PreflightCapability[] = [
   },
   {
     id: "slo",
+    product: "observability",
     label: "Service-level objectives",
     description: "List, create, edit and delete SLOs.",
     requiredPermissions: [perm("slo.read"), perm("slo.write")],
   },
   {
     id: "synthetic",
+    product: "observability",
     label: "Synthetic monitors",
     description: "List, create, turn off and on, and delete synthetic monitors.",
     requiredPermissions: [perm("ExternalSyntheticIntegration")],

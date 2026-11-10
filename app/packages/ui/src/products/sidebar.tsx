@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { useUIStore } from "../store/ui.store.js";
-import { ProductIcon } from "./ProductIcon.js";
 import { useProductCopy } from "./copy.js";
 import {
   PRODUCTS,
@@ -163,10 +162,9 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
     ...PRODUCTS.map((product) => ({
       id: product.id as string,
       name: copy[product.id].name,
-      icon: <ProductIcon product={product.id} size={18} />,
       tools: byProduct[product.id],
     })),
-    { id: "more", name: gt("More tools"), icon: null, tools: unclaimed },
+    { id: "more", name: gt("More tools"), tools: unclaimed },
   ].filter((group) => group.tools.length > 0);
   if (groups.length === 0) return null;
 
@@ -203,7 +201,6 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
                 {/* lucide: chevron-right */}
                 <path d="m9 18 6-6-6-6" />
               </svg>
-              {group.icon}
               <span className="truncate text-on-surface-secondary">{group.name}</span>
             </button>
             {expanded &&

@@ -35,7 +35,7 @@ The first time you open the app, a welcome screen explains what signing in to In
 
 <insert [First-run welcome screen listing the cloud perks with Sign in and Continue without an account buttons] here>
 
-Either way, next you click **Add account** to connect your first cloud or service. See [Add your first account](./add-first-account.md).
+Either way, next you click **Manage accounts**, then **Add account**, to connect your first cloud or service. See [Add your first account](./add-first-account.md).
 
 ### SSH keys
 

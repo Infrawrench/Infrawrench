@@ -6,7 +6,7 @@ sidebar_order: 0
 
 Infrawrench is one application made of several apps. Each app covers one job, has its own page and its own tools, and can be used without the others. They all work on the same connected accounts and resources, so what one app knows shows up in the others.
 
-**Home** is the page you land on. It shows every app as a card. It is also what a new tab opens on.
+**Home** shows every app as a card. It is what a new tab opens on, and where you land the first time you open Infrawrench.
 
 ![The Home tab showing the grid of seven app cards, the search field above them, and the "Across every app" row with Dashboards and Chat](https://agent-assets.infrawrench.com/docs-screenshots/features/home/home-dark.png)
 
@@ -92,16 +92,48 @@ Each app opens in its own tab, so you can keep several open side by side. **Home
 
 ## Find a tool
 
-Type in the search field on Home. It matches app names and tool names, so searching for `probes` shows the Probes tool and the Observability app it belongs to.
+- **The sidebar** lists the apps under **Apps**, below Dashboards and Chat. Click an app to expand it, then click a tool to open it. The apps you opened stay open, and the app of the tool you are looking at is always expanded.
+- **Recent**, above the apps, lists the last few tools you used, newest first. It is remembered in this browser, per organization.
+- **Search on Home** matches app names and tool names, so searching for `probes` shows the Probes tool and the Observability app it belongs to.
+- **[Spotlight](./spotlight-search.md)** (Cmd/Ctrl + K) has a "Go to" entry for Home and for every tool.
 
-The **Tools** button in the sidebar is still there. It opens a launcher with every tool in one searchable grid, which is quicker when you already know the tool's name.
+## The rest of the sidebar
 
-## The sidebar
+From the top:
 
-- **Home** and **Tools** are always at the top.
-- **Recent** lists the last few tools you used, newest first, so the ones you live in are one click away. It is remembered in this browser, per organization.
-- **Dashboards** and **Chat** are always there.
-- Your connected provider accounts and their resources belong to Infrastructure. They show while you are in Infrastructure (its page, its tools, an account or a resource) and on dashboards, where you drag resources from the sidebar to pin them. Elsewhere they are hidden, so the sidebar stays short.
+- **Home**.
+- **Dashboards** and **Chat**.
+- **Recent** and **Apps**.
+- Your connected provider accounts and their resources. They belong to Infrastructure, so they show while you are in Infrastructure (its page, its tools, an account or a resource) and on dashboards, where you drag resources from the sidebar to pin them. Elsewhere they are hidden, so the sidebar stays short.
+- **Manage accounts**, at the bottom, lists every connected account by provider from anywhere in the app. Click one to open it, or **Add account** to connect another.
+
+## Where you land
+
+Opening Infrawrench takes you back to the tab you had open last time. If there is none, you land on Home. A link to a specific page always opens that page.
+
+## Turn apps off
+
+An organization that does not use an app can turn it off. Open **Settings**, then **Apps**, and switch the app off. The change is saved at once and applies to everyone in the organization.
+
+![The Apps page in Settings with a switch per app, Incident response turned off and Infrastructure locked on](https://agent-assets.infrawrench.com/docs-screenshots/features/home/settings-apps-dark.png)
+
+Infrastructure cannot be turned off. It holds your accounts and resources, which every other app reads.
+
+**Who can do it.** Changing the switches needs the `org:settings:write` permission. Owners hold it. The built-in Admin role does not, so an admin sees the page but cannot change it. A [custom role](../team-and-billing/roles-and-permissions.md) can be given the permission. Every member can open the page and see which apps are on.
+
+**What it hides.** An app that is off is removed from:
+
+- Home, including search on Home
+- the **Apps** list and **Recent** in the sidebar
+- the "Go to" entries in [Spotlight](./spotlight-search.md)
+
+Opening a link to the app's page says that your organization has turned the app off.
+
+**Chat and MCP follow.** The [chat](./ai-chat.md) assistant and the [MCP server](./mcp.md) are not offered the tools of an app that is off, and a call to one is refused with a message that names the app. Tools for resources, accounts and domains always stay available.
+
+**What it does not do.** Turning an app off does not delete anything. Data keeps being collected, alerts and schedules that are already set up keep running, and switching the app back on shows everything as it was. It also does not block the [HTTP API](../team-and-billing/openapi.md): API keys, the CLI and the Terraform provider can still call the routes behind the app, under the permissions they hold. To stop someone using a feature, take the permission away from their role or key.
+
+The desktop app follows the setting when it is signed in to a cloud organization. Without one, every app shows.
 
 ## What sits across every app
 
@@ -110,4 +142,4 @@ Two things are not tied to one app:
 - **[Dashboards](./dashboard.md)** pin resources, cost graphs, budgets and notes from any app to one grid. The Dashboards card opens your default dashboard.
 - **[Chat](./ai-chat.md)** is one assistant that can use the tools of every app.
 
-Both are also in the sidebar, under the **Home** and **Tools** buttons.
+Both are also in the sidebar.

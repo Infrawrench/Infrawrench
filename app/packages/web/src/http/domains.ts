@@ -116,6 +116,7 @@ import { dashboardsDomain } from "./domains/dashboards/index";
 import { searchDomain } from "./domains/search/index";
 import { starredDomain } from "./domains/starred/index";
 import { orgFeaturesDomain } from "./domains/org-features/index";
+import { productsDomain } from "./domains/products/index";
 import { ciDomain } from "./domains/ci/index";
 import { orgConfigDomain } from "./domains/org-config/index";
 import { costVisibilityDomain } from "./domains/cost-visibility/index";
@@ -272,6 +273,7 @@ export const DOMAINS: readonly Domain[] = [
   searchDomain,
   starredDomain,
   orgFeaturesDomain,
+  productsDomain,
   ciDomain,
   orgConfigDomain,
   costVisibilityDomain,

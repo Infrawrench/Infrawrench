@@ -4,7 +4,7 @@ import {
   type AccountReferenceOption,
   type PluginInfo,
 } from "@infrawrench/ui";
-import { runAccountPreflight, type PolicyTemplate } from "@infrawrench/client-core";
+import { runAccountPreflight, type PolicyTemplate, type ProductId } from "@infrawrench/client-core";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { loadPlugins, getPlugin } from "../plugins/loader";
@@ -105,11 +105,15 @@ export function AddAccountModal({
       displayName: string,
       credentials: Record<string, string>,
       _bastionId: string | null,
+      products: ProductId[] | null,
     ) => {
       if (orgId) {
-        await createCloudAccount(orgId, pluginId, displayName, credentials);
+        await createCloudAccount(orgId, pluginId, displayName, credentials, products);
         return;
       }
+      // Local mode has no poller and collects no costs, so there is nothing
+      // for the choice to switch off: it shaped the policy template in the
+      // form and is not stored.
       const accountId = crypto.randomUUID();
       await createLocalAccount({ accountId, pluginId, displayName, credentials });
     },

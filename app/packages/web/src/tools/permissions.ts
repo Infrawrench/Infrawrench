@@ -8,7 +8,9 @@
  * and `chat/agent.ts`) rather than per-handler, so a newly added tool cannot
  * forget to gate itself.
  */
+import { PRODUCT_NAMES, type ProductId } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { disabledProducts } from "@infrawrench/server-core/products/settings";
 import {
   holdsForPlugin,
   holdsForSomePlugin,
@@ -49,16 +51,47 @@ export async function denyUnlessPermitted(
   return null;
 }
 
+/** What a caller reads when it calls a tool of an app its organization turned off. */
+export function productDisabledMessage(product: ProductId): string {
+  return `The ${PRODUCT_NAMES[product]} app is turned off for this organization`;
+}
+
+/**
+ * The tools to offer a caller acting in `organizationId`: the registry minus
+ * the tools of apps the organization has turned off. Offering is a
+ * convenience, not the gate (a tool it cannot use is noise in a model's
+ * context); {@link authorizeToolCall} refuses the call either way. The
+ * policy is read only when some tool is tagged, and once per listing.
+ */
+export async function toolsOfferedTo<T extends Pick<ToolDefinition, "product">>(
+  tools: readonly T[],
+  organizationId: string,
+): Promise<T[]> {
+  if (!tools.some((tool) => tool.product)) return [...tools];
+  const disabled = await disabledProducts(organizationId);
+  if (disabled.length === 0) return [...tools];
+  return tools.filter((tool) => !tool.product || !disabled.includes(tool.product));
+}
+
 /**
  * Central authorization gate. Every dispatch site MUST call this before
  * invoking `tool.handler`. Returns an error ToolResult for the caller, or null
  * when the call is authorized.
+ *
+ * The organization's app policy comes first, ahead of the permission: a tool
+ * of a turned-off app is refused for everyone, an owner and a `permission:
+ * null` tool included, and the refusal says why rather than reading as a
+ * missing permission. Re-read per call, like the permissions, so turning an
+ * app off takes effect on the next tool call of a turn already running.
  */
 export async function authorizeToolCall(
-  tool: Pick<ToolDefinition, "permission" | "pluginId" | "spansProviders">,
+  tool: Pick<ToolDefinition, "permission" | "pluginId" | "spansProviders" | "product">,
   auth: ToolAuthContext,
   input: Record<string, unknown> = {},
 ): Promise<ToolResult | null> {
+  if (tool.product && (await disabledProducts(auth.organizationId)).includes(tool.product)) {
+    return err(productDisabledMessage(tool.product));
+  }
   if (tool.permission === null) return null;
   const granted = await effectiveToolPermissions(auth);
   if (hasPermission(granted, tool.permission)) return null;

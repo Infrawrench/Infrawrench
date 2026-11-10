@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { useGT } from "gt-react";
-import type {
-  PolicyTemplate,
-  PreflightDeclaration,
-  PreflightReport,
+import {
+  offersProductChoice,
+  productsOfferedBy,
+  productsToSubmit,
+  type PolicyTemplate,
+  type PreflightDeclaration,
+  type PreflightReport,
+  type ProductId,
 } from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
+import { ConnectionProductsPicker } from "./ConnectionProducts.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
 import { ProviderOptionsField, type LoadCredentialOptions } from "./ProviderOptionsField.js";
@@ -87,6 +92,12 @@ interface AddAccountModalProps {
     displayName: string,
     credentials: Record<string, string>,
     bastionId: string | null,
+    /**
+     * The apps the connection is for, when the plugin offers a choice and the
+     * user left some out; `null` for every app. A host with nothing to store
+     * it on (desktop local mode) ignores it.
+     */
+    products: ProductId[] | null,
   ) => Promise<void>;
   /**
    * Optional list of bastions the user can route this account through. When
@@ -180,6 +191,9 @@ export function AddAccountModal({
   const [accountName, setAccountName] = useState(prefilledDisplayName ?? "");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [bastionId, setBastionId] = useState<string>("");
+  // The apps this connection is for: everything the plugin offers until the
+  // user unchecks some. Feeds the policy template and is saved on the account.
+  const [products, setProducts] = useState<ProductId[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -206,6 +220,7 @@ export function AddAccountModal({
     const match = plugins.find((p) => p.id === prefilledPluginId);
     if (!match) return;
     setSelected(match);
+    setProducts(productsOfferedBy(match.preflight));
     setFieldValues(
       Object.fromEntries(
         match.credentialFields.map((f) => [
@@ -223,6 +238,7 @@ export function AddAccountModal({
     oauth.setError(null);
     setOauthCredentials(null);
     setSelected(p);
+    setProducts(productsOfferedBy(p.preflight));
     setAccountName("");
     setFieldValues(
       Object.fromEntries(
@@ -262,7 +278,13 @@ export function AddAccountModal({
           ]),
         ),
       };
-      await saveAccount(selected.id, accountName.trim(), credentials, bastionId || null);
+      await saveAccount(
+        selected.id,
+        accountName.trim(),
+        credentials,
+        bastionId || null,
+        productsToSubmit(selected.preflight, products),
+      );
       onAdded();
       onClose();
     } catch (e) {
@@ -594,10 +616,20 @@ export function AddAccountModal({
                     </div>
                   )}
 
+                  {selected.preflight && offersProductChoice(selected.preflight) && (
+                    <ConnectionProductsPicker
+                      declaration={selected.preflight}
+                      value={products}
+                      onChange={setProducts}
+                      disabled={saving}
+                    />
+                  )}
+
                   {selected.preflight && (
                     <CredentialPreflightPanel
                       key={selected.id}
                       declaration={selected.preflight}
+                      products={products}
                       runPreflight={
                         runPreflight && credsReady
                           ? () => runPreflight(selected.id, buildCredentials(), bastionId || null)

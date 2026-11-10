@@ -3659,6 +3659,23 @@ export const orgExpirySettings = pgTable("org_expiry_settings", {
 });
 
 /**
+ * The apps ("products") an organization has turned off. One row per org that
+ * has saved the policy; no row means every app is on. The ids are
+ * `ProductId`s; the store (`products/settings.ts`) normalizes what it reads,
+ * so an id this build does not know, or an always-on app, is ignored rather
+ * than trusted. It hides entry points and the assistant's tools; it is not a
+ * gate on the HTTP API.
+ */
+export const orgProductSettings = pgTable("org_product_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  disabledProducts: jsonb("disabled_products").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
  * Per-org settings and throttle state for extended-support findings, modelled
  * on `org_expiry_settings`: `leadDays` is how far ahead an upcoming surcharge
  * is listed, `lastNotifiedAt` is the weekly alert scan's claim (see

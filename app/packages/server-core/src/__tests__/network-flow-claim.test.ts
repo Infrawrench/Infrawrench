@@ -364,7 +364,7 @@ beforeEach(() => {
 
 describe("claimDueNetworkFlowAccounts", () => {
   it("leases into next_poll_at and only looks at enabled orgs and capable plugins", async () => {
-    await claimDueNetworkFlowAccounts(2, ["aws"]);
+    await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
     const text = statementText();
     expect(text).toContain("INSERT INTO account_network_flow_polls");
@@ -378,7 +378,7 @@ describe("claimDueNetworkFlowAccounts", () => {
   // The claim's exclusivity lives entirely in this predicate: an unconditional
   // DO UPDATE re-leases and returns the row to whoever asks.
   it("guards the conflict update with a due-time predicate", async () => {
-    await claimDueNetworkFlowAccounts(2, ["aws"]);
+    await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
     const text = statementText();
     expect(/DO UPDATE\s+SET[\s\S]*\sWHERE\s/i.test(text.slice(text.indexOf("ON CONFLICT")))).toBe(
@@ -388,7 +388,7 @@ describe("claimDueNetworkFlowAccounts", () => {
   });
 
   it("short-circuits without querying when no plugin can report flows", async () => {
-    await expect(claimDueNetworkFlowAccounts(2, [])).resolves.toEqual([]);
+    await expect(claimDueNetworkFlowAccounts(2, [], [])).resolves.toEqual([]);
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -397,7 +397,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       { account_id: "acct-1", organization_id: "org-1", failure_count: 4 },
     ]);
 
-    await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+    await expect(claimDueNetworkFlowAccounts(2, ["aws"], [])).resolves.toEqual([
       { accountId: "acct-1", organizationId: "org-1", failureCount: 4 },
     ]);
   });
@@ -416,8 +416,8 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
       execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
 
-      const first = await claimDueNetworkFlowAccounts(2, ["aws"]);
-      const second = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const first = await claimDueNetworkFlowAccounts(2, ["aws"], []);
+      const second = await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
       expect(first.map((r) => r.accountId)).toEqual(["acct-1"]);
       expect(second).toEqual([]);
@@ -428,8 +428,8 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-new"]); // no poll row at all
       execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
 
-      const first = await claimDueNetworkFlowAccounts(2, ["aws"]);
-      const second = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const first = await claimDueNetworkFlowAccounts(2, ["aws"], []);
+      const second = await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
       expect(first.map((r) => r.accountId)).toEqual(["acct-new"]);
       expect(second).toEqual([]);
@@ -442,8 +442,8 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1", "acct-2"]);
       execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
 
-      const first = await claimDueNetworkFlowAccounts(2, ["aws"]);
-      const second = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const first = await claimDueNetworkFlowAccounts(2, ["aws"], []);
+      const second = await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
       expect(first.map((r) => r.accountId)).toEqual(["acct-1", "acct-2"]);
       expect(second).toEqual([]);
@@ -456,12 +456,12 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.rows.set("acct-1", pg.now - 60_000);
       pg.beginRound(["acct-1"]);
       execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
-      await claimDueNetworkFlowAccounts(2, ["aws"]);
+      await claimDueNetworkFlowAccounts(2, ["aws"], []);
 
       pg.now += NETWORK_FLOW_LEASE_MS + 1;
       pg.beginRound(["acct-1"]);
 
-      await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+      await expect(claimDueNetworkFlowAccounts(2, ["aws"], [])).resolves.toEqual([
         {
           accountId: "acct-1",
           organizationId: "org-1",
@@ -502,12 +502,12 @@ describe("claimDueNetworkFlowAccounts", () => {
       // column, which would put the overlap back without failing anything. And
       // it has to be written as well as returned, or every renewal matches a
       // null token and the lease is nobody's.
-      await claimDueNetworkFlowAccounts(2, ["aws"]);
+      await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const text = statementText();
       expect(text).toContain("lease_owner = ");
       expect(/RETURNING[\s\S]*lease_owner/.test(text)).toBe(true);
 
-      await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+      await expect(claimDueNetworkFlowAccounts(2, ["aws"], [])).resolves.toEqual([
         {
           accountId: "acct-1",
           organizationId: "org-1",
@@ -537,7 +537,7 @@ describe("claimDueNetworkFlowAccounts", () => {
           await options.lease?.checkpoint();
           pg.now += 20 * 60 * 1000;
           pg.beginRound(["acct-1"]);
-          secondReplica.push(await claimDueNetworkFlowAccounts(2, ["aws"]));
+          secondReplica.push(await claimDueNetworkFlowAccounts(2, ["aws"], []));
         }
         return {
           daysCollected: 3,
@@ -561,7 +561,7 @@ describe("claimDueNetworkFlowAccounts", () => {
         pg.beginRound(["acct-1"]);
         wire(pg);
 
-        const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+        const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
         const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
 
         // No checkpoint at all: this is the one query that runs long, with no
@@ -586,14 +586,14 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
       wire(pg);
 
-      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const stale = startNetworkFlowLease("acct-1", "org-1", first!.leaseOwner ?? null);
 
       // The first replica stalls long enough to lose the lease, and a second
       // one takes the account over.
       pg.now += NETWORK_FLOW_LEASE_MS + 1;
       pg.beginRound(["acct-1"]);
-      const [second] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [second] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       expect(second?.accountId).toBe("acct-1");
 
       const heldBySecond = pg.rows.get("acct-1");
@@ -614,7 +614,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
       wire(pg);
 
-      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
 
       // Move the clock on, so the renewal actually writes a different deadline
@@ -635,7 +635,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
       wire(pg);
 
-      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       // The holder starts work and the pod is then killed: no checkpoint ever
       // runs, no heartbeat ever fires, nothing writes the row again.
       startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
@@ -643,7 +643,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.now += NETWORK_FLOW_LEASE_MS + 1;
       pg.beginRound(["acct-1"]);
 
-      await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+      await expect(claimDueNetworkFlowAccounts(2, ["aws"], [])).resolves.toEqual([
         {
           accountId: "acct-1",
           organizationId: "org-1",
@@ -663,7 +663,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
       wire(pg);
 
-      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const leased = pg.rows.get("acct-1");
       const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
         maxRuntimeMs: 0,
@@ -731,7 +731,7 @@ describe("claimDueNetworkFlowAccounts", () => {
         // would have lapsed, which is what re-ran the scan.
         pg.now = Date.now() + NETWORK_FLOW_LEASE_MS + 1;
         pg.beginRound(["acct-1"]);
-        await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([]);
+        await expect(claimDueNetworkFlowAccounts(2, ["aws"], [])).resolves.toEqual([]);
       } finally {
         vi.useRealTimers();
       }
@@ -804,7 +804,7 @@ describe("claimDueNetworkFlowAccounts", () => {
         // enough to lose the lease, and a second one took the account over.
         pg.now += NETWORK_FLOW_LEASE_MS + 1;
         pg.beginRound(["acct-1"]);
-        await claimDueNetworkFlowAccounts(2, ["aws"]);
+        await claimDueNetworkFlowAccounts(2, ["aws"], []);
         heldBySecond = pg.rows.get("acct-1");
         ownedBySecond = pg.owners.get("acct-1");
         await options.lease?.checkpoint();
@@ -934,7 +934,7 @@ describe("authorizing billable work against the confirmed lease", () => {
       wireWithRenewals(pg, { failRenewals: 100 });
 
       const claimedAt = Date.now();
-      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       // A budget far longer than the lease, so that nothing about elapsed time
       // can be what stops this. Under the old rule this lease would authorize
       // work for two hours on the strength of a claim that expires in thirty
@@ -997,7 +997,7 @@ describe("authorizing billable work against the confirmed lease", () => {
       pg.beginRound(["acct-1"]);
       wireWithRenewals(pg);
 
-      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
         maxRuntimeMs: 8 * NETWORK_FLOW_LEASE_MS,
       });
@@ -1026,13 +1026,13 @@ describe("authorizing billable work against the confirmed lease", () => {
       pg.beginRound(["acct-1"]);
       wireWithRenewals(pg);
 
-      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const lease = startNetworkFlowLease("acct-1", "org-1", first!.leaseOwner ?? null);
 
       // A second replica takes the account over while this one is mid-query.
       pg.now += NETWORK_FLOW_LEASE_MS + 1;
       pg.beginRound(["acct-1"]);
-      await claimDueNetworkFlowAccounts(2, ["aws"]);
+      await claimDueNetworkFlowAccounts(2, ["aws"], []);
       const heldBySecond = pg.rows.get("acct-1");
 
       // The next heartbeat finds out: no checkpoint involved, because the day
@@ -1109,7 +1109,7 @@ describe("authorizing billable work against the confirmed lease", () => {
         await vi.advanceTimersByTimeAsync(60_000);
         pg.now = Date.now();
         pg.beginRound(["acct-1"]);
-        const got = await claimDueNetworkFlowAccounts(2, ["aws"]);
+        const got = await claimDueNetworkFlowAccounts(2, ["aws"], []);
         if (got.length > 0) tookOver.push(Date.now());
       }
       await expect(pass).resolves.toEqual({ claimed: 1 });

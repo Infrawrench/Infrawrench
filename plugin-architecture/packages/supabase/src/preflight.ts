@@ -59,6 +59,7 @@ export const SUPABASE_PREFLIGHT: PreflightDeclaration = {
     },
     {
       id: "observability",
+      product: "observability",
       label: "Logs and metrics",
       description: "Unified logs, request counts and the Prometheus metrics endpoint.",
       requiredPermissions: [P.analytics],

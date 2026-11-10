@@ -11,7 +11,6 @@ import {
   SidebarApps,
   SidebarHomeButton,
   SidebarRecentTools,
-  SidebarToolsButton,
   useUIStore,
   type ConversationSummary,
   type SidebarToolDef,
@@ -182,9 +181,6 @@ export function SidebarDashboards() {
         active={pathname === "/home"}
         onClick={() => void navigateToWorkspaceTarget(navigate, homeTabTarget())}
       />
-      <SidebarToolsButton tools={navTools} />
-      <SidebarRecentTools tools={navTools} scope={activeCloudOrgId ?? "local"} />
-      <SidebarApps tools={navTools} />
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">
@@ -348,6 +344,9 @@ export function SidebarDashboards() {
           )}
         </div>
       )}
+
+      <SidebarRecentTools tools={navTools} scope={activeCloudOrgId ?? "local"} />
+      <SidebarApps tools={navTools} />
     </div>
   );
 }

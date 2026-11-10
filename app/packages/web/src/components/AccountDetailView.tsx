@@ -10,6 +10,8 @@ import {
   isProviderOAuthCancelled,
   TerraformExportModal,
   CredentialPreflightModal,
+  ConnectionProductsModal,
+  ConnectionProductsNotice,
   dispatchResourcesChanged,
   AccountResourceSections,
   type DraggableResource,
@@ -21,10 +23,14 @@ import {
   useDataString,
 } from "@infrawrench/ui";
 import type { CredentialFieldOption, TerraformExportOutcome } from "@infrawrench/plugin-base";
-import type {
-  PolicyTemplate,
-  PreflightDeclaration,
-  PreflightReport,
+import {
+  accountSyncsResources,
+  normalizeProductIds,
+  offersProductChoice,
+  type PolicyTemplate,
+  type PreflightDeclaration,
+  type PreflightReport,
+  type ProductId,
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
@@ -99,6 +105,7 @@ export function AccountDetailView({
     null,
   );
   const [preflightOpen, setPreflightOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
   // Whether the server can run this plugin's OAuth flow (the catalog carries
   // `oauth` only when a client is configured): decides if Reconnect shows.
   const [oauthAvailable, setOauthAvailable] = useState(false);
@@ -116,6 +123,7 @@ export function AccountDetailView({
     let cancelled = false;
     setPreflightDeclaration(null);
     setPreflightOpen(false);
+    setProductsOpen(false);
     setOauthAvailable(false);
     fetchPluginCatalog(orgId)
       .then((plugins) => {
@@ -163,6 +171,32 @@ export function AccountDetailView({
       return;
     }
     setPreflightOpen(true);
+  }
+
+  /** The apps this connection is for, as the preflight panel takes them. */
+  const accountProducts = account.products ? normalizeProductIds(account.products) : null;
+  /** The plugin offers a choice of apps, so the choice can be changed. */
+  const canChangeProducts = !!preflightDeclaration && offersProductChoice(preflightDeclaration);
+  const syncsResources = accountSyncsResources(account.products);
+
+  const runStoredPreflight = () =>
+    apiPost<PreflightReport>(`/api/org/${orgId}/accounts/${account.id}/preflight`);
+
+  async function fetchPolicyTemplate(capabilityIds: string[]) {
+    const { template } = await apiGet<{ template: PolicyTemplate }>(
+      `/api/org/${orgId}/accounts/plugins/${account.pluginId}/policy-template?capabilities=${encodeURIComponent(
+        capabilityIds.join(","),
+      )}`,
+    );
+    return template;
+  }
+
+  async function saveProducts(products: ProductId[] | null) {
+    await apiPatch(`/api/org/${orgId}/accounts/${account.id}`, { products });
+    toast.success(gt("Apps updated"));
+    useUIStore.getState().bumpAccounts();
+    // Reloads the account, so the page follows the new choice.
+    dispatchResourcesChanged({ accountId: account.id });
   }
 
   async function saveCredentials(credentials: Record<string, string>) {
@@ -286,6 +320,15 @@ export function AccountDetailView({
               >
                 {gt("Export to Terraform")}
               </button>
+              {canChangeProducts && (
+                <button
+                  type="button"
+                  onClick={() => setProductsOpen(true)}
+                  className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+                >
+                  {gt("Change apps")}
+                </button>
+              )}
               {preflightDeclaration && (
                 <button
                   type="button"
@@ -342,18 +385,23 @@ export function AccountDetailView({
         <CredentialPreflightModal
           accountName={account.displayName}
           declaration={preflightDeclaration}
-          runPreflight={() =>
-            apiPost<PreflightReport>(`/api/org/${orgId}/accounts/${account.id}/preflight`)
-          }
-          fetchPolicyTemplate={async (capabilityIds) => {
-            const { template } = await apiGet<{ template: PolicyTemplate }>(
-              `/api/org/${orgId}/accounts/plugins/${account.pluginId}/policy-template?capabilities=${encodeURIComponent(
-                capabilityIds.join(","),
-              )}`,
-            );
-            return template;
-          }}
+          // An account for every app keeps the per-capability checkboxes.
+          {...(accountProducts ? { products: accountProducts } : {})}
+          runPreflight={runStoredPreflight}
+          fetchPolicyTemplate={fetchPolicyTemplate}
           onClose={() => setPreflightOpen(false)}
+        />
+      )}
+
+      {productsOpen && preflightDeclaration && (
+        <ConnectionProductsModal
+          accountName={account.displayName}
+          declaration={preflightDeclaration}
+          products={account.products}
+          onSave={saveProducts}
+          runPreflight={runStoredPreflight}
+          fetchPolicyTemplate={fetchPolicyTemplate}
+          onClose={() => setProductsOpen(false)}
         />
       )}
 
@@ -378,56 +426,67 @@ export function AccountDetailView({
         />
       )}
 
-      <AccountResourceSections
-        categories={categories}
-        searchQuery={searchQuery}
-        onSearchQueryChange={onSearchQueryChange}
-        activeSectionId={activeSectionId}
-        onActiveSectionIdChange={onActiveSectionIdChange}
-        renderResource={(resource, activeCategory) => {
-          const fields = resource.fieldsJson ?? {};
-          const draggable: DraggableResource = {
-            id: resource.id,
-            pluginId: resource.pluginId,
-            resourceTypeId: resource.resourceTypeId,
-            accountId: account.id,
-            displayName: resource.displayName,
-            fields,
-            ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
-            ...(activeCategory.typeDef.iconKey ? { iconKey: activeCategory.typeDef.iconKey } : {}),
-            ...(activeCategory.typeDef.attachTargets
-              ? { attachTargets: activeCategory.typeDef.attachTargets }
-              : {}),
-            ...(activeCategory.typeDef.isSshHost ? { isSshHost: true } : {}),
-            ...(activeCategory.typeDef.sshTunnelAttachSource ? { isTunnelSshSource: true } : {}),
-          };
-          return (
-            <ResourceTile
-              key={resource.id}
-              resource={draggable}
-              showcase={activeCategory.typeDef.showcase}
-              onOpen={() =>
-                void navigate({
-                  to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                  params: {
-                    orgId,
-                    pluginId: resource.pluginId,
-                    resourceTypeId: resource.resourceTypeId,
-                    resourceId: resource.id,
-                  },
-                })
-              }
-            />
-          );
-        }}
-        renderCreateButton={(typeDef) => (
-          <CreateTile
-            key={`create-${typeDef.id}`}
-            label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
-            onClick={() => setCreateTarget(typeDef)}
-          />
-        )}
+      {/* A costs-only connection syncs no resources by design: say so rather
+          than show empty sections that read as a failed sync. */}
+      <ConnectionProductsNotice
+        products={account.products}
+        onChange={canChangeProducts ? () => setProductsOpen(true) : undefined}
       />
+
+      {syncsResources && (
+        <AccountResourceSections
+          categories={categories}
+          searchQuery={searchQuery}
+          onSearchQueryChange={onSearchQueryChange}
+          activeSectionId={activeSectionId}
+          onActiveSectionIdChange={onActiveSectionIdChange}
+          renderResource={(resource, activeCategory) => {
+            const fields = resource.fieldsJson ?? {};
+            const draggable: DraggableResource = {
+              id: resource.id,
+              pluginId: resource.pluginId,
+              resourceTypeId: resource.resourceTypeId,
+              accountId: account.id,
+              displayName: resource.displayName,
+              fields,
+              ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
+              ...(activeCategory.typeDef.iconKey
+                ? { iconKey: activeCategory.typeDef.iconKey }
+                : {}),
+              ...(activeCategory.typeDef.attachTargets
+                ? { attachTargets: activeCategory.typeDef.attachTargets }
+                : {}),
+              ...(activeCategory.typeDef.isSshHost ? { isSshHost: true } : {}),
+              ...(activeCategory.typeDef.sshTunnelAttachSource ? { isTunnelSshSource: true } : {}),
+            };
+            return (
+              <ResourceTile
+                key={resource.id}
+                resource={draggable}
+                showcase={activeCategory.typeDef.showcase}
+                onOpen={() =>
+                  void navigate({
+                    to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                    params: {
+                      orgId,
+                      pluginId: resource.pluginId,
+                      resourceTypeId: resource.resourceTypeId,
+                      resourceId: resource.id,
+                    },
+                  })
+                }
+              />
+            );
+          }}
+          renderCreateButton={(typeDef) => (
+            <CreateTile
+              key={`create-${typeDef.id}`}
+              label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
+              onClick={() => setCreateTarget(typeDef)}
+            />
+          )}
+        />
+      )}
 
       {createTarget && (
         <CreateResourceModal

@@ -19,6 +19,9 @@ export interface SettingsSectionDef {
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "", label: msg("General") },
+  // Beside General: which apps the organization uses at all. Every member can
+  // read it; the switches need `org:settings:write`.
+  { key: "apps", label: msg("Apps") },
   { key: "team", label: msg("Team") },
   { key: "roles", label: msg("Roles") },
   // Beside Roles: a scope is part of what a role (or member, or key) grants,

@@ -37,6 +37,13 @@ export interface Account {
    * the provider revoked or expired the grant and the user must reconnect.
    */
   oauthStatus?: AccountOAuthStatus | null;
+  /**
+   * The apps this connection is for, as product ids. `null` (or absent, from
+   * an older server) means every app the plugin offers. Plain strings, so an
+   * app a newer server adds does not fail an older client; read them with
+   * `accountServesProduct` / `accountSyncsResources`.
+   */
+  products?: readonly string[] | null;
 }
 
 /** See {@link Account.oauthStatus}. */
@@ -46,7 +53,10 @@ export type AccountOAuthStatus = "connected" | "reconnect_required";
  * Minimal account entry used by pickers (Add Account modal, Connect Through
  * Jumpbox, etc.) that only need to render a name + plugin badge.
  */
-export type AccountListItem = Pick<Account, "id" | "pluginId" | "displayName" | "oauthStatus">;
+export type AccountListItem = Pick<
+  Account,
+  "id" | "pluginId" | "displayName" | "oauthStatus" | "products"
+>;
 
 /**
  * A dashboard entry as returned by `GET /api/org/:orgId/dashboards` and
@@ -228,6 +238,8 @@ export interface AccountDetail {
     displayName: string;
     /** See {@link Account.oauthStatus}. */
     oauthStatus?: AccountOAuthStatus | null;
+    /** See {@link Account.products}. */
+    products?: readonly string[] | null;
   };
   resourceTypes: ResourceTypeSummary[];
   pluginDisplayName: string;

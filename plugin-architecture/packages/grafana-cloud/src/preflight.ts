@@ -141,6 +141,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "usage-metrics",
+      product: "observability",
       label: "Usage metrics",
       description:
         "Chart a stack's active series and ingest on its Metrics tab without connecting it. Connected stacks read the same metrics through their own data source instead.",

@@ -260,6 +260,12 @@ export {
 } from "./products/registry.js";
 export type { ProductDef, ProductId } from "./products/registry.js";
 export {
+  PRODUCT_POLICY_CHANGED_EVENT,
+  notifyProductPolicyChanged,
+  useDisabledProductsFrom,
+  withoutDisabledProducts,
+} from "./products/policy.js";
+export {
   SidebarApps,
   SidebarRecentTools,
   useRecentTools,
@@ -297,6 +303,11 @@ export {
 } from "./sharing/ShareDialog.js";
 export { ConfirmDeleteModal } from "./components/ConfirmDeleteModal.js";
 export { AddAccountModal } from "./components/AddAccountModal.js";
+export { ManageAccountsModal } from "./components/ManageAccountsModal.js";
+export type {
+  ManageAccountsModalProps,
+  ManagedAccountGroup,
+} from "./components/ManageAccountsModal.js";
 export type {
   PluginInfo,
   BastionOption,
@@ -330,6 +341,17 @@ export type {
   CredentialPreflightPanelProps,
   CredentialPreflightModalProps,
 } from "./components/CredentialPreflightPanel.js";
+export {
+  ConnectionProductsPicker,
+  ConnectionProductsModal,
+  ConnectionProductsNotice,
+  selectedConnectionProducts,
+} from "./components/ConnectionProducts.js";
+export type {
+  ConnectionProductsPickerProps,
+  ConnectionProductsModalProps,
+  ConnectionProductsNoticeProps,
+} from "./components/ConnectionProducts.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 export { SshFanoutView } from "./components/SshFanoutView.js";
 export type {

@@ -96,6 +96,7 @@ const PROBES: Array<{ capability: PreflightCapability; run: (c: PromClient) => P
     {
       capability: {
         id: "query",
+        product: "observability",
         label: "PromQL queries",
         description: "Run instant and range queries for the Query and Metrics tabs.",
         requiredPermissions: [{ id: "query", label: "Read access to /api/v1/query" }],

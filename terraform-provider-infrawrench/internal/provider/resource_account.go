@@ -3,11 +3,15 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
@@ -30,6 +34,14 @@ type accountResourceModel struct {
 	DisplayName types.String `tfsdk:"display_name"`
 	Credentials types.Map    `tfsdk:"credentials"`
 	BastionID   types.String `tfsdk:"bastion_id"`
+	Products    types.Set    `tfsdk:"products"`
+}
+
+// accountProductIDs are the apps a connection can be made for. The list is the
+// product ids of the plugin contract (`PRODUCT_IDS`); which of them a given
+// plugin offers is decided by the server, which rejects the rest by name.
+var accountProductIDs = []string{
+	"infrastructure", "costs", "observability", "incidents", "security", "delivery", "automation",
 }
 
 func (r *accountResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -78,8 +90,54 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				MarkdownDescription: "Route this account's cloud API traffic through an `infrawrench_bastion`. " +
 					"Omit it to reach the provider directly from Infrawrench.",
 			},
+			"products": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				MarkdownDescription: "The apps this connection is for: any of `infrastructure`, `costs`, " +
+					"`observability`, `incidents`, `security`, `delivery`, `automation` that the plugin " +
+					"offers. Omit it for every app, which is what an account connected before this choice " +
+					"existed has.\n\n" +
+					"Collection follows the choice, so the credential only needs the permissions of the " +
+					"apps listed: an account for `[\"costs\"]` alone has its bill read and no resources " +
+					"synced, and one without `costs` has no cost data collected. A plugin offers the apps " +
+					"its capabilities power (most clouds offer `infrastructure`, `costs` and " +
+					"`observability`); naming one it does not offer, or setting this on a plugin that offers " +
+					"no choice, is rejected when applied with a message listing what it does offer.\n\n" +
+					"Do not list every app the plugin offers: that is the same as omitting the attribute, " +
+					"and it is stored as such. The provider keeps your list in state in that case, so an " +
+					"out-of-band change back to every app is not reported as drift.",
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.ValueStringsAre(stringvalidator.OneOf(accountProductIDs...)),
+				},
+			},
 		},
 	}
+}
+
+// productsFromPlan reads the configured apps, nil for a null attribute (every
+// app). The order is not significant: the server stores them in its own.
+func productsFromPlan(ctx context.Context, set types.Set) ([]string, diag.Diagnostics) {
+	if set.IsNull() || set.IsUnknown() {
+		return nil, nil
+	}
+	var out []string
+	diags := set.ElementsAs(ctx, &out, false)
+	return out, diags
+}
+
+// productsForState renders what the server stores. The server stores "every
+// app the plugin offers" as null, including when a list naming all of them was
+// sent, so a null answer under a configured list keeps the list: replacing it
+// with null would plan a change on every run that no apply could settle.
+func productsForState(ctx context.Context, remote []string, prior types.Set) (types.Set, diag.Diagnostics) {
+	if remote == nil {
+		if prior.IsNull() || prior.IsUnknown() {
+			return types.SetNull(types.StringType), nil
+		}
+		return prior, nil
+	}
+	return types.SetValueFrom(ctx, types.StringType, remote)
 }
 
 func (r *accountResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -105,11 +163,18 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	products, diags := productsFromPlan(ctx, plan.Products)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	created, err := r.client.CreateAccount(ctx, iw.CreateAccountRequest{
 		PluginID:    plan.PluginID.ValueString(),
 		DisplayName: plan.DisplayName.ValueString(),
 		Credentials: credentials,
 		BastionID:   stringPtr(plan.BastionID),
+		Products:    products,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to connect account", err.Error())
@@ -150,18 +215,25 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	products, diags := productsForState(ctx, remote.Products, state.Products)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	refreshed := accountResourceModel{
 		ID:          types.StringValue(remote.ID),
 		PluginID:    types.StringValue(remote.PluginID),
 		DisplayName: types.StringValue(remote.DisplayName),
 		Credentials: state.Credentials,
 		BastionID:   stringValue(remote.BastionID),
+		Products:    products,
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
 }
 
-// Update writes the name and bastion binding, and rotates the credentials when
-// they changed.
+// Update writes the name, the bastion binding and the apps the connection is
+// for, and rotates the credentials when they changed.
 //
 // They are two routes because they are gated on different permissions (renaming
 // an account is `accounts:write`, replacing its secret is `secrets:write`) so a
@@ -179,10 +251,17 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	products, diags := productsFromPlan(ctx, plan.Products)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	id := state.ID.ValueString()
 	err := r.client.UpdateAccount(ctx, id, iw.UpdateAccountRequest{
 		DisplayName: stringPtr(plan.DisplayName),
 		BastionID:   stringPtr(plan.BastionID),
+		Products:    products,
 	})
 	if err != nil {
 		if iw.IsNotFound(err) {

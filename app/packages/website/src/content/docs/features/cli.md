@@ -18,7 +18,7 @@ You can use the CLI in three ways:
 
 In the desktop app, click **Install shell command** at the bottom of the sidebar. On macOS and Linux this adds an `infrawrench` launcher to `/usr/local/bin` (or `~/.local/bin` if that isn't writable). On Windows it goes in a per-user `bin` directory that is added to your `PATH`.
 
-<insert [Desktop app sidebar footer showing the "Install shell command" button below "Add account", with the success toast visible after clicking] here>
+<insert [Desktop app sidebar footer showing the "Install shell command" button below "Manage accounts", with the success toast visible after clicking] here>
 
 After that, you can manage the launcher from the CLI itself:
 

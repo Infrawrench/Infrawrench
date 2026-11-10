@@ -75,6 +75,7 @@ describe("AddAccountModal provider OAuth", () => {
       "Acme Corp",
       { apiToken: "at_1", __oauth: "sealed", teamId: "team-9" },
       null,
+      null,
     );
   });
 

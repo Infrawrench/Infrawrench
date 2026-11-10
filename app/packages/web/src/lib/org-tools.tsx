@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { useUIStore, type SidebarToolDef } from "@infrawrench/ui";
+import { useUIStore, withoutDisabledProducts, type SidebarToolDef } from "@infrawrench/ui";
 import type { OrgFeature } from "@infrawrench/client-core";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -43,11 +43,12 @@ import {
   EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
+import { useDisabledProducts } from "@/lib/disabled-products";
 import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
 
 /**
  * The org-level tools, one entry per sidebar tile. One list feeds both the
- * sidebar's Tools launcher and the Home tab, which groups the same entries
+ * sidebar's Apps tree, spotlight and the Home tab, which groups the same entries
  * into products (`PRODUCTS` in `@infrawrench/ui`) by their `key`; a tool
  * added here shows in the launcher at once and on Home once a product claims
  * its key.
@@ -71,8 +72,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
     };
   }, [orgId]);
 
+  // Apps the organization has turned off take their tools with them, which
+  // is what removes them from the Apps tree, Recent, the launcher and Home.
+  const disabledProducts = useDisabledProducts(orgId);
+
   if (!orgId) return [];
-  return [
+  const tools: SidebarToolDef[] = [
     {
       key: "agents",
       label: gt("Agents"),
@@ -320,4 +325,5 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       onClick: () => void navigate({ to: "/org/$orgId/logs", params: { orgId: orgId! } }),
     },
   ];
+  return withoutDisabledProducts(tools, disabledProducts);
 }

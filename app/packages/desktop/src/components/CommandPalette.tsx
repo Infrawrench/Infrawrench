@@ -1,3 +1,4 @@
+import { useOrgTools } from "../lib/org-tools";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -73,10 +74,13 @@ export function DesktopCommandPalette({
     [cloudOrgs],
   );
 
+  const tools = useOrgTools();
+
   const actions = usePaletteActions({
     open,
     has,
     cloud: Boolean(cloudOrgId),
+    tools,
     orgs,
     activeOrgId: cloudOrgId,
     switchOrg: onSwitchOrg,

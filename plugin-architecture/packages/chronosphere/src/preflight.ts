@@ -82,6 +82,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "query",
+      product: "observability",
       label: "PromQL",
       description: "Chart monitor queries and run PromQL from the Query tab.",
       requiredPermissions: [{ id: "metrics:read", label: "Query metrics" }],

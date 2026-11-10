@@ -18,7 +18,7 @@
  * product; a tool no product claims shows under "More tools" on Home, so a
  * new tile is never unreachable while it waits for a home here.
  */
-import { PRODUCT_IDS, isProductId, type ProductId } from "@infrawrench/client-core";
+import { PRODUCT_IDS, PRODUCT_NAMES, isProductId, type ProductId } from "@infrawrench/client-core";
 
 export { PRODUCT_IDS, isProductId, type ProductId };
 
@@ -33,7 +33,7 @@ export interface ProductDef {
 export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "infrastructure",
-    name: "Infrastructure",
+    name: PRODUCT_NAMES.infrastructure,
     tools: [
       "graph",
       "services",
@@ -47,7 +47,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   },
   {
     id: "costs",
-    name: "Costs",
+    name: PRODUCT_NAMES.costs,
     tools: [
       "costs",
       "cost-reports",
@@ -59,17 +59,17 @@ export const PRODUCTS: readonly ProductDef[] = [
   },
   {
     id: "observability",
-    name: "Observability",
+    name: PRODUCT_NAMES.observability,
     tools: ["logs", "metric-alerts", "probes", "slos", "query-monitors", "wallboard"],
   },
   {
     id: "incidents",
-    name: "Incident response",
+    name: PRODUCT_NAMES.incidents,
     tools: ["incidents", "status-pages", "runbooks", "calendar"],
   },
   {
     id: "security",
-    name: "Security",
+    name: PRODUCT_NAMES.security,
     tools: [
       "posture",
       "vulnerabilities",
@@ -82,12 +82,12 @@ export const PRODUCTS: readonly ProductDef[] = [
   },
   {
     id: "delivery",
-    name: "Delivery",
+    name: PRODUCT_NAMES.delivery,
     tools: ["deploy", "ci", "delivery", "environments", "environment-diff"],
   },
   {
     id: "automation",
-    name: "Automation",
+    name: PRODUCT_NAMES.automation,
     tools: ["agents", "workflows"],
   },
 ];

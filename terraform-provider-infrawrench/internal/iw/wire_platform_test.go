@@ -272,6 +272,36 @@ func TestUpdateAccountSendsAnExplicitNullBastion(t *testing.T) {
 	}
 }
 
+// Products is tri-state on the wire like BastionID: a null attribute means
+// "every app", which has to reach the server as an explicit null, not as an
+// absent key (which would leave a narrower choice in place).
+func TestUpdateAccountSendsProductsAsNullOrAList(t *testing.T) {
+	got := decode(t, UpdateAccountRequest{DisplayName: strptr("Production")})
+	value, present := got["products"]
+	if !present || value != nil {
+		t.Errorf("products must be present as an explicit null, got %v", got)
+	}
+
+	got = decode(t, UpdateAccountRequest{Products: []string{"costs"}})
+	list, ok := got["products"].([]any)
+	if !ok || len(list) != 1 || list[0] != "costs" {
+		t.Errorf("products should marshal as [\"costs\"], got %#v", got["products"])
+	}
+}
+
+// On create an absent key is "every app"; the server refuses an empty list.
+func TestCreateAccountOmitsProductsForEveryApp(t *testing.T) {
+	got := decode(t, CreateAccountRequest{PluginID: "aws", DisplayName: "Production"})
+	if _, present := got["products"]; present {
+		t.Errorf("products must be omitted when unset, got %v", got)
+	}
+
+	got = decode(t, CreateAccountRequest{PluginID: "aws", Products: []string{"costs", "security"}})
+	if list, ok := got["products"].([]any); !ok || len(list) != 2 {
+		t.Errorf("products should marshal as a two-element array, got %#v", got["products"])
+	}
+}
+
 // The route match is a strict discriminated union server-side, and a tag
 // match's value is nullable-but-required: null means "any value of the key".
 func TestGithubIssueRouteMatchMarshalsOnlyItsBranch(t *testing.T) {

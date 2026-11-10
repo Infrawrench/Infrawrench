@@ -40,3 +40,4 @@ Read-Only:
 - `display_name` (String) Name the account was given when it was connected.
 - `id` (String) Account id, as used by rule `match.account_id`.
 - `plugin_id` (String) Id of the plugin the account belongs to.
+- `products` (Set of String) The apps the connection is for, as product ids such as `costs`. Null when it is for every app the plugin offers.

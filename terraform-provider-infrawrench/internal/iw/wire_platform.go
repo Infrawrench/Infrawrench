@@ -568,11 +568,16 @@ type SSHSnippet struct {
 
 // CreateAccountRequest is the POST body. Credentials are write-only: no route
 // returns them, so the provider cannot detect drift on their values.
+//
+// Products is the apps the connection is for, as product ids. Omitted (nil)
+// means every app the plugin offers; the server rejects an empty list, so
+// omitempty dropping one is not a loss.
 type CreateAccountRequest struct {
 	PluginID    string            `json:"pluginId"`
 	DisplayName string            `json:"displayName"`
 	Credentials map[string]string `json:"credentials"`
 	BastionID   *string           `json:"bastionId,omitempty"`
+	Products    []string          `json:"products,omitempty"`
 }
 
 // CreatedAccount is the POST response. SyncError is advisory: the account was
@@ -591,9 +596,14 @@ type CreatedAccount struct {
 // server reads an absent key as "leave the binding alone" and an explicit null
 // as "unbind". Terraform always sends the whole configuration, so a null
 // attribute has to reach the server as a null.
+//
+// Products is tri-state the same way: absent leaves the choice alone, null
+// means every app, a list narrows it. A nil slice marshals as null, which is
+// what a null attribute means.
 type UpdateAccountRequest struct {
-	DisplayName *string `json:"displayName,omitempty"`
-	BastionID   *string `json:"bastionId"`
+	DisplayName *string  `json:"displayName,omitempty"`
+	BastionID   *string  `json:"bastionId"`
+	Products    []string `json:"products"`
 }
 
 // AccountCredentialsInput is the PUT body for rotating stored credentials.

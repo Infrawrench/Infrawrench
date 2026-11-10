@@ -90,12 +90,18 @@ function makeResource(id: string, displayName: string) {
 }
 
 function setupSync(pluginResources: ReturnType<typeof makeResource>[], storedIds: string[] = []) {
-  // db.select().from().where() → account lookup first, then the
+  // db.select().from().where() → the route's own check of which apps the
+  // connection is for (a costs-only one is not synced), then the sync's
+  // account lookup, then the
   // change-timeline prior-snapshot load (empty), AND
   // db.select().from().innerJoin().where() → reconcileAccountReferences output-ref
   // lookup (resolves empty so the real reconcile path runs and returns early
   // instead of throwing in the catch).
-  const selectWhere = vi.fn().mockResolvedValueOnce([ACCOUNT]).mockResolvedValue([]);
+  const selectWhere = vi
+    .fn()
+    .mockResolvedValueOnce([ACCOUNT])
+    .mockResolvedValueOnce([ACCOUNT])
+    .mockResolvedValue([]);
   const reconcileWhere = vi.fn().mockResolvedValue([]);
   const reconcileInnerJoin = vi.fn().mockReturnValue({ where: reconcileWhere });
   const selectFrom = vi.fn().mockReturnValue({ where: selectWhere, innerJoin: reconcileInnerJoin });

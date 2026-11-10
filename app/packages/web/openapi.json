@@ -62325,6 +62325,57 @@
           }
         ]
       },
+      "OrgProductPolicy": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgProductId"
+            },
+            "description": "The apps the organization has turned off. Empty when every app is on."
+          }
+        },
+        "required": [
+          "disabled"
+        ],
+        "additionalProperties": false
+      },
+      "OrgProductId": {
+        "type": "string",
+        "enum": [
+          "infrastructure",
+          "costs",
+          "observability",
+          "incidents",
+          "security",
+          "delivery",
+          "automation"
+        ],
+        "description": "An app the application is presented as."
+      },
+      "OrgProductPolicyUpdate": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The apps to turn off, replacing the stored list. `infrastructure` cannot be turned off.",
+            "examples": [
+              [
+                "costs",
+                "automation"
+              ]
+            ]
+          }
+        },
+        "required": [
+          "disabled"
+        ],
+        "additionalProperties": false
+      },
       "CiUsage": {
         "type": "object",
         "properties": {
@@ -70899,6 +70950,20 @@
               },
               "oauthStatus": {
                 "$ref": "#/components/schemas/AccountOAuthStatus"
+              },
+              "products": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The apps this connection is for, as product ids (`infrastructure`, `costs`, `observability`, `incidents`, `security`, `delivery`, `automation`). `null` means every app the plugin offers. Collection follows it: an account connected for `costs` alone is not resource-synced, and one without `costs` has no cost data collected."
               }
             },
             "required": [
@@ -71238,6 +71303,20 @@
                 "type": "null"
               }
             ]
+          },
+          "products": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The apps this connection is for, as product ids (`infrastructure`, `costs`, `observability`, `incidents`, `security`, `delivery`, `automation`). `null` means every app the plugin offers. Collection follows it: an account connected for `costs` alone is not resource-synced, and one without `costs` has no cost data collected."
           }
         },
         "required": [
@@ -71268,9 +71347,36 @@
               }
             ],
             "description": "Pass `null` to unbind, a uuid to bind, or omit the field to leave the binding unchanged."
+          },
+          "products": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProductId"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change the apps this connection is for; omit the field to leave them unchanged. Same rules as on create. Adding an app makes its collection due now; the credential must already carry that app's permissions."
           }
         },
         "additionalProperties": false
+      },
+      "ProductId": {
+        "type": "string",
+        "enum": [
+          "infrastructure",
+          "costs",
+          "observability",
+          "incidents",
+          "security",
+          "delivery",
+          "automation"
+        ],
+        "description": "One of the apps the product is presented as."
       },
       "CreateAccountResponse": {
         "type": "object",
@@ -71331,6 +71437,20 @@
               }
             ],
             "description": "Optional bastion id to route this account's cloud API traffic through."
+          },
+          "products": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProductId"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The apps to use this connection for. Each must be one the plugin offers (the distinct `product`s of its `preflight.capabilities`, where a capability without one follows the convention for its id); an empty list is rejected, as is any list for a plugin without preflight. `null`, or the plugin's whole offer, means every app and is stored as `null`."
           }
         },
         "required": [
@@ -71373,6 +71493,20 @@
           },
           "oauthStatus": {
             "$ref": "#/components/schemas/AccountOAuthStatus"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The apps this connection is for, as product ids (`infrastructure`, `costs`, `observability`, `incidents`, `security`, `delivery`, `automation`). `null` means every app the plugin offers. Collection follows it: an account connected for `costs` alone is not resource-synced, and one without `costs` has no cost data collected."
           },
           "createdAt": {
             "type": "string",
@@ -71868,6 +72002,16 @@
             "type": "string",
             "examples": [
               "costs"
+            ]
+          },
+          "product": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductId"
+              },
+              {
+                "description": "The app this capability powers. Absent for the conventional ids: `costs`, `commitments`, `credits`, `seats`, `idle-findings` and `ai-request-logs` power `costs`; `metrics`, `logs`, `slos` and `synthetics` power `observability`; anything else powers `infrastructure`."
+              }
             ]
           },
           "label": {
@@ -125311,6 +125455,99 @@
         "operationId": "getOrgOrgIdFeatures"
       }
     },
+    "/api/org/{orgId}/products": {
+      "get": {
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's app policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgProductPolicy"
+                }
+              }
+            }
+          }
+        },
+        "description": "A turned-off app is hidden from Home, the sidebar and the Tools launcher, and its tools are not offered to, and are refused for, the chat agent and the MCP server. It does not block this API: the routes behind an app keep answering under their own permissions.",
+        "summary": "Get the apps the organization has turned off",
+        "operationId": "getOrgOrgIdProducts"
+      },
+      "put": {
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved app policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgProductPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Replaces the list. An unknown app id, or an app that cannot be turned off (`infrastructure`), is refused with a 400 and nothing is saved.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Set the apps the organization has turned off",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgProductPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "org:settings:write",
+        "operationId": "putOrgOrgIdProducts"
+      }
+    },
     "/api/org/{orgId}/ci": {
       "get": {
         "tags": [
@@ -133158,7 +133395,7 @@
             }
           }
         },
-        "summary": "Update an account (rename and/or change bastion binding)",
+        "summary": "Update an account (rename, change bastion binding, change what it is for)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -133556,12 +133793,22 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
+        "description": "400 for an account connected for Costs alone: its resources are not synced. Add another app to the connection (`PATCH /accounts/{id}` with `products`) first.\n\n_Requires permission: `resources:read`._",
         "summary": "Sync all resource types for an account",
         "x-required-permission": "resources:read",
-        "operationId": "postOrgOrgIdAccountsIdSync",
-        "description": "_Requires permission: `resources:read`._"
+        "operationId": "postOrgOrgIdAccountsIdSync"
       }
     },
     "/api/org/{orgId}/accounts/{id}/detail": {
@@ -133674,6 +133921,16 @@
                   "items": {
                     "$ref": "#/components/schemas/SyncedResource"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

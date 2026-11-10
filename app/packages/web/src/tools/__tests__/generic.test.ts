@@ -68,7 +68,9 @@ vi.mock("../../services/change-freezes", () => ({
   getActiveChangeFreeze: vi.fn().mockResolvedValue(null),
   isActionDestructive: vi.fn().mockResolvedValue(false),
 }));
-vi.mock("@infrawrench/plugin-base", () => ({
+// The rest of the package is kept: client-core reads the product ids from it.
+vi.mock("@infrawrench/plugin-base", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@infrawrench/plugin-base")>()),
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
   evaluatePeerIntegrationUnreachable: () => null,
 }));

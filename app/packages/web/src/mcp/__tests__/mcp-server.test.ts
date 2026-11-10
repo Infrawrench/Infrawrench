@@ -39,6 +39,8 @@ vi.mock("@/auth/users", () => ({
 const mockAuthorizeToolCall = vi.fn();
 vi.mock("@/tools/permissions", () => ({
   authorizeToolCall: (...a: unknown[]) => mockAuthorizeToolCall(...a),
+  // The app policy is covered in tools/__tests__/permissions.test.ts.
+  toolsOfferedTo: async (tools: unknown[]) => tools,
   runToolHandler: (
     tool: { handler: (i: unknown, a: unknown) => unknown },
     input: unknown,

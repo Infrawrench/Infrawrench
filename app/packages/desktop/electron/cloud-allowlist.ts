@@ -82,6 +82,8 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   // state scope picker (all reads; connecting happens in the browser).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/github/(status|repos|install-url)(\\?|$)`) },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/iac/states$`) },
+  // The Apps section: which apps the organization has turned off.
+  { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/products$`) },
 ];
 
 /**

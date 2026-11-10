@@ -8,11 +8,11 @@ import {
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
   OrgSwitcher,
+  ManageAccountsModal,
   SidebarApps,
   SidebarHomeButton,
   SidebarRecentTools,
   useShowsInfrastructureSidebar,
-  SidebarToolsButton,
   toast,
   useDataString,
   type Account,
@@ -32,12 +32,14 @@ import {
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import {
+  accountTabTarget,
   chatTabTarget,
   homeTabTarget,
   complianceTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
 } from "@/lib/workspace-tabs";
+import { accountSyncsResources } from "@infrawrench/client-core";
 import { useOrgTools } from "@/lib/org-tools";
 import { AddAccountModal } from "./AddAccountModal";
 import { reconnectProviderAccount } from "@/lib/provider-oauth";
@@ -119,6 +121,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     Record<string, Record<string, ResourceTypeMeta>>
   >({});
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showManageAccounts, setShowManageAccounts] = useState(false);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 
   // Dashboard state
@@ -390,6 +393,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           map: { ...base, [accountId]: { loading: false, resources: existing } },
         };
       });
+      // A connection made for Costs only keeps no inventory: the server
+      // refuses its resource sync, so there is nothing to refresh.
+      const account = groups.flatMap((g) => g.accounts).find((a) => a.id === accountId);
+      if (!accountSyncsResources(account?.products)) return;
       apiPost<{ incompleteLists?: Array<{ message: string }> }>(
         `${apiBase}/accounts/${accountId}/sync`,
       )
@@ -547,9 +554,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             active={pathname.startsWith(`/org/${orgId}/home`)}
             onClick={() => void navigateToWorkspaceTarget(navigate, homeTabTarget())}
           />
-          <SidebarToolsButton tools={orgTools} />
-          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
-          <SidebarApps tools={orgTools} />
           {/* Dashboards section */}
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">
@@ -708,6 +712,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             )}
           </div>
 
+          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
+          <SidebarApps tools={orgTools} />
+
           {/* Plugin groups: Infrastructure's part of the sidebar, shown only
               in its context (see showsInfrastructureSidebar). Hidden rather
               than unmounted so expanded accounts survive a visit elsewhere. */}
@@ -848,15 +855,32 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           </div>
         </div>
 
-        {/* Add account button pinned to the bottom */}
+        {/* Manage accounts: every account, and the way to connect another */}
         <div className="border-t border-border p-2">
           <button
             type="button"
-            onClick={() => setShowAddAccount(true)}
+            onClick={() => setShowManageAccounts(true)}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
-            <span className="text-base leading-none">+</span>
-            {gt("Add account")}
+            {/* lucide: plug */}
+            <svg
+              aria-hidden="true"
+              width={14}
+              height={14}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="opacity-60"
+            >
+              <path d="M12 22v-5" />
+              <path d="M9 8V2" />
+              <path d="M15 8V2" />
+              <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+            </svg>
+            {gt("Manage accounts")}
           </button>
           <button
             type="button"
@@ -869,6 +893,18 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
       </aside>
 
+      {showManageAccounts && (
+        <ManageAccountsModal
+          groups={groups}
+          onClose={() => setShowManageAccounts(false)}
+          onAddAccount={() => setShowAddAccount(true)}
+          onOpenAccount={(accountId, displayName) =>
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(accountId), {
+              label: displayName,
+            })
+          }
+        />
+      )}
       {showAddAccount && (
         <AddAccountModal
           onClose={() => setShowAddAccount(false)}

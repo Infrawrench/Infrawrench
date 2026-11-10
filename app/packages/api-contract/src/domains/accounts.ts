@@ -11,6 +11,7 @@
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
+import { PRODUCT_IDS } from "@infrawrench/client-core";
 import { minLength } from "../schemas";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
@@ -116,8 +117,31 @@ const PreflightPermission = Schema.Struct({
   label: Schema.String,
 }).annotate({ identifier: "PreflightPermission" });
 
+const ProductIdSchema = Schema.Literals(PRODUCT_IDS).annotate({
+  identifier: "ProductId",
+  description: "One of the apps the product is presented as.",
+});
+
+/**
+ * As a response field the list stays open (plain strings): a client that
+ * ships behind the server must not fail on an app added later.
+ */
+const AccountProducts = Schema.NullOr(Schema.Array(Schema.String)).annotate({
+  description:
+    "The apps this connection is for, as product ids (`infrastructure`, `costs`, `observability`, `incidents`, `security`, `delivery`, `automation`). `null` means every app the plugin offers. Collection follows it: an account connected for `costs` alone is not resource-synced, and one without `costs` has no cost data collected.",
+});
+
+const AccountProductsInput = Schema.NullOr(Schema.Array(ProductIdSchema)).annotate({
+  description:
+    "The apps to use this connection for. Each must be one the plugin offers (the distinct `product`s of its `preflight.capabilities`, where a capability without one follows the convention for its id); an empty list is rejected, as is any list for a plugin without preflight. `null`, or the plugin's whole offer, means every app and is stored as `null`.",
+});
+
 const PreflightCapability = Schema.Struct({
   id: Schema.String.annotate({ examples: ["costs"] }),
+  product: Schema.optionalKey(ProductIdSchema).annotateKey({
+    description:
+      "The app this capability powers. Absent for the conventional ids: `costs`, `commitments`, `credits`, `seats`, `idle-findings` and `ai-request-logs` power `costs`; `metrics`, `logs`, `slos` and `synthetics` power `observability`; anything else powers `infrastructure`.",
+  }),
   label: Schema.String,
   description: Schema.optionalKey(Schema.String),
   requiredPermissions: Schema.Array(PreflightPermission),
@@ -245,6 +269,7 @@ export const Account = Schema.Struct({
       "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
   }),
   oauthStatus: AccountOAuthStatus,
+  products: Schema.optionalKey(AccountProducts),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "Account" });
 
@@ -261,6 +286,7 @@ const CreateAccountRequest = Schema.Struct({
       description: "Optional bastion id to route this account's cloud API traffic through.",
     }),
   ),
+  products: Schema.optionalKey(AccountProductsInput),
 }).annotate({ identifier: "CreateAccountRequest" });
 
 export const CreateAccountResponse = Schema.Struct({
@@ -277,12 +303,19 @@ const UpdateAccountRequest = Schema.Struct({
         "Pass `null` to unbind, a uuid to bind, or omit the field to leave the binding unchanged.",
     }),
   ),
+  products: Schema.optionalKey(
+    AccountProductsInput.annotate({
+      description:
+        "Change the apps this connection is for; omit the field to leave them unchanged. Same rules as on create. Adding an app makes its collection due now; the credential must already carry that app's permissions.",
+    }),
+  ),
 }).annotate({ identifier: "UpdateAccountRequest" });
 
 export const UpdatedAccount = Schema.Struct({
   id: Uuid,
   displayName: Schema.String,
   bastionId: Schema.NullOr(Uuid),
+  products: Schema.optionalKey(AccountProducts),
 }).annotate({ identifier: "UpdatedAccount" });
 
 /** Documented; the handler reads the body raw. */
@@ -386,6 +419,7 @@ export const AccountDetail = Schema.Struct({
     pluginId: Schema.String,
     displayName: Schema.String,
     oauthStatus: AccountOAuthStatus,
+    products: Schema.optionalKey(AccountProducts),
   }),
   resourceTypes: Schema.Array(ResourceTypeSummary),
   pluginDisplayName: Schema.String,
@@ -494,7 +528,10 @@ export class AccountsGroup extends HttpApiGroup.make("accounts")
       error: [BadRequest, NotFound],
     })
       .annotate(RequiredPermission, "accounts:write")
-      .annotate(OpenApi.Summary, "Update an account (rename and/or change bastion binding)")
+      .annotate(
+        OpenApi.Summary,
+        "Update an account (rename, change bastion binding, change what it is for)",
+      )
       .annotate(SuccessDescription, "Updated"),
     HttpApiEndpoint.get("credentials", "/:id/credentials", {
       params: OrgIdParams,
@@ -556,9 +593,14 @@ export class AccountsGroup extends HttpApiGroup.make("accounts")
     HttpApiEndpoint.post("sync", "/:id/sync", {
       params: OrgIdParams,
       success: SyncResponse,
+      error: BadRequest,
     })
       .annotate(RequiredPermission, "resources:read")
       .annotate(OpenApi.Summary, "Sync all resource types for an account")
+      .annotate(
+        OpenApi.Description,
+        "400 for an account connected for Costs alone: its resources are not synced. Add another app to the connection (`PATCH /accounts/{id}` with `products`) first.",
+      )
       .annotate(SuccessDescription, "Sync result"),
     HttpApiEndpoint.get("detail", "/:id/detail", {
       params: OrgIdParams,
@@ -571,7 +613,7 @@ export class AccountsGroup extends HttpApiGroup.make("accounts")
     HttpApiEndpoint.post("syncType", "/:id/sync-type/:typeId", {
       params: { ...OrgIdParams, typeId: ResourceTypeId },
       success: Schema.Array(SyncedResource),
-      error: [NotFound, InternalServerError],
+      error: [BadRequest, NotFound, InternalServerError],
     })
       .annotate(RequiredPermission, "resources:read")
       .annotate(OpenApi.Summary, "Sync a single resource type and return its resources")

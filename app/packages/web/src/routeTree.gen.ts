@@ -83,6 +83,7 @@ import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.
 import { Route as OrgOrgIdSettingsAiAttributionRouteImport } from './routes/org.$orgId.settings.ai-attribution'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
+import { Route as OrgOrgIdSettingsAppsRouteImport } from './routes/org.$orgId.settings.apps'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
@@ -499,6 +500,11 @@ const OrgOrgIdSettingsApprovalsRoute =
     path: '/approvals',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsAppsRoute = OrgOrgIdSettingsAppsRouteImport.update({
+  id: '/apps',
+  path: '/apps',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsAuditLogRoute =
   OrgOrgIdSettingsAuditLogRouteImport.update({
     id: '/audit-log',
@@ -741,6 +747,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -844,6 +851,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -951,6 +959,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -1059,6 +1068,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1162,6 +1172,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1268,6 +1279,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1834,6 +1846,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/apps': {
+      id: '/org/$orgId/settings/apps'
+      path: '/apps'
+      fullPath: '/org/$orgId/settings/apps'
+      preLoaderRoute: typeof OrgOrgIdSettingsAppsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/audit-log': {
       id: '/org/$orgId/settings/audit-log'
       path: '/audit-log'
@@ -2186,6 +2205,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAiAttributionRoute: typeof OrgOrgIdSettingsAiAttributionRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
+  OrgOrgIdSettingsAppsRoute: typeof OrgOrgIdSettingsAppsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
@@ -2222,6 +2242,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsAiAttributionRoute: OrgOrgIdSettingsAiAttributionRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
+  OrgOrgIdSettingsAppsRoute: OrgOrgIdSettingsAppsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,

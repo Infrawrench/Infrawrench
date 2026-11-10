@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
 const mockInsert = vi.fn();
@@ -282,6 +282,192 @@ describe("Account routes", () => {
 
       expect(res.status).toBe(200);
       expect(values).toHaveBeenCalled();
+    });
+  });
+
+  describe("the apps a connection is for (products)", () => {
+    const capability = (id: string) => ({ id, label: id, requiredPermissions: [] });
+    /** Offers Infrastructure, Costs and Observability. */
+    const cloudPlugin = {
+      plugin: {
+        manifest: {
+          id: "aws",
+          credentialFields: [],
+          preflight: {
+            capabilities: [capability("resources"), capability("costs"), capability("metrics")],
+          },
+        },
+      },
+    };
+
+    // Later suites rely on no plugin being found unless they set one.
+    afterEach(() => {
+      mockGetPlugin.mockReset();
+      mockSelect.mockReset();
+      mockUpdate.mockReset();
+      mockInsert.mockReset();
+    });
+
+    const create = (products: unknown) =>
+      buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "aws",
+          displayName: "Billing",
+          credentials: { accessKeyId: "id", secretAccessKey: "secret" },
+          products,
+        }),
+      });
+
+    function setupCreate() {
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+      mockSelect.mockReturnValue(chainMock([]));
+      mockGetPlugin.mockResolvedValue(cloudPlugin);
+      return values;
+    }
+
+    it("stores a subset in the canonical order", async () => {
+      const values = setupCreate();
+
+      const res = await create(["observability", "costs"]);
+
+      expect(res.status).toBe(200);
+      expect(values.mock.calls[0]![0].products).toEqual(["costs", "observability"]);
+    });
+
+    it("stores null when nothing is chosen, as every account before the choice has", async () => {
+      const values = setupCreate();
+
+      expect((await create(undefined)).status).toBe(200);
+      expect(values.mock.calls[0]![0].products).toBeNull();
+    });
+
+    it("stores null when the choice is everything the plugin offers", async () => {
+      const values = setupCreate();
+
+      expect((await create(["costs", "infrastructure", "observability"])).status).toBe(200);
+      expect(values.mock.calls[0]![0].products).toBeNull();
+    });
+
+    it("does not sync resources for a connection made for Costs alone", async () => {
+      const values = setupCreate();
+
+      const res = await create(["costs"]);
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ id: "acct-uuid-1" });
+      expect(values.mock.calls[0]![0].products).toEqual(["costs"]);
+      // The sync's first step is reading the account row; it never ran.
+      expect(mockSelect).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an empty list", []],
+      ["an unknown id", ["costs", "billing"]],
+      ["an app the plugin does not offer", ["security"]],
+      ["something that is not a list", "costs"],
+    ])("400s for %s and stores nothing", async (_name, products) => {
+      const values = setupCreate();
+
+      const res = await create(products);
+
+      expect(res.status).toBe(400);
+      expect(values).not.toHaveBeenCalled();
+    });
+
+    it("400s for any list when the plugin has no preflight", async () => {
+      const values = setupCreate();
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: { id: "aws", credentialFields: [] } },
+      });
+
+      expect((await create(["costs"])).status).toBe(400);
+      expect(values).not.toHaveBeenCalled();
+    });
+
+    describe("PATCH /:id", () => {
+      const patch = (body: unknown) =>
+        buildApp().request("/a1", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      function setupUpdate() {
+        mockGetPlugin.mockResolvedValue(cloudPlugin);
+        mockSelect.mockReturnValue(chainMock([{ pluginId: "aws", bastionId: null }]));
+        const returning = vi.fn(async () => [
+          { id: "a1", displayName: "Billing", bastionId: null, products: ["costs"] },
+        ]);
+        const set = vi.fn((_values: Record<string, unknown>) => ({
+          where: vi.fn(() => ({ returning })),
+        }));
+        mockUpdate.mockReturnValue({ set });
+        return set;
+      }
+
+      it("changes the apps and makes collection due now", async () => {
+        const set = setupUpdate();
+
+        const res = await patch({ products: ["costs"] });
+
+        expect(res.status).toBe(200);
+        expect((await res.json()).products).toEqual(["costs"]);
+        const written = set.mock.calls[0]![0];
+        expect(written["products"]).toEqual(["costs"]);
+        expect(written["nextPollAt"]).toBeInstanceOf(Date);
+        expect(written["costNextPollAt"]).toBeInstanceOf(Date);
+      });
+
+      it("writes null for every app", async () => {
+        const set = setupUpdate();
+
+        expect((await patch({ products: null })).status).toBe(200);
+        expect(set.mock.calls[0]![0]).toHaveProperty("products", null);
+      });
+
+      it("leaves the apps alone when the field is absent", async () => {
+        const set = setupUpdate();
+
+        expect((await patch({ displayName: "Renamed" })).status).toBe(200);
+        expect(set.mock.calls[0]![0]).toEqual({ displayName: "Renamed" });
+      });
+
+      it("400s for an app the plugin does not offer, without writing", async () => {
+        const set = setupUpdate();
+
+        expect((await patch({ products: ["delivery"] })).status).toBe(400);
+        expect(set).not.toHaveBeenCalled();
+      });
+
+      it("400s for an empty list", async () => {
+        const set = setupUpdate();
+
+        expect((await patch({ products: [] })).status).toBe(400);
+        expect(set).not.toHaveBeenCalled();
+      });
+
+      it("404s when the account is not in the org", async () => {
+        setupUpdate();
+        mockSelect.mockReturnValue(chainMock([]));
+
+        expect((await patch({ products: ["costs"] })).status).toBe(404);
+      });
+    });
+
+    it("refuses a manual sync of a costs-only account with a readable 400", async () => {
+      const where = vi.fn().mockResolvedValue([{ products: ["costs"] }]);
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+
+      const res = await buildApp().request("/a1/sync", { method: "POST" });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("Costs only");
+      // Only the gate read the account; the sync did not start.
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(mockGetPlugin).not.toHaveBeenCalled();
     });
   });
 

@@ -9,6 +9,7 @@ import {
 } from "@infrawrench/ui";
 import { usePermissions } from "@/auth/permissions-context";
 import { apiGet } from "@/lib/api";
+import { useOrgTools } from "@/lib/org-tools";
 import { navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 
 /**
@@ -19,6 +20,7 @@ import { navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 export function WebCommandPalette({ orgId, onClose }: { orgId: string; onClose: () => void }) {
   const navigate = useNavigate();
   const { has } = usePermissions();
+  const tools = useOrgTools(orgId);
   const [orgs, setOrgs] = useState<PaletteOrg[]>([]);
 
   useEffect(() => {
@@ -50,6 +52,7 @@ export function WebCommandPalette({ orgId, onClose }: { orgId: string; onClose: 
     open,
     has,
     cloud: true,
+    tools,
     orgs,
     activeOrgId: orgId,
     switchOrg,

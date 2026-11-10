@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useUIStore } from "@infrawrench/ui";
 import { ProductsHomePanel } from "@infrawrench/ui/products/ProductsHomePanel";
 import { resolveDefaultDashboard } from "../lib/default-dashboard";
+import { useDisabledProducts } from "../lib/disabled-products";
 import { useOrgTools } from "../lib/org-tools";
 import {
   chatTabTarget,
@@ -18,6 +19,7 @@ import {
 export function DesktopHomePanel({ productId }: { productId?: string | undefined }) {
   const navigate = useNavigate();
   const tools = useOrgTools();
+  const disabledProducts = useDisabledProducts();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   async function openDashboards() {
@@ -40,6 +42,7 @@ export function DesktopHomePanel({ productId }: { productId?: string | undefined
     <ProductsHomePanel
       productId={productId}
       tools={tools}
+      disabledProducts={disabledProducts}
       onOpenProduct={(id) => void navigateToWorkspaceTarget(navigate, homeTabTarget(id))}
       onOpenDashboards={() => void openDashboards()}
       // Chat is the cloud agent; there is none without an organization.

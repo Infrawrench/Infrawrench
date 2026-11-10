@@ -32,6 +32,7 @@ import {
   type OAuthStatus,
 } from "@infrawrench/server-core/provider-oauth";
 import { showcaseFields, stripOAuthGrantState } from "@infrawrench/plugin-base";
+import { accountSyncsResources, resolveAccountProducts } from "@infrawrench/client-core";
 import {
   Account,
   AccountDetail,
@@ -91,10 +92,13 @@ const CreateBody = Schema.Struct({
   displayName: Schema.String,
   credentials: Schema.optionalKey(Schema.NullOr(StringMap)),
   bastionId: OptionalId,
+  // Checked by `chosenProducts`, which answers a readable 400.
+  products: Schema.optionalKey(Schema.Unknown),
 });
 const UpdateBody = Schema.Struct({
   displayName: Schema.optionalKey(Schema.Unknown),
   bastionId: OptionalId,
+  products: Schema.optionalKey(Schema.Unknown),
 });
 
 /** A thrown value's message, as the routes' `catch` blocks answered it. */
@@ -167,6 +171,38 @@ const validatedBastion = Effect.fnUntraced(function* (
   const id = yield* orgBastion(organizationId, bastionId);
   if (!id) return yield* badRequest("Bastion not found");
   return id;
+});
+
+/**
+ * The apps a connection is for, as stored: the submitted list checked against
+ * what the account's plugin offers (`resolveAccountProducts`), `null` for
+ * every app, or the route's 400.
+ */
+const chosenProducts = Effect.fnUntraced(function* (pluginId: string, submitted: unknown) {
+  if (submitted === null || submitted === undefined) return null;
+  const loaded = yield* legacy(() => getPlugin(pluginId));
+  const choice = resolveAccountProducts(loaded?.plugin.manifest.preflight, submitted);
+  if (!choice.ok) return yield* badRequest(choice.error);
+  return choice.products;
+});
+
+/** Refuse a resource sync for an account connected for Costs alone. */
+const refuseCostsOnlySync = Effect.fnUntraced(function* (
+  accountId: string,
+  organizationId: string,
+) {
+  const [account] = yield* legacy(() =>
+    db
+      .select({ products: accounts.products })
+      .from(accounts)
+      .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId))),
+  );
+  // A missing account is the sync's own error to report.
+  if (account && !accountSyncsResources(account.products)) {
+    return yield* badRequest(
+      "This account is connected for Costs only, so its resources are not synced. Add another app to the connection to sync them.",
+    );
+  }
 });
 
 /** Log a failed allowlist push, as every caller of it here always has. */
@@ -481,6 +517,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
               displayName: accounts.displayName,
               bastionId: accounts.bastionId,
               oauthStatus: accounts.oauthStatus,
+              products: accounts.products,
               createdAt: accounts.createdAt,
             })
             .from(accounts)
@@ -504,6 +541,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
           session.userId,
         );
         yield* refuseServerCredentials(pluginId, credentials);
+        const products = yield* chosenProducts(pluginId, body.products);
 
         // The free plan caps connected accounts. Deleted accounts don't count:
         // the filter matches the list route's.
@@ -539,6 +577,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
             credentialsIv: iv,
             bastionId,
             oauthStatus,
+            products,
           });
         });
 
@@ -550,8 +589,10 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
         // Sync resources before returning so the UI has data immediately. If
         // the sync itself blows up we still return the freshly-created account
         // row, but we surface the failure to the caller so they can render a
-        // warning.
+        // warning. A connection made for Costs alone has no inventory to
+        // sync (and no permission to list it); the cost pass picks it up.
         const syncError = yield* legacy(async () => {
+          if (!accountSyncsResources(products)) return undefined;
           try {
             await syncAccountResources(id, organizationId);
             return undefined;
@@ -578,14 +619,20 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
         return ok;
       }),
     )
-    // Rename an account or change its bastion binding.
+    // Rename an account, change its bastion binding or the apps it is for.
     .handleRaw("update", ({ params, request }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
         const body = yield* decodeAsPayload(UpdateBody, yield* fieldsOf(yield* readJson(request)));
         const accountId = params.id;
 
-        const updates: { displayName?: string; bastionId?: string | null } = {};
+        const updates: {
+          displayName?: string;
+          bastionId?: string | null;
+          products?: string[] | null;
+          nextPollAt?: Date;
+          costNextPollAt?: Date;
+        } = {};
         if (body.displayName !== undefined) {
           if (typeof body.displayName !== "string" || !body.displayName.trim()) {
             return yield* badRequest("displayName is required");
@@ -611,6 +658,21 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
           );
           oldBastionId = existing?.bastionId ?? null;
         }
+        if (body.products !== undefined) {
+          const [existing] = yield* legacy(() =>
+            db
+              .select({ pluginId: accounts.pluginId })
+              .from(accounts)
+              .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+              .limit(1),
+          );
+          if (!existing) return yield* notFound("Account not found");
+          updates.products = yield* chosenProducts(existing.pluginId, body.products);
+          // Whatever the change added is due now, not when the schedule it
+          // was skipped under next comes round.
+          updates.nextPollAt = new Date();
+          updates.costNextPollAt = new Date();
+        }
         if (Object.keys(updates).length === 0) return yield* badRequest("Nothing to update");
 
         const [updated] = yield* legacy(() =>
@@ -622,6 +684,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
               id: accounts.id,
               displayName: accounts.displayName,
               bastionId: accounts.bastionId,
+              products: accounts.products,
             }),
         );
         if (!updated) return yield* notFound("Account not found");
@@ -828,6 +891,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
     .handle("sync", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
+        yield* refuseCostsOnlySync(params.id, organizationId);
         const result = yield* legacy(() => syncAccountResources(params.id, organizationId));
         return yield* respond(SyncResponse)({
           synced: result.resourceCount,
@@ -876,6 +940,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
             pluginId: account.pluginId,
             displayName: account.displayName,
             oauthStatus: account.oauthStatus ?? null,
+            products: account.products ?? null,
           },
           resourceTypes,
           pluginDisplayName: plugin?.plugin.manifest.displayName ?? "",
@@ -887,6 +952,7 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
     .handle("syncType", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
+        yield* refuseCostsOnlySync(params.id, organizationId);
         const fetched = yield* legacy(() =>
           syncAccountResourceType(params.id, organizationId, params.typeId),
         ).pipe(Effect.catchDefect((defect) => Effect.die(syncTypeFailure(defect))));

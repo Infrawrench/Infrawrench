@@ -6,6 +6,7 @@
  * time.
  */
 import type { Account, AccountDetail, Resource } from "@infrawrench/ui";
+import type { ProductId } from "@infrawrench/client-core";
 import { cloudClient } from "./cloud-client";
 import { runRpc } from "./rpc/client";
 
@@ -35,9 +36,15 @@ export async function createCloudAccount(
   pluginId: string,
   displayName: string,
   credentials: Record<string, string>,
+  /** The apps the connection is for; `null` for every app the plugin offers. */
+  products: ProductId[] | null = null,
 ): Promise<{ id: string } | null> {
   return runRpc(
-    accounts().create({ params: { orgId }, payload: { pluginId, displayName, credentials } }),
+    accounts().create({
+      params: { orgId },
+      // Left out for every app, which a server without the field understands.
+      payload: { pluginId, displayName, credentials, ...(products ? { products } : {}) },
+    }),
   );
 }
 
@@ -90,6 +97,15 @@ export async function renameCloudAccount(
   displayName: string,
 ): Promise<{ id: string; displayName: string }> {
   return runRpc(accounts().update({ params: { orgId, id: accountId }, payload: { displayName } }));
+}
+
+/** Change the apps a connection is for; `null` is every app the plugin offers. */
+export async function updateCloudAccountProducts(
+  orgId: string,
+  accountId: string,
+  products: ProductId[] | null,
+): Promise<{ products?: readonly string[] | null | undefined }> {
+  return runRpc(accounts().update({ params: { orgId, id: accountId }, payload: { products } }));
 }
 
 /** The stored credentials, decrypted server-side for an editor or a preflight. */

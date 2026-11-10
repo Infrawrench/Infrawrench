@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ProductsHomePanel } from "@infrawrench/ui/products/ProductsHomePanel";
 import { apiGet } from "@/lib/api";
+import { useDisabledProducts } from "@/lib/disabled-products";
 import { useOrgTools } from "@/lib/org-tools";
 import {
   chatTabTarget,
@@ -18,6 +19,7 @@ interface WebHomePanelProps {
 export function WebHomePanel({ orgId, productId }: WebHomePanelProps) {
   const navigate = useNavigate();
   const tools = useOrgTools(orgId);
+  const disabledProducts = useDisabledProducts(orgId);
 
   // The dashboard the server resolves for this member: their own default,
   // else their role's, else the organization's.
@@ -38,6 +40,7 @@ export function WebHomePanel({ orgId, productId }: WebHomePanelProps) {
     <ProductsHomePanel
       productId={productId}
       tools={tools}
+      disabledProducts={disabledProducts}
       onOpenProduct={(id) => void navigateToWorkspaceTarget(navigate, homeTabTarget(id))}
       onOpenDashboards={() => void openDashboards()}
       onOpenChat={() => void navigateToWorkspaceTarget(navigate, chatTabTarget())}

@@ -15,6 +15,7 @@ import {
   type ResourceTypeInfo,
 } from "@/components/AccountDetailView";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
+import { accountSyncsResources } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
 import type { AccountListItem } from "@/lib/api-types";
 
@@ -173,12 +174,15 @@ export function AccountPanel({
   const prioritizedTypesRef = useRef<Set<string> | null>(null);
   if (prioritizedTypesRef.current === null) prioritizedTypesRef.current = new Set();
   const prioritizedTypes = prioritizedTypesRef.current;
+  // A connection made for Costs alone has no resources to sync, and the
+  // server refuses the attempt.
+  const syncsResources = meta ? accountSyncsResources(meta.account.products) : false;
   useEffect(() => {
-    if (!activeType) return;
+    if (!activeType || !syncsResources) return;
     if (prioritizedTypes.has(activeType)) return;
     prioritizedTypes.add(activeType);
     void resyncType(activeType);
-  }, [activeType, resyncType, prioritizedTypes]);
+  }, [activeType, resyncType, prioritizedTypes, syncsResources]);
 
   useEffect(() => {
     let cancelled = false;

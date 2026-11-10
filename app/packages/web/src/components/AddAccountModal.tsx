@@ -7,7 +7,7 @@ import {
   type BastionOption,
   type CredentialFieldOption,
 } from "@infrawrench/ui";
-import type { PolicyTemplate, PreflightReport } from "@infrawrench/client-core";
+import type { PolicyTemplate, PreflightReport, ProductId } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
@@ -83,12 +83,16 @@ export function AddAccountModal({
       displayName: string,
       credentials: Record<string, string>,
       bastionId: string | null,
+      products: ProductId[] | null,
     ) => {
       const result = await apiPost<CreateAccountResponse>(`/api/org/${orgId}/accounts`, {
         pluginId,
         displayName,
         credentials,
         bastionId,
+        // Left out for every app, which is also what a server without the
+        // field understands.
+        ...(products ? { products } : {}),
       });
       if (result?.syncError) {
         toast.warning(gt("Account created but initial sync failed"), {

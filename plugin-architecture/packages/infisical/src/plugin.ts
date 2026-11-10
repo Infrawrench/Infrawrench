@@ -86,6 +86,7 @@ export const manifest = {
       },
       {
         id: "audit-logs",
+        product: "observability",
         label: "Audit logs and metrics",
         description: "Read audit logs for the Logs and Metrics tabs.",
         requiredPermissions: [

@@ -1254,6 +1254,13 @@
       "when": 1794259843949,
       "tag": "0178_ci_job_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1794351884589,
+      "tag": "0179_narrow_spot",
+      "breakpoints": true
     }
   ]
 }

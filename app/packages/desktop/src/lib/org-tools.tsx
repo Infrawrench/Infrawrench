@@ -33,6 +33,7 @@ import {
   VulnerabilitiesIcon,
   WallboardIcon,
   useUIStore,
+  withoutDisabledProducts,
   type SidebarToolDef,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
@@ -71,11 +72,12 @@ import {
   navigateToWorkspaceTarget,
 } from "./workspace-tabs";
 import { cloudClient } from "./cloud-client";
+import { useDisabledProducts } from "./disabled-products";
 import { runRpc } from "./rpc/client";
 
 /**
  * The org-level tools, one entry per sidebar tile. One list feeds both the
- * sidebar's Tools launcher and the Home tab, which groups the same entries
+ * sidebar's Apps tree, spotlight and the Home tab, which groups the same entries
  * into products (`PRODUCTS` in `@infrawrench/ui`) by their `key`; a tool
  * added here shows in the launcher at once and on Home once a product claims
  * its key.
@@ -99,11 +101,13 @@ export function useOrgTools(): SidebarToolDef[] {
     };
   }, [activeCloudOrgId]);
 
+  const disabledProducts = useDisabledProducts();
+
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs and Changes have no local half (spend is collected
   // server-side, change events are recorded by the cloud poller) so the tool
-  // count differs between local and org mode; the Tools launcher lists
+  // count differs between local and org mode; every surface lists
   // whatever it gets.
   const navTools: SidebarToolDef[] = [
     {
@@ -478,5 +482,8 @@ export function useOrgTools(): SidebarToolDef[] {
         void navigateToWorkspaceTarget(navigate, logsTabTarget(), { label: gt("Logs") }),
     },
   ];
-  return navTools;
+  // Apps the organization has turned off take their tools with them, which
+  // is what removes them from the Apps tree, Recent, the launcher and Home.
+  // Local mode has no organization, so nothing is off.
+  return withoutDisabledProducts(navTools, disabledProducts);
 }

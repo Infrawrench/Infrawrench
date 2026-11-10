@@ -6,6 +6,7 @@ import {
   showsInfrastructureSidebar,
   toolKeyForTabTarget,
 } from "../registry.js";
+import { withoutDisabledProducts } from "../policy.js";
 
 describe("product registry", () => {
   it("lists every product id exactly once", () => {
@@ -47,5 +48,20 @@ describe("product registry", () => {
     expect(showsInfrastructureSidebar({ kind: "costs" })).toBe(false);
     expect(showsInfrastructureSidebar({ kind: "chat" })).toBe(false);
     expect(showsInfrastructureSidebar({ kind: "settings" })).toBe(false);
+  });
+});
+
+describe("withoutDisabledProducts", () => {
+  const tools = [{ key: "costs" }, { key: "graph" }, { key: "workflows" }, { key: "mystery" }];
+
+  it("returns the same list when nothing is turned off", () => {
+    expect(withoutDisabledProducts(tools, [])).toBe(tools);
+  });
+
+  it("drops the tools of a turned-off app and keeps unclaimed ones", () => {
+    expect(withoutDisabledProducts(tools, ["costs", "automation"]).map((t) => t.key)).toEqual([
+      "graph",
+      "mystery",
+    ]);
   });
 });

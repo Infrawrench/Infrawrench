@@ -66,6 +66,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "xray",
+      product: "security",
       label: "Xray watches, policies and violations",
       description:
         "List watches and policies and the latest violations; enable, disable, edit and delete them. Needs Xray in the subscription.",

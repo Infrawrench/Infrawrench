@@ -102,6 +102,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "query",
+      product: "observability",
       label: "HogQL and metrics",
       description: "Run HogQL from the Query tab and chart events and flag evaluations.",
       requiredPermissions: [perm("query:read")],
@@ -119,6 +120,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "billing",
+      product: "costs",
       label: "Cost data",
       description:
         "Daily spend by product and project for Costs, and the billing period on the organization.",

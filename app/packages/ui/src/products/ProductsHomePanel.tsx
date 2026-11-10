@@ -3,7 +3,15 @@ import { useGT } from "gt-react";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { ProductIcon } from "./ProductIcon.js";
 import { useProductCopy, useToolDescriptions, type ProductCopy } from "./copy.js";
-import { PRODUCTS, findProduct, groupToolsByProduct, type ProductId } from "./registry.js";
+import {
+  PRODUCTS,
+  findProduct,
+  groupToolsByProduct,
+  type ProductDef,
+  type ProductId,
+} from "./registry.js";
+
+const NO_PRODUCTS: readonly ProductId[] = [];
 
 export interface ProductsHomePanelProps {
   /** The open product's page, or Home (the grid of products) when unset. */
@@ -16,6 +24,12 @@ export interface ProductsHomePanelProps {
   onOpenDashboards: () => void;
   /** Opens chat. Absent where there is no chat (desktop without an org). */
   onOpenChat?: (() => void) | undefined;
+  /**
+   * Apps the organization has turned off (the host's `useDisabledProducts`).
+   * They are left out of the grid, and their page says so instead of listing
+   * tools.
+   */
+  disabledProducts?: readonly ProductId[] | undefined;
 }
 
 /**
@@ -33,6 +47,7 @@ export function ProductsHomePanel({
   onOpenProduct,
   onOpenDashboards,
   onOpenChat,
+  disabledProducts = NO_PRODUCTS,
 }: ProductsHomePanelProps) {
   const copy = useProductCopy();
   const grouped = useMemo(() => groupToolsByProduct(tools), [tools]);
@@ -46,11 +61,13 @@ export function ProductsHomePanel({
             productId={product.id}
             copy={copy}
             tools={grouped.byProduct[product.id]}
+            turnedOff={disabledProducts.includes(product.id)}
             onOpenProduct={onOpenProduct}
           />
         ) : (
           <ProductGrid
             copy={copy}
+            products={PRODUCTS.filter((p) => !disabledProducts.includes(p.id))}
             byProduct={grouped.byProduct}
             unclaimed={grouped.unclaimed}
             onOpenProduct={onOpenProduct}
@@ -68,6 +85,7 @@ const CARD =
 
 function ProductGrid({
   copy,
+  products,
   byProduct,
   unclaimed,
   onOpenProduct,
@@ -75,6 +93,8 @@ function ProductGrid({
   onOpenChat,
 }: {
   copy: Record<ProductId, ProductCopy>;
+  /** The apps to show: every app the organization has not turned off. */
+  products: readonly ProductDef[];
   byProduct: Record<ProductId, SidebarToolDef[]>;
   unclaimed: SidebarToolDef[];
   onOpenProduct: (productId?: ProductId) => void;
@@ -87,7 +107,7 @@ function ProductGrid({
 
   // A product matches on its own name and tagline or on any of its tools, so
   // "probes" finds Observability without anyone learning where things live.
-  const visible = PRODUCTS.filter((product) => {
+  const visible = products.filter((product) => {
     if (!needle) return true;
     const text = copy[product.id];
     return (
@@ -97,7 +117,8 @@ function ProductGrid({
     );
   });
   const matchingTools = needle
-    ? PRODUCTS.flatMap((product) => byProduct[product.id])
+    ? products
+        .flatMap((product) => byProduct[product.id])
         .concat(unclaimed)
         .filter((tool) => tool.label.toLowerCase().includes(needle))
     : [];
@@ -251,11 +272,14 @@ function ProductPage({
   productId,
   copy,
   tools,
+  turnedOff,
   onOpenProduct,
 }: {
   productId: ProductId;
   copy: Record<ProductId, ProductCopy>;
   tools: SidebarToolDef[];
+  /** The organization turned this app off: say so instead of listing tools. */
+  turnedOff: boolean;
   onOpenProduct: (productId?: ProductId) => void;
 }) {
   const gt = useGT();
@@ -284,7 +308,11 @@ function ProductPage({
         <h1 className="text-xl font-semibold">{text.name}</h1>
       </header>
 
-      {tools.length > 0 ? (
+      {turnedOff ? (
+        <p className="rounded-lg border border-border px-3 py-2.5 text-sm text-on-surface-muted">
+          {gt("Your organization has turned this app off.")}
+        </p>
+      ) : tools.length > 0 ? (
         <ToolList tools={tools} />
       ) : (
         <p className="rounded-lg border border-border px-3 py-2.5 text-sm text-on-surface-muted">

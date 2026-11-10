@@ -18,7 +18,7 @@ A chain can have up to 8 hops. Loops are rejected, so a bad setup fails with an 
 
 ## Route an SSH account through a jumpbox
 
-1. In the sidebar, choose **Add account** > **SSH**.
+1. In the sidebar, choose **Manage accounts** > **Add account** > **SSH**.
 2. In the credential form, pick a jump host from the **Connect through** dropdown. It lists your other SSH accounts.
 3. Save. Every terminal and SFTP session for this account now goes through the jump host.
 

@@ -48,6 +48,7 @@ const preflight: PreflightDeclaration = {
     },
     {
       id: "secret-detection",
+      product: "security",
       label: "Secret detection findings",
       description:
         "Read secret detection vulnerabilities so leaked credentials are matched to what Infrawrench holds (read_api, Developer role), and resolve or dismiss them after a rotation (api, Maintainer role). The vulnerability report needs GitLab Ultimate.",
