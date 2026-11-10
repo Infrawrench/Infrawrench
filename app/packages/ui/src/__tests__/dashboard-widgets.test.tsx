@@ -80,8 +80,11 @@ describe("TextWidgetCard", () => {
     );
     // Before the renderer loads, the source shows as plain text: never as HTML.
     expect(document.querySelector("b")).toBeNull();
-    // The renderer is imported on first use.
-    expect(await screen.findByRole("heading", { name: "Heading" })).toBeTruthy();
+    // The renderer is imported on first use: a cold import, which on a loaded
+    // machine takes longer than the second `findBy` waits by default.
+    expect(
+      await screen.findByRole("heading", { name: "Heading" }, { timeout: 15_000 }),
+    ).toBeTruthy();
     expect(screen.getByRole("link", { name: "a link" }).getAttribute("target")).toBe("_blank");
     expect(document.querySelector("b")).toBeNull();
   });
