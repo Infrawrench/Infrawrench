@@ -2,8 +2,8 @@
  * The products ("apps") Infrawrench is made of.
  *
  * The app is one deployment, but it is presented as several products that
- * each stand on their own: Home shows them as a grid, each has a page saying
- * what it offers, and its tools open from there. They are separate in how
+ * each stand on their own: Home shows them as a grid, each has a page that
+ * lists its tools. They are separate in how
  * they read, not in what they can reach: every product works on the same
  * accounts and resources, and dashboards and chat sit across all of them.
  *
@@ -18,17 +18,9 @@
  * product; a tool no product claims shows under "More tools" on Home, so a
  * new tile is never unreachable while it waits for a home here.
  */
-export const PRODUCT_IDS = [
-  "infrastructure",
-  "costs",
-  "observability",
-  "incidents",
-  "security",
-  "delivery",
-  "automation",
-] as const;
+import { PRODUCT_IDS, isProductId, type ProductId } from "@infrawrench/client-core";
 
-export type ProductId = (typeof PRODUCT_IDS)[number];
+export { PRODUCT_IDS, isProductId, type ProductId };
 
 export interface ProductDef {
   id: ProductId;
@@ -36,8 +28,6 @@ export interface ProductDef {
   name: string;
   /** Org tool keys, in the order the product page lists them. */
   tools: readonly string[];
-  /** Products this one exchanges data with, in display order. */
-  worksWith: readonly ProductId[];
 }
 
 export const PRODUCTS: readonly ProductDef[] = [
@@ -54,7 +44,6 @@ export const PRODUCTS: readonly ProductDef[] = [
       "quotas",
       "ssh-fanout",
     ],
-    worksWith: ["costs", "security", "delivery"],
   },
   {
     id: "costs",
@@ -67,19 +56,16 @@ export const PRODUCTS: readonly ProductDef[] = [
       "invoices",
       "price-catalog",
     ],
-    worksWith: ["infrastructure", "delivery", "observability"],
   },
   {
     id: "observability",
     name: "Observability",
     tools: ["logs", "metric-alerts", "probes", "slos", "query-monitors", "wallboard"],
-    worksWith: ["incidents", "infrastructure", "delivery"],
   },
   {
     id: "incidents",
     name: "Incident response",
     tools: ["incidents", "status-pages", "runbooks", "calendar"],
-    worksWith: ["observability", "delivery", "automation"],
   },
   {
     id: "security",
@@ -93,24 +79,61 @@ export const PRODUCTS: readonly ProductDef[] = [
       "expiring",
       "backups",
     ],
-    worksWith: ["infrastructure", "incidents", "observability"],
   },
   {
     id: "delivery",
     name: "Delivery",
     tools: ["deploy", "ci", "delivery", "environments", "environment-diff"],
-    worksWith: ["infrastructure", "costs", "observability"],
   },
   {
     id: "automation",
     name: "Automation",
     tools: ["agents", "workflows"],
-    worksWith: ["delivery", "costs", "incidents"],
   },
 ];
 
-export function isProductId(value: unknown): value is ProductId {
-  return typeof value === "string" && (PRODUCT_IDS as readonly string[]).includes(value);
+/** The product that owns an org tool, by the tool's `key`. */
+export function productForTool(toolKey: string): ProductId | undefined {
+  return PRODUCTS.find((p) => p.tools.includes(toolKey))?.id;
+}
+
+/** The slice of a workspace tab target these helpers read. */
+interface TabTargetLike {
+  kind: string;
+  productId?: string | undefined;
+}
+
+/**
+ * The org tool a tab belongs to, by the tool's `key`, or undefined for a tab
+ * that is not a tool (Home, a dashboard, an account, a resource, chat,
+ * settings). Tool keys are the tab kinds, except Deploy.
+ */
+export function toolKeyForTabTarget(target: TabTargetLike | undefined): string | undefined {
+  if (!target) return undefined;
+  const key = target.kind === "deployments" ? "deploy" : target.kind;
+  return productForTool(key) ? key : undefined;
+}
+
+/**
+ * Whether the sidebar shows the provider accounts tree for this tab. The
+ * tree is Infrastructure's: it shows on Infrastructure's page and tools and
+ * on the accounts and resources opened from it. Dashboards keep it too,
+ * because dragging a resource from the tree onto a dashboard is how it is
+ * pinned. With no tab open there is nothing to be out of context for.
+ */
+export function showsInfrastructureSidebar(target: TabTargetLike | undefined): boolean {
+  if (!target) return true;
+  switch (target.kind) {
+    case "account":
+    case "resource":
+    case "linux-app":
+    case "dashboard":
+      return true;
+    case "home":
+      return target.productId === "infrastructure";
+    default:
+      return productForTool(toolKeyForTabTarget(target) ?? "") === "infrastructure";
+  }
 }
 
 export function findProduct(id: string | undefined): ProductDef | undefined {

@@ -254,8 +254,17 @@ export {
   findProduct,
   groupToolsByProduct,
   isProductId,
+  productForTool,
+  showsInfrastructureSidebar,
+  toolKeyForTabTarget,
 } from "./products/registry.js";
 export type { ProductDef, ProductId } from "./products/registry.js";
+export {
+  SidebarApps,
+  SidebarRecentTools,
+  useRecentTools,
+  useShowsInfrastructureSidebar,
+} from "./products/sidebar.js";
 
 export { OrgSwitcher } from "./components/OrgSwitcher.js";
 export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";

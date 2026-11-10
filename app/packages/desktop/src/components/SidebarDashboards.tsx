@@ -8,7 +8,9 @@ import {
   DEFAULT_CHAT_MODEL,
   DroppableDashboardItem,
   emitChatConversationsChanged,
+  SidebarApps,
   SidebarHomeButton,
+  SidebarRecentTools,
   SidebarToolsButton,
   useUIStore,
   type ConversationSummary,
@@ -181,6 +183,8 @@ export function SidebarDashboards() {
         onClick={() => void navigateToWorkspaceTarget(navigate, homeTabTarget())}
       />
       <SidebarToolsButton tools={navTools} />
+      <SidebarRecentTools tools={navTools} scope={activeCloudOrgId ?? "local"} />
+      <SidebarApps tools={navTools} />
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">

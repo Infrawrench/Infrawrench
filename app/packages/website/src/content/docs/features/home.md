@@ -26,21 +26,82 @@ Some tools need a cloud organization. In the desktop app without one, an app who
 
 ## Open an app
 
-Click a card to open the app's page. The page has:
+Click a card to open the app's page. It lists every tool in the app, with a line on what each one does. Click a tool to open it.
 
-- **Tools**: every tool in the app, with a line on what it does. Click one to open it.
-- **What it does**: a short list of what the app covers.
-- **Works with**: the other apps it shares data with, and what they share. Click one to go to that app.
-
-![The Costs app page showing its header, the Tools list, the "What it does" list and the "Works with" cards](https://agent-assets.infrawrench.com/docs-screenshots/features/home/app-costs-dark.png)
+![The Costs app page showing its name and its list of tools](https://agent-assets.infrawrench.com/docs-screenshots/features/home/app-costs-dark.png)
 
 Each app opens in its own tab, so you can keep several open side by side. **Home** in the breadcrumb at the top of an app's page takes you back to the grid.
+
+## What each app does
+
+### Infrastructure
+
+- One inventory across all your providers, searchable and always synced
+- A dependency graph that shows what breaks if a resource goes down
+- A timeline of every resource that appeared, changed or disappeared
+- Terraform state sorted into managed, drifted and unmanaged resources
+- One command run across many hosts at once
+
+### Costs
+
+- Cost graphs, budgets and overspend alerts across every account
+- Saved reports you can run by name and show on any dashboard
+- Canvases the assistant builds from a description in plain words
+- Kubernetes cost split by cluster, namespace, workload and label
+- Published list prices compared across providers
+
+### Observability
+
+- Logs from several resources in one pane, searchable and saveable
+- Threshold alerts on collected metrics, covering resources by query
+- Uptime and latency checks run from outside your infrastructure
+- Service-level objectives with burn-rate alerts
+- Scheduled SQL queries that alert on what no metric shows
+- A wallboard of everything that is wrong right now
+
+### Incident response
+
+- Incidents that freeze changes, notify your team and pre-fill the postmortem
+- Public status pages built from the probes you already run
+- Runbooks you run step by step, with a record of who did what
+- One calendar of freezes, expiries, scheduled runs and incidents
+
+### Security
+
+- Posture checks such as public buckets and world-open firewall rules
+- Vulnerability findings shown next to what is actually running
+- Evidence mapped to SOC 2 and ISO 27001 controls
+- Every principal in your clouds in one list, with stale access flagged
+- Time-boxed roles that are removed again when the time is up
+- One countdown for certificates, domains, tokens and passwords
+- Backup coverage across every provider
+
+### Delivery
+
+- Deploys from your repositories, with history per service
+- Pipelines on every push and pull request, each job in its own sandbox
+- Deployment frequency, lead time, failure rate and time to restore
+- Environments from a template that delete themselves when time runs out
+- A side by side comparison of two accounts
+
+### Automation
+
+- Coding agents started on a cloud machine from any account that can run one
+- TypeScript workflows across all your connected accounts
+- Runs by hand, on a schedule, from a git push or from a budget
 
 ## Find a tool
 
 Type in the search field on Home. It matches app names and tool names, so searching for `probes` shows the Probes tool and the Observability app it belongs to.
 
 The **Tools** button in the sidebar is still there. It opens a launcher with every tool in one searchable grid, which is quicker when you already know the tool's name.
+
+## The sidebar
+
+- **Home** and **Tools** are always at the top.
+- **Recent** lists the last few tools you used, newest first, so the ones you live in are one click away. It is remembered in this browser, per organization.
+- **Dashboards** and **Chat** are always there.
+- Your connected provider accounts and their resources belong to Infrastructure. They show while you are in Infrastructure (its page, its tools, an account or a resource) and on dashboards, where you drag resources from the sidebar to pin them. Elsewhere they are hidden, so the sidebar stays short.
 
 ## What sits across every app
 

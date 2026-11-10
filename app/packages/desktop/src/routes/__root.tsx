@@ -16,6 +16,7 @@ import {
   toast,
   TunnelSshAttachModal,
   useUIStore,
+  useShowsInfrastructureSidebar,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
   workspaceTabTargetsEqual,
@@ -577,6 +578,8 @@ function RootLayout() {
     }
   }
 
+  const showAccounts = useShowsInfrastructureSidebar();
+
   function handleNewTab() {
     // A new tab opens on Home, the grid of products.
     const target = homeTabTarget();
@@ -699,7 +702,12 @@ function RootLayout() {
 
                 <div className="flex-1 overflow-y-auto py-2">
                   <SidebarDashboards />
-                  <SidebarAccounts refreshKey={accountsVersion} />
+                  {/* Infrastructure's part of the sidebar, shown only in its
+                      context. Hidden rather than unmounted so expanded
+                      accounts and their refresh timers survive. */}
+                  <div hidden={!showAccounts}>
+                    <SidebarAccounts refreshKey={accountsVersion} />
+                  </div>
                 </div>
 
                 <div className="border-t border-border p-2">

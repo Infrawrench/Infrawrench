@@ -251,6 +251,8 @@ export type {
   PreflightPermission,
   PreflightResult,
 } from "./preflight.js";
+export { PRODUCT_IDS } from "./preflight.js";
+export type { ProductId } from "./preflight.js";
 
 export type {
   StatusFeedDeclaration,

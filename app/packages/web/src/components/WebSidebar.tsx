@@ -8,7 +8,10 @@ import {
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
   OrgSwitcher,
+  SidebarApps,
   SidebarHomeButton,
+  SidebarRecentTools,
+  useShowsInfrastructureSidebar,
   SidebarToolsButton,
   toast,
   useDataString,
@@ -168,6 +171,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   }, [apiBase, dashboardPinsVersion]);
 
   const orgTools = useOrgTools(orgId ?? undefined);
+  const showAccounts = useShowsInfrastructureSidebar();
 
   // Chat sessions: load on org change and refresh when conversations change
   // (new chat, archive, rename after the first turn).
@@ -544,6 +548,8 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             onClick={() => void navigateToWorkspaceTarget(navigate, homeTabTarget())}
           />
           <SidebarToolsButton tools={orgTools} />
+          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
+          <SidebarApps tools={orgTools} />
           {/* Dashboards section */}
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">
@@ -702,140 +708,144 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             )}
           </div>
 
-          {/* Plugin groups */}
-          {loading && (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
-          )}
+          {/* Plugin groups: Infrastructure's part of the sidebar, shown only
+              in its context (see showsInfrastructureSidebar). Hidden rather
+              than unmounted so expanded accounts survive a visit elsewhere. */}
+          <div hidden={!showAccounts}>
+            {loading && (
+              <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
+            )}
 
-          {groups.map((group) => (
-            <div key={group.pluginId} className="mb-3">
-              {/* Plugin header */}
-              <div className="flex items-center gap-2 px-3 py-1">
-                <div
-                  className="size-4 flex-shrink-0"
-                  dangerouslySetInnerHTML={{ __html: group.logoSvg }}
-                  aria-hidden="true"
-                />
-                <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
-                  {gtData(group.displayName)}
-                </span>
-              </div>
+            {groups.map((group) => (
+              <div key={group.pluginId} className="mb-3">
+                {/* Plugin header */}
+                <div className="flex items-center gap-2 px-3 py-1">
+                  <div
+                    className="size-4 flex-shrink-0"
+                    dangerouslySetInnerHTML={{ __html: group.logoSvg }}
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
+                    {gtData(group.displayName)}
+                  </span>
+                </div>
 
-              {/* Accounts under this plugin */}
-              {group.accounts.map((account) => {
-                const isExpanded = expanded.has(account.id);
-                const resourceState = accountResources[account.id];
-                const issue = resourceState?.error ?? resourceState?.warning;
+                {/* Accounts under this plugin */}
+                {group.accounts.map((account) => {
+                  const isExpanded = expanded.has(account.id);
+                  const resourceState = accountResources[account.id];
+                  const issue = resourceState?.error ?? resourceState?.warning;
 
-                return (
-                  <div key={account.id}>
-                    {/* Account row */}
-                    <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
-                      <button
-                        type="button"
-                        onClick={() => void toggleExpand(account.id)}
-                        aria-expanded={isExpanded}
-                        aria-controls={`web-sidebar-account-${account.id}`}
-                        aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
-                        className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
-                      >
-                        <ChevronIcon
-                          direction="right"
-                          size={12}
-                          className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void navigate({
-                            to: "/org/$orgId/accounts/$accountId",
-                            params: { orgId: orgId!, accountId: account.id },
-                          })
-                        }
-                        className="flex items-center gap-2 flex-1 text-left min-w-0"
-                      >
-                        <span className="truncate">{account.displayName}</span>
-                        {issue && <IssueIndicator reason={issue} />}
-                      </button>
-                      {account.oauthStatus === "reconnect_required" && (
-                        <ProviderOAuthReconnectBadge
-                          accountName={account.displayName}
-                          onReconnect={
-                            group.oauthAvailable
-                              ? () => reconnectAccount(account, group.displayName)
-                              : undefined
+                  return (
+                    <div key={account.id}>
+                      {/* Account row */}
+                      <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
+                        <button
+                          type="button"
+                          onClick={() => void toggleExpand(account.id)}
+                          aria-expanded={isExpanded}
+                          aria-controls={`web-sidebar-account-${account.id}`}
+                          aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
+                          className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
+                        >
+                          <ChevronIcon
+                            direction="right"
+                            size={12}
+                            className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void navigate({
+                              to: "/org/$orgId/accounts/$accountId",
+                              params: { orgId: orgId!, accountId: account.id },
+                            })
                           }
-                          reconnecting={reconnectingId === account.id}
-                        />
-                      )}
-                    </div>
+                          className="flex items-center gap-2 flex-1 text-left min-w-0"
+                        >
+                          <span className="truncate">{account.displayName}</span>
+                          {issue && <IssueIndicator reason={issue} />}
+                        </button>
+                        {account.oauthStatus === "reconnect_required" && (
+                          <ProviderOAuthReconnectBadge
+                            accountName={account.displayName}
+                            onReconnect={
+                              group.oauthAvailable
+                                ? () => reconnectAccount(account, group.displayName)
+                                : undefined
+                            }
+                            reconnecting={reconnectingId === account.id}
+                          />
+                        )}
+                      </div>
 
-                    {/* Expanded resources */}
-                    {isExpanded && (
-                      <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
-                        {resourceState?.loading && (
-                          <div className="px-3 py-1 text-xs text-on-surface-faint">
-                            {gt("Loading…")}
-                          </div>
-                        )}
-                        {resourceState && !resourceState.loading && resourceState.error && (
-                          <div className="px-3 py-1 text-xs text-danger">
-                            {gt("Error loading resources")}
-                          </div>
-                        )}
-                        {resourceState &&
-                          !resourceState.loading &&
-                          !resourceState.error &&
-                          resourceState.resources.length === 0 && (
+                      {/* Expanded resources */}
+                      {isExpanded && (
+                        <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
+                          {resourceState?.loading && (
                             <div className="px-3 py-1 text-xs text-on-surface-faint">
-                              {gt("No resources")}
+                              {gt("Loading…")}
                             </div>
                           )}
-                        {resourceState?.resources.map((resource) => {
-                          const typeMeta = accountTypeMeta[account.id]?.[resource.resourceTypeId];
-                          return (
-                            <DraggableSidebarResource
-                              key={resource.id}
-                              resource={{
-                                id: resource.id,
-                                pluginId: resource.pluginId,
-                                resourceTypeId: resource.resourceTypeId,
-                                accountId: resource.accountId,
-                                displayName: resource.displayName,
-                                fields: resource.fieldsJson ?? {},
-                                ...(resource.externalId != null
-                                  ? { externalId: resource.externalId }
-                                  : {}),
-                                ...(typeMeta?.attachTargets
-                                  ? { attachTargets: typeMeta.attachTargets }
-                                  : {}),
-                                ...(typeMeta?.isSshHost ? { isSshHost: true } : {}),
-                                ...(typeMeta?.sshTunnelAttachSource
-                                  ? { isTunnelSshSource: true }
-                                  : {}),
-                              }}
-                              onClick={() =>
-                                void navigate({
-                                  to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                                  params: {
-                                    orgId: orgId!,
-                                    pluginId: resource.pluginId,
-                                    resourceTypeId: resource.resourceTypeId,
-                                    resourceId: resource.id,
-                                  },
-                                })
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                          {resourceState && !resourceState.loading && resourceState.error && (
+                            <div className="px-3 py-1 text-xs text-danger">
+                              {gt("Error loading resources")}
+                            </div>
+                          )}
+                          {resourceState &&
+                            !resourceState.loading &&
+                            !resourceState.error &&
+                            resourceState.resources.length === 0 && (
+                              <div className="px-3 py-1 text-xs text-on-surface-faint">
+                                {gt("No resources")}
+                              </div>
+                            )}
+                          {resourceState?.resources.map((resource) => {
+                            const typeMeta = accountTypeMeta[account.id]?.[resource.resourceTypeId];
+                            return (
+                              <DraggableSidebarResource
+                                key={resource.id}
+                                resource={{
+                                  id: resource.id,
+                                  pluginId: resource.pluginId,
+                                  resourceTypeId: resource.resourceTypeId,
+                                  accountId: resource.accountId,
+                                  displayName: resource.displayName,
+                                  fields: resource.fieldsJson ?? {},
+                                  ...(resource.externalId != null
+                                    ? { externalId: resource.externalId }
+                                    : {}),
+                                  ...(typeMeta?.attachTargets
+                                    ? { attachTargets: typeMeta.attachTargets }
+                                    : {}),
+                                  ...(typeMeta?.isSshHost ? { isSshHost: true } : {}),
+                                  ...(typeMeta?.sshTunnelAttachSource
+                                    ? { isTunnelSshSource: true }
+                                    : {}),
+                                }}
+                                onClick={() =>
+                                  void navigate({
+                                    to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                                    params: {
+                                      orgId: orgId!,
+                                      pluginId: resource.pluginId,
+                                      resourceTypeId: resource.resourceTypeId,
+                                      resourceId: resource.id,
+                                    },
+                                  })
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Add account button pinned to the bottom */}

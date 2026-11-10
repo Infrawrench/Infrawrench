@@ -20,8 +20,8 @@ export interface ProductsHomePanelProps {
 
 /**
  * Home: every product as a card, plus what sits across all of them
- * (dashboards, chat). With a `productId` it is that product's page: what it
- * offers, its tools, and the products it exchanges data with.
+ * (dashboards, chat). With a `productId` it is that product's page: its
+ * name and its tools, nothing else. What a product is for is the docs' job.
  *
  * It holds no data of its own. The host passes its tool list, so a tool a
  * platform cannot offer is never drawn here, and navigation stays the
@@ -47,8 +47,6 @@ export function ProductsHomePanel({
             copy={copy}
             tools={grouped.byProduct[product.id]}
             onOpenProduct={onOpenProduct}
-            onOpenDashboards={onOpenDashboards}
-            onOpenChat={onOpenChat}
           />
         ) : (
           <ProductGrid
@@ -163,10 +161,7 @@ function ProductGrid({
       {!needle && (
         <>
           <section className="mt-10">
-            <h2 className="text-sm font-medium text-on-surface">{gt("Across every app")}</h2>
-            <p className="mt-1 mb-3 text-xs text-on-surface-muted">
-              {gt("These are not tied to one app. They pull from all of them.")}
-            </p>
+            <h2 className="mb-3 text-sm font-medium text-on-surface">{gt("Across every app")}</h2>
             <SharedCards onOpenDashboards={onOpenDashboards} onOpenChat={onOpenChat} />
           </section>
 
@@ -257,19 +252,14 @@ function ProductPage({
   copy,
   tools,
   onOpenProduct,
-  onOpenDashboards,
-  onOpenChat,
 }: {
   productId: ProductId;
   copy: Record<ProductId, ProductCopy>;
   tools: SidebarToolDef[];
   onOpenProduct: (productId?: ProductId) => void;
-  onOpenDashboards: () => void;
-  onOpenChat?: (() => void) | undefined;
 }) {
   const gt = useGT();
   const text = copy[productId];
-  const product = findProduct(productId)!;
 
   return (
     <>
@@ -289,67 +279,18 @@ function ProductPage({
         </span>
       </nav>
 
-      <header className="mb-8 flex items-start gap-4">
-        <ProductIcon product={productId} size={48} />
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">{text.name}</h1>
-          <p className="mt-0.5 text-sm text-on-surface-secondary">{text.tagline}</p>
-          <p className="mt-3 max-w-2xl text-sm text-on-surface-muted">{text.description}</p>
-        </div>
+      <header className="mb-6 flex items-center gap-3">
+        <ProductIcon product={productId} />
+        <h1 className="text-xl font-semibold">{text.name}</h1>
       </header>
 
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-medium text-on-surface">{gt("Tools")}</h2>
-        {tools.length > 0 ? (
-          <ToolList tools={tools} />
-        ) : (
-          <p className="rounded-lg border border-border px-3 py-2.5 text-sm text-on-surface-muted">
-            {gt("Sign in to a cloud organization to use this app.")}
-          </p>
-        )}
-      </section>
-
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-medium text-on-surface">{gt("What it does")}</h2>
-        <ul className="max-w-2xl list-disc space-y-1.5 pl-5 text-sm text-on-surface-secondary marker:text-on-surface-faint">
-          {text.offers.map((offer) => (
-            <li key={offer}>{offer}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-medium text-on-surface">{gt("Works with")}</h2>
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {product.worksWith.map((otherId) => (
-            <li key={otherId}>
-              <button
-                type="button"
-                onClick={() => onOpenProduct(otherId)}
-                className={`${CARD} h-full`}
-              >
-                <ProductIcon product={otherId} size={28} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-on-surface">
-                    {copy[otherId].name}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-on-surface-muted">
-                    {text.worksWith[otherId]}
-                  </span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-medium text-on-surface">{gt("Across every app")}</h2>
-        <p className="mt-1 mb-3 text-xs text-on-surface-muted">
-          {gt("These are not tied to one app. They pull from all of them.")}
+      {tools.length > 0 ? (
+        <ToolList tools={tools} />
+      ) : (
+        <p className="rounded-lg border border-border px-3 py-2.5 text-sm text-on-surface-muted">
+          {gt("Sign in to a cloud organization to use this app.")}
         </p>
-        <SharedCards onOpenDashboards={onOpenDashboards} onOpenChat={onOpenChat} />
-      </section>
+      )}
     </>
   );
 }

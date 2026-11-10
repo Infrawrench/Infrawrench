@@ -22,6 +22,24 @@
  * the host UI degrades to the current behaviour.
  */
 
+/**
+ * The products ("apps") the application is presented as. Listed here, in the
+ * contract, because a plugin says which product each of its capabilities
+ * powers (`PreflightCapability.product`); the hosts re-export the list from
+ * `@infrawrench/client-core` and never keep a second copy.
+ */
+export const PRODUCT_IDS = [
+  "infrastructure",
+  "costs",
+  "observability",
+  "incidents",
+  "security",
+  "delivery",
+  "automation",
+] as const;
+
+export type ProductId = (typeof PRODUCT_IDS)[number];
+
 /** One provider-native permission with a human explanation. */
 export interface PreflightPermission {
   /**
@@ -44,6 +62,14 @@ export interface PreflightCapability {
    * capabilities are fine: the host renders whatever is declared.
    */
   id: string;
+  /**
+   * The product this capability powers, so a connection made for one product
+   * asks only for that product's permissions. Omit it for the conventional
+   * ids, which the host maps itself (`costs` and its relatives to Costs,
+   * `metrics` and `logs` to Observability, everything else to
+   * Infrastructure); set it when a plugin-specific id belongs elsewhere.
+   */
+  product?: ProductId;
   /** Human label rendered as the checklist row, e.g. "Resource inventory". */
   label: string;
   /** One-line explanation of what the capability powers in the app. */
