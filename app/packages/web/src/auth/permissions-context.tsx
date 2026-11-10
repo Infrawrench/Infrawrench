@@ -77,3 +77,12 @@ export function usePermissions(): PermissionsContextValue {
   }
   return ctx;
 }
+
+/**
+ * The permissions when there is an organization, null when the shell is
+ * rendering without one (a redirect to `/org/:orgId` in flight). For the few
+ * consumers the shell draws either way, such as the sidebar.
+ */
+export function usePermissionsIfAny(): PermissionsContextValue | null {
+  return useContext(PermissionsContext);
+}

@@ -111,6 +111,12 @@ From the top:
 
 Opening Infrawrench takes you back to the tab you had open last time. If there is none, you land on Home. A link to a specific page always opens that page.
 
+## Settings
+
+Settings are grouped the same way. **Organization** comes first (General, Apps, Team, Roles, API keys, Notifications, Billing and the like), then one group per app with the settings that belong to it: SSH keys, bastions and tags under Infrastructure, cost centres and currency under Costs, access policies under Security, and so on.
+
+Each app also has a shortcut to its own settings: the **Settings** button on the app's page, and the **Settings** row at the end of the app's list in the sidebar. An app with no settings has no shortcut.
+
 ## Turn apps off
 
 An organization that does not use an app can turn it off. Open **Settings**, then **Apps**, and switch the app off. The change is saved at once and applies to everyone in the organization.

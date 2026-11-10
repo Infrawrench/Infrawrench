@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
-import { ProductIcon } from "./ProductIcon.js";
+import { ProductIcon, SettingsGlyph } from "./ProductIcon.js";
 import { useProductCopy, useToolDescriptions, type ProductCopy } from "./copy.js";
 import {
   PRODUCTS,
@@ -30,6 +30,8 @@ export interface ProductsHomePanelProps {
    * tools.
    */
   disabledProducts?: readonly ProductId[] | undefined;
+  /** Opens an app's settings, or undefined when it has none to open. */
+  settingsFor?: ((product: ProductId) => (() => void) | undefined) | undefined;
 }
 
 /**
@@ -48,6 +50,7 @@ export function ProductsHomePanel({
   onOpenDashboards,
   onOpenChat,
   disabledProducts = NO_PRODUCTS,
+  settingsFor,
 }: ProductsHomePanelProps) {
   const copy = useProductCopy();
   const grouped = useMemo(() => groupToolsByProduct(tools), [tools]);
@@ -62,6 +65,7 @@ export function ProductsHomePanel({
             copy={copy}
             tools={grouped.byProduct[product.id]}
             turnedOff={disabledProducts.includes(product.id)}
+            openSettings={settingsFor?.(product.id)}
             onOpenProduct={onOpenProduct}
           />
         ) : (
@@ -269,6 +273,7 @@ function ProductPage({
   copy,
   tools,
   turnedOff,
+  openSettings,
   onOpenProduct,
 }: {
   productId: ProductId;
@@ -276,6 +281,7 @@ function ProductPage({
   tools: SidebarToolDef[];
   /** The organization turned this app off: say so instead of listing tools. */
   turnedOff: boolean;
+  openSettings: (() => void) | undefined;
   onOpenProduct: (productId?: ProductId) => void;
 }) {
   const gt = useGT();
@@ -301,7 +307,17 @@ function ProductPage({
 
       <header className="mb-6 flex items-center gap-3">
         <ProductIcon product={productId} />
-        <h1 className="text-xl font-semibold">{text.name}</h1>
+        <h1 className="flex-1 text-xl font-semibold">{text.name}</h1>
+        {openSettings && !turnedOff && (
+          <button
+            type="button"
+            onClick={openSettings}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-on-surface-secondary transition-colors hover:border-border-strong hover:bg-surface-overlay"
+          >
+            <SettingsGlyph />
+            {gt("Settings")}
+          </button>
+        )}
       </header>
 
       {turnedOff ? (

@@ -5,7 +5,15 @@ export {
   type SettingsApi,
   type SettingsHostValue,
 } from "./host.js";
-export { SETTINGS_SECTIONS, type SettingsSectionDef } from "./sections.js";
+export {
+  SETTINGS_SECTIONS,
+  firstSettingsSection,
+  groupSettingsSections,
+  type SettingsGroup,
+  type SettingsGroupId,
+  type SettingsSectionDef,
+} from "./sections.js";
+export { SettingsNavGroups } from "./SettingsNavGroups.js";
 export { GeneralSection } from "./GeneralSection.js";
 export { AppsSection } from "./AppsSection.js";
 export { TeamSection } from "./TeamSection.js";

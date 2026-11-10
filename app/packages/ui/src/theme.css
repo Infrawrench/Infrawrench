@@ -193,53 +193,63 @@
 }
 
 /*
- * The dark sidebar. A custom property scope rather than a parallel set of
+ * The sidebar. A custom property scope rather than a parallel set of
  * `sidebar-*` tokens: every utility already reads `var(--color-*)`, so anything
- * rendered inside this class, shared components included, picks up the dark
- * values without knowing it is in a sidebar. It holds in both colour schemes.
- * `theme-contrast.test.ts` runs this block through the same AA checks as the
- * two schemes above.
+ * rendered inside this class, shared components included, picks up the
+ * sidebar's values without knowing it is in a sidebar.
+ *
+ * It follows the colour scheme. In the light scheme it is the page's own
+ * palette on a surface one step lighter than the page, so only the surface
+ * moves. In the dark scheme it is a step darker than the page, which takes a
+ * full set of tokens, because the page's dark text tokens were tuned against
+ * the page's lighter surfaces. `theme-contrast.test.ts` runs both through the
+ * same AA checks as the page.
  */
 .surface-sidebar {
-  color-scheme: dark;
+  --color-surface: #f1f1f3;
+  --color-surface-inset: #e9e9eb;
+}
 
-  --color-surface: #1b1b1e;
-  --color-surface-raised: #26262a;
-  --color-surface-overlay: #313136;
-  --color-surface-sunken: #3a3a40;
-  --color-surface-inset: #161618;
+@media (prefers-color-scheme: dark) {
+  .surface-sidebar {
+    --color-surface: #1b1b1e;
+    --color-surface-raised: #26262a;
+    --color-surface-overlay: #313136;
+    --color-surface-sunken: #3a3a40;
+    --color-surface-inset: #161618;
 
-  --color-on-surface: #f4f4f5;
-  --color-on-surface-secondary: #e4e4e7;
-  --color-on-surface-tertiary: #c0c0c7;
-  --color-on-surface-muted: #b4b4bc;
-  --color-on-surface-faint: #aeaeb6;
+    --color-on-surface: #f4f4f5;
+    --color-on-surface-secondary: #e4e4e7;
+    --color-on-surface-tertiary: #c0c0c7;
+    --color-on-surface-muted: #b4b4bc;
+    --color-on-surface-faint: #aeaeb6;
 
-  --color-border: #2d2d32;
-  --color-border-strong: #404046;
+    --color-border: #2d2d32;
+    --color-border-strong: #404046;
 
-  --color-accent: #e4e4e7;
-  --color-accent-hover: #f4f4f5;
-  --color-accent-strong: #fafafa;
-  --color-accent-subtle: #a1a1aa;
-  --color-accent-muted: #3a3a40;
-  --color-accent-muted-border: #55555c;
-  --color-accent-on-muted: #f4f4f5;
-  --color-on-accent: #18181b;
+    --color-accent: #e4e4e7;
+    --color-accent-hover: #f4f4f5;
+    --color-accent-strong: #fafafa;
+    --color-accent-subtle: #a1a1aa;
+    --color-accent-muted: #3a3a40;
+    --color-accent-muted-border: #55555c;
+    --color-accent-on-muted: #f4f4f5;
+    --color-on-accent: #18181b;
 
-  --color-danger: #fda4a4;
-  --color-danger-strong: #fecaca;
-  --color-warning: #fcd34d;
-  --color-warning-strong: #fde68a;
-  --color-success: #6ee7a0;
-  --color-success-strong: #a7f3c4;
-  --color-info: #d4d4d8;
-  --color-info-strong: #f4f4f5;
-  --color-severe: #fdb07a;
-  --color-notice: #dcc0fe;
+    --color-danger: #fda4a4;
+    --color-danger-strong: #fecaca;
+    --color-warning: #fcd34d;
+    --color-warning-strong: #fde68a;
+    --color-success: #6ee7a0;
+    --color-success-strong: #a7f3c4;
+    --color-info: #d4d4d8;
+    --color-info-strong: #f4f4f5;
+    --color-severe: #fdb07a;
+    --color-notice: #dcc0fe;
 
-  background-color: var(--color-surface);
-  color: var(--color-on-surface);
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+  }
 }
 
 /*

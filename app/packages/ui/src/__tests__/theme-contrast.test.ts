@@ -72,11 +72,16 @@ function block(marker: string): string {
 const lightVars = parseVars(block("@theme"));
 const darkVars = { ...lightVars, ...parseVars(block("@media (prefers-color-scheme: dark)")) };
 /**
- * The sidebar is dark in both schemes, so its block is read on its own. The
- * "sidebar scope" tests below hold it to setting every token it needs, because
- * one it left out would inherit the page's value, which differs per scheme.
+ * The sidebar follows the scheme: a block of its own for the light scheme and
+ * a second one, inside a dark media query, for the dark scheme. Each is read
+ * over the page's values for that scheme, which is what the cascade does.
  */
-const sidebarVars = parseVars(block(".surface-sidebar {"));
+const sidebarLightVars = { ...lightVars, ...parseVars(block(".surface-sidebar {")) };
+const sidebarDarkBlock = themeCss.slice(
+  themeCss.indexOf(".surface-sidebar {", themeCss.indexOf(".surface-sidebar {") + 1),
+);
+const sidebarDarkOwnVars = parseVars(sidebarDarkBlock.slice(0, sidebarDarkBlock.indexOf("}")));
+const sidebarDarkVars = { ...darkVars, ...sidebarDarkOwnVars };
 
 function relativeLuminance(hex: string): number {
   const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -124,8 +129,8 @@ const AA = 4.5;
 describe.each([
   ["light", lightVars],
   ["dark", darkVars],
-  // Series tokens stay out of the sidebar on purpose: it draws no charts.
-  ["sidebar", { ...darkVars, ...sidebarVars }],
+  ["sidebar light", sidebarLightVars],
+  ["sidebar dark", sidebarDarkVars],
 ])("%s scheme", (scheme, vars) => {
   it("defines every surface and foreground token", () => {
     for (const token of [...SURFACE_TOKENS, ...FOREGROUND_TOKENS]) {
@@ -146,14 +151,24 @@ describe.each([
 });
 
 describe("sidebar scope", () => {
-  // A token the scope leaves out inherits the page's value, which in the light
-  // scheme is a dark grey on a dark grey: invisible, and nothing else would say so.
+  // The dark block sits on surfaces darker than the page's, so a text token it
+  // left out would inherit one tuned for a lighter surface.
   it.each([...SURFACE_TOKENS, ...FOREGROUND_TOKENS.filter((t) => !t.startsWith("series-"))])(
-    "sets --color-%s itself",
+    "sets --color-%s itself in the dark scheme",
     (token) => {
-      expect(sidebarVars[token]).toMatch(/^#[0-9a-f]{6}$/);
+      expect(sidebarDarkOwnVars[token]).toMatch(/^#[0-9a-f]{6}$/);
     },
   );
+
+  it("follows the colour scheme rather than forcing dark", () => {
+    const first = themeCss.indexOf(".surface-sidebar {");
+    const second = themeCss.indexOf(".surface-sidebar {", first + 1);
+    expect(second).toBeGreaterThan(first);
+    // The second block is the dark one, and only applies in the dark scheme.
+    const lastDarkMedia = themeCss.lastIndexOf("@media (prefers-color-scheme: dark)", second);
+    expect(themeCss.slice(lastDarkMedia, second)).not.toContain("}");
+    expect(block(".surface-sidebar {")).not.toContain("color-scheme");
+  });
 });
 
 describe("accent fills", () => {
@@ -166,7 +181,8 @@ describe("accent fills", () => {
   it.each([
     ["light", lightVars],
     ["dark", darkVars],
-    ["sidebar", sidebarVars],
+    ["sidebar light", sidebarLightVars],
+    ["sidebar dark", sidebarDarkVars],
   ])("%s --color-on-accent clears WCAG AA on accent and accent-hover", (scheme, vars) => {
     expect(vars["on-accent"], `--color-on-accent missing in ${scheme}`).toMatch(/^#[0-9a-f]{6}$/);
     for (const fill of ["accent", "accent-hover"]) {

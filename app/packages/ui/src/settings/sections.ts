@@ -1,12 +1,23 @@
 import { msg } from "gt-react";
+import { PRODUCT_IDS, type ProductId } from "@infrawrench/client-core";
 
 /**
- * The settings section registry: one entry per page, in sidebar order.
+ * The settings section registry: one entry per page. The navigation shows
+ * them grouped (`groupSettingsSections`): the organization's first, then one
+ * group per app in the apps' own order; within a group, in the order here.
  * `key` is the URL segment on web (`/org/:orgId/settings/<key>`, "" for
  * General) and the workspace-tab `section` on both platforms.
  */
+/**
+ * Where a section sits in the navigation: under the organization, or under
+ * the app it configures. A section of an app the organization turned off is
+ * hidden with it.
+ */
+export type SettingsGroupId = "org" | ProductId;
+
 export interface SettingsSectionDef {
   key: string;
+  group: SettingsGroupId;
   /**
    * gt-encoded via `msg()`: render it through `useMessages()` (both navs do),
    * never raw, or the encoded suffix shows up in the UI. `decodeMsg()` gets
@@ -18,76 +29,182 @@ export interface SettingsSectionDef {
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
-  { key: "", label: msg("General") },
+  { key: "", group: "org", label: msg("General") },
   // Beside General: which apps the organization uses at all. Every member can
   // read it; the switches need `org:settings:write`.
-  { key: "apps", label: msg("Apps") },
-  { key: "team", label: msg("Team") },
-  { key: "roles", label: msg("Roles") },
+  { key: "apps", group: "org", label: msg("Apps") },
+  { key: "team", group: "org", label: msg("Team") },
+  { key: "roles", group: "org", label: msg("Roles") },
   // Beside Roles: a scope is part of what a role (or member, or key) grants,
   // answered for cost rows instead of permissions.
-  { key: "cost-visibility", label: msg("Cost Visibility"), requiresPermission: "team:read" },
-  { key: "access-requests", label: msg("Break-glass Access"), requiresPermission: "access:read" },
+  {
+    key: "cost-visibility",
+    group: "costs",
+    label: msg("Cost Visibility"),
+    requiresPermission: "team:read",
+  },
+  {
+    key: "access-requests",
+    group: "security",
+    label: msg("Break-glass Access"),
+    requiresPermission: "access:read",
+  },
   // Beside Break-glass: the cloud half of the same idea. Break-glass elevates
   // Infrawrench permissions; these policies govern time-boxed provider roles.
   // The request queue itself is the Just-in-time access workspace tab.
-  { key: "jit-access", label: msg("Just-in-time Access"), requiresPermission: "access:read" },
-  { key: "ssh-keys", label: msg("SSH Keys") },
-  { key: "ssh-host-keys", label: msg("Trusted SSH Hosts") },
+  {
+    key: "jit-access",
+    group: "security",
+    label: msg("Just-in-time Access"),
+    requiresPermission: "access:read",
+  },
+  { key: "ssh-keys", group: "infrastructure", label: msg("SSH Keys") },
+  { key: "ssh-host-keys", group: "infrastructure", label: msg("Trusted SSH Hosts") },
   {
     key: "session-recordings",
+    group: "security",
     label: msg("Session Recordings"),
     requiresPermission: "session-recordings:read",
   },
-  { key: "bastions", label: msg("Bastions") },
-  { key: "api-keys", label: msg("API Keys") },
+  { key: "bastions", group: "infrastructure", label: msg("Bastions") },
+  { key: "api-keys", group: "org", label: msg("API Keys") },
   // Beside API Keys because it answers the same question for a different kind
   // of credential. Not called "Agents" alone anywhere it could be confused with
   // the coding-agent workspace tab, which is an unrelated feature.
-  { key: "agents", label: msg("Agent Credentials"), requiresPermission: "team:read" },
-  { key: "credential-hygiene", label: msg("Credential Hygiene"), requiresPermission: "audit:read" },
-  { key: "freezes", label: msg("Change Freezes") },
-  { key: "tag-policy", label: msg("Tag Policy") },
+  { key: "agents", group: "org", label: msg("Agent Credentials"), requiresPermission: "team:read" },
+  {
+    key: "credential-hygiene",
+    group: "security",
+    label: msg("Credential Hygiene"),
+    requiresPermission: "audit:read",
+  },
+  { key: "freezes", group: "delivery", label: msg("Change Freezes") },
+  { key: "tag-policy", group: "infrastructure", label: msg("Tag Policy") },
   // Beside Tag Policy: both are about the org's tag vocabulary. Readable on
   // resources:read like the policy (the table lists inventory keys too).
-  { key: "tag-keys", label: msg("Tag Keys"), requiresPermission: "resources:read" },
-  { key: "cost-centres", label: msg("Cost Centres"), requiresPermission: "costs:read" },
+  {
+    key: "tag-keys",
+    group: "infrastructure",
+    label: msg("Tag Keys"),
+    requiresPermission: "resources:read",
+  },
+  {
+    key: "cost-centres",
+    group: "costs",
+    label: msg("Cost Centres"),
+    requiresPermission: "costs:read",
+  },
   // Beside Cost Centres: virtual tags are the dimensions allocation rules and
   // reports slice by, and the same people maintain both.
-  { key: "virtual-tags", label: msg("Virtual Tags"), requiresPermission: "costs:read" },
+  {
+    key: "virtual-tags",
+    group: "costs",
+    label: msg("Virtual Tags"),
+    requiresPermission: "costs:read",
+  },
   // Next to Cost Centres and Currency, the two other pages where one person's
   // edit restates numbers everybody else reads. Visible on `costs:read` (a
   // rule is part of the explanation for a figure); editing needs
   // `org:settings:write`.
-  { key: "billing-rules", label: msg("Billing Rules"), requiresPermission: "costs:read" },
-  { key: "config", label: msg("Config as Code"), requiresPermission: "config:read" },
-  { key: "currency", label: msg("Currency") },
-  { key: "cost-exports", label: msg("Cost Exports"), requiresPermission: "costs:read" },
+  {
+    key: "billing-rules",
+    group: "costs",
+    label: msg("Billing Rules"),
+    requiresPermission: "costs:read",
+  },
+  { key: "config", group: "org", label: msg("Config as Code"), requiresPermission: "config:read" },
+  { key: "currency", group: "costs", label: msg("Currency") },
+  {
+    key: "cost-exports",
+    group: "costs",
+    label: msg("Cost Exports"),
+    requiresPermission: "costs:read",
+  },
   // AI spend by caller: request-log sources and the metadata-to-dimension
   // mappings. Visible on `costs:read`; adding a source needs
   // `org:settings:write` (it authorizes reads, sometimes billed ones),
   // editing a mapping `costs:write`.
-  { key: "ai-attribution", label: msg("AI Attribution"), requiresPermission: "costs:read" },
+  {
+    key: "ai-attribution",
+    group: "costs",
+    label: msg("AI Attribution"),
+    requiresPermission: "costs:read",
+  },
   // Spend from uploaded files (CSV or FOCUS). Beside Cost Exports: one is
   // spend coming in as files, the other spend going out as files.
   {
     key: "custom-cost-sources",
+    group: "costs",
     label: msg("Custom Cost Sources"),
     requiresPermission: "costs:read",
   },
-  { key: "approvals", label: msg("Approvals"), requiresPermission: "workflows:read" },
+  {
+    key: "approvals",
+    group: "automation",
+    label: msg("Approvals"),
+    requiresPermission: "workflows:read",
+  },
   // Beside Notifications: the routing rules there are what consume a rotation,
   // and "who gets woken up" is one question asked in two halves.
-  { key: "on-call", label: msg("On-call"), requiresPermission: "team:read" },
-  { key: "paging", label: msg("Notifications") },
-  { key: "jira", label: msg("Jira"), requiresPermission: "jira:read" },
-  { key: "linear", label: msg("Linear"), requiresPermission: "linear:read" },
-  { key: "github-issues", label: msg("GitHub Issues"), requiresPermission: "github-issues:read" },
+  { key: "on-call", group: "incidents", label: msg("On-call"), requiresPermission: "team:read" },
+  { key: "paging", group: "org", label: msg("Notifications") },
+  { key: "jira", group: "org", label: msg("Jira"), requiresPermission: "jira:read" },
+  { key: "linear", group: "org", label: msg("Linear"), requiresPermission: "linear:read" },
+  {
+    key: "github-issues",
+    group: "org",
+    label: msg("GitHub Issues"),
+    requiresPermission: "github-issues:read",
+  },
   // Beside GitHub Issues: the same GitHub App installation, the other
   // direction (Infrawrench commenting on the org's changes rather than filing
   // its own findings). Readable on `iac:read` because the check reads the
   // uploaded Terraform state; editing needs `org:settings:write`.
-  { key: "pr-checks", label: msg("Pull Request Checks"), requiresPermission: "iac:read" },
-  { key: "billing", label: msg("Billing") },
-  { key: "audit-log", label: msg("Audit Log") },
+  {
+    key: "pr-checks",
+    group: "delivery",
+    label: msg("Pull Request Checks"),
+    requiresPermission: "iac:read",
+  },
+  { key: "billing", group: "org", label: msg("Billing") },
+  { key: "audit-log", group: "org", label: msg("Audit Log") },
 ];
+
+export interface SettingsGroup {
+  id: SettingsGroupId;
+  sections: SettingsSectionDef[];
+}
+
+/**
+ * The sections a caller may open, grouped for the navigation. `has` is the
+ * caller's permission check; a group left with no section, or belonging to an
+ * app in `disabledProducts`, is dropped.
+ */
+export function groupSettingsSections(
+  has: (permission: string) => boolean,
+  disabledProducts: readonly ProductId[] = [],
+): SettingsGroup[] {
+  const order: SettingsGroupId[] = ["org", ...PRODUCT_IDS];
+  return order
+    .filter((id) => id === "org" || !disabledProducts.includes(id))
+    .map((id) => ({
+      id,
+      sections: SETTINGS_SECTIONS.filter(
+        (s) => s.group === id && (!s.requiresPermission || has(s.requiresPermission)),
+      ),
+    }))
+    .filter((group) => group.sections.length > 0);
+}
+
+/**
+ * The section an app's settings shortcut opens: the first of its group the
+ * caller may open, or undefined when the app has none.
+ */
+export function firstSettingsSection(
+  product: ProductId,
+  has: (permission: string) => boolean = () => true,
+): string | undefined {
+  return SETTINGS_SECTIONS.find(
+    (s) => s.group === product && (!s.requiresPermission || has(s.requiresPermission)),
+  )?.key;
+}

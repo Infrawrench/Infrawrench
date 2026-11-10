@@ -40,6 +40,7 @@ import {
   navigateToWorkspaceTarget,
 } from "@/lib/workspace-tabs";
 import { accountSyncsResources } from "@infrawrench/client-core";
+import { useAppSettingsShortcut } from "@/lib/app-settings";
 import { useOrgTools } from "@/lib/org-tools";
 import { AddAccountModal } from "./AddAccountModal";
 import { reconnectProviderAccount } from "@/lib/provider-oauth";
@@ -174,6 +175,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   }, [apiBase, dashboardPinsVersion]);
 
   const orgTools = useOrgTools(orgId ?? undefined);
+  const settingsFor = useAppSettingsShortcut();
   const showAccounts = useShowsInfrastructureSidebar();
 
   // Chat sessions: load on org change and refresh when conversations change
@@ -855,7 +857,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               person came for, and the apps list is long enough to push it
               out of view. */}
           <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
-          <SidebarApps tools={orgTools} />
+          <SidebarApps tools={orgTools} settingsFor={settingsFor} />
         </div>
 
         {/* Manage accounts: every account, and the way to connect another */}

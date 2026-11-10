@@ -1,8 +1,9 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
-import { useGT, useMessages } from "gt-react";
+import { useGT } from "gt-react";
+import { useDisabledProducts } from "@/lib/disabled-products";
 import {
-  SETTINGS_SECTIONS,
+  SettingsNavGroups,
   getWorkspaceTabId,
   settingsTabTarget,
   workspaceTabPanelProps,
@@ -39,16 +40,9 @@ function SettingsLayout() {
     }
   }
 
-  // Hidden outright without the permission: the page would only be able to
-  // tell them they can't see it.
-  // Section labels are msg()-encoded in the registry; m() decodes + translates.
-  const m = useMessages();
-  const navItems = SETTINGS_SECTIONS.filter(
-    (s) => !s.requiresPermission || has(s.requiresPermission),
-  ).map((s) => ({
-    to: s.key ? `/org/${orgId}/settings/${s.key}` : `/org/${orgId}/settings`,
-    label: s.label,
-  }));
+  // Sections the caller cannot read are hidden outright (the page could only
+  // refuse), and so are those of an app the organization turned off.
+  const disabledProducts = useDisabledProducts(orgId);
 
   return (
     // This element is the Settings tab's `role="tabpanel"`. The tab lives in
@@ -64,28 +58,30 @@ function SettingsLayout() {
         </h2>
         {/* Only the list scrolls, so Sign out stays reachable however many
             sections there are. */}
-        <ul className="flex-1 min-h-0 overflow-y-auto px-4 space-y-1">
-          {navItems.map((item) => {
-            const isActive =
-              item.to === `/org/${orgId}/settings`
-                ? pathname === `/org/${orgId}/settings`
-                : pathname.startsWith(item.to);
-            return (
-              <li key={item.to}>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4">
+          <SettingsNavGroups
+            has={has}
+            disabledProducts={disabledProducts}
+            renderItem={(section, label) => {
+              const to = section.key
+                ? `/org/${orgId}/settings/${section.key}`
+                : `/org/${orgId}/settings`;
+              const isActive = section.key ? pathname.startsWith(to) : pathname === to;
+              return (
                 <Link
-                  to={item.to}
+                  to={to}
                   className={`block px-3 py-1.5 rounded-lg text-sm transition-colors ${
                     isActive
                       ? "bg-surface-overlay text-on-surface"
                       : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay/50"
                   }`}
                 >
-                  {m(item.label)}
+                  {label}
                 </Link>
-              </li>
-            );
-          })}
-        </ul>
+              );
+            }}
+          />
+        </div>
         <div className="p-4 flex flex-col">
           {analyticsEnabled() && (
             <button

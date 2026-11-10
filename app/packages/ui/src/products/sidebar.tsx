@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { useUIStore } from "../store/ui.store.js";
-import { ProductGlyph } from "./ProductIcon.js";
+import { ProductGlyph, SettingsGlyph } from "./ProductIcon.js";
 import { useProductCopy } from "./copy.js";
 import {
   PRODUCTS,
+  type ProductId,
   groupToolsByProduct,
   productForTool,
   showsInfrastructureSidebar,
@@ -138,7 +139,14 @@ function ToolRow({ tool, active }: { tool: SidebarToolDef; active: boolean }) {
  * are open is remembered in this browser; the product of the tool in view is
  * always open, so the sidebar shows where you are.
  */
-export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
+export function SidebarApps({
+  tools,
+  settingsFor,
+}: {
+  tools: SidebarToolDef[];
+  /** Opens an app's settings, or undefined when it has none to open. */
+  settingsFor?: ((product: ProductId) => (() => void) | undefined) | undefined;
+}) {
   const gt = useGT();
   const copy = useProductCopy();
   const { byProduct, unclaimed } = groupToolsByProduct(tools);
@@ -169,10 +177,11 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
     ...PRODUCTS.map((product) => ({
       id: product.id as string,
       icon: <ProductGlyph product={product.id} />,
+      openSettings: settingsFor?.(product.id),
       name: copy[product.id].name,
       tools: byProduct[product.id],
     })),
-    { id: "more", name: gt("More tools"), icon: null, tools: unclaimed },
+    { id: "more", name: gt("More tools"), icon: null, openSettings: undefined, tools: unclaimed },
   ].filter((group) => group.tools.length > 0);
   if (groups.length === 0) return null;
 
@@ -216,6 +225,16 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
               group.tools.map((tool) => (
                 <ToolRow key={tool.key} tool={tool} active={tool.key === activeKey} />
               ))}
+            {expanded && group.openSettings && (
+              <button
+                type="button"
+                onClick={group.openSettings}
+                className={`${ROW} pl-7 ${ROW_IDLE}`}
+              >
+                <SettingsGlyph />
+                <span className="truncate">{gt("Settings")}</span>
+              </button>
+            )}
           </div>
         );
       })}

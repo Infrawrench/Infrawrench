@@ -87,6 +87,7 @@ import {
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
 import { resolveDefaultDashboard } from "../lib/default-dashboard";
+import { useAppSettingsShortcut } from "../lib/app-settings";
 import { useOrgTools } from "../lib/org-tools";
 import { getLocalAccountCredentials } from "../lib/local-credentials";
 
@@ -588,6 +589,7 @@ function RootLayout() {
 
   const showAccounts = useShowsInfrastructureSidebar();
   const orgTools = useOrgTools();
+  const settingsFor = useAppSettingsShortcut();
 
   function handleNewTab() {
     // A new tab opens on Home, the grid of products.
@@ -724,7 +726,7 @@ function RootLayout() {
                       the person came for, and the apps list is long enough
                       to push it out of view. */}
                   <SidebarRecentTools tools={orgTools} scope={activeOrgId ?? "local"} />
-                  <SidebarApps tools={orgTools} />
+                  <SidebarApps tools={orgTools} settingsFor={settingsFor} />
                 </div>
 
                 <div className="border-t border-border p-2">
