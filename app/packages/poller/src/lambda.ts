@@ -70,8 +70,15 @@ export async function handler(_event: unknown, context: LambdaContext): Promise<
     0,
     Math.min(SCHEDULE_PERIOD_MS - WINDOW_MARGIN_MS, context.getRemainingTimeInMillis() - tickMs),
   );
-  const ticks = await invocation.run(() =>
-    runTicksInWindow(() => loop.tick(), { tickMs, windowMs }),
+  // The passes on loops of their own tick through the same window beside
+  // the shared tick, so a slow tick never holds them up.
+  const [ticks] = await invocation.run(() =>
+    Promise.all([
+      runTicksInWindow(() => loop.tick(), { tickMs, windowMs }),
+      ...loop.ownLoops.map((own) =>
+        runTicksInWindow(() => own.tick(), { tickMs: own.cadenceMs, windowMs }),
+      ),
+    ]),
   );
   await invocation.drain();
   return { ticks };

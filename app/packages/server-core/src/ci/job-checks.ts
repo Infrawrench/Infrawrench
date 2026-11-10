@@ -239,6 +239,35 @@ export interface JobCheckTarget {
   jobChecks: Record<string, { id: number; sent: string }>;
 }
 
+/**
+ * Closes every job check of a lost run that has not finished, as cancelled,
+ * with `reason`: nothing will report on those jobs again.
+ */
+export async function abandonJobChecks(run: JobCheckTarget, reason: string): Promise<void> {
+  const repo = run.repoFullName.split("/").map(encodeURIComponent).join("/");
+  for (const [key, check] of Object.entries(run.jobChecks)) {
+    if (check.sent.startsWith("completed")) continue;
+    try {
+      const res = await githubInstallationFetch(
+        run.installationId,
+        `/repos/${repo}/check-runs/${check.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "completed",
+            conclusion: "cancelled",
+            completed_at: new Date().toISOString(),
+            output: { title: "Lost", summary: reason },
+          }),
+        },
+      );
+      if (!res.ok) throw await githubError(res);
+    } catch (err) {
+      console.warn(`[ci] could not close the job check ${key} of run ${run.id}:`, err);
+    }
+  }
+}
+
 /** Brings the run's job checks up to date with `groups`, calling GitHub only for what changed. */
 export async function syncJobChecks(
   run: JobCheckTarget,
