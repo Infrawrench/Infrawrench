@@ -38,6 +38,12 @@ namespace {
 // CPU-bound Node jobs took 19 s together against 7 s alone, and a script
 // waiting on I/O inside a call froze the rest. wasmerio/napi main reworked
 // `g_mu` the same way (env ownership per thread).
+//
+// Every read or write of `g_envs` and `g_message_handles` must hold it, env
+// creation and release included: both run concurrently on different jobs'
+// threads, and an unlocked insert or erase in the hash set while another
+// thread looks an env up (every bridge call does) corrupted the set and
+// crashed the runner (#947). Never hold it while JavaScript runs.
 std::recursive_mutex g_mu;
 
 struct CbRegistration {
@@ -431,6 +437,7 @@ SnapiEnvState* RequireEnvState(SnapiEnvState* env_state) {
   return bridge_state;
 }
 
+// iwci patch: takes `g_mu` itself, only around the registry erase (#947).
 napi_status DisposeBridgeStateLocked(SnapiEnvState* state) {
   if (state == nullptr) return napi_ok;
   for (const auto& entry : state->buffer_lease_handles.handles) {
@@ -473,13 +480,19 @@ napi_status DisposeBridgeStateLocked(SnapiEnvState* state) {
     state->active_callback_ctx.store(nullptr, std::memory_order_release);
     state->owner = nullptr;
     state->env = nullptr;
-    g_envs.erase(state);
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mu);
+      g_envs.erase(state);
+    }
     delete state;
     return s;
   }
   state->active_callback_ctx.store(nullptr, std::memory_order_release);
   state->env = nullptr;
-  g_envs.erase(state);
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    g_envs.erase(state);
+  }
   delete state;
   return napi_ok;
 }
@@ -2943,7 +2956,10 @@ extern "C" int snapi_bridge_unofficial_create_env(int32_t module_api_version,
   }
   state->env = env;
   state->owner = owner;
-  g_envs.insert(state);
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    g_envs.insert(state);
+  }
 
   if (env_out != nullptr) *env_out = state;
   return napi_ok;
@@ -2970,7 +2986,9 @@ extern "C" int snapi_bridge_unofficial_create_env_with_options(
     uint32_t /*stack_limit*/,
     const void* guest_heap_ctx,
     SnapiEnvState** env_out) {
-  std::lock_guard<std::recursive_mutex> lock(g_mu);
+  // iwci patch: no `g_mu` while the isolate is built (only around the
+  // registry insert below); the provider serializes isolate construction and
+  // disposal itself (`g_isolate_lifecycle_mu` in unofficial_napi.cc).
   unofficial_napi_env_create_options options{};
   const bool has_options =
       max_young_generation_size_in_bytes > 0 ||
@@ -3006,7 +3024,10 @@ extern "C" int snapi_bridge_unofficial_create_env_with_options(
   }
   state->env = env;
   state->owner = owner;
-  g_envs.insert(state);
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    g_envs.insert(state);
+  }
 
   if (env_out != nullptr) *env_out = state;
   return napi_ok;
@@ -3605,15 +3626,19 @@ extern "C" int snapi_bridge_unofficial_message_create(
     uint32_t* message_out) {
   auto* bridge_state = RequireEnvState(env_state);
   if (bridge_state == nullptr || message_out == nullptr) return napi_invalid_arg;
-  std::lock_guard<std::recursive_mutex> lock(g_mu);
   napi_value value = LoadValue(*bridge_state, value_id);
   if (value == nullptr) return napi_invalid_arg;
   unofficial_napi_message message = nullptr;
+  // iwci patch: serializing runs getters (JavaScript), so `g_mu` covers only
+  // the shared table, not the serialization.
   napi_status status =
       unofficial_napi_message_create(bridge_state->env, value, &message);
   if (status != napi_ok) return status;
-  const uint32_t message_id =
-      g_message_handles.Store(reinterpret_cast<void*>(message));
+  uint32_t message_id;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    message_id = g_message_handles.Store(reinterpret_cast<void*>(message));
+  }
   if (message_id == 0) {
     unofficial_napi_message_drop(message);
     return napi_generic_failure;
@@ -3626,9 +3651,12 @@ extern "C" int snapi_bridge_unofficial_message_take(
     SnapiEnvState* env_state,
     uint32_t message_id,
     uint32_t* value_out) {
-  std::lock_guard<std::recursive_mutex> lock(g_mu);
-  auto* message = reinterpret_cast<unofficial_napi_message>(
-      g_message_handles.Take(message_id));
+  unofficial_napi_message message;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    message = reinterpret_cast<unofficial_napi_message>(
+        g_message_handles.Take(message_id));
+  }
   if (message == nullptr) return napi_invalid_arg;
   auto* bridge_state = RequireEnvState(env_state);
   if (bridge_state == nullptr || value_out == nullptr) {
@@ -3646,9 +3674,12 @@ extern "C" int snapi_bridge_unofficial_message_take(
 }
 
 extern "C" void snapi_bridge_unofficial_message_drop(uint32_t message_id) {
-  std::lock_guard<std::recursive_mutex> lock(g_mu);
-  auto* message = reinterpret_cast<unofficial_napi_message>(
-      g_message_handles.Take(message_id));
+  unofficial_napi_message message;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    message = reinterpret_cast<unofficial_napi_message>(
+        g_message_handles.Take(message_id));
+  }
   if (message != nullptr) unofficial_napi_message_drop(message);
 }
 

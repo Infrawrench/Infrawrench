@@ -585,8 +585,19 @@ v8::IsolateGroup GetOrCreateIsolateGroup() {
   return v8::IsolateGroup::GetDefault();
 }
 
+// iwci patch (from wasmerio/napi 832e57ec): EdgeV8Platform keys per-isolate
+// state by address. Envs on different threads create and release isolates at
+// the same time, so a new isolate must not be allocated (possibly at a
+// just-freed address) and registered while another isolate is between
+// Dispose() and unregistration. The bridge's `g_mu` used to serialize these;
+// it no longer covers env creation or release. Only construction and V8
+// disposal take this lock: not execution, env teardown or the wait for the
+// platform's pending tasks.
+std::mutex g_isolate_lifecycle_mu;
+
 v8::Isolate* CreateIsolateForEnv(EdgeV8Platform* platform,
                                  const v8::Isolate::CreateParams& params) {
+  std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
   v8::Isolate* isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
   if (isolate == nullptr) return nullptr;
   if (platform != nullptr && !platform->RegisterIsolate(isolate)) {
@@ -628,13 +639,16 @@ void DisposeIsolateAndWait(EdgeV8Platform* platform,
   if (isolate == nullptr) return;
 
   PlatformShutdownWaiter waiter;
-  if (platform != nullptr) {
-    platform->AddIsolateFinishedCallback(
-        isolate, OnPlatformShutdownFinished, &waiter);
-    platform->DisposeIsolate(isolate);
-  } else {
-    waiter.finished = true;
-    isolate->Dispose();
+  {
+    std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
+    if (platform != nullptr) {
+      platform->AddIsolateFinishedCallback(
+          isolate, OnPlatformShutdownFinished, &waiter);
+      platform->DisposeIsolate(isolate);
+    } else {
+      waiter.finished = true;
+      isolate->Dispose();
+    }
   }
   WaitForPlatformShutdown(&waiter, shutdown_pump_handle);
 }
