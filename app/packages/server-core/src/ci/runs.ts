@@ -372,13 +372,25 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
   return out;
 }
 
-function checkSummary(jobs: CiJobSummary[]): string {
+/** Failures first, then skips, so a summary cut to fit still shows them. */
+const SUMMARY_ORDER: Record<CiJobSummary["status"], number> = {
+  error: 0,
+  failed: 0,
+  skipped: 1,
+  passed: 2,
+};
+
+export function checkSummary(jobs: CiJobSummary[]): string {
   if (jobs.length === 0) return "No pipeline ran for this event.";
   const mark = (s: string) => (s === "passed" ? "✅" : s === "skipped" ? "⏭️" : "❌");
-  const rows = jobs.map(
-    (j) =>
-      `| ${mark(j.status)} | ${j.pipeline.replace(/\|/g, "\\|")} | ${j.name.replace(/\|/g, "\\|")} | ${(j.reason ?? "").replace(/\|/g, "\\|").slice(0, 200)} |`,
-  );
+  const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\s+/g, " ");
+  const rows = jobs
+    .map((j, i) => ({ j, i }))
+    .sort((a, b) => SUMMARY_ORDER[a.j.status] - SUMMARY_ORDER[b.j.status] || a.i - b.i)
+    .map(({ j }) => {
+      const reason = j.reason === CACHED_REASON ? "cached" : cell(j.reason ?? "").slice(0, 200);
+      return `| ${mark(j.status)} | ${cell(j.pipeline)} | ${cell(j.name)} | ${reason} |`;
+    });
   return ["| | Pipeline | Job | |", "|---|---|---|---|", ...rows].join("\n");
 }
 

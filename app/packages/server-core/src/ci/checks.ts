@@ -41,6 +41,40 @@ interface CheckTarget {
   checkRunId: number | null;
 }
 
+/**
+ * The most a check's summary or text may take, in UTF-8 bytes. GitHub's
+ * limit is 65,535; it refuses more with a 422 and the check keeps whatever
+ * it said last. A margin for what the JSON encoding adds.
+ */
+export const CHECK_TEXT_BYTES = 60_000;
+
+/**
+ * `text` cut to fit a check, at the end of a line, with a note of how many
+ * lines were left out. A summary is a table, so a cut never splits a row.
+ */
+export function fitCheckText(text: string, maxBytes = CHECK_TEXT_BYTES): string {
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).length <= maxBytes) return text;
+  const lines = text.split("\n");
+  // Room for the note, whatever the count.
+  let budget = maxBytes - 200;
+  let kept = 0;
+  for (const line of lines) {
+    const size = encoder.encode(line).length + 1;
+    if (size > budget) break;
+    budget -= size;
+    kept++;
+  }
+  const left = lines.length - kept;
+  return `${lines.slice(0, kept).join("\n")}\n\n_…and ${left} more line(s), cut to fit GitHub's limit: the whole run is on Infrawrench._`;
+}
+
+/** GitHub's reason for refusing a request, for the log. */
+export async function githubError(res: Response): Promise<Error> {
+  const body = await res.text().catch(() => "");
+  return new Error(`GitHub answered ${res.status}${body ? `: ${body.slice(0, 500)}` : ""}`);
+}
+
 /** Creates the run's check, or updates the one it has. */
 export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promise<void> {
   const detailsUrl = orgAppUrl(run.organizationId, `ci/${run.id}`);
@@ -48,8 +82,8 @@ export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promis
     status: update.status,
     output: {
       title: update.title.slice(0, 255),
-      summary: update.summary.slice(0, 65_000),
-      ...(update.text ? { text: update.text.slice(0, 65_000) } : {}),
+      summary: fitCheckText(update.summary),
+      ...(update.text ? { text: fitCheckText(update.text) } : {}),
     },
     ...(detailsUrl ? { details_url: detailsUrl } : {}),
     ...(update.status === "in_progress" ? { started_at: new Date().toISOString() } : {}),
@@ -69,7 +103,7 @@ export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promis
           ...body,
         }),
       });
-      if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+      if (!res.ok) throw await githubError(res);
       const created = (await res.json()) as { id?: number };
       if (typeof created.id === "number") {
         await db.update(ciRuns).set({ checkRunId: created.id }).where(eq(ciRuns.id, run.id));
@@ -81,7 +115,7 @@ export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promis
         `/repos/${repo}/check-runs/${run.checkRunId}`,
         { method: "PATCH", body: JSON.stringify(body) },
       );
-      if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+      if (!res.ok) throw await githubError(res);
     }
   } catch (err) {
     console.warn(`[ci] could not update the GitHub check for run ${run.id}:`, err);

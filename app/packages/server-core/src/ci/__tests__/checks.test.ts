@@ -22,8 +22,9 @@ vi.mock("../proxy.js", async (orig) => ({
   proxyJson: (...a: unknown[]) => mockProxyJson(...a),
 }));
 
-const { checkName } = await vi.importActual<typeof import("../checks.js")>("../checks.js");
-const { syncRun, jobsOf } = await import("../runs");
+const { checkName, fitCheckText } =
+  await vi.importActual<typeof import("../checks.js")>("../checks.js");
+const { syncRun, jobsOf, checkSummary, CACHED_REASON } = await import("../runs");
 
 const row = (event: "push" | "pull-request") =>
   ({
@@ -102,7 +103,7 @@ describe("CI checks on GitHub", () => {
       expect.objectContaining({
         conclusion: "success",
         title: "2 job(s) passed, 1 from the task cache",
-        summary: expect.stringContaining("Cached: nothing it reads changed"),
+        summary: expect.stringMatching(/\| cached \|/),
       }),
     );
   });
@@ -117,5 +118,25 @@ describe("CI checks on GitHub", () => {
     ];
     const jobs = jobsOf(run as never, false);
     expect(jobs.map((j) => j.needs)).toEqual([["prep"], undefined, undefined]);
+  });
+
+  it("fits a 700-job summary under GitHub's limit, failures first", () => {
+    const jobs = Array.from({ length: 700 }, (_, i) => ({
+      pipeline: "Test",
+      id: `test[app/packages/p${i}]`,
+      name: `Test @infrawrench/a-fairly-long-package-name-${i}`,
+      status: (i === 650 ? "failed" : "passed") as "failed" | "passed",
+      reason: i === 650 ? "exited with 1" : CACHED_REASON,
+      durationMs: 1000,
+    }));
+    const summary = checkSummary(jobs);
+    // The failure leads, and a cached job says so in a word.
+    expect(summary.split("\n")[2]).toContain("a-fairly-long-package-name-650");
+    expect(summary).not.toContain(CACHED_REASON);
+    const fitted = fitCheckText(summary.repeat(3));
+    expect(new TextEncoder().encode(fitted).length).toBeLessThanOrEqual(60_000);
+    // Cut between rows, with a note of what was left out.
+    expect(fitted).toMatch(/\|\n\n_…and \d+ more line\(s\)/);
+    expect(fitCheckText("short")).toBe("short");
   });
 });
