@@ -150,10 +150,16 @@ jobs:
       false
       echo unreachable
   # A process killed by a signal it does not handle: wasix-libc says which
-  # and aborts with 127, and the runner adds who sent it (#955).
+  # and aborts with 127, and the runner adds who sent it (#955) to the
+  # job's stderr, which is masked like the rest of it: the token printed
+  # just before must not be in the report (checked for the whole report
+  # below).
   signal-fails:
     using: env:bash@5
+    env:
+      TOKEN: ${{ secrets.FIXTURE_TOKEN }}
     run: |
+      echo "dying with $TOKEN" >&2
       kill -s SYS $$
       echo unreachable
   scratch-write-passes:
@@ -459,7 +465,7 @@ want_reason() {
 # What a job's stderr must contain, as an extended regular expression.
 want_stderr() {
   case "$1" in
-    bash/signal-fails) echo "Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
+    bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     *) echo "" ;;
   esac
 }
