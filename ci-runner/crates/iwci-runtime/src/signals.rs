@@ -76,7 +76,7 @@ thread_local! {
 }
 
 /// How many of a thread's last syscalls a signal it sends is recorded with.
-const RECENT_KEPT: usize = 12;
+const RECENT_KEPT: usize = 64;
 /// How much of a syscall's return value is kept with it.
 const RETURN_KEPT: usize = 24;
 /// What stands for a task starting in a thread's recent syscalls.
