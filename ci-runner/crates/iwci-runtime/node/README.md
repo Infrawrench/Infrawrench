@@ -48,12 +48,35 @@ concurrent reads of four files and checks each one's contents. Without the
 preload, 40 to 69 per run came back wrong. Remove it once Edge.js carries
 wasix-libc #142 and #145.
 
+As of November 2026 none does. Both pull requests are open, the newest
+sysroot (`v2026-10-02.1`) still shares the buffer, Edge.js 0.2.5 is the newest
+`wasmer/edgejs` release, and Edge.js `main` still builds on that sysroot.
+Fixing it ourselves means building Edge.js's WASIX module from source
+(`make build-wasix` with `wasixcc` 0.4.7: OpenSSL, libuv-wasix and Edge.js's
+C++ for `wasm32-wasix`) against a sysroot whose `libc.a` has
+`libc-bottom-half/sources/chdir.c` from #145, then packaging it with its
+`node-lib/`, ICU data, npm and pnpm as Edge.js's release does, and
+publishing that webc ourselves rather than pinning Wasmer's.
+
+## Empty blob parts (#940)
+
+A blob's native reader hands the stream one part per pull, empty parts
+included, and the stream enqueues nothing for an empty one. Node then reads
+on unless the stream is over its high-water mark (`c.desiredSize < 0`);
+Edge.js changed that to `<= 0` (wasmerio/edgejs 3abea55, still on `main`),
+and at a high-water mark of 0 the pull ends with the read still waiting. So a
+stream over `new Blob([""])`, `new Blob(["a", "", "b"])` or `fs.openAsBlob()`
+of an empty file never ends, nor does `new Response(blob)` or a
+`CompressionStream` piped from one, which is how #940 showed up.
+`blob-stream.cjs` wraps each blob's reader as its stream is made so a pull
+passes over empty parts. An empty part carries no bytes, so readers see what
+they would in Node. `builtins/test.sh`'s `blob-stream-passes` covers it;
+remove the file once Edge.js's `lib/internal/blob.js` tests `< 0` again.
+
 ## A pending WebAssembly compile (#943)
 
-Node does not exit while `WebAssembly.compile` or `instantiate` is compiling
-on V8's background threads. Edge.js can: under load, about one process in
-fifteen exited silently with the compile unfinished. It also does not wake
-its event loop when the compile finishes, so a long timer kept the process
-waiting forever. `wasm-keep-alive.cjs` holds a 5 ms interval while any of
-the four async entry points is pending, which keeps the process alive and
-picks up the result.
+One more gap, `node` exiting while an async `WebAssembly.compile` was still
+running and missing its result behind a long timer, was filled here by a
+preload that held a 5 ms interval while one was pending. The bridge's V8
+platform now waits for that work itself (`vendor/README.md`), so the preload
+is gone.

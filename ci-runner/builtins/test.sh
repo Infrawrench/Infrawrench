@@ -255,6 +255,24 @@ jobs:
       out="$(node /tmp/wasi.js; node /tmp/wasi-named.mjs)"
       echo "$out"
       test "$(grep -c '^hi$' <<<"$out")" = 4
+  # An async WebAssembly compile as a program's only pending work (#943).
+  # Edge.js neither waited for V8's background compile before treating its
+  # loop as empty nor heard when it finished, so under load about one
+  # `node` in five exited with the compile unfinished, and one held open by
+  # a long timer picked the result up only when the timer fired. The
+  # bridge's V8 platform covers both (vendor/README.md). Twenty bare
+  # compiles, then one beside a 20s timer that must not be what wakes it.
+  wasm-compile-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    run: |
+      cat > /tmp/compile.js <<'JS'
+      const bytes = Buffer.from("0061736d01000000010401600000030201000a040102000b", "hex");
+      const timer = process.argv[2] === "timer" ? setTimeout(() => console.log("timer fired"), 20000) : null;
+      WebAssembly.instantiate(bytes).then(() => { console.log("done"); clearTimeout(timer); });
+      JS
+      for i in $(seq 20); do test "$(node /tmp/compile.js)" = done; done
+      test "$(node /tmp/compile.js timer)" = done
 
   # Relative paths read from many threads at once (#937): wasix-libc makes
   # them absolute in one buffer every thread shares, so a read could open
@@ -285,6 +303,28 @@ jobs:
       })();
       JS
       UV_THREADPOOL_SIZE=64 node /tmp/reads.js
+
+  # A blob with an empty part streams to its end (#940): Edge.js's
+  # `Blob.stream()` stopped at the first empty part and never finished, so
+  # gzipping an empty blob hung. The runner's preload reads past them.
+  blob-stream-passes:
+    using: env:bash-node@24
+    timeout: 2m
+    run: |
+      cat > /tmp/blob.mjs <<'JS'
+      import { openAsBlob, writeFileSync } from "node:fs";
+      setTimeout(() => { console.error("a blob stream never ended"); process.exit(1); }, 30_000).unref();
+      const length = async (stream) => (await new Response(stream).arrayBuffer()).byteLength;
+      writeFileSync("/tmp/empty.txt", "");
+      const lengths = [
+        await length(new Blob([""]).stream()),
+        await length(new Blob(["a", "", "b"]).stream()),
+        await length((await openAsBlob("/tmp/empty.txt")).stream()),
+        await length(new Blob([""]).stream().pipeThrough(new CompressionStream("gzip"))),
+      ];
+      console.log(lengths.join(" "));
+      JS
+      test "$(node /tmp/blob.mjs)" = "0 2 0 20"
 
   # Another job's spinning script must not hold this one up: Node jobs once
   # took turns behind the bridge's process-wide lock, so this `node`, started
@@ -337,6 +377,47 @@ jobs:
       })().catch((e) => { console.error(e); process.exit(1); });
       JS
       node /tmp/workers.js
+  # Isolates made and released on many threads at once while they load
+  # ES modules: the bridge's env registry and the module-wrap maps are
+  # shared by every isolate in the runner, and were once changed without a
+  # lock, which segfaulted the runner under a full Test pipeline (#947). A
+  # race does not fail every time, so this is a smoke check; the decisive
+  # one is a big pipeline on the runner host.
+  env-churn-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 5m
+    run: |
+      mkdir -p /tmp/churn && cd /tmp/churn
+      for n in 0 1 2 3; do echo "export default () => $n;" > "m$n.mjs"; done
+      cat > w.mjs <<'JS'
+      import { parentPort } from "node:worker_threads";
+      const mods = await Promise.all([0, 1, 2, 3].map((n) => import(`/tmp/churn/m${n}.mjs`)));
+      parentPort.postMessage(mods.reduce((sum, m) => sum + m.default(), 0));
+      JS
+      cat > churn.mjs <<'JS'
+      import { Worker } from "node:worker_threads";
+      let started = 0, done = 0;
+      await new Promise((resolve, reject) => {
+        const next = () => {
+          if (done === 48) return resolve();
+          if (started === 48) return;
+          started++;
+          const w = new Worker("/tmp/churn/w.mjs");
+          w.once("message", (sum) => sum === 6 || reject(new Error(`sum ${sum}`)));
+          w.once("error", reject);
+          w.once("exit", () => { done++; next(); });
+        };
+        for (let i = 0; i < 6; i++) next();
+      });
+      console.log("churned");
+      JS
+      # Two at once; WASIX bash may not report a background job's status, so
+      # each one's output is the check.
+      node churn.mjs > a.out &
+      node churn.mjs > b.out &
+      wait
+      test "$(cat a.out b.out | grep -c '^churned$')" = 2
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24

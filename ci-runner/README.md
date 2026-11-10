@@ -448,8 +448,12 @@ commented where it lives: jobs with Node run without WASIX's asynchronous
 threading (V8 must run on a real thread stack; wasmer-napi's own runner does
 the same), a package command's `wasi.env` is applied as defaults rather than
 appended (otherwise pnpm sees `PATH` twice), and `vendor/wasmer-napi` is
-patched so a job timeout can stop a script that never yields (see
-`vendor/README.md`). On Linux, the V8 that `wasmer-napi` downloads exists
+patched so a job timeout can stop a script that never yields, so Node jobs
+run at the same time without crashing the runner, and so worker threads work
+(see `vendor/README.md`). Every `node` is an isolate in the runner's own
+process, so a fault in that bridge is a crash of every run on the runner;
+#947 was one (shared registries left unlocked once jobs stopped taking
+turns). On Linux, the V8 that `wasmer-napi` downloads exists
 only for x86_64.
 
 `worker_threads` work: each Worker is a WASIX thread of its `node` with an
@@ -478,9 +482,12 @@ entry pnpm records in the lockfile but installs on no real machine.
 The same preload covers two places where Edge.js and Node differ, until a
 pinned Edge.js fixes them: relative `fs` paths are made absolute first,
 because Edge.js's C library makes them absolute in one buffer that
-concurrent calls can trade (#937); and a pending async WebAssembly compile
-keeps the process alive and is looked for every 5 ms, because Edge.js could
-exit before it finished, or never notice that it had (#943).
+concurrent calls can trade (#937); and a blob's stream reads past empty
+parts, because Edge.js's stopped at the first one and never ended (#940). A
+pending async WebAssembly compile keeps `node` alive and its result is
+picked up as soon as it lands, as in Node: the runner's V8 platform waits
+for an isolate's background work at the end of each event-loop turn (#943,
+`vendor/README.md`).
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On

@@ -57,9 +57,29 @@ runner took turns: three CPU-bound jobs took 19 s together against 7 s
 alone, and a job waiting on I/O inside a call froze the others (#922's
 `astro check`). An env's own state is only used by the thread that runs it,
 so `src/napi_bridge_init.cc` now takes `g_mu` only around what every env
-shares, the env registry and the cross-env message table (6 sites; 62 per-env
-sites no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
+shares, the env registry and the cross-env message table (62 per-env sites
+no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
 main reworked `g_mu` the same way, with per-thread env ownership.
+
+**And: the shared state `g_mu` used to cover, locked on its own (#947).**
+Dropping `g_mu` from env creation and release left the registry itself
+unlocked there: `g_envs.erase` in release (and `g_envs.insert` in the
+unbudgeted create) ran while other threads looked envs up, which every
+bridge call does, and the runner segfaulted in `LookupEnvState` under a
+full Test pipeline (8.5 minutes into a run on the runner host; the
+production crash had the same load). Insert and erase now take `g_mu`
+themselves, the message table is locked only around the table, not
+around serialization, which runs JavaScript, and the budgeted create no
+longer holds `g_mu` while it builds an isolate. Two more pieces of the V8
+provider relied on `g_mu` for safety and are backported from wasmerio/napi
+832e57ec ("Let environments on different threads run JavaScript
+concurrently"): the module-wrap maps in `v8/src/unofficial_napi_contextify.cc`
+are always used under `g_module_wrap_mu` (an unlocked `operator[]` and
+cleanup-hook `emplace` raced every env's bootstrap and module loading), and
+`v8/src/unofficial_napi.cc` serializes isolate construction with V8
+disposal (`g_isolate_lifecycle_mu`), because `EdgeV8Platform` keys
+per-isolate state by address and a new isolate could take a just-freed
+one's address between `Dispose()` and unregistration.
 
 **And: env ids per application, so `worker_threads` work.** A WASIX
 program runs one Wasmer store per thread over one shared linear memory, and
@@ -91,13 +111,50 @@ keeps the larger defaults. A clamped default reservation under 16 MiB is
 refused, so the guest reports "cannot create" instead of getting an isolate
 its first allocation terminates.
 
+**And: the platform waits for an isolate's own work (#943).** The bridge
+binds no foreground task target for a WASIX guest (Edge.js's enqueue hook
+is guest code, which V8's threads cannot run), so a task V8 posts for an
+isolate from another thread, such as the end of an async
+`WebAssembly.compile`, waits in the platform's queue for the guest's next
+event-loop checkpoint, and nothing here can wake the guest's libuv. Node
+both wakes its loop for such a task (`uv_async_send`) and, before it treats
+the loop as empty, waits for background tasks (`DrainTasks`). Edge.js did
+neither through the bridge: under load about one `node` in five whose only
+work was a compile exited silently with it unfinished, and one held open by
+a long timer picked the result up when the timer fired.
+`v8/src/edge_v8_platform.cc` now counts each worker task against the
+isolate it is for (the isolate current on the posting thread, or the owner
+of the worker task that posted it, so a compile's next step counts too),
+from when it is posted until it is destroyed, and marks an isolate when an
+immediate foreground task is posted for it. While either is outstanding,
+the host-task checkpoint (`v8/src/unofficial_napi.cc`) waits for it on a
+condition variable, woken as soon as the task is posted or the work ends,
+and reports the work pending and the turn admitted, so Edge.js neither
+sleeps in libuv past the task nor exits. The wait is bounded, so the loop's
+own timers and I/O are looked at again: up to 1 ms when the loop has
+nothing runnable, none on a turn that has something runnable, backing off
+from 25 µs only over a run of such turns in which no task came (a loop with
+nothing left in it reports itself runnable every turn). The checkpoint also
+runs microtasks again after a pumped task, a few rounds at most: a task can
+settle a promise, and its reactions used to wait for the next checkpoint,
+which could be behind libuv's wait. This replaces
+`crates/iwci-runtime/node/wasm-keep-alive.cjs`, a preload that held a 5 ms
+interval while a compile was pending. wasmerio/napi main has a process-wide
+waker instead (#139 there, "Wake the host when V8 queues a task only a
+checkpoint runs"), for hosts that can end the guest's sleep themselves; it
+neither keeps a loop alive nor knows the isolate. `builtins/test.sh`'s
+`wasm-compile-passes` is the check.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
-lock) and its per-application env ids (9219367): delete `vendor/wasmer-napi*`,
-the `[patch.crates-io]` entry in `../Cargo.toml`, and bump the version.
-`builtins/test.sh bash-node` has a job that must time out and one that runs
-Workers, which are the checks; check the heap sizes against a Worker pool
-too.
+lock, 832e57ec's provider locks) and its per-application env ids (9219367),
+and either a guest's event loop is kept alive and woken for its isolate's
+background work or the pinned Edge.js does that itself: delete
+`vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
+bump the version. `builtins/test.sh bash-node` has a job that must time out,
+one that runs Workers, one that churns envs and one that compiles WebAssembly
+in the background, which are the checks; check the heap sizes against a
+Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.
