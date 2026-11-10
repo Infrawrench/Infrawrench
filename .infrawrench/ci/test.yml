@@ -23,8 +23,9 @@
 # Node a working `node:wasi`. rolldown leaves that build out of its own
 # optional dependencies, so the root package.json lists it.
 #
-# Still on GitHub Actions only:
+# Still on GitHub Actions only (.github/workflows/test.yml):
 # - The website's `astro check`.
+# - The tests of the packages the `test` job below leaves out.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
 name: Test
@@ -46,7 +47,6 @@ jobs:
   # scripts/ensure-env.mjs copies env.example.ts to env.ts, and mobile's
   # scripts/build-terminal-html.mjs writes a generated module with esbuild (a
   # native binary); the typecheck only reads that module's type, a string.
-  # Plus the shims for the tsdown entries tsc names differently.
   prep:
     name: Prepare generated files
     using: env:bash-node@24
@@ -58,7 +58,6 @@ jobs:
       cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
-      node .infrawrench/ci/typescript-shims.mjs
 
   # Each library's JavaScript, as `pnpm build` writes it, for the tests of
   # the packages that use it. Declarations are `build`'s.
@@ -80,8 +79,8 @@ jobs:
   # depends on. The runner's installer writes no node_modules/.bin, so
   # `vitest` in the script runs as its entry point.
   #
-  # These packages' tests stay on GitHub Actions (test.yml runs every
-  # package's either way):
+  # These packages' tests stay on GitHub Actions, whose Vitest job runs
+  # exactly this list: a package taken off it goes back on there.
   # - native code with no WASI build: web and desktop (Vite 6 loads
   #   Rollup's native binary), bastion-agent (esbuild), turso (a Neon
   #   addon);
@@ -185,8 +184,7 @@ jobs:
 
   # The packages that pin TypeScript 6 (mobile, plugingen) run their own
   # compiler, which is JavaScript, under Node. The website's `astro check`
-  # stays on GitHub Actions until the runner's Node can start worker threads,
-  # which rolldown needs.
+  # is still on GitHub Actions: it has not been tried here.
   mobile:
     name: Typecheck mobile (TypeScript 6)
     needs: [prep, build]

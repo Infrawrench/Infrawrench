@@ -6,7 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+# Prettier, TypeScript, the translation checks and most packages' tests run
+# on Infrawrench CI (.infrawrench/ci/test.yml). What is left here is what
+# that pipeline cannot run yet.
 jobs:
+  # The tests that need native code, host tools, or Node where the runner's
+  # Edge.js still differs: exactly the packages `.infrawrench/ci/test.yml`'s
+  # `test` job leaves out, each with its reason there. Keep the two lists in
+  # step.
   vitest:
     name: Vitest
     runs-on: ubuntu-24.04-arm
@@ -34,10 +41,26 @@ jobs:
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
 
-      - run: pnpm test
+      - run: >-
+          pnpm exec turbo run test
+          --filter=./app/packages/web
+          --filter=./app/packages/desktop
+          --filter=./app/packages/bastion-agent
+          --filter=./plugin-architecture/packages/turso
+          --filter=./plugin-architecture/packages/ssh-tunnel-core
+          --filter=./plugingen
+          --filter=./plugin-architecture/packages/tailscale
+          --filter=./plugin-architecture/packages/auth0
+          --filter=./app/packages/ui
+          --filter=./plugin-architecture/packages/crusoe
+          --filter=./plugin-architecture/packages/wasabi
+          --filter=./app/packages/server-core
+          --filter=./app/packages/poller
 
+  # The website's `astro check`; every other package's typecheck runs on
+  # Infrawrench CI.
   typescript:
-    name: TypeScript
+    name: TypeScript (website)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -59,68 +82,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
 
-      - name: Copy env.production.ts to env.ts for desktop package
-        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
-
-      - run: pnpm typecheck
-
-  prettier:
-    name: Prettier
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            .turbo
-            node_modules
-          key: ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 24
-
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-
-  translations:
-    name: Translations
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            .turbo
-            node_modules
-          key: ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 24
-
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-
-      # Gate: every user-facing string is marked for translation or carries an
-      # `i18n-ignore: <reason>` marker. Fails on unmarked strings, reasonless
-      # markers, and stale markers. Covers ui, web, desktop and the instances
-      # site (app/packages/instances).
-      - run: pnpm --filter @infrawrench/web translations:audit
-
-      # Non-gating on catalog lag (missing entries just render English), but
-      # fails on gt extraction errors — a broken <T> site is a real bug.
-      # Reports web, desktop and instances, each against its own catalogs.
-      - run: pnpm --filter @infrawrench/web translations:status
+      - run: pnpm exec turbo run typecheck --filter=@infrawrench/website
 
   migrations:
     name: Database migrations
