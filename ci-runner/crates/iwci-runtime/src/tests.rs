@@ -1110,6 +1110,10 @@ fn a_script_killed_by_sigsys_names_the_syscall_that_sent_it() {
     );
     assert!(stderr.contains("a guest called "), "{stderr}");
     assert!(stderr.contains("Sigsys"), "{stderr}");
+    assert!(
+        stderr.contains("its thread's task had started "),
+        "{stderr}"
+    );
     assert!(!stderr.contains("came from the host runtime"), "{stderr}");
 }
 

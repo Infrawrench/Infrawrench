@@ -20,9 +20,9 @@
 //! - **the syscalls that returned `ENOSYS` or `ENOTSUP`**, by name, with how
 //!   often;
 //! - with each signal sent, **what the sending thread did before**: its last
-//!   syscalls and their return values, and where a task started on it (a
-//!   process or guest thread starting, or resuming after a deep sleep),
-//!   which is as near to a guest backtrace as the host has.
+//!   syscalls and their return values, and how the process or guest thread
+//!   it runs began there, started or resumed from a deep sleep, and how many
+//!   syscalls ago. That is as near to a guest backtrace as the host has.
 //!
 //! When a job then fails the way a signal makes it fail, [`SignalLog::report`]
 //! writes those out, and `wasix::run` appends them to the job's stderr, so
@@ -91,6 +91,12 @@ struct Recent {
     calls: [Call; RECENT_KEPT],
     /// Calls made, ever: the next goes in `calls[made % RECENT_KEPT]`.
     made: usize,
+    /// `made` when the thread's current task started.
+    task_started: usize,
+    /// The current task is a process or thread back from a deep sleep: it
+    /// unwound its stack, gave its thread back, and was rebuilt on this one
+    /// (a new instance, its globals restored, its stack rewound).
+    task_resumed: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -109,7 +115,30 @@ impl Recent {
                 len: 0,
             }; RECENT_KEPT],
             made: 0,
+            task_started: 0,
+            task_resumed: false,
         }
+    }
+
+    /// Notes that a task is starting on the thread.
+    fn start(&mut self) {
+        self.push(TASK_START, b"");
+        self.task_started = self.made;
+        self.task_resumed = false;
+    }
+
+    /// `started 40 syscalls before` or `resumed from a deep sleep 40
+    /// syscalls before`: how the thread's current task began.
+    fn task(&self) -> String {
+        format!(
+            "{} {} syscalls before",
+            if self.task_resumed {
+                "resumed from a deep sleep"
+            } else {
+                "started"
+            },
+            self.made - self.task_started
+        )
     }
 
     fn push(&mut self, syscall: &'static str, ret: &[u8]) {
@@ -182,11 +211,13 @@ struct Log {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Signalled {
     /// A guest called `syscall` with `args`; `before` is what its thread
-    /// did before that ([`Recent::describe`]).
+    /// did before that ([`Recent::describe`]) and `task` how the task it
+    /// was running began ([`Recent::task`]).
     Sent {
         syscall: &'static str,
         args: String,
         before: String,
+        task: String,
     },
     /// A process ran its handler for a signal (`fields` name both).
     Delivered { fields: String },
@@ -240,7 +271,7 @@ impl SignalLog {
                 // The thread's last task was another job's.
                 *recent = Recent::new();
             }
-            recent.push(TASK_START, b"");
+            recent.start();
         });
     }
 
@@ -289,10 +320,11 @@ impl SignalLog {
         );
         for (at, signal) in &log.signals {
             let _ = writeln!(text, "  {} before the end, {signal}", ago(*at));
-            if let Signalled::Sent { before, .. } = signal
+            if let Signalled::Sent { before, task, .. } = signal
                 && !before.is_empty()
             {
                 let _ = writeln!(text, "    its thread's syscalls before that: {before}");
+                let _ = writeln!(text, "    its thread's task had {task}");
             }
         }
         let delivered = log
@@ -367,6 +399,8 @@ enum Wanted {
     Return,
     /// wasmer-wasix handing a signal to a guest's handler, or dropping it.
     Delivery,
+    /// A thread entering or leaving a deep sleep, or rewinding after one.
+    Sleep,
 }
 
 fn wanted(meta: &Metadata<'_>) -> Option<Wanted> {
@@ -379,7 +413,19 @@ fn wanted(meta: &Metadata<'_>) -> Option<Wanted> {
                 .find(|name| *name == meta.name())
                 .map(Wanted::Sender);
         }
-        return meta.fields().field("return").map(|_| Wanted::Return);
+        let fields = meta.fields();
+        if fields.field("return").is_some() {
+            return Some(Wanted::Return);
+        }
+        // "thread entering deep sleep", "thread leaving deep sleep" and the
+        // rewinds, the only events here that name a pid and a tid.
+        if target == "wasmer_wasix::syscalls"
+            && fields.field("pid").is_some()
+            && fields.field("tid").is_some()
+        {
+            return Some(Wanted::Sleep);
+        }
+        return None;
     }
     if target == "wasmer_wasix::state::env" && meta.is_event() {
         // "processing signal via handler" names it `signal`, "Signal
@@ -423,6 +469,7 @@ impl Subscriber for Recorder {
                 syscall,
                 args: args.0,
                 before: RECENT.with(|recent| recent.borrow().describe()),
+                task: RECENT.with(|recent| recent.borrow().task()),
             });
         }
         // Spans are recorded when they are made and never looked up.
@@ -435,8 +482,18 @@ impl Subscriber for Recorder {
 
     fn event(&self, event: &Event<'_>) {
         match wanted(event.metadata()) {
+            Some(Wanted::Sleep) => {
+                let mut message = Head::of("message");
+                event.record(&mut message);
+                if message.has(b"leaving deep sleep") {
+                    // On the thread the task was rebuilt on, before it runs.
+                    RECENT.with(|recent| recent.borrow_mut().task_resumed = true);
+                } else if message.has(b"entering deep sleep") {
+                    RECENT.with(|recent| recent.borrow_mut().push("[deep sleep]", b""));
+                }
+            }
             Some(Wanted::Return) => {
-                let mut ret = Return::default();
+                let mut ret = Head::of("return");
                 event.record(&mut ret);
                 // `wasmer_wasix::syscalls::wasix::proc_spawn2` names the
                 // syscall last.
@@ -502,29 +559,34 @@ impl Visit for Fields {
     }
 }
 
-/// The start of a syscall's return value, formatted without allocating.
-struct Return {
+/// The start of one field of an event, formatted without allocating: a
+/// syscall's return value, an event's message.
+struct Head {
+    field: &'static str,
     text: [u8; 48],
     len: usize,
 }
 
-impl Default for Return {
-    fn default() -> Self {
+impl Head {
+    fn of(field: &'static str) -> Self {
         Self {
+            field,
             text: [0; 48],
             len: 0,
         }
     }
-}
 
-impl Return {
+    fn has(&self, needle: &[u8]) -> bool {
+        self.text[..self.len]
+            .windows(needle.len())
+            .any(|window| window == needle)
+    }
+
     /// The errno, when the syscall said it is not implemented.
     fn unimplemented(&self) -> Option<&'static str> {
-        let text = &self.text[..self.len];
-        let has = |needle: &[u8]| text.windows(needle.len()).any(|w| w == needle);
-        if has(b"Errno::nosys") {
+        if self.has(b"Errno::nosys") {
             Some("ENOSYS")
-        } else if has(b"Errno::notsup") {
+        } else if self.has(b"Errno::notsup") {
             Some("ENOTSUP")
         } else {
             None
@@ -532,13 +594,13 @@ impl Return {
     }
 }
 
-impl fmt::Write for Return {
+impl fmt::Write for Head {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let room = self.text.len() - self.len;
         let take = room.min(s.len());
         self.text[self.len..self.len + take].copy_from_slice(&s.as_bytes()[..take]);
         self.len += take;
-        // Full: stop the formatter, the errno comes first.
+        // Full: stop the formatter, what matters comes first.
         if take < s.len() {
             Err(fmt::Error)
         } else {
@@ -547,9 +609,9 @@ impl fmt::Write for Return {
     }
 }
 
-impl Visit for Return {
+impl Visit for Head {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        if field.name() == "return" {
+        if field.name() == self.field {
             let _ = write!(self, "{value:?}");
         }
     }
@@ -564,6 +626,7 @@ mod tests {
             syscall,
             args: args.to_owned(),
             before: String::new(),
+            task: String::new(),
         }
     }
 
@@ -696,27 +759,54 @@ mod tests {
             syscall: "thread_signal",
             args: "tid=0 sig=Signal::Sigabrt".into(),
             before: "[task start] futex_wait".into(),
+            task: "resumed from a deep sleep 1 syscalls before".into(),
         });
         let report = log.report(127, b"").unwrap();
         assert!(
             report.contains("    its thread's syscalls before that: [task start] futex_wait\n"),
             "{report}"
         );
+        assert!(
+            report.contains(
+                "    its thread's task had resumed from a deep sleep 1 syscalls before\n"
+            ),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn a_thread_knows_how_its_task_began_and_how_long_ago() {
+        let mut recent = Recent::new();
+        recent.push("fd_read", b"Ok(Errno::success)");
+        recent.start();
+        assert_eq!(recent.task(), "started 0 syscalls before");
+        for _ in 0..40 {
+            recent.push("fd_read", b"Ok(Errno::success)");
+        }
+        assert_eq!(recent.task(), "started 40 syscalls before");
+        // wasmer-wasix says a task is back from a deep sleep once it has
+        // been set up on its new thread.
+        recent.start();
+        recent.task_resumed = true;
+        recent.push("futex_wait", b"Ok(Errno::success)");
+        assert_eq!(recent.task(), "resumed from a deep sleep 1 syscalls before");
+        recent.start();
+        assert_eq!(recent.task(), "started 0 syscalls before");
     }
 
     #[test]
     fn a_return_value_is_read_from_its_first_bytes() {
-        let mut ret = Return::default();
+        let mut ret = Head::of("return");
         let _ = write!(ret, "Ok(Errno::nosys)");
         assert_eq!(ret.unimplemented(), Some("ENOSYS"));
-        let mut ret = Return::default();
+        let mut ret = Head::of("return");
         let _ = write!(ret, "Errno::notsup");
         assert_eq!(ret.unimplemented(), Some("ENOTSUP"));
-        let mut ret = Return::default();
+        let mut ret = Head::of("return");
         let _ = write!(ret, "Ok(Errno::success)");
         assert_eq!(ret.unimplemented(), None);
         // Longer than the buffer: cut, not a panic.
-        let mut ret = Return::default();
+        let mut ret = Head::of("return");
         let _ = write!(ret, "{}", "x".repeat(500));
         assert_eq!(ret.len, 48);
         assert_eq!(ret.unimplemented(), None);

@@ -701,25 +701,30 @@ A program killed by a signal says only which one: wasix-libc prints
 host ends it with 128 plus the signal), and by then nothing shows who sent
 it (#955). The runner keeps, for every job, the last signals its processes
 sent (`raise`, `kill`, `abort`) with the syscalls the sending thread made
-just before, the signals delivered to a handler, and the syscalls that
-returned `ENOSYS` or `ENOTSUP`, and when a job ends that way it adds them
-to the end of the job's stderr:
+just before and how its task began, the signals delivered to a handler,
+and the syscalls that returned `ENOSYS` or `ENOTSUP`, and when a job ends
+that way it adds them to the end of the job's stderr:
 
 ```text
 Program recieved fatal signal: Bad system call
 iwci: the job exited with 127 after a signal. What the runner saw of it (#955):
   0ms before the end, a guest called proc_signal(pid=1 sig=Signal::Sigsys)
     its thread's syscalls before that: proc_id x2 proc_parent stack_checkpoint x2 fd_filestat_get stack_checkpoint x6
+    its thread's task had started 48 syscalls before
   0ms before the end, delivered to a handler: pid=1 signal=Signal::Sigsys
   0ms before the end, a guest called thread_signal(tid=1073741823 sig=Signal::Sigabrt)
-    its thread's syscalls before that: stack_checkpoint x2 fd_filestat_get stack_checkpoint x6 callback_signal fd_write
+    its thread's syscalls before that: proc_parent stack_checkpoint x2 fd_filestat_get stack_checkpoint x6 callback_signal fd_write
+    its thread's task had started 50 syscalls before
   no syscall returned ENOSYS or ENOTSUP
 ```
 
 The `thread_signal` with `Sigabrt` is `abort()`, which is how wasix-libc
-ends a process after a fatal signal. `[task start]` among a thread's
-syscalls is where a process or thread started on it, or came back from a
-wait long enough to give its thread up. A signal that was delivered
+ends a process after a fatal signal. A thread's task is the process or
+guest thread it runs: it either `started` there or `resumed from a deep
+sleep`, a wait long enough that wasmer-wasix unwound its stack, gave the
+host thread back and later rebuilt it on another. `[task start]` among
+the syscalls is where that happened, and `[deep sleep]` where a thread
+went into one. A signal that was delivered
 without a guest having sent it came from the host runtime, and one that
 libc names but that was never delivered was raised inside the guest; the
 lines say which. A job that fails any other way gets nothing added.
