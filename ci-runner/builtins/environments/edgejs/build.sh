@@ -44,8 +44,8 @@
 # Drop this directory, and pin Wasmer's package again, once a `wasmer/edgejs`
 # release is built on a sysroot with the fix.
 #
-# x86_64 Linux only: the pinned toolchain archives are that platform's. About
-# 5 minutes on four cores after 600 MB of downloads, 4 GB of disk.
+# x86_64 Linux only: the pinned toolchain archives are that platform's. Five
+# to ten minutes on four cores, 600 MB of downloads, 4 GB of disk.
 # EDGEJS_WORK keeps the downloads and the toolchain somewhere of your
 # choosing (default: a scratch directory removed on exit).
 #

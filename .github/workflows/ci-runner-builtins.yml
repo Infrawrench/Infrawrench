@@ -188,7 +188,7 @@ jobs:
         run: cargo build -p iwci --features node
 
       # Edge.js is built from source (builtins/environments/edgejs/build.sh:
-      # about five minutes, after 600 MB of pinned downloads). The build is
+      # about ten minutes here, with 600 MB of pinned downloads). The build is
       # reproducible and the next step checks the package against the hash
       # pinned in environments/build.sh, so a cached one is as good as a
       # fresh one and a wrong one fails either way.
