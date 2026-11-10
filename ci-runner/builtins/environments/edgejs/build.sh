@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
-# Edge.js for `env:bash-node`, built from source on a wasix-libc without the
-# shared `make_absolute` buffer (#937).
+# Edge.js for `env:bash-node`, built from source on a wasix-libc with two
+# races fixed that no release of it, and so no release of Edge.js, has fixed.
 #
-# wasix-libc makes a relative path absolute in one static buffer that every
-# thread shares, so two `fs` calls on libuv's thread pool can trade paths: a
-# read opens the working directory (EISDIR) or another file. The C library
-# is linked into Edge.js's module, so the fix is a rebuild of that module.
-# Upstream has the fix open as wasix-org/wasix-libc#145 and no Edge.js
-# release carries it.
+# The C library is linked into Edge.js's module, so a fix to it is a rebuild
+# of that module. Each is one patch here and one object of `libc.a`:
 #
-# This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with one
-# object of the C library replaced:
+#   wasix-libc-145.patch (chdir.o, #937). wasix-libc made a relative path
+#     absolute in one static buffer that every thread shares, so two `fs`
+#     calls on libuv's thread pool could trade paths: a read opened the
+#     working directory (EISDIR) or another file. The patch is
+#     wasix-org/wasix-libc#145 as written upstream, where it is still open.
 #
-#   1. The sysroot 0.2.5 was built on (wasix-libc v2026-07-30.1), with
-#      `chdir.o` in its `libc.a` recompiled from that tag's source plus
-#      #145's change to `chdir.c` (`wasix-libc-145.patch`, as written
-#      upstream), using wasix-libc's own Makefile so the flags are its own.
+#   wasix-libc-thread-exit.patch (pthread_create.o, #967). A thread that
+#     exits releases the thread-list lock itself, which lets `pthread_join`
+#     free its stack, and then made one more host call (`futex_wake`, to wake
+#     whoever waits for the lock) that writes its result into that stack. By
+#     then another `pthread_create` could have been handed the block, so one
+#     byte of a starting thread's stack, start arguments or thread structure
+#     was overwritten: under thread churn a `node` now and then lost a thread
+#     to a trap in its first instructions. The patch is ours (nothing
+#     upstream yet): the result of that last call goes to static storage.
+#
+# This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
+# two objects of the C library replaced:
+#
+#   1. The sysroot 0.2.5 was built on (wasix-libc v2026-07-30.1), with the
+#      two objects in its `libc.a` recompiled from that tag's source plus the
+#      patches, using wasix-libc's own Makefile so the flags are its own.
 #   2. Edge.js at the commit 0.2.5's module was built from, with its own
 #      `wasix/build-wasix.sh` (OpenSSL, libuv-wasix and Edge.js's C++ for
 #      `wasm32-wasix`, then `wasm-opt`), and the toolchain its CI used.
@@ -29,11 +40,11 @@
 # there rather than shipping. The result goes to dist/package/edgejs/<version>/.
 #
 #   edgejs/build.sh             build the package
-#   EDGEJS_VERIFY=1 ...         build without the patch instead, and check
+#   EDGEJS_VERIFY=1 ...         build without the patches instead, and check
 #                               that the module is the published one, bit
 #                               for bit: the proof that the pins below are
 #                               what 0.2.5 was built from, and so that the
-#                               C library object is the only difference
+#                               C library objects are the only difference
 #
 # Two things Edge.js's build compiles in are held to what the published
 # module has, or neither of those would hold: the source path (`__FILE__`
@@ -41,8 +52,9 @@
 # does this, which is why it needs to be able to create that directory) and
 # OpenSSL's build time (SOURCE_DATE_EPOCH).
 #
-# Drop this directory, and pin Wasmer's package again, once a `wasmer/edgejs`
-# release is built on a sysroot with the fix.
+# Drop a patch once the sysroot Edge.js builds on has its fix, and this
+# directory, pinning Wasmer's package again, once a `wasmer/edgejs` release
+# has both.
 #
 # x86_64 Linux only: the pinned toolchain archives are that platform's. Five
 # to ten minutes on four cores, 600 MB of downloads, 4 GB of disk.
@@ -54,8 +66,9 @@
 source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# Our build of 0.2.5. A changed build is a new number after `iwci.`.
-VERSION="0.2.5-iwci.1"
+# Our build of 0.2.5. A changed build is a new number after `iwci.`:
+# 1 had the first patch alone, 2 has both.
+VERSION="0.2.5-iwci.2"
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
@@ -74,6 +87,12 @@ EDGEJS_MODULE_SHA256="97248a38f8690cb072a26b7bad320cd6230859a0db3340ef466aa60761
 # from it (the non-PIC exnref exception-handling variant Edge.js links).
 WASIX_LIBC_REPO="https://github.com/wasix-org/wasix-libc.git"
 WASIX_LIBC_COMMIT="67b2eccf84e5091912ee28f4b6bc0edd1b88e86f"
+# patch, the object it changes, and a symbol that object has only when it was
+# built from the patched source (`!name`: one it must no longer have).
+LIBC_PATCHES=(
+  "wasix-libc-145.patch libc-bottom-half/sources/chdir.o !make_absolute_buf"
+  "wasix-libc-thread-exit.patch libc-top-half/musl/src/thread/pthread_create.o exit_woken"
+)
 SYSROOT_URL="https://github.com/wasix-org/wasix-libc/releases/download/v2026-07-30.1/sysroot-exnref-eh.tar.gz"
 SYSROOT_SHA256="40c2ebbf3487ab72c0d0359b1643f3e6ae7c51adfe2237ab86492ecb6494a47d"
 
@@ -140,31 +159,40 @@ export WASIXCC_LLVM_LOCATION="$tc/llvm"
 export WASIXCC_BINARYEN_LOCATION="$tc/binaryen-$BINARYEN"
 export PATH="$tc/bin:$tc/binaryen-$BINARYEN/bin:$PATH"
 
-# 1. The C library object. wasix-libc's Makefile compiles it with the flags
-#    the sysroot was built with; the archive keeps every other member.
+# 1. The C library objects. wasix-libc's Makefile compiles each with the
+#    flags the sysroot was built with; the archive keeps every other member.
 patch_libc() {
-  local libc="$work/wasix-libc" object="build/wasm32-wasi/libc-bottom-half/sources/chdir.o"
-  local archive="$tc/sysroot/sysroot-exnref-eh/lib/wasm32-wasi/libc.a"
+  local libc="$work/wasix-libc" archive="$tc/sysroot/sysroot-exnref-eh/lib/wasm32-wasi/libc.a"
+  local entry patch source symbol object member
   checkout "$libc" "$WASIX_LIBC_REPO" "$WASIX_LIBC_COMMIT"
-  git -C "$libc" apply "$self/wasix-libc-145.patch"
-  TARGET_ARCH=wasm32 TARGET_OS=wasix make -C "$libc" -f Makefile-eh PIC=no EXNREF_EH=yes \
-    CC="$tc/llvm/bin/clang" "$object" >"$work/wasix-libc.log" 2>&1 || {
-    tail -n 40 "$work/wasix-libc.log" >&2
-    exit 1
-  }
-  if [[ "$("$tc/llvm/bin/llvm-ar" t "$archive" | grep -cx 'chdir\.o')" != 1 ]]; then
-    echo "error: expected exactly one chdir.o in the sysroot's libc.a" >&2
-    exit 1
-  fi
-  "$tc/llvm/bin/llvm-ar" r "$archive" "$libc/$object"
-  # The shared buffer is a static of `make_absolute`: it must be gone from
-  # the archive the module links.
   mkdir -p "$work/check"
-  (cd "$work/check" && rm -f chdir.o && "$tc/llvm/bin/llvm-ar" x "$archive" chdir.o)
-  if "$tc/llvm/bin/llvm-nm" "$work/check/chdir.o" | grep -q 'make_absolute_buf'; then
-    echo "error: the sysroot's chdir.o still has the shared make_absolute buffer" >&2
-    exit 1
-  fi
+  for entry in "${LIBC_PATCHES[@]}"; do
+    read -r patch source symbol <<<"$entry"
+    object="build/wasm32-wasi/$source"
+    member="$(basename "$source")"
+    git -C "$libc" apply "$self/$patch"
+    TARGET_ARCH=wasm32 TARGET_OS=wasix make -C "$libc" -f Makefile-eh PIC=no EXNREF_EH=yes \
+      CC="$tc/llvm/bin/clang" "$object" >"$work/wasix-libc.log" 2>&1 || {
+      tail -n 40 "$work/wasix-libc.log" >&2
+      exit 1
+    }
+    if [[ "$("$tc/llvm/bin/llvm-ar" t "$archive" | grep -cxF "$member")" != 1 ]]; then
+      echo "error: expected exactly one $member in the sysroot's libc.a" >&2
+      exit 1
+    fi
+    "$tc/llvm/bin/llvm-ar" r "$archive" "$libc/$object"
+    # What the module links is the archive, so that is what is checked.
+    (cd "$work/check" && rm -f "$member" && "$tc/llvm/bin/llvm-ar" x "$archive" "$member")
+    if [[ "$symbol" == !* ]]; then
+      if "$tc/llvm/bin/llvm-nm" "$work/check/$member" | grep -qF "${symbol#!}"; then
+        echo "error: the sysroot's $member still has ${symbol#!}; $patch was not built in" >&2
+        exit 1
+      fi
+    elif ! "$tc/llvm/bin/llvm-nm" "$work/check/$member" | grep -qF "$symbol"; then
+      echo "error: the sysroot's $member has no $symbol; $patch was not built in" >&2
+      exit 1
+    fi
+  done
 }
 [[ "${EDGEJS_VERIFY:-}" == 1 ]] || patch_libc
 
@@ -191,10 +219,10 @@ module="$src/build-wasix/edgejs.wasm"
 built="$(sha256sum "$module" | cut -d' ' -f1)"
 if [[ "${EDGEJS_VERIFY:-}" == 1 ]]; then
   if [[ "$built" != "$EDGEJS_MODULE_SHA256" ]]; then
-    echo "error: without the patch the module hashed to $built, not the published $EDGEJS_MODULE_SHA256" >&2
+    echo "error: without the patches the module hashed to $built, not the published $EDGEJS_MODULE_SHA256" >&2
     exit 1
   fi
-  echo "verified: without the patch, these inputs build the published module ($built)"
+  echo "verified: without the patches, these inputs build the published module ($built)"
   exit 0
 fi
 if [[ "$built" == "$EDGEJS_MODULE_SHA256" ]]; then

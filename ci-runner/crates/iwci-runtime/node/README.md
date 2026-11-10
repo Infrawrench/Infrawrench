@@ -41,8 +41,8 @@ path absolute in one buffer that every thread shares, so two of Node's `fs`
 calls on libuv's thread pool could trade paths: a read opened the working
 directory (EISDIR) or another file. A preload here once resolved `fs` path
 arguments first, which missed Node's own internals and anything a job
-overrode. `env:bash-node` 24.0.1 fixes it where it is: its Edge.js is built
-from source on a C library with wasix-libc #145
+overrode. `env:bash-node` (from 24.0.1) fixes it where it is: its Edge.js is
+built from source on a C library with wasix-libc #145
 (`builtins/environments/edgejs/build.sh`), and `builtins/test.sh`'s
 `relative-reads-passes` checks 40,000 concurrent reads by relative path.
 

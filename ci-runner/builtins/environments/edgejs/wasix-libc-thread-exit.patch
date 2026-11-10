@@ -1,0 +1,46 @@
+wasix-libc: an exiting thread must not touch its stack after it releases the
+thread-list lock (Infrawrench/Infrawrench#967).
+
+Against wasix-org/wasix-libc 67b2eccf (v2026-07-30.1); the code is the same on
+main at 2025b44a (v2026-10-02.1). Ours: not yet reported or fixed upstream.
+
+__pthread_exit releases the thread-list lock itself, which is what lets
+pthread_join free the thread's stack, TLS and thread structure. It did so with
+__tl_unlock, whose wake of the lock's waiters is the host call futex_wake, and
+the host writes that call's result (one byte) through a pointer into the
+exiting thread's stack after it has woken the waiter. The joiner can free the
+block, and another pthread_create be handed it, before that write lands.
+
+diff --git a/libc-top-half/musl/src/thread/pthread_create.c b/libc-top-half/musl/src/thread/pthread_create.c
+index 9d668be..92c5cc1 100644
+--- a/libc-top-half/musl/src/thread/pthread_create.c
++++ b/libc-top-half/musl/src/thread/pthread_create.c
+@@ -201,9 +201,25 @@ _Noreturn void __pthread_exit(void *result)
+ #ifdef __wasilibc_unmodified_upstream
+ 	for (;;) __syscall(SYS_exit, 0);
+ #else
+-	// __syscall(SYS_exit) would unlock the thread, list
+-	// do it manually here
+-	__tl_unlock();
++	// __syscall(SYS_exit) would unlock the thread list, do it manually here.
++	//
++	// Once the lock is released, pthread_join frees this thread's stack, TLS
++	// and thread structure, and another pthread_create can be handed the same
++	// block at once. The kernel releases the lock for upstream musl after the
++	// thread is gone; here the thread is still running, so nothing from the
++	// store on may touch that block. That rules out __tl_unlock: its wake is a
++	// host call (futex_wake) that writes its result through a pointer into
++	// this stack, after it has woken the waiter. The result goes to static
++	// storage instead; nobody reads it. The lock is held exactly once here
++	// (taken above, and never by a thread that already holds it), so there is
++	// no count to unwind.
++	static __wasi_bool_t exit_woken;
++	a_store(&__thread_list_lock, 0);
++	if (tl_lock_waiters) {
++		// A failed wake has nowhere to be reported from here.
++		__wasi_errno_t ignored = __wasi_futex_wake((uint32_t *)&__thread_list_lock, &exit_woken);
++		(void)ignored;
++	}
+ 	for (;;) __wasi_thread_exit(0);
+ #endif
+ }

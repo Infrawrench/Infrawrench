@@ -402,7 +402,10 @@ jobs:
   # shared by every isolate in the runner, and were once changed without a
   # lock, which segfaulted the runner under a full Test pipeline (#947). A
   # race does not fail every time, so this is a smoke check; the decisive
-  # one is a big pipeline on the runner host.
+  # one is a big pipeline on the runner host. It is also where the guest's
+  # own thread-exit race showed (#967: a Worker's thread trapping as it
+  # started, the `node` exiting 1 in silence), which the environment's C
+  # library no longer has (environments/edgejs/build.sh).
   env-churn-passes:
     using: env:bash-node@24
     needs: [node-passes]
