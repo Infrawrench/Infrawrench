@@ -10,10 +10,10 @@ on:
 # on Infrawrench CI (.infrawrench/ci/test.yml). What is left here is what
 # that pipeline cannot run yet.
 jobs:
-  # The tests that need native code, host tools, or Node where the runner's
-  # Edge.js still differs: exactly the packages `.infrawrench/ci/test.yml`'s
-  # `test` job leaves out, each with its reason there. Keep the two lists in
-  # step.
+  # The tests that need native code with no WebAssembly build (web, desktop,
+  # bastion-agent) or a host tool (ssh-tunnel-core, plugingen, tailscale):
+  # exactly the packages `.infrawrench/ci/test.yml`'s `test` job leaves out,
+  # each with its reason there. Keep the two lists in step.
   vitest:
     name: Vitest
     runs-on: ubuntu-24.04-arm
@@ -46,16 +46,9 @@ jobs:
           --filter=./app/packages/web
           --filter=./app/packages/desktop
           --filter=./app/packages/bastion-agent
-          --filter=./plugin-architecture/packages/turso
           --filter=./plugin-architecture/packages/ssh-tunnel-core
           --filter=./plugingen
           --filter=./plugin-architecture/packages/tailscale
-          --filter=./plugin-architecture/packages/auth0
-          --filter=./app/packages/ui
-          --filter=./plugin-architecture/packages/crusoe
-          --filter=./plugin-architecture/packages/wasabi
-          --filter=./app/packages/server-core
-          --filter=./app/packages/poller
 
   # The website's `astro check`; every other package's typecheck runs on
   # Infrawrench CI.

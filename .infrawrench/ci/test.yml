@@ -25,7 +25,8 @@
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
 # - The website's `astro check`.
-# - The tests of the packages the `test` job below leaves out.
+# - The tests of the six packages the `test` job below leaves out: they
+#   need native code or a host tool a job does not have.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
 name: Test
@@ -81,15 +82,18 @@ jobs:
   #
   # These packages' tests stay on GitHub Actions, whose Vitest job runs
   # exactly this list: a package taken off it goes back on there.
-  # - native code with no WASI build: web and desktop (Vite 6 loads
-  #   Rollup's native binary), bastion-agent (esbuild), turso (a Neon
-  #   addon);
-  # - tests that run host tools: ssh-tunnel-core (ssh-keygen), plugingen
-  #   (git), tailscale (a shell and file modes);
-  # - where the runner's Node still differs from Node's: auth0
-  #   (CompressionStream on empty input, #940), ui (a fork worker that
-  #   exits), and crusoe, wasabi, server-core and poller (tests that time
-  #   out on it).
+  # - native code with no WebAssembly build the package can load: web and
+  #   desktop (their Vitest runs on Vite 6, which loads Rollup's native
+  #   binary; Rollup's WebAssembly build is another package) and
+  #   bastion-agent (one test bundles the agent with esbuild, whose
+  #   WebAssembly build is another package too);
+  # - tests that run what a job does not have: ssh-tunnel-core
+  #   (ssh-keygen), plugingen (git, and a fake `gh` script Node cannot
+  #   spawn by its shebang, #958) and tailscale (a file's mode, #959).
+  #
+  # libsql's native addon has no WebAssembly build either: turso's test
+  # mocks the client it never makes, and server-core and poller swap it for
+  # the client's addon-free entry in their vitest.config.ts.
   test:
     name: Test ${{ package.name }}
     packages:
@@ -98,16 +102,9 @@ jobs:
         - "!app/packages/web"
         - "!app/packages/desktop"
         - "!app/packages/bastion-agent"
-        - "!plugin-architecture/packages/turso"
         - "!plugin-architecture/packages/ssh-tunnel-core"
         - "!plugingen"
         - "!plugin-architecture/packages/tailscale"
-        - "!plugin-architecture/packages/auth0"
-        - "!app/packages/ui"
-        - "!plugin-architecture/packages/crusoe"
-        - "!plugin-architecture/packages/wasabi"
-        - "!app/packages/server-core"
-        - "!app/packages/poller"
     needs: [prep, bundle, "^bundle"]
     using: env:bash-node@24
     run: |
@@ -115,7 +112,8 @@ jobs:
       eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=2}"
     task-cache: { root-inputs: [tsconfig.base.json] }
     memory: 6GiB
-    timeout: 20m
+    # server-core and ui take five to nine minutes each on a busy runner.
+    timeout: 30m
 
   # Each library, after the libraries it depends on.
   build:
