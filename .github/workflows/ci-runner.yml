@@ -58,7 +58,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/lib.sh builtins/test.sh builtins/publish.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/lib.sh builtins/test.sh builtins/publish.sh
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
@@ -116,11 +116,13 @@ jobs:
           cache: false
 
       # Downloads are checked against the content hashes pinned in the
-      # scripts, so a changed upstream package fails here.
-      - name: Build gofmt and the environments
+      # scripts, so a changed upstream package fails here. Only bash:
+      # bash-node's Edge.js is built from source on x86_64, by
+      # ci-runner-builtins.yml.
+      - name: Build gofmt and the bash environment
         run: |
           bash builtins/gofmt/build.sh
-          bash builtins/environments/build.sh
+          bash builtins/environments/build.sh bash
 
       # Paths found rather than written down, so a version bump in a build
       # script needs no edit here.

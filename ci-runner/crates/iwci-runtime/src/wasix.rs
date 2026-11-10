@@ -395,10 +395,6 @@ pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 /// its other gaps (see `node/README.md`).
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
-    (
-        "absolute-paths.cjs",
-        include_bytes!("../node/absolute-paths.cjs"),
-    ),
     ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
     ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),

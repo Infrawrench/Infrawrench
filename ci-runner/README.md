@@ -435,7 +435,7 @@ Environments:
 | Environment    | Packages                                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `bash@5`       | `wasmer/bash` 1.0.25 (GNU bash 5.1), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 |
-| `bash-node@24` | the above plus `wasmer/edgejs` 0.2.5 (Node 24 compatible; `node`, `npm`, `pnpm`)                                                    |
+| `bash-node@24` | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                      |
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
@@ -482,15 +482,28 @@ package that leaves its WASI build out of its own optional dependencies, as
 rolldown does, needs it listed in the repository: an `optionalDependencies`
 entry pnpm records in the lockfile but installs on no real machine.
 
-The same preload covers two places where Edge.js and Node differ, until a
-pinned Edge.js fixes them: relative `fs` paths are made absolute first,
-because Edge.js's C library makes them absolute in one buffer that
-concurrent calls can trade (#937); and a blob's stream reads past empty
-parts, because Edge.js's stopped at the first one and never ended (#940). A
-pending async WebAssembly compile keeps `node` alive and its result is
-picked up as soon as it lands, as in Node: the runner's V8 platform waits
-for an isolate's background work at the end of each event-loop turn (#943,
+The same preload covers one more place where Edge.js and Node differ, until
+a pinned Edge.js fixes it: a blob's stream reads past empty parts, because
+Edge.js's stopped at the first one and never ended (#940). A pending async
+WebAssembly compile keeps `node` alive and its result is picked up as soon
+as it lands, as in Node: the runner's V8 platform waits for an isolate's
+background work at the end of each event-loop turn (#943,
 `vendor/README.md`).
+
+Edge.js is the one package not taken as Wasmer published it. wasix-libc,
+the C library linked into its module, makes a relative path absolute in one
+buffer that every thread shares, so concurrent `fs` calls by relative path
+could trade paths: a read opened the working directory (EISDIR) or another
+file (#937). The fix is open upstream (wasix-org/wasix-libc#145) and in no
+Edge.js release, so `builtins/environments/edgejs/build.sh` builds 0.2.5's
+module from its source, with its toolchain, on its sysroot with that one
+object of the C library rebuilt from #145, and puts it in the published
+package in place of Wasmer's. The build is reproducible, and without the
+patch it gives back Wasmer's module bit for bit (`EDGEJS_VERIFY=1`), so the
+C library object is the whole difference. That is `bash-node` 24.0.1;
+24.0.0 was Wasmer's package with the runner making `fs` paths absolute in a
+preload instead. Go back to pinning Wasmer's package once a release is
+built on a sysroot with the fix.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On

@@ -1,6 +1,6 @@
 # Node preload for environment jobs
 
-The runner's Node is Edge.js. This directory fills three gaps between it and
+The runner's Node is Edge.js. This directory fills two gaps between it and
 Node; each file can go once the pinned Edge.js closes its gap.
 
 ## `node:wasi`
@@ -36,27 +36,15 @@ the whole directory once the pinned Edge.js has a working `node:wasi`:
 
 ## Relative paths (#937)
 
-wasix-libc makes a relative path absolute in one buffer that every thread
-shares, so two of Node's `fs` calls on libuv's thread pool can trade paths: a
-read opens the working directory (EISDIR) or another file.
-`absolute-paths.cjs` resolves the path arguments of `fs`, `fs.promises` and
-their sync forms before they reach it, then calls
-`module.syncBuiltinESMExports()` so `import { readFile } from "node:fs"`
-sees the same functions. A symlink's target is left alone, because it is
-relative to the link. `builtins/test.sh`'s `relative-reads-passes` does 40,000
-concurrent reads of four files and checks each one's contents. Without the
-preload, 40 to 69 per run came back wrong. Remove it once Edge.js carries
-wasix-libc #142 and #145.
-
-As of November 2026 none does. Both pull requests are open, the newest
-sysroot (`v2026-10-02.1`) still shares the buffer, Edge.js 0.2.5 is the newest
-`wasmer/edgejs` release, and Edge.js `main` still builds on that sysroot.
-Fixing it ourselves means building Edge.js's WASIX module from source
-(`make build-wasix` with `wasixcc` 0.4.7: OpenSSL, libuv-wasix and Edge.js's
-C++ for `wasm32-wasix`) against a sysroot whose `libc.a` has
-`libc-bottom-half/sources/chdir.c` from #145, then packaging it with its
-`node-lib/`, ICU data, npm and pnpm as Edge.js's release does, and
-publishing that webc ourselves rather than pinning Wasmer's.
+Not a gap any more, and nothing here covers it. wasix-libc makes a relative
+path absolute in one buffer that every thread shares, so two of Node's `fs`
+calls on libuv's thread pool could trade paths: a read opened the working
+directory (EISDIR) or another file. A preload here once resolved `fs` path
+arguments first, which missed Node's own internals and anything a job
+overrode. `env:bash-node` 24.0.1 fixes it where it is: its Edge.js is built
+from source on a C library with wasix-libc #145
+(`builtins/environments/edgejs/build.sh`), and `builtins/test.sh`'s
+`relative-reads-passes` checks 40,000 concurrent reads by relative path.
 
 ## Empty blob parts (#940)
 
