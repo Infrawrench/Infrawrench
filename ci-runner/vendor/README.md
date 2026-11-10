@@ -57,9 +57,29 @@ runner took turns: three CPU-bound jobs took 19 s together against 7 s
 alone, and a job waiting on I/O inside a call froze the others (#922's
 `astro check`). An env's own state is only used by the thread that runs it,
 so `src/napi_bridge_init.cc` now takes `g_mu` only around what every env
-shares, the env registry and the cross-env message table (6 sites; 62 per-env
-sites no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
+shares, the env registry and the cross-env message table (62 per-env sites
+no longer lock). The three jobs now take 7.6 s together. wasmerio/napi
 main reworked `g_mu` the same way, with per-thread env ownership.
+
+**And: the shared state `g_mu` used to cover, locked on its own (#947).**
+Dropping `g_mu` from env creation and release left the registry itself
+unlocked there: `g_envs.erase` in release (and `g_envs.insert` in the
+unbudgeted create) ran while other threads looked envs up, which every
+bridge call does, and the runner segfaulted in `LookupEnvState` under a
+full Test pipeline (8.5 minutes into a run on the runner host; the
+production crash had the same load). Insert and erase now take `g_mu`
+themselves, the message table is locked only around the table, not
+around serialization, which runs JavaScript, and the budgeted create no
+longer holds `g_mu` while it builds an isolate. Two more pieces of the V8
+provider relied on `g_mu` for safety and are backported from wasmerio/napi
+832e57ec ("Let environments on different threads run JavaScript
+concurrently"): the module-wrap maps in `v8/src/unofficial_napi_contextify.cc`
+are always used under `g_module_wrap_mu` (an unlocked `operator[]` and
+cleanup-hook `emplace` raced every env's bootstrap and module loading), and
+`v8/src/unofficial_napi.cc` serializes isolate construction with V8
+disposal (`g_isolate_lifecycle_mu`), because `EdgeV8Platform` keys
+per-isolate state by address and a new isolate could take a just-freed
+one's address between `Dispose()` and unregistration.
 
 **And: env ids per application, so `worker_threads` work.** A WASIX
 program runs one Wasmer store per thread over one shared linear memory, and
@@ -93,7 +113,8 @@ its first allocation terminates.
 
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
-lock) and its per-application env ids (9219367): delete `vendor/wasmer-napi*`,
+lock, 832e57ec's provider locks) and its per-application env ids (9219367):
+delete `vendor/wasmer-napi*`,
 the `[patch.crates-io]` entry in `../Cargo.toml`, and bump the version.
 `builtins/test.sh bash-node` has a job that must time out and one that runs
 Workers, which are the checks; check the heap sizes against a Worker pool

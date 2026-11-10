@@ -337,6 +337,47 @@ jobs:
       })().catch((e) => { console.error(e); process.exit(1); });
       JS
       node /tmp/workers.js
+  # Isolates made and released on many threads at once while they load
+  # ES modules: the bridge's env registry and the module-wrap maps are
+  # shared by every isolate in the runner, and were once changed without a
+  # lock, which segfaulted the runner under a full Test pipeline (#947). A
+  # race does not fail every time, so this is a smoke check; the decisive
+  # one is a big pipeline on the runner host.
+  env-churn-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 5m
+    run: |
+      mkdir -p /tmp/churn && cd /tmp/churn
+      for n in 0 1 2 3; do echo "export default () => $n;" > "m$n.mjs"; done
+      cat > w.mjs <<'JS'
+      import { parentPort } from "node:worker_threads";
+      const mods = await Promise.all([0, 1, 2, 3].map((n) => import(`/tmp/churn/m${n}.mjs`)));
+      parentPort.postMessage(mods.reduce((sum, m) => sum + m.default(), 0));
+      JS
+      cat > churn.mjs <<'JS'
+      import { Worker } from "node:worker_threads";
+      let started = 0, done = 0;
+      await new Promise((resolve, reject) => {
+        const next = () => {
+          if (done === 48) return resolve();
+          if (started === 48) return;
+          started++;
+          const w = new Worker("/tmp/churn/w.mjs");
+          w.once("message", (sum) => sum === 6 || reject(new Error(`sum ${sum}`)));
+          w.once("error", reject);
+          w.once("exit", () => { done++; next(); });
+        };
+        for (let i = 0; i < 6; i++) next();
+      });
+      console.log("churned");
+      JS
+      # Two at once; WASIX bash may not report a background job's status, so
+      # each one's output is the check.
+      node churn.mjs > a.out &
+      node churn.mjs > b.out &
+      wait
+      test "$(cat a.out b.out | grep -c '^churned$')" = 2
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
