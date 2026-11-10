@@ -22,6 +22,26 @@ install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
 install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
 rm -f /tmp/iwci.env /tmp/iwci.service
 
+# Core dumps, so a crash of the runner leaves a backtrace (#947): the unit
+# raises its core limit, systemd-coredump keeps each core compressed in
+# /var/lib/systemd/coredump within its own size limits, and gdb reads them
+# (`coredumpctl gdb iwci`). Ubuntu's apport would take the kernel's core
+# pattern back at boot, so it goes off.
+if ! command -v coredumpctl >/dev/null || ! command -v gdb >/dev/null; then
+  if command -v apt-get >/dev/null; then
+    apt-get update -q
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q systemd-coredump gdb
+  else
+    echo "warning: no apt; install systemd-coredump and gdb yourself to keep cores" >&2
+  fi
+fi
+if systemctl list-unit-files apport.service >/dev/null 2>&1; then
+  systemctl disable --now apport >/dev/null 2>&1 || true
+fi
+if [[ -f /usr/lib/sysctl.d/50-coredump.conf ]]; then
+  sysctl -q -p /usr/lib/sysctl.d/50-coredump.conf
+fi
+
 # An optional Cloudflare Tunnel, so the runner needs no open port.
 if [[ -s /tmp/iwci-tunnel-token ]]; then
   if ! command -v cloudflared >/dev/null; then

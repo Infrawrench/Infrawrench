@@ -25,6 +25,12 @@ terraform apply
 - writes `iwci.service`: runs as `iwci`, `ProtectSystem=strict` with only
   its binary directory and cache writable, restarts on failure, and stops
   with SIGTERM and a 65-minute timeout;
+- keeps core dumps: installs `systemd-coredump` and `gdb` (with apt),
+  turns off Ubuntu's apport so it cannot take the kernel's core pattern back
+  at boot, and the unit sets `LimitCORE=infinity`. Every Node job runs in
+  the runner's own process, so a fault in one crashes the runner;
+  `coredumpctl list iwci` and `coredumpctl gdb iwci` read what it left
+  (#947);
 - optionally installs `cloudflared` with a tunnel token (Debian or Ubuntu,
   from Cloudflare's signed apt repository), so the runner needs no open port;
 - starts the service, or restarts it without waiting when it was running.

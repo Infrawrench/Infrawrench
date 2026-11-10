@@ -23,6 +23,10 @@ ReadWritePaths=/opt/iwci/bin /var/lib/iwci
 ProtectHome=yes
 PrivateTmp=yes
 LimitNOFILE=65536
+# A crash leaves a core for systemd-coredump (`coredumpctl gdb iwci`): every
+# Node job runs in this process, so a fault in one is a crash of the runner,
+# and without a core there is no backtrace (#947).
+LimitCORE=infinity
 
 [Install]
 WantedBy=multi-user.target
