@@ -724,11 +724,19 @@ without a guest having sent it came from the host runtime, and one that
 libc names but that was never delivered was raised inside the guest; the
 lines say which. A job that fails any other way gets nothing added.
 
+A crash is added the same way. When a command the script runs, or one
+thread of a process, traps, the script may carry on and fail somewhere
+else, and wasmer-wasix prints the trap only on the runner's own stderr;
+the job's stderr gets `iwci: a process or thread of the job crashed, which
+its exit status (1) does not say:` and the trap.
+
 The lines are part of the job's stderr, so they are in the live log and
-the report and are masked like the rest of it; they hold syscall names,
-ids, signal names and error names, never the job's own text.
+the report and are masked like the rest of it. The signal lines hold
+syscall names, ids, signal names and error names, never the job's own
+text; a trap's lines can name functions of the job's module.
 `iwci-runtime/src/signals.rs` is the recorder, a `tracing` subscriber over
-what wasmer-wasix already traces.
+what wasmer-wasix already traces. It reads every syscall's return value;
+`IWCI_SIGNAL_LOG=0` turns it off.
 
 ## HTTP API (`iwci serve`)
 

@@ -1187,6 +1187,60 @@ fn a_script_runs_a_tool_on_path_by_name() {
     );
 }
 
+/// A command a script runs that traps, in a script that handles its
+/// failure and then fails for its own reasons: the log still says what
+/// crashed. (Unhandled, the script ends with the command's status and the
+/// job is already reported as a crash.)
+#[test]
+fn a_trap_in_a_child_process_is_in_the_jobs_log() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.commands = vec![PathCommand {
+        name: "boom".into(),
+        module: wat_module(
+            "boom",
+            r#"(module (memory (export "memory") 1) (func (export "_start") unreachable))"#,
+        ),
+    }];
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "boom || echo \"boom exited $?\"\nexit 3",
+            inv,
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 3, "stderr {stderr:?} {outcome:?}");
+    assert!(outcome.error.is_none(), "{outcome:?}");
+    assert!(
+        stderr.contains(
+            "iwci: a process or thread of the job crashed, which its exit status (3) does not say:"
+        ),
+        "{stderr}"
+    );
+    assert!(stderr.contains("unreachable"), "{stderr}");
+
+    // The same command in a script that passes leaves the log alone.
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.commands = vec![PathCommand {
+        name: "boom".into(),
+        module: wat_module(
+            "boom",
+            r#"(module (memory (export "memory") 1) (func (export "_start") unreachable))"#,
+        ),
+    }];
+    let outcome = rt
+        .run_script(&packages, "bash", "boom || true", inv)
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert!(outcome.stderr.is_empty(), "{outcome:?}");
+}
+
 #[test]
 fn node_options_put_the_support_preload_first() {
     let preload = format!("--require {}/preload.cjs", wasix::NODE_SUPPORT_DIR);

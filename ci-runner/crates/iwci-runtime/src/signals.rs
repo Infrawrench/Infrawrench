@@ -342,10 +342,15 @@ impl fmt::Display for Ago {
 }
 
 /// Starts recording, once per process. Does nothing if the process already
-/// has a `tracing` subscriber, which then sees wasmer-wasix's events itself.
+/// has a `tracing` subscriber, which then sees wasmer-wasix's events itself,
+/// or if `IWCI_SIGNAL_LOG=0` turns it off (it looks at every syscall's
+/// return value, which is the one cost it has).
 pub(crate) fn install() {
     static INSTALL: Once = Once::new();
     INSTALL.call_once(|| {
+        if std::env::var_os("IWCI_SIGNAL_LOG").is_some_and(|v| v == "0") {
+            return;
+        }
         let _ = tracing::dispatcher::set_global_default(tracing::Dispatch::new(Recorder));
     });
 }

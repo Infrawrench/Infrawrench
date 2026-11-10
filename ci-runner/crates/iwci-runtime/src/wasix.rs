@@ -113,9 +113,11 @@ impl WasixShared {
 #[derive(Default)]
 struct JobControl {
     interrupters: Mutex<Vec<Interrupter>>,
-    /// The first trap of any of the job's processes. wasmer-wasix reports a
-    /// trapped process as exiting with ENOEXEC (45), so this is what tells a
-    /// crash from a program that chose that status.
+    /// The first trap of any of the job's processes or guest threads.
+    /// wasmer-wasix reports a trapped process as exiting with ENOEXEC (45),
+    /// so this is what tells a crash from a program that chose that status.
+    /// When the trap was in a child process or in a thread, the job's own
+    /// exit status says nothing of it, and it goes in the log instead.
     trap: Mutex<Option<String>>,
     /// The signals its guests sent and got, and the syscalls that were not
     /// implemented, for a job that dies of a signal (signals.rs).
@@ -686,6 +688,7 @@ pub(crate) fn run(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .take();
+    let trapped = trap.clone();
     let (exit_code, error) = match result {
         Ok(code) if code.raw() == ENOEXEC && trap.is_some() => (CRASH_EXIT_CODE, trap),
         Ok(code) => (code.raw(), None),
@@ -699,15 +702,31 @@ pub(crate) fn run(
     };
     let out = stdout.take();
     let mut err = stderr.take();
-    // A job that died of a signal: say who sent it, in its own log, which
-    // is all a one-off like #955 leaves behind.
-    if !timed_out && let Some(report) = control.signals.report(exit_code, &err.bytes) {
+    // What the runner knows of a failure that the job's own output does not
+    // say, added to its log, which is all a one-off like #955 leaves behind.
+    let mut notes = Vec::new();
+    if !timed_out && exit_code != 0 {
+        // A trap in a child process or a guest thread: wasmer-wasix prints
+        // it on the runner's stderr and the script carries on, or fails
+        // somewhere else, with nothing to show for it.
+        if error.is_none()
+            && let Some(trap) = trapped
+        {
+            notes.push(format!(
+                "iwci: a process or thread of the job crashed, which its exit status ({exit_code}) does not say:\n  {}\n",
+                trap.replace('\n', "\n  ")
+            ));
+        }
+        // A job that died of a signal: who sent it.
+        notes.extend(control.signals.report(exit_code, &err.bytes));
+    }
+    for note in notes {
         let newline: &[u8] = if err.bytes.is_empty() || err.bytes.ends_with(b"\n") {
             b""
         } else {
             b"\n"
         };
-        for part in [newline, report.as_bytes()] {
+        for part in [newline, note.as_bytes()] {
             stderr.note(part);
             err.bytes.extend_from_slice(part);
         }
