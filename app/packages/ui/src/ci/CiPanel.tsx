@@ -655,7 +655,17 @@ export function CiPanel({
                       {runs.map((run) => (
                         <tr
                           key={run.id}
-                          className="border-t border-border align-top hover:bg-surface-sunken"
+                          onClick={(event) => {
+                            // The row opens the run from anywhere; links and the approval
+                            // buttons inside it keep their own click, and dragging to
+                            // select text does not count as a click.
+                            if ((event.target as Element).closest("a, button, input, select")) {
+                              return;
+                            }
+                            if (window.getSelection()?.toString()) return;
+                            onSelectRun(run.id);
+                          }}
+                          className="cursor-pointer border-t border-border align-top hover:bg-surface-sunken"
                         >
                           <td className="py-1.5">
                             <button

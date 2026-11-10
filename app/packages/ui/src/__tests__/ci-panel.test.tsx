@@ -100,6 +100,32 @@ describe("CiPanel", () => {
     expect(c.listValues).toHaveBeenCalledTimes(1);
   });
 
+  it("opens a run from anywhere on its row, but not from the approval buttons", async () => {
+    const waiting: CiRun = {
+      ...run,
+      id: "22222222-2222-4222-8222-222222222222",
+      sha: "b".repeat(40),
+      status: "awaiting_approval",
+    };
+    const c = { ...client(), listRuns: vi.fn(async () => [run, waiting]) };
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("aaaaaaa")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("aaaaaaa"));
+    expect(onSelectRun).toHaveBeenLastCalledWith(run.id);
+
+    fireEvent.click(screen.getByText("bbbbbbb"));
+    expect(onSelectRun).toHaveBeenLastCalledWith(waiting.id);
+
+    onSelectRun.mockClear();
+    fireEvent.click(screen.getByText("Approve"));
+    expect(onSelectRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Approve and run")).toBeTruthy();
+  });
+
   it("draws a finished run as a graph, and opens a job's output from it", async () => {
     const c = client();
     c.getRun.mockResolvedValue({
