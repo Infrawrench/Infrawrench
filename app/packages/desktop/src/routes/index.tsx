@@ -4,7 +4,7 @@ import { useGT } from "gt-react";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
 import {
-  dashboardTabTarget,
+  homeTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -34,42 +34,32 @@ function IndexPage() {
           return;
         }
         const db = await getDb();
-        const rows = await db.select<{ id: string; name: string }[]>(
-          "SELECT id, name FROM dashboards WHERE is_default = 1 LIMIT 1",
+        const rows = await db.select<{ id: string }[]>(
+          "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
         );
         if (cancelled) return;
-        let homeId: string;
-        let homeName = gt("Home");
-        if (rows[0]) {
-          homeId = rows[0].id;
-          homeName = rows[0].name;
-        } else {
-          // Fixed ID so concurrent StrictMode double-effect runs don't create duplicates
-          homeId = "dashboard-home";
+        // Make sure there is a default dashboard: the sidebar, the new
+        // pin targets and Home's Dashboards card all expect one to exist.
+        if (!rows[0]) {
           try {
+            // Fixed ID so concurrent StrictMode double-effect runs don't create duplicates
             await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
-              homeId,
+              "dashboard-home",
               gt("Home"),
             ]);
             bumpDashboardPins();
           } catch {
-            // Already exists (e.g. from the parallel StrictMode run): find the real id
-            const existing = await db.select<{ id: string; name: string }[]>(
-              "SELECT id, name FROM dashboards WHERE is_default = 1 LIMIT 1",
-            );
-            homeId = existing[0]?.id ?? homeId;
-            homeName = existing[0]?.name ?? homeName;
+            // Already exists (e.g. from the parallel StrictMode run).
           }
         }
         if (!cancelled) {
-          void navigateToWorkspaceTarget(navigate, dashboardTabTarget(homeId), {
-            label: homeName,
-            replace: true,
-          });
+          // The default dashboard above is only made sure of; the landing
+          // page is Home, the grid of products.
+          void navigateToWorkspaceTarget(navigate, homeTabTarget(), { replace: true });
         }
       } catch (err) {
         // Without this the app parks on "Loading…" forever with no clue why.
-        console.error("[home] Failed to resolve the default dashboard:", err);
+        console.error("[home] Failed to open Home:", err);
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
     }
@@ -82,7 +72,7 @@ function IndexPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-sm px-6 text-center">
-        <span className="text-danger font-medium">{gt("Couldn't open your home dashboard")}</span>
+        <span className="text-danger font-medium">{gt("Couldn't open Home")}</span>
         <span className="text-on-surface-faint break-all">{error}</span>
       </div>
     );

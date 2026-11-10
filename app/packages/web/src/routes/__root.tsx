@@ -27,6 +27,7 @@ import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { OrgProviders } from "@/components/OrgProviders";
 import { apiGet, apiPost } from "@/lib/api";
 import {
+  homeTabTarget,
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
   plainRouteDocumentTitle,
@@ -289,16 +290,10 @@ function AuthenticatedShell() {
 
   async function handleNewTab() {
     if (!orgId) return;
-    try {
-      const data = await apiGet<{ dashboard: { id: string; name: string } }>(
-        `/api/org/${orgId}/dashboards/default/full`,
-      );
-      const target = dashboardTabTarget(data.dashboard.id);
-      createWorkspaceTabInstance(target, data.dashboard.name);
-      void navigate({ to: "/org/$orgId", params: { orgId } });
-    } catch {
-      void navigate({ to: "/org/$orgId", params: { orgId } });
-    }
+    // A new tab opens on Home, the grid of products.
+    const target = homeTabTarget();
+    createWorkspaceTabInstance(target);
+    void navigate(getWorkspaceNavigateArgs(target));
   }
 
   async function handlePinToDashboard(resource: DraggableResource, dashboardId: string) {

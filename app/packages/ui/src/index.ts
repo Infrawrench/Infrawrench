@@ -237,8 +237,25 @@ export {
 
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
-export { SidebarToolsButton, SidebarToolsLauncher } from "./components/sidebar/SidebarTools.js";
+export {
+  SidebarHomeButton,
+  SidebarToolsButton,
+  SidebarToolsLauncher,
+} from "./components/sidebar/SidebarTools.js";
 export type { SidebarToolDef } from "./components/sidebar/SidebarTools.js";
+// The products the app is presented as. Hosts load the Home panel by its
+// module subpath (`@infrawrench/ui/products/ProductsHomePanel`), never from
+// this barrel (see `lazyPanel`); it is exported here so the build emits it.
+export { ProductsHomePanel } from "./products/ProductsHomePanel.js";
+export type { ProductsHomePanelProps } from "./products/ProductsHomePanel.js";
+export {
+  PRODUCTS,
+  PRODUCT_IDS,
+  findProduct,
+  groupToolsByProduct,
+  isProductId,
+} from "./products/registry.js";
+export type { ProductDef, ProductId } from "./products/registry.js";
 
 export { OrgSwitcher } from "./components/OrgSwitcher.js";
 export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";
@@ -427,6 +444,7 @@ export type { DraggableSidebarResourceProps } from "./dnd/DraggableSidebarResour
 export type { DraggableResource, DraggableWorkflow } from "./dnd/types.js";
 
 export {
+  homeTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,

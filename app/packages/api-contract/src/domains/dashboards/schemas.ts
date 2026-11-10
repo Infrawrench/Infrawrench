@@ -330,6 +330,7 @@ const TAB_KINDS = [
   "access-review",
   "jit-access",
   "backups",
+  "home",
   "wallboard",
   "calendar",
   "runbooks",
@@ -406,6 +407,11 @@ const TabTarget = Schema.Struct({
    * Never used to invalidate the tab: an unknown framework lands on the first.
    */
   framework: Schema.optionalKey(Schema.String.check(maxLength(64))),
+  /**
+   * Which product's page a `home` tab is on. Omitted for Home itself. Never
+   * used to invalidate the tab: an unknown product lands on Home.
+   */
+  productId: Schema.optionalKey(Schema.String.check(maxLength(64))),
   /** Which app-server session a `linux-app` tab belonged to. */
   sessionId: Schema.optionalKey(Schema.String.check(maxLength(128))),
   /** Which window of that session. */

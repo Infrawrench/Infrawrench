@@ -435,4 +435,6 @@
 // 1.101.0: a CI job says what it waited for (`needs` on `CiJobSummary`), and
 // a running run's live log (`GET /ci/runs/{runId}/logs`, Server-Sent Events,
 // not in the document, like the chat turn stream). Additive.
-export const API_VERSION = "1.101.0";
+// 1.102.0: `home` in the tab kinds, with the `productId` a product page's tab
+// is on. Additive.
+export const API_VERSION = "1.102.0";

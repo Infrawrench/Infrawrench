@@ -133,6 +133,9 @@ const DesktopJitAccessPanel = lazyPanel(() =>
 const DesktopBackupsPanel = lazyPanel(() =>
   import("@/components/DesktopBackupsPanel").then((m) => m.DesktopBackupsPanel),
 );
+const DesktopHomePanel = lazyPanel(() =>
+  import("@/components/DesktopHomePanel").then((m) => m.DesktopHomePanel),
+);
 const DesktopWallboardPanel = lazyPanel(() =>
   import("@/components/DesktopWallboardPanel").then((m) => m.DesktopWallboardPanel),
 );
@@ -766,6 +769,14 @@ function renderPanel(
               ),
             )
           }
+        />
+      );
+    case "home":
+      return (
+        <DesktopHomePanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+          productId={t.productId}
         />
       );
     case "wallboard":

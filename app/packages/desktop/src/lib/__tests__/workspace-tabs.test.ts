@@ -269,6 +269,14 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
   });
 
+  it("returns home and product route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "home" })).toEqual({ to: "/home" });
+    expect(getWorkspaceNavigateArgs({ kind: "home", productId: "costs" })).toEqual({
+      to: "/home",
+      search: { product: "costs" },
+    });
+  });
+
   it("returns wallboard route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "wallboard" })).toEqual({ to: "/wallboard" });
   });
@@ -436,6 +444,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the deployments path", () => {
     expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  });
+
+  it("parses the home path and its product", () => {
+    expect(syncWorkspaceRouteFromPath("/home")).toEqual({ kind: "home" });
+    expect(syncWorkspaceRouteFromPath("/home", undefined, "?product=costs")).toEqual({
+      kind: "home",
+      productId: "costs",
+    });
   });
 
   it("parses the wallboard path", () => {

@@ -80,6 +80,11 @@ describe("getWorkspaceTabId", () => {
     ).toBe("resource:acc-1:arn:aws");
   });
 
+  it("gives Home one tab and each product its own", () => {
+    expect(getWorkspaceTabId({ kind: "home" })).toBe("home");
+    expect(getWorkspaceTabId({ kind: "home", productId: "costs" })).toBe("home:costs");
+  });
+
   it("returns the singleton id for the wallboard target", () => {
     expect(getWorkspaceTabId({ kind: "wallboard" })).toBe("wallboard");
   });
@@ -363,6 +368,12 @@ describe("getWorkspaceTabFallbackTitle", () => {
     ).toBe("SFTP");
   });
 
+  it("titles a home tab Home, and a product tab with the product's name", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "home" })).toBe("Home");
+    expect(getWorkspaceTabFallbackTitle({ kind: "home", productId: "costs" })).toBe("Costs");
+    expect(getWorkspaceTabFallbackTitle({ kind: "home", productId: "gone" })).toBe("Home");
+  });
+
   it("returns 'Wallboard' for the wallboard target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "wallboard" })).toBe("Wallboard");
   });
@@ -493,6 +504,13 @@ describe("workspaceTabTargetsEqual", () => {
       view: "details",
     };
     expect(workspaceTabTargetsEqual(a, b)).toBe(true);
+  });
+
+  it("tells Home and the product pages apart", () => {
+    expect(workspaceTabTargetsEqual({ kind: "home" }, { kind: "home" })).toBe(true);
+    expect(workspaceTabTargetsEqual({ kind: "home" }, { kind: "home", productId: "costs" })).toBe(
+      false,
+    );
   });
 
   it("treats two wallboard targets as equal (singleton tab)", () => {

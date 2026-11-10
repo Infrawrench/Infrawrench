@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.101.0",
+    "version": "1.102.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -56844,6 +56844,7 @@
               "access-review",
               "jit-access",
               "backups",
+              "home",
               "wallboard",
               "calendar",
               "runbooks",
@@ -56947,6 +56948,10 @@
             ]
           },
           "framework": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "productId": {
             "type": "string",
             "maxLength": 64
           },

@@ -109,17 +109,17 @@ Create more dashboards from **Dashboards > New**. They're useful for splitting b
 
 ## Default dashboards
 
-The dashboard you land on when you open the app (the web home page, a new tab on desktop, the top of the Dashboards tab on mobile) is chosen in three layers, most specific first:
+Your default dashboard (the one the **Dashboards** card on [Home](./home.md) opens, and the top of the Dashboards tab on mobile) is chosen in three layers, most specific first:
 
-1. **Your own default.** Open any dashboard and choose **Default > Set as my default**. You'll land there from then on, in this organization. **Default > Clear my default** goes back to the layers below.
-2. **Your role's default.** An admin can give each role, built-in or custom, a default dashboard under **Settings > Roles**. Everyone with that role lands there unless they picked their own.
+1. **Your own default.** Open any dashboard and choose **Default > Set as my default**. It's the one Home opens from then on, in this organization. **Default > Clear my default** goes back to the layers below.
+2. **Your role's default.** An admin can give each role, built-in or custom, a default dashboard under **Settings > Roles**. Everyone with that role gets it unless they picked their own.
 3. **The organization default.** The **Home** dashboard created when the organization was set up. It's the final fallback and can't be deleted.
 
-The **Default** menu tells you which layer put you on the dashboard you're looking at, so you always know why the app opened where it did. A star on the button marks the dashboard you land on.
+The **Default** menu tells you which layer put you on the dashboard you're looking at, so you always know why it is your default. A star on the button marks your default dashboard.
 
-<insert [A dashboard header with the Default menu open, showing "You land here when you open the app: it is the default for your role, Finance." above the Set as my default entry] here>
+<insert [A dashboard header with the Default menu open, showing "This is your default dashboard: it is the default for your role, Finance." above the Set as my default entry] here>
 
-A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings won't accept anything else and tells you why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: they skip that layer and land on the next one, and the **Default** menu tells you if your own pick was skipped. Deleting a dashboard removes it as anyone's default.
+A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings won't accept anything else and tells you why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: they skip that layer and get the next one, and the **Default** menu tells you if your own pick was skipped. Deleting a dashboard removes it as anyone's default.
 
 <insert [Settings → Roles with the Finance role's card showing a Default dashboard picker set to "Spend overview", and the Member card set to "Organization default (Home)"] here>
 

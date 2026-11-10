@@ -10,6 +10,7 @@ import {
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
+  homeTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -54,6 +55,7 @@ import {
 
 // Re-export shared target factories
 export {
+  homeTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
@@ -118,6 +120,12 @@ export function getWorkspaceNavigateArgs(
   hash?: string;
 } {
   switch (target.kind) {
+    case "home":
+      return {
+        to: "/home",
+        ...(target.productId ? { search: { product: target.productId } } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
     case "dashboard":
       return {
         to: "/dashboard/$dashboardId",
@@ -403,6 +411,10 @@ export function syncWorkspaceRouteFromPath(
   if (pathname === "/") return null;
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] === "home") {
+    const params = new URLSearchParams(search ?? "");
+    return homeTabTarget(params.get("product") ?? undefined);
+  }
   if (segments[0] === "workflows") {
     const params = new URLSearchParams(search ?? "");
     return workflowsTabTarget(params.get("workflow") ?? undefined);

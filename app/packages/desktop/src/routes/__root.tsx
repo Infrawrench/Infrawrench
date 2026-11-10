@@ -71,6 +71,7 @@ import {
   type CloudOrg,
 } from "../lib/cloud-api";
 import {
+  homeTabTarget,
   dashboardTabTarget,
   settingsTabTarget,
   getWorkspaceNavigateArgs,
@@ -79,6 +80,7 @@ import {
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
+import { resolveDefaultDashboard } from "../lib/default-dashboard";
 import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 export const Route = createRootRoute({
@@ -108,33 +110,6 @@ async function validateCloudWorkspaceTabs(
     console.error("[workspace-tabs] cloud validation failed:", e);
     return tabs.map((tab) => tab);
   }
-}
-
-/**
- * The dashboard to fall back to: when signed in, the one the server resolves
- * for this member (their own default, else their role's, else the org's); the
- * local default otherwise. Dashboards live on whichever side is active, so
- * this has to branch on the org rather than always reading the local database.
- */
-async function resolveDefaultDashboard(
-  orgId: string | null,
-): Promise<{ id: string; name: string } | null> {
-  if (orgId) {
-    try {
-      const resolved = await getCloudDefaultDashboard(orgId);
-      if (resolved?.dashboardId) return { id: resolved.dashboardId, name: resolved.dashboardName };
-    } catch {
-      // An older server without the resolution route: the org default below.
-    }
-    const list = await listCloudDashboards(orgId);
-    const first = list.find((d) => d.isDefault) ?? list[0];
-    return first ? { id: first.id, name: first.name } : null;
-  }
-  const db = await getDb();
-  const rows = await db.select<{ id: string; name: string }[]>(
-    "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC LIMIT 1",
-  );
-  return rows[0] ?? null;
 }
 
 async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | null> {
@@ -177,6 +152,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "expiring" ||
     target.kind === "posture" ||
     target.kind === "vulnerabilities" ||
+    target.kind === "home" ||
     target.kind === "compliance" ||
     target.kind === "access-review" ||
     target.kind === "jit-access" ||
@@ -487,12 +463,8 @@ function RootLayout() {
       // Validation dropped everything (stale ids, a deleted dashboard), which
       // would leave the window on a route no open tab renders, i.e. blank.
       if (nextTabs.length === 0) {
-        const home = await resolveDefaultDashboard(orgIdSnapshot).catch(() => null);
-        if (!home || cancelled) return;
-        void navigateToWorkspaceTarget(navigate, dashboardTabTarget(home.id), {
-          label: home.name,
-          replace: true,
-        });
+        if (cancelled) return;
+        void navigateToWorkspaceTarget(navigate, homeTabTarget(), { replace: true });
       }
     }
 
@@ -605,36 +577,18 @@ function RootLayout() {
     }
   }
 
-  async function handleNewTab() {
-    const orgId = useUIStore.getState().activeCloudOrgId;
-    const home = await resolveDefaultDashboard(orgId).catch(() => null);
-    // Only the local side can fall back to a synthesized id; a cloud dashboard
-    // id has to come from the org.
-    if (!home && orgId) {
-      toast.error(gt("Couldn't open a new tab"), {
-        description: gt("No dashboards in this organization."),
-      });
-      return;
-    }
-    const target = dashboardTabTarget(home?.id ?? "dashboard-home");
-    createWorkspaceTabInstance(target, home?.name ?? gt("Home"));
+  function handleNewTab() {
+    // A new tab opens on Home, the grid of products.
+    const target = homeTabTarget();
+    createWorkspaceTabInstance(target);
     void navigate(getWorkspaceNavigateArgs(target));
   }
 
-  async function handleSwitchOrg(orgId: string | null) {
+  function handleSwitchOrg(orgId: string | null) {
     setActiveOrgId(orgId);
-    try {
-      const first = await resolveDefaultDashboard(orgId);
-      if (!first) return;
-      void navigateToWorkspaceTarget(navigate, dashboardTabTarget(first.id), {
-        label: first.name,
-      });
-    } catch (e) {
-      console.error("[org-switch] failed to navigate to first dashboard:", e);
-      toast.error(gt("Couldn't switch organization"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
+    // Home exists on both sides, so the switch never depends on the new
+    // organization having a dashboard to land on.
+    void navigateToWorkspaceTarget(navigate, homeTabTarget());
   }
 
   return (

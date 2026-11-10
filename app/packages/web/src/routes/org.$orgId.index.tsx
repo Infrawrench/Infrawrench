@@ -1,69 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { useGT } from "gt-react";
-import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
-import type { DashboardWidget } from "@infrawrench/ui/cost/config";
-import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
-import { apiGet } from "@/lib/api";
-import { dashboardTabTarget } from "@/lib/workspace-tabs";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+// The organization's landing page is Home, the grid of products, which is a
+// workspace tab like every other org-level page. The caller's default
+// dashboard, which used to be drawn here, is one click away on Home and in
+// the sidebar's Dashboards list.
 export const Route = createFileRoute("/org/$orgId/")({
-  component: HomePage,
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/org/$orgId/home", params: { orgId: params.orgId }, replace: true });
+  },
 });
-
-function HomePage() {
-  const gt = useGT();
-  const { orgId } = Route.useParams();
-  const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
-  const [data, setData] = useState<{
-    dashboard: { id: string; name: string; isDefault: boolean };
-    pins: Array<{
-      pinId: string;
-      resourceId: string;
-      gridX: number;
-      gridY: number;
-      gridW: number;
-      gridH: number;
-    }>;
-    workflowPins?: WorkflowPin[];
-    widgets?: DashboardWidget[];
-  } | null>(null);
-
-  useEffect(() => {
-    apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
-      .then(setData)
-      .catch(console.error);
-  }, [orgId, dashboardPinsVersion]);
-
-  useEffect(() => {
-    if (!data) return;
-    const target = dashboardTabTarget(data.dashboard.id);
-    useUIStore.getState().syncWorkspaceRoute(target, data.dashboard.name);
-  }, [data]);
-
-  useEffect(() => {
-    function onChanged() {
-      apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
-        .then(setData)
-        .catch(console.error);
-    }
-    window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
-  }, [orgId]);
-
-  if (!data)
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
-
-  return (
-    <DashboardView
-      dashboardId={data.dashboard.id}
-      dashboardName={data.dashboard.name}
-      // The landing dashboard can be a user or role default; only the org
-      // default is protected from deletion.
-      isHome={data.dashboard.isDefault}
-      pins={data.pins}
-      workflowPins={data.workflowPins}
-      widgets={data.widgets}
-    />
-  );
-}

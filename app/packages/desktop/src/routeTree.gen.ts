@@ -28,6 +28,7 @@ import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as IacRouteImport } from './routes/iac'
 import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as InvoicesRouteImport } from './routes/invoices'
@@ -149,6 +150,11 @@ const ExpiringRoute = ExpiringRouteImport.update({
 const GraphRoute = GraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IacRoute = IacRouteImport.update({
@@ -308,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
@@ -356,6 +363,7 @@ export interface FileRoutesByTo {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
@@ -405,6 +413,7 @@ export interface FileRoutesById {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
@@ -455,6 +464,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/home'
     | '/iac'
     | '/incidents'
     | '/invoices'
@@ -503,6 +513,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/home'
     | '/iac'
     | '/incidents'
     | '/invoices'
@@ -551,6 +562,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/home'
     | '/iac'
     | '/incidents'
     | '/invoices'
@@ -600,6 +612,7 @@ export interface RootRouteChildren {
   EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  HomeRoute: typeof HomeRoute
   IacRoute: typeof IacRoute
   IncidentsRoute: typeof IncidentsRoute
   InvoicesRoute: typeof InvoicesRoute
@@ -762,6 +775,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/graph'
       preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/iac': {
@@ -976,6 +996,7 @@ const rootRouteChildren: RootRouteChildren = {
   EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  HomeRoute: HomeRoute,
   IacRoute: IacRoute,
   IncidentsRoute: IncidentsRoute,
   InvoicesRoute: InvoicesRoute,

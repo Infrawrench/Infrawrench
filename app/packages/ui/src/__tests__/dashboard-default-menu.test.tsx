@@ -41,7 +41,7 @@ describe("DashboardDefaultMenu", () => {
     const onChanged = vi.fn();
     render(<DashboardDefaultMenu dashboardId="prod" client={client} onChanged={onChanged} />);
     fireEvent.click(await screen.findByText("Default"));
-    expect(screen.getByText("You land on Home when you open the app.")).toBeTruthy();
+    expect(screen.getByText("Your default dashboard is Home.")).toBeTruthy();
     // Nothing of the viewer's own to clear yet.
     expect(screen.queryByText("Clear my default")).toBeNull();
     fireEvent.click(screen.getByText("Set as my default"));
@@ -61,9 +61,7 @@ describe("DashboardDefaultMenu", () => {
     render(<DashboardDefaultMenu dashboardId="fin" client={client} />);
     fireEvent.click(await screen.findByText("★ Default"));
     expect(
-      screen.getByText(
-        "You land here when you open the app: it is the default for your role, Finance.",
-      ),
+      screen.getByText("This is your default dashboard: it is the default for your role, Finance."),
     ).toBeTruthy();
     expect(screen.getByText(/no longer shared with you/)).toBeTruthy();
     fireEvent.click(screen.getByText("Clear my default"));

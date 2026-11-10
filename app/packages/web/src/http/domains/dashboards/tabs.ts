@@ -51,6 +51,7 @@ const ALWAYS_VALID_TAB_KINDS: ReadonlySet<string> = new Set([
   "access-review",
   "jit-access",
   "backups",
+  "home",
   "wallboard",
   "calendar",
   "runbooks",

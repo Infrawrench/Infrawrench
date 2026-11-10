@@ -91,15 +91,15 @@ export function DashboardDefaultMenu({
 
   let status: string;
   if (isHere && resolution.source === "user") {
-    status = gt("You land here when you open the app. You chose it.");
+    status = gt("This is your default dashboard. You chose it.");
   } else if (isHere && resolution.source === "role") {
-    status = gt("You land here when you open the app: it is the default for your role, {role}.", {
+    status = gt("This is your default dashboard: it is the default for your role, {role}.", {
       role: resolution.roleDefault?.roleName ?? "",
     });
   } else if (isHere) {
-    status = gt("You land here when you open the app: it is the organization default.");
+    status = gt("This is your default dashboard: it is the organization default.");
   } else {
-    status = gt("You land on {name} when you open the app.", { name: resolution.dashboardName });
+    status = gt("Your default dashboard is {name}.", { name: resolution.dashboardName });
   }
 
   return (
