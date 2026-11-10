@@ -304,6 +304,28 @@ jobs:
       JS
       UV_THREADPOOL_SIZE=64 node /tmp/reads.js
 
+  # A blob with an empty part streams to its end (#940): Edge.js's
+  # `Blob.stream()` stopped at the first empty part and never finished, so
+  # gzipping an empty blob hung. The runner's preload reads past them.
+  blob-stream-passes:
+    using: env:bash-node@24
+    timeout: 2m
+    run: |
+      cat > /tmp/blob.mjs <<'JS'
+      import { openAsBlob, writeFileSync } from "node:fs";
+      setTimeout(() => { console.error("a blob stream never ended"); process.exit(1); }, 30_000).unref();
+      const length = async (stream) => (await new Response(stream).arrayBuffer()).byteLength;
+      writeFileSync("/tmp/empty.txt", "");
+      const lengths = [
+        await length(new Blob([""]).stream()),
+        await length(new Blob(["a", "", "b"]).stream()),
+        await length((await openAsBlob("/tmp/empty.txt")).stream()),
+        await length(new Blob([""]).stream().pipeThrough(new CompressionStream("gzip"))),
+      ];
+      console.log(lengths.join(" "));
+      JS
+      test "$(node /tmp/blob.mjs)" = "0 2 0 20"
+
   # Another job's spinning script must not hold this one up: Node jobs once
   # took turns behind the bridge's process-wide lock, so this `node`, started
   # while spin-fails runs for 40s, could not begin until it was stopped. Both

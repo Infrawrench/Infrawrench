@@ -391,13 +391,15 @@ fn parse_package(
 pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 
 /// The files under [`NODE_SUPPORT_DIR`]: a working `node:wasi` for
-/// Edge.js, whose own has no binding behind it (see `node/README.md`).
+/// Edge.js, whose own has no binding behind it, and the preload that fills
+/// its other gaps (see `node/README.md`).
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
     (
         "absolute-paths.cjs",
         include_bytes!("../node/absolute-paths.cjs"),
     ),
+    ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
     ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),
     (

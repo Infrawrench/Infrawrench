@@ -11,6 +11,8 @@
 
 // Relative paths to `fs`, made absolute first (absolute-paths.cjs, #937).
 require("./absolute-paths.cjs");
+// A blob's stream ends even when the blob has an empty part (#940).
+require("./blob-stream.cjs");
 
 const mod = require("node:module");
 
