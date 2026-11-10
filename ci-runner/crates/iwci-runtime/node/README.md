@@ -1,6 +1,6 @@
 # Node preload for environment jobs
 
-The runner's Node is Edge.js. This directory fills three gaps between it and
+The runner's Node is Edge.js. This directory fills two gaps between it and
 Node; each file can go once the pinned Edge.js closes its gap.
 
 ## `node:wasi`
@@ -48,12 +48,8 @@ concurrent reads of four files and checks each one's contents. Without the
 preload, 40 to 69 per run came back wrong. Remove it once Edge.js carries
 wasix-libc #142 and #145.
 
-## A pending WebAssembly compile (#943)
-
-Node does not exit while `WebAssembly.compile` or `instantiate` is compiling
-on V8's background threads. Edge.js can: under load, about one process in
-fifteen exited silently with the compile unfinished. It also does not wake
-its event loop when the compile finishes, so a long timer kept the process
-waiting forever. `wasm-keep-alive.cjs` holds a 5 ms interval while any of
-the four async entry points is pending, which keeps the process alive and
-picks up the result.
+A third gap, `node` exiting while an async `WebAssembly.compile` was still
+running and missing its result behind a long timer (#943), was filled here
+by a preload that held a 5 ms interval while one was pending. The bridge's
+V8 platform now waits for that work itself (`vendor/README.md`), so the
+preload is gone.

@@ -398,10 +398,6 @@ const NODE_SUPPORT: &[(&str, &[u8])] = &[
         "absolute-paths.cjs",
         include_bytes!("../node/absolute-paths.cjs"),
     ),
-    (
-        "wasm-keep-alive.cjs",
-        include_bytes!("../node/wasm-keep-alive.cjs"),
-    ),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
     ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),
     (

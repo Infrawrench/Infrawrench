@@ -255,6 +255,24 @@ jobs:
       out="$(node /tmp/wasi.js; node /tmp/wasi-named.mjs)"
       echo "$out"
       test "$(grep -c '^hi$' <<<"$out")" = 4
+  # An async WebAssembly compile as a program's only pending work (#943).
+  # Edge.js neither waited for V8's background compile before treating its
+  # loop as empty nor heard when it finished, so under load about one
+  # `node` in five exited with the compile unfinished, and one held open by
+  # a long timer picked the result up only when the timer fired. The
+  # bridge's V8 platform covers both (vendor/README.md). Twenty bare
+  # compiles, then one beside a 20s timer that must not be what wakes it.
+  wasm-compile-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    run: |
+      cat > /tmp/compile.js <<'JS'
+      const bytes = Buffer.from("0061736d01000000010401600000030201000a040102000b", "hex");
+      const timer = process.argv[2] === "timer" ? setTimeout(() => console.log("timer fired"), 20000) : null;
+      WebAssembly.instantiate(bytes).then(() => { console.log("done"); clearTimeout(timer); });
+      JS
+      for i in $(seq 20); do test "$(node /tmp/compile.js)" = done; done
+      test "$(node /tmp/compile.js timer)" = done
 
   # Relative paths read from many threads at once (#937): wasix-libc makes
   # them absolute in one buffer every thread shares, so a read could open
