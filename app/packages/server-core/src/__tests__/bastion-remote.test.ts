@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetch as undiciFetch } from "undici";
@@ -10,8 +11,10 @@ import { REALTIME_SECRET_HEADER } from "../realtime/protocol";
  * request, and answers every stream with one canned HTTP response, so an
  * undici request through the remote dispatcher makes the whole round trip.
  */
-function fakeRelay(options: { agentConnected: boolean }) {
-  const wss = new WebSocketServer({ port: 0 });
+async function fakeRelay(options: { agentConnected: boolean }) {
+  // On the address the tests connect to, rather than every interface.
+  const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+  await once(wss, "listening");
   const seen: { secret?: string | undefined; path?: string | undefined; opens: string[] } = {
     opens: [],
   };
@@ -43,7 +46,7 @@ function fakeRelay(options: { agentConnected: boolean }) {
 }
 
 describe("remoteDispatcherFor", () => {
-  let relay: ReturnType<typeof fakeRelay> | null = null;
+  let relay: Awaited<ReturnType<typeof fakeRelay>> | null = null;
 
   beforeEach(() => {
     vi.stubEnv("INTERNAL_RELAY_SECRET", "test-secret");
@@ -57,7 +60,7 @@ describe("remoteDispatcherFor", () => {
   });
 
   it("carries an HTTP request through the relay, authenticated with the relay secret", async () => {
-    relay = fakeRelay({ agentConnected: true });
+    relay = await fakeRelay({ agentConnected: true });
     vi.stubEnv("APP_URL", `http://127.0.0.1:${relay.port()}`);
 
     const dispatcher = await remoteDispatcherFor("bastion-1", async () => ["api.example.com"]);
@@ -72,7 +75,7 @@ describe("remoteDispatcherFor", () => {
   });
 
   it("refuses a destination outside the allowlist before anything reaches the relay", async () => {
-    relay = fakeRelay({ agentConnected: true });
+    relay = await fakeRelay({ agentConnected: true });
     vi.stubEnv("APP_URL", `http://127.0.0.1:${relay.port()}`);
 
     const dispatcher = await remoteDispatcherFor("bastion-2", async () => ["api.example.com"]);
@@ -83,7 +86,7 @@ describe("remoteDispatcherFor", () => {
   });
 
   it("returns null when the relay has no agent for the bastion", async () => {
-    relay = fakeRelay({ agentConnected: false });
+    relay = await fakeRelay({ agentConnected: false });
     vi.stubEnv("APP_URL", `http://127.0.0.1:${relay.port()}`);
     expect(await remoteDispatcherFor("bastion-3", async () => [])).toBeNull();
   });
