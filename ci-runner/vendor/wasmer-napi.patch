@@ -1,3 +1,66 @@
+--- a/build.rs
++++ b/build.rs
+@@ -5,7 +5,21 @@
+ };
+ 
+ const PREBUILT_V8_VERSION: &str = "11.9.7";
++/// The release with Linux ARM64 builds, which 11.9.7 lacks: the same V8
++/// (13.6.233), built with shared-library-safe TLS on Linux.
++const PREBUILT_V8_VERSION_LINUX_ARM64: &str = "11.9.9";
+ 
++/// The `wasmerio/v8-custom-builds` release this target's V8 comes from.
++fn prebuilt_release() -> &'static str {
++    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
++    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
++    if target_os == "linux" && target_arch == "aarch64" {
++        PREBUILT_V8_VERSION_LINUX_ARM64
++    } else {
++        PREBUILT_V8_VERSION
++    }
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ enum V8Method {
+     Local,
+@@ -219,6 +233,11 @@
+         println!("cargo:rustc-link-lib=dylib=m");
+         println!("cargo:rustc-link-lib=dylib=pthread");
+         println!("cargo:rustc-link-lib=dylib=rt");
++        // V8's ARM64 build uses generic (16-byte) atomics, which GCC lowers
++        // to calls into libatomic.
++        if target_os == "linux" && env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64" {
++            println!("cargo:rustc-link-lib=dylib=atomic");
++        }
+     }
+ }
+ 
+@@ -327,7 +346,7 @@
+     let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|err| err.to_string())?);
+     let cache_dir = out_dir
+         .join("v8-prebuilt")
+-        .join(PREBUILT_V8_VERSION)
++        .join(prebuilt_release())
+         .join(platform_name);
+     let archive_path = cache_dir.join(asset_name);
+ 
+@@ -392,6 +411,7 @@
+         ("macos", "x86_64", _) => Ok(("v8-darwin-amd64.tar.xz", "darwin-amd64")),
+         ("linux", "x86_64", "gnu") => Ok(("v8-linux-amd64.tar.xz", "linux-amd64")),
+         ("linux", "x86_64", "musl") => Ok(("v8-linux-musl-amd64.tar.xz", "linux-musl-amd64")),
++        ("linux", "aarch64", "gnu") => Ok(("v8-linux-arm64.tar.xz", "linux-arm64")),
+         ("android", "aarch64", _) => Ok(("v8-android-arm64.tar.xz", "android-arm64")),
+         ("windows", "x86_64", _) => Ok(("v8-windows-amd64.tar.xz", "windows-amd64")),
+         (os, arch, env_kind) => Err(format!(
+@@ -402,7 +422,8 @@
+ 
+ fn download_prebuilt_archive(asset_name: &str, archive_path: &Path) -> Result<(), String> {
+     let url = format!(
+-        "https://github.com/wasmerio/v8-custom-builds/releases/download/{PREBUILT_V8_VERSION}/{asset_name}"
++        "https://github.com/wasmerio/v8-custom-builds/releases/download/{}/{asset_name}",
++        prebuilt_release()
+     );
+     let response = ureq::get(&url)
+         .call()
 --- a/src/budget.rs
 +++ b/src/budget.rs
 @@ -53,9 +53,31 @@
@@ -481,6 +544,98 @@
  }
  
  fn guest_unofficial_napi_cancel_terminate_execution(
+@@ -1787,7 +1797,7 @@
+     let s = unsafe {
+         snapi_bridge_create_string_utf8(
+             snapi_env(&env, e),
+-            sb.as_ptr() as *const i8,
++            sb.as_ptr() as *const std::ffi::c_char,
+             sb.len() as u32,
+             &mut out,
+         )
+@@ -1821,7 +1831,7 @@
+     let s = unsafe {
+         snapi_bridge_create_string_latin1(
+             snapi_env(&env, e),
+-            sb.as_ptr() as *const i8,
++            sb.as_ptr() as *const std::ffi::c_char,
+             sb.len() as u32,
+             &mut out,
+         )
+@@ -2032,7 +2042,7 @@
+     if hbs as u64 > guest_data_size(&mut env) {
+         return 1;
+     }
+-    let mut hb = vec![0i8; hbs];
++    let mut hb = vec![0 as std::ffi::c_char; hbs];
+     let mut rl: usize = 0;
+     let s = unsafe {
+         snapi_bridge_get_value_string_utf8(
+@@ -2073,7 +2083,7 @@
+     if hbs as u64 > guest_data_size(&mut env) {
+         return 1;
+     }
+-    let mut hb = vec![0i8; hbs];
++    let mut hb = vec![0 as std::ffi::c_char; hbs];
+     let mut rl: usize = 0;
+     let s = unsafe {
+         snapi_bridge_get_value_string_latin1(
+@@ -3560,7 +3570,7 @@
+     };
+ 
+     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
+-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
++    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
+     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+@@ -3746,7 +3756,7 @@
+     };
+ 
+     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
+-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
++    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
+     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+--- a/src/guest/napi_js.rs
++++ b/src/guest/napi_js.rs
+@@ -2234,7 +2234,7 @@
+     let s = unsafe {
+         snapi_bridge_create_string_utf8(
+             snapi_env(&env, e),
+-            sb.as_ptr() as *const i8,
++            sb.as_ptr() as *const std::ffi::c_char,
+             sb.len() as u32,
+             &mut out,
+         )
+@@ -2265,7 +2265,7 @@
+     let s = unsafe {
+         snapi_bridge_create_string_latin1(
+             snapi_env(&env, e),
+-            sb.as_ptr() as *const i8,
++            sb.as_ptr() as *const std::ffi::c_char,
+             sb.len() as u32,
+             &mut out,
+         )
+@@ -4346,7 +4346,7 @@
+     };
+ 
+     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
+-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
++    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
+     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+@@ -4532,7 +4532,7 @@
+     };
+ 
+     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
+-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
++    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
+     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
+     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
 --- a/src/napi_bridge_init.cc
 +++ b/src/napi_bridge_init.cc
 @@ -29,6 +29,21 @@
@@ -1142,8 +1297,229 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
+--- a/src/snapi.rs
++++ b/src/snapi.rs
+@@ -54,7 +54,7 @@
+     pub fn snapi_bridge_init() -> i32;
+     pub fn snapi_bridge_set_v8_worker_thread_count(count: u32) -> i32;
+     pub fn snapi_bridge_unofficial_configure_runtime(
+-        engine_flags: *const i8,
++        engine_flags: *const std::ffi::c_char,
+         engine_flags_length: u32,
+     ) -> i32;
+     pub fn snapi_bridge_unofficial_create_env(
+@@ -162,7 +162,7 @@
+     ) -> i32;
+     pub fn snapi_bridge_unofficial_create_private_symbol(
+         env: SnapiEnv,
+-        str_ptr: *const i8,
++        str_ptr: *const std::ffi::c_char,
+         wasm_length: u32,
+         out_id: *mut u32,
+     ) -> i32;
+@@ -181,6 +181,9 @@
+         accepted_hooks_out: *mut u64,
+     ) -> i32;
+     pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
++    /// iwci patch: see `snapi_bridge_host_terminate_execution` in
++    /// napi_bridge_init.cc. Only for callers holding the env registry lock.
++    pub fn snapi_bridge_host_terminate_execution(env: SnapiEnv) -> i32;
+     pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
+     pub fn snapi_bridge_unofficial_set_promise_reject_callback(
+         env: SnapiEnv,
+@@ -431,13 +434,13 @@
+     pub fn snapi_bridge_get_global(env: SnapiEnv, out_id: *mut u32) -> i32;
+     pub fn snapi_bridge_create_string_utf8(
+         env: SnapiEnv,
+-        str_ptr: *const i8,
++        str_ptr: *const std::ffi::c_char,
+         wasm_length: u32,
+         out_id: *mut u32,
+     ) -> i32;
+     pub fn snapi_bridge_create_string_latin1(
+         env: SnapiEnv,
+-        str_ptr: *const i8,
++        str_ptr: *const std::ffi::c_char,
+         wasm_length: u32,
+         out_id: *mut u32,
+     ) -> i32;
+@@ -456,14 +459,14 @@
+     pub fn snapi_bridge_get_value_string_utf8(
+         env: SnapiEnv,
+         id: u32,
+-        buf: *mut i8,
++        buf: *mut std::ffi::c_char,
+         bufsize: usize,
+         result: *mut usize,
+     ) -> i32;
+     pub fn snapi_bridge_get_value_string_latin1(
+         env: SnapiEnv,
+         id: u32,
+-        buf: *mut i8,
++        buf: *mut std::ffi::c_char,
+         bufsize: usize,
+         result: *mut usize,
+     ) -> i32;
+@@ -521,19 +524,19 @@
+     pub fn snapi_bridge_set_named_property(
+         env: SnapiEnv,
+         obj_id: u32,
+-        name: *const i8,
++        name: *const std::ffi::c_char,
+         val_id: u32,
+     ) -> i32;
+     pub fn snapi_bridge_get_named_property(
+         env: SnapiEnv,
+         obj_id: u32,
+-        name: *const i8,
++        name: *const std::ffi::c_char,
+         out_id: *mut u32,
+     ) -> i32;
+     pub fn snapi_bridge_has_named_property(
+         env: SnapiEnv,
+         obj_id: u32,
+-        name: *const i8,
++        name: *const std::ffi::c_char,
+         result: *mut i32,
+     ) -> i32;
+     pub fn snapi_bridge_set_element(env: SnapiEnv, obj_id: u32, index: u32, val_id: u32) -> i32;
+@@ -591,9 +594,9 @@
+         out_id: *mut u32,
+     ) -> i32;
+     pub fn snapi_bridge_throw(env: SnapiEnv, error_id: u32) -> i32;
+-    pub fn snapi_bridge_throw_error(env: SnapiEnv, code: *const i8, msg: *const i8) -> i32;
+-    pub fn snapi_bridge_throw_type_error(env: SnapiEnv, code: *const i8, msg: *const i8) -> i32;
+-    pub fn snapi_bridge_throw_range_error(env: SnapiEnv, code: *const i8, msg: *const i8) -> i32;
++    pub fn snapi_bridge_throw_error(env: SnapiEnv, code: *const std::ffi::c_char, msg: *const std::ffi::c_char) -> i32;
++    pub fn snapi_bridge_throw_type_error(env: SnapiEnv, code: *const std::ffi::c_char, msg: *const std::ffi::c_char) -> i32;
++    pub fn snapi_bridge_throw_range_error(env: SnapiEnv, code: *const std::ffi::c_char, msg: *const std::ffi::c_char) -> i32;
+     pub fn snapi_bridge_is_exception_pending(env: SnapiEnv, result: *mut i32) -> i32;
+     pub fn snapi_bridge_get_and_clear_last_exception(env: SnapiEnv, out_id: *mut u32) -> i32;
+     // Symbol
+@@ -941,7 +944,7 @@
+     // Callback system
+     pub fn snapi_bridge_create_function(
+         env: SnapiEnv,
+-        utf8name: *const i8,
++        utf8name: *const std::ffi::c_char,
+         name_len: u32,
+         reg_id: u32,
+         out_id: *mut u32,
+@@ -979,11 +982,11 @@
+     // napi_define_class
+     pub fn snapi_bridge_define_class(
+         env: SnapiEnv,
+-        utf8name: *const i8,
++        utf8name: *const std::ffi::c_char,
+         name_len: u32,
+         ctor_reg_id: u32,
+         prop_count: u32,
+-        prop_names: *const *const i8,
++        prop_names: *const *const std::ffi::c_char,
+         prop_name_ids: *const u32,
+         prop_types: *const u32,
+         prop_value_ids: *const u32,
+@@ -997,7 +1000,7 @@
+         env: SnapiEnv,
+         obj_id: u32,
+         prop_count: u32,
+-        prop_names: *const *const i8,
++        prop_names: *const *const std::ffi::c_char,
+         prop_name_ids: *const u32,
+         prop_types: *const u32,
+         prop_value_ids: *const u32,
 --- a/src/snapi_js.rs
 +++ b/src/snapi_js.rs
+@@ -1447,7 +1447,7 @@
+ 
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_unofficial_configure_runtime(
+-    engine_flags: *const i8,
++    engine_flags: *const std::ffi::c_char,
+     engine_flags_length: u32,
+ ) -> i32 {
+     if engine_flags_length > 0 && engine_flags.is_null() {
+@@ -1531,7 +1531,7 @@
+     unsafe { bytes(ptr, len as usize) }
+ }
+ 
+-unsafe fn cstr(ptr: *const i8) -> Result<String, i32> {
++unsafe fn cstr(ptr: *const std::ffi::c_char) -> Result<String, i32> {
+     if ptr.is_null() {
+         return Err(NAPI_INVALID_ARG);
+     }
+@@ -1909,7 +1909,7 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_create_string_utf8(
+     env: SnapiEnv,
+-    ptr: *const i8,
++    ptr: *const std::ffi::c_char,
+     len: u32,
+     out: *mut u32,
+ ) -> i32 {
+@@ -1919,7 +1919,7 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_create_string_latin1(
+     env: SnapiEnv,
+-    ptr: *const i8,
++    ptr: *const std::ffi::c_char,
+     len: u32,
+     out: *mut u32,
+ ) -> i32 {
+@@ -1983,7 +1983,7 @@
+ pub unsafe extern "C" fn snapi_bridge_get_value_string_utf8(
+     env: SnapiEnv,
+     id: u32,
+-    buf: *mut i8,
++    buf: *mut std::ffi::c_char,
+     size: usize,
+     result: *mut usize,
+ ) -> i32 {
+@@ -1994,7 +1994,7 @@
+ pub unsafe extern "C" fn snapi_bridge_get_value_string_latin1(
+     env: SnapiEnv,
+     id: u32,
+-    buf: *mut i8,
++    buf: *mut std::ffi::c_char,
+     size: usize,
+     result: *mut usize,
+ ) -> i32 {
+@@ -2215,7 +2215,7 @@
+ pub unsafe extern "C" fn snapi_bridge_set_named_property(
+     env: SnapiEnv,
+     obj: u32,
+-    name: *const i8,
++    name: *const std::ffi::c_char,
+     value: u32,
+ ) -> i32 {
+     let Ok(name) = (unsafe { cstr(name) }) else {
+@@ -2240,7 +2240,7 @@
+ pub unsafe extern "C" fn snapi_bridge_get_named_property(
+     env: SnapiEnv,
+     obj: u32,
+-    name: *const i8,
++    name: *const std::ffi::c_char,
+     out: *mut u32,
+ ) -> i32 {
+     let Ok(name) = (unsafe { cstr(name) }) else {
+@@ -3001,7 +3001,7 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_create_function(
+     env: SnapiEnv,
+-    name: *const i8,
++    name: *const std::ffi::c_char,
+     len: u32,
+     reg: u32,
+     out: *mut u32,
+@@ -3504,7 +3504,7 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_unofficial_create_private_symbol(
+     env: SnapiEnv,
+-    str_ptr: *const i8,
++    str_ptr: *const std::ffi::c_char,
+     wasm_length: u32,
+     out_id: *mut u32,
+ ) -> i32 {
 @@ -3561,7 +3561,12 @@
      let _ = env;
      NAPI_GENERIC_FAILURE
@@ -1157,18 +1533,87 @@
  pub unsafe extern "C" fn snapi_bridge_unofficial_enqueue_microtask(
      env: SnapiEnv,
      callback_id: u32,
---- a/src/snapi.rs
-+++ b/src/snapi.rs
-@@ -181,6 +181,9 @@
-         accepted_hooks_out: *mut u64,
-     ) -> i32;
-     pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
-+    /// iwci patch: see `snapi_bridge_host_terminate_execution` in
-+    /// napi_bridge_init.cc. Only for callers holding the env registry lock.
-+    pub fn snapi_bridge_host_terminate_execution(env: SnapiEnv) -> i32;
-     pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
-     pub fn snapi_bridge_unofficial_set_promise_reject_callback(
-         env: SnapiEnv,
+@@ -5306,7 +5311,7 @@
+ pub unsafe extern "C" fn snapi_bridge_has_named_property(
+     env: SnapiEnv,
+     obj_id: u32,
+-    name: *const i8,
++    name: *const std::ffi::c_char,
+     result: *mut i32,
+ ) -> i32 {
+     let Ok(name) = (unsafe { cstr(name) }) else {
+@@ -5440,7 +5445,7 @@
+     NAPI_OK
+ }
+ 
+-unsafe fn throw_c_error(env: SnapiEnv, code: *const i8, message: *const i8, kind: u8) -> i32 {
++unsafe fn throw_c_error(env: SnapiEnv, code: *const std::ffi::c_char, message: *const std::ffi::c_char, kind: u8) -> i32 {
+     let Ok(state) = (unsafe { env_mut(env) }) else {
+         return NAPI_INVALID_ARG;
+     };
+@@ -5465,24 +5470,24 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_throw_error(
+     env: SnapiEnv,
+-    code: *const i8,
+-    msg: *const i8,
++    code: *const std::ffi::c_char,
++    msg: *const std::ffi::c_char,
+ ) -> i32 {
+     unsafe { throw_c_error(env, code, msg, 0) }
+ }
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_throw_type_error(
+     env: SnapiEnv,
+-    code: *const i8,
+-    msg: *const i8,
++    code: *const std::ffi::c_char,
++    msg: *const std::ffi::c_char,
+ ) -> i32 {
+     unsafe { throw_c_error(env, code, msg, 1) }
+ }
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_throw_range_error(
+     env: SnapiEnv,
+-    code: *const i8,
+-    msg: *const i8,
++    code: *const std::ffi::c_char,
++    msg: *const std::ffi::c_char,
+ ) -> i32 {
+     unsafe { throw_c_error(env, code, msg, 2) }
+ }
+@@ -6099,7 +6104,7 @@
+     env: SnapiEnv,
+     object: &JsValue,
+     count: u32,
+-    names: *const *const i8,
++    names: *const *const std::ffi::c_char,
+     name_ids: *const u32,
+     types: *const u32,
+     value_ids: *const u32,
+@@ -6261,11 +6266,11 @@
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn snapi_bridge_define_class(
+     env: SnapiEnv,
+-    utf8name: *const i8,
++    utf8name: *const std::ffi::c_char,
+     name_len: u32,
+     ctor_reg_id: u32,
+     prop_count: u32,
+-    prop_names: *const *const i8,
++    prop_names: *const *const std::ffi::c_char,
+     prop_name_ids: *const u32,
+     prop_types: *const u32,
+     prop_value_ids: *const u32,
+@@ -6365,7 +6370,7 @@
+     env: SnapiEnv,
+     obj_id: u32,
+     prop_count: u32,
+-    prop_names: *const *const i8,
++    prop_names: *const *const std::ffi::c_char,
+     prop_name_ids: *const u32,
+     prop_types: *const u32,
+     prop_value_ids: *const u32,
 --- a/v8/src/edge_v8_platform.cc
 +++ b/v8/src/edge_v8_platform.cc
 @@ -96,6 +96,13 @@
@@ -1349,112 +1794,6 @@
  
    std::unique_ptr<v8::Platform> fallback_;
    std::mutex mutex_;
---- a/v8/src/unofficial_napi_contextify.cc
-+++ b/v8/src/unofficial_napi_contextify.cc
-@@ -600,9 +600,22 @@
-   return nullptr;
- }
- 
--ModuleWrapBindingState* GetModuleWrapState(napi_env env) {
-+// iwci patch (from wasmerio/napi 832e57ec): g_module_wrap_states and
-+// g_module_wrap_cleanup_hooks are shared by every env, and envs on different
-+// threads run concurrently once the bridge's `g_mu` no longer serializes
-+// them, so every lookup, insertion and erasure takes g_module_wrap_mu. An
-+// unlocked `operator[]` could rehash the map under GetModuleWrapEnvForIsolate's
-+// walk on another thread (#947). Map nodes are stable and an env's state is
-+// only used on that env's own thread, so a returned pointer stays valid
-+// without the lock until the env's cleanup hook erases it.
-+ModuleWrapBindingState* GetModuleWrapStateLocked(napi_env env) {
-   if (env == nullptr) return nullptr;
-   return &g_module_wrap_states[env];
-+}
-+
-+ModuleWrapBindingState* GetModuleWrapState(napi_env env) {
-+  std::lock_guard<std::mutex> lock(g_module_wrap_mu);
-+  return GetModuleWrapStateLocked(env);
- }
- 
- void RemoveModuleRecord(napi_env env, ModuleWrapRecord* record) {
-@@ -838,10 +851,13 @@
- }
- 
- void EnsureModuleWrapCleanupHook(napi_env env) {
--  auto [it, inserted] = g_module_wrap_cleanup_hooks.emplace(env);
--  if (!inserted) return;
-+  {
-+    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
-+    if (!g_module_wrap_cleanup_hooks.emplace(env).second) return;
-+  }
-   if (napi_add_env_cleanup_hook(env, CleanupModuleWrapState, env) != napi_ok) {
--    g_module_wrap_cleanup_hooks.erase(it);
-+    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
-+    g_module_wrap_cleanup_hooks.erase(env);
-   }
- }
- 
-@@ -1276,12 +1292,17 @@
-                                     v8::Local<v8::Object> meta) {
-   napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
-   if (env == nullptr) return;
--  auto it = g_module_wrap_states.find(env);
--  if (it == g_module_wrap_states.end()) return;
-+  ModuleWrapBindingState* state = nullptr;
-+  {
-+    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
-+    auto it = g_module_wrap_states.find(env);
-+    if (it == g_module_wrap_states.end()) return;
-+    state = &it->second;
-+  }
-   ModuleWrapRecord* record = FindModuleRecordForModule(env, module);
-   if (record == nullptr) return;
- 
--  napi_value callback = GetRefValue(env, it->second.initialize_import_meta_ref);
-+  napi_value callback = GetRefValue(env, state->initialize_import_meta_ref);
-   napi_value wrapper = GetRefValue(env, record->wrapper_ref);
-   napi_value id_value = GetRefValue(env, record->host_defined_option_ref);
-   if (callback == nullptr || wrapper == nullptr || id_value == nullptr) return;
-@@ -2505,7 +2526,7 @@
- 
-   {
-     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
--    GetModuleWrapState(env)->modules.push_back(record);
-+    GetModuleWrapStateLocked(env)->modules.push_back(record);
-   }
-   *module_out = ModuleHandle(record);
-   return napi_ok;
-@@ -2564,7 +2585,7 @@
- 
-   {
-     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
--    GetModuleWrapState(env)->modules.push_back(record);
-+    GetModuleWrapStateLocked(env)->modules.push_back(record);
-   }
-   *module_out = ModuleHandle(record);
-   return napi_ok;
-@@ -3007,7 +3028,7 @@
- 
-   EnsureModuleWrapCleanupHook(env);
-   std::lock_guard<std::mutex> lock(g_module_wrap_mu);
--  auto* state = GetModuleWrapState(env);
-+  auto* state = GetModuleWrapStateLocked(env);
-   ResetRef(env, &state->import_module_dynamically_ref);
-   ResetRef(env, &state->initialize_import_meta_ref);
-   state->import_module_dynamically_ref = import_ref;
-@@ -3048,12 +3069,12 @@
- 
-   {
-     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
--    GetModuleWrapState(env)->temporary_required_module_facade_original = record;
-+    GetModuleWrapStateLocked(env)->temporary_required_module_facade_original = record;
-   }
-   const bool instantiated = facade->InstantiateModule(context, LinkRequiredFacadeOriginal).FromMaybe(false);
-   {
-     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
--    GetModuleWrapState(env)->temporary_required_module_facade_original = nullptr;
-+    GetModuleWrapStateLocked(env)->temporary_required_module_facade_original = nullptr;
-   }
-   if (!instantiated) return napi_pending_exception;
- 
 --- a/v8/src/unofficial_napi.cc
 +++ b/v8/src/unofficial_napi.cc
 @@ -584,9 +584,20 @@
@@ -1666,3 +2005,109 @@
    }
    return napi_ok;
  }
+--- a/v8/src/unofficial_napi_contextify.cc
++++ b/v8/src/unofficial_napi_contextify.cc
+@@ -600,9 +600,22 @@
+   return nullptr;
+ }
+ 
+-ModuleWrapBindingState* GetModuleWrapState(napi_env env) {
++// iwci patch (from wasmerio/napi 832e57ec): g_module_wrap_states and
++// g_module_wrap_cleanup_hooks are shared by every env, and envs on different
++// threads run concurrently once the bridge's `g_mu` no longer serializes
++// them, so every lookup, insertion and erasure takes g_module_wrap_mu. An
++// unlocked `operator[]` could rehash the map under GetModuleWrapEnvForIsolate's
++// walk on another thread (#947). Map nodes are stable and an env's state is
++// only used on that env's own thread, so a returned pointer stays valid
++// without the lock until the env's cleanup hook erases it.
++ModuleWrapBindingState* GetModuleWrapStateLocked(napi_env env) {
+   if (env == nullptr) return nullptr;
+   return &g_module_wrap_states[env];
++}
++
++ModuleWrapBindingState* GetModuleWrapState(napi_env env) {
++  std::lock_guard<std::mutex> lock(g_module_wrap_mu);
++  return GetModuleWrapStateLocked(env);
+ }
+ 
+ void RemoveModuleRecord(napi_env env, ModuleWrapRecord* record) {
+@@ -838,10 +851,13 @@
+ }
+ 
+ void EnsureModuleWrapCleanupHook(napi_env env) {
+-  auto [it, inserted] = g_module_wrap_cleanup_hooks.emplace(env);
+-  if (!inserted) return;
++  {
++    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
++    if (!g_module_wrap_cleanup_hooks.emplace(env).second) return;
++  }
+   if (napi_add_env_cleanup_hook(env, CleanupModuleWrapState, env) != napi_ok) {
+-    g_module_wrap_cleanup_hooks.erase(it);
++    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
++    g_module_wrap_cleanup_hooks.erase(env);
+   }
+ }
+ 
+@@ -1276,12 +1292,17 @@
+                                     v8::Local<v8::Object> meta) {
+   napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
+   if (env == nullptr) return;
+-  auto it = g_module_wrap_states.find(env);
+-  if (it == g_module_wrap_states.end()) return;
++  ModuleWrapBindingState* state = nullptr;
++  {
++    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
++    auto it = g_module_wrap_states.find(env);
++    if (it == g_module_wrap_states.end()) return;
++    state = &it->second;
++  }
+   ModuleWrapRecord* record = FindModuleRecordForModule(env, module);
+   if (record == nullptr) return;
+ 
+-  napi_value callback = GetRefValue(env, it->second.initialize_import_meta_ref);
++  napi_value callback = GetRefValue(env, state->initialize_import_meta_ref);
+   napi_value wrapper = GetRefValue(env, record->wrapper_ref);
+   napi_value id_value = GetRefValue(env, record->host_defined_option_ref);
+   if (callback == nullptr || wrapper == nullptr || id_value == nullptr) return;
+@@ -2505,7 +2526,7 @@
+ 
+   {
+     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
+-    GetModuleWrapState(env)->modules.push_back(record);
++    GetModuleWrapStateLocked(env)->modules.push_back(record);
+   }
+   *module_out = ModuleHandle(record);
+   return napi_ok;
+@@ -2564,7 +2585,7 @@
+ 
+   {
+     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
+-    GetModuleWrapState(env)->modules.push_back(record);
++    GetModuleWrapStateLocked(env)->modules.push_back(record);
+   }
+   *module_out = ModuleHandle(record);
+   return napi_ok;
+@@ -3007,7 +3028,7 @@
+ 
+   EnsureModuleWrapCleanupHook(env);
+   std::lock_guard<std::mutex> lock(g_module_wrap_mu);
+-  auto* state = GetModuleWrapState(env);
++  auto* state = GetModuleWrapStateLocked(env);
+   ResetRef(env, &state->import_module_dynamically_ref);
+   ResetRef(env, &state->initialize_import_meta_ref);
+   state->import_module_dynamically_ref = import_ref;
+@@ -3048,12 +3069,12 @@
+ 
+   {
+     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
+-    GetModuleWrapState(env)->temporary_required_module_facade_original = record;
++    GetModuleWrapStateLocked(env)->temporary_required_module_facade_original = record;
+   }
+   const bool instantiated = facade->InstantiateModule(context, LinkRequiredFacadeOriginal).FromMaybe(false);
+   {
+     std::lock_guard<std::mutex> lock(g_module_wrap_mu);
+-    GetModuleWrapState(env)->temporary_required_module_facade_original = nullptr;
++    GetModuleWrapStateLocked(env)->temporary_required_module_facade_original = nullptr;
+   }
+   if (!instantiated) return napi_pending_exception;
+ 

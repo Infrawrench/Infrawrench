@@ -453,8 +453,11 @@ run at the same time without crashing the runner, and so worker threads work
 (see `vendor/README.md`). Every `node` is an isolate in the runner's own
 process, so a fault in that bridge is a crash of every run on the runner;
 #947 was one (shared registries left unlocked once jobs stopped taking
-turns). On Linux, the V8 that `wasmer-napi` downloads exists
-only for x86_64.
+turns). On Linux it builds for x86_64 and ARM64: the vendored bridge takes
+ARM64's V8 from a later `wasmerio/v8-custom-builds` release (the same V8)
+and links libatomic there, and the release channel carries both
+(`x86_64-linux` and `aarch64-linux`); a runner installs its own
+architecture's build.
 
 `worker_threads` work: each Worker is a WASIX thread of its `node` with an
 isolate of its own, charged against the job's `memory:` like the main one,
@@ -924,5 +927,6 @@ In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 which each need a large toolchain, on changes to the builtins, the runtime
 or the store, and nightly, because those builds resolve crates and a WASIX
 toolchain that this repository does not pin byte for byte. The Node job
-runs on x86_64, the only Linux architecture with a prebuilt V8 for
-`wasmer-napi`.
+runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the
+`node` feature on ARM64 on every change, so the second architecture cannot
+break unnoticed.

@@ -66,6 +66,32 @@ jobs:
   # publishes them to a throwaway store and runs pipelines through `iwci
   # run`. typescript, oxfmt and bash-node need much larger toolchains and
   # are tested by ci-runner-builtins.yml.
+  # The `node` feature links V8, so it builds on its own: on ARM64 that is
+  # the vendored bridge's Linux ARM64 V8, its `c_char` and its libatomic,
+  # none of which the x86 release would notice breaking.
+  node-arm64:
+    name: Build with Node on ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+          key: node-arm64
+
+      - name: cargo build --features node
+        run: |
+          cargo build -p iwci --features node
+          ./target/debug/iwci version
+
   builtins:
     name: Builtins (gofmt, bash, tools)
     runs-on: ubuntu-24.04-arm
