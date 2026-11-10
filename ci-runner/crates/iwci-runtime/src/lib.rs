@@ -23,6 +23,7 @@ mod capture;
 mod limits;
 mod network;
 mod node;
+mod signals;
 pub mod tsc;
 mod wasix;
 mod watchdog;

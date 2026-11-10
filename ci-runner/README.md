@@ -694,6 +694,42 @@ limit) and, separately, the files it writes, which live in memory: without
 that a job could write past any limit. A write over it is refused before
 any of it lands, and the job's report says so.
 
+### A job that dies of a signal
+
+A program killed by a signal says only which one: wasix-libc prints
+`Program recieved fatal signal: Bad system call` and exits with 127 (or the
+host ends it with 128 plus the signal), and by then nothing shows who sent
+it (#955). The runner keeps, for every job, the last signals its processes
+sent (`raise`, `kill`, `abort`) with the syscalls the sending thread made
+just before, the signals delivered to a handler, and the syscalls that
+returned `ENOSYS` or `ENOTSUP`, and when a job ends that way it adds them
+to the end of the job's stderr:
+
+```text
+Program recieved fatal signal: Bad system call
+iwci: the job exited with 127 after a signal. What the runner saw of it (#955):
+  0ms before the end, a guest called proc_signal(pid=1 sig=Signal::Sigsys)
+    its thread's syscalls before that: proc_id x2 proc_parent stack_checkpoint x2 fd_filestat_get stack_checkpoint x6
+  0ms before the end, delivered to a handler: pid=1 signal=Signal::Sigsys
+  0ms before the end, a guest called thread_signal(tid=1073741823 sig=Signal::Sigabrt)
+    its thread's syscalls before that: stack_checkpoint x2 fd_filestat_get stack_checkpoint x6 callback_signal fd_write
+  no syscall returned ENOSYS or ENOTSUP
+```
+
+The `thread_signal` with `Sigabrt` is `abort()`, which is how wasix-libc
+ends a process after a fatal signal. `[task start]` among a thread's
+syscalls is where a process or thread started on it, or came back from a
+wait long enough to give its thread up. A signal that was delivered
+without a guest having sent it came from the host runtime, and one that
+libc names but that was never delivered was raised inside the guest; the
+lines say which. A job that fails any other way gets nothing added.
+
+The lines are part of the job's stderr, so they are in the live log and
+the report and are masked like the rest of it; they hold syscall names,
+ids, signal names and error names, never the job's own text.
+`iwci-runtime/src/signals.rs` is the recorder, a `tracing` subscriber over
+what wasmer-wasix already traces.
+
 ## HTTP API (`iwci serve`)
 
 `iwci serve` runs the same runner as a service. Every route but `/healthz`

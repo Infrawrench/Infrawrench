@@ -117,6 +117,9 @@ struct JobControl {
     /// trapped process as exiting with ENOEXEC (45), so this is what tells a
     /// crash from a program that chose that status.
     trap: Mutex<Option<String>>,
+    /// The signals its guests sent and got, and the syscalls that were not
+    /// implemented, for a job that dies of a signal (signals.rs).
+    signals: Arc<crate::signals::SignalLog>,
 }
 
 impl std::fmt::Debug for JobControl {
@@ -151,6 +154,7 @@ impl JobRuntime {
         >,
         internet: bool,
     ) -> Self {
+        crate::signals::install();
         let mut inner = PluggableRuntime::new(shared.tasks.clone());
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
@@ -208,6 +212,9 @@ impl WasixRuntime for JobRuntime {
 
     fn new_store(&self) -> wasmer::Store {
         let store = wasmer::Store::new(self.inner.engine());
+        // wasmer-wasix makes a store on the thread a task is about to run
+        // on, so from here on this thread's syscalls are this job's.
+        self.control.signals.attend();
         self.control
             .interrupters
             .lock()
@@ -691,7 +698,20 @@ pub(crate) fn run(
         },
     };
     let out = stdout.take();
-    let err = stderr.take();
+    let mut err = stderr.take();
+    // A job that died of a signal: say who sent it, in its own log, which
+    // is all a one-off like #955 leaves behind.
+    if !timed_out && let Some(report) = control.signals.report(exit_code, &err.bytes) {
+        let newline: &[u8] = if err.bytes.is_empty() || err.bytes.ends_with(b"\n") {
+            b""
+        } else {
+            b"\n"
+        };
+        for part in [newline, report.as_bytes()] {
+            stderr.note(part);
+            err.bytes.extend_from_slice(part);
+        }
+    }
     Ok(Outcome {
         exit_code: if timed_out {
             TIMEOUT_EXIT_CODE

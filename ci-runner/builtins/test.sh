@@ -149,6 +149,13 @@ jobs:
     run: |
       false
       echo unreachable
+  # A process killed by a signal it does not handle: wasix-libc says which
+  # and aborts with 127, and the runner adds who sent it (#955).
+  signal-fails:
+    using: env:bash@5
+    run: |
+      kill -s SYS $$
+      echo unreachable
   scratch-write-passes:
     using: env:bash@5
     run: |
@@ -444,6 +451,15 @@ want_reason() {
     typescript/type-error-fails) echo "exited with 2" ;;
     bash/false-fails | bash-node/throw-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
+    bash/signal-fails) echo "exited with 127" ;;
+    *) echo "" ;;
+  esac
+}
+
+# What a job's stderr must contain, as an extended regular expression.
+want_stderr() {
+  case "$1" in
+    bash/signal-fails) echo "Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     *) echo "" ;;
   esac
 }
@@ -485,6 +501,17 @@ for name in "$@"; do
          (if (.id | endswith("-passes")) then "passed" else "failed" end),
          (.reason // .message // "")]
       | @tsv' <<<"$out")
+  # What some jobs' logs must say.
+  while read -r id; do
+    stderr_wanted="$(want_stderr "$name/$id")"
+    [[ -n "$stderr_wanted" ]] || continue
+    if ! jq -r --arg id "$id" \
+      '.pipelines[0].report.jobs[] | select(.id == $id) | .execution.stderr // ""' <<<"$out" |
+      tr '\n' ' ' | grep -Eq "$stderr_wanted"; then
+      echo "  FAIL $id: its stderr does not match \"$stderr_wanted\""
+      failed=1
+    fi
+  done < <(jq -r '.pipelines[0].report.jobs[].id' <<<"$out")
   if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
