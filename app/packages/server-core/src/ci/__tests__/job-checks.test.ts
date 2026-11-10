@@ -11,8 +11,14 @@ vi.mock("../../db/client.js", () => ({
   db: { update: () => ({ set: (v: unknown) => (mockSet(v), { where: () => Promise.resolve() }) }) },
 }));
 
-const { groupsFromJobs, groupsFromProgress, jobCheckName, jobCheckState, syncJobChecks } =
-  await import("../job-checks");
+const {
+  groupsFromJobs,
+  groupsFromProgress,
+  jobCheckKey,
+  jobCheckName,
+  jobCheckState,
+  syncJobChecks,
+} = await import("../job-checks");
 
 const progress = (states: Record<string, { status: string; duration_ms?: number }>) => ({
   pipelines: [
@@ -128,9 +134,32 @@ describe("a check per job", () => {
     );
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [, path, init] = mockFetch.mock.calls[0]!;
-    expect(path).toBe(`/repos/acme/web/check-runs/${run.jobChecks["Test\u0000prep"]!.id}`);
+    expect(path).toBe(
+      `/repos/acme/web/check-runs/${run.jobChecks[jobCheckKey("Test", "prep")]!.id}`,
+    );
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toMatchObject({ status: "completed", conclusion: "success" });
+  });
+
+  it("keeps checks under keys Postgres will store", async () => {
+    // jsonb refuses \u0000, which the keys once joined their halves with:
+    // every save failed, every poll created the checks again, and a run's
+    // own check was never finished.
+    await syncJobChecks(target(), groupsFromProgress(progress({})));
+    const saved = JSON.stringify(mockSet.mock.calls[0]![0]);
+    expect(saved).not.toContain("\\u0000");
+    expect(jobCheckKey("Test", "prep")).not.toBe(jobCheckKey("Test/prep", ""));
+  });
+
+  it("does not throw when the checks cannot be kept", async () => {
+    mockSet.mockImplementationOnce(() => {
+      throw new Error("unsupported Unicode escape sequence");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const run = target();
+    await expect(syncJobChecks(run, groupsFromProgress(progress({})))).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("keeps going when GitHub refuses one check", async () => {

@@ -57,6 +57,15 @@ export const MAX_JOB_CHECKS = 50;
 
 const FINISHED: readonly string[] = ["passed", "failed", "skipped", "error"];
 
+/**
+ * The key a group's check is kept under in `ci_runs.job_checks`. A JSON
+ * pair, not the two joined with a separator: Postgres refuses `\u0000` in a
+ * `jsonb` value, and a pipeline's name may hold any other character.
+ */
+export function jobCheckKey(pipeline: string, key: string): string {
+  return JSON.stringify([pipeline, key]);
+}
+
 /** `build[app/packages/ui]` and `test[1,2]` belong to `build` and `test`. */
 function baseKey(id: string): string {
   const bracket = id.indexOf("[");
@@ -76,7 +85,7 @@ function addTo(
   name: string,
   entry: JobEntry,
 ) {
-  const id = `${pipeline}\u0000${key}`;
+  const id = jobCheckKey(pipeline, key);
   let group = groups.get(id);
   if (!group) {
     group = { pipeline, key, name, entries: [] };
@@ -239,7 +248,7 @@ export async function syncJobChecks(
   const next = { ...run.jobChecks };
   let changed = false;
   for (const group of groups.slice(0, MAX_JOB_CHECKS)) {
-    const key = `${group.pipeline}\u0000${group.key}`;
+    const key = jobCheckKey(group.pipeline, group.key);
     const state = jobCheckState(group);
     const sent = fingerprint(state);
     const known = next[key];
@@ -290,6 +299,12 @@ export async function syncJobChecks(
   }
   if (changed) {
     run.jobChecks = next;
-    await db.update(ciRuns).set({ jobChecks: next }).where(eq(ciRuns.id, run.id));
+    // Best-effort like the rest: a run's own check must still be finished
+    // when this cannot be kept (the next poll then creates the checks again).
+    try {
+      await db.update(ciRuns).set({ jobChecks: next }).where(eq(ciRuns.id, run.id));
+    } catch (err) {
+      console.warn(`[ci] could not keep the job checks of run ${run.id}:`, err);
+    }
   }
 }
