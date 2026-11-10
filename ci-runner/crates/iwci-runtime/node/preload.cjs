@@ -13,6 +13,8 @@
 require("./absolute-paths.cjs");
 // A pending WebAssembly compile keeps the process alive, as in Node (#943).
 require("./wasm-keep-alive.cjs");
+// A blob's stream ends even when the blob has an empty part (#940).
+require("./blob-stream.cjs");
 
 const mod = require("node:module");
 
