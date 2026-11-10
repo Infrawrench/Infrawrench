@@ -498,12 +498,26 @@ file (#937). The fix is open upstream (wasix-org/wasix-libc#145) and in no
 Edge.js release, so `builtins/environments/edgejs/build.sh` builds 0.2.5's
 module from its source, with its toolchain, on its sysroot with that one
 object of the C library rebuilt from #145, and puts it in the published
-package in place of Wasmer's. The build is reproducible, and without the
-patch it gives back Wasmer's module bit for bit (`EDGEJS_VERIFY=1`), so the
-C library object is the whole difference. That is `bash-node` 24.0.1;
-24.0.0 was Wasmer's package with the runner making `fs` paths absolute in a
-preload instead. Go back to pinning Wasmer's package once a release is
-built on a sysroot with the fix.
+package in place of Wasmer's. That was `bash-node` 24.0.1; 24.0.0 was
+Wasmer's package with the runner making `fs` paths absolute in a preload
+instead.
+
+24.0.2 carries a second patch the same way, this one ours
+(`wasix-libc-thread-exit.patch`, #967). A thread that exits releases
+wasix-libc's thread-list lock itself, which lets `pthread_join` free its
+stack, and then made one more host call whose result the host writes into
+that stack. Another `pthread_create` could already have been handed the
+block, so a byte of a starting thread's stack, start arguments or thread
+structure was overwritten, and under thread churn (Workers starting and
+ending) a `node` now and then lost a thread to a trap in its first
+instructions and died without a word. The patched exit sends that result
+to static storage.
+
+The build is reproducible, and without the patches it gives back Wasmer's
+module bit for bit (`EDGEJS_VERIFY=1`), so the two C library objects are
+the whole difference. Drop each patch when the sysroot Edge.js builds on
+has its fix, and go back to pinning Wasmer's package once a release has
+both.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
