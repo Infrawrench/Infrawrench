@@ -737,6 +737,24 @@ napi_status ConfigureRuntime(const char* engine_flags,
     static const char kNoPkeys[] = "--no-memory-protection-keys";
     v8::V8::SetFlagsFromString(kNoPkeys, static_cast<int>(sizeof(kNoPkeys) - 1));
   }
+  // iwci patch (#970): no garbage collection of WebAssembly code. V8 13.6
+  // keeps the compiled wasm-to-JS wrappers in one cache for the process,
+  // and a lookup there adds a wrapper to the caller's WasmCodeRefScope
+  // before it checks that the wrapper is dying. When a code GC cycle then
+  // frees the wrapper on another isolate's thread, the scope frees it again
+  // on its way out (WasmCode::DecrementRefCount on a deleted WasmCode) and
+  // the process segfaults in WasmEngine::FreeDeadCode. It takes two isolates
+  // on two threads, which is any two jobs here. V8 fixed the lookup in
+  // 9b8ca54d5 (13.7); this V8 is prebuilt, so until it is newer the cycle
+  // that frees a dying wrapper never runs. A stopgap: dead code then stays
+  // until its module goes, and a dead wrapper for as long as the process
+  // lives (vendor/README.md has the numbers). Set last, so no guest flag
+  // can turn it back on.
+  {
+    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
+    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
+                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
+  }
   v8::V8::InitializeICUDefaultLocation("");
   v8::V8::InitializeExternalStartupData("");
   g_runtime.platform = EdgeV8Platform::Create();

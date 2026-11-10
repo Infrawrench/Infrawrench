@@ -1796,11 +1796,10 @@
    std::mutex mutex_;
 --- a/v8/src/unofficial_napi.cc
 +++ b/v8/src/unofficial_napi.cc
-@@ -584,9 +584,20 @@
-   }
+@@ -585,8 +585,19 @@
    return v8::IsolateGroup::GetDefault();
  }
-+
+ 
 +// iwci patch (from wasmerio/napi 832e57ec): EdgeV8Platform keys per-isolate
 +// state by address. Envs on different threads create and release isolates at
 +// the same time, so a new isolate must not be allocated (possibly at a
@@ -1810,7 +1809,7 @@
 +// disposal take this lock: not execution, env teardown or the wait for the
 +// platform's pending tasks.
 +std::mutex g_isolate_lifecycle_mu;
- 
++
  v8::Isolate* CreateIsolateForEnv(EdgeV8Platform* platform,
                                   const v8::Isolate::CreateParams& params) {
 +  std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
@@ -1841,7 +1840,7 @@
    }
    WaitForPlatformShutdown(&waiter, shutdown_pump_handle);
  }
-@@ -710,6 +724,19 @@
+@@ -710,6 +724,37 @@
      v8::V8::SetFlagsFromString(engine_flags,
                                 static_cast<int>(engine_flags_length));
    }
@@ -1858,10 +1857,28 @@
 +    static const char kNoPkeys[] = "--no-memory-protection-keys";
 +    v8::V8::SetFlagsFromString(kNoPkeys, static_cast<int>(sizeof(kNoPkeys) - 1));
 +  }
++  // iwci patch (#970): no garbage collection of WebAssembly code. V8 13.6
++  // keeps the compiled wasm-to-JS wrappers in one cache for the process,
++  // and a lookup there adds a wrapper to the caller's WasmCodeRefScope
++  // before it checks that the wrapper is dying. When a code GC cycle then
++  // frees the wrapper on another isolate's thread, the scope frees it again
++  // on its way out (WasmCode::DecrementRefCount on a deleted WasmCode) and
++  // the process segfaults in WasmEngine::FreeDeadCode. It takes two isolates
++  // on two threads, which is any two jobs here. V8 fixed the lookup in
++  // 9b8ca54d5 (13.7); this V8 is prebuilt, so until it is newer the cycle
++  // that frees a dying wrapper never runs. A stopgap: dead code then stays
++  // until its module goes, and a dead wrapper for as long as the process
++  // lives (vendor/README.md has the numbers). Set last, so no guest flag
++  // can turn it back on.
++  {
++    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
++    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
++                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
++  }
    v8::V8::InitializeICUDefaultLocation("");
    v8::V8::InitializeExternalStartupData("");
    g_runtime.platform = EdgeV8Platform::Create();
-@@ -2121,52 +2148,122 @@
+@@ -2121,34 +2166,95 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -1917,8 +1934,8 @@
 -  env->DrainFinalizerQueue();
 -  PumpPlatformForegroundTasks(env);
 +  return true;
- }
- 
++}
++
 +// iwci patch (#943): how long a host task turn may wait for the platform's
 +// work. With nothing runnable in the loop (it has only timers or I/O that are
 +// not due yet, or it is empty) the turn waits up to kPlatformWaitLimit;
@@ -1970,10 +1987,10 @@
 +  (void)DrainMicrotasksForEnv(env, &ran);
 +  streak.turns = has_runnable_work && !ran ? streak.turns + 1 : 0;
 +  return true;
-+}
-+
+ }
+ 
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-     napi_env env,
+@@ -2156,17 +2262,26 @@
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {
