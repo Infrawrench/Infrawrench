@@ -58,7 +58,7 @@ resource "terraform_data" "host" {
   }
 
   provisioner "file" {
-    source      = var.iwci_binary_path
+    source      = coalesce(each.value.iwci_binary_path, var.iwci_binary_path)
     destination = "/tmp/iwci.upload"
   }
   provisioner "file" {

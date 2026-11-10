@@ -27,9 +27,11 @@ env:
 jobs:
   release:
     name: Build and publish iwci
-    # x86_64, because the `node` feature's prebuilt V8 exists only there.
     # 22.04 for its older glibc, so the binary also runs on older hosts.
     runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
     timeout-minutes: 60
     defaults:
       run:
@@ -108,3 +110,48 @@ jobs:
         run: |
           git tag "ci-runner-v$VERSION"
           git push origin "ci-runner-v$VERSION"
+
+  # The same version for ARM64 hosts (Graviton). After the x86 job, never
+  # beside it: publishing a target rewrites the channel's signed manifest
+  # with that target added, so two at once could drop one. Runners pick
+  # their target from their own architecture, so an ARM64 host only ever
+  # installs this build.
+  release-arm64:
+    name: Build and publish iwci (ARM64)
+    needs: release
+    if: needs.release.outputs.released != 'true'
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+          key: release-arm64
+
+      - name: Build
+        env:
+          IWCI_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          cargo build --release -p iwci --features node
+          test "$(./target/release/iwci version)" = "$IWCI_VERSION"
+
+      - name: Publish and add it to the stable channel
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          IWCI_RELEASE_SIGNING_KEY: ${{ secrets.IWCI_RELEASE_SIGNING_KEY }}
+        run: |
+          ./target/release/iwci release ./target/release/iwci \
+            --version "$VERSION" --target aarch64-linux --channel stable \
+            --cache "$RUNNER_TEMP/iwci-cache"

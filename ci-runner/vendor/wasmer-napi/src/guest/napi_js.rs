@@ -2234,7 +2234,7 @@ fn guest_napi_create_string_utf8(
     let s = unsafe {
         snapi_bridge_create_string_utf8(
             snapi_env(&env, e),
-            sb.as_ptr() as *const i8,
+            sb.as_ptr() as *const std::ffi::c_char,
             sb.len() as u32,
             &mut out,
         )
@@ -2265,7 +2265,7 @@ fn guest_napi_create_string_latin1(
     let s = unsafe {
         snapi_bridge_create_string_latin1(
             snapi_env(&env, e),
-            sb.as_ptr() as *const i8,
+            sb.as_ptr() as *const std::ffi::c_char,
             sb.len() as u32,
             &mut out,
         )
@@ -4346,7 +4346,7 @@ fn guest_napi_define_class(
     };
 
     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
+    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
@@ -4532,7 +4532,7 @@ fn guest_napi_define_properties(
     };
 
     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
-    let mut prop_names_ptrs: Vec<*const i8> = Vec::with_capacity(pc as usize);
+    let mut prop_names_ptrs: Vec<*const std::ffi::c_char> = Vec::with_capacity(pc as usize);
     let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
     let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
     let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);

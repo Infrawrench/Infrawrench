@@ -1447,7 +1447,7 @@ thread_local! {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_unofficial_configure_runtime(
-    engine_flags: *const i8,
+    engine_flags: *const std::ffi::c_char,
     engine_flags_length: u32,
 ) -> i32 {
     if engine_flags_length > 0 && engine_flags.is_null() {
@@ -1531,7 +1531,7 @@ unsafe fn bytes_with_auto_length<'a>(ptr: *const u8, len: u32) -> Result<&'a [u8
     unsafe { bytes(ptr, len as usize) }
 }
 
-unsafe fn cstr(ptr: *const i8) -> Result<String, i32> {
+unsafe fn cstr(ptr: *const std::ffi::c_char) -> Result<String, i32> {
     if ptr.is_null() {
         return Err(NAPI_INVALID_ARG);
     }
@@ -1909,7 +1909,7 @@ unsafe fn create_string(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_create_string_utf8(
     env: SnapiEnv,
-    ptr: *const i8,
+    ptr: *const std::ffi::c_char,
     len: u32,
     out: *mut u32,
 ) -> i32 {
@@ -1919,7 +1919,7 @@ pub unsafe extern "C" fn snapi_bridge_create_string_utf8(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_create_string_latin1(
     env: SnapiEnv,
-    ptr: *const i8,
+    ptr: *const std::ffi::c_char,
     len: u32,
     out: *mut u32,
 ) -> i32 {
@@ -1983,7 +1983,7 @@ unsafe fn read_string_bytes(
 pub unsafe extern "C" fn snapi_bridge_get_value_string_utf8(
     env: SnapiEnv,
     id: u32,
-    buf: *mut i8,
+    buf: *mut std::ffi::c_char,
     size: usize,
     result: *mut usize,
 ) -> i32 {
@@ -1994,7 +1994,7 @@ pub unsafe extern "C" fn snapi_bridge_get_value_string_utf8(
 pub unsafe extern "C" fn snapi_bridge_get_value_string_latin1(
     env: SnapiEnv,
     id: u32,
-    buf: *mut i8,
+    buf: *mut std::ffi::c_char,
     size: usize,
     result: *mut usize,
 ) -> i32 {
@@ -2215,7 +2215,7 @@ pub unsafe extern "C" fn snapi_bridge_get_property(
 pub unsafe extern "C" fn snapi_bridge_set_named_property(
     env: SnapiEnv,
     obj: u32,
-    name: *const i8,
+    name: *const std::ffi::c_char,
     value: u32,
 ) -> i32 {
     let Ok(name) = (unsafe { cstr(name) }) else {
@@ -2240,7 +2240,7 @@ pub unsafe extern "C" fn snapi_bridge_set_named_property(
 pub unsafe extern "C" fn snapi_bridge_get_named_property(
     env: SnapiEnv,
     obj: u32,
-    name: *const i8,
+    name: *const std::ffi::c_char,
     out: *mut u32,
 ) -> i32 {
     let Ok(name) = (unsafe { cstr(name) }) else {
@@ -3001,7 +3001,7 @@ pub unsafe extern "C" fn snapi_bridge_swap_active_callback_ctx(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_create_function(
     env: SnapiEnv,
-    name: *const i8,
+    name: *const std::ffi::c_char,
     len: u32,
     reg: u32,
     out: *mut u32,
@@ -3504,7 +3504,7 @@ pub unsafe extern "C" fn snapi_bridge_unofficial_get_constructor_name(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_unofficial_create_private_symbol(
     env: SnapiEnv,
-    str_ptr: *const i8,
+    str_ptr: *const std::ffi::c_char,
     wasm_length: u32,
     out_id: *mut u32,
 ) -> i32 {
@@ -5311,7 +5311,7 @@ pub unsafe extern "C" fn snapi_bridge_delete_property(
 pub unsafe extern "C" fn snapi_bridge_has_named_property(
     env: SnapiEnv,
     obj_id: u32,
-    name: *const i8,
+    name: *const std::ffi::c_char,
     result: *mut i32,
 ) -> i32 {
     let Ok(name) = (unsafe { cstr(name) }) else {
@@ -5445,7 +5445,7 @@ pub unsafe extern "C" fn snapi_bridge_object_seal(env: SnapiEnv, obj_id: u32) ->
     NAPI_OK
 }
 
-unsafe fn throw_c_error(env: SnapiEnv, code: *const i8, message: *const i8, kind: u8) -> i32 {
+unsafe fn throw_c_error(env: SnapiEnv, code: *const std::ffi::c_char, message: *const std::ffi::c_char, kind: u8) -> i32 {
     let Ok(state) = (unsafe { env_mut(env) }) else {
         return NAPI_INVALID_ARG;
     };
@@ -5470,24 +5470,24 @@ unsafe fn throw_c_error(env: SnapiEnv, code: *const i8, message: *const i8, kind
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_throw_error(
     env: SnapiEnv,
-    code: *const i8,
-    msg: *const i8,
+    code: *const std::ffi::c_char,
+    msg: *const std::ffi::c_char,
 ) -> i32 {
     unsafe { throw_c_error(env, code, msg, 0) }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_throw_type_error(
     env: SnapiEnv,
-    code: *const i8,
-    msg: *const i8,
+    code: *const std::ffi::c_char,
+    msg: *const std::ffi::c_char,
 ) -> i32 {
     unsafe { throw_c_error(env, code, msg, 1) }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_throw_range_error(
     env: SnapiEnv,
-    code: *const i8,
-    msg: *const i8,
+    code: *const std::ffi::c_char,
+    msg: *const std::ffi::c_char,
 ) -> i32 {
     unsafe { throw_c_error(env, code, msg, 2) }
 }
@@ -6104,7 +6104,7 @@ unsafe fn define_properties_impl(
     env: SnapiEnv,
     object: &JsValue,
     count: u32,
-    names: *const *const i8,
+    names: *const *const std::ffi::c_char,
     name_ids: *const u32,
     types: *const u32,
     value_ids: *const u32,
@@ -6266,11 +6266,11 @@ unsafe fn define_properties_impl(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn snapi_bridge_define_class(
     env: SnapiEnv,
-    utf8name: *const i8,
+    utf8name: *const std::ffi::c_char,
     name_len: u32,
     ctor_reg_id: u32,
     prop_count: u32,
-    prop_names: *const *const i8,
+    prop_names: *const *const std::ffi::c_char,
     prop_name_ids: *const u32,
     prop_types: *const u32,
     prop_value_ids: *const u32,
@@ -6370,7 +6370,7 @@ pub unsafe extern "C" fn snapi_bridge_define_properties(
     env: SnapiEnv,
     obj_id: u32,
     prop_count: u32,
-    prop_names: *const *const i8,
+    prop_names: *const *const std::ffi::c_char,
     prop_name_ids: *const u32,
     prop_types: *const u32,
     prop_value_ids: *const u32,

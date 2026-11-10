@@ -145,6 +145,17 @@ checkpoint runs"), for hosts that can end the guest's sleep themselves; it
 neither keeps a loop alive nor knows the isolate. `builtins/test.sh`'s
 `wasm-compile-passes` is the check.
 
+**And: Linux ARM64.** The crate knows no prebuilt V8 for Linux ARM64, and
+does not build there. `build.rs` maps it to `v8-linux-arm64.tar.xz` from the
+`wasmerio/v8-custom-builds` release 11.9.9 (11.9.7 has none; both carry V8
+13.6.233, and 11.9.8's notes name the ARM64 builds and shared-library-safe
+TLS as the change), while every other target keeps 11.9.7. Two more
+things only ARM64 needs: C strings are `std::ffi::c_char`, which is `u8`
+there, where the crate wrote `i8` (46 uses and two scratch buffers; the
+same type on x86_64), and V8's ARM64 build calls libatomic for its 16-byte
+atomics, so Linux ARM64 links `atomic`. Built and run on a Graviton5 host
+(`ci-2`), where #922's full Test pipeline (689 jobs) passed cold.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),

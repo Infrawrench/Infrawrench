@@ -11,6 +11,8 @@ variable "hosts" {
     - url: how the proxy reaches it (https, through a tunnel or a TLS
       front). Leave `listen` on loopback when a tunnel carries the traffic.
     - cpus / memory: the runner's limits (default: the machine's).
+    - iwci_binary_path: this host's first binary, when its architecture
+      differs from `iwci_binary_path`'s (an ARM64 host beside x86_64 ones).
     - tunnel_token: optional Cloudflare Tunnel token; when set, cloudflared
       is installed as a service and the tunnel's public hostname should
       point at http://<listen>.
@@ -25,6 +27,9 @@ variable "hosts" {
     cpus         = optional(number)
     memory       = optional(string)
     tunnel_token = optional(string)
+    # This host's first binary, when its architecture differs from the
+    # default's.
+    iwci_binary_path = optional(string)
   }))
   default = []
 

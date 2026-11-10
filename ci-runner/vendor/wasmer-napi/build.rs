@@ -5,6 +5,20 @@ use std::{
 };
 
 const PREBUILT_V8_VERSION: &str = "11.9.7";
+/// The release with Linux ARM64 builds, which 11.9.7 lacks: the same V8
+/// (13.6.233), built with shared-library-safe TLS on Linux.
+const PREBUILT_V8_VERSION_LINUX_ARM64: &str = "11.9.9";
+
+/// The `wasmerio/v8-custom-builds` release this target's V8 comes from.
+fn prebuilt_release() -> &'static str {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    if target_os == "linux" && target_arch == "aarch64" {
+        PREBUILT_V8_VERSION_LINUX_ARM64
+    } else {
+        PREBUILT_V8_VERSION
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum V8Method {
@@ -219,6 +233,11 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=m");
         println!("cargo:rustc-link-lib=dylib=pthread");
         println!("cargo:rustc-link-lib=dylib=rt");
+        // V8's ARM64 build uses generic (16-byte) atomics, which GCC lowers
+        // to calls into libatomic.
+        if target_os == "linux" && env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64" {
+            println!("cargo:rustc-link-lib=dylib=atomic");
+        }
     }
 }
 
@@ -327,7 +346,7 @@ fn resolve_prebuilt_v8(extra_override: Option<&str>) -> Result<V8Config, String>
     let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|err| err.to_string())?);
     let cache_dir = out_dir
         .join("v8-prebuilt")
-        .join(PREBUILT_V8_VERSION)
+        .join(prebuilt_release())
         .join(platform_name);
     let archive_path = cache_dir.join(asset_name);
 
@@ -392,6 +411,7 @@ fn prebuilt_asset_name() -> Result<(&'static str, &'static str), String> {
         ("macos", "x86_64", _) => Ok(("v8-darwin-amd64.tar.xz", "darwin-amd64")),
         ("linux", "x86_64", "gnu") => Ok(("v8-linux-amd64.tar.xz", "linux-amd64")),
         ("linux", "x86_64", "musl") => Ok(("v8-linux-musl-amd64.tar.xz", "linux-musl-amd64")),
+        ("linux", "aarch64", "gnu") => Ok(("v8-linux-arm64.tar.xz", "linux-arm64")),
         ("android", "aarch64", _) => Ok(("v8-android-arm64.tar.xz", "android-arm64")),
         ("windows", "x86_64", _) => Ok(("v8-windows-amd64.tar.xz", "windows-amd64")),
         (os, arch, env_kind) => Err(format!(
@@ -402,7 +422,8 @@ fn prebuilt_asset_name() -> Result<(&'static str, &'static str), String> {
 
 fn download_prebuilt_archive(asset_name: &str, archive_path: &Path) -> Result<(), String> {
     let url = format!(
-        "https://github.com/wasmerio/v8-custom-builds/releases/download/{PREBUILT_V8_VERSION}/{asset_name}"
+        "https://github.com/wasmerio/v8-custom-builds/releases/download/{}/{asset_name}",
+        prebuilt_release()
     );
     let response = ureq::get(&url)
         .call()
