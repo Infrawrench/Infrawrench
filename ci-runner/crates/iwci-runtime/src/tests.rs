@@ -205,7 +205,11 @@ fn a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd() {
             .run_command(&wat_module("preopens", PREOPENS), inv.clone())
             .unwrap();
         assert!(outcome.success(), "{cwd}: {outcome:?}");
-        assert_eq!(String::from_utf8_lossy(&outcome.stdout), "/\n/\n", "cwd {cwd}");
+        assert_eq!(
+            String::from_utf8_lossy(&outcome.stdout),
+            "/\n/\n",
+            "cwd {cwd}"
+        );
 
         let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
         let stdout = String::from_utf8_lossy(&outcome.stdout);
