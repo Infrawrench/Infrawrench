@@ -1126,3 +1126,286 @@ fn reports_say_what_each_job_needed() {
         "a job skipped for a failure upstream says so too"
     );
 }
+
+/// [`MemoryCaches`] behind a store that takes a while to answer: counts
+/// the lookups in flight at once and records every key asked for.
+#[derive(Default)]
+struct SlowCaches {
+    inner: MemoryCaches,
+    asked: Mutex<Vec<String>>,
+    in_flight: AtomicUsize,
+    most_at_once: AtomicUsize,
+    /// A key containing this takes longer still.
+    slowest: Mutex<Option<&'static str>>,
+}
+
+impl Caches for SlowCaches {
+    fn restore(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        max: u64,
+    ) -> Result<Option<Restored>, String> {
+        self.asked.lock().unwrap().push(key.into());
+        let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        self.most_at_once.fetch_max(now, Ordering::SeqCst);
+        let slowest = *self.slowest.lock().unwrap();
+        let extra = if slowest.is_some_and(|s| key.contains(s)) {
+            150
+        } else {
+            0
+        };
+        std::thread::sleep(Duration::from_millis(50 + extra));
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.inner.restore(key, restore_keys, max)
+    }
+    fn save(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+    ) -> Result<(), String> {
+        self.inner.save(key, restore_keys, entries)
+    }
+}
+
+/// A run against a slow store, with the runner's limits as given. Returns
+/// the report, the jobs that ran and the most that ran at once.
+fn run_looked_up(
+    plan: &Plan,
+    caches: &Arc<SlowCaches>,
+    parallelism: usize,
+    slots: Option<Arc<Slots>>,
+    memory: Option<Arc<MemoryBudget>>,
+) -> (RunReport, Vec<String>, usize) {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let options = Options {
+        parallelism,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory,
+        caches: Some(caches.clone()),
+        logs: None,
+        slots,
+        secrets: BTreeMap::new(),
+    };
+    let report = run(
+        plan,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    let ran = ran(&exec);
+    (report, ran, exec.most_at_once.load(Ordering::SeqCst))
+}
+
+const SIXTEEN: &str = "name: x\njobs:\n  t:\n    using: builtin:slow@1\n    matrix: [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p]\n    task-cache: true\n";
+
+#[test]
+fn task_cache_lookups_overlap_beyond_the_jobs_that_may_run() {
+    let p = plan(SIXTEEN);
+    let store = Arc::new(SlowCaches::default());
+    // Cold: sixteen misses looked up together, then run two at a time.
+    let (first, ran, most_running) = run_looked_up(&p, &store, 2, None, None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    assert_eq!(ran.len(), 16);
+    assert!(most_running <= 2, "{most_running} jobs ran at once");
+    let looked_up = store.most_at_once.load(Ordering::SeqCst);
+    assert!(
+        looked_up > 2,
+        "only {looked_up} lookups were in flight at once with parallelism 2"
+    );
+    assert!(looked_up <= LOOKUPS);
+
+    // Warm: sixteen hits, as many at once, and nothing runs.
+    store.most_at_once.store(0, Ordering::SeqCst);
+    let (second, ran, _) = run_looked_up(&p, &store, 2, None, None);
+    assert!(second.passed() && ran.is_empty(), "{ran:?}");
+    assert!(second.jobs.iter().all(|j| j.cached));
+    assert!(store.most_at_once.load(Ordering::SeqCst) > 2);
+    // Matrix order, however the lookups finished.
+    let ids: Vec<&str> = second.jobs.iter().map(|j| j.id.as_str()).collect();
+    let mut sorted = ids.clone();
+    sorted.sort();
+    assert_eq!(ids, sorted);
+}
+
+#[test]
+fn a_hit_takes_no_slot_and_no_memory() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [a, b, c]\n    artifacts: [dist]\n    memory: 1GiB\n    task-cache: true\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    memory: 1GiB\n    task-cache: true\n",
+    );
+    let store = Arc::new(SlowCaches::default());
+    let (first, ran, _) = run_looked_up(&p, &store, 4, None, None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    assert_eq!(ran.len(), 4);
+
+    // Every slot of the runner is taken by other runs, and so is all of
+    // its memory: a job that had to run would wait for ever. Hits do not.
+    let slots = Arc::new(Slots::new(1));
+    let _held = slots.acquire();
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    assert!(budget.try_take(1 << 30));
+    let (second, ran, _) = run_looked_up(&p, &store, 4, Some(slots.clone()), Some(budget.clone()));
+    assert!(second.passed(), "{:#?}", second.jobs);
+    assert!(ran.is_empty(), "{ran:?}");
+    assert_eq!(second.jobs.len(), 4);
+    assert!(second.jobs.iter().all(|j| j.cached && j.memory_mib == 0));
+    assert_eq!(stdout_of(&second, "check"), stdout_of(&first, "check"));
+    assert_eq!(slots.free(), 0, "the held slot is the only one in use");
+    assert_eq!(budget.used(), 1 << 30, "nothing was taken or given back");
+}
+
+#[test]
+fn a_miss_is_looked_up_once_runs_once_and_saves_under_the_key_it_looked_up() {
+    // One worker, and `after` waits on a job whose lookup is in flight
+    // with nothing queued and nothing running: that is not a stuck run.
+    let p = plan(
+        "name: x\njobs:\n  t:\n    using: builtin:print@1\n    task-cache: true\n  after:\n    using: builtin:ok@1\n    needs: [t]\n",
+    );
+    let store = Arc::new(SlowCaches::default());
+    let (first, ran, _) = run_looked_up(&p, &store, 1, None, None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    assert_eq!(ran, ["t", "after"]);
+    let asked = store.asked.lock().unwrap().clone();
+    let saved = store.inner.saved.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1, "looked up once: {asked:?}");
+    assert_eq!(saved, asked, "saved under the key that missed");
+    let t = first.jobs.iter().find(|j| j.id == "t").unwrap();
+    assert_eq!(t.caches.len(), 2, "{:?}", t.caches);
+    assert!(t.caches[0].ends_with(": miss"), "{:?}", t.caches);
+    assert!(t.caches[1].contains(": saved "), "{:?}", t.caches);
+    assert!(!t.cached);
+
+    // An entry that cannot be used: the same, with the line saying why.
+    store
+        .inner
+        .entries
+        .lock()
+        .unwrap()
+        .insert(asked[0].clone(), Vec::new());
+    let (second, ran, _) = run_looked_up(&p, &store, 1, None, None);
+    assert!(second.passed(), "{:#?}", second.jobs);
+    assert_eq!(ran, ["t", "after"]);
+    assert_eq!(
+        *store.asked.lock().unwrap(),
+        [asked[0].clone(), asked[0].clone()],
+        "one more lookup, of the same key"
+    );
+    assert_eq!(
+        *store.inner.saved.lock().unwrap(),
+        [asked[0].clone(), asked[0].clone()]
+    );
+    let t = second.jobs.iter().find(|j| j.id == "t").unwrap();
+    assert!(
+        t.caches[0].contains("could not use the entry") && t.caches[1].contains(": saved "),
+        "{:?}",
+        t.caches
+    );
+
+    // And now it hits.
+    let (third, ran, _) = run_looked_up(&p, &store, 1, None, None);
+    assert_eq!(ran, ["after"]);
+    assert!(cached(&third, "t"));
+}
+
+#[test]
+fn a_downstream_key_reads_the_artifacts_its_upstream_replayed() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    task-cache: true\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: true\n",
+    );
+    let store = Arc::new(SlowCaches::default());
+    run_looked_up(&p, &store, 4, None, None);
+    let keys = store.inner.saved.lock().unwrap().clone();
+    let (lib_key, check_key) = (keys[0].clone(), keys[1].clone());
+    assert!(lib_key.starts_with("task/lib/") && check_key.starts_with("task/check/"));
+
+    // `lib` is replayed, and `check` asks for the key it saved under when
+    // `lib` really ran: the replayed artifacts are in it, byte for byte.
+    store.asked.lock().unwrap().clear();
+    let (second, ran, _) = run_looked_up(&p, &store, 4, None, None);
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(cached(&second, "lib") && cached(&second, "check"));
+    assert_eq!(
+        *store.asked.lock().unwrap(),
+        [lib_key.clone(), check_key.clone()]
+    );
+
+    // The entry `lib` replays now holds other bytes: `check` is handed
+    // them, so it asks for another key, misses and runs.
+    for entry in store
+        .inner
+        .entries
+        .lock()
+        .unwrap()
+        .get_mut(&lib_key)
+        .unwrap()
+    {
+        if let Entry::File { path, data } = entry
+            && path.starts_with("/app/dist")
+        {
+            *data = b"rebuilt differently".to_vec().into();
+        }
+    }
+    store.asked.lock().unwrap().clear();
+    let (third, ran, _) = run_looked_up(&p, &store, 4, None, None);
+    assert!(third.passed(), "{:#?}", third.jobs);
+    assert_eq!(ran, ["check"]);
+    let asked = store.asked.lock().unwrap().clone();
+    assert_eq!(asked[0], lib_key);
+    assert!(asked[1].starts_with("task/check/") && asked[1] != check_key);
+}
+
+#[test]
+fn the_order_lookups_answer_in_does_not_reach_a_downstream_key() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [a, b, c]\n    artifacts: [dist]\n    task-cache: true\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: true\n",
+    );
+    let store = Arc::new(SlowCaches::default());
+    let (first, _, _) = run_looked_up(&p, &store, 4, None, None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    let check_key = store.inner.saved.lock().unwrap()[3].clone();
+    assert!(check_key.starts_with("task/check/"), "{check_key}");
+    let lib_ids: Vec<String> = first.jobs[..3].iter().map(|j| j.id.clone()).collect();
+    for last in [0, 2] {
+        // The entry of `last` answers after the other two.
+        let slow: &'static str = Box::leak(format!("task/{}/", lib_ids[last]).into_boxed_str());
+        *store.slowest.lock().unwrap() = Some(slow);
+        store.asked.lock().unwrap().clear();
+        let (again, ran, _) = run_looked_up(&p, &store, 4, None, None);
+        assert!(ran.is_empty(), "{ran:?}");
+        assert!(cached(&again, "check"));
+        assert_eq!(store.asked.lock().unwrap().last(), Some(&check_key));
+    }
+}
+
+#[test]
+fn a_checkout_that_fails_errors_every_task_cached_job_without_a_lookup() {
+    let p = plan(SIXTEEN);
+    let store = Arc::new(SlowCaches::default());
+    let (report, exec, _, _) = run_with(&p, None, true, None, Some(store.clone()));
+    assert_eq!(report.jobs.len(), 16);
+    for job in &report.jobs {
+        assert!(
+            matches!(&job.status, Status::Error { message } if message == "workspace did not build: lockfile missing"),
+            "{:?}",
+            job.status
+        );
+    }
+    assert!(ran(&exec).is_empty());
+    assert!(store.asked.lock().unwrap().is_empty());
+}

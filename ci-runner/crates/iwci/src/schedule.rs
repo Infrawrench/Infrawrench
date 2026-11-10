@@ -7,6 +7,10 @@
 //! job needs them, once each, so a job that is skipped never costs a clone
 //! or an install.
 //!
+//! A `task-cache:` entry is looked up before it is queued, on threads of
+//! its own (see [`LOOKUPS`]): a hit finishes there, and only a miss waits
+//! for a slot and its memory.
+//!
 //! The scheduler knows nothing about git, package managers, R2 or Wasmer.
 //! It reaches them through the four traits below, which `crate::adapters`
 //! implements over the real crates and the tests implement with fakes, so
@@ -627,14 +631,48 @@ struct State<'p> {
     /// Keys not yet activated.
     waiting: Vec<&'p JobTemplate>,
     finished: HashMap<String, Finished>,
-    /// Expanded jobs ready to run.
-    queue: Vec<(&'p JobTemplate, PlannedJob)>,
+    /// Expanded `task-cache:` jobs whose entry has not been looked up yet.
+    /// A hit finishes from here; anything else moves on to `queue`.
+    lookups: Vec<(&'p JobTemplate, PlannedJob)>,
+    /// Expanded jobs ready to run, each with what its lookup left it.
+    queue: Vec<(&'p JobTemplate, PlannedJob, Lookup)>,
     /// Per activated key: entries still running and the reports so far.
     /// Started templates: their instances' ids in matrix order, the reports
     /// of those finished so far, and the artifacts they kept.
     open: HashMap<String, OpenKey>,
+    /// Jobs running and lookups in flight.
     running: usize,
     reports: HashMap<String, Vec<JobReport>>,
+    /// Set by the worker threads when they stop, so the lookup threads do.
+    done: bool,
+}
+
+/// Task cache lookups in flight at once, per run. A lookup is a blocking
+/// GET against the object store (a fifth of a second or so) and no work
+/// for this machine, so the bound is not the core count: it is how many
+/// connections one run should hold open to the store, and how many entries
+/// it may have fetched but not yet counted against `scratch:`. Measured on
+/// a 695-job run of hits against R2: 16 at once took 7.2 s, 32 took 4.4 s
+/// and 64 took 2.8 s, each hit about 0.15 s throughout; 128 took 2.9 s
+/// with each hit at 0.23 s, the store (or the runner's share of a CPU)
+/// answering slower rather than more. `iwci-store` keeps as many idle
+/// connections, or most lookups would open one.
+pub const LOOKUPS: usize = 64;
+
+/// What a task cache lookup leaves the job that then runs: the key to save
+/// under once it passes, and the report's line saying why it ran.
+#[derive(Default)]
+struct Lookup {
+    key: Option<String>,
+    lines: Vec<String>,
+}
+
+/// How a task cache lookup went.
+enum Looked {
+    /// The job is finished: a hit, or a checkout that failed.
+    Done(Box<JobReport>),
+    /// A miss, or an entry that could not be used: the job runs.
+    Run(Lookup),
 }
 
 /// A key whose entries are running.
@@ -642,7 +680,8 @@ struct OpenKey {
     /// Its instances' ids, in matrix order.
     order: Vec<String>,
     reports: Vec<JobReport>,
-    artifacts: Vec<Entry>,
+    /// What each finished entry kept, by its id.
+    artifacts: Vec<(String, Vec<Entry>)>,
 }
 
 struct ConditionEnv<'a> {
@@ -718,10 +757,12 @@ pub fn run<T: Tools>(
     let state = Mutex::new(State {
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
+        lookups: Vec::new(),
         queue: Vec::new(),
         open: HashMap::new(),
         running: 0,
         reports: HashMap::new(),
+        done: false,
     });
     let wake = Condvar::new();
     activate(&mut state.lock().unwrap(), plan, options);
@@ -742,11 +783,64 @@ pub fn run<T: Tools>(
         artifact_bytes: &artifact_bytes,
     };
 
+    // Lookup threads only for a plan that can have a task-cached job: one
+    // whose matrix is not known yet may.
+    let lookups = options.caches.is_some()
+        && plan.jobs.iter().any(|t| {
+            t.instances
+                .as_ref()
+                .is_none_or(|jobs| jobs.iter().any(|j| j.task_cache.is_some()))
+        });
+
     std::thread::scope(|scope| {
-        for _ in 0..options.parallelism.max(1) {
+        // Task cache lookups: no slot and no memory, since nothing runs. A
+        // lookup in flight counts as `running`, so the workers wait for it.
+        for _ in 0..if lookups { LOOKUPS } else { 0 } {
             scope.spawn(|| {
                 loop {
                     let (template, job, inherited) = {
+                        let mut s = state.lock().unwrap();
+                        loop {
+                            if let Some((template, job)) = s.lookups.pop() {
+                                s.running += 1;
+                                let inherited =
+                                    inherited_artifacts(plan, &template.key, &s.finished);
+                                break (template, job, inherited);
+                            }
+                            if s.done {
+                                return;
+                            }
+                            s = wake.wait(s).unwrap();
+                        }
+                    };
+                    let workspace = LazyWorkspace {
+                        spec: &plan.workspaces[job.workspace],
+                        workspaces,
+                        built: &built[job.workspace],
+                        checkout: &checkouts[job.workspace],
+                    };
+                    let mut kept = Vec::new();
+                    match look_up(
+                        &job, plan, &workspace, options, &shared, &inherited, &mut kept,
+                    ) {
+                        Looked::Done(report) => {
+                            complete(&state, &wake, plan, options, template, *report, kept)
+                        }
+                        Looked::Run(lookup) => {
+                            let mut s = state.lock().unwrap();
+                            s.running -= 1;
+                            s.queue.push((template, job, lookup));
+                            drop(s);
+                            wake.notify_all();
+                        }
+                    }
+                }
+            });
+        }
+        for _ in 0..options.parallelism.max(1) {
+            scope.spawn(|| {
+                loop {
+                    let (template, job, lookup, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // The newest job whose memory fits the runner's
@@ -757,17 +851,18 @@ pub fn run<T: Tools>(
                                 Some(budget) => s
                                     .queue
                                     .iter()
-                                    .rposition(|(_, j)| budget.try_take(j.memory_bytes)),
+                                    .rposition(|(_, j, _)| budget.try_take(j.memory_bytes)),
                             };
                             if let Some(pos) = fits {
-                                let (template, job) = s.queue.remove(pos);
+                                let (template, job, lookup) = s.queue.remove(pos);
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (template, job, inherited);
+                                break (template, job, lookup, inherited);
                             }
-                            if s.running == 0 {
-                                // Nothing queued, nothing running: whatever is
+                            if s.running == 0 && s.lookups.is_empty() {
+                                // Nothing queued, nothing running, nothing
+                                // being looked up: whatever is
                                 // still waiting can never become ready. That
                                 // takes a `needs` cycle, which validation
                                 // rules out, so report rather than hang.
@@ -782,6 +877,7 @@ pub fn run<T: Tools>(
                                     );
                                     s.reports.insert(t.key.clone(), vec![report]);
                                 }
+                                s.done = true;
                                 wake.notify_all();
                                 return;
                             }
@@ -798,42 +894,15 @@ pub fn run<T: Tools>(
                         checkout: &checkouts[job.workspace],
                     };
                     let mut kept = Vec::new();
-                    let mut report = run_job(
+                    let report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
-                        &inherited, &mut kept,
+                        &inherited, lookup, &mut kept,
                     );
-                    report.needs = template.needs.clone();
                     drop(slot);
-                    emit_finished(options, &report);
                     if let Some(budget) = &options.memory {
                         budget.give(job.memory_bytes);
                     }
-                    let mut s = state.lock().unwrap();
-                    s.running -= 1;
-                    let entry = s.open.get_mut(&template.key).expect("activated");
-                    entry.reports.push(report);
-                    entry.artifacts.extend(kept);
-                    if entry.reports.len() == entry.order.len() {
-                        let OpenKey {
-                            order,
-                            mut reports,
-                            artifacts,
-                        } = s.open.remove(&template.key).expect("activated");
-                        // Matrix entries finish in any order; report them in
-                        // matrix order. The order comes from the instances
-                        // that ran, since a matrix another job set has none
-                        // on its template.
-                        reports.sort_by_key(|r| {
-                            order
-                                .iter()
-                                .position(|id| *id == r.id)
-                                .unwrap_or(usize::MAX)
-                        });
-                        finish(&mut s, template, reports, artifacts);
-                        activate(&mut s, plan, options);
-                    }
-                    drop(s);
-                    wake.notify_all();
+                    complete(&state, &wake, plan, options, template, report, kept);
                 }
             });
         }
@@ -860,7 +929,50 @@ pub fn run<T: Tools>(
     }
 }
 
-/// Moves every waiting key whose needs have all finished to the queue (or
+/// Records one entry's report, from a run or from the task cache, and when
+/// it was its key's last, finishes the key and activates what waited on it.
+fn complete<'p>(
+    state: &Mutex<State<'p>>,
+    wake: &Condvar,
+    plan: &'p Plan,
+    options: &Options,
+    template: &'p JobTemplate,
+    mut report: JobReport,
+    kept: Vec<Entry>,
+) {
+    report.needs = template.needs.clone();
+    emit_finished(options, &report);
+    let mut s = state.lock().unwrap();
+    s.running -= 1;
+    let entry = s.open.get_mut(&template.key).expect("activated");
+    entry.artifacts.push((report.id.clone(), kept));
+    entry.reports.push(report);
+    if entry.reports.len() == entry.order.len() {
+        let OpenKey {
+            order,
+            mut reports,
+            mut artifacts,
+        } = s.open.remove(&template.key).expect("activated");
+        // Matrix entries finish in any order; report them in
+        // matrix order. The order comes from the instances
+        // that ran, since a matrix another job set has none
+        // on its template.
+        let place = |id: &str| order.iter().position(|o| o == id).unwrap_or(usize::MAX);
+        reports.sort_by_key(|r| place(&r.id));
+        // Their artifacts too: the jobs downstream hash what they are
+        // handed in this order, so the order they finished in (lookups
+        // answer in any) must not reach a task cache key.
+        artifacts.sort_by_key(|(id, _)| place(id));
+        let artifacts = artifacts.into_iter().flat_map(|(_, kept)| kept).collect();
+        finish(&mut s, template, reports, artifacts);
+        activate(&mut s, plan, options);
+    }
+    drop(s);
+    wake.notify_all();
+}
+
+/// Moves every waiting key whose needs have all finished to the queue, or
+/// to the task cache lookups first when it has one (or
 /// straight to finished, when it is skipped or cannot expand). Loops,
 /// because finishing a skipped key can make the next one ready.
 fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
@@ -971,7 +1083,11 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 // The queue is a stack; push in reverse so entries start in
                 // matrix order.
                 for job in jobs.into_iter().rev() {
-                    s.queue.push((template, job));
+                    if job.task_cache.is_some() && options.caches.is_some() {
+                        s.lookups.push((template, job));
+                    } else {
+                        s.queue.push((template, job, Lookup::default()));
+                    }
                 }
             }
         }
@@ -1048,6 +1164,61 @@ struct RunShared<'a> {
     artifact_bytes: &'a AtomicU64,
 }
 
+/// Looks a `task-cache:` job up before it is queued. A job whose inputs
+/// are what a passing run saw is not run: that run's artifacts, outputs
+/// and log stand in for it. A miss, or an entry that cannot be used, runs
+/// the job, which saves under the key computed here. The key reads the bare
+/// checkout, so a hit never waits for the workspace's installs.
+///
+/// This holds no job slot and none of the job's `memory:`, which is what
+/// lets a run look up many more entries at once than it may run jobs. Keep
+/// it to the checkout, the key and the store.
+fn look_up(
+    job: &PlannedJob,
+    plan: &Plan,
+    workspace: &LazyWorkspace<'_>,
+    options: &Options,
+    shared: &RunShared<'_>,
+    inherited: &[(String, Arc<Vec<Entry>>)],
+    kept: &mut Vec<Entry>,
+) -> Looked {
+    let started = Instant::now();
+    let key = match workspace.files() {
+        Ok(files) => task_cache_key(job, plan, files, inherited),
+        Err(e) => {
+            return Looked::Done(Box::new(errored(
+                job,
+                format!("workspace did not build: {e}"),
+                started.elapsed(),
+            )));
+        }
+    };
+    let (Some(key), Some(store)) = (key, &options.caches) else {
+        return Looked::Run(Lookup::default());
+    };
+    let mut lines = Vec::new();
+    match store.restore(&key, &[], plan.scratch_bytes + MAX_TASK_LOG) {
+        Ok(Some(hit)) => {
+            match replay(job, plan, options, shared, &key, hit.entries, started, kept) {
+                Ok(report) => return Looked::Done(Box::new(report)),
+                Err(e) => lines.push(format!(
+                    "task cache `{}`: could not use the entry ({e}); running it",
+                    short_key(&key)
+                )),
+            }
+        }
+        Ok(None) => lines.push(format!("task cache `{}`: miss", short_key(&key))),
+        Err(e) => lines.push(format!(
+            "task cache `{}`: could not read the cache ({e}); running it",
+            short_key(&key)
+        )),
+    }
+    Looked::Run(Lookup {
+        key: Some(key),
+        lines,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_job<T: Tools>(
     job: &PlannedJob,
@@ -1059,45 +1230,16 @@ fn run_job<T: Tools>(
     options: &Options,
     shared: &RunShared<'_>,
     inherited: &[(String, Arc<Vec<Entry>>)],
+    lookup: Lookup,
     kept: &mut Vec<Entry>,
 ) -> JobReport {
     let started = Instant::now();
-    // A task-cached job whose inputs are what a passing run saw is not
-    // run: that run's artifacts, outputs and log stand in for it. A miss,
-    // or an entry that cannot be used, runs the job. The key reads the bare
-    // checkout, so a hit never waits for the workspace's installs.
-    let task_key = match (&job.task_cache, &options.caches) {
-        (Some(_), Some(_)) => match workspace.files() {
-            Ok(files) => task_cache_key(job, plan, files, inherited),
-            Err(e) => {
-                return errored(
-                    job,
-                    format!("workspace did not build: {e}"),
-                    started.elapsed(),
-                );
-            }
-        },
-        _ => None,
-    };
-    let mut task_lines = Vec::new();
-    if let (Some(key), Some(store)) = (&task_key, &options.caches) {
-        match store.restore(key, &[], plan.scratch_bytes + MAX_TASK_LOG) {
-            Ok(Some(hit)) => {
-                match replay(job, plan, options, shared, key, hit.entries, started, kept) {
-                    Ok(report) => return report,
-                    Err(e) => task_lines.push(format!(
-                        "task cache `{}`: could not use the entry ({e}); running it",
-                        short_key(key)
-                    )),
-                }
-            }
-            Ok(None) => task_lines.push(format!("task cache `{}`: miss", short_key(key))),
-            Err(e) => task_lines.push(format!(
-                "task cache `{}`: could not read the cache ({e}); running it",
-                short_key(key)
-            )),
-        }
-    }
+    // The task cache was looked up before the job was queued (`look_up`);
+    // it is not read again here, only saved to after a pass.
+    let Lookup {
+        key: task_key,
+        lines: task_lines,
+    } = lookup;
     let workspace = match workspace.built() {
         Ok(ws) => ws,
         Err(e) => {
