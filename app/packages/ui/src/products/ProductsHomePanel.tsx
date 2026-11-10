@@ -112,7 +112,6 @@ function ProductGrid({
     const text = copy[product.id];
     return (
       text.name.toLowerCase().includes(needle) ||
-      text.tagline.toLowerCase().includes(needle) ||
       byProduct[product.id].some((tool) => tool.label.toLowerCase().includes(needle))
     );
   });
@@ -163,10 +162,7 @@ function ProductGrid({
                   <ProductIcon product={product.id} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-on-surface">{text.name}</span>
-                    <span className="mt-0.5 block text-xs text-on-surface-muted">
-                      {text.tagline}
-                    </span>
-                    <span className="mt-2 block truncate text-[11px] text-on-surface-faint">
+                    <span className="mt-1 block text-xs text-on-surface-muted">
                       {mine.length > 0
                         ? mine.map((tool) => tool.label).join(" · ")
                         : gt("Needs a cloud organization")}

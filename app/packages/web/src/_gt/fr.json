@@ -23244,5 +23244,12 @@
   "eaf2b128867d09cb": "Votre tableau de bord par défaut est {name}.",
   "fbfad59d95f6dbee": "Applications mises à jour",
   "3b3ec2ddc2d4b3f9": "Gérer les comptes",
-  "ea925b0a7b0128f3": "Aucun compte connecté pour le moment."
+  "ea925b0a7b0128f3": "Aucun compte connecté pour le moment.",
+  "b33cd3c480da8b64": "Comptes, ressources et leurs connexions.",
+  "e33f6b3ad030662a": "Dépenses, budgets, rapports et factures.",
+  "0f95daf7be9521c2": "Journaux, alertes, sondes et SLOs.",
+  "779c9ce43dd72894": "Incidents, pages d'état, runbooks et calendrier.",
+  "b2add9b502555e53": "Posture, vulnérabilités, conformité et accès.",
+  "518ea80327681c9f": "Déploiements, CI, environnements et métriques de livraison.",
+  "8f8024ddc34f13f5": "Agents et workflows."
 }

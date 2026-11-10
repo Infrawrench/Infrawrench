@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { useUIStore } from "../store/ui.store.js";
+import { ProductGlyph } from "./ProductIcon.js";
 import { useProductCopy } from "./copy.js";
 import {
   PRODUCTS,
@@ -141,8 +142,14 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
   const gt = useGT();
   const copy = useProductCopy();
   const { byProduct, unclaimed } = groupToolsByProduct(tools);
-  const activeKey = toolKeyForTabTarget(useActiveTabTarget());
-  const activeProduct = activeKey ? productForTool(activeKey) : undefined;
+  const activeTarget = useActiveTabTarget();
+  const activeKey = toolKeyForTabTarget(activeTarget);
+  // The app in view: the app of the open tool, or the app whose page is open.
+  const activeProduct = activeKey
+    ? productForTool(activeKey)
+    : activeTarget?.kind === "home"
+      ? activeTarget.productId
+      : undefined;
   const storageKey = "infrawrench-sidebar-apps-open";
   const [open, setOpen] = useState<string[]>(() => readRecent(storageKey));
 
@@ -161,10 +168,11 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
   const groups = [
     ...PRODUCTS.map((product) => ({
       id: product.id as string,
+      icon: <ProductGlyph product={product.id} />,
       name: copy[product.id].name,
       tools: byProduct[product.id],
     })),
-    { id: "more", name: gt("More tools"), tools: unclaimed },
+    { id: "more", name: gt("More tools"), icon: null, tools: unclaimed },
   ].filter((group) => group.tools.length > 0);
   if (groups.length === 0) return null;
 
@@ -201,6 +209,7 @@ export function SidebarApps({ tools }: { tools: SidebarToolDef[] }) {
                 {/* lucide: chevron-right */}
                 <path d="m9 18 6-6-6-6" />
               </svg>
+              {group.icon}
               <span className="truncate text-on-surface-secondary">{group.name}</span>
             </button>
             {expanded &&

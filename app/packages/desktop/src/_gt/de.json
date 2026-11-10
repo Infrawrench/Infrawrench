@@ -23028,5 +23028,12 @@
   "fbfad59d95f6dbee": "Apps aktualisiert",
   "1648bacdbd951106": "Startseite konnte nicht geöffnet werden",
   "3b3ec2ddc2d4b3f9": "Konten verwalten",
-  "ea925b0a7b0128f3": "Noch keine Konten verbunden."
+  "ea925b0a7b0128f3": "Noch keine Konten verbunden.",
+  "b33cd3c480da8b64": "Konten, Ressourcen und ihre Verbindungen.",
+  "e33f6b3ad030662a": "Ausgaben, Budgets, Berichte und Rechnungen.",
+  "0f95daf7be9521c2": "Logs, Alarme, Probes und SLOs.",
+  "779c9ce43dd72894": "Vorfälle, Statusseiten, Runbooks und der Kalender.",
+  "b2add9b502555e53": "Sicherheitslage, Schwachstellen, Compliance und Zugriff.",
+  "518ea80327681c9f": "Deployments, CI, Umgebungen und Auslieferungsmetriken.",
+  "8f8024ddc34f13f5": "Agenten und Workflows."
 }

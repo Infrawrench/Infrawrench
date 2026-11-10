@@ -12,15 +12,15 @@ Infrawrench is one application made of several apps. Each app covers one job, ha
 
 ## The apps
 
-| App               | What it is for                                                       | Tools                                                                                       |
-| ----------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Infrastructure    | Everything you run, across every provider, in one inventory          | Graph, Services, Changes, IaC, Resource reports, Domains, Quotas, Fan-out                   |
-| Costs             | See what you spend, why it moved, and where to cut it                | Costs, Reports, Canvases, Kubernetes efficiency, Invoices, Price catalog                    |
-| Observability     | Logs, metrics, uptime and objectives for what you run                | Logs, Alerts, Probes, SLOs, Query monitors, Wallboard                                       |
-| Incident response | Declare an incident, run it, tell people, and learn from it          | Incidents, Status pages, Runbooks, Calendar                                                 |
-| Security          | Find what is exposed, prove what is covered, and control who gets in | Posture, Vulnerabilities, Compliance, Access review, Just-in-time access, Expiring, Backups |
-| Delivery          | Build, ship and measure every change                                 | Deploy, CI, Delivery, Environments, Env diff                                                |
-| Automation        | Hand work to agents and workflows                                    | Agents, Workflows                                                                           |
+| App               | Tools                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| Infrastructure    | Graph, Services, Changes, IaC, Resource reports, Domains, Quotas, Fan-out                   |
+| Costs             | Costs, Reports, Canvases, Kubernetes efficiency, Invoices, Price catalog                    |
+| Observability     | Logs, Alerts, Probes, SLOs, Query monitors, Wallboard                                       |
+| Incident response | Incidents, Status pages, Runbooks, Calendar                                                 |
+| Security          | Posture, Vulnerabilities, Compliance, Access review, Just-in-time access, Expiring, Backups |
+| Delivery          | Deploy, CI, Delivery, Environments, Env diff                                                |
+| Automation        | Agents, Workflows                                                                           |
 
 Some tools need a cloud organization. In the desktop app without one, an app whose tools all need an organization still shows what it offers, and says that you need to sign in to use it. CI shows once it is turned on for your organization.
 
@@ -103,8 +103,8 @@ From the top:
 
 - **Home**.
 - **Dashboards** and **Chat**.
-- **Recent** and **Apps**.
 - Your connected provider accounts and their resources. They belong to Infrastructure, so they show while you are in Infrastructure (its page, its tools, an account or a resource) and on dashboards, where you drag resources from the sidebar to pin them. Elsewhere they are hidden, so the sidebar stays short.
+- **Recent** and **Apps**.
 - **Manage accounts**, at the bottom, lists every connected account by provider from anywhere in the app. Click one to open it, or **Add account** to connect another.
 
 ## Where you land
@@ -115,9 +115,9 @@ Opening Infrawrench takes you back to the tab you had open last time. If there i
 
 An organization that does not use an app can turn it off. Open **Settings**, then **Apps**, and switch the app off. The change is saved at once and applies to everyone in the organization.
 
-![The Apps page in Settings with a switch per app, Incident response turned off and Infrastructure locked on](https://agent-assets.infrawrench.com/docs-screenshots/features/home/settings-apps-dark.png)
+![The Apps page in Settings with a switch per app and Incident response turned off](https://agent-assets.infrawrench.com/docs-screenshots/features/home/settings-apps-dark.png)
 
-Infrastructure cannot be turned off. It holds your accounts and resources, which every other app reads.
+Infrastructure cannot be turned off, so it is not on the page. It holds your accounts and resources, which every other app reads.
 
 **Who can do it.** Changing the switches needs the `org:settings:write` permission. Owners hold it. The built-in Admin role does not, so an admin sees the page but cannot change it. A [custom role](../team-and-billing/roles-and-permissions.md) can be given the permission. Every member can open the page and see which apps are on.
 

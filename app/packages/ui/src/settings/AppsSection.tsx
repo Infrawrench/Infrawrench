@@ -23,8 +23,8 @@ interface ProductPolicy {
  *
  * Every member can see the page (the navigation they get depends on it);
  * the switches need `org:settings:write`, like the other org-wide policies.
- * Infrastructure is listed with its switch locked on, so nobody goes looking
- * for how to turn it off.
+ * Infrastructure cannot be turned off, so it is not listed: a switch that
+ * never moves is noise.
  */
 export function AppsSection() {
   const gt = useGT();
@@ -99,41 +99,40 @@ export function AppsSection() {
             </p>
           )}
           <ul className="divide-y divide-border rounded-xl border border-border bg-surface-raised/50">
-            {PRODUCTS.map((product) => {
-              const text = copy[product.id];
-              const alwaysOn = ALWAYS_ON_PRODUCTS.includes(product.id);
-              const on = alwaysOn || !disabled.includes(product.id);
-              return (
-                <li key={product.id} className="flex items-center gap-3 px-4 py-3">
-                  <ProductIcon product={product.id} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-on-surface">{text.name}</span>
-                    <span className="mt-0.5 block text-xs text-on-surface-muted">
-                      {alwaysOn
-                        ? gt("Always on. Accounts and resources are what every other app reads.")
-                        : text.tagline}
+            {PRODUCTS.filter((product) => !ALWAYS_ON_PRODUCTS.includes(product.id)).map(
+              (product) => {
+                const text = copy[product.id];
+                const on = !disabled.includes(product.id);
+                return (
+                  <li key={product.id} className="flex items-center gap-3 px-4 py-3">
+                    <ProductIcon product={product.id} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-on-surface">{text.name}</span>
+                      <span className="mt-0.5 block text-xs text-on-surface-muted">
+                        {text.tagline}
+                      </span>
                     </span>
-                  </span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={on}
-                    aria-label={text.name}
-                    disabled={alwaysOn || !canEdit || saving !== null}
-                    onClick={() => void setEnabled(product.id, !on)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                      on ? "bg-accent" : "bg-surface-sunken border border-border-strong"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
-                        on ? "translate-x-4 bg-on-accent" : "translate-x-1 bg-on-surface-muted"
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={on}
+                      aria-label={text.name}
+                      disabled={!canEdit || saving !== null}
+                      onClick={() => void setEnabled(product.id, !on)}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        on ? "bg-accent" : "bg-surface-sunken border border-border-strong"
                       }`}
-                    />
-                  </button>
-                </li>
-              );
-            })}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
+                          on ? "translate-x-4 bg-on-accent" : "translate-x-1 bg-on-surface-muted"
+                        }`}
+                      />
+                    </button>
+                  </li>
+                );
+              },
+            )}
           </ul>
         </>
       )}

@@ -8,12 +8,9 @@ import {
   DEFAULT_CHAT_MODEL,
   DroppableDashboardItem,
   emitChatConversationsChanged,
-  SidebarApps,
   SidebarHomeButton,
-  SidebarRecentTools,
   useUIStore,
   type ConversationSummary,
-  type SidebarToolDef,
   CloseIcon,
   usePaletteIntent,
 } from "@infrawrench/ui";
@@ -25,7 +22,6 @@ import {
 } from "../lib/workspace-tabs";
 import { listCloudDashboards, createCloudDashboard, deleteCloudDashboard } from "../lib/cloud-api";
 import { getDesktopChatClient } from "./CloudChatPanel";
-import { useOrgTools } from "../lib/org-tools";
 import { cloudClient } from "../lib/cloud-client";
 import { runRpc } from "../lib/rpc/client";
 
@@ -49,7 +45,6 @@ export function SidebarDashboards() {
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
-  const navTools = useOrgTools();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
@@ -344,9 +339,6 @@ export function SidebarDashboards() {
           )}
         </div>
       )}
-
-      <SidebarRecentTools tools={navTools} scope={activeCloudOrgId ?? "local"} />
-      <SidebarApps tools={navTools} />
     </div>
   );
 }

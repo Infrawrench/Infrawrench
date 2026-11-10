@@ -712,9 +712,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             )}
           </div>
 
-          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
-          <SidebarApps tools={orgTools} />
-
           {/* Plugin groups: Infrastructure's part of the sidebar, shown only
               in its context (see showsInfrastructureSidebar). Hidden rather
               than unmounted so expanded accounts survive a visit elsewhere. */}
@@ -853,6 +850,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               </div>
             ))}
           </div>
+
+          {/* Below the accounts tree: when the tree shows it is what the
+              person came for, and the apps list is long enough to push it
+              out of view. */}
+          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
+          <SidebarApps tools={orgTools} />
         </div>
 
         {/* Manage accounts: every account, and the way to connect another */}

@@ -23245,5 +23245,12 @@
   "eaf2b128867d09cb": "El panel predeterminado es {name}.",
   "fbfad59d95f6dbee": "Aplicaciones actualizadas",
   "3b3ec2ddc2d4b3f9": "Gestionar cuentas",
-  "ea925b0a7b0128f3": "Aún no hay cuentas conectadas."
+  "ea925b0a7b0128f3": "Aún no hay cuentas conectadas.",
+  "b33cd3c480da8b64": "Cuentas, recursos y cómo se conectan.",
+  "e33f6b3ad030662a": "Gasto, presupuestos, informes y facturas.",
+  "0f95daf7be9521c2": "Registros, alertas, sondas y SLOs.",
+  "779c9ce43dd72894": "Incidentes, páginas de estado, runbooks y el calendario.",
+  "b2add9b502555e53": "Postura, vulnerabilidades, cumplimiento y acceso.",
+  "518ea80327681c9f": "Despliegues, CI, entornos y métricas de entrega.",
+  "8f8024ddc34f13f5": "Agentes y flujos de trabajo."
 }

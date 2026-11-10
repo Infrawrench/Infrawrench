@@ -16,6 +16,8 @@ import {
   toast,
   TunnelSshAttachModal,
   useUIStore,
+  SidebarApps,
+  SidebarRecentTools,
   ManageAccountsModal,
   type ManagedAccountGroup,
   useShowsInfrastructureSidebar,
@@ -85,6 +87,7 @@ import {
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
 import { resolveDefaultDashboard } from "../lib/default-dashboard";
+import { useOrgTools } from "../lib/org-tools";
 import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 export const Route = createRootRoute({
@@ -584,6 +587,7 @@ function RootLayout() {
   }
 
   const showAccounts = useShowsInfrastructureSidebar();
+  const orgTools = useOrgTools();
 
   function handleNewTab() {
     // A new tab opens on Home, the grid of products.
@@ -716,6 +720,11 @@ function RootLayout() {
                       onGroupsChange={setAccountGroups}
                     />
                   </div>
+                  {/* Below the accounts tree: when the tree shows it is what
+                      the person came for, and the apps list is long enough
+                      to push it out of view. */}
+                  <SidebarRecentTools tools={orgTools} scope={activeOrgId ?? "local"} />
+                  <SidebarApps tools={orgTools} />
                 </div>
 
                 <div className="border-t border-border p-2">

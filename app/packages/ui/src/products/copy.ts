@@ -4,7 +4,7 @@ import type { ProductId } from "./registry.js";
 
 export interface ProductCopy {
   name: string;
-  /** One line, shown on the Home card. */
+  /** What is in the app, as a plain list. Never a slogan. */
   tagline: string;
 }
 
@@ -19,31 +19,31 @@ export function useProductCopy(): Record<ProductId, ProductCopy> {
     () => ({
       infrastructure: {
         name: gt("Infrastructure"),
-        tagline: gt("Everything you run, across every provider, in one inventory."),
+        tagline: gt("Accounts, resources and how they connect."),
       },
       costs: {
         name: gt("Costs"),
-        tagline: gt("See what you spend, why it moved, and where to cut it."),
+        tagline: gt("Spend, budgets, reports and invoices."),
       },
       observability: {
         name: gt("Observability"),
-        tagline: gt("Logs, metrics, uptime and objectives for what you run."),
+        tagline: gt("Logs, alerts, probes and SLOs."),
       },
       incidents: {
         name: gt("Incident response"),
-        tagline: gt("Declare it, run it, tell people, and learn from it."),
+        tagline: gt("Incidents, status pages, runbooks and the calendar."),
       },
       security: {
         name: gt("Security"),
-        tagline: gt("Find what is exposed, prove what is covered, control who gets in."),
+        tagline: gt("Posture, vulnerabilities, compliance and access."),
       },
       delivery: {
         name: gt("Delivery"),
-        tagline: gt("Build, ship and measure every change."),
+        tagline: gt("Deploys, CI, environments and delivery metrics."),
       },
       automation: {
         name: gt("Automation"),
-        tagline: gt("Hand work to agents and workflows."),
+        tagline: gt("Agents and workflows."),
       },
     }),
     [gt],

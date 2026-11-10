@@ -118,3 +118,27 @@ export function ProductIcon({ product, size = 36 }: ProductIconProps) {
     </span>
   );
 }
+
+/**
+ * The product's glyph alone, in the current text colour: for the sidebar,
+ * which stays dark in the light theme, where the tinted square's series
+ * colours (chosen for the page background) would all but disappear.
+ */
+export function ProductGlyph({ product, size = 14 }: ProductIconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="flex-shrink-0 opacity-70"
+    >
+      {GLYPHS[product]}
+    </svg>
+  );
+}
