@@ -25,7 +25,7 @@ import { dispatchRun, dueQueuedRunIds, expireApprovals, runningRuns, syncRun } f
  * one at a time, as GitHub asks of an integration; separate runs need not
  * wait for each other.
  */
-export const CI_RUN_CONCURRENCY = 4;
+export const CI_RUN_CONCURRENCY = 16;
 
 export async function runCiStatusPass(): Promise<void> {
   if (!ciProxyConfigured()) return;
