@@ -1,6 +1,7 @@
 #ifndef NAPI_V8_EDGE_V8_PLATFORM_H_
 #define NAPI_V8_EDGE_V8_PLATFORM_H_
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -43,7 +44,21 @@ class EdgeV8Platform final : public v8::Platform {
   void ClearForegroundTaskTarget(v8::Isolate* isolate, napi_env env);
   void AddPendingForegroundTask(const std::shared_ptr<IsolateState>& state);
   void CompletePendingForegroundTask(const std::shared_ptr<IsolateState>& state);
-  void PumpPendingForegroundTasks(v8::Isolate* isolate);
+  // iwci patch: returns whether it ran a task.
+  bool PumpPendingForegroundTasks(v8::Isolate* isolate);
+
+  // iwci patch: what an isolate's event loop waits for (#943). Worker tasks
+  // are attributed to the isolate whose thread posted them (or to the
+  // isolate of the worker task that posted them), as Node's DrainTasks
+  // counts them; foreground tasks are its own.
+  //
+  // Whether the isolate has background work queued or running, or an
+  // immediate foreground task waiting for the next pump.
+  bool HasPendingWork(v8::Isolate* isolate);
+  // Blocks the isolate's thread until an immediate foreground task is posted
+  // for it, its background work ends, or `timeout` passes, whichever comes
+  // first. Returns at once when there is nothing to wait for.
+  void WaitForPendingWork(v8::Isolate* isolate, std::chrono::microseconds timeout);
 
   int NumberOfWorkerThreads() override;
   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
@@ -86,6 +101,8 @@ class EdgeV8Platform final : public v8::Platform {
   void BeginShutdown(const std::shared_ptr<IsolateState>& state);
   void MaybeFinishIsolate(const std::shared_ptr<IsolateState>& state,
                           bool begin_shutdown);
+  // iwci patch: the isolate that background work posted now belongs to.
+  std::shared_ptr<IsolateState> CurrentWorkOwner();
 
   std::unique_ptr<v8::Platform> fallback_;
   std::mutex mutex_;

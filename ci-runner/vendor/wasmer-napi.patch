@@ -1043,6 +1043,186 @@
  pub unsafe extern "C" fn snapi_bridge_unofficial_enqueue_microtask(
      env: SnapiEnv,
      callback_id: u32,
+--- a/v8/src/edge_v8_platform.cc
++++ b/v8/src/edge_v8_platform.cc
+@@ -96,6 +96,13 @@
+   std::shared_ptr<ForegroundTaskRunner> runner;
+   std::mutex mutex;
+   size_t pending_foreground_tasks = 0;
++  // iwci patch (#943): worker tasks attributed to this isolate that are
++  // queued or running, and whether an immediate foreground task has been
++  // posted since the last pump. Both under `mutex`; `work_cv` is notified
++  // when either changes in a way a waiting event loop cares about.
++  size_t worker_tasks_in_flight = 0;
++  bool foreground_task_posted = false;
++  std::condition_variable work_cv;
+   bool shutdown_started = false;
+   bool finished = false;
+   std::vector<FinishedCallback> finished_callbacks;
+@@ -134,6 +141,42 @@
+   std::shared_ptr<EdgeV8Platform::IsolateState> isolate_state_;
+   std::unique_ptr<v8::Task> task_;
+   std::atomic<bool> finished_ {false};
++};
++
++// iwci patch (#943): the isolate the worker task running on this thread
++// belongs to, so that what it posts in turn (a compile job's next step) is
++// counted for the same isolate.
++thread_local const std::shared_ptr<EdgeV8Platform::IsolateState>* t_work_owner = nullptr;
++
++// A worker task counted against the isolate it belongs to from when it is
++// posted until it is destroyed, run or not, so the isolate's event loop can
++// wait for it as Node's DrainTasks does.
++class OwnedWorkerTask final : public v8::Task {
++ public:
++  OwnedWorkerTask(std::shared_ptr<EdgeV8Platform::IsolateState> owner,
++                  std::unique_ptr<v8::Task> task)
++      : owner_(std::move(owner)), task_(std::move(task)) {
++    std::lock_guard<std::mutex> lock(owner_->mutex);
++    owner_->worker_tasks_in_flight += 1;
++  }
++
++  ~OwnedWorkerTask() override {
++    task_.reset();
++    std::lock_guard<std::mutex> lock(owner_->mutex);
++    owner_->worker_tasks_in_flight -= 1;
++    if (owner_->worker_tasks_in_flight == 0) owner_->work_cv.notify_all();
++  }
++
++  void Run() override {
++    const std::shared_ptr<EdgeV8Platform::IsolateState>* previous = t_work_owner;
++    t_work_owner = &owner_;
++    task_->Run();
++    t_work_owner = previous;
++  }
++
++ private:
++  std::shared_ptr<EdgeV8Platform::IsolateState> owner_;
++  std::unique_ptr<v8::Task> task_;
+ };
+ 
+ void RunForegroundTaskRecord(napi_env /*env*/, void* data) {
+@@ -251,6 +294,13 @@
+       }
+       if (delay_ms == 0) {
+         runner->PostTask(std::move(counted_task), location);
++        // iwci patch (#943): only a checkpoint's pump runs it; wake the
++        // isolate's event loop if it is waiting in one.
++        if (isolate_state != nullptr) {
++          std::lock_guard<std::mutex> lock(isolate_state->mutex);
++          isolate_state->foreground_task_posted = true;
++          isolate_state->work_cv.notify_all();
++        }
+       } else {
+         runner->PostDelayedTask(std::move(counted_task), delay_ms / 1000.0, location);
+       }
+@@ -510,8 +560,8 @@
+   state->runner->ClearTarget(env);
+ }
+ 
+-void EdgeV8Platform::PumpPendingForegroundTasks(v8::Isolate* isolate) {
+-  if (fallback_ == nullptr || isolate == nullptr) return;
++bool EdgeV8Platform::PumpPendingForegroundTasks(v8::Isolate* isolate) {
++  if (fallback_ == nullptr || isolate == nullptr) return false;
+   // ForegroundTaskRunner::PostTaskCommon forwards to the guest's bound
+   // enqueue callback when one is set, but falls back to fallback_'s own
+   // GetForegroundTaskRunner() when no guest target is bound (e.g. the guest
+@@ -520,10 +570,41 @@
+   // runner's queue, so tasks routed there -- including V8-internal work like
+   // Heap::PostFinalizationRegistryCleanupTaskIfNeeded's cleanup task -- would
+   // otherwise be posted and never run. Drain it explicitly.
++  if (std::shared_ptr<IsolateState> state = GetState(isolate)) {
++    // Cleared first: a task posted while this pumps is run by it or marks
++    // the isolate again for the next pump.
++    std::lock_guard<std::mutex> lock(state->mutex);
++    state->foreground_task_posted = false;
++  }
++  bool ran = false;
+   while (v8::platform::PumpMessageLoop(fallback_.get(), isolate)) {
++    ran = true;
+   }
++  return ran;
++}
++
++bool EdgeV8Platform::HasPendingWork(v8::Isolate* isolate) {
++  std::shared_ptr<IsolateState> state = GetState(isolate);
++  if (!state) return false;
++  std::lock_guard<std::mutex> lock(state->mutex);
++  return state->worker_tasks_in_flight != 0 || state->foreground_task_posted;
+ }
+ 
++void EdgeV8Platform::WaitForPendingWork(v8::Isolate* isolate,
++                                        std::chrono::microseconds timeout) {
++  std::shared_ptr<IsolateState> state = GetState(isolate);
++  if (!state) return;
++  std::unique_lock<std::mutex> lock(state->mutex);
++  state->work_cv.wait_for(lock, timeout, [&] {
++    return state->foreground_task_posted || state->worker_tasks_in_flight == 0;
++  });
++}
++
++std::shared_ptr<EdgeV8Platform::IsolateState> EdgeV8Platform::CurrentWorkOwner() {
++  if (t_work_owner != nullptr) return *t_work_owner;
++  return GetState(v8::Isolate::TryGetCurrent());
++}
++
+ int EdgeV8Platform::NumberOfWorkerThreads() {
+   return fallback_ != nullptr ? fallback_->NumberOfWorkerThreads() : 0;
+ }
+@@ -599,6 +680,10 @@
+                                                std::unique_ptr<v8::Task> task,
+                                                const v8::SourceLocation& location) {
+   if (fallback_ != nullptr) {
++    // iwci patch (#943): counted against the isolate it is for.
++    if (std::shared_ptr<IsolateState> owner = CurrentWorkOwner()) {
++      task = std::make_unique<OwnedWorkerTask>(std::move(owner), std::move(task));
++    }
+     fallback_->PostTaskOnWorkerThread(priority, std::move(task), location);
+   }
+ }
+--- a/v8/src/edge_v8_platform.h
++++ b/v8/src/edge_v8_platform.h
+@@ -1,6 +1,7 @@
+ #ifndef NAPI_V8_EDGE_V8_PLATFORM_H_
+ #define NAPI_V8_EDGE_V8_PLATFORM_H_
+ 
++#include <chrono>
+ #include <memory>
+ #include <mutex>
+ #include <unordered_map>
+@@ -43,8 +44,22 @@
+   void ClearForegroundTaskTarget(v8::Isolate* isolate, napi_env env);
+   void AddPendingForegroundTask(const std::shared_ptr<IsolateState>& state);
+   void CompletePendingForegroundTask(const std::shared_ptr<IsolateState>& state);
+-  void PumpPendingForegroundTasks(v8::Isolate* isolate);
++  // iwci patch: returns whether it ran a task.
++  bool PumpPendingForegroundTasks(v8::Isolate* isolate);
+ 
++  // iwci patch: what an isolate's event loop waits for (#943). Worker tasks
++  // are attributed to the isolate whose thread posted them (or to the
++  // isolate of the worker task that posted them), as Node's DrainTasks
++  // counts them; foreground tasks are its own.
++  //
++  // Whether the isolate has background work queued or running, or an
++  // immediate foreground task waiting for the next pump.
++  bool HasPendingWork(v8::Isolate* isolate);
++  // Blocks the isolate's thread until an immediate foreground task is posted
++  // for it, its background work ends, or `timeout` passes, whichever comes
++  // first. Returns at once when there is nothing to wait for.
++  void WaitForPendingWork(v8::Isolate* isolate, std::chrono::microseconds timeout);
++
+   int NumberOfWorkerThreads() override;
+   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
+       v8::Isolate* isolate, v8::TaskPriority priority) override;
+@@ -86,6 +101,8 @@
+   void BeginShutdown(const std::shared_ptr<IsolateState>& state);
+   void MaybeFinishIsolate(const std::shared_ptr<IsolateState>& state,
+                           bool begin_shutdown);
++  // iwci patch: the isolate that background work posted now belongs to.
++  std::shared_ptr<IsolateState> CurrentWorkOwner();
+ 
+   std::unique_ptr<v8::Platform> fallback_;
+   std::mutex mutex_;
 --- a/v8/src/unofficial_napi.cc
 +++ b/v8/src/unofficial_napi.cc
 @@ -710,6 +710,19 @@
@@ -1065,3 +1245,147 @@
    v8::V8::InitializeICUDefaultLocation("");
    v8::V8::InitializeExternalStartupData("");
    g_runtime.platform = EdgeV8Platform::Create();
+@@ -2121,52 +2134,122 @@
+ // FinalizationRegistry callbacks never fire. Pump it here, at the same point
+ // microtasks are already checkpointed, so this deferred work always gets a
+ // chance to run regardless of whether the guest wired up its own hook.
+-void PumpPlatformForegroundTasks(napi_env env) {
+-  if (env == nullptr || env->isolate == nullptr) return;
++bool PumpPlatformForegroundTasks(napi_env env) {
++  if (env == nullptr || env->isolate == nullptr) return false;
+   EdgeV8Platform* platform = nullptr;
+   {
+     std::lock_guard<std::mutex> lock(g_runtime_mu);
+     platform = g_runtime.platform.get();
+   }
+-  if (platform != nullptr) {
+-    platform->PumpPendingForegroundTasks(env->isolate);
+-  }
++  return platform != nullptr &&
++         platform->PumpPendingForegroundTasks(env->isolate);
+ }
+ 
+-void DrainMicrotasksForEnv(napi_env env) {
+-  if (env == nullptr || env->isolate == nullptr) return;
++// iwci patch (#943): microtasks, then the platform's foreground tasks, and
++// again while those ran, a few rounds at most. A task can settle a promise
++// (the end of a WebAssembly.compile does), and its reactions were otherwise
++// left queued after the one checkpoint, where nothing ran them until
++// something else woke the loop. Returns whether the last round still ran a
++// task, so the caller can ask for another turn rather than loop here;
++// `ran_any` says whether any round did.
++bool DrainMicrotasksForEnv(napi_env env, bool* ran_any = nullptr) {
++  if (env == nullptr || env->isolate == nullptr) return false;
+   env->DrainFinalizerQueue();
+-  v8::Local<v8::Context> context = env->context();
+-  if (!context.IsEmpty()) {
+-    v8::MicrotaskQueue* queue = context->GetMicrotaskQueue();
++  for (int round = 0; round < 4; ++round) {
++    v8::HandleScope scope(env->isolate);
++    v8::Local<v8::Context> context = env->context();
++    v8::MicrotaskQueue* queue =
++        context.IsEmpty() ? nullptr : context->GetMicrotaskQueue();
+     if (queue != nullptr) {
+       queue->PerformCheckpoint(env->isolate);
+-      env->DrainFinalizerQueue();
+-      PumpPlatformForegroundTasks(env);
+-      return;
++    } else {
++      env->isolate->PerformMicrotaskCheckpoint();
+     }
++    env->DrainFinalizerQueue();
++    if (!PumpPlatformForegroundTasks(env)) return false;
++    if (ran_any != nullptr) *ran_any = true;
+   }
+-  env->isolate->PerformMicrotaskCheckpoint();
+-  env->DrainFinalizerQueue();
+-  PumpPlatformForegroundTasks(env);
++  return true;
+ }
+ 
++// iwci patch (#943): how long a host task turn may wait for the platform's
++// work. With nothing runnable in the loop (it has only timers or I/O that are
++// not due yet, or it is empty) the turn waits up to kPlatformWaitLimit;
++// libuv's own events are looked at again after it. When the loop has
++// something runnable, the first turn does not wait at all, and only a run of
++// such turns in which none of the platform's tasks came (a loop with nothing
++// left in it, whose runnable flag is always set) backs off up to the same
++// limit, so it does not spin.
++constexpr std::chrono::microseconds kPlatformWaitLimit{1000};
++constexpr std::chrono::microseconds kPlatformBackoffStart{25};
++
++struct PlatformWaitStreak {
++  napi_env env = nullptr;
++  int turns = 0;
++};
++thread_local PlatformWaitStreak t_platform_wait_streak;
++
++// iwci patch (#943): admit a host task turn for the platform's work. The
++// bridge binds no foreground task target for a guest (the guest's enqueue
++// hook would have to run guest code on V8's threads), so a task V8 posts for
++// the isolate from another thread, such as the end of a WebAssembly.compile,
++// waits in the platform's queue for a checkpoint, and nothing here can wake
++// the guest's libuv. So while the isolate has background work in flight (or
++// such a task is waiting), the checkpoint waits for it instead, woken the
++// moment the task is posted or the work ends, and reports the work pending
++// and the turn admitted: the runtime neither sleeps in libuv past the task
++// nor treats its loop as empty, which is Node's DrainTasks.
++bool AdmitPlatformWork(napi_env env, bool has_runnable_work) {
++  PlatformWaitStreak& streak = t_platform_wait_streak;
++  if (streak.env != env) streak = PlatformWaitStreak{env, 0};
++  EdgeV8Platform* platform = nullptr;
++  {
++    std::lock_guard<std::mutex> lock(g_runtime_mu);
++    platform = g_runtime.platform.get();
++  }
++  if (platform == nullptr || !platform->HasPendingWork(env->isolate)) {
++    streak.turns = 0;
++    return false;
++  }
++  std::chrono::microseconds wait{0};
++  if (!has_runnable_work) {
++    wait = kPlatformWaitLimit;
++  } else if (streak.turns > 0) {
++    wait = std::min(kPlatformWaitLimit,
++                    kPlatformBackoffStart * (1 << std::min(streak.turns - 1, 6)));
++  }
++  if (wait.count() > 0) platform->WaitForPendingWork(env->isolate, wait);
++  bool ran = false;
++  (void)DrainMicrotasksForEnv(env, &ran);
++  streak.turns = has_runnable_work && !ran ? streak.turns + 1 : 0;
++  return true;
++}
++
+ napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
+     napi_env env,
+     unofficial_napi_event_loop_checkpoint_mode mode,
+     bool has_runnable_work,
+     uint32_t* state_out) {
+-  (void)has_runnable_work;
+   if (env == nullptr || env->isolate == nullptr) return napi_invalid_arg;
+   if (mode != unofficial_napi_event_loop_checkpoint_microtasks &&
+       mode != unofficial_napi_event_loop_checkpoint_host_tasks) {
+     return napi_invalid_arg;
+   }
+-  DrainMicrotasksForEnv(env);
++  const bool tasks_left = DrainMicrotasksForEnv(env);
++  // iwci patch (#943): only a host task turn may wait or keep the loop going.
++  const bool platform_work =
++      mode == unofficial_napi_event_loop_checkpoint_host_tasks &&
++      (AdmitPlatformWork(env, has_runnable_work) || tasks_left);
+   if (state_out != nullptr) {
+-    *state_out = NapiV8HasPendingProviderWork(env)
+-                     ? unofficial_napi_event_loop_checkpoint_state_pending_provider_work
+-                     : unofficial_napi_event_loop_checkpoint_state_none;
++    uint32_t state = unofficial_napi_event_loop_checkpoint_state_none;
++    if (NapiV8HasPendingProviderWork(env)) {
++      state |= unofficial_napi_event_loop_checkpoint_state_pending_provider_work;
++    }
++    if (platform_work) {
++      state |= unofficial_napi_event_loop_checkpoint_state_pending_provider_work |
++               unofficial_napi_event_loop_checkpoint_state_host_tasks_admitted;
++    }
++    *state_out = state;
+   }
+   return napi_ok;
+ }

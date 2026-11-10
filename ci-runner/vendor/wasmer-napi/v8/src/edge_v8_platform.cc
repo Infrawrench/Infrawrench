@@ -96,6 +96,13 @@ struct EdgeV8Platform::IsolateState {
   std::shared_ptr<ForegroundTaskRunner> runner;
   std::mutex mutex;
   size_t pending_foreground_tasks = 0;
+  // iwci patch (#943): worker tasks attributed to this isolate that are
+  // queued or running, and whether an immediate foreground task has been
+  // posted since the last pump. Both under `mutex`; `work_cv` is notified
+  // when either changes in a way a waiting event loop cares about.
+  size_t worker_tasks_in_flight = 0;
+  bool foreground_task_posted = false;
+  std::condition_variable work_cv;
   bool shutdown_started = false;
   bool finished = false;
   std::vector<FinishedCallback> finished_callbacks;
@@ -134,6 +141,42 @@ class CountedForegroundTask final : public v8::Task {
   std::shared_ptr<EdgeV8Platform::IsolateState> isolate_state_;
   std::unique_ptr<v8::Task> task_;
   std::atomic<bool> finished_ {false};
+};
+
+// iwci patch (#943): the isolate the worker task running on this thread
+// belongs to, so that what it posts in turn (a compile job's next step) is
+// counted for the same isolate.
+thread_local const std::shared_ptr<EdgeV8Platform::IsolateState>* t_work_owner = nullptr;
+
+// A worker task counted against the isolate it belongs to from when it is
+// posted until it is destroyed, run or not, so the isolate's event loop can
+// wait for it as Node's DrainTasks does.
+class OwnedWorkerTask final : public v8::Task {
+ public:
+  OwnedWorkerTask(std::shared_ptr<EdgeV8Platform::IsolateState> owner,
+                  std::unique_ptr<v8::Task> task)
+      : owner_(std::move(owner)), task_(std::move(task)) {
+    std::lock_guard<std::mutex> lock(owner_->mutex);
+    owner_->worker_tasks_in_flight += 1;
+  }
+
+  ~OwnedWorkerTask() override {
+    task_.reset();
+    std::lock_guard<std::mutex> lock(owner_->mutex);
+    owner_->worker_tasks_in_flight -= 1;
+    if (owner_->worker_tasks_in_flight == 0) owner_->work_cv.notify_all();
+  }
+
+  void Run() override {
+    const std::shared_ptr<EdgeV8Platform::IsolateState>* previous = t_work_owner;
+    t_work_owner = &owner_;
+    task_->Run();
+    t_work_owner = previous;
+  }
+
+ private:
+  std::shared_ptr<EdgeV8Platform::IsolateState> owner_;
+  std::unique_ptr<v8::Task> task_;
 };
 
 void RunForegroundTaskRecord(napi_env /*env*/, void* data) {
@@ -251,6 +294,13 @@ class EdgeV8Platform::ForegroundTaskRunner final : public v8::TaskRunner {
       }
       if (delay_ms == 0) {
         runner->PostTask(std::move(counted_task), location);
+        // iwci patch (#943): only a checkpoint's pump runs it; wake the
+        // isolate's event loop if it is waiting in one.
+        if (isolate_state != nullptr) {
+          std::lock_guard<std::mutex> lock(isolate_state->mutex);
+          isolate_state->foreground_task_posted = true;
+          isolate_state->work_cv.notify_all();
+        }
       } else {
         runner->PostDelayedTask(std::move(counted_task), delay_ms / 1000.0, location);
       }
@@ -510,8 +560,8 @@ void EdgeV8Platform::ClearForegroundTaskTarget(v8::Isolate* isolate, napi_env en
   state->runner->ClearTarget(env);
 }
 
-void EdgeV8Platform::PumpPendingForegroundTasks(v8::Isolate* isolate) {
-  if (fallback_ == nullptr || isolate == nullptr) return;
+bool EdgeV8Platform::PumpPendingForegroundTasks(v8::Isolate* isolate) {
+  if (fallback_ == nullptr || isolate == nullptr) return false;
   // ForegroundTaskRunner::PostTaskCommon forwards to the guest's bound
   // enqueue callback when one is set, but falls back to fallback_'s own
   // GetForegroundTaskRunner() when no guest target is bound (e.g. the guest
@@ -520,8 +570,39 @@ void EdgeV8Platform::PumpPendingForegroundTasks(v8::Isolate* isolate) {
   // runner's queue, so tasks routed there -- including V8-internal work like
   // Heap::PostFinalizationRegistryCleanupTaskIfNeeded's cleanup task -- would
   // otherwise be posted and never run. Drain it explicitly.
-  while (v8::platform::PumpMessageLoop(fallback_.get(), isolate)) {
+  if (std::shared_ptr<IsolateState> state = GetState(isolate)) {
+    // Cleared first: a task posted while this pumps is run by it or marks
+    // the isolate again for the next pump.
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->foreground_task_posted = false;
   }
+  bool ran = false;
+  while (v8::platform::PumpMessageLoop(fallback_.get(), isolate)) {
+    ran = true;
+  }
+  return ran;
+}
+
+bool EdgeV8Platform::HasPendingWork(v8::Isolate* isolate) {
+  std::shared_ptr<IsolateState> state = GetState(isolate);
+  if (!state) return false;
+  std::lock_guard<std::mutex> lock(state->mutex);
+  return state->worker_tasks_in_flight != 0 || state->foreground_task_posted;
+}
+
+void EdgeV8Platform::WaitForPendingWork(v8::Isolate* isolate,
+                                        std::chrono::microseconds timeout) {
+  std::shared_ptr<IsolateState> state = GetState(isolate);
+  if (!state) return;
+  std::unique_lock<std::mutex> lock(state->mutex);
+  state->work_cv.wait_for(lock, timeout, [&] {
+    return state->foreground_task_posted || state->worker_tasks_in_flight == 0;
+  });
+}
+
+std::shared_ptr<EdgeV8Platform::IsolateState> EdgeV8Platform::CurrentWorkOwner() {
+  if (t_work_owner != nullptr) return *t_work_owner;
+  return GetState(v8::Isolate::TryGetCurrent());
 }
 
 int EdgeV8Platform::NumberOfWorkerThreads() {
@@ -599,6 +680,10 @@ void EdgeV8Platform::PostTaskOnWorkerThreadImpl(v8::TaskPriority priority,
                                                std::unique_ptr<v8::Task> task,
                                                const v8::SourceLocation& location) {
   if (fallback_ != nullptr) {
+    // iwci patch (#943): counted against the isolate it is for.
+    if (std::shared_ptr<IsolateState> owner = CurrentWorkOwner()) {
+      task = std::make_unique<OwnedWorkerTask>(std::move(owner), std::move(task));
+    }
     fallback_->PostTaskOnWorkerThread(priority, std::move(task), location);
   }
 }
