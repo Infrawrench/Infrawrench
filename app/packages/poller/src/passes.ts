@@ -20,7 +20,7 @@
  * Every `run` is defensive: it logs and swallows its own failure, so one
  * broken pass never stops the next, on either runtime.
  */
-import { runCiPass } from "@infrawrench/server-core/ci/pass";
+import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -161,10 +161,20 @@ export interface PeriodicPass {
    * the edge scheduler in Durable Object storage.
    */
   minIntervalMs?: number;
+  /**
+   * Run on a loop of its own, this long after its last run settles, rather
+   * than in turn on the shared tick, which waits for every other pass. For
+   * a pass someone is watching happen (CI statuses). The edge scheduler
+   * already gives every periodic pass its own invocation.
+   */
+  ownLoopMs?: number;
   run: () => Promise<void>;
 }
 
 export type Pass = AccountPass | PeriodicPass;
+
+/** How long the CI status loop waits after one pass settles before the next. */
+export const CI_STATUS_LOOP_MS = 5_000;
 
 type Capability =
   "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats" | "idleFindings";
@@ -508,14 +518,23 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[revnu] report tick failed:", () => runRevnuReportPass()),
   },
 
-  // CI: dispatch queued runs, follow running ones, close unapproved forks'
-  // runs and send usage to the billing meters. Postgres, the CI proxy,
-  // GitHub and Stripe only, and every step claims its rows, so the edge.
+  // CI: dispatch queued runs and follow running ones, which moves every
+  // check on GitHub and the CI tab, on a loop of its own every few seconds;
+  // closing unapproved forks' runs and sending usage to the billing meters
+  // on the shared tick. Postgres, the CI proxy, GitHub and Stripe only, and
+  // every step claims its rows, so the edge.
   {
     kind: "periodic",
     name: "ci",
     runtime: "edge",
-    run: guarded("[ci] tick failed:", () => runCiPass()),
+    ownLoopMs: CI_STATUS_LOOP_MS,
+    run: guarded("[ci] tick failed:", () => runCiStatusPass()),
+  },
+  {
+    kind: "periodic",
+    name: "ci-upkeep",
+    runtime: "edge",
+    run: guarded("[ci] upkeep failed:", () => runCiUpkeepPass()),
   },
 
   // Retention: idempotent prunes, at most hourly.
