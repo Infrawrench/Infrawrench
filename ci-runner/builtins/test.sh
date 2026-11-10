@@ -20,7 +20,8 @@
 # failure, so it cannot hide behind an expected failure.
 #
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
-# needs one built with `--features node`). SKIP_BUILD=1 publishes what is
+# needs one built with `--features node`, and x86_64 Linux to build its
+# Edge.js, see environments/edgejs/build.sh). SKIP_BUILD=1 publishes what is
 # already in dist/ instead of building. Needs: git, jq, and whatever the
 # named build scripts need.
 # shellcheck source=builtins/lib.sh
@@ -44,7 +45,11 @@ for name in "$@"; do
       ;;
     bash | bash-node)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
-        bash "$here/environments/build.sh"
+        envs=()
+        for env in "$@"; do
+          [[ "$env" == bash || "$env" == bash-node ]] && envs+=("$env")
+        done
+        bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
       fi
       dirs=("$dist"/environment/"$name"/*)
@@ -274,11 +279,13 @@ jobs:
       for i in $(seq 20); do test "$(node /tmp/compile.js)" = done; done
       test "$(node /tmp/compile.js timer)" = done
 
-  # Relative paths read from many threads at once (#937): wasix-libc makes
+  # Relative paths read from many threads at once (#937): wasix-libc made
   # them absolute in one buffer every thread shares, so a read could open
-  # the working directory (EISDIR) or another file. The runner's preload
-  # makes them absolute first. Four files of the same length, 40,000 reads,
-  # every one checked for its own contents.
+  # the working directory (EISDIR) or another file. The environment's
+  # Edge.js is built on a C library without that buffer
+  # (environments/edgejs/build.sh), and nothing in the runner stands in for
+  # it. Four files of the same length, 40,000 reads, every one checked for
+  # its own contents: 40 to 69 per run came back wrong before.
   relative-reads-passes:
     using: env:bash-node@24
     timeout: 3m

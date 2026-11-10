@@ -1,8 +1,8 @@
 name: CI runner builtins
 
 # The builtins whose builds need a large toolchain of their own: tsc-rs
-# (binaryen, Node), oxfmt (the WASIX Rust toolchain) and Edge.js under the
-# runner's V8 (`--features node`). Each job builds one with its own script
+# (binaryen, Node), oxfmt (the WASIX Rust toolchain) and Edge.js (built from
+# source with wasixcc, run under the runner's V8, `--features node`). Each job builds one with its own script
 # in ci-runner/builtins/, then runs builtins/test.sh, which publishes it to a
 # throwaway store and runs pipelines through `iwci run`. gofmt and bash are
 # cheap and are tested on every change by ci-runner.yml.
@@ -187,8 +187,19 @@ jobs:
       - name: Build the runner with V8
         run: cargo build -p iwci --features node
 
-      - name: Build the environments
-        run: bash builtins/environments/build.sh
+      # Edge.js is built from source (builtins/environments/edgejs/build.sh:
+      # about five minutes, after 600 MB of pinned downloads). The build is
+      # reproducible and the next step checks the package against the hash
+      # pinned in environments/build.sh, so a cached one is as good as a
+      # fresh one and a wrong one fails either way.
+      - name: Cache the Edge.js package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/edgejs
+          key: edgejs-${{ hashFiles('ci-runner/builtins/environments/edgejs/**', 'ci-runner/builtins/lib.sh') }}
+
+      - name: Build the environment
+        run: bash builtins/environments/build.sh bash-node
 
       - name: Publish and run it through iwci
         run: SKIP_BUILD=1 bash builtins/test.sh bash-node
