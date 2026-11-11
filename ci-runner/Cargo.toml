@@ -58,5 +58,10 @@ opt-level = 2
 # wasmer-napi 0.705.0 with vendor/wasmer-napi.patch: terminating a job's V8
 # isolates no longer waits for a lock the running script holds, so a job
 # timeout stops a spinning `node`. See vendor/README.md for when to remove it.
+#
+# wasmer-wasix 0.705.0 with vendor/wasmer-wasix.patch: a spawned script runs
+# its `#!` interpreter (#958), and `waitpid(-1, WNOHANG)` no longer blocks
+# (#961). See vendor/README.md for when to remove it.
 [patch.crates-io]
 wasmer-napi = { path = "vendor/wasmer-napi" }
+wasmer-wasix = { path = "vendor/wasmer-wasix" }

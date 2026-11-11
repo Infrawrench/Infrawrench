@@ -240,3 +240,57 @@ Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.
+
+## wasmer-wasix 0.705.0
+
+From crates.io, sha256
+`1d5bbce1be073ab1e40f5ed2468653832c22aecfd73e2ba763c41a5d831a4475`, whole
+(its tests are small and its manifest names them), with
+`wasmer-wasix.patch` applied. `[patch.crates-io]` swaps it in for every
+crate that depends on wasmer-wasix, the vendored bridge included.
+
+**A script runs its `#!` interpreter (#958).** On Linux the kernel reads a
+spawned file's `#!` line and runs the interpreter with the script's path;
+WASIX has no kernel, and `BinFactory::spawn` handed the text to the Wasm
+compiler, so `posix_spawn` of a script failed with `ENOEXEC`. bash hid it
+by running a failed exec as a shell script itself, which also ran a
+`#!/usr/bin/env node` script as bash; Node had no fallback, which is what
+kept `plugingen`'s fake `gh` tests on GitHub Actions. `src/bin_factory/mod.rs`
+now classifies a file that starts with `#!` as a script and spawns its
+interpreter with `[interpreter, optional argument, script, arguments...]`,
+up to five scripts deep (`ELOOP` after), as `execve` does; the interpreter
+is looked up in the job's own file system like any other executable, so
+nothing outside the job is reachable through one. `proc_spawn3` and
+`proc_exec4` pass the path the caller spelled (`./s`), which is what the
+interpreter is given, and report a missing interpreter as `ENOENT` and an
+unusable line as `ENOEXEC`. A path that once failed to load is no longer
+remembered as missing, since a job can create it afterwards. This is
+wasmerio/wasmer#6958 (merged after 0.705.0, the newest release), cut down to
+the shebang support: it keeps 0.705's path-based executable lookup rather
+than that PR's lookup through the inode tree, and leaves out the PR's
+unrelated changes (terminal scoping, `dup2` rights, `writev` ordering,
+renames of hard-linked files, command environment defaults, which the
+runtime crate already handles in `command_env_as_defaults`).
+
+**`waitpid(-1, ..., WNOHANG)` does not block (#961).** `proc_join` with no
+pid waited for any child to exit whatever the flags said, so it blocked
+where the C library asked it not to. bash reaps finished background jobs
+between commands with exactly that call, so after `cmd &` it ran one more
+command and then sat in the host until the child exited: a script that
+starts a server and polls it, or loops beside a background process, made
+no progress (and the stall check rightly called it stalled).
+`WasiProcess::try_join_any_child` joins a child that has already exited,
+and `proc_join` answers "nothing yet" otherwise. The C library reads a
+missing pid as `ECHILD`, so that answer names pid 0, which `waitpid` then
+returns as 0, as Linux does. Upstream main still blocks there (checked
+November 2026, not yet reported); drop the hunk with the release that has
+a fix.
+
+**Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and a
+non-blocking wait for any child: delete `vendor/wasmer-wasix*`, its
+`[patch.crates-io]` entry in `../Cargo.toml`, and check
+`builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
+bash-node) and `shebang-missing-interpreter-fails`.
+
+To regenerate after editing: `diff -u` each changed file against the crate
+from crates.io with `a/` and `b/` labels.
