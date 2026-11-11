@@ -1,0 +1,159 @@
+---
+// A drawn cost graph, not a screenshot: the bars are generated, and the
+// figures are the fake "Acme" organization's.
+---
+
+<div class="hm-frame mock">
+  <div class="hm-frame-bar"><i /><i /><i /><span>Costs · last 30 days</span></div>
+  <div class="cost">
+    <div class="cost-kpis">
+      <div><span>Month to date</span><b>$18,420</b></div>
+      <div><span>Forecast</span><b>$24,910</b></div>
+      <div><span>Anomalies</span><b class="warn">1 new</b></div>
+    </div>
+    <svg viewBox="0 0 520 170" class="cost-chart" aria-hidden="true">
+      {Array.from({ length: 30 }, (_, d) => {
+        const a = 40 + ((d * 37) % 23) + (d > 22 ? 34 : 0);
+        const b = 22 + ((d * 17) % 11);
+        const c = 12 + ((d * 7) % 6);
+        const x = 6 + d * 17;
+        return (
+          <g>
+            <rect x={x} y={160 - a} width="11" height={a} rx="2" class="s1" />
+            <rect x={x} y={160 - a - b} width="11" height={b} rx="2" class="s2" />
+            <rect x={x} y={160 - a - b - c} width="11" height={c} rx="2" class="s3" />
+          </g>
+        );
+      })}
+    </svg>
+    <div class="cost-legend"><span class="l1">AWS</span><span class="l2">Cloudflare</span><span class="l3">Hetzner</span></div>
+  </div>
+</div>
+
+<style>
+  .mock {
+    background: #1c1c1e;
+    color: #e4e4e7;
+  }
+  .cost {
+    padding: 20px 22px;
+  }
+  .cost-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .cost-kpis div {
+    background: #2c2c2f;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .cost-kpis span {
+    display: block;
+    font-size: 12px;
+    color: #8b8b93;
+  }
+  .cost-kpis b {
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+  .cost-kpis .warn {
+    color: #fbbf24;
+  }
+  .cost-chart {
+    width: 100%;
+    margin-top: 18px;
+  }
+  .s1 {
+    fill: #fb7185;
+  }
+  .s2 {
+    fill: #fb923c;
+  }
+  .s3 {
+    fill: #71717a;
+  }
+  .cost-legend {
+    display: flex;
+    gap: 18px;
+    font-size: 12px;
+    color: #a1a1aa;
+  }
+  .cost-legend span::before {
+    content: '';
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 6px;
+  }
+  .l1::before {
+    background: #fb7185;
+  }
+  .l2::before {
+    background: #fb923c;
+  }
+  .l3::before {
+    background: #71717a;
+  }
+
+
+  .hm-nav-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .hm-nav-btn:hover {
+    color: var(--text);
+  }
+  @media (max-width: 720px) {
+    .hm-nav-btn {
+      display: none;
+    }
+  }
+
+  .agent-link {
+    margin-top: 22px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: none;
+    border: 0;
+    color: var(--text-2);
+    font: 14px var(--sans);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--line-2);
+    text-underline-offset: 4px;
+  }
+  .agent-link:hover {
+    color: var(--text);
+  }
+
+  .stage-tabs img {
+    border-radius: 4px;
+  }
+  .strip-logos img {
+    border-radius: 8px;
+    filter: grayscale(1);
+    opacity: 0.75;
+    transition: 0.2s;
+  }
+  .strip-logos img:hover {
+    filter: none;
+    opacity: 1;
+  }
+  .strip-more {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: 14px var(--sans);
+    color: var(--text-2);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+</style>

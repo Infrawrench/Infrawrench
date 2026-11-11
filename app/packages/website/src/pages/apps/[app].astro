@@ -1,0 +1,239 @@
+---
+import '../../styles/global.css';
+import '../../styles/home.css';
+import AppFrame from '../../components/home/AppFrame.astro';
+import CostMock from '../../components/home/CostMock.astro';
+import Analytics from '../../components/Analytics.astro';
+import { ArrowRight, Cloud } from 'lucide-astro';
+import { homeApps } from '../../data/home';
+
+// One page per app, built ahead of time from the same data the home page's
+// explorer reads. The sitemap lists them from that data too.
+export const prerender = true;
+
+export function getStaticPaths() {
+  return homeApps.map((app) => ({ params: { app: app.id }, props: { app } }));
+}
+
+const { app } = Astro.props;
+const others = homeApps.filter((other) => other.id !== app.id);
+const title = `${app.name} | Infrawrench`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={app.summary} />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon.png" type="image/png" />
+    <link rel="canonical" href={new URL(`/apps/${app.id}`, Astro.site).href} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Infrawrench" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={app.summary} />
+    <meta property="og:image" content="/screenshots/og-home.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={app.summary} />
+  </head>
+  <body class="hm">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <nav class="hm-nav" aria-label="Primary">
+      <div class="hm-wrap hm-nav-inner">
+        <a class="hm-logo" href="/">
+          <img src="/icon.svg" width="26" height="26" alt="" />
+          <span>Infrawrench</span>
+        </a>
+        <div class="hm-nav-links">
+          <a href="/#apps">Apps</a>
+          <a href="/docs">Docs</a>
+          <a href="/blog">Blog</a>
+          <a class="hm-btn hm-btn-quiet hm-btn-sm" href="https://app.infrawrench.com">Open Cloud</a>
+        </div>
+      </div>
+    </nav>
+
+    <main id="main-content" tabindex="-1">
+      <section class="app-hero hm-wrap">
+        <a class="app-back" href="/#apps">All apps</a>
+        <h1 class="hm-h1">{app.name}</h1>
+        <p class="hm-lede">{app.summary}</p>
+        <div class="hm-btns">
+          <a class="hm-btn hm-btn-primary" href="https://app.infrawrench.com"><Cloud /> Open the cloud app</a>
+          <a class="hm-btn hm-btn-quiet" href="/docs/features/home">Read the docs</a>
+        </div>
+      </section>
+
+      {
+        app.visual?.kind === 'shot' && (
+          <section class="hm-wrap">
+            <AppFrame shot={app.visual.shot} title={app.visual.title} alt={app.visual.alt} eager />
+          </section>
+        )
+      }
+
+      {
+        app.visual?.kind === 'cost' && (
+          <section class="hm-wrap app-mock">
+            <CostMock />
+          </section>
+        )
+      }
+
+      <section class="hm-section hm-wrap">
+        <h2 class="hm-h2">What is in it</h2>
+        <ul class="app-tools">
+          {
+            app.tools.map((tool) => (
+              <li>
+                <h3 class="hm-h3">{tool.name}</h3>
+                <p>{tool.body}</p>
+                {tool.doc && (
+                  <a href={`/docs/features/${tool.doc}`}>
+                    Docs <ArrowRight size={13} />
+                  </a>
+                )}
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <section class="hm-section-tight hm-wrap">
+        <h2 class="hm-h2">What it does</h2>
+        <ul class="app-points">
+          {app.points.map((point) => <li>{point}</li>)}
+        </ul>
+      </section>
+
+      <section class="hm-section hm-wrap">
+        <h2 class="hm-h2">The other apps</h2>
+        <p class="hm-lede">They all read the same accounts and resources, so what one knows shows up in the others.</p>
+        <ul class="app-others">
+          {
+            others.map((other) => (
+              <li>
+                <a href={`/apps/${other.id}`}>
+                  <b>{other.name}</b>
+                  <span>{other.tools.map((tool) => tool.name).join(', ')}</span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+    </main>
+
+    <footer class="hm-footer">
+      <div class="hm-wrap">
+        <span class="hm-muted">© 2026 Infrawrench Services, Inc. All rights reserved.</span>
+        <div class="hm-footer-links">
+          <a href="https://app.infrawrench.com">Cloud</a>
+          <a href="/docs">Docs</a>
+          <a href="/blog">Blog</a>
+          <a href="/privacy">Privacy</a>
+        </div>
+      </div>
+    </footer>
+
+    <Analytics />
+  </body>
+</html>
+
+<style>
+  .app-hero {
+    padding: 72px 0 48px;
+  }
+  .app-mock {
+    max-width: 760px;
+  }
+  .app-back {
+    display: inline-block;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: var(--text-2);
+    text-decoration: none;
+  }
+  .app-back::before {
+    content: '← ';
+  }
+  .app-back:hover {
+    color: var(--text);
+  }
+  .app-tools,
+  .app-points,
+  .app-others {
+    list-style: none;
+    margin: 28px 0 0;
+    padding: 0;
+  }
+  .app-tools,
+  .app-others {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .app-tools li,
+  .app-others a {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 100%;
+    padding: 20px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .app-tools p,
+  .app-others span {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--text-2);
+  }
+  .app-tools a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+    padding-top: 6px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .app-others a {
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.2s;
+  }
+  .app-others a:hover {
+    border-color: var(--line-2);
+  }
+  .app-points {
+    display: grid;
+    gap: 10px;
+    max-width: 720px;
+  }
+  .app-points li {
+    padding-left: 22px;
+    position: relative;
+    color: var(--text-2);
+  }
+  .app-points li::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0.62em;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--rose);
+  }
+</style>

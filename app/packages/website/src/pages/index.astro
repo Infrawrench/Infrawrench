@@ -7,13 +7,17 @@ import DownloadModal from '../components/DownloadModal.astro';
 import AgentSkillModal from '../components/AgentSkillModal.astro';
 import Analytics from '../components/Analytics.astro';
 import {
+  ArrowRight,
   Download,
   Cloud,
   Bot,
-  Search,
-  TerminalSquare,
-  Table2,
-  LineChart,
+  Server,
+  CircleDollarSign,
+  Activity,
+  TriangleAlert,
+  ShieldCheck,
+  GitBranch,
+  LayoutDashboard,
   MessageSquare,
   KeyRound,
   ListChecks,
@@ -23,6 +27,7 @@ import {
   PROVIDER_COUNT_COPY,
   STRIP_MORE,
   heroViews,
+  homeApps,
   nibbletsPoints,
   stripProviders,
   teamBenefits,
@@ -31,66 +36,20 @@ import {
 const description = `Run AWS, GCP, Azure, Kubernetes, and ${PROVIDER_COUNT_COPY} cloud providers from one platform on desktop, web and mobile. SSH terminals, SQL editor, K8s exec, costs, on-call, CI and AI agents.`;
 const title = 'Infrawrench | Every cloud you run on, one platform';
 
-const steps = [
-  {
-    icon: Search,
-    kicker: 'Find it',
-    title: 'Every resource, without opening a console.',
-    body: 'Connect an account and Infrawrench lists what is in it: instances, clusters, databases, buckets, DNS, functions. Each one is a tile with its status and the facts you check most.',
-    shot: 'aws',
-    shotTitle: 'Production · Aurora clusters',
-    alt: 'An AWS account in Infrawrench, with Aurora clusters shown as tiles',
-  },
-  {
-    icon: TerminalSquare,
-    kicker: 'Get in',
-    title: 'A shell is one click from the tile.',
-    body: 'SSH into a server, exec into a pod, tunnel to a database, browse a bucket. Tabs keep it all open side by side.',
-    mock: 'terminal',
-  },
-  {
-    icon: Table2,
-    kicker: 'Query it',
-    title: 'SQL and key-value consoles built in.',
-    body: 'Run a query against Postgres, MySQL or ClickHouse, or read and write keys in Redis and Workers KV, without another client.',
-    mock: 'sql',
-  },
-  {
-    icon: LineChart,
-    kicker: 'Watch it',
-    title: 'Metrics, cost and budgets beside the resource.',
-    body: 'Spend from every provider in one currency, anomalies flagged the day they start, and dashboards you build by dragging tiles.',
-    mock: 'cost',
-  },
-  {
-    icon: MessageSquare,
-    kicker: 'Fix it',
-    title: 'Ask what is wrong, and fix it in the same window.',
-    body: 'The assistant reads your resources and metrics with your permissions. Anything that would change something waits for you to approve it, and every action lands in the audit log.',
-    shot: 'chat',
-    shotTitle: 'Chat · CI jobs stuck on ci-runner-2',
-    alt: 'Infrawrench chat finding a stuck CI runner and asking for approval to reboot it',
-  },
-];
+const appIcons: Record<string, typeof Server> = {
+  infrastructure: Server,
+  costs: CircleDollarSign,
+  observability: Activity,
+  incidents: TriangleAlert,
+  security: ShieldCheck,
+  delivery: GitBranch,
+  automation: Bot,
+  dashboards: LayoutDashboard,
+  chat: MessageSquare,
+};
 
 const nibbletsIcons = [KeyRound, ListChecks, House];
 
-const prompt = (cmd: string) =>
-  `<span class="g">sam@api-prod-1</span>:<span class="b">~</span>$ ${cmd}`;
-const termHtml = [
-  prompt('uptime'),
-  ' 14:02:11 up 41 days,  3:17,  1 user,  load average: 0.42, 0.38, 0.35',
-  prompt('systemctl status api --no-pager | head -3'),
-  '● api.service - Acme API',
-  '     Loaded: loaded (/etc/systemd/system/api.service; enabled)',
-  '     Active: <span class="g">active (running)</span> since Tue 2026-11-03 09:12:40 UTC',
-  prompt('<span class="cursor"></span>'),
-].join('\n');
-const sqlHtml = [
-  '<span class="k">select</span> plan, <span class="k">count</span>(*) <span class="k">as</span> orgs, <span class="k">sum</span>(mrr) <span class="k">as</span> mrr',
-  '<span class="k">from</span> subscriptions <span class="k">where</span> status = <span class="s">\'active\'</span>',
-  '<span class="k">group by</span> plan <span class="k">order by</span> mrr <span class="k">desc</span>;',
-].join('\n');
 ---
 
 <!doctype html>
@@ -199,73 +158,69 @@ const sqlHtml = [
         </div>
       </section>
 
-      {
-        steps.map((s, i) => (
-          <section class:list={['step hm-wrap', i % 2 && 'flip']}>
-            <div class="step-copy">
-              <span class="hm-eyebrow">
-                <s.icon size={14} /> {String(i + 1).padStart(2, '0')} · {s.kicker}
-              </span>
-              <h2 class="hm-h2">{s.title}</h2>
-              <p class="hm-lede">{s.body}</p>
-            </div>
-            <div class="step-visual">
-              {s.shot && <AppFrame shot={s.shot} title={s.shotTitle} alt={s.alt} />}
-              {s.mock === 'terminal' && (
-                <div class="hm-frame mock">
-                  <div class="hm-frame-bar"><i /><i /><i /><span>SSH · api-prod-1</span></div>
-                  <pre class="term" set:html={termHtml} />
+      <section class="hm-section hm-wrap apps" id="apps" aria-labelledby="apps-title">
+        <div class="apps-head">
+          <span class="hm-eyebrow">One platform, several apps</span>
+          <h2 class="hm-h2" id="apps-title">Pick the ones you need.</h2>
+          <p class="hm-lede">
+            Each app does one job and works on its own. They all read the same accounts and resources, so what one
+            knows shows up in the others.
+          </p>
+        </div>
+        <div class="apps-body">
+          <div class="apps-grid" role="tablist" aria-label="Apps" aria-orientation="vertical">
+            {
+              homeApps.map((app, i) => {
+                const Icon = appIcons[app.id] ?? Server;
+                return (
+                  <button
+                    role="tab"
+                    type="button"
+                    id={`app-tab-${app.id}`}
+                    aria-controls={`app-panel-${app.id}`}
+                    aria-selected={i === 0 ? 'true' : 'false'}
+                    tabindex={i === 0 ? 0 : -1}
+                    data-app={app.id}
+                  >
+                    <Icon size={18} />
+                    <span>{app.name}</span>
+                  </button>
+                );
+              })
+            }
+          </div>
+          {/* Every panel sits in the same grid cell, so the section is as tall
+              as its tallest panel and nothing below it moves as they change. */}
+          <div class="apps-panels">
+            {
+              homeApps.map((app, i) => (
+                <div
+                  class="apps-panel"
+                  role="tabpanel"
+                  id={`app-panel-${app.id}`}
+                  aria-labelledby={`app-tab-${app.id}`}
+                  data-app-panel={app.id}
+                  data-active={i === 0 ? 'true' : 'false'}
+                >
+                  <h3 class="hm-h3">{app.name}</h3>
+                  <p class="apps-summary">{app.summary}</p>
+                  <ul class="apps-tools">
+                    {app.tools.map((tool) => (
+                      <li>
+                        <b>{tool.name}</b>
+                        <span>{tool.body}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <a class="apps-more" href={`/apps/${app.id}`}>
+                    Learn more about {app.name} <ArrowRight size={14} />
+                  </a>
                 </div>
-              )}
-              {s.mock === 'sql' && (
-                <div class="hm-frame mock">
-                  <div class="hm-frame-bar"><i /><i /><i /><span>SQL · orders-aurora</span></div>
-                  <div class="sql">
-                    <pre class="sql-q" set:html={sqlHtml} />
-                    <table>
-                      <thead><tr><th>plan</th><th>orgs</th><th>mrr</th></tr></thead>
-                      <tbody>
-                        <tr><td>team</td><td>1,204</td><td>$86,688</td></tr>
-                        <tr><td>business</td><td>212</td><td>$63,388</td></tr>
-                        <tr><td>starter</td><td>3,871</td><td>$34,839</td></tr>
-                      </tbody>
-                    </table>
-                    <p class="sql-foot">3 rows · 41 ms</p>
-                  </div>
-                </div>
-              )}
-              {s.mock === 'cost' && (
-                <div class="hm-frame mock">
-                  <div class="hm-frame-bar"><i /><i /><i /><span>Costs · last 30 days</span></div>
-                  <div class="cost">
-                    <div class="cost-kpis">
-                      <div><span>Month to date</span><b>$18,420</b></div>
-                      <div><span>Forecast</span><b>$24,910</b></div>
-                      <div><span>Anomalies</span><b class="warn">1 new</b></div>
-                    </div>
-                    <svg viewBox="0 0 520 170" class="cost-chart" aria-hidden="true">
-                      {Array.from({ length: 30 }, (_, d) => {
-                        const a = 40 + ((d * 37) % 23) + (d > 22 ? 34 : 0);
-                        const b = 22 + ((d * 17) % 11);
-                        const c = 12 + ((d * 7) % 6);
-                        const x = 6 + d * 17;
-                        return (
-                          <g>
-                            <rect x={x} y={160 - a} width="11" height={a} rx="2" class="s1" />
-                            <rect x={x} y={160 - a - b} width="11" height={b} rx="2" class="s2" />
-                            <rect x={x} y={160 - a - b - c} width="11" height={c} rx="2" class="s3" />
-                          </g>
-                        );
-                      })}
-                    </svg>
-                    <div class="cost-legend"><span class="l1">AWS</span><span class="l2">Cloudflare</span><span class="l3">Hetzner</span></div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        ))
-      }
+              ))
+            }
+          </div>
+        </div>
+      </section>
 
       <section class="hm-section hm-wrap team">
         <div class="team-head">
@@ -373,6 +328,56 @@ const sqlHtml = [
             .forEach((f) => (f.hidden = f.dataset.frame !== t.dataset.view));
         }),
       );
+
+      // The apps explorer: a tab per app. Until the visitor picks one it
+      // walks through them on its own, so the section shows what is there
+      // without asking for a click. A click, a key or keyboard focus stops it
+      // for good; hovering only holds it. It never runs for visitors who ask
+      // for reduced motion, or while the section is off screen.
+      const appTabs = [...document.querySelectorAll<HTMLButtonElement>('[data-app]')];
+      const appPanels = document.querySelectorAll<HTMLElement>('[data-app-panel]');
+      const selectApp = (tab: HTMLButtonElement) => {
+        appTabs.forEach((x) => {
+          x.setAttribute('aria-selected', String(x === tab));
+          x.tabIndex = x === tab ? 0 : -1;
+        });
+        appPanels.forEach((p) => (p.dataset.active = String(p.dataset.appPanel === tab.dataset.app)));
+      };
+      let cycling = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Below this width the panels stop sharing a cell (see the styles).
+      const narrow = matchMedia('(max-width: 880px)');
+      let held = false;
+      let visible = false;
+      const stopCycling = () => (cycling = false);
+      appTabs.forEach((tab, i) => {
+        tab.addEventListener('click', () => {
+          stopCycling();
+          selectApp(tab);
+        });
+        tab.addEventListener('keydown', (e) => {
+          const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          stopCycling();
+          const next = appTabs[(i + step + appTabs.length) % appTabs.length]!;
+          selectApp(next);
+          next.focus();
+        });
+      });
+      const appsSection = document.querySelector<HTMLElement>('.apps');
+      if (appsSection) {
+        appsSection.addEventListener('pointerenter', () => (held = true));
+        appsSection.addEventListener('pointerleave', () => (held = false));
+        appsSection.addEventListener('focusin', stopCycling);
+        new IntersectionObserver(([entry]) => (visible = Boolean(entry?.isIntersecting)), {
+          threshold: 0.4,
+        }).observe(appsSection);
+        setInterval(() => {
+          if (!cycling || held || !visible || document.hidden || narrow.matches) return;
+          const current = appTabs.findIndex((x) => x.getAttribute('aria-selected') === 'true');
+          selectApp(appTabs[(current + 1) % appTabs.length]!);
+        }, 4500);
+      }
     </script>
   </body>
 </html>
@@ -460,218 +465,128 @@ const sqlHtml = [
     color: var(--text-2);
   }
 
-  .step {
+  .apps-head {
+    max-width: 640px;
+    margin-bottom: 36px;
+  }
+  .apps-body {
     display: grid;
-    grid-template-columns: 5fr 7fr;
-    gap: 64px;
-    align-items: center;
-    padding: 88px 0;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
   }
-  .step.flip .step-copy {
-    order: 2;
-  }
-  .step .hm-lede {
-    font-size: 17.5px;
-  }
-  @media (max-width: 880px) {
-    .step {
-      grid-template-columns: 1fr;
-      gap: 32px;
-      padding: 56px 0;
-    }
-    .step.flip .step-copy {
-      order: 0;
-    }
-  }
-
-  .mock {
-    background: #1c1c1e;
-    color: #e4e4e7;
-  }
-  .term {
-    margin: 0;
-    padding: 22px;
-    font: 13.5px/1.75 var(--mono);
-    white-space: pre-wrap;
-    min-height: 300px;
-  }
-  .term :global(.g) {
-    color: #4ade80;
-  }
-  .term :global(.b) {
-    color: #93c5fd;
-  }
-  .term :global(.cursor) {
-    display: inline-block;
-    width: 8px;
-    height: 16px;
-    background: #e4e4e7;
-    vertical-align: -3px;
-    animation: blink 1.1s steps(1) infinite;
-  }
-  @keyframes blink {
-    50% {
-      opacity: 0;
-    }
-  }
-
-  .sql {
-    padding: 0 0 12px;
-  }
-  .sql-q {
-    margin: 0;
-    padding: 18px 22px;
-    font: 13.5px/1.7 var(--mono);
-    border-bottom: 1px solid #333337;
-    white-space: pre-wrap;
-  }
-  .sql-q :global(.k) {
-    color: #fb7185;
-  }
-  .sql-q :global(.s) {
-    color: #fcd34d;
-  }
-  .sql table {
-    width: 100%;
-    border-collapse: collapse;
-    font: 13.5px var(--mono);
-  }
-  .sql th,
-  .sql td {
-    text-align: left;
-    padding: 9px 22px;
-    border-bottom: 1px solid #2c2c2f;
-  }
-  .sql th {
-    color: #8b8b93;
-    font-weight: 500;
-  }
-  .sql-foot {
-    margin: 10px 22px 0;
-    font-size: 12px;
-    color: #8b8b93;
-  }
-
-  .cost {
-    padding: 20px 22px;
-  }
-  .cost-kpis {
+  .apps-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
-  .cost-kpis div {
-    background: #2c2c2f;
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-  .cost-kpis span {
-    display: block;
-    font-size: 12px;
-    color: #8b8b93;
-  }
-  .cost-kpis b {
-    font-size: 20px;
-    letter-spacing: -0.02em;
-  }
-  .cost-kpis .warn {
-    color: #fbbf24;
-  }
-  .cost-chart {
-    width: 100%;
-    margin-top: 18px;
-  }
-  .s1 {
-    fill: #fb7185;
-  }
-  .s2 {
-    fill: #fb923c;
-  }
-  .s3 {
-    fill: #71717a;
-  }
-  .cost-legend {
+  .apps-grid button {
     display: flex;
-    gap: 18px;
-    font-size: 12px;
-    color: #a1a1aa;
-  }
-  .cost-legend span::before {
-    content: '';
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    border-radius: 2px;
-    margin-right: 6px;
-  }
-  .l1::before {
-    background: #fb7185;
-  }
-  .l2::before {
-    background: #fb923c;
-  }
-  .l3::before {
-    background: #71717a;
-  }
-
-
-  .hm-nav-btn {
-    background: none;
-    border: 0;
-    padding: 0;
-    font: inherit;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    /* A 2px border on every tile, so selecting one never moves the grid. */
+    border: 2px solid var(--line);
+    background: var(--surface);
     color: var(--text-2);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
     cursor: pointer;
+    transition:
+      border-color 0.2s,
+      color 0.2s;
   }
-  .hm-nav-btn:hover {
+  .apps-grid button:hover {
+    border-color: var(--line-2);
     color: var(--text);
   }
-  @media (max-width: 720px) {
-    .hm-nav-btn {
+  .apps-grid button[aria-selected='true'] {
+    border-color: var(--rose);
+    color: var(--text);
+  }
+  .apps-grid button:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+  .apps-panels {
+    display: grid;
+  }
+  .apps-panel {
+    grid-area: 1 / 1;
+    padding: 28px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .apps-panel[data-active='true'] {
+    visibility: visible;
+    opacity: 1;
+  }
+  .apps-summary {
+    margin: 6px 0 20px;
+    color: var(--text-2);
+    max-width: 62ch;
+  }
+  .apps-tools {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 28px;
+  }
+  .apps-tools li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 14px;
+  }
+  .apps-tools span {
+    color: var(--text-2);
+  }
+  .apps-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 22px;
+    font-size: 14.5px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  @media (max-width: 880px) {
+    .apps-body {
+      grid-template-columns: 1fr;
+    }
+    .apps-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .apps-tools {
+      grid-template-columns: 1fr;
+    }
+    /* One column: the panels differ too much in height to share a cell, so
+       only the selected one takes space (and the walk-through is off here,
+       or the page below would move under the reader). */
+    .apps-panel[data-active='false'] {
       display: none;
     }
   }
-
-  .agent-link {
-    margin-top: 22px;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    background: none;
-    border: 0;
-    color: var(--text-2);
-    font: 14px var(--sans);
-    cursor: pointer;
-    text-decoration: underline;
-    text-decoration-color: var(--line-2);
-    text-underline-offset: 4px;
+  @media (max-width: 520px) {
+    .apps-grid {
+      grid-template-columns: 1fr 1fr;
+    }
   }
-  .agent-link:hover {
-    color: var(--text);
-  }
-
-  .stage-tabs img {
-    border-radius: 4px;
-  }
-  .strip-logos img {
-    border-radius: 8px;
-    filter: grayscale(1);
-    opacity: 0.75;
-    transition: 0.2s;
-  }
-  .strip-logos img:hover {
-    filter: none;
-    opacity: 1;
-  }
-  .strip-more {
-    background: none;
-    border: 0;
-    padding: 0;
-    font: 14px var(--sans);
-    color: var(--text-2);
-    text-decoration: underline;
-    text-underline-offset: 4px;
-    cursor: pointer;
+  @media (prefers-reduced-motion: reduce) {
+    .apps-panel,
+    .apps-grid button {
+      transition: none;
+    }
   }
 
   .team {
@@ -779,34 +694,4 @@ const sqlHtml = [
     }
   }
 
-  .hm-footer {
-    border-top: 1px solid var(--line);
-    padding: 32px 0;
-    font-size: 13.5px;
-  }
-  .hm-footer .hm-wrap {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .hm-footer-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-  }
-  .hm-footer-links a,
-  .hm-footer-links button {
-    color: var(--text-2);
-    text-decoration: none;
-    background: none;
-    border: 0;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-  }
-  .hm-footer-links a:hover,
-  .hm-footer-links button:hover {
-    color: var(--text);
-  }
 </style>
