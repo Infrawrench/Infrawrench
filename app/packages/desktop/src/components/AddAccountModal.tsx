@@ -1,3 +1,4 @@
+import { useDisabledProducts } from "../lib/disabled-products";
 import { useCallback, useEffect, useState } from "react";
 import {
   AddAccountModal as SharedAddAccountModal,
@@ -33,6 +34,9 @@ export function AddAccountModal({
   prefilledCredentials,
   prefilledDisplayName,
 }: Props) {
+  // A new connection is only offered the apps the organization has on
+  // (none are off in local mode).
+  const disabledProducts = useDisabledProducts();
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
   useEffect(() => {
@@ -165,6 +169,7 @@ export function AddAccountModal({
 
   return (
     <SharedAddAccountModal
+      disabledProducts={disabledProducts}
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={handleLoadPlugins}

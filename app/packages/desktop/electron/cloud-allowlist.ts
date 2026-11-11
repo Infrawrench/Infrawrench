@@ -78,6 +78,9 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["PUT", "DELETE"], pattern: new RegExp(`${ORG}/dashboards/role-defaults/[^/?]+$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
+  // Settings > Apps: which apps each plugin can serve, to count the
+  // connections that were made without an app that is on.
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts/plugins$`) },
   // GitHub issues page: the repository picker, the connect link and the IaC
   // state scope picker (all reads; connecting happens in the browser).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/github/(status|repos|install-url)(\\?|$)`) },

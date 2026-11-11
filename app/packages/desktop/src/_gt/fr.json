@@ -23038,5 +23038,7 @@
   "518ea80327681c9f": "Déploiements, CI, environnements et métriques de livraison.",
   "8f8024ddc34f13f5": "Agents et workflows.",
   "87a159646dd1584d": "Paramètres de {app}",
-  "99ccf63da321e0b4": "Seuls les propriétaires et les administrateurs peuvent modifier les applications activées."
+  "99ccf63da321e0b4": "Seuls les propriétaires et les administrateurs peuvent modifier les applications activées.",
+  "79a9633d7a7e1020": "1 connexion n'a pas les autorisations pour cette application. Ouvrez-la et choisissez Modifier les applications.",
+  "90a1edefcacc0a65": "{count} connexions n'ont pas les autorisations pour cette application. Ouvrez chacune et choisissez Modifier les applications."
 }

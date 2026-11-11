@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   accountServesProduct,
+  accountsLackingProduct,
+  productsOfferedForOrg,
   accountSyncsResources,
   capabilityIdsForProducts,
   capabilityProduct,
@@ -180,5 +182,40 @@ describe("a form's selection", () => {
     const single = { capabilities: [cap("resources")] };
     expect(productsToSubmit(single, ["infrastructure"])).toBeNull();
     expect(productsToSubmit(null, [])).toBeNull();
+  });
+
+  it("offers a new connection only the apps the organization has on", () => {
+    const declaration = {
+      capabilities: [
+        { id: "resources", label: "", requiredPermissions: [] },
+        { id: "costs", label: "", requiredPermissions: [] },
+        { id: "metrics", label: "", requiredPermissions: [] },
+      ],
+    };
+    expect(productsOfferedForOrg(declaration)).toEqual([
+      "infrastructure",
+      "costs",
+      "observability",
+    ]);
+    expect(productsOfferedForOrg(declaration, ["costs"])).toEqual([
+      "infrastructure",
+      "observability",
+    ]);
+    // Every app the plugin serves is off: the whole offer stands.
+    const costsOnly = { capabilities: [{ id: "costs", label: "", requiredPermissions: [] }] };
+    expect(productsOfferedForOrg(costsOnly, ["costs"])).toEqual(["costs"]);
+  });
+
+  it("counts the connections made without an app their plugin can serve", () => {
+    const offered = { aws: ["infrastructure", "costs"] as const, k8s: ["infrastructure"] as const };
+    const accounts = [
+      { id: "all", pluginId: "aws", products: null },
+      { id: "infra", pluginId: "aws", products: ["infrastructure"] },
+      { id: "both", pluginId: "aws", products: ["infrastructure", "costs"] },
+      { id: "k8s", pluginId: "k8s", products: ["infrastructure"] },
+      { id: "old-server", pluginId: "aws" },
+    ];
+    expect(accountsLackingProduct(accounts, offered, "costs").map((a) => a.id)).toEqual(["infra"]);
+    expect(accountsLackingProduct(accounts, offered, "security")).toEqual([]);
   });
 });

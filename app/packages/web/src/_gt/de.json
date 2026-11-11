@@ -23255,5 +23255,8 @@
   "99ccf63da321e0b4": "Nur Inhaber und Administratoren können ändern, welche Apps aktiviert sind.",
   "b68bb835ac338b76": "Ihre Apps konnten nicht gespeichert werden",
   "1a8499c1dc785039": "Welche Apps werden Sie nutzen?",
-  "ee474a1c71aa3603": "Die übrigen bleiben ausgeblendet. Das lässt sich jederzeit in den Einstellungen ändern."
+  "ee474a1c71aa3603": "Die übrigen bleiben ausgeblendet. Das lässt sich jederzeit in den Einstellungen ändern.",
+  "79a9633d7a7e1020": "1 Verbindung fehlen die Berechtigungen für diese App. Öffnen Sie sie und wählen Sie Apps ändern.",
+  "90a1edefcacc0a65": "{count} Verbindungen fehlen die Berechtigungen für diese App. Öffnen Sie jede und wählen Sie Apps ändern.",
+  "03501047e304bcd8": "Infrastruktur ist immer aktiviert. Nicht gewählte Apps bleiben ausgeblendet, und das lässt sich jederzeit in den Einstellungen ändern."
 }

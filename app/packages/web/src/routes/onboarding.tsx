@@ -114,7 +114,9 @@ function OnboardingPage() {
         <div className="w-full max-w-2xl px-6">
           <h1 className="text-2xl font-bold mb-2">{gt("Which apps will you use?")}</h1>
           <p className="text-sm text-on-surface-tertiary mb-6">
-            {gt("The rest stay out of the way. You can change this any time in Settings.")}
+            {gt(
+              "Infrastructure is always on. The apps you leave out stay out of the way, and you can change this any time in Settings.",
+            )}
           </p>
 
           <AppPicker selected={apps} onChange={setApps} disabled={savingApps} />

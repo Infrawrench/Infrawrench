@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useGT } from "gt-react";
 import {
   offersProductChoice,
-  productsOfferedBy,
+  productsOfferedForOrg,
   productsToSubmit,
   type PolicyTemplate,
   type PreflightDeclaration,
@@ -84,6 +84,11 @@ export interface AccountReferenceOption {
 }
 
 interface AddAccountModalProps {
+  /**
+   * Apps the organization turned off. A new connection is not offered them
+   * and its credential is not asked for their permissions.
+   */
+  disabledProducts?: readonly ProductId[] | undefined;
   onClose: () => void;
   onAdded: () => void;
   loadPlugins: () => Promise<PluginInfo[]>;
@@ -183,6 +188,7 @@ export function AddAccountModal({
   loadCredentialOptions,
   connectOAuth,
   cancelOAuth,
+  disabledProducts,
 }: AddAccountModalProps) {
   const gt = useGT();
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
@@ -220,7 +226,7 @@ export function AddAccountModal({
     const match = plugins.find((p) => p.id === prefilledPluginId);
     if (!match) return;
     setSelected(match);
-    setProducts(productsOfferedBy(match.preflight));
+    setProducts(productsOfferedForOrg(match.preflight, disabledProducts));
     setFieldValues(
       Object.fromEntries(
         match.credentialFields.map((f) => [
@@ -231,14 +237,14 @@ export function AddAccountModal({
         ]),
       ),
     );
-  }, [prefilledPluginId, plugins, selected, prefilledCredentials]);
+  }, [prefilledPluginId, plugins, selected, prefilledCredentials, disabledProducts]);
 
   function pickPlugin(p: PluginInfo) {
     if (oauth.pending) oauth.cancel();
     oauth.setError(null);
     setOauthCredentials(null);
     setSelected(p);
-    setProducts(productsOfferedBy(p.preflight));
+    setProducts(productsOfferedForOrg(p.preflight, disabledProducts));
     setAccountName("");
     setFieldValues(
       Object.fromEntries(
@@ -622,6 +628,7 @@ export function AddAccountModal({
                       value={products}
                       onChange={setProducts}
                       disabled={saving}
+                      disabledProducts={disabledProducts}
                     />
                   )}
 

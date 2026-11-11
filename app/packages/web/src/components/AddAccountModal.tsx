@@ -1,3 +1,4 @@
+import { useDisabledProducts } from "@/lib/disabled-products";
 import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import {
@@ -42,6 +43,8 @@ export function AddAccountModal({
   const [bastions, setBastions] = useState<BastionOption[]>([]);
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
+  // A new connection is only offered the apps the organization has on.
+  const disabledProducts = useDisabledProducts(orgId);
   const loadPlugins = useCallback(() => fetchPluginCatalog(orgId), [orgId]);
 
   useEffect(() => {
@@ -148,6 +151,7 @@ export function AddAccountModal({
 
   return (
     <SharedAddAccountModal
+      disabledProducts={disabledProducts}
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={loadPlugins}

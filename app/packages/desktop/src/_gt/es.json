@@ -23039,5 +23039,7 @@
   "518ea80327681c9f": "Despliegues, CI, entornos y métricas de entrega.",
   "8f8024ddc34f13f5": "Agentes y flujos de trabajo.",
   "87a159646dd1584d": "Ajustes de {app}",
-  "99ccf63da321e0b4": "Solo los propietarios y administradores pueden cambiar qué aplicaciones están activas."
+  "99ccf63da321e0b4": "Solo los propietarios y administradores pueden cambiar qué aplicaciones están activas.",
+  "79a9633d7a7e1020": "A 1 conexión le faltan permisos para esta aplicación. Ábrela y elige Cambiar aplicaciones.",
+  "90a1edefcacc0a65": "A {count} conexiones les faltan permisos para esta aplicación. Abre cada una y elige Cambiar aplicaciones."
 }

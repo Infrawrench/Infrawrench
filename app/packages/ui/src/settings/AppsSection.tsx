@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import {
   ALWAYS_ON_PRODUCTS,
+  accountsLackingProduct,
   normalizeDisabledProducts,
+  productsOfferedBy,
   type ProductId,
 } from "@infrawrench/client-core";
+import type { PreflightDeclaration } from "@infrawrench/plugin-base";
 import { ProductIcon } from "../products/ProductIcon.js";
 import { useProductCopy } from "../products/copy.js";
 import { notifyProductPolicyChanged } from "../products/policy.js";
@@ -13,6 +16,17 @@ import { useSettingsHost } from "./host.js";
 
 interface ProductPolicy {
   disabled: string[];
+}
+
+/** What the warning under an app needs of an account and of a plugin. */
+interface ConnectionRow {
+  id: string;
+  pluginId: string;
+  products?: readonly string[] | null;
+}
+interface PluginRow {
+  id: string;
+  preflight?: PreflightDeclaration | null;
 }
 
 /**
@@ -52,6 +66,30 @@ export function AppsSection() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The connections and what each plugin can serve, for the warning under an
+  // app that is on but that some connections were made without. Best effort:
+  // someone who cannot read accounts simply sees no warning.
+  const [connections, setConnections] = useState<ConnectionRow[]>([]);
+  const [offeredByPlugin, setOfferedByPlugin] = useState<Record<string, ProductId[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      api.get<ConnectionRow[]>(`/api/org/${orgId}/accounts`),
+      api.get<PluginRow[]>(`/api/org/${orgId}/accounts/plugins`),
+    ])
+      .then(([accounts, plugins]) => {
+        if (cancelled) return;
+        setConnections(accounts);
+        setOfferedByPlugin(
+          Object.fromEntries(plugins.map((p) => [p.id, productsOfferedBy(p.preflight)])),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId]);
 
   async function setEnabled(product: ProductId, enabled: boolean) {
     const next = enabled ? disabled.filter((id) => id !== product) : [...disabled, product];
@@ -103,6 +141,11 @@ export function AppsSection() {
               (product) => {
                 const text = copy[product.id];
                 const on = !disabled.includes(product.id);
+                // Connections made before the app was on (or scoped away from
+                // it) cannot feed it until they are given its permissions.
+                const lacking = on
+                  ? accountsLackingProduct(connections, offeredByPlugin, product.id).length
+                  : 0;
                 return (
                   <li key={product.id} className="flex items-center gap-3 px-4 py-3">
                     <ProductIcon product={product.id} />
@@ -111,6 +154,18 @@ export function AppsSection() {
                       <span className="mt-0.5 block text-xs text-on-surface-muted">
                         {text.tagline}
                       </span>
+                      {lacking > 0 && (
+                        <span className="mt-1 block text-xs text-warning">
+                          {lacking === 1
+                            ? gt(
+                                "1 connection lacks permissions for this app. Open it and choose Change apps.",
+                              )
+                            : gt(
+                                "{count} connections lack permissions for this app. Open each and choose Change apps.",
+                                { count: lacking },
+                              )}
+                        </span>
+                      )}
                     </span>
                     <button
                       type="button"

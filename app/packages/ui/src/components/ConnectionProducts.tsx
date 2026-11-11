@@ -4,6 +4,7 @@ import {
   accountSyncsResources,
   normalizeProductIds,
   productsOfferedBy,
+  productsOfferedForOrg,
   productsToSubmit,
   type PolicyTemplate,
   type PreflightDeclaration,
@@ -38,6 +39,8 @@ export interface ConnectionProductsPickerProps {
   value: readonly ProductId[];
   onChange: (next: ProductId[]) => void;
   disabled?: boolean | undefined;
+  /** Apps the organization turned off: they are not offered. */
+  disabledProducts?: readonly ProductId[] | undefined;
 }
 
 /**
@@ -52,10 +55,11 @@ export function ConnectionProductsPicker({
   value,
   onChange,
   disabled,
+  disabledProducts,
 }: ConnectionProductsPickerProps) {
   const gt = useGT();
   const copy = useProductCopy();
-  const offered = productsOfferedBy(declaration);
+  const offered = productsOfferedForOrg(declaration, disabledProducts);
   if (offered.length <= 1) return null;
   const checked = new Set(value);
   return (

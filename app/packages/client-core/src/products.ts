@@ -191,3 +191,39 @@ export function resolveAccountProducts(
   }
   return { ok: true, products: chosen.length === offered.length ? null : chosen };
 }
+
+/**
+ * The products a new connection of this plugin is offered: what the plugin
+ * can serve, less the apps the organization turned off, so a credential is
+ * never asked for the permissions of an app nobody uses. If that leaves
+ * nothing (every app the plugin serves is off), the whole offer stands: a
+ * connection for nothing is not a connection.
+ */
+export function productsOfferedForOrg(
+  declaration: ProductDeclaration,
+  disabledProducts: readonly ProductId[] = [],
+): ProductId[] {
+  const offered = productsOfferedBy(declaration);
+  const enabled = offered.filter((id) => !disabledProducts.includes(id));
+  return enabled.length > 0 ? enabled : offered;
+}
+
+/**
+ * The connections that were made without `product`, although their plugin
+ * can serve it: the ones whose credentials lack that app's permissions.
+ * `offeredByPlugin` maps a plugin id to the products it offers.
+ */
+export function accountsLackingProduct<
+  T extends { pluginId: string; products?: readonly string[] | null },
+>(
+  accounts: readonly T[],
+  offeredByPlugin: Readonly<Record<string, readonly ProductId[]>>,
+  product: ProductId,
+): T[] {
+  return accounts.filter(
+    (account) =>
+      Array.isArray(account.products) &&
+      !account.products.includes(product) &&
+      (offeredByPlugin[account.pluginId] ?? []).includes(product),
+  );
+}
