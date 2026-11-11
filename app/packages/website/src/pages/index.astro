@@ -2,7 +2,6 @@
 import '../styles/global.css';
 import '../styles/home.css';
 import AppFrame from '../components/home/AppFrame.astro';
-import DashboardMock from '../components/home/DashboardMock.astro';
 import ProvidersModal from '../components/ProvidersModal.astro';
 import DownloadModal from '../components/DownloadModal.astro';
 import AgentSkillModal from '../components/AgentSkillModal.astro';
@@ -166,16 +165,12 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
                   data-app-panel={app.id}
                   data-active={i === 0 ? 'true' : 'false'}
                 >
-                  {app.mock === 'dashboard' ? (
-                    <DashboardMock title={app.name} />
-                  ) : (
-                    <AppFrame
-                      shot={`app-${app.id}`}
-                      title={app.name}
-                      alt={`The ${app.name} app in Infrawrench`}
-                      eager={i === 0}
-                    />
-                  )}
+                  <AppFrame
+                    shot={`app-${app.id}`}
+                    title={app.name}
+                    alt={`The ${app.name} app in Infrawrench`}
+                    eager={i === 0}
+                  />
                   <div class="apps-foot">
                     <p>{app.tools.map((tool) => tool.name).join(' · ')}</p>
                     <a class="apps-more" href={`/apps/${app.id}`}>
