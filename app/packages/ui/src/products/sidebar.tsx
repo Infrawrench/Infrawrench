@@ -197,30 +197,45 @@ export function SidebarApps({
         const expanded = open.includes(group.id) || group.id === activeProduct;
         return (
           <div key={group.id}>
-            <button
-              type="button"
-              onClick={() => toggle(group.id)}
-              aria-expanded={expanded}
-              className={`${ROW} ${ROW_IDLE}`}
-            >
-              <svg
-                aria-hidden="true"
-                width={10}
-                height={10}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`flex-shrink-0 opacity-60 transition-transform ${expanded ? "rotate-90" : ""}`}
+            {/* Two buttons side by side, not one inside the other: the row
+                toggles the app, the cog opens its settings. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => toggle(group.id)}
+                aria-expanded={expanded}
+                className={`${ROW} ${ROW_IDLE} ${group.openSettings ? "pr-8" : ""}`}
               >
-                {/* lucide: chevron-right */}
-                <path d="m9 18 6-6-6-6" />
-              </svg>
-              {group.icon}
-              <span className="truncate text-on-surface-secondary">{group.name}</span>
-            </button>
+                <svg
+                  aria-hidden="true"
+                  width={10}
+                  height={10}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`flex-shrink-0 opacity-60 transition-transform ${expanded ? "rotate-90" : ""}`}
+                >
+                  {/* lucide: chevron-right */}
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+                {group.icon}
+                <span className="truncate text-on-surface-secondary">{group.name}</span>
+              </button>
+              {group.openSettings && (
+                <button
+                  type="button"
+                  onClick={group.openSettings}
+                  aria-label={gt("{app} settings", { app: group.name })}
+                  title={gt("{app} settings", { app: group.name })}
+                  className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-on-surface-tertiary transition-colors hover:bg-surface-sunken hover:text-on-surface"
+                >
+                  <SettingsGlyph />
+                </button>
+              )}
+            </div>
             {expanded &&
               group.tools.map((tool) => (
                 <ToolRow key={tool.key} tool={tool} active={tool.key === activeKey} />
