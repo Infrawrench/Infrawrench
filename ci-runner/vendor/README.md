@@ -283,11 +283,11 @@ no progress (and the stall check rightly called it stalled).
 and `proc_join` answers "nothing yet" otherwise. The C library reads a
 missing pid as `ECHILD`, so that answer names pid 0, which `waitpid` then
 returns as 0, as Linux does. Upstream main still blocks there (checked
-November 2026, not yet reported); drop the hunk with the release that has
-a fix.
+November 2026); wasmerio/wasmer#6982, open, fixes it. Drop the hunk with
+the release that has it.
 
-**Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and a
-non-blocking wait for any child: delete `vendor/wasmer-wasix*`, its
+**Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
+#6982 (a non-blocking wait for any child): delete `vendor/wasmer-wasix*`, its
 `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
 bash-node) and `shebang-missing-interpreter-fails`.
