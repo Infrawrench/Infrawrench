@@ -399,12 +399,22 @@ describe("PollerLoop change-timeline retention", () => {
   });
 
   it("prunes again once the hourly interval has elapsed", async () => {
-    const loop = new PollerLoop({ tickMs: 60_000 });
+    // The interval is measured on the clock, not in ticks, so a 10-minute
+    // tick reaches the hour in six ticks. Every tick runs every pass, so a
+    // one-minute tick made this sixty ticks of work, enough to time out on a
+    // loaded CI runner.
+    const loop = new PollerLoop({ tickMs: 10 * 60 * 1000 });
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
     expect(pruneSessionRecordings).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    // Five more ticks, the last at 50 minutes: still within the hour.
+    await vi.advanceTimersByTimeAsync(50 * 60 * 1000);
+    expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    expect(pruneSessionRecordings).toHaveBeenCalledTimes(1);
+    expect(settleAbandonedRecordings).toHaveBeenCalledTimes(1);
+    // The tick at 60 minutes is the first a full hour after the last prune.
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(2);
     expect(pruneSessionRecordings).toHaveBeenCalledTimes(2);
     expect(settleAbandonedRecordings).toHaveBeenCalledTimes(2);
