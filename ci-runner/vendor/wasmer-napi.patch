@@ -63,7 +63,7 @@
          .call()
 --- a/src/budget.rs
 +++ b/src/budget.rs
-@@ -53,9 +53,31 @@
+@@ -53,12 +53,45 @@
  const MIB: u64 = 1024 * 1024;
  
  /// Initial `max_old_generation_size` charged per V8 isolate at env creation.
@@ -98,11 +98,149 @@
  /// One-time V8 heap slack reserved up front so a denied growth callback can
  /// terminate and unwind without entering V8s fatal out-of-memory path.
  pub const DEFAULT_UNWIND_SLACK: u64 = 16 * MIB;
-@@ -479,17 +501,41 @@
-                 clamped: false,
++/// iwci patch (#972): once an isolate is stopped because the budget cannot
++/// grow its heap, each further near-heap-limit call raises V8's limit by this
++/// much, uncharged, until [`MAX_STOP_OVERDRAFT`]. A stopped isolate still
++/// finishes the builtin it is in (a large array's next backing store, a
++/// string join) and its background compiles before it unwinds, and V8 treats
++/// reaching its own limit as fatal to the process, not the isolate.
++pub const STOP_OVERDRAFT_STEP: u64 = 32 * MIB;
++/// iwci patch (#972): the most a stopped isolate may grow past its charge.
++/// Past it V8 reaches its limit, which the bridge's out-of-memory handler
++/// confines to the job (`v8/src/unofficial_napi.cc`) at the cost of a thread.
++pub const MAX_STOP_OVERDRAFT: u64 = 128 * MIB;
+ /// Fixed per-isolate overhead charged to cover young generation, code range,
+ /// and V8's own malloc'd metadata without sampling.
+ pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
+@@ -155,8 +188,49 @@
+     pub v8_external: u64,
+     /// Number of live V8 isolates (envs) counted against `max_envs`.
+     pub live_isolates: usize,
++}
++
++/// iwci patch (#964, #972): what the budget refused or stopped, so an
++/// embedder can say that a program failed for want of memory. Counts since
++/// the budget was made; all zero means memory never ran short.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct MemoryExhaustion {
++    /// Isolates whose heap the budget could not grow: each was terminated,
++    /// and the app's JavaScript stopped with it (`host_stopped`).
++    pub heaps_stopped: u64,
++    /// Isolates V8 ran out of heap in anyway, which it treats as fatal to
++    /// the process. The bridge confined each to its app: the thread that ran
++    /// out is parked for good and the isolate abandoned.
++    pub heaps_lost: u64,
++    /// Isolates (a `node`, a worker thread) refused at creation because the
++    /// budget had no room for another heap.
++    pub isolates_refused: u64,
++    /// Growths of the guest heap (`ArrayBuffer` and `Buffer` memory) refused
++    /// by the budget.
++    pub buffers_refused: u64,
+ }
+ 
++impl MemoryExhaustion {
++    /// The app's JavaScript was stopped for memory: nothing it runs from
++    /// now on will get anywhere, and a lost heap's thread never returns.
++    pub fn stopped(&self) -> bool {
++        self.heaps_stopped != 0 || self.heaps_lost != 0
++    }
++
++    /// Anything was refused or stopped.
++    pub fn any(&self) -> bool {
++        self.stopped() || self.isolates_refused != 0 || self.buffers_refused != 0
++    }
++}
++
++#[derive(Debug, Default)]
++struct ExhaustionCounters {
++    heaps_stopped: AtomicU64,
++    heaps_lost: AtomicU64,
++    isolates_refused: AtomicU64,
++    buffers_refused: AtomicU64,
++}
++
+ /// The (possibly clamped) heap constraints a guest requested for a new V8 env.
+ /// Fields are bytes; `0` means "unset" (V8 picks its default).
+ #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+@@ -207,6 +281,8 @@
+     v8_external: AtomicU64,
+     /// Live V8 isolates (envs), counted against `max_envs`.
+     live_isolates: AtomicUsize,
++    /// iwci patch (#964, #972): what was refused or stopped for memory.
++    exhaustion: ExhaustionCounters,
+ }
+ 
+ impl std::fmt::Debug for ResourceBudget {
+@@ -257,6 +333,7 @@
+             v8_heap_reserved: AtomicU64::new(0),
+             v8_external: AtomicU64::new(0),
+             live_isolates: AtomicUsize::new(0),
++            exhaustion: ExhaustionCounters::default(),
+         })
+     }
+ 
+@@ -269,6 +346,7 @@
+             v8_heap_reserved: AtomicU64::new(0),
+             v8_external: AtomicU64::new(0),
+             live_isolates: AtomicUsize::new(0),
++            exhaustion: ExhaustionCounters::default(),
+         }
+     }
+ 
+@@ -380,9 +458,29 @@
+             v8_heap_reserved: self.v8_heap_reserved.load(Ordering::Acquire),
+             v8_external: self.v8_external.load(Ordering::Acquire),
+             live_isolates: self.live_isolates.load(Ordering::Acquire),
++        }
++    }
++
++    /// iwci patch (#964, #972): what the budget refused or stopped so far.
++    pub fn exhaustion(&self) -> MemoryExhaustion {
++        let e = &self.exhaustion;
++        MemoryExhaustion {
++            heaps_stopped: e.heaps_stopped.load(Ordering::Acquire),
++            heaps_lost: e.heaps_lost.load(Ordering::Acquire),
++            isolates_refused: e.isolates_refused.load(Ordering::Acquire),
++            buffers_refused: e.buffers_refused.load(Ordering::Acquire),
+         }
+     }
+ 
++    /// A growth of the guest heap was refused by this budget.
++    pub(crate) fn note_buffer_refused(&self) {
++        if !self.is_unlimited() {
++            self.exhaustion
++                .buffers_refused
++                .fetch_add(1, Ordering::AcqRel);
++        }
++    }
++
+     /// Number of live V8 isolates counted against `max_envs`.
+     pub fn live_isolates(&self) -> usize {
+         self.live_isolates.load(Ordering::Acquire)
+@@ -416,6 +514,9 @@
+         }
+         let Some(reservation) = self.plan_heap_reservation(req) else {
+             self.release_isolate();
++            self.exhaustion
++                .isolates_refused
++                .fetch_add(1, Ordering::AcqRel);
+             return Err(EnvRejected::HeapDoesNotFit);
+         };
+         if self
+@@ -423,6 +524,9 @@
+             .is_err()
+         {
+             self.release_isolate();
++            self.exhaustion
++                .isolates_refused
++                .fetch_add(1, Ordering::AcqRel);
+             return Err(EnvRejected::HeapDoesNotFit);
+         }
+         Ok(reservation)
+@@ -480,16 +584,40 @@
              });
          }
-+
+ 
 +        // iwci patch: an isolate created while others are live (a
 +        // `worker_threads` Worker, or a second `node` of the same job) starts
 +        // from the published 64 MiB old generation and plans against a
@@ -119,7 +257,7 @@
 +        } else {
 +            self.memory_remaining()
 +        };
- 
++
          // Explicit young/code plus a fixed overhead are reserved first; the
 -        // overhead also covers V8's own metadata and any unset young/code.
 -        let young = u64::from(req.max_young);
@@ -143,7 +281,7 @@
          if remaining <= fixed {
              return None;
          }
-@@ -497,16 +543,18 @@
+@@ -497,16 +625,18 @@
          let old_available = remaining - fixed;
          let requested_old = if req.max_old > 0 {
              u64::from(req.max_old)
@@ -164,7 +302,18 @@
              max_old: u32::try_from(old).unwrap_or(u32::MAX),
              code_range: req.code_range,
              ceiling_bytes: fixed + old,
-@@ -533,8 +581,9 @@
+@@ -528,13 +658,20 @@
+     pub(crate) unwind_slack_available: AtomicBool,
+     /// Bytes granted beyond the initial ceiling by grow-step grants.
+     pub(crate) granted: AtomicU64,
++    /// iwci patch (#972): the budget has refused this isolate's heap once,
++    /// and the isolate was stopped.
++    pub(crate) stopped: AtomicBool,
++    /// iwci patch (#972): uncharged bytes V8's limit was raised by after the
++    /// stop, up to [`MAX_STOP_OVERDRAFT`].
++    pub(crate) overdraft: AtomicU64,
+ }
+ 
  /// Host-owned near-heap-limit callback for a budgeted V8 isolate.
  ///
  /// When V8 approaches a heap ceiling it invokes this on the isolate's JS
@@ -176,7 +325,7 @@
  /// isolate termination and expose the pre-reserved unwind slack once. A second
  /// denial leaves the limit unchanged, so the quota cannot be expanded repeatedly. The budget is atomic, so this is safe
  /// to call concurrently with charges on other threads.
-@@ -555,9 +604,18 @@
+@@ -555,28 +692,86 @@
      }
      // SAFETY: see the function's safety contract.
      let tracker = unsafe { &*(data as *const EnvHeapCharge) };
@@ -198,7 +347,79 @@
              tracker.granted.fetch_add(step, Ordering::AcqRel);
              current_limit.saturating_add(step as usize)
          }
-@@ -1041,9 +1099,11 @@
+         Err(_) => {
++            if !tracker.stopped.swap(true, Ordering::AcqRel) {
++                tracker
++                    .budget
++                    .exhaustion
++                    .heaps_stopped
++                    .fetch_add(1, Ordering::AcqRel);
++            }
+             tracker.host_stopped.store(true, Ordering::Release);
+             if tracker.env != 0 {
++                // iwci patch: the lock-free termination. This runs inside a
++                // garbage collection on the isolate's thread, which may be in
++                // any bridge call.
+                 unsafe {
+-                    crate::snapi::snapi_bridge_unofficial_terminate_execution(
++                    crate::snapi::snapi_bridge_host_terminate_execution(
+                         tracker.env as crate::snapi::SnapiEnv,
+                     );
+                 }
+             }
+             if tracker.unwind_slack_available.swap(false, Ordering::AcqRel) {
+-                current_limit.saturating_add(DEFAULT_UNWIND_SLACK as usize)
+-            } else {
+-                current_limit
++                return current_limit.saturating_add(DEFAULT_UNWIND_SLACK as usize);
+             }
++            // iwci patch (#972): never let a stopped isolate reach V8's own
++            // limit while it unwinds, up to a bound (see
++            // `MAX_STOP_OVERDRAFT`). Leaving the limit where it was made V8
++            // abort the whole runner ("Reached heap limit") whenever the
++            // isolate needed more than the slack to stop.
++            let step = tracker
++                .overdraft
++                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
++                    (used < MAX_STOP_OVERDRAFT)
++                        .then(|| used + STOP_OVERDRAFT_STEP.min(MAX_STOP_OVERDRAFT - used))
++                })
++                .map(|used| STOP_OVERDRAFT_STEP.min(MAX_STOP_OVERDRAFT - used))
++                .unwrap_or(0);
++            current_limit.saturating_add(step as usize)
+         }
++    }
++}
++
++/// iwci patch (#972): V8 ran out of heap in this env's isolate where it
++/// treats that as fatal to the process (an allocation that failed on a
++/// background compile thread, or one larger than the stop overdraft). The
++/// bridge's out-of-memory handler (`v8/src/unofficial_napi.cc`) calls this
++/// before it parks the thread for good instead of letting V8 abort: it
++/// records the loss and stops the app's JavaScript, so the embedder ends the
++/// app and says why.
++///
++/// # Safety
++/// `data` must be null or the [`EnvHeapCharge`] registered for the isolate as
++/// its near-heap-limit data. The handler calls this under the lock that env
++/// release takes before the tracker is freed.
++#[unsafe(no_mangle)]
++pub extern "C" fn napi_host_isolate_out_of_memory(data: *const c_void) {
++    if data.is_null() {
++        return;
+     }
++    // SAFETY: see the function's safety contract.
++    let tracker = unsafe { &*(data as *const EnvHeapCharge) };
++    tracker
++        .budget
++        .exhaustion
++        .heaps_lost
++        .fetch_add(1, Ordering::AcqRel);
++    tracker.host_stopped.store(true, Ordering::Release);
+ }
+ 
+ /// The live charge for one physical wasm-memory allocation.
+@@ -1041,9 +1236,11 @@
              .expect("env fits");
          assert!(res.clamped);
          // Default old-gen (64 MiB) fits, plus 8 MiB overhead and 16 MiB unwind slack.
@@ -213,7 +434,7 @@
          assert_eq!(budget.live_isolates(), 1);
  
          budget.release_env(res.ceiling_bytes);
-@@ -1054,7 +1114,7 @@
+@@ -1054,7 +1251,7 @@
      #[test]
      fn env_reservation_clamps_old_gen_to_fit() {
          // Only 40 MiB: overhead (8) and unwind slack (16) leave 16 MiB for
@@ -222,7 +443,117 @@
          let budget = ResourceBudget::with_memory_limit(40 * MIB);
          let res = budget
              .try_reserve_env(RequestedHeap::default(), None)
-@@ -1318,4 +1378,50 @@
+@@ -1154,6 +1351,8 @@
+             host_stopped: Arc::clone(&host_stopped),
+             unwind_slack_available: AtomicBool::new(true),
+             granted: AtomicU64::new(0),
++            stopped: AtomicBool::new(false),
++            overdraft: AtomicU64::new(0),
+         }));
+         let data = ptr as *const c_void;
+         let base = 100 * 1024 * 1024usize;
+@@ -1174,24 +1373,34 @@
+ 
+         // Budget exhaustion requests termination and exposes the already-reserved
+         // unwind slack exactly once.
++        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
++        let mut limit = base + 2 * step;
+         assert_eq!(
+-            napi_host_near_heap_limit_grant(data, base + 2 * step, base),
+-            base + 2 * step + DEFAULT_UNWIND_SLACK as usize
++            napi_host_near_heap_limit_grant(data, limit, base),
++            limit + DEFAULT_UNWIND_SLACK as usize
+         );
++        limit += DEFAULT_UNWIND_SLACK as usize;
++        // iwci patch (#972): then uncharged overdraft steps, so the stopped
++        // isolate does not reach V8's own limit while it unwinds, up to the
++        // bound, after which the limit stays.
++        let mut overdraft = 0;
++        while overdraft < MAX_STOP_OVERDRAFT {
++            let next = napi_host_near_heap_limit_grant(data, limit, base);
++            assert_eq!(next, limit + STOP_OVERDRAFT_STEP as usize);
++            limit = next;
++            overdraft += STOP_OVERDRAFT_STEP;
++        }
++        assert_eq!(napi_host_near_heap_limit_grant(data, limit, base), limit);
+         assert_eq!(
+-            napi_host_near_heap_limit_grant(
+-                data,
+-                base + 2 * step + DEFAULT_UNWIND_SLACK as usize,
+-                base,
+-            ),
+-            base + 2 * step + DEFAULT_UNWIND_SLACK as usize
+-        );
+-        assert_eq!(
+             budget.snapshot().v8_heap_reserved,
+-            DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP
++            DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP,
++            "the overdraft is not charged"
+         );
+ 
+         assert!(host_stopped.load(Ordering::Acquire));
++        // Counted once per isolate, however often V8 asks again.
++        assert_eq!(budget.exhaustion().heaps_stopped, 1);
++        assert!(budget.exhaustion().stopped());
+ 
+         // The tracker recorded exactly what was granted, and releasing it (as
+         // env teardown does) returns the pool to zero.
+@@ -1200,9 +1409,54 @@
+         assert_eq!(granted, 2 * DEFAULT_HEAP_GROW_STEP);
+         budget.uncharge(Pool::V8HeapReserved, granted + DEFAULT_UNWIND_SLACK);
+         assert_eq!(budget.snapshot().v8_heap_reserved, 0);
++    }
++
++    #[test]
++    fn a_lost_heap_stops_the_app_and_is_counted() {
++        let budget = ResourceBudget::with_memory_limit(64 * MIB);
++        let host_stopped = Arc::new(AtomicBool::new(false));
++        let ptr = Box::into_raw(Box::new(EnvHeapCharge {
++            budget: Arc::clone(&budget),
++            env: 0,
++            host_stopped: Arc::clone(&host_stopped),
++            unwind_slack_available: AtomicBool::new(true),
++            granted: AtomicU64::new(0),
++            stopped: AtomicBool::new(false),
++            overdraft: AtomicU64::new(0),
++        }));
++        napi_host_isolate_out_of_memory(std::ptr::null());
++        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
++        napi_host_isolate_out_of_memory(ptr as *const c_void);
++        assert!(host_stopped.load(Ordering::Acquire));
++        assert_eq!(budget.exhaustion().heaps_lost, 1);
++        assert!(budget.exhaustion().stopped());
++        drop(unsafe { Box::from_raw(ptr) });
+     }
+ 
+     #[test]
++    fn a_refused_isolate_is_counted_but_does_not_stop_the_app() {
++        let budget = ResourceBudget::with_memory_limit(DEFAULT_PER_ISOLATE_OVERHEAD);
++        assert_eq!(
++            budget.try_reserve_env(RequestedHeap::default(), None),
++            Err(EnvRejected::HeapDoesNotFit)
++        );
++        let exhaustion = budget.exhaustion();
++        assert_eq!(exhaustion.isolates_refused, 1);
++        assert!(exhaustion.any() && !exhaustion.stopped());
++        // A cap on the number of isolates is not memory.
++        let budget = ResourceBudget::with_memory_limit(u64::from(u32::MAX));
++        let first = budget
++            .try_reserve_env(RequestedHeap::default(), Some(1))
++            .unwrap();
++        assert_eq!(
++            budget.try_reserve_env(RequestedHeap::default(), Some(1)),
++            Err(EnvRejected::TooManyEnvs)
++        );
++        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
++        budget.release_env(first.ceiling_bytes);
++    }
++
++    #[test]
+     fn near_heap_limit_callback_ignores_null_data() {
+         assert_eq!(
+             napi_host_near_heap_limit_grant(std::ptr::null(), 42, 7),
+@@ -1318,4 +1572,50 @@
          assert_eq!(accountant.memory_charged(), 40);
          assert_eq!(budget.snapshot().v8_heap_reserved, 0);
      }
@@ -416,7 +747,16 @@
                  }
              }
          }
-@@ -388,18 +407,30 @@
+@@ -300,6 +319,8 @@
+                 host_stopped: Arc::clone(&self.host_stopped),
+                 unwind_slack_available: std::sync::atomic::AtomicBool::new(true),
+                 granted: AtomicU64::new(0),
++                stopped: std::sync::atomic::AtomicBool::new(false),
++                overdraft: AtomicU64::new(0),
+             }));
+             // SAFETY: `env` is the isolate just created; `boxed` outlives the
+             // callback (freed only at this env's teardown, below).
+@@ -388,18 +409,30 @@
      }
  
      pub(crate) fn register_napi_env(&mut self, env: SnapiEnv) -> (u32, u32) {
@@ -455,7 +795,7 @@
          self.napi_envs.insert(env_id, env as usize);
          self.napi_state_to_guest_env.insert(env as usize, env_id);
          self.napi_scopes.insert(scope_id, env_id);
-@@ -460,7 +491,8 @@
+@@ -460,7 +493,8 @@
          self.env_registry
              .lock()
              .expect("poisoned N-API env registry")
@@ -465,7 +805,7 @@
  
          // Leases are environment-owned resources. Explicit release publishes
          // writes; environment teardown only discards snapshots and returns any
-@@ -502,6 +534,28 @@
+@@ -502,6 +536,28 @@
          Some(env)
      }
  
@@ -494,7 +834,7 @@
      pub(crate) fn resolve_napi_env(&self, guest_env: i32) -> SnapiEnv {
          let env_id = if guest_env > 0 {
              guest_env as u32
-@@ -546,7 +600,7 @@
+@@ -546,7 +602,7 @@
          let mut env = NapiEnv::new(
              Arc::clone(&budget),
              None,
@@ -503,7 +843,7 @@
              Arc::new(AtomicBool::new(false)),
          );
  
-@@ -575,7 +629,7 @@
+@@ -575,7 +631,7 @@
              let mut env = NapiEnv::new(
                  Arc::clone(&budget),
                  None,
@@ -512,7 +852,7 @@
                  Arc::new(AtomicBool::new(false)),
              );
              assert!(env.charge_declared_external(4 * MIB));
-@@ -593,7 +647,7 @@
+@@ -593,7 +649,7 @@
          let mut env = NapiEnv::new(
              ResourceBudget::unlimited(),
              None,
@@ -678,8 +1018,28 @@
              charged: AtomicU64::new(0),
              inner: Mutex::new(HeapInner {
                  memories: vec![memory.clone()],
+@@ -483,6 +496,8 @@
+                 .try_charge(Pool::WasmLinear, delta_bytes)
+                 .is_err()
+             {
++                // iwci patch (#964): so the embedder can say it was memory.
++                self.budget.note_buffer_refused();
+                 return false;
+             }
+             delta_bytes
 --- a/src/lib.rs
 +++ b/src/lib.rs
+@@ -20,8 +20,8 @@
+ #[cfg(not(target_arch = "wasm32"))]
+ pub use budget::{BudgetedMemory, BudgetedTunables, budgeted_tunables};
+ pub use budget::{
+-    EnvRejected, HeapReservation, NapiMemoryAccountant, OverBudget, Pool, RequestedHeap,
+-    ResourceBudget, ResourceUsage,
++    EnvRejected, HeapReservation, MemoryExhaustion, NapiMemoryAccountant, OverBudget, Pool,
++    RequestedHeap, ResourceBudget, ResourceUsage,
+ };
+ pub use ctx::{
+     NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,
 @@ -82,6 +82,37 @@
      Ok(())
  }
@@ -1715,7 +2075,7 @@
      prop_value_ids: *const u32,
 --- a/v8/src/edge_v8_platform.cc
 +++ b/v8/src/edge_v8_platform.cc
-@@ -96,6 +96,13 @@
+@@ -96,8 +96,17 @@
    std::shared_ptr<ForegroundTaskRunner> runner;
    std::mutex mutex;
    size_t pending_foreground_tasks = 0;
@@ -1728,11 +2088,16 @@
 +  std::condition_variable work_cv;
    bool shutdown_started = false;
    bool finished = false;
++  // iwci patch (#972): see EdgeV8Platform::AbandonIsolate. Under `mutex`.
++  bool abandoned = false;
    std::vector<FinishedCallback> finished_callbacks;
-@@ -136,6 +143,84 @@
-   std::atomic<bool> finished_ {false};
  };
  
+@@ -135,6 +144,84 @@
+   std::unique_ptr<v8::Task> task_;
+   std::atomic<bool> finished_ {false};
+ };
++
 +// iwci patch (#943): the isolate the worker task running on this thread
 +// belongs to, so that what it posts in turn (a compile job's next step) is
 +// counted for the same isolate.
@@ -1810,11 +2175,10 @@
 +  if (token == nullptr) return task;
 +  return std::make_unique<AttributedWorkerTask>(hooks, token, std::move(task));
 +}
-+
+ 
  void RunForegroundTaskRecord(napi_env /*env*/, void* data) {
    auto* record = static_cast<ForegroundTaskRecord*>(data);
-   if (record != nullptr && record->task) {
-@@ -251,6 +336,13 @@
+@@ -251,6 +338,13 @@
        }
        if (delay_ms == 0) {
          runner->PostTask(std::move(counted_task), location);
@@ -1828,7 +2192,7 @@
        } else {
          runner->PostDelayedTask(std::move(counted_task), delay_ms / 1000.0, location);
        }
-@@ -315,6 +407,20 @@
+@@ -315,6 +409,20 @@
    return true;
  }
  
@@ -1849,7 +2213,7 @@
  std::unique_ptr<EdgeV8Platform> EdgeV8Platform::Create() {
    g_platform_created.store(true, std::memory_order_release);
    std::unique_ptr<v8::Platform> fallback = v8::platform::NewDefaultPlatform(
-@@ -510,8 +616,8 @@
+@@ -510,8 +618,8 @@
    state->runner->ClearTarget(env);
  }
  
@@ -1860,7 +2224,7 @@
    // ForegroundTaskRunner::PostTaskCommon forwards to the guest's bound
    // enqueue callback when one is set, but falls back to fallback_'s own
    // GetForegroundTaskRunner() when no guest target is bound (e.g. the guest
-@@ -520,10 +626,41 @@
+@@ -520,10 +628,56 @@
    // runner's queue, so tasks routed there -- including V8-internal work like
    // Heap::PostFinalizationRegistryCleanupTaskIfNeeded's cleanup task -- would
    // otherwise be posted and never run. Drain it explicitly.
@@ -1875,23 +2239,38 @@
 +    ran = true;
    }
 +  return ran;
- }
- 
++}
++
 +bool EdgeV8Platform::HasPendingWork(v8::Isolate* isolate) {
 +  std::shared_ptr<IsolateState> state = GetState(isolate);
 +  if (!state) return false;
 +  std::lock_guard<std::mutex> lock(state->mutex);
++  if (state->abandoned) return false;
 +  return state->worker_tasks_in_flight != 0 || state->foreground_task_posted;
-+}
-+
+ }
+ 
 +void EdgeV8Platform::WaitForPendingWork(v8::Isolate* isolate,
 +                                        std::chrono::microseconds timeout) {
 +  std::shared_ptr<IsolateState> state = GetState(isolate);
 +  if (!state) return;
 +  std::unique_lock<std::mutex> lock(state->mutex);
 +  state->work_cv.wait_for(lock, timeout, [&] {
-+    return state->foreground_task_posted || state->worker_tasks_in_flight == 0;
++    return state->abandoned || state->foreground_task_posted ||
++           state->worker_tasks_in_flight == 0;
 +  });
++}
++
++v8::Isolate* EdgeV8Platform::CurrentWorkerIsolate() {
++  return t_work_owner != nullptr && *t_work_owner ? (*t_work_owner)->isolate
++                                                  : nullptr;
++}
++
++void EdgeV8Platform::AbandonIsolate(v8::Isolate* isolate) {
++  std::shared_ptr<IsolateState> state = GetState(isolate);
++  if (!state) return;
++  std::lock_guard<std::mutex> lock(state->mutex);
++  state->abandoned = true;
++  state->work_cv.notify_all();
 +}
 +
 +std::shared_ptr<EdgeV8Platform::IsolateState> EdgeV8Platform::CurrentWorkOwner() {
@@ -1902,7 +2281,7 @@
  int EdgeV8Platform::NumberOfWorkerThreads() {
    return fallback_ != nullptr ? fallback_->NumberOfWorkerThreads() : 0;
  }
-@@ -599,6 +736,12 @@
+@@ -599,6 +753,12 @@
                                                 std::unique_ptr<v8::Task> task,
                                                 const v8::SourceLocation& location) {
    if (fallback_ != nullptr) {
@@ -1915,7 +2294,7 @@
      fallback_->PostTaskOnWorkerThread(priority, std::move(task), location);
    }
  }
-@@ -609,6 +752,8 @@
+@@ -609,6 +769,8 @@
      double delay_in_seconds,
      const v8::SourceLocation& location) {
    if (fallback_ != nullptr) {
@@ -1954,7 +2333,7 @@
    ~EdgeV8Platform() override;
  
    bool RegisterIsolate(v8::Isolate* isolate);
-@@ -43,8 +57,22 @@
+@@ -43,8 +57,32 @@
    void ClearForegroundTaskTarget(v8::Isolate* isolate, napi_env env);
    void AddPendingForegroundTask(const std::shared_ptr<IsolateState>& state);
    void CompletePendingForegroundTask(const std::shared_ptr<IsolateState>& state);
@@ -1975,10 +2354,20 @@
 +  // first. Returns at once when there is nothing to wait for.
 +  void WaitForPendingWork(v8::Isolate* isolate, std::chrono::microseconds timeout);
 +
++  // iwci patch (#972): the isolate whose worker task runs on this thread, or
++  // null on a thread that is not running one. V8's out-of-memory handler is
++  // not told which isolate ran out, and on a worker thread no isolate is
++  // current.
++  static v8::Isolate* CurrentWorkerIsolate();
++  // iwci patch (#972): a thread working for this isolate was parked for good
++  // after V8 ran out of memory in it, so its work will never end: its event
++  // loop stops waiting for that work.
++  void AbandonIsolate(v8::Isolate* isolate);
++
    int NumberOfWorkerThreads() override;
    std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
        v8::Isolate* isolate, v8::TaskPriority priority) override;
-@@ -86,6 +114,8 @@
+@@ -86,6 +124,8 @@
    void BeginShutdown(const std::shared_ptr<IsolateState>& state);
    void MaybeFinishIsolate(const std::shared_ptr<IsolateState>& state,
                            bool begin_shutdown);
@@ -1987,12 +2376,104 @@
  
    std::unique_ptr<v8::Platform> fallback_;
    std::mutex mutex_;
+--- a/v8/src/js_native_api_v8.cc
++++ b/v8/src/js_native_api_v8.cc
+@@ -821,7 +821,13 @@
+                                                void** data,
+                                                napi_value* result) {
+   if (!CheckEnv(env) || result == nullptr) return napi_invalid_arg;
+-  v8::Local<v8::ArrayBuffer> ab = v8::ArrayBuffer::New(env->isolate, byte_length);
++  // iwci patch (#972): a failed allocation is the caller's error, not V8's
++  // fatal out-of-memory (ArrayBuffer::New aborts the process), since the
++  // memory comes from the guest's heap, which its budget can refuse.
++  v8::Local<v8::ArrayBuffer> ab;
++  if (!v8::ArrayBuffer::MaybeNew(env->isolate, byte_length).ToLocal(&ab)) {
++    return napi_generic_failure;
++  }
+   if (data != nullptr) *data = ab->Data();
+   *result = napi_v8_wrap_value(env, ab);
+   return (*result == nullptr) ? napi_generic_failure : napi_ok;
+@@ -2977,7 +2983,10 @@
+   v8::Local<v8::Context> context = env->context();
+   v8::Context::Scope context_scope(context);
+ 
+-  auto backing = v8::ArrayBuffer::NewBackingStore(env->isolate, length);
++  // iwci patch (#972): kReturnNull, as in napi_create_arraybuffer.
++  auto backing = v8::ArrayBuffer::NewBackingStore(
++      env->isolate, length, v8::BackingStoreInitializationMode::kZeroInitialized,
++      v8::BackingStoreOnFailureMode::kReturnNull);
+   if (!backing) return napi_generic_failure;
+   *data = backing->Data();
+ 
 --- a/v8/src/unofficial_napi.cc
 +++ b/v8/src/unofficial_napi.cc
-@@ -585,8 +585,19 @@
+@@ -18,6 +18,7 @@
+ #include <random>
+ #include <sstream>
+ #include <unordered_map>
++#include <unordered_set>
+ #include <vector>
+ 
+ #include <libplatform/libplatform.h>
+@@ -120,6 +121,41 @@
+ 
+ std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>& g_near_heap_limit_callbacks =
+     *new std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>();
++
++// iwci patch (#972): confining V8's fatal out-of-memory to one isolate.
++//
++// Every isolate of the process shares it with every CI job, and V8 ends the
++// process when an isolate runs out of heap where it cannot recover (an
++// allocation on a background compile thread that still fails after its
++// garbage collections, or one bigger than the limit leaves), so one job took
++// every job down. V8 calls the isolate's OOM handler first and aborts only if
++// it returns, so for an isolate whose host budgets it (its near-heap-limit
++// data is the host's), the handler tells the host, stops the isolate's
++// JavaScript, and never returns: the thread that ran out is parked for good,
++// the isolate is abandoned, never disposed, and the host ends the job. That
++// keeps whatever the thread holds of that isolate held, which is only that
++// isolate's; it costs the thread (a V8 worker or the job's own) and the
++// isolate's memory for the life of the process.
++//
++// `g_oom_mu` guards these sets and is never held while calling into V8. The
++// host's data lives until the env is released, which erases it here under
++// the same lock first.
++std::mutex g_oom_mu;
++std::unordered_map<v8::Isolate*, const void*>& g_oom_host_data =
++    *new std::unordered_map<v8::Isolate*, const void*>();
++// Isolates abandoned by a parked thread: never disposed.
++std::unordered_set<v8::Isolate*>& g_lost_isolates =
++    *new std::unordered_set<v8::Isolate*>();
++// Isolates being disposed. Dispose joins the isolate's background work under
++// `g_isolate_lifecycle_mu`, which every isolate creation takes, so a thread
++// parked for one of these would stop Node in every job for good: there the
++// handler lets V8 abort as before.
++std::unordered_set<v8::Isolate*>& g_disposing_isolates =
++    *new std::unordered_set<v8::Isolate*>();
++// Set while this thread holds `g_isolate_lifecycle_mu` (isolate creation or
++// disposal), for the same reason.
++thread_local bool t_in_isolate_lifecycle = false;
++std::atomic<EdgeV8Platform*> g_oom_platform{nullptr};
+ 
+ struct InterruptRequest {
+   napi_env env = nullptr;
+@@ -462,6 +498,11 @@
+ }
+ extern "C" __attribute__((weak)) void napi_host_guest_heap_release(
+     void* /*ctx*/) {}
++// iwci patch (#972): the host's record that V8 ran out of memory in an
++// isolate it budgets (budget.rs). `data` is the isolate's near-heap-limit
++// data.
++extern "C" __attribute__((weak)) void napi_host_isolate_out_of_memory(
++    const void* /*data*/) {}
+ 
+ class TrackingArrayBufferAllocator final : public v8::ArrayBuffer::Allocator {
+  public:
+@@ -584,9 +625,29 @@
+   }
    return v8::IsolateGroup::GetDefault();
  }
- 
++
 +// iwci patch (from wasmerio/napi 832e57ec): EdgeV8Platform keys per-isolate
 +// state by address. Envs on different threads create and release isolates at
 +// the same time, so a new isolate must not be allocated (possibly at a
@@ -2002,14 +2483,33 @@
 +// disposal take this lock: not execution, env teardown or the wait for the
 +// platform's pending tasks.
 +std::mutex g_isolate_lifecycle_mu;
+ 
++// iwci patch (#972): marks this thread as holding `g_isolate_lifecycle_mu`.
++struct InIsolateLifecycle {
++  InIsolateLifecycle() { t_in_isolate_lifecycle = true; }
++  ~InIsolateLifecycle() { t_in_isolate_lifecycle = false; }
++};
++
++void OOMErrorCallback(const char* location, const v8::OOMDetails& details);
 +
  v8::Isolate* CreateIsolateForEnv(EdgeV8Platform* platform,
                                   const v8::Isolate::CreateParams& params) {
 +  std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
++  InIsolateLifecycle in_lifecycle;
    v8::Isolate* isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
    if (isolate == nullptr) return nullptr;
    if (platform != nullptr && !platform->RegisterIsolate(isolate)) {
-@@ -628,13 +639,16 @@
+@@ -594,6 +655,9 @@
+     return nullptr;
+   }
+   v8::Isolate::Initialize(isolate, params);
++  // iwci patch (#972): from the start, not only once an embedder attaches
++  // hooks (this bridge attaches none of its own).
++  isolate->SetOOMErrorHandler(OOMErrorCallback);
+   return isolate;
+ }
+ 
+@@ -628,13 +692,17 @@
    if (isolate == nullptr) return;
  
    PlatformShutdownWaiter waiter;
@@ -2022,6 +2522,7 @@
 -    isolate->Dispose();
 +  {
 +    std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
++    InIsolateLifecycle in_lifecycle;
 +    if (platform != nullptr) {
 +      platform->AddIsolateFinishedCallback(
 +          isolate, OnPlatformShutdownFinished, &waiter);
@@ -2033,10 +2534,105 @@
    }
    WaitForPlatformShutdown(&waiter, shutdown_pump_handle);
  }
-@@ -710,6 +724,37 @@
+@@ -667,14 +735,68 @@
+   }
+ }
+ 
+-void OOMErrorCallback(const char* location, const v8::OOMDetails& details) {
++// iwci patch (#972): the isolate V8 ran out of memory in, from the thread
++// it calls the handler on: the job's own thread has it current, a V8 worker
++// thread runs a task posted for it.
++v8::Isolate* IsolateOutOfMemory() {
+   v8::Isolate* isolate = v8::Isolate::TryGetCurrent();
++  return isolate != nullptr ? isolate : EdgeV8Platform::CurrentWorkerIsolate();
++}
++
++// iwci patch (#972): see `g_oom_mu`. Returns only when the isolate cannot be
++// confined (not budgeted by the host, unknown, or mid creation or disposal),
++// and V8 then aborts the process as it always did.
++void ConfineOutOfMemory(v8::Isolate* isolate,
++                        const char* location,
++                        const v8::OOMDetails& details) {
++  if (isolate == nullptr || t_in_isolate_lifecycle) return;
++  {
++    std::lock_guard<std::mutex> lock(g_oom_mu);
++    auto it = g_oom_host_data.find(isolate);
++    if (it == g_oom_host_data.end() || g_disposing_isolates.count(isolate) != 0) {
++      return;
++    }
++    g_lost_isolates.insert(isolate);
++    // Under the lock: env release erases the data under it before the host
++    // frees it.
++    napi_host_isolate_out_of_memory(it->second);
++  }
++  // Thread-safe. When this is a worker thread, the isolate's own thread
++  // stops running JavaScript and its event loop stops waiting for this
++  // thread's task, so the program ends (the host ends the job anyway).
++  isolate->TerminateExecution();
++  if (EdgeV8Platform* platform = g_oom_platform.load(std::memory_order_acquire)) {
++    platform->AbandonIsolate(isolate);
++  }
++  std::fprintf(stderr,
++               "\n# V8 ran out of %s memory in isolate %p (%s%s%s).\n"
++               "# Confined to its program: this thread is parked for good and "
++               "the isolate abandoned.\n\n",
++               details.is_heap_oom ? "JavaScript heap" : "process", static_cast<void*>(isolate),
++               location != nullptr ? location : "",
++               details.detail != nullptr ? ": " : "",
++               details.detail != nullptr ? details.detail : "");
++  std::fflush(stderr);
++  for (;;) std::this_thread::sleep_for(std::chrono::hours(24));
++}
++
++void OOMErrorCallback(const char* location, const v8::OOMDetails& details) {
++  v8::Isolate* isolate = IsolateOutOfMemory();
+   if (isolate == nullptr) return;
+ 
+   unofficial_napi_oom_error_callback callback = nullptr;
+   napi_env env = nullptr;
++  // iwci patch (#972): never block on `g_runtime_mu` here. V8 can run out
++  // of memory in a thread that holds it (a global handle made under it):
++  // waiting would hang that thread, and parking it would hold the lock every
++  // env creation takes. Others hold it only briefly, so a lock that stays
++  // taken for a second is taken as this thread's own, and V8 aborts.
++  std::unique_lock<std::mutex> lock(g_runtime_mu, std::defer_lock);
++  for (int i = 0; i < 1000 && !lock.try_lock(); ++i) {
++    std::this_thread::sleep_for(std::chrono::milliseconds(1));
++  }
++  if (!lock.owns_lock()) return;
+   {
+-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+     auto callback_it = g_fatal_error_callbacks.find(isolate);
+     if (callback_it != g_fatal_error_callbacks.end()) {
+       callback = callback_it->second.oom;
+@@ -683,12 +805,22 @@
+     if (env_it != g_env_by_isolate.end()) {
+       env = env_it->second;
+     }
++    lock.unlock();
+   }
+   if (callback != nullptr) {
+     callback(env, location, details.is_heap_oom, details.detail);
+   }
++  ConfineOutOfMemory(isolate, location, details);
+ }
+ 
++// iwci patch (#972): process-wide, for what V8 reports without an isolate
++// (V8::FatalProcessOutOfMemory(nullptr, ...) on a worker thread, a zone
++// allocation for instance). After an isolate's own handler V8 calls this
++// too, which returns as that one did.
++void ProcessOOMErrorCallback(const char* location, const v8::OOMDetails& details) {
++  ConfineOutOfMemory(IsolateOutOfMemory(), location, details);
++}
++
+ napi_status ConfigureRuntime(const char* engine_flags,
+                              size_t engine_flags_length) {
+   if ((engine_flags_length > 0 && engine_flags == nullptr) ||
+@@ -709,6 +841,37 @@
+   if (engine_flags_length > 0) {
      v8::V8::SetFlagsFromString(engine_flags,
                                 static_cast<int>(engine_flags_length));
-   }
++  }
 +  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
 +  // process-wide JS dispatch table with a protection key and grants access to
 +  // it in the PKRU register of the thread that first initialises V8, and of
@@ -2067,11 +2663,120 @@
 +    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
 +    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
 +                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
-+  }
+   }
    v8::V8::InitializeICUDefaultLocation("");
    v8::V8::InitializeExternalStartupData("");
-   g_runtime.platform = EdgeV8Platform::Create();
-@@ -2121,34 +2166,95 @@
+@@ -716,6 +879,9 @@
+   if (g_runtime.platform == nullptr) return napi_generic_failure;
+   v8::V8::InitializePlatform(g_runtime.platform.get());
+   v8::V8::Initialize();
++  // iwci patch (#972)
++  g_oom_platform.store(g_runtime.platform.get(), std::memory_order_release);
++  v8::V8::SetFatalMemoryErrorCallback(ProcessOOMErrorCallback);
+   g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
+                                 engine_flags_length);
+   return napi_ok;
+@@ -1776,8 +1942,8 @@
+ 
+   env->isolate->SetFatalErrorHandler(
+       hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
+-  env->isolate->SetOOMErrorHandler(
+-      hooks->oom_error_callback != nullptr ? OOMErrorCallback : nullptr);
++  // iwci patch (#972): always, so an out-of-memory can be confined.
++  env->isolate->SetOOMErrorHandler(OOMErrorCallback);
+   *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
+   return napi_ok;
+ }
+@@ -1845,7 +2011,7 @@
+     env->isolate->SetPromiseHook(nullptr);
+     env->isolate->SetPromiseRejectCallback(nullptr);
+     env->isolate->SetFatalErrorHandler(nullptr);
+-    env->isolate->SetOOMErrorHandler(nullptr);
++    // iwci patch (#972): the isolate keeps OOMErrorCallback until disposed.
+   }
+   delete env;
+   return napi_ok;
+@@ -1871,6 +2037,12 @@
+       it->second.callback = callback_or_null;
+       it->second.data = data;
+       install_provider_callback = inserted;
++    }
++    // iwci patch (#972): only the host installs one (the guest's import is a
++    // no-op), with its budget tracker as `data`.
++    {
++      std::lock_guard<std::mutex> lock(g_oom_mu);
++      g_oom_host_data[env->isolate] = data;
+     }
+     if (install_provider_callback) {
+       env->isolate->AddNearHeapLimitCallback(NearHeapLimitCallback, env);
+@@ -1884,6 +2056,10 @@
+     remove_provider_callback =
+         g_near_heap_limit_callbacks.erase(env->isolate) != 0;
+   }
++  {
++    std::lock_guard<std::mutex> lock(g_oom_mu);
++    g_oom_host_data.erase(env->isolate);
++  }
+   if (remove_provider_callback) {
+     env->isolate->RemoveNearHeapLimitCallback(
+         NearHeapLimitCallback, restored_heap_limit);
+@@ -2007,23 +2183,47 @@
+   if (owner == nullptr) return napi_invalid_arg;
+   auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
+ 
+-  napi_status status = napi_ok;
+-  if (scope->env != nullptr) {
+-    status = DestroyEnvInstance(scope->env);
+-    scope->env = nullptr;
++  // iwci patch (#972): an isolate a parked thread abandoned is never torn
++  // down. That thread holds a running local heap, so the next garbage
++  // collection, a finalizer's included, would wait for it forever, and
++  // Dispose would join its task forever, holding the lock every isolate
++  // creation takes. Its env and heap are leaked; only the scopes this thread
++  // entered are left. Otherwise it is marked as being disposed first, so a
++  // thread that runs out of memory for it from now on aborts rather than
++  // parks (see `g_disposing_isolates`).
++  bool lost = false;
++  {
++    std::lock_guard<std::mutex> lock(g_oom_mu);
++    lost = g_lost_isolates.count(scope->isolate) != 0;
+   }
+ 
++  napi_status status = napi_ok;
++  if (scope->env != nullptr && !lost) {
++    status = DestroyEnvInstance(scope->env);
++  }
++  scope->env = nullptr;
++
+   v8::Isolate* isolate = scope->isolate;
+   std::shared_ptr<TrackingArrayBufferAllocator> allocator = scope->allocator;
+   delete scope;
+ 
+   if (isolate != nullptr) {
+-    EdgeV8Platform* platform = nullptr;
+     {
+-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+-      platform = g_runtime.platform.get();
++      std::lock_guard<std::mutex> lock(g_oom_mu);
++      lost = g_lost_isolates.count(isolate) != 0;
++      if (!lost) g_disposing_isolates.insert(isolate);
++    }
++    if (!lost) {
++      EdgeV8Platform* platform = nullptr;
++      {
++        std::lock_guard<std::mutex> lock(g_runtime_mu);
++        platform = g_runtime.platform.get();
++      }
++      DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
+     }
+-    DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
++    std::lock_guard<std::mutex> lock(g_oom_mu);
++    g_disposing_isolates.erase(isolate);
++    g_oom_host_data.erase(isolate);
+   }
+   if (allocator != nullptr) {
+     {
+@@ -2121,34 +2321,95 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -2183,7 +2888,7 @@
  }
  
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-@@ -2156,17 +2262,26 @@
+@@ -2156,17 +2417,26 @@
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {
@@ -2217,7 +2922,7 @@
  }
 --- a/v8/src/unofficial_napi_contextify.cc
 +++ b/v8/src/unofficial_napi_contextify.cc
-@@ -600,9 +600,22 @@
+@@ -600,11 +600,24 @@
    return nullptr;
  }
  
@@ -2233,15 +2938,29 @@
 +ModuleWrapBindingState* GetModuleWrapStateLocked(napi_env env) {
    if (env == nullptr) return nullptr;
    return &g_module_wrap_states[env];
-+}
-+
+ }
+ 
 +ModuleWrapBindingState* GetModuleWrapState(napi_env env) {
 +  std::lock_guard<std::mutex> lock(g_module_wrap_mu);
 +  return GetModuleWrapStateLocked(env);
- }
- 
++}
++
  void RemoveModuleRecord(napi_env env, ModuleWrapRecord* record) {
-@@ -838,10 +851,13 @@
+   if (env == nullptr || record == nullptr) return;
+   auto* state = GetModuleWrapState(env);
+@@ -700,7 +713,10 @@
+   v8::Isolate* isolate = env->isolate;
+   v8::Local<v8::Context> context = env->context();
+ 
+-  std::unique_ptr<v8::BackingStore> store = v8::ArrayBuffer::NewBackingStore(isolate, size);
++  // iwci patch (#972): kReturnNull, not V8's fatal out-of-memory.
++  std::unique_ptr<v8::BackingStore> store = v8::ArrayBuffer::NewBackingStore(
++      isolate, size, v8::BackingStoreInitializationMode::kZeroInitialized,
++      v8::BackingStoreOnFailureMode::kReturnNull);
+   if (!store) return false;
+   if (size > 0 && data != nullptr) {
+     std::memcpy(store->Data(), data, size);
+@@ -838,10 +854,13 @@
  }
  
  void EnsureModuleWrapCleanupHook(napi_env env) {
@@ -2258,7 +2977,7 @@
    }
  }
  
-@@ -1276,12 +1292,17 @@
+@@ -1276,12 +1295,17 @@
                                      v8::Local<v8::Object> meta) {
    napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
    if (env == nullptr) return;
@@ -2279,7 +2998,7 @@
    napi_value wrapper = GetRefValue(env, record->wrapper_ref);
    napi_value id_value = GetRefValue(env, record->host_defined_option_ref);
    if (callback == nullptr || wrapper == nullptr || id_value == nullptr) return;
-@@ -2505,7 +2526,7 @@
+@@ -2505,7 +2529,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -2288,7 +3007,7 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -2564,7 +2585,7 @@
+@@ -2564,7 +2588,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -2297,7 +3016,7 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -3007,7 +3028,7 @@
+@@ -3007,7 +3031,7 @@
  
    EnsureModuleWrapCleanupHook(env);
    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -2306,7 +3025,7 @@
    ResetRef(env, &state->import_module_dynamically_ref);
    ResetRef(env, &state->initialize_import_meta_ref);
    state->import_module_dynamically_ref = import_ref;
-@@ -3048,12 +3069,12 @@
+@@ -3048,12 +3072,12 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);

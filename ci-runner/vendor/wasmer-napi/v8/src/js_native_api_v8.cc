@@ -821,7 +821,13 @@ napi_status NAPI_CDECL napi_create_arraybuffer(napi_env env,
                                                void** data,
                                                napi_value* result) {
   if (!CheckEnv(env) || result == nullptr) return napi_invalid_arg;
-  v8::Local<v8::ArrayBuffer> ab = v8::ArrayBuffer::New(env->isolate, byte_length);
+  // iwci patch (#972): a failed allocation is the caller's error, not V8's
+  // fatal out-of-memory (ArrayBuffer::New aborts the process), since the
+  // memory comes from the guest's heap, which its budget can refuse.
+  v8::Local<v8::ArrayBuffer> ab;
+  if (!v8::ArrayBuffer::MaybeNew(env->isolate, byte_length).ToLocal(&ab)) {
+    return napi_generic_failure;
+  }
   if (data != nullptr) *data = ab->Data();
   *result = napi_v8_wrap_value(env, ab);
   return (*result == nullptr) ? napi_generic_failure : napi_ok;
@@ -2977,7 +2983,10 @@ napi_status NAPI_CDECL napi_create_buffer(napi_env env,
   v8::Local<v8::Context> context = env->context();
   v8::Context::Scope context_scope(context);
 
-  auto backing = v8::ArrayBuffer::NewBackingStore(env->isolate, length);
+  // iwci patch (#972): kReturnNull, as in napi_create_arraybuffer.
+  auto backing = v8::ArrayBuffer::NewBackingStore(
+      env->isolate, length, v8::BackingStoreInitializationMode::kZeroInitialized,
+      v8::BackingStoreOnFailureMode::kReturnNull);
   if (!backing) return napi_generic_failure;
   *data = backing->Data();
 

@@ -479,8 +479,8 @@ architecture's build.
 `worker_threads` work: each Worker is a WASIX thread of its `node` with an
 isolate of its own, charged against the job's `memory:` like the main one,
 so a job that starts more workers than its memory holds gets
-`ERR_WORKER_INIT_FAILED` ("Failed to create worker env") for the rest, not
-a hang. A later isolate starts small (64 MiB old generation) and grows as
+`ERR_WORKER_INIT_FAILED` ("Failed to create worker env") for the rest, and
+its report says memory if it then fails or hangs. A later isolate starts small (64 MiB old generation) and grows as
 it allocates; a 2 GiB job fits about fifteen idle workers.
 
 `node:wasi` works. Edge.js 0.2.5 ships the module but not the binding behind
@@ -777,6 +777,19 @@ Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without
 that a job could write past any limit. A write over it is refused before
 any of it lands, and the job's report says so.
+
+A Node job's V8 heaps, one per `node` and per worker thread, and the
+`ArrayBuffer` memory they share are held to its `memory:` too. When a heap
+cannot grow, its JavaScript is stopped and the runner ends the job; when a
+`node` or worker thread cannot start, or a buffer is refused, the program
+gets an error to handle (`ERR_WORKER_INIT_FAILED`, "Failed to initialize
+runtime environment"). Either way, a job that fails then has
+`out_of_memory: true`, a reason that says it ran out of its memory (beside
+a timeout or a stall, when it hung waiting on a worker that never started),
+and a note at the end of its stderr saying which of these happened (#964).
+A Vitest suite that forks a `node` per test file needs room for that many
+heaps at once (`--maxWorkers`). One job's heap running out never ends the
+runner (#972, see `vendor/README.md`).
 
 ### A job that dies of a signal
 

@@ -713,7 +713,10 @@ bool CreateNodeBufferFromBytes(napi_env env, const uint8_t* data, size_t size, n
   v8::Isolate* isolate = env->isolate;
   v8::Local<v8::Context> context = env->context();
 
-  std::unique_ptr<v8::BackingStore> store = v8::ArrayBuffer::NewBackingStore(isolate, size);
+  // iwci patch (#972): kReturnNull, not V8's fatal out-of-memory.
+  std::unique_ptr<v8::BackingStore> store = v8::ArrayBuffer::NewBackingStore(
+      isolate, size, v8::BackingStoreInitializationMode::kZeroInitialized,
+      v8::BackingStoreOnFailureMode::kReturnNull);
   if (!store) return false;
   if (size > 0 && data != nullptr) {
     std::memcpy(store->Data(), data, size);

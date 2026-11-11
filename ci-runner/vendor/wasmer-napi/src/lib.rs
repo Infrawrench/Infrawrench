@@ -20,8 +20,8 @@ pub const NAPI_EXTENSION_WASMER_MODULE_NAME: &str = "napi_extension_wasmer_v0";
 #[cfg(not(target_arch = "wasm32"))]
 pub use budget::{BudgetedMemory, BudgetedTunables, budgeted_tunables};
 pub use budget::{
-    EnvRejected, HeapReservation, NapiMemoryAccountant, OverBudget, Pool, RequestedHeap,
-    ResourceBudget, ResourceUsage,
+    EnvRejected, HeapReservation, MemoryExhaustion, NapiMemoryAccountant, OverBudget, Pool,
+    RequestedHeap, ResourceBudget, ResourceUsage,
 };
 pub use ctx::{
     NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,

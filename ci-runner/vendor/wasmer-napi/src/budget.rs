@@ -81,6 +81,17 @@ pub const MIN_CLAMPED_ISOLATE_HEAP: u64 = 16 * MIB;
 /// One-time V8 heap slack reserved up front so a denied growth callback can
 /// terminate and unwind without entering V8s fatal out-of-memory path.
 pub const DEFAULT_UNWIND_SLACK: u64 = 16 * MIB;
+/// iwci patch (#972): once an isolate is stopped because the budget cannot
+/// grow its heap, each further near-heap-limit call raises V8's limit by this
+/// much, uncharged, until [`MAX_STOP_OVERDRAFT`]. A stopped isolate still
+/// finishes the builtin it is in (a large array's next backing store, a
+/// string join) and its background compiles before it unwinds, and V8 treats
+/// reaching its own limit as fatal to the process, not the isolate.
+pub const STOP_OVERDRAFT_STEP: u64 = 32 * MIB;
+/// iwci patch (#972): the most a stopped isolate may grow past its charge.
+/// Past it V8 reaches its limit, which the bridge's out-of-memory handler
+/// confines to the job (`v8/src/unofficial_napi.cc`) at the cost of a thread.
+pub const MAX_STOP_OVERDRAFT: u64 = 128 * MIB;
 /// Fixed per-isolate overhead charged to cover young generation, code range,
 /// and V8's own malloc'd metadata without sampling.
 pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
@@ -179,6 +190,47 @@ pub struct ResourceUsage {
     pub live_isolates: usize,
 }
 
+/// iwci patch (#964, #972): what the budget refused or stopped, so an
+/// embedder can say that a program failed for want of memory. Counts since
+/// the budget was made; all zero means memory never ran short.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MemoryExhaustion {
+    /// Isolates whose heap the budget could not grow: each was terminated,
+    /// and the app's JavaScript stopped with it (`host_stopped`).
+    pub heaps_stopped: u64,
+    /// Isolates V8 ran out of heap in anyway, which it treats as fatal to
+    /// the process. The bridge confined each to its app: the thread that ran
+    /// out is parked for good and the isolate abandoned.
+    pub heaps_lost: u64,
+    /// Isolates (a `node`, a worker thread) refused at creation because the
+    /// budget had no room for another heap.
+    pub isolates_refused: u64,
+    /// Growths of the guest heap (`ArrayBuffer` and `Buffer` memory) refused
+    /// by the budget.
+    pub buffers_refused: u64,
+}
+
+impl MemoryExhaustion {
+    /// The app's JavaScript was stopped for memory: nothing it runs from
+    /// now on will get anywhere, and a lost heap's thread never returns.
+    pub fn stopped(&self) -> bool {
+        self.heaps_stopped != 0 || self.heaps_lost != 0
+    }
+
+    /// Anything was refused or stopped.
+    pub fn any(&self) -> bool {
+        self.stopped() || self.isolates_refused != 0 || self.buffers_refused != 0
+    }
+}
+
+#[derive(Debug, Default)]
+struct ExhaustionCounters {
+    heaps_stopped: AtomicU64,
+    heaps_lost: AtomicU64,
+    isolates_refused: AtomicU64,
+    buffers_refused: AtomicU64,
+}
+
 /// The (possibly clamped) heap constraints a guest requested for a new V8 env.
 /// Fields are bytes; `0` means "unset" (V8 picks its default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -229,6 +281,8 @@ pub struct ResourceBudget {
     v8_external: AtomicU64,
     /// Live V8 isolates (envs), counted against `max_envs`.
     live_isolates: AtomicUsize,
+    /// iwci patch (#964, #972): what was refused or stopped for memory.
+    exhaustion: ExhaustionCounters,
 }
 
 impl std::fmt::Debug for ResourceBudget {
@@ -279,6 +333,7 @@ impl ResourceBudget {
             v8_heap_reserved: AtomicU64::new(0),
             v8_external: AtomicU64::new(0),
             live_isolates: AtomicUsize::new(0),
+            exhaustion: ExhaustionCounters::default(),
         })
     }
 
@@ -291,6 +346,7 @@ impl ResourceBudget {
             v8_heap_reserved: AtomicU64::new(0),
             v8_external: AtomicU64::new(0),
             live_isolates: AtomicUsize::new(0),
+            exhaustion: ExhaustionCounters::default(),
         }
     }
 
@@ -405,6 +461,26 @@ impl ResourceBudget {
         }
     }
 
+    /// iwci patch (#964, #972): what the budget refused or stopped so far.
+    pub fn exhaustion(&self) -> MemoryExhaustion {
+        let e = &self.exhaustion;
+        MemoryExhaustion {
+            heaps_stopped: e.heaps_stopped.load(Ordering::Acquire),
+            heaps_lost: e.heaps_lost.load(Ordering::Acquire),
+            isolates_refused: e.isolates_refused.load(Ordering::Acquire),
+            buffers_refused: e.buffers_refused.load(Ordering::Acquire),
+        }
+    }
+
+    /// A growth of the guest heap was refused by this budget.
+    pub(crate) fn note_buffer_refused(&self) {
+        if !self.is_unlimited() {
+            self.exhaustion
+                .buffers_refused
+                .fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
     /// Number of live V8 isolates counted against `max_envs`.
     pub fn live_isolates(&self) -> usize {
         self.live_isolates.load(Ordering::Acquire)
@@ -438,6 +514,9 @@ impl ResourceBudget {
         }
         let Some(reservation) = self.plan_heap_reservation(req) else {
             self.release_isolate();
+            self.exhaustion
+                .isolates_refused
+                .fetch_add(1, Ordering::AcqRel);
             return Err(EnvRejected::HeapDoesNotFit);
         };
         if self
@@ -445,6 +524,9 @@ impl ResourceBudget {
             .is_err()
         {
             self.release_isolate();
+            self.exhaustion
+                .isolates_refused
+                .fetch_add(1, Ordering::AcqRel);
             return Err(EnvRejected::HeapDoesNotFit);
         }
         Ok(reservation)
@@ -576,6 +658,12 @@ pub(crate) struct EnvHeapCharge {
     pub(crate) unwind_slack_available: AtomicBool,
     /// Bytes granted beyond the initial ceiling by grow-step grants.
     pub(crate) granted: AtomicU64,
+    /// iwci patch (#972): the budget has refused this isolate's heap once,
+    /// and the isolate was stopped.
+    pub(crate) stopped: AtomicBool,
+    /// iwci patch (#972): uncharged bytes V8's limit was raised by after the
+    /// stop, up to [`MAX_STOP_OVERDRAFT`].
+    pub(crate) overdraft: AtomicU64,
 }
 
 /// Host-owned near-heap-limit callback for a budgeted V8 isolate.
@@ -620,21 +708,70 @@ pub extern "C" fn napi_host_near_heap_limit_grant(
             current_limit.saturating_add(step as usize)
         }
         Err(_) => {
+            if !tracker.stopped.swap(true, Ordering::AcqRel) {
+                tracker
+                    .budget
+                    .exhaustion
+                    .heaps_stopped
+                    .fetch_add(1, Ordering::AcqRel);
+            }
             tracker.host_stopped.store(true, Ordering::Release);
             if tracker.env != 0 {
+                // iwci patch: the lock-free termination. This runs inside a
+                // garbage collection on the isolate's thread, which may be in
+                // any bridge call.
                 unsafe {
-                    crate::snapi::snapi_bridge_unofficial_terminate_execution(
+                    crate::snapi::snapi_bridge_host_terminate_execution(
                         tracker.env as crate::snapi::SnapiEnv,
                     );
                 }
             }
             if tracker.unwind_slack_available.swap(false, Ordering::AcqRel) {
-                current_limit.saturating_add(DEFAULT_UNWIND_SLACK as usize)
-            } else {
-                current_limit
+                return current_limit.saturating_add(DEFAULT_UNWIND_SLACK as usize);
             }
+            // iwci patch (#972): never let a stopped isolate reach V8's own
+            // limit while it unwinds, up to a bound (see
+            // `MAX_STOP_OVERDRAFT`). Leaving the limit where it was made V8
+            // abort the whole runner ("Reached heap limit") whenever the
+            // isolate needed more than the slack to stop.
+            let step = tracker
+                .overdraft
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+                    (used < MAX_STOP_OVERDRAFT)
+                        .then(|| used + STOP_OVERDRAFT_STEP.min(MAX_STOP_OVERDRAFT - used))
+                })
+                .map(|used| STOP_OVERDRAFT_STEP.min(MAX_STOP_OVERDRAFT - used))
+                .unwrap_or(0);
+            current_limit.saturating_add(step as usize)
         }
     }
+}
+
+/// iwci patch (#972): V8 ran out of heap in this env's isolate where it
+/// treats that as fatal to the process (an allocation that failed on a
+/// background compile thread, or one larger than the stop overdraft). The
+/// bridge's out-of-memory handler (`v8/src/unofficial_napi.cc`) calls this
+/// before it parks the thread for good instead of letting V8 abort: it
+/// records the loss and stops the app's JavaScript, so the embedder ends the
+/// app and says why.
+///
+/// # Safety
+/// `data` must be null or the [`EnvHeapCharge`] registered for the isolate as
+/// its near-heap-limit data. The handler calls this under the lock that env
+/// release takes before the tracker is freed.
+#[unsafe(no_mangle)]
+pub extern "C" fn napi_host_isolate_out_of_memory(data: *const c_void) {
+    if data.is_null() {
+        return;
+    }
+    // SAFETY: see the function's safety contract.
+    let tracker = unsafe { &*(data as *const EnvHeapCharge) };
+    tracker
+        .budget
+        .exhaustion
+        .heaps_lost
+        .fetch_add(1, Ordering::AcqRel);
+    tracker.host_stopped.store(true, Ordering::Release);
 }
 
 /// The live charge for one physical wasm-memory allocation.
@@ -1214,6 +1351,8 @@ mod tests {
             host_stopped: Arc::clone(&host_stopped),
             unwind_slack_available: AtomicBool::new(true),
             granted: AtomicU64::new(0),
+            stopped: AtomicBool::new(false),
+            overdraft: AtomicU64::new(0),
         }));
         let data = ptr as *const c_void;
         let base = 100 * 1024 * 1024usize;
@@ -1234,24 +1373,34 @@ mod tests {
 
         // Budget exhaustion requests termination and exposes the already-reserved
         // unwind slack exactly once.
+        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
+        let mut limit = base + 2 * step;
         assert_eq!(
-            napi_host_near_heap_limit_grant(data, base + 2 * step, base),
-            base + 2 * step + DEFAULT_UNWIND_SLACK as usize
+            napi_host_near_heap_limit_grant(data, limit, base),
+            limit + DEFAULT_UNWIND_SLACK as usize
         );
-        assert_eq!(
-            napi_host_near_heap_limit_grant(
-                data,
-                base + 2 * step + DEFAULT_UNWIND_SLACK as usize,
-                base,
-            ),
-            base + 2 * step + DEFAULT_UNWIND_SLACK as usize
-        );
+        limit += DEFAULT_UNWIND_SLACK as usize;
+        // iwci patch (#972): then uncharged overdraft steps, so the stopped
+        // isolate does not reach V8's own limit while it unwinds, up to the
+        // bound, after which the limit stays.
+        let mut overdraft = 0;
+        while overdraft < MAX_STOP_OVERDRAFT {
+            let next = napi_host_near_heap_limit_grant(data, limit, base);
+            assert_eq!(next, limit + STOP_OVERDRAFT_STEP as usize);
+            limit = next;
+            overdraft += STOP_OVERDRAFT_STEP;
+        }
+        assert_eq!(napi_host_near_heap_limit_grant(data, limit, base), limit);
         assert_eq!(
             budget.snapshot().v8_heap_reserved,
-            DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP
+            DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP,
+            "the overdraft is not charged"
         );
 
         assert!(host_stopped.load(Ordering::Acquire));
+        // Counted once per isolate, however often V8 asks again.
+        assert_eq!(budget.exhaustion().heaps_stopped, 1);
+        assert!(budget.exhaustion().stopped());
 
         // The tracker recorded exactly what was granted, and releasing it (as
         // env teardown does) returns the pool to zero.
@@ -1260,6 +1409,51 @@ mod tests {
         assert_eq!(granted, 2 * DEFAULT_HEAP_GROW_STEP);
         budget.uncharge(Pool::V8HeapReserved, granted + DEFAULT_UNWIND_SLACK);
         assert_eq!(budget.snapshot().v8_heap_reserved, 0);
+    }
+
+    #[test]
+    fn a_lost_heap_stops_the_app_and_is_counted() {
+        let budget = ResourceBudget::with_memory_limit(64 * MIB);
+        let host_stopped = Arc::new(AtomicBool::new(false));
+        let ptr = Box::into_raw(Box::new(EnvHeapCharge {
+            budget: Arc::clone(&budget),
+            env: 0,
+            host_stopped: Arc::clone(&host_stopped),
+            unwind_slack_available: AtomicBool::new(true),
+            granted: AtomicU64::new(0),
+            stopped: AtomicBool::new(false),
+            overdraft: AtomicU64::new(0),
+        }));
+        napi_host_isolate_out_of_memory(std::ptr::null());
+        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
+        napi_host_isolate_out_of_memory(ptr as *const c_void);
+        assert!(host_stopped.load(Ordering::Acquire));
+        assert_eq!(budget.exhaustion().heaps_lost, 1);
+        assert!(budget.exhaustion().stopped());
+        drop(unsafe { Box::from_raw(ptr) });
+    }
+
+    #[test]
+    fn a_refused_isolate_is_counted_but_does_not_stop_the_app() {
+        let budget = ResourceBudget::with_memory_limit(DEFAULT_PER_ISOLATE_OVERHEAD);
+        assert_eq!(
+            budget.try_reserve_env(RequestedHeap::default(), None),
+            Err(EnvRejected::HeapDoesNotFit)
+        );
+        let exhaustion = budget.exhaustion();
+        assert_eq!(exhaustion.isolates_refused, 1);
+        assert!(exhaustion.any() && !exhaustion.stopped());
+        // A cap on the number of isolates is not memory.
+        let budget = ResourceBudget::with_memory_limit(u64::from(u32::MAX));
+        let first = budget
+            .try_reserve_env(RequestedHeap::default(), Some(1))
+            .unwrap();
+        assert_eq!(
+            budget.try_reserve_env(RequestedHeap::default(), Some(1)),
+            Err(EnvRejected::TooManyEnvs)
+        );
+        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
+        budget.release_env(first.ceiling_bytes);
     }
 
     #[test]

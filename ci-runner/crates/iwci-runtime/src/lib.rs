@@ -242,7 +242,8 @@ pub type LogSink = Arc<dyn Fn(Stream, &[u8]) + Send + Sync>;
 
 #[derive(Debug, Clone)]
 pub struct Outcome {
-    /// The exit status, or [`TIMEOUT_EXIT_CODE`] on timeout, or
+    /// The exit status, or [`TIMEOUT_EXIT_CODE`] when the runner stopped it
+    /// (a timeout, a stall, or its JavaScript stopped for memory), or
     /// [`CRASH_EXIT_CODE`] when the program trapped.
     pub exit_code: i32,
     pub stdout: Vec<u8>,
@@ -256,8 +257,11 @@ pub struct Outcome {
     /// (see [`Runtime::with_stall_after`]). Its exit code is
     /// [`TIMEOUT_EXIT_CODE`], as for a timeout.
     pub stalled_after: Option<Duration>,
-    /// A memory of the job was refused growth by the memory limit. The job
-    /// may still have exited cleanly if it handled the failure.
+    /// A memory of the job was refused growth by the memory limit (the job
+    /// may still have exited cleanly if it handled the failure), or its
+    /// Node ran short of it: a JavaScript heap could not grow, which stops
+    /// the job, or a `node`, worker thread or buffer was refused and the job
+    /// then failed. Its stderr ends with a note saying which.
     pub out_of_memory: bool,
     /// The trap, when the program crashed rather than exiting.
     pub error: Option<String>,
