@@ -723,8 +723,9 @@ first compilation) and came from the cache in 0.25 s for the whole pipeline.
   `sed`) are not capped, because a script waiting on its child would
   deadlock. Default: the machine's cores.
 - **`--memory`** is a budget across running jobs. A job reserves its
-  `memory:` before it starts and waits until that fits; a job asking for
-  more than the whole budget is an error, not a hang. The reservation
+  `memory:` before it starts and waits until that fits, also when other
+  runs hold the memory (any run giving memory back wakes the rest); a job
+  asking for more than the whole budget is an error, not a hang. The reservation
   stands for the job's program and its files together. The frozen workspace
   snapshots are not counted: they are built once and shared. Default: no
   budget.

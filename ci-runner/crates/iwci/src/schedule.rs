@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use iwci_spec::expr::{self, Name};
@@ -544,10 +544,16 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
 /// its linear memory limit, the files by its write budget).
 /// The frozen workspace snapshots are not counted: they are built once
 /// and shared, and their size depends only on the repository.
+///
+/// One budget is shared by every run in the process (`iwci serve`), so a
+/// run's queued job may be waiting for memory another run holds. Every run
+/// using the budget is woken whenever any of them gives memory back.
 #[derive(Debug)]
 pub struct MemoryBudget {
     total: u64,
     used: AtomicU64,
+    /// The runs to wake when memory is given back.
+    waiters: Mutex<Vec<Weak<Wake>>>,
 }
 
 impl MemoryBudget {
@@ -555,6 +561,7 @@ impl MemoryBudget {
         Self {
             total,
             used: AtomicU64::new(0),
+            waiters: Mutex::default(),
         }
     }
 
@@ -575,12 +582,72 @@ impl MemoryBudget {
             .is_ok()
     }
 
+    /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
         let _ = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
             });
+        let mut waiters = self.waiters.lock().unwrap_or_else(|e| e.into_inner());
+        waiters.retain(|w| match w.upgrade() {
+            Some(wake) => {
+                wake.notify_all();
+                true
+            }
+            None => false,
+        });
+    }
+
+    /// Wakes `wake` whenever memory is given back, until it is dropped.
+    fn watch(&self, wake: &Arc<Wake>) {
+        let mut waiters = self.waiters.lock().unwrap_or_else(|e| e.into_inner());
+        waiters.retain(|w| w.strong_count() > 0);
+        waiters.push(Arc::downgrade(wake));
+    }
+}
+
+/// Wakes a run's threads when what they wait for may have changed: the
+/// run's own state, or memory any run gave back to a shared
+/// [`MemoryBudget`].
+///
+/// The second comes from outside the run's state lock, so a condition
+/// variable on that lock could lose it: a run that finds no memory free
+/// and then waits would miss memory given back in between. Instead a
+/// thread reads [`Wake::seen`] while it holds the state lock and before it
+/// looks at anything, the budget included, and waits for the count to move
+/// on from there. Every change after that read moves it.
+#[derive(Debug, Default)]
+struct Wake {
+    count: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl Wake {
+    fn seen(&self) -> u64 {
+        *self.count.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn notify_all(&self) {
+        *self.count.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        self.changed.notify_all();
+    }
+
+    /// Lets go of `guard`, waits for a change after `seen`, and takes
+    /// `state` again.
+    fn wait<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        state: &'a Mutex<T>,
+        seen: u64,
+    ) -> MutexGuard<'a, T> {
+        drop(guard);
+        let mut count = self.count.lock().unwrap_or_else(|e| e.into_inner());
+        while *count == seen {
+            count = self.changed.wait(count).unwrap_or_else(|e| e.into_inner());
+        }
+        drop(count);
+        state.lock().unwrap()
     }
 }
 
@@ -768,7 +835,10 @@ pub fn run<T: Tools>(
         reports: HashMap::new(),
         done: false,
     });
-    let wake = Condvar::new();
+    let wake = Arc::new(Wake::default());
+    if let Some(budget) = &options.memory {
+        budget.watch(&wake);
+    }
     activate(&mut state.lock().unwrap(), plan, options);
     // One scratch directory for the whole run, held to `scratch:` as a
     // job's files are held to its `memory:`.
@@ -805,6 +875,7 @@ pub fn run<T: Tools>(
                     let (template, job, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
+                            let seen = wake.seen();
                             if let Some((template, job)) = s.lookups.pop() {
                                 s.running += 1;
                                 let inherited =
@@ -814,7 +885,7 @@ pub fn run<T: Tools>(
                             if s.done {
                                 return;
                             }
-                            s = wake.wait(s).unwrap();
+                            s = wake.wait(s, &state, seen);
                         }
                     };
                     let workspace = LazyWorkspace {
@@ -847,6 +918,9 @@ pub fn run<T: Tools>(
                     let (template, job, lookup, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
+                            // Read before the budget is, so memory given
+                            // back after this wakes the wait below.
+                            let seen = wake.seen();
                             // The newest job whose memory fits the runner's
                             // budget right now; the reservation is held until
                             // it finishes. Without a budget, simply the newest.
@@ -864,12 +938,16 @@ pub fn run<T: Tools>(
                                     inherited_artifacts(plan, &template.key, &s.finished);
                                 break (template, job, lookup, inherited);
                             }
-                            if s.running == 0 && s.lookups.is_empty() {
+                            if s.running == 0 && s.lookups.is_empty() && s.queue.is_empty() {
                                 // Nothing queued, nothing running, nothing
                                 // being looked up: whatever is
                                 // still waiting can never become ready. That
                                 // takes a `needs` cycle, which validation
                                 // rules out, so report rather than hang.
+                                // Every activated key has an entry queued,
+                                // running or being looked up, so none is
+                                // left out of the report here.
+                                debug_assert!(s.open.is_empty());
                                 let stuck: Vec<&JobTemplate> = std::mem::take(&mut s.waiting);
                                 for t in stuck {
                                     let report = key_report(
@@ -885,7 +963,13 @@ pub fn run<T: Tools>(
                                 wake.notify_all();
                                 return;
                             }
-                            s = wake.wait(s).unwrap();
+                            // Something of this run's is running or being
+                            // looked up, and wakes us when it finishes; or
+                            // queued jobs wait for memory other runs hold,
+                            // and the budget wakes us when any run gives
+                            // some back. A job that can never fit was
+                            // turned away when it was activated.
+                            s = wake.wait(s, &state, seen);
                         }
                     };
                     // A slot shared with every other run on this runner;
@@ -937,7 +1021,7 @@ pub fn run<T: Tools>(
 /// it was its key's last, finishes the key and activates what waited on it.
 fn complete<'p>(
     state: &Mutex<State<'p>>,
-    wake: &Condvar,
+    wake: &Wake,
     plan: &'p Plan,
     options: &Options,
     template: &'p JobTemplate,
