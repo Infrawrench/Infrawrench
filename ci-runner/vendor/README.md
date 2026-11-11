@@ -271,10 +271,11 @@ gap cannot be closed from here. Three changes:
   host does not budget are left to V8.
 - `v8/src/js_native_api_v8.cc` and `v8/src/unofficial_napi_contextify.cc`:
   `napi_create_arraybuffer`, `napi_create_buffer` and the contextify buffer
-  allocate with `ArrayBuffer::MaybeNew` and `BackingStoreOnFailureMode::
-  kReturnNull` and fail the call, where `ArrayBuffer::New` and the default
-  `NewBackingStore` call V8's fatal out-of-memory when the guest's heap,
-  which the job's budget can refuse, has no room.
+  allocate with `ArrayBuffer::MaybeNew` and
+  `BackingStoreOnFailureMode::kReturnNull` and fail the call, where
+  `ArrayBuffer::New` and the default `NewBackingStore` call V8's fatal
+  out-of-memory when the guest's heap, which the job's budget can refuse,
+  has no room.
 
 The budget also counts what it refused or stopped (`MemoryExhaustion`:
 heaps stopped, heaps lost, isolates refused, guest-heap growth refused), so
