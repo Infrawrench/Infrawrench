@@ -1057,7 +1057,16 @@ Releases are published with `iwci release <binary> --version <v>
 `IWCI_RELEASE_SIGNING_KEY`), normally by `.github/workflows/ci-runner-release.yml`
 when `ci-runner/VERSION` changes. `iwci release-keygen` makes a key pair,
 and `iwci version` prints the build's version (`IWCI_VERSION` at build
-time). A version's binary is uploaded once and never replaced.
+time). A version's binary is uploaded once and never replaced, and
+publishing a target of the channel's current version keeps only the other
+targets the release key signed. `iwci release-status --version <v>
+[--target ...] [--channel stable]` writes nothing and prints one word:
+`published` (the signed channel lists that target for that version),
+`uploaded` (the binary is in the store but not on the channel), `absent`,
+or `superseded` (the channel is signed for a later version). The workflow
+runs it per target and publishes only what is missing, so running it
+again finishes a version one of whose targets failed, and tags
+`ci-runner-v<version>` once both are out.
 
 ## Storage layout (R2)
 
