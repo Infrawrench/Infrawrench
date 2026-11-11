@@ -11,7 +11,7 @@ on:
 # that pipeline cannot run yet.
 jobs:
   # The tests that need native code with no WebAssembly build (web, desktop,
-  # bastion-agent) or a host tool (ssh-tunnel-core, plugingen, tailscale):
+  # bastion-agent) or a host tool (ssh-tunnel-core, plugingen):
   # exactly the packages `.infrawrench/ci/test.yml`'s `test` job leaves out,
   # each with its reason there. Keep the two lists in step.
   vitest:
@@ -48,7 +48,6 @@ jobs:
           --filter=./app/packages/bastion-agent
           --filter=./plugin-architecture/packages/ssh-tunnel-core
           --filter=./plugingen
-          --filter=./plugin-architecture/packages/tailscale
 
   # The website's `astro check`; every other package's typecheck runs on
   # Infrawrench CI.

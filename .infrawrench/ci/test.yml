@@ -25,7 +25,7 @@
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
 # - The website's `astro check`.
-# - The tests of the six packages the `test` job below leaves out: they
+# - The tests of the five packages the `test` job below leaves out: they
 #   need native code or a host tool a job does not have.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
@@ -88,7 +88,7 @@ jobs:
   #   bastion-agent (one test bundles the agent with esbuild, whose
   #   WebAssembly build is another package too);
   # - tests that run what a job does not have: ssh-tunnel-core
-  #   (ssh-keygen), plugingen (git) and tailscale (a file's mode, #959).
+  #   (ssh-keygen) and plugingen (git).
   #
   # libsql's native addon has no WebAssembly build either: turso's test
   # mocks the client it never makes, and server-core and poller swap it for
@@ -103,7 +103,6 @@ jobs:
         - "!app/packages/bastion-agent"
         - "!plugin-architecture/packages/ssh-tunnel-core"
         - "!plugingen"
-        - "!plugin-architecture/packages/tailscale"
     needs: [prep, bundle, "^bundle"]
     using: env:bash-node@24
     run: |
