@@ -156,6 +156,37 @@ same type on x86_64), and V8's ARM64 build calls libatomic for its 16-byte
 atomics, so Linux ARM64 links `atomic`. Built and run on a Graviton5 host
 (`ci-2`), where #922's full Test pipeline (689 jobs) passed cold.
 
+**And: no WebAssembly code GC.** V8 13.6 keeps compiled wasm-to-JS
+wrappers in one cache for the whole process, and a lookup there
+(`WasmImportWrapperCache::MaybeGet`, `FindWrapper`, the re-check before a
+compile) adds the wrapper to the caller's `WasmCodeRefScope` before it
+checks that the wrapper is dying. Once a wasm code GC cycle has freed that
+wrapper on another isolate's thread, the scope frees it a second time on
+its way out, and the runner segfaults in `WasmEngine::FreeDeadCode` with
+every job in it (#970: `~WasmCodeRefScope` under
+`Runtime_TierUpWasmToJSWrapper`). It needs two isolates on two threads,
+which is any two jobs that run WebAssembly in Node (rolldown under tsdown
+or Vitest). V8 fixed the lookup in 9b8ca54d5, "Fix lookup of wrappers
+marked is_dying" (13.7, crbug 409379692); the bridge links a prebuilt
+13.6.233, so `v8/src/unofficial_napi.cc` sets `--no-wasm-code-gc` before
+V8 initialises, after any guest flags: the cycle that frees a dying
+wrapper never runs, so nothing frees one twice.
+
+It is a stopgap, and its cost is memory. Code a module no longer uses
+(Liftoff code replaced by TurboFan's) stays until the module is freed,
+which is when the last job using it ends. A wrapper nobody references any
+more stays for the life of the runner, and the next job to need one
+compiles it again. Measured with the cycle on over 640 jobs that bundle
+with rolldown's wasm build: 11 cycles freed 3,913 module code objects, which
+the flag leaves to their modules, and 58 wrappers, about one for every 11
+jobs, which it leaves for good; a wrapper is a few hundred bytes of code.
+
+Drop the flag when the linked V8 is 13.7 or later. The prebuilt releases
+after 11.9.9 are V8 15.9 (`wasmerio/v8-custom-builds` 15.9.111.0 and
+15.9.111.1, linux amd64 and arm64), but wasmerio/napi's main still pins
+11.9.9: when a wasmer-napi release targets 15.9, rebase this patch onto it
+without this hunk.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
