@@ -133,7 +133,8 @@ met it first: about one fork in 3,000 on both architectures, and half of
 all two-copy runs of a 115-file Vitest suite on the ARM64 runner.
 `src/guest_heap.rs` now has the heap hold the shared memory's own handle
 (`SharedMemory`), so the mapping, and with it the address, lasts exactly as
-long as the heap.
+long as the heap. Reported upstream as wasmerio/napi#144; drop this hunk
+once a release includes a fix for it.
 
 **And: the platform waits for an isolate's own work (#943).** The bridge
 binds no foreground task target for a WASIX guest (Edge.js's enqueue hook

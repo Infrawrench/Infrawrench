@@ -18,8 +18,9 @@
 #     then another `pthread_create` could have been handed the block, so one
 #     byte of a starting thread's stack, start arguments or thread structure
 #     was overwritten: under thread churn a `node` now and then lost a thread
-#     to a trap in its first instructions. The patch is ours (nothing
-#     upstream yet): the result of that last call goes to static storage.
+#     to a trap in its first instructions. The patch is ours, reported as
+#     wasix-org/wasix-libc#146: the result of that last call goes to static
+#     storage. Drop it once a sysroot carries a fix for that issue.
 #
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # two objects of the C library replaced:
