@@ -36,7 +36,7 @@ SED_PKG="wasmer/sed 4.9.0 3fc12256be87f6b8b7810d68d642359a6220f63b39a2ea6ef7a2bb
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.3 850179cbd51bff0757ea01059de0e1c0aa7a17a504586a28573c6e7da3884bf2"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.4 db3d944ce796cfa271eb718634759d6bebffe85b5ad805c7424a77684d831df5"
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4"
@@ -97,7 +97,8 @@ for env in "$@"; do
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
       # 24.0.2: and without #967's write into a joined thread's stack.
       # 24.0.3: and a stopped Worker runs none of its queued messages (#938).
-      build_env bash-node 24.0.3 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" \
+      # 24.0.4: and stopping a Worker that is ending frees nothing in use (#938).
+      build_env bash-node 24.0.4 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     *)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and with one fix to Edge.js itself.
+# and with two fixes to Edge.js itself.
 #
 # The C library is linked into Edge.js's module, so a fix to it is a rebuild
 # of that module. Each is one patch here and one object of `libc.a`:
@@ -23,7 +23,7 @@
 #     wasix-org/wasix-libc#146: the result of that last call goes to static
 #     storage. Drop it once a sysroot carries a fix for that issue.
 #
-# And one patch to Edge.js's own source, applied to its checkout:
+# And two patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -37,8 +37,20 @@
 #     call into JavaScript. Ours, reported as wasmerio/edgejs#181: drop it
 #     once an Edge.js release carries a fix for that issue.
 #
+#   edgejs-worker-env-race.patch (#938). A parent stopping a worker read the
+#     worker's env under the worker's mutex, let go of the mutex, and then
+#     used the env, while a worker that was ending by itself freed that env
+#     before it cleared the pointer the parent read it from. The stop then
+#     locked the mutex of a freed `edge::Environment`, whose type word
+#     dlmalloc had overwritten, and the parent's main thread waited on that
+#     lock for good (owner its own tid, 0x3fffffff), leaving the workers it
+#     had not stopped yet running: about one tsdown bundle in 3,000 on x86.
+#     The patch makes the request under the mutex and has the worker clear
+#     the pointer, and close its stop handle, under the same mutex before it
+#     frees either, as Node's Worker does. Ours (nothing upstream yet).
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
-# two objects of the C library replaced and that patch applied:
+# two objects of the C library replaced and those patches applied:
 #
 #   1. The sysroot 0.2.5 was built on (wasix-libc v2026-07-30.1), with the
 #      two objects in its `libc.a` recompiled from that tag's source plus the
@@ -70,7 +82,7 @@
 #
 # Drop a patch once the sysroot Edge.js builds on, or Edge.js itself, has
 # its fix, and this directory, pinning Wasmer's package again, once a
-# `wasmer/edgejs` release has all three.
+# `wasmer/edgejs` release has all four.
 #
 # x86_64 Linux only: the pinned toolchain archives are that platform's. Five
 # to ten minutes on four cores, 600 MB of downloads, 4 GB of disk.
@@ -83,9 +95,11 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Our build of 0.2.5. A changed build is a new number after `iwci.`:
-# 1 had the first patch alone, 2 both C library patches, 3 adds the Edge.js
-# one.
-VERSION="0.2.5-iwci.3"
+# 1 had the first patch alone, 2 both C library patches, 3 adds the first
+# Edge.js one, 4 the second.
+VERSION="0.2.5-iwci.4"
+# Edge.js's own patches, applied to its checkout in this order.
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
@@ -229,7 +243,9 @@ checkout "$src" "$EDGEJS_REPO" "$EDGEJS_COMMIT"
 touch "$src/.git/iwci-build"
 git -C "$src" -c protocol.version=2 submodule update -q --init --depth 1 "${EDGEJS_SUBMODULES[@]}"
 if [[ "${EDGEJS_VERIFY:-}" != 1 ]]; then
-  git -C "$src" apply "$self/edgejs-worker-stop.patch"
+  for patch in "${EDGEJS_PATCHES[@]}"; do
+    git -C "$src" apply "$self/$patch"
+  done
 fi
 (cd "$src" && SOURCE_DATE_EPOCH="$EDGEJS_BUILT_ON" ./wasix/build-wasix.sh) >"$work/edgejs.log" 2>&1 || {
   tail -n 60 "$work/edgejs.log" >&2

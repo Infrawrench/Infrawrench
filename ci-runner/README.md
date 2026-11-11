@@ -540,11 +540,21 @@ forever to join the thread: rolldown's wasm worker threads idle exactly
 that way, so about one tsdown bundle in 300 to 600 printed its result and
 never exited. A stopped worker now drops its queued messages, as Node does.
 
+24.0.4 adds a second Edge.js patch (`edgejs-worker-env-race.patch`, #938).
+A parent stopping a worker read the worker's env under the worker's mutex
+and used it after letting go, while a worker ending by itself freed that
+env before it cleared the pointer. The stop then locked a mutex inside the
+freed `edge::Environment`, whose type word the allocator had overwritten,
+and the parent's main thread waited on a lock it held itself, with the
+rest of its workers never stopped: about one tsdown bundle in 3,000 on
+x86. The request is now made under the mutex, and the worker clears the
+pointer under it before freeing anything, as Node's Worker does.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
 has its fix, and go back to pinning Wasmer's package once a release has
-all three.
+all four.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On

@@ -1,0 +1,62 @@
+diff --git a/src/internal_binding/binding_worker.cc b/src/internal_binding/binding_worker.cc
+index 43691c37..de990f7c 100644
+--- a/src/internal_binding/binding_worker.cc
++++ b/src/internal_binding/binding_worker.cc
+@@ -304,14 +304,20 @@ bool JoinWorkerThread(Worker* worker) {
+ void RequestWorkerStop(Worker* worker) {
+   if (worker == nullptr || !worker->started.load(std::memory_order_acquire)) return;
+   worker->stop_requested.store(true, std::memory_order_release);
+-  napi_env worker_env = GetWorkerThreadEnv(worker);
+-  if (worker_env != nullptr) {
+-    EdgeWorkerEnvRequestStop(worker_env);
+-    (void)unofficial_napi_terminate_execution(worker_env);
++  // Under the worker's mutex for the whole request: the worker thread clears
++  // its env and closes its stop handle under the same mutex before it frees
++  // either, so neither can be freed while this uses it. Reading the env and
++  // letting go of the mutex first let an exiting worker free its Environment
++  // in between, and the stop then locked a mutex in freed memory.
++  std::lock_guard<std::mutex> lock(worker->mutex);
++  WorkerThreadData* thread_data = worker->thread_data.get();
++  if (thread_data == nullptr) return;
++  if (thread_data->env != nullptr) {
++    EdgeWorkerEnvRequestStop(thread_data->env);
++    (void)unofficial_napi_terminate_execution(thread_data->env);
+   }
+-  if (worker->thread_data != nullptr &&
+-      worker->thread_data->stop_async_initialized.load(std::memory_order_acquire)) {
+-    uv_async_send(&worker->thread_data->stop_async);
++  if (thread_data->stop_async_initialized.load(std::memory_order_acquire)) {
++    uv_async_send(&thread_data->stop_async);
+   }
+ }
+ 
+@@ -1294,8 +1300,13 @@ void WorkerThreadMain(Worker* wrap, uintptr_t stack_top) {
+ 
+ cleanup_worker_env:
+   uv_loop_t* shutdown_loop = nullptr;
+-  if (thread_data != nullptr &&
+-      thread_data->stop_async_initialized.exchange(false, std::memory_order_acq_rel)) {
++  bool close_stop_async = false;
++  if (thread_data != nullptr) {
++    // Under the mutex RequestWorkerStop holds while it sends to this handle.
++    std::lock_guard<std::mutex> lock(wrap->mutex);
++    close_stop_async = thread_data->stop_async_initialized.exchange(false, std::memory_order_acq_rel);
++  }
++  if (close_stop_async) {
+     uv_close(reinterpret_cast<uv_handle_t*>(&thread_data->stop_async), nullptr);
+   }
+ 
+@@ -1317,6 +1328,13 @@ cleanup_worker_env:
+   }
+   shutdown_loop = EdgeWorkerEnvReleaseEventLoop(worker_env);
+   if (shutdown_loop == nullptr) shutdown_loop = worker_loop;
++  // No stop request may reach the env once it starts being freed: the
++  // parent finds it through thread_data under this mutex.
++  if (thread_data != nullptr) {
++    std::lock_guard<std::mutex> lock(wrap->mutex);
++    thread_data->env = nullptr;
++    thread_data->owner = nullptr;
++  }
+   EdgeWorkerEnvForget(worker_env);
+   (void)unofficial_napi_release_env(worker_owner, shutdown_loop);
+   if (wrap->thread_data != nullptr) {
