@@ -38,7 +38,7 @@ Untick the apps you don't want this account used for. Two things follow from the
 
 Apps your organization has turned off under **Settings > Apps** are not offered here, so the credential is never asked for permissions nobody will use. If one of those apps is turned on later, its row on the Apps page tells you how many connections still lack its permissions.
 
-<insert [Add-account modal for AWS showing "Use this connection for" with Infrastructure and Observability unticked and Costs ticked, and the credential check below listing only Cost reporting and Idle resource findings] here>
+![The add-account form for AWS with only Costs ticked under "Use this connection for": the credential check lists Cost reporting, Idle resource findings and AI request attribution, and the generated IAM policy contains only Cost Explorer actions](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/add-first-account/add-account-2-costs-only-dark.png)
 
 You can change the choice later. Open the account page and click **Change apps**. Adding an app starts collecting for it straight away, so give the credential that app's permissions first; the same dialog shows what they are. An account connected for Costs only has no resource list, and its page says so.
 
