@@ -32,5 +32,8 @@
     "node": ">=20",
     "pnpm": ">=9"
   },
-  "packageManager": "pnpm@11.20.0"
+  "packageManager": "pnpm@11.20.0",
+  "optionalDependencies": {
+    "@rolldown/binding-wasm32-wasi": "1.2.16"
+  }
 }

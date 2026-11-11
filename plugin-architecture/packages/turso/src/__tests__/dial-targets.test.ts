@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// dialTargets only reads the connection string. The client is never made, so
+// its native addon is not loaded: that has no build for every platform the
+// tests run on.
+vi.mock("@libsql/client", () => ({ createClient: vi.fn() }));
+
 import { dialTargets } from "../driver.js";
 
 describe("libsql dialTargets", () => {

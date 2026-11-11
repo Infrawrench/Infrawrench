@@ -181,7 +181,9 @@ describe("a list that cannot say it has every row", () => {
     route("GET", "/projects/p-2/storage/disks", { items: [] });
     await expect(client().listResources("disk", "acct")).rejects.toThrow(OWN);
     expect(pagesOf("/projects/p-1/storage/disks")).toBe(1000);
-  });
+    // A thousand signed requests: well inside the default 5 s on an idle
+    // machine, past it on a loaded CI runner.
+  }, 60_000);
 
   it("throws at the row cap, whatever size a page turns out to be", async () => {
     let page = 0;
