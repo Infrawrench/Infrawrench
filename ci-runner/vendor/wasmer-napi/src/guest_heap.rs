@@ -133,6 +133,16 @@ pub(crate) struct GuestHeap {
     /// [`Pool::WasmLinear`]; uncharged on drop.
     charged: AtomicU64,
     inner: Mutex<HeapInner>,
+    /// A shared memory's own handle on its mapping, held so the mapping lives
+    /// exactly as long as this heap does. The registry below names a heap by
+    /// the address of its memory, which only means anything while that
+    /// address cannot be handed to another memory: without this, a process's
+    /// memory was unmapped while its heap was still alive (its env is
+    /// dropped a moment later, and a V8 thread freeing a backing store
+    /// upgrades the weak reference for a while longer), the next process's
+    /// memory was mapped at the same address, and it was given the dead
+    /// process's heap, whose claims lie over the new guest's own data.
+    _mapping: Option<wasmer::SharedMemory>,
 }
 
 // SAFETY: `base` points into a mapping that outlives the heap: the instance's
@@ -189,7 +199,8 @@ fn integrity_warn(what: &str) {
 }
 
 /// Process-global registry of shared-memory heaps, keyed by the memory's base
-/// address. WASIX worker threads share one linear memory but each instantiates
+/// address, which a live heap keeps to itself (see `GuestHeap::_mapping`).
+/// WASIX worker threads share one linear memory but each instantiates
 /// its own N-API env; without this they would each build a separate heap over
 /// the same memory, giving every heap an identical ownership range and no
 /// serialization between them. Sharing one heap per memory means a single
@@ -283,10 +294,12 @@ impl GuestHeap {
             }
         }
 
+        let mapping = memory.as_shared(store);
         let heap = Arc::new(Self {
             base,
             max_bytes,
             budget,
+            _mapping: mapping,
             charged: AtomicU64::new(0),
             inner: Mutex::new(HeapInner {
                 memories: vec![memory.clone()],

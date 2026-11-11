@@ -462,6 +462,54 @@ jobs:
     timeout: 3m
     run: |
       node -e 'let n = 0; const end = Date.now() + 25000; while (Date.now() < end) n++; console.log(n > 0)'
+  # `node`s forked and ended in quick succession by two parents at once, as
+  # a test runner's pool of forked workers does. The bridge once kept a dead
+  # `node`'s guest heap in a registry under its memory's address, and a
+  # `node` whose memory was mapped there next was given it: the host then
+  # wrote over the start of the new guest's own heap, and that `node` died
+  # as it started ("Bad system call", #955), about one fork in 3,000. A race
+  # does not fail every time, so this is a smoke check.
+  fork-churn-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    memory: 3GiB
+    timeout: 5m
+    run: |
+      mkdir -p /tmp/forks && cd /tmp/forks
+      cat > child.js <<'JS'
+      const buf = Buffer.alloc(1 << 16, 1);
+      process.send({ ok: buf.length });
+      setInterval(() => {}, 1000);
+      JS
+      cat > parent.js <<'JS'
+      const { fork } = require("node:child_process");
+      const total = 60, width = 2;
+      let started = 0, done = 0, bad = 0;
+      const next = () => {
+        if (done === total) {
+          console.log(bad === 0 ? "forked" : `${bad} of ${total} forks died`);
+          return;
+        }
+        if (started === total) return;
+        started++;
+        const child = fork("/tmp/forks/child.js", { stdio: ["ignore", "inherit", "pipe", "ipc"] });
+        let err = "", answered = false;
+        child.stderr.on("data", (d) => (err += d));
+        child.on("message", () => { answered = true; child.kill("SIGTERM"); });
+        child.on("exit", () => {
+          if (!answered) { bad++; console.error(err.slice(0, 600)); }
+          done++; next();
+        });
+      };
+      for (let i = 0; i < width; i++) next();
+      JS
+      # Two at once; WASIX bash may not report a background job's status, so
+      # each one's output is the check.
+      node parent.js > a.out &
+      node parent.js > b.out &
+      wait
+      cat a.out b.out
+      test "$(cat a.out b.out | grep -c '^forked$')" = 2
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
