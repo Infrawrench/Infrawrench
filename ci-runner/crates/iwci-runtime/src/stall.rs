@@ -42,11 +42,12 @@
 //!   callback, while the thread that asked waits ([`JobTasks::task_wasm`]).
 //!   How long that took is then counted as CPU time.
 //! - **A module being loaded or compiled, by any job.** Wasmer compiles on
-//!   its own threads while the job's thread waits, and holds the shared
-//!   engine's lock for the whole compile, which every other job needs to
-//!   start a process: while one job compiles `node`, the rest wait for it
-//!   without using any CPU. So this one is the runtime's, not the job's
-//!   (`cache::Working`), and every job is busy while it lasts.
+//!   its own threads while the job's thread waits, and loading the result
+//!   into the shared engine holds that engine's lock, which every other job
+//!   needs to start a process (the compile itself runs on a private engine,
+//!   see `cache::ModuleStore::compile`, so that wait is short now). So this
+//!   one is the runtime's, not the job's (`cache::Working`), and every job
+//!   is busy while it lasts.
 //!
 //! What is deliberately not counted is waiting: a job blocked on the
 //! network, on a sleep or on a lock uses no CPU and prints nothing, and is

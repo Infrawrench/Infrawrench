@@ -53,7 +53,7 @@ use wasmer_wasix::wasmer_wasix_types::wasi::{ExitCode, Signal};
 use wasmer_wasix::{Runtime as WasixRuntime, SpawnError, WasiEnvBuilder, WasiProcessId};
 use webc::Container;
 
-use crate::cache::{ModuleStore, WasixCache};
+use crate::cache::{ModuleStore, WasixCache, WasmHash};
 use crate::capture::Capture;
 use crate::limits::LimitingTunables;
 use crate::stall::{CpuMeter, JobTasks, StallWatch};
@@ -222,9 +222,15 @@ impl WasixRuntime for JobRuntime {
     }
 
     /// Every way wasmer-wasix loads a module for a job comes through here:
-    /// from the cache, or compiled on a miss. Either holds the shared
+    /// from the cache, or compiled on a miss. Loading holds the shared
     /// engine's lock, so the store is told for as long as it takes, however
     /// it ends (stall.rs).
+    ///
+    /// The module store does the work, rather than wasmer-wasix's own
+    /// `load_module`, which compiles with the engine it is given: a job's
+    /// engine shares its lock with every other job's (#963). Only a caller
+    /// that names an engine or wants progress reports (wasmer-wasix itself
+    /// does neither) goes the old way.
     fn resolve_module<'a>(
         &'a self,
         input: ModuleInput<'a>,
@@ -232,6 +238,20 @@ impl WasixRuntime for JobRuntime {
         on_progress: Option<ModuleLoadProgressReporter>,
     ) -> BoxFuture<'a, std::result::Result<Module, SpawnError>> {
         let working = self.modules.working();
+        if engine.is_none() && on_progress.is_none() {
+            return Box::pin(async move {
+                let _working = working;
+                let module_hash = input.hash();
+                let key: WasmHash = module_hash
+                    .as_bytes()
+                    .try_into()
+                    .map_err(|_| SpawnError::Other("a module hash that is not a sha256".into()))?;
+                self.modules.get(key, input.wasm()).map_err(|e| match e {
+                    Error::Compile(error) => SpawnError::CompileError { module_hash, error },
+                    other => SpawnError::Other(Box::new(other)),
+                })
+            });
+        }
         let load = self.inner.resolve_module(input, engine, on_progress);
         Box::pin(async move {
             let _working = working;
