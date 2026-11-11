@@ -560,6 +560,235 @@ fn a_job_bigger_than_the_whole_budget_is_an_error_not_a_hang() {
         matches!(status(&report, "big"), Status::Error { message } if message.contains("4096 MiB") && message.contains("1024 MiB"))
     );
     assert!(matches!(status(&report, "after"), Status::Skipped { .. }));
+
+    // The same while another run holds memory: it can never fit, so it is
+    // turned away at once rather than waiting for memory to come back.
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    assert!(budget.try_take(1 << 29));
+    let (report, exec, _, _) = run_limited(&p, None, false, Some(budget.clone()));
+    assert!(ran(&exec).is_empty());
+    assert!(
+        matches!(status(&report, "big"), Status::Error { message } if message.contains("more than the runner's whole limit"))
+    );
+    assert_eq!(budget.used(), 1 << 29);
+}
+
+/// Runs every `builtin:gate@1` job only once [`Gated::open`] is called.
+struct Gated {
+    inner: FakeExecutor,
+    open: Mutex<bool>,
+    opened: Condvar,
+}
+
+impl Gated {
+    fn new() -> Self {
+        Self {
+            inner: FakeExecutor {
+                seen_env: Mutex::default(),
+                seen_tools: Mutex::default(),
+                order: Mutex::default(),
+                running: AtomicUsize::new(0),
+                most_at_once: AtomicUsize::new(0),
+            },
+            open: Mutex::new(false),
+            opened: Condvar::new(),
+        }
+    }
+
+    fn open(&self) {
+        *self.open.lock().unwrap() = true;
+        self.opened.notify_all();
+    }
+
+    fn ran(&self) -> Vec<String> {
+        ran(&self.inner)
+    }
+}
+
+impl Executor<String> for Gated {
+    fn execute(
+        &self,
+        tool: &String,
+        path_tools: &[Arc<String>],
+        action: &Action,
+        inv: Invocation<'_>,
+    ) -> Result<Execution, String> {
+        if tool.contains(":gate@") {
+            // Recorded as started before it waits.
+            self.inner.order.lock().unwrap().push(inv.job.id.clone());
+            let mut open = self.open.lock().unwrap();
+            while !*open {
+                open = self.opened.wait(open).unwrap();
+            }
+            drop(open);
+            return Ok(Execution::default());
+        }
+        self.inner.execute(tool, path_tools, action, inv)
+    }
+}
+
+/// One run of `plan` against `budget`, which other runs may share.
+fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunReport {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let options = Options {
+        parallelism: 4,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory: Some(budget.clone()),
+        caches: None,
+        logs: None,
+        slots: None,
+        secrets: BTreeMap::new(),
+    };
+    run(
+        plan,
+        &ws,
+        &FakeTools,
+        exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    )
+}
+
+/// Runs `0` when a test fails, so threads it left waiting on a gate or on
+/// memory finish and the test reports its failure instead of hanging.
+struct OnPanic<F: FnMut()>(F);
+
+impl<F: FnMut()> Drop for OnPanic<F> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            (self.0)();
+        }
+    }
+}
+
+/// Waits up to ten seconds for `done`.
+fn eventually(what: &str, done: impl Fn() -> bool) {
+    let until = Instant::now() + Duration::from_secs(10);
+    while !done() {
+        assert!(Instant::now() < until, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_run_waits_for_memory_another_run_holds() {
+    // #975: the first run holds the whole budget; the second has nothing
+    // of its own running and jobs that only fit once the first is done.
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    let first = plan("name: first\njobs:\n  hog:\n    using: builtin:gate@1\n    memory: 1GiB\n");
+    let second = plan(
+        "name: second\njobs:\n  a:\n    using: builtin:ok@1\n    memory: 512MiB\n  b:\n    using: builtin:ok@1\n    memory: 512MiB\n    needs: [a]\n",
+    );
+    let first_exec = Gated::new();
+    let second_exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| {
+            first_exec.open();
+            budget.give(1 << 30);
+        });
+        let first_run = scope.spawn(|| run_sharing(&first, &first_exec, &budget));
+        eventually("`hog` to start", || first_exec.ran() == ["hog"]);
+        assert_eq!(budget.used(), 1 << 30);
+        let second_run = scope.spawn(|| run_sharing(&second, &second_exec, &budget));
+        // It waits rather than giving up on its jobs.
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(!second_run.is_finished(), "the second run gave up");
+        assert!(second_exec.ran().is_empty());
+
+        // The first run finishing gives the memory back, which wakes the
+        // second, though nothing of its own changed.
+        first_exec.open();
+        assert!(first_run.join().unwrap().passed());
+        let report = second_run.join().unwrap();
+        assert!(report.passed(), "{:#?}", report.jobs);
+        assert_eq!(report.jobs.len(), 2);
+        assert_eq!(status(&report, "a"), &Status::Passed);
+        assert_eq!(status(&report, "b"), &Status::Passed);
+        assert_eq!(second_exec.ran(), ["a", "b"]);
+    });
+    assert_eq!(budget.used(), 0, "every reservation is given back");
+}
+
+#[test]
+fn memory_another_run_gives_back_is_taken_while_the_run_is_busy() {
+    // Memory given back while the run waits on work of its own (here a
+    // small job that fits beside another run's) is used at once, not when
+    // that job finishes.
+    let budget = Arc::new(MemoryBudget::new((1 << 30) + (16 << 20)));
+    assert!(budget.try_take(1 << 30)); // another run's
+    let p = plan(
+        "name: x\njobs:\n  long:\n    using: builtin:gate@1\n    memory: 16MiB\n  big:\n    using: builtin:ok@1\n    memory: 1GiB\n",
+    );
+    let exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| {
+            exec.open();
+            budget.give(1 << 30);
+        });
+        let run = scope.spawn(|| run_sharing(&p, &exec, &budget));
+        eventually("`long` to start", || exec.ran() == ["long"]);
+        budget.give(1 << 30);
+        eventually("`big` to run while `long` still runs", || {
+            exec.ran() == ["long", "big"]
+        });
+        exec.open();
+        let report = run.join().unwrap();
+        assert!(report.passed(), "{:#?}", report.jobs);
+    });
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn a_needs_cycle_is_still_reported_once_nothing_else_can_run() {
+    // Validation rules a cycle out, so make one by hand. `c` waits for
+    // memory another run holds; the cycle is reported once `c` has run,
+    // and not before, since until then something was still queued.
+    let mut p = plan(
+        "name: x\njobs:\n  c:\n    using: builtin:ok@1\n    memory: 512MiB\n  x:\n    using: builtin:ok@1\n  y:\n    using: builtin:ok@1\n",
+    );
+    for job in &mut p.jobs {
+        match job.key.as_str() {
+            "x" => job.needs = vec!["y".into()],
+            "y" => job.needs = vec!["x".into()],
+            _ => {}
+        }
+    }
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    assert!(budget.try_take(1 << 30));
+    let exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| {
+            exec.open();
+            budget.give(1 << 30);
+        });
+        let run = scope.spawn(|| run_sharing(&p, &exec, &budget));
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(!run.is_finished(), "`c` was given up on");
+        budget.give(1 << 30);
+        let report = run.join().unwrap();
+        assert_eq!(exec.ran(), ["c"]);
+        assert_eq!(report.jobs.len(), 3);
+        assert_eq!(status(&report, "c"), &Status::Passed);
+        for key in ["x", "y"] {
+            assert!(
+                matches!(status(&report, key), Status::Error { message } if message.contains("can never be satisfied")),
+                "{key}: {:?}",
+                status(&report, key)
+            );
+        }
+    });
+
+    // And without a budget, as soon as `c` is done.
+    let (report, exec, _, _) = run_plan(&p, None, false);
+    assert_eq!(ran(&exec), ["c"]);
+    assert_eq!(report.jobs.len(), 3);
+    assert!(matches!(status(&report, "x"), Status::Error { .. }));
 }
 
 #[test]
