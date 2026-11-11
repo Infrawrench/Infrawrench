@@ -34,7 +34,8 @@
 #     threads) blocked for good while the parent waited in `pthread_join`:
 #     about one tsdown bundle in 300 to 600 never exited. The patch drops a
 #     stopped worker's queued messages instead, as Node does once it cannot
-#     call into JavaScript. Ours (nothing upstream yet).
+#     call into JavaScript. Ours, reported as wasmerio/edgejs#181: drop it
+#     once an Edge.js release carries a fix for that issue.
 #
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # two objects of the C library replaced and that patch applied:
