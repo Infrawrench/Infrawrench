@@ -22,7 +22,7 @@ import {
   chatPendingSecretRequests,
 } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
-import { authorizeToolCall, runToolHandler } from "../tools/permissions";
+import { authorizeToolCall, runToolHandler, toolsOfferedTo } from "../tools/permissions";
 import { needsApproval } from "../tools/approval";
 import { okText, type ToolAuthContext, type ToolDefinition, type ToolResult } from "../tools/types";
 import { canvasAgentContext } from "../services/cost-canvases";
@@ -414,6 +414,12 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
   // text is not lost when the pool is empty: the model just won't reply.
 
   const registry = await getToolRegistry();
+  // The model is not offered the tools of an app the organization turned off.
+  // Dispatch below still looks a call up in the whole registry, so a call the
+  // model makes anyway (from earlier in the conversation, or after the policy
+  // changed mid-turn) is refused by `authorizeToolCall` in words, not as an
+  // unknown tool.
+  const offeredTools = await toolsOfferedTo(registry, auth.organizationId);
   // Chat-only web tools (./web) sit alongside the shared registry rather than
   // in it, so MCP never sees them. Their schemas are constant, so the provider
   // list is built once here; the dispatch map is rebuilt per iteration below
@@ -423,7 +429,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
   // system prompt; read once per turn (the agent re-reads the spec by tool).
   const systemPrompt = SYSTEM_PROMPT + (await canvasAgentContext(conversationId).catch(() => ""));
   const providerTools = [
-    ...registry.map(toolToProvider),
+    ...offeredTools.map(toolToProvider),
     ...webSpecs.map(toolToProvider),
     SLEEP_TOOL,
     ASK_QUESTION_TOOL,

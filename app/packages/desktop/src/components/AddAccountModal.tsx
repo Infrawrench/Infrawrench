@@ -1,10 +1,11 @@
+import { useDisabledProducts } from "../lib/disabled-products";
 import { useCallback, useEffect, useState } from "react";
 import {
   AddAccountModal as SharedAddAccountModal,
   type AccountReferenceOption,
   type PluginInfo,
 } from "@infrawrench/ui";
-import { runAccountPreflight, type PolicyTemplate } from "@infrawrench/client-core";
+import { runAccountPreflight, type PolicyTemplate, type ProductId } from "@infrawrench/client-core";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { loadPlugins, getPlugin } from "../plugins/loader";
@@ -33,6 +34,9 @@ export function AddAccountModal({
   prefilledCredentials,
   prefilledDisplayName,
 }: Props) {
+  // A new connection is only offered the apps the organization has on
+  // (none are off in local mode).
+  const disabledProducts = useDisabledProducts();
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
   useEffect(() => {
@@ -105,11 +109,15 @@ export function AddAccountModal({
       displayName: string,
       credentials: Record<string, string>,
       _bastionId: string | null,
+      products: ProductId[] | null,
     ) => {
       if (orgId) {
-        await createCloudAccount(orgId, pluginId, displayName, credentials);
+        await createCloudAccount(orgId, pluginId, displayName, credentials, products);
         return;
       }
+      // Local mode has no poller and collects no costs, so there is nothing
+      // for the choice to switch off: it shaped the policy template in the
+      // form and is not stored.
       const accountId = crypto.randomUUID();
       await createLocalAccount({ accountId, pluginId, displayName, credentials });
     },
@@ -161,6 +169,7 @@ export function AddAccountModal({
 
   return (
     <SharedAddAccountModal
+      disabledProducts={disabledProducts}
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={handleLoadPlugins}

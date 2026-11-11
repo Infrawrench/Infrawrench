@@ -11,3 +11,18 @@ resource "infrawrench_account" "production" {
     region          = "eu-west-1"
   }
 }
+
+# A connection made for Costs alone: the credential only needs the billing
+# permissions, the bill is read, and no resources are synced. Leave `products`
+# out to use a connection for every app its plugin offers.
+resource "infrawrench_account" "billing" {
+  plugin_id    = "aws"
+  display_name = "Billing (payer account)"
+  products     = ["costs"]
+
+  credentials = {
+    accessKeyId     = var.billing_access_key_id
+    secretAccessKey = var.billing_secret_access_key
+    region          = "us-east-1"
+  }
+}

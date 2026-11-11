@@ -95,7 +95,7 @@ Tests enumerate kinds in `{web,desktop}/src/lib/__tests__/workspace-tabs.test.ts
 
 The 14 settings sections are shared components in `ui/src/settings/`, rendered by web's thin `/org/:orgId/settings/*` route wrappers and by the desktop cloud-mode Settings tab (`DesktopSettingsPanel`). They get everything platform-specific; API transport, permissions, `openExternal`, cross-surface navigation; from `SettingsHostProvider` (`ui/src/settings/host.tsx`); never import `@/lib/api` or router primitives inside a section.
 
-- **New section**: add it to `SETTINGS_SECTIONS` + `SettingsSectionBody`, a web route wrapper (loading the section with `lazyRouteComponent` by its module subpath, like the existing ones), and a docs page. Both platforms' navs derive from the registry.
+- **New section**: add it to `SETTINGS_SECTIONS` (with the `group` it sits under: `org`, or the app it configures) + `SettingsSectionBody`, a web route wrapper (loading the section with `lazyRouteComponent` by its module subpath, like the existing ones), and a docs page. Both platforms' navs derive from the registry.
 - **New endpoint used by a section**: the desktop reaches the cloud through its one cloud transport (the `CloudHttp` RPC, `electron/cloud-transport.ts`), which refuses any method+path outside its allowlist (`electron/cloud-allowlist.ts`). The sections call raw paths, so their surface is the hand-written `SETTINGS_RULES` there: add the new path in the same change, or the section works on web and silently fails on desktop.
 - Structured errors the sections branch on (seat limit, plan gate) live in `client-core/src/api-errors.ts` and must be thrown by both transports (web `apiFetch`, desktop `settings-client.ts`).
 

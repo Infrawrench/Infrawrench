@@ -10,6 +10,7 @@ import {
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
+  homeTabTarget,
   graphTabTarget,
   logsTabTarget,
   changesTabTarget,
@@ -54,6 +55,7 @@ import {
 
 // Re-export shared target factories
 export {
+  homeTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
@@ -98,6 +100,20 @@ export function getWorkspaceNavigateArgs(
 } {
   const orgId = getCurrentOrgId();
   switch (target.kind) {
+    // Web addresses a product by path segment; desktop uses a ?product=
+    // query param. Both map to the same home tab target.
+    case "home":
+      return target.productId
+        ? {
+            to: "/org/$orgId/home/$productId",
+            params: { orgId, productId: target.productId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/home",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "dashboard":
       return {
         to: "/org/$orgId/dashboard/$dashboardId",
@@ -613,6 +629,10 @@ export function syncWorkspaceRouteFromPath(
 
   const s = segments.slice(offset);
 
+  if (s[0] === "home") {
+    // /home is the grid of products; /home/{id} is one product's page.
+    return homeTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
   if (s[0] === "workflows") {
     return workflowsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }

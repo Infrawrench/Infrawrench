@@ -5,6 +5,7 @@
  * because desktop and web use different URL structures.
  */
 
+import { isProductId } from "./products/registry.js";
 import { normalizeResourceId, useUIStore, type WorkspaceTabTarget } from "./store/ui.store.js";
 
 export interface RouteNavigator {
@@ -22,6 +23,14 @@ export interface RouteNavigator {
     replace?: boolean;
     hash?: string;
   }): Promise<void> | void;
+}
+
+/**
+ * Home, or one product's page. An id the registry does not know is dropped,
+ * so a stale link lands on Home rather than on an empty page.
+ */
+export function homeTabTarget(productId?: string): WorkspaceTabTarget {
+  return { kind: "home", ...(isProductId(productId) ? { productId } : {}) };
 }
 
 export function dashboardTabTarget(dashboardId: string): WorkspaceTabTarget {

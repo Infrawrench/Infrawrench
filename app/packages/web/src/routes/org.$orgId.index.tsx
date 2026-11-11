@@ -1,69 +1,30 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
-import type { DashboardWidget } from "@infrawrench/ui/cost/config";
-import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
-import { apiGet } from "@/lib/api";
-import { dashboardTabTarget } from "@/lib/workspace-tabs";
+import { useUIStore } from "@infrawrench/ui";
+import { getWorkspaceNavigateArgs, homeTabTarget } from "@/lib/workspace-tabs";
 
+// The organization's bare address has no page of its own. Opening it goes
+// back to where you were, the tab that was active when the app was last
+// open, and to Home, the grid of apps, when there is none. Any deeper
+// address is an explicit destination and is never redirected from here.
 export const Route = createFileRoute("/org/$orgId/")({
-  component: HomePage,
+  component: OrgIndex,
 });
 
-function HomePage() {
+function OrgIndex() {
   const gt = useGT();
-  const { orgId } = Route.useParams();
-  const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
-  const [data, setData] = useState<{
-    dashboard: { id: string; name: string; isDefault: boolean };
-    pins: Array<{
-      pinId: string;
-      resourceId: string;
-      gridX: number;
-      gridY: number;
-      gridW: number;
-      gridH: number;
-    }>;
-    workflowPins?: WorkflowPin[];
-    widgets?: DashboardWidget[];
-  } | null>(null);
+  const navigate = useNavigate();
+  const tabsHydrated = useUIStore((s) => s.tabsHydrated);
 
   useEffect(() => {
-    apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
-      .then(setData)
-      .catch(console.error);
-  }, [orgId, dashboardPinsVersion]);
+    if (!tabsHydrated) return;
+    // Read once, at arrival: this is a decision about where to land, not a
+    // subscription to the tab strip.
+    const { workspaceTabs, activeWorkspaceTabId } = useUIStore.getState();
+    const last = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
+    void navigate({ ...getWorkspaceNavigateArgs(last?.target ?? homeTabTarget()), replace: true });
+  }, [navigate, tabsHydrated]);
 
-  useEffect(() => {
-    if (!data) return;
-    const target = dashboardTabTarget(data.dashboard.id);
-    useUIStore.getState().syncWorkspaceRoute(target, data.dashboard.name);
-  }, [data]);
-
-  useEffect(() => {
-    function onChanged() {
-      apiGet<typeof data>(`/api/org/${orgId}/dashboards/default/full`)
-        .then(setData)
-        .catch(console.error);
-    }
-    window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
-  }, [orgId]);
-
-  if (!data)
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
-
-  return (
-    <DashboardView
-      dashboardId={data.dashboard.id}
-      dashboardName={data.dashboard.name}
-      // The landing dashboard can be a user or role default; only the org
-      // default is protected from deletion.
-      isHome={data.dashboard.isDefault}
-      pins={data.pins}
-      workflowPins={data.workflowPins}
-      widgets={data.widgets}
-    />
-  );
+  return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 }

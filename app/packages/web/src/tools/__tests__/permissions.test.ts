@@ -12,8 +12,15 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
   resolveEffectivePermissions: (...a: unknown[]) => mockResolvePerms(...a),
 }));
 
-const { authorizeToolCall, denyUnlessPermitted, effectiveToolPermissions } =
+// The organization's app policy, a Postgres read in the real module.
+const mockDisabledProducts = vi.fn(async (_organizationId: string): Promise<string[]> => []);
+vi.mock("@infrawrench/server-core/products/settings", () => ({
+  disabledProducts: (organizationId: string) => mockDisabledProducts(organizationId),
+}));
+
+const { authorizeToolCall, denyUnlessPermitted, effectiveToolPermissions, toolsOfferedTo } =
   await import("../permissions");
+const { GENERIC_TOOL_PRODUCTS } = await import("../products");
 const { getToolRegistry } = await import("../registry");
 const { needsApproval } = await import("../approval");
 
@@ -107,6 +114,97 @@ describe("authorizeToolCall", () => {
   it("honours wildcard grants", async () => {
     grant("resources:*");
     expect(await authorizeToolCall({ permission: "resources:delete" }, auth)).toBeNull();
+  });
+});
+
+describe("the organization's app policy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDisabledProducts.mockResolvedValue([]);
+  });
+
+  it("refuses a tool of a turned-off app, whatever the caller holds", async () => {
+    grant("*");
+    mockDisabledProducts.mockResolvedValue(["costs"]);
+    const denied = await authorizeToolCall({ permission: "costs:read", product: "costs" }, auth);
+    expect(denied?.isError).toBe(true);
+    expect(denied?.content[0]?.text).toBe("The Costs app is turned off for this organization");
+    expect(mockDisabledProducts).toHaveBeenCalledWith("o1");
+    // Refused before the permissions are read.
+    expect(mockResolvePerms).not.toHaveBeenCalled();
+  });
+
+  it("refuses a tool that needs no permission when its app is off", async () => {
+    mockDisabledProducts.mockResolvedValue(["costs"]);
+    const denied = await authorizeToolCall({ permission: null, product: "costs" }, auth);
+    expect(denied?.content[0]?.text).toContain("turned off");
+  });
+
+  it("allows a tool of an app that is on, and of another organization", async () => {
+    grant("costs:read");
+    mockDisabledProducts.mockImplementation(async (org) => (org === "o1" ? ["security"] : []));
+    const tool = { permission: "costs:read" as const, product: "costs" as const };
+    expect(await authorizeToolCall(tool, auth)).toBeNull();
+    const security = { permission: "costs:read" as const, product: "security" as const };
+    expect(await authorizeToolCall(security, auth)).not.toBeNull();
+    expect(await authorizeToolCall(security, { ...auth, organizationId: "o2" })).toBeNull();
+  });
+
+  it("never reads the policy for a tool no app owns", async () => {
+    grant("resources:read");
+    expect(await authorizeToolCall({ permission: "resources:read" }, auth)).toBeNull();
+    expect(mockDisabledProducts).not.toHaveBeenCalled();
+  });
+
+  it("refuses the registry's own tools of a turned-off app and no others", async () => {
+    grant("*");
+    mockDisabledProducts.mockResolvedValue(["costs", "security"]);
+    const tools = await getToolRegistry();
+    const byName = (name: string) => tools.find((t) => t.name === name)!;
+    for (const name of ["query_costs", "list_budgets", "list_vulnerabilities", "list_expiring"]) {
+      const denied = await authorizeToolCall(byName(name), auth);
+      expect(denied?.content[0]?.text, name).toContain("turned off");
+    }
+    for (const name of ["list_resources", "list_accounts", "list_workflows", "list_deployments"]) {
+      expect(await authorizeToolCall(byName(name), auth), name).toBeNull();
+    }
+  });
+
+  it("offers only the tools of apps that are on", async () => {
+    mockDisabledProducts.mockResolvedValue(["automation"]);
+    const tools = await getToolRegistry();
+    const offered = (await toolsOfferedTo(tools, "o1")).map((t) => t.name);
+    expect(offered).toContain("list_resources");
+    expect(offered).toContain("query_costs");
+    expect(offered).not.toContain("list_workflows");
+    expect(offered).not.toContain("run_workflow");
+
+    mockDisabledProducts.mockResolvedValue([]);
+    expect(await toolsOfferedTo(tools, "o1")).toHaveLength(tools.length);
+  });
+
+  it("tags a tool with its app by factory and by name", async () => {
+    const tools = await getToolRegistry();
+    const product = (name: string) => tools.find((t) => t.name === name)?.product;
+    expect(product("query_costs")).toBe("costs");
+    expect(product("list_invoices")).toBe("costs");
+    expect(product("write_workflow")).toBe("automation");
+    expect(product("plan_deployment")).toBe("delivery");
+    expect(product("dismiss_vulnerability")).toBe("security");
+    // Infrastructure cannot be turned off, so nothing is tagged with it.
+    expect(tools.filter((t) => t.product === "infrastructure")).toEqual([]);
+    for (const name of ["list_resources", "ssh_exec", "list_dns_records", "what_changed"]) {
+      expect(product(name), name).toBeUndefined();
+    }
+  });
+
+  it("names only registered tools in the by-name map, and tags each", async () => {
+    const tools = await getToolRegistry();
+    for (const [name, product] of Object.entries(GENERIC_TOOL_PRODUCTS)) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool, `${name} is not a registered tool`).toBeDefined();
+      expect(tool?.product, name).toBe(product);
+    }
   });
 });
 

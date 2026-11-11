@@ -49,6 +49,11 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
+// Every app is on: the app policy has its own tests in permissions.test.ts.
+vi.mock("@infrawrench/server-core/products/settings", () => ({
+  disabledProducts: vi.fn(async () => []),
+}));
+
 const { authorizeToolCall, toolUsableWith } = await import("../permissions");
 const { getToolRegistry } = await import("../registry");
 const { isProviderScoped } = await import("@infrawrench/server-core/agent-links/scopes");

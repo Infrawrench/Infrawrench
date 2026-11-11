@@ -19,6 +19,8 @@ vi.mock("drizzle-orm", () => ({
 import {
   claimDueAccounts,
   claimDueCostAccounts,
+  claimDueQuotaAccounts,
+  claimDueVulnerabilityAccounts,
   claimDueWorkflows,
   ACCOUNT_LEASE_MS,
   COST_LEASE_MS,
@@ -36,6 +38,9 @@ function capturedSql(): CapturedQuery {
 
 /** The scope condition `all` splices in: nothing at all. */
 const NO_SCOPE = { strings: [""], values: [] };
+
+/** Any spliced-in fragment, for the product conditions (asserted by text). */
+const FRAGMENT = expect.objectContaining({ strings: expect.any(Array) });
 
 /** Flatten a captured query, nested fragments included, to its text. */
 function flatText(q: unknown): string {
@@ -60,7 +65,7 @@ describe("claimDueAccounts", () => {
     expect(text).toContain("UPDATE accounts");
     expect(text).toContain("SET next_poll_at = now() +");
     expect(text).toContain("RETURNING");
-    expect(q.values).toEqual([ACCOUNT_LEASE_MS, NO_SCOPE, 8]);
+    expect(q.values).toEqual([ACCOUNT_LEASE_MS, NO_SCOPE, FRAGMENT, 8]);
   });
 
   it("only considers live, due accounts, never-polled first", async () => {
@@ -120,14 +125,14 @@ describe("claimDueAccounts", () => {
 
 describe("claimDueCostAccounts", () => {
   it("claims atomically with SKIP LOCKED and a lease on cost_next_poll_at", async () => {
-    await claimDueCostAccounts(2, ["aws", "gcp"]);
+    await claimDueCostAccounts(2, ["aws", "gcp"], []);
 
     const q = capturedSql();
     const text = q.strings.join("?");
     expect(text).toContain("FOR UPDATE SKIP LOCKED");
     expect(text).toContain("UPDATE accounts");
     expect(text).toContain("SET cost_next_poll_at = now() +");
-    expect(q.values).toEqual([COST_LEASE_MS, ["aws", "gcp"], NO_SCOPE, 2]);
+    expect(q.values).toEqual([COST_LEASE_MS, ["aws", "gcp"], NO_SCOPE, FRAGMENT, 2]);
   });
 
   // Regression: this used to be `= ANY(${ids})`. The sql tag expands a JS array
@@ -135,7 +140,7 @@ describe("claimDueCostAccounts", () => {
   // constructor, not an array) and every cost tick died with Postgres 42809.
   // The mocked sql tag can't execute SQL, so assert on the operator directly.
   it("matches plugin ids with IN, never ANY()", async () => {
-    await claimDueCostAccounts(2, ["aws", "gcp"]);
+    await claimDueCostAccounts(2, ["aws", "gcp"], []);
 
     const text = capturedSql().strings.join("?");
     expect(text).toContain("plugin_id IN ");
@@ -143,7 +148,7 @@ describe("claimDueCostAccounts", () => {
   });
 
   it("treats a NULL cost_next_poll_at as due, never-polled first", async () => {
-    await claimDueCostAccounts(2, ["aws"]);
+    await claimDueCostAccounts(2, ["aws"], []);
 
     const text = capturedSql().strings.join("?");
     expect(text).toContain("deleted_at IS NULL");
@@ -162,7 +167,7 @@ describe("claimDueCostAccounts", () => {
       },
     ]);
 
-    await expect(claimDueCostAccounts(2, ["aws"])).resolves.toEqual([
+    await expect(claimDueCostAccounts(2, ["aws"], [])).resolves.toEqual([
       {
         id: "a1",
         organizationId: "org1",
@@ -176,8 +181,64 @@ describe("claimDueCostAccounts", () => {
   // An empty IN () list is a syntax error, so the guard has to short-circuit
   // before the query is ever built.
   it("short-circuits without querying when no plugin declares costs", async () => {
-    await expect(claimDueCostAccounts(2, [])).resolves.toEqual([]);
+    await expect(claimDueCostAccounts(2, [], [])).resolves.toEqual([]);
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * A connection is made for chosen apps (`accounts.products`, NULL = all of
+ * them). The mocked sql tag cannot run SQL, so these pin the predicate each
+ * claim carries; `account-products.test.ts` in server-core covers the helper.
+ */
+describe("claims honour the apps a connection is for", () => {
+  it("never resource-syncs a connection made for Costs alone", async () => {
+    await claimDueAccounts(8);
+
+    const text = flatText(capturedSql());
+    expect(text).toContain(
+      "AND (accounts.products IS NULL OR jsonb_array_length(accounts.products - 'costs') > 0)",
+    );
+    // Inside the locking subquery, so a skipped account is never leased.
+    expect(text.indexOf("accounts.products IS NULL")).toBeLessThan(
+      text.indexOf("FOR UPDATE SKIP LOCKED"),
+    );
+  });
+
+  it("collects costs only where Costs was chosen, for plugins that offer the choice", async () => {
+    await claimDueCostAccounts(2, ["aws", "gcp"], ["aws"]);
+
+    const text = flatText(capturedSql());
+    expect(text).toContain("accounts.products IS NULL OR CASE WHEN accounts.plugin_id IN ?");
+    expect(text).toContain("THEN accounts.products @> ?::jsonb");
+    const gate = capturedSql().values.find((v) =>
+      flatText(v).includes("CASE WHEN"),
+    ) as CapturedQuery;
+    expect(gate.values).toContainEqual(["aws"]);
+    expect(gate.values).toContain('["costs"]');
+  });
+
+  it("falls back to the inventory rule when no plugin offers the choice", async () => {
+    await claimDueCostAccounts(2, ["aws"], []);
+
+    const text = flatText(capturedSql());
+    expect(text).not.toContain("CASE WHEN");
+    expect(text).toContain("jsonb_array_length(accounts.products - 'costs') > 0");
+  });
+
+  it("gates quotas on Infrastructure and vulnerabilities on Security", async () => {
+    await claimDueQuotaAccounts(2, ["aws"], ["aws"]);
+    const quota = capturedSql();
+    expect(flatText(quota)).toContain("CASE WHEN a.plugin_id IN ?");
+    expect(JSON.stringify(quota.values)).toContain('[\\"infrastructure\\"]');
+
+    execute.mockClear();
+    await claimDueVulnerabilityAccounts(2, ["aws"], ["github"]);
+    const vulnerabilities = capturedSql();
+    expect(JSON.stringify(vulnerabilities.values)).toContain('[\\"security\\"]');
+    // The product condition sits in the SELECT half, before the upsert.
+    const text = flatText(vulnerabilities);
+    expect(text.indexOf("a.products IS NULL")).toBeLessThan(text.indexOf("ON CONFLICT"));
   });
 });
 

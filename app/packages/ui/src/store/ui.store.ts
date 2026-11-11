@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { findProduct } from "../products/registry.js";
 
 export type WorkspaceTabTarget =
+  /**
+   * Home, the grid of products, or one product's page when `productId` is
+   * set. A product id the registry does not know falls back to Home.
+   */
+  | { kind: "home"; productId?: string }
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
@@ -156,6 +162,10 @@ export function normalizeResourceId(resourceId: string): string {
 
 export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
   switch (target.kind) {
+    case "home":
+      // A tab per product, like chat's tab per conversation: each product
+      // reads as its own app, and Home itself stays one tab.
+      return target.productId ? `home:${target.productId}` : "home";
     case "dashboard":
       return `dashboard:${target.dashboardId}`;
     case "account":
@@ -280,6 +290,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
 
 export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string {
   switch (target.kind) {
+    case "home":
+      return findProduct(target.productId)?.name ?? "Home";
     case "dashboard":
       return "Dashboard";
     case "account":
@@ -381,6 +393,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
 export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
+    case "home":
+      return a.productId === (b as { productId?: string }).productId;
     case "dashboard":
       return a.dashboardId === (b as { dashboardId: string }).dashboardId;
     case "account":

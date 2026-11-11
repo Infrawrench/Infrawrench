@@ -93,6 +93,8 @@ import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
 import { DORA_BAND_INTERVAL_MS, runDoraBandPass } from "@infrawrench/server-core/dora/band-pass";
+import { pluginIdsOffering } from "@infrawrench/server-core/runtime/account-products";
+import type { ProductId } from "@infrawrench/client-core";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
@@ -190,6 +192,23 @@ function pluginsWith(capability: Capability): Promise<string[]> {
     // A failed load must not be cached forever: drop it so the next tick retries.
     ids.catch(() => capablePluginIds.delete(capability));
     capablePluginIds.set(capability, ids);
+  }
+  return ids;
+}
+
+const offeringPluginIds = new Map<ProductId, Promise<string[]>>();
+
+/**
+ * Plugin ids that offer `product` as a choice when connecting an account, for
+ * the claims that skip an account connected without it. Resolved once per
+ * process, like {@link pluginsWith}.
+ */
+function pluginsOffering(product: ProductId): Promise<string[]> {
+  let ids = offeringPluginIds.get(product);
+  if (!ids) {
+    ids = loadPlugins().then((loaded) => pluginIdsOffering(loaded, product));
+    ids.catch(() => offeringPluginIds.delete(product));
+    offeringPluginIds.set(product, ids);
   }
   return ids;
 }
@@ -382,7 +401,13 @@ export const PASSES: readonly Pass[] = [
     name: "costs",
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[poller] cost tick failed:",
-    claim: async (scope) => claimDueCostAccounts(COST_LIMIT, await pluginsWith("costs"), scope),
+    claim: async (scope) =>
+      claimDueCostAccounts(
+        COST_LIMIT,
+        await pluginsWith("costs"),
+        await pluginsOffering("costs"),
+        scope,
+      ),
     run: (row) => pollAccountCosts(row),
   },
 
@@ -396,7 +421,13 @@ export const PASSES: readonly Pass[] = [
     name: "credits",
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[poller] credit tick failed:",
-    claim: async (scope) => claimDueCreditAccounts(COST_LIMIT, await pluginsWith("credits"), scope),
+    claim: async (scope) =>
+      claimDueCreditAccounts(
+        COST_LIMIT,
+        await pluginsWith("credits"),
+        await pluginsOffering("costs"),
+        scope,
+      ),
     run: (row) => pollAccountCredits(row),
   },
 
@@ -410,7 +441,12 @@ export const PASSES: readonly Pass[] = [
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[commitments] commitment tick failed:",
     claim: async (scope) =>
-      claimDueCommitmentAccounts(COST_LIMIT, await pluginsWith("commitments"), scope),
+      claimDueCommitmentAccounts(
+        COST_LIMIT,
+        await pluginsWith("commitments"),
+        await pluginsOffering("costs"),
+        scope,
+      ),
     run: (row) => pollAccountCommitments(row),
   },
 
@@ -424,7 +460,13 @@ export const PASSES: readonly Pass[] = [
     name: "quotas",
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[quotas] quota tick failed:",
-    claim: async (scope) => claimDueQuotaAccounts(COST_LIMIT, await pluginsWith("quotas"), scope),
+    claim: async (scope) =>
+      claimDueQuotaAccounts(
+        COST_LIMIT,
+        await pluginsWith("quotas"),
+        await pluginsOffering("infrastructure"),
+        scope,
+      ),
     run: (row) => pollAccountQuotas(row),
   },
 
@@ -439,7 +481,12 @@ export const PASSES: readonly Pass[] = [
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[vulnerabilities] vulnerability tick failed:",
     claim: async (scope) =>
-      claimDueVulnerabilityAccounts(COST_LIMIT, await pluginsWith("vulnerabilities"), scope),
+      claimDueVulnerabilityAccounts(
+        COST_LIMIT,
+        await pluginsWith("vulnerabilities"),
+        await pluginsOffering("security"),
+        scope,
+      ),
     run: (row) => pollAccountVulnerabilities(row),
   },
 
@@ -452,7 +499,13 @@ export const PASSES: readonly Pass[] = [
     name: "seats",
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[seats] seat tick failed:",
-    claim: async (scope) => claimDueSeatAccounts(COST_LIMIT, await pluginsWith("seats"), scope),
+    claim: async (scope) =>
+      claimDueSeatAccounts(
+        COST_LIMIT,
+        await pluginsWith("seats"),
+        await pluginsOffering("costs"),
+        scope,
+      ),
     run: (row) => pollAccountSeats(row),
   },
 
@@ -468,7 +521,12 @@ export const PASSES: readonly Pass[] = [
     leaseMs: COST_LEASE_MS,
     claimFailureLabel: "[idle] idle tick failed:",
     claim: async (scope) =>
-      claimDueIdleAccounts(COST_LIMIT, await pluginsWith("idleFindings"), scope),
+      claimDueIdleAccounts(
+        COST_LIMIT,
+        await pluginsWith("idleFindings"),
+        await pluginsOffering("costs"),
+        scope,
+      ),
     run: (row) => pollAccountIdleFindings(row),
   },
 

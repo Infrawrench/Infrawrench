@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { GeneralSection } from "./GeneralSection.js";
+import { AppsSection } from "./AppsSection.js";
 import { TeamSection } from "./TeamSection.js";
 import { RolesSection } from "./RolesSection.js";
 import { CostVisibilitySection } from "./CostVisibilitySection.js";
@@ -43,6 +44,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
   switch (section) {
     case "":
       return <GeneralSection />;
+    case "apps":
+      return <AppsSection />;
     case "team":
       return <TeamSection />;
     case "roles":

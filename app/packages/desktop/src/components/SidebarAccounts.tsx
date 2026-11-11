@@ -38,6 +38,8 @@ import { getLocalAccountCredentials } from "../lib/local-credentials";
 interface SidebarAccountsProps {
   /** Increment this to force a refresh */
   refreshKey: number;
+  /** Told the loaded groups, for the Manage accounts modal the shell owns. */
+  onGroupsChange?: ((groups: PluginGroup[]) => void) | undefined;
 }
 
 interface AccountResourcesState {
@@ -48,12 +50,15 @@ interface AccountResourcesState {
   resources: ResourceInstance[];
 }
 
-export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
+export function SidebarAccounts({ refreshKey, onGroupsChange }: SidebarAccountsProps) {
   const gt = useGT();
   const gtData = useDataString();
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    onGroupsChange?.(groups);
+  }, [groups, onGroupsChange]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>(
     {},

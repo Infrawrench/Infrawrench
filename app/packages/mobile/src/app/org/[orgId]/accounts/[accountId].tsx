@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  accountSyncsResources,
   getAccountRootType,
   getVisibleAccountCategories,
   type AccountDetail,
@@ -134,6 +135,10 @@ export default function AccountResources() {
   }
 
   const hasAnyResources = (resources.data ?? []).length > 0;
+  // A connection made for Costs alone syncs no resources by design, and the
+  // server refuses a manual sync of one. Changing the apps is done on web or
+  // desktop: mobile adds no account editing of its own.
+  const costsOnly = !accountSyncsResources(detail.data?.account.products);
 
   return (
     <Screen onRefresh={() => void resources.refetch()} refreshing={resources.isRefetching}>
@@ -150,12 +155,22 @@ export default function AccountResources() {
           </Text>
         </View>
       )}
-      <Button
-        label={sync.isPending ? "Syncing…" : "Sync from provider"}
-        variant="secondary"
-        disabled={sync.isPending}
-        onPress={() => sync.mutate()}
-      />
+      {costsOnly ? (
+        <View style={styles.reconnect}>
+          <Text style={styles.reconnectHeading}>Connected for Costs only</Text>
+          <Text style={styles.reconnectMessage}>
+            This connection collects cost data and does not list resources, so there is no inventory
+            here. Its spend shows in Costs.
+          </Text>
+        </View>
+      ) : (
+        <Button
+          label={sync.isPending ? "Syncing…" : "Sync from provider"}
+          variant="secondary"
+          disabled={sync.isPending}
+          onPress={() => sync.mutate()}
+        />
+      )}
       {sync.data?.incompleteLists?.[0] && (
         <View style={styles.reconnect} accessibilityRole="alert">
           <Text style={styles.reconnectMessage}>{sync.data.incompleteLists[0].message}</Text>
@@ -173,7 +188,7 @@ export default function AccountResources() {
           accessibilityLabel="Search sections or resources"
         />
       )}
-      {!hasAnyResources ? (
+      {costsOnly && !hasAnyResources ? null : !hasAnyResources ? (
         <EmptyView message="No resources synced for this account yet." />
       ) : sections.length === 0 ? (
         <EmptyView message={`No sections or resources match “${query.trim()}”.`} />

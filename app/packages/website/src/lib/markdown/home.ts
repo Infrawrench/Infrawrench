@@ -12,7 +12,7 @@
  */
 import { featureSections } from "../../data/feature-sections";
 import { providerGroups } from "../../data/provider-groups";
-import { PROVIDER_COUNT_COPY } from "../../data/home";
+import { PROVIDER_COUNT_COPY, homeApps } from "../../data/home";
 
 /** `app.` origin, derived from the marketing origin so previews stay coherent. */
 export function appOrigin(site: URL | undefined): string {
@@ -29,6 +29,16 @@ export function renderHomeMarkdown(site: URL | undefined): string {
     .map((section) => {
       const bullets = section.bullets.map((b) => `- ${b}`).join("\n");
       return `### ${section.heading}\n\n${section.description}\n\n${bullets}`;
+    })
+    .join("\n\n");
+
+  // The apps, as the explorer on the HTML page shows them, each linking to
+  // its own page.
+  const origin = site?.origin ?? "https://infrawrench.com";
+  const apps = homeApps
+    .map((app) => {
+      const tools = app.tools.map((tool) => `- **${tool.name}**: ${tool.body}`).join("\n");
+      return `### ${app.name}\n\n${app.summary}\n\n${tools}\n\nMore: ${origin}/apps/${app.id}`;
     })
     .join("\n\n");
 
@@ -101,6 +111,13 @@ Every page here is available as markdown. Ask for it with
 - ${site?.origin ?? "https://infrawrench.com"}/llms.txt — an index of everything
 
 ---
+
+## Apps
+
+Infrawrench is one platform made of several apps. Each does one job and works
+on its own; they all read the same accounts and resources.
+
+${apps}
 
 ## What it does
 

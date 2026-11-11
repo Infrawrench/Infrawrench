@@ -41,6 +41,7 @@ export const XATA_PREFLIGHT: PreflightDeclaration = {
     },
     {
       id: "observability",
+      product: "observability",
       label: "Metrics and logs",
       requiredPermissions: [P.metrics],
     },

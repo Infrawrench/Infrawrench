@@ -3,7 +3,12 @@ import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import { z, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
-import { authorizeToolCall, runToolHandler, toolUsableWith } from "../tools/permissions";
+import {
+  authorizeToolCall,
+  runToolHandler,
+  toolsOfferedTo,
+  toolUsableWith,
+} from "../tools/permissions";
 import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
 import { hasMembership, listUserOrganizations } from "../auth/users";
 import type { ToolAuthContext } from "../tools/types";
@@ -181,7 +186,12 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
   // MCP Apps views for the tools that have one (see ./app-views).
   registerMcpViews(server);
 
-  const tools = await getToolRegistry();
+  // The tools of an app the session's default organization turned off are not
+  // listed, so they cannot be called in this session for another organization
+  // with `org_id` either. Like the agent filter below, listing is a
+  // convenience and not the gate: every listed tool is judged per call by
+  // `authorizeToolCall`, against the policy of the organization the call names.
+  const tools = await toolsOfferedTo(await getToolRegistry(), toolAuth.organizationId);
   for (const tool of tools) {
     // An agent's permissions are final and known now, so a tool it can never
     // call is not offered at all. Listing is a convenience, not the gate: the

@@ -50,6 +50,7 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
   },
   {
     id: "fees",
+    product: "costs",
     label: "Stripe fees (cost)",
     description: "Read balance transactions to report Stripe's fees as cost, and volume metrics.",
     requiredPermissions: [perm("balance_transactions:read", "Balance Transaction Sources: Read")],

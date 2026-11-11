@@ -12,7 +12,7 @@ You end up with an ordinary account. It lists the same resources, runs the same 
 
 ## Connect an account
 
-1. Click **Add account** in the sidebar and pick the provider.
+1. Click **Manage accounts** in the sidebar, then **Add account**, and pick the provider.
 2. Click **Connect with &lt;Provider&gt;**. A sign-in window opens at the provider.
 3. Sign in if you need to, check what Infrawrench is asking for, and approve it. Some providers ask you to pick an organization, team or workspace on the consent screen. The account covers what you pick there.
 4. The window closes and you're back on the form. The token field now shows a **Connected to &lt;Provider&gt;** chip. Anything Infrawrench could work out from the connection (the account or team id, the region, the organization) is already filled in. If you haven't typed a display name, one is suggested from the provider account's name.

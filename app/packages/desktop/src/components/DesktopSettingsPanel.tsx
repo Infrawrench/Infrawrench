@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { T, useGT, useMessages } from "gt-react";
+import { T, useGT } from "gt-react";
+import { useDisabledProducts } from "../lib/disabled-products";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  SETTINGS_SECTIONS,
+  SettingsNavGroups,
   SettingsHostProvider,
   SettingsSectionBody,
   useUIStore,
@@ -106,37 +107,30 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
   );
 
   const gt = useGT();
-  // Section labels are msg()-encoded in the registry; m() decodes + translates.
-  const m = useMessages();
-  const navItems = SETTINGS_SECTIONS.filter(
-    (s) => !s.requiresPermission || hasPermission(permissions, s.requiresPermission),
-  );
+  const disabledProducts = useDisabledProducts();
 
   return (
     <SettingsHostProvider value={value}>
       <div className="flex h-full min-h-0">
         <nav className="w-48 border-r border-border p-4 flex-shrink-0 flex flex-col overflow-y-auto">
           <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">{gt("Settings")}</h2>
-          <ul className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = section === item.key;
-              return (
-                <li key={item.key}>
-                  <button
-                    type="button"
-                    onClick={() => value.openSection(item.key)}
-                    className={`w-full text-left block px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                      isActive
-                        ? "bg-surface-overlay text-on-surface"
-                        : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay/50"
-                    }`}
-                  >
-                    {m(item.label)}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <SettingsNavGroups
+            has={(permission) => hasPermission(permissions, permission)}
+            disabledProducts={disabledProducts}
+            renderItem={(item, label) => (
+              <button
+                type="button"
+                onClick={() => value.openSection(item.key)}
+                className={`w-full text-left block px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  section === item.key
+                    ? "bg-surface-overlay text-on-surface"
+                    : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay/50"
+                }`}
+              >
+                {label}
+              </button>
+            )}
+          />
         </nav>
         <div className="flex-1 overflow-auto p-6">
           {/* Keyed by section so each page mounts fresh and refetches, same as

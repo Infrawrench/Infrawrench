@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getDocsNav } from "../lib/docs-nav";
 import { blogPostHref, getBlogPosts, isoPostDate } from "../lib/blog";
 import { escapeXml } from "../lib/xml";
+import { homeApps } from "../data/home";
 
 export const prerender = true;
 
@@ -40,6 +41,9 @@ export const GET: APIRoute = async ({ site }) => {
   // guide from pages they have already seen. Other pages have no reliable date.
   const entries: { path: string; lastmod?: string }[] = [
     ...staticPaths().map((path) => ({ path })),
+    // One page per app (`pages/apps/[app].astro`), a dynamic route the glob
+    // above skips, so they are listed from the same data the route reads.
+    ...homeApps.map((app) => ({ path: `/apps/${app.id}` })),
     ...sections.flatMap((s) => s.pages.map((p) => ({ path: p.href }))),
     ...posts.map((post) => ({ path: blogPostHref(post.id), lastmod: isoPostDate(post.data.date) })),
   ];

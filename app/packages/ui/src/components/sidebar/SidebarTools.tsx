@@ -22,6 +22,45 @@ export interface SidebarToolDef {
 
 const GRID_COLUMNS = 4;
 
+/**
+ * The sidebar's way back to Home, the grid of products. It sits above the
+ * Tools button: Home is where the products are introduced, the launcher is
+ * the quick way to a tool whose name is already known.
+ */
+export function SidebarHomeButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const gt = useGT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`mx-2 mb-0.5 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
+        active
+          ? "bg-surface-overlay text-on-surface"
+          : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
+      }`}
+    >
+      <span className="flex items-center justify-center opacity-60" aria-hidden="true">
+        {/* lucide: house */}
+        <svg
+          width={14}
+          height={14}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+          <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+      </span>
+      {gt("Home")}
+    </button>
+  );
+}
+
 export function SidebarToolsButton({ tools }: { tools: SidebarToolDef[] }) {
   const gt = useGT();
   const [open, setOpen] = useState(false);

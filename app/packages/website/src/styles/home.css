@@ -389,3 +389,35 @@ body.hm {
     transition: none !important;
   }
 }
+
+/* The footer, shared by the home page and the app pages. */
+.hm-footer {
+  border-top: 1px solid var(--line);
+  padding: 32px 0;
+  font-size: 13.5px;
+}
+.hm-footer .hm-wrap {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.hm-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.hm-footer-links a,
+.hm-footer-links button {
+  color: var(--text-2);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.hm-footer-links a:hover,
+.hm-footer-links button:hover {
+  color: var(--text);
+}

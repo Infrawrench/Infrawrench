@@ -87,6 +87,7 @@ export const manifest = {
       { id: "logs", label: "Logs", requiredPermissions: [{ id: "read:logs", label: "read:logs" }] },
       {
         id: "stats",
+        product: "observability",
         label: "Sign-in stats",
         requiredPermissions: [{ id: "read:stats", label: "read:stats" }],
       },

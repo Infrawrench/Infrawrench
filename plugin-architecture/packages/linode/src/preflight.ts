@@ -136,6 +136,7 @@ const PROBES: Probe[] = [
   {
     capability: {
       id: "monitor",
+      product: "observability",
       label: "Database metrics",
       description: "Akamai Cloud Pulse metrics for Managed Databases.",
       requiredPermissions: [scope("monitor:read_only", "Monitor: Read Only")],

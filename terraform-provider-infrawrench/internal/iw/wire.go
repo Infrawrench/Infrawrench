@@ -1415,12 +1415,16 @@ type ExchangeRate struct {
 
 // Account is a connected cloud account. No credential material is returned by
 // the listing route.
+//
+// Products is the apps the connection is for, as product ids; nil (null or
+// absent on the wire) means every app the plugin offers.
 type Account struct {
-	ID          string  `json:"id"`
-	PluginID    string  `json:"pluginId"`
-	DisplayName string  `json:"displayName"`
-	BastionID   *string `json:"bastionId"`
-	CreatedAt   string  `json:"createdAt"`
+	ID          string   `json:"id"`
+	PluginID    string   `json:"pluginId"`
+	DisplayName string   `json:"displayName"`
+	BastionID   *string  `json:"bastionId"`
+	Products    []string `json:"products"`
+	CreatedAt   string   `json:"createdAt"`
 }
 
 // PluginSummary describes an available provider plugin. The listing also

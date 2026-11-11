@@ -35,7 +35,7 @@ The first time you open the app, a welcome screen explains what signing in to In
 
 <insert [First-run welcome screen listing the cloud perks with Sign in and Continue without an account buttons] here>
 
-Either way, next you click **Add account** to connect your first cloud or service. See [Add your first account](./add-first-account.md).
+Either way, next you click **Manage accounts**, then **Add account**, to connect your first cloud or service. See [Add your first account](./add-first-account.md).
 
 ### SSH keys
 
@@ -60,11 +60,14 @@ The prompt can show up a little while after the download finishes. If an update 
 1. Go to [app.infrawrench.com](https://app.infrawrench.com). There's no separate sign-up page. If you're signed out, you're sent straight to a hosted sign-in page on its own domain, where you choose email, Google or Microsoft.
 2. Sign in or create your account there. You come back to Infrawrench when it's done.
 3. On first sign-in you're asked to **Create your organization**. Pick a name you're happy with, since it shows in the workspace switcher.
-4. Then **Choose your plan**: **Free** ($0) or **Pro** ($20 / seat / month). **Continue with Free** is fine. You can upgrade later from **Settings > Billing**. See [Billing and plans](../team-and-billing/billing-and-plans.md).
+4. Next you're asked **Which apps will you use?** Every [app](../features/home.md) is ticked to begin with. Untick the ones you don't expect to use and they are turned off for the organization: hidden from Home, the sidebar and spotlight, and their tools kept from chat and MCP. Leaving everything ticked changes nothing. An owner or admin can change it later under **Settings > Apps**.
+5. Then **Choose your plan**: **Free** ($0) or **Pro** ($20 / seat / month). **Continue with Free** is fine. You can upgrade later from **Settings > Billing**. See [Billing and plans](../team-and-billing/billing-and-plans.md).
 
 Finish sign-up in the same browser you started in. Verifying your email can send you to your inbox and back, and if you land in a different browser (say, a link opened inside a mail app), you'll see a **Sign-in could not be completed** page and have to start again. Taking your time is fine. Switching browsers halfway isn't.
 
-<insert [The "Create your organization" onboarding screen, the first thing Infrawrench itself draws after a successful sign-in] here>
+![The "Create your organization" onboarding screen with a name typed in](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/onboarding-1-create-dark.png)
+
+![The "Which apps will you use?" onboarding screen, with Incident response and Automation unticked](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/onboarding-3-apps-picked-dark.png)
 
 ### After sign-up
 

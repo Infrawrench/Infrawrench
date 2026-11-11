@@ -53,6 +53,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "usage",
+      product: "observability",
       label: "Usage metrics",
       description: "Hourly usage by product on each organization's Metrics tab.",
       requiredPermissions: [perm("usage_read", "Usage Read")],
@@ -137,6 +138,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "business-metrics",
+      product: "costs",
       label: "Business metric import",
       description:
         "Reading a metric on a schedule as a unit-cost denominator: listing metrics and their tags, then querying the series.",
@@ -151,6 +153,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "users",
+      product: "security",
       label: "Users",
       description: "List users and disable them from the access review.",
       requiredPermissions: [
@@ -163,6 +166,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "custom-metrics",
+      product: "costs",
       label: "Unused custom metrics",
       description:
         "Lists custom metrics nobody queries and no dashboard, monitor, notebook or SLO uses, with their indexed volume.",

@@ -13,6 +13,8 @@ import {
   ConfirmDeleteModal,
   EditCredentialsModal,
   CredentialPreflightModal,
+  ConnectionProductsModal,
+  ConnectionProductsNotice,
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
   dispatchRefreshResource,
@@ -28,6 +30,13 @@ import {
   type AccountOAuthStatus,
   CreateTile,
 } from "@infrawrench/ui";
+import {
+  accountSyncsResources,
+  normalizeProductIds,
+  offersProductChoice,
+  type PreflightDeclaration,
+  type ProductId,
+} from "@infrawrench/client-core";
 import { getDb } from "../db/client";
 import { mergeResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
@@ -39,6 +48,7 @@ import {
   deleteCloudAccount,
   renameCloudAccount,
   updateCloudAccountCredentials,
+  updateCloudAccountProducts,
   pinCloudResource,
   unpinCloudResource,
   listCloudDashboards,
@@ -120,6 +130,13 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   // effects (which already resolve the plugin) and gates the
   // "Check credentials" button so it never renders for unsupported plugins.
   const [preflightSupported, setPreflightSupported] = useState(false);
+  // The apps a cloud account's connection is for (`null` is every app), and
+  // the declaration the "Change apps" editor reads the offer from. Local
+  // accounts have neither: nothing collects for them, so there is no choice
+  // to store.
+  const [accountProducts, setAccountProducts] = useState<readonly string[] | null>(null);
+  const [productsDeclaration, setProductsDeclaration] = useState<PreflightDeclaration | null>(null);
+  const [productsOpen, setProductsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account?.display_name ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -376,6 +393,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           if (!cancelled) {
             setAccount(accountLike);
             setOauthStatus(detail.account.oauthStatus ?? null);
+            setAccountProducts(detail.account.products ?? null);
             if (tabId)
               useUIStore.getState().setWorkspaceTabTitle(tabId, detail.account.displayName);
           }
@@ -385,7 +403,13 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           const loaded = await getPlugin(detail.account.pluginId);
           if (!cancelled) setPluginDisplayName(loaded?.plugin.manifest.displayName ?? null);
           const allTypes: ResourceTypeDefinition[] = loaded?.plugin.resourceTypes ?? [];
-          if (!cancelled) setPreflightSupported(Boolean(loaded?.plugin.manifest.preflight));
+          if (!cancelled) {
+            const declaration = loaded?.plugin.manifest.preflight;
+            setPreflightSupported(Boolean(declaration));
+            setProductsDeclaration(
+              declaration && offersProductChoice(declaration) ? declaration : null,
+            );
+          }
 
           const kcTypes = new Set<string>();
           for (const rt of allTypes) {
@@ -466,6 +490,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         if (!row) throw new Error(gt("Account not found"));
         if (!cancelled) {
           setAccount(row);
+          setAccountProducts(null);
+          setProductsDeclaration(null);
           // Before the credentials load, which fails for a revoked grant: the
           // banner must still show.
           setOauthStatus(row.oauth_status ?? null);
@@ -846,6 +872,14 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     return loaded.plugin.policyTemplate(capabilityIds);
   }
 
+  async function saveProducts(products: ProductId[] | null) {
+    if (!activeCloudOrgId) return;
+    const updated = await updateCloudAccountProducts(activeCloudOrgId, accountId, products);
+    setAccountProducts(updated.products ?? null);
+    toast.success(gt("Apps updated"));
+    bumpAccounts();
+  }
+
   async function saveCredentials(credentials: Record<string, string>) {
     if (activeCloudOrgId) {
       await updateCloudAccountCredentials(activeCloudOrgId, accountId, credentials);
@@ -1036,6 +1070,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               >
                 {gt("Update credentials")}
               </button>
+              {productsDeclaration && (
+                <button
+                  type="button"
+                  onClick={() => setProductsOpen(true)}
+                  className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+                >
+                  {gt("Change apps")}
+                </button>
+              )}
               {preflightSupported && (
                 <button
                   type="button"
@@ -1057,67 +1100,76 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         </div>
       </div>
 
-      <AccountResourceSections
-        categories={categories}
-        activeSectionId={activeSectionId}
-        onActiveSectionIdChange={setActiveSectionId}
-        renderResource={(resource, cat) => (
-          <ResourceTile
-            key={resource.id}
-            resource={resource}
-            typeId={cat.typeDef.id}
-            iconKey={cat.typeDef.iconKey}
-            showcase={showcaseFields(cat.typeDef)}
-            {...(cat.typeDef.attachTargets ? { attachTargets: cat.typeDef.attachTargets } : {})}
-            pinned={pinned.has(resource.id)}
-            acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
-            {...(cat.typeDef.sshEndpoint
-              ? {
-                  sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey,
-                  sshRunningWhen: cat.typeDef.sshEndpoint.runningWhen,
-                }
-              : {})}
-            onPin={() => togglePin(resource, cat.typeDef.id)}
-            onOpen={() => openDetail(resource)}
-            supportsMetrics={!!cat.typeDef.supportsMetrics}
-            onContextMenuOpen={(e, sshHost) => {
-              e.preventDefault();
-              let sshDefaultUsername: string | undefined;
-              const ep = cat.typeDef.sshEndpoint;
-              if (ep?.usernameFieldKey) {
-                const val = String(resource.fields[ep.usernameFieldKey] ?? "");
-                if (val) sshDefaultUsername = val;
-              }
-              if (!sshDefaultUsername && ep?.defaultUsername) {
-                sshDefaultUsername = ep.defaultUsername;
-              }
-              setContextMenu({
-                x: e.clientX,
-                y: e.clientY,
-                ...(sshHost ? { sshHost } : {}),
-                ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
-                ...(cat.typeDef.supportsMetrics
-                  ? {
-                      pingTarget: {
-                        resourceId: resource.id,
-                        pluginId: resource.pluginId,
-                        resourceTypeId: cat.typeDef.id,
-                        displayName: resource.displayName,
-                      },
-                    }
-                  : {}),
-              });
-            }}
-          />
-        )}
-        renderCreateButton={(typeDef) => (
-          <CreateTile
-            key={`create-${typeDef.id}`}
-            label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
-            onClick={() => setCreateTarget(typeDef)}
-          />
-        )}
+      {/* A costs-only connection syncs no resources by design: say so rather
+          than show empty sections that read as a failed sync. */}
+      <ConnectionProductsNotice
+        products={accountProducts}
+        onChange={productsDeclaration ? () => setProductsOpen(true) : undefined}
       />
+
+      {accountSyncsResources(accountProducts) && (
+        <AccountResourceSections
+          categories={categories}
+          activeSectionId={activeSectionId}
+          onActiveSectionIdChange={setActiveSectionId}
+          renderResource={(resource, cat) => (
+            <ResourceTile
+              key={resource.id}
+              resource={resource}
+              typeId={cat.typeDef.id}
+              iconKey={cat.typeDef.iconKey}
+              showcase={showcaseFields(cat.typeDef)}
+              {...(cat.typeDef.attachTargets ? { attachTargets: cat.typeDef.attachTargets } : {})}
+              pinned={pinned.has(resource.id)}
+              acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
+              {...(cat.typeDef.sshEndpoint
+                ? {
+                    sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey,
+                    sshRunningWhen: cat.typeDef.sshEndpoint.runningWhen,
+                  }
+                : {})}
+              onPin={() => togglePin(resource, cat.typeDef.id)}
+              onOpen={() => openDetail(resource)}
+              supportsMetrics={!!cat.typeDef.supportsMetrics}
+              onContextMenuOpen={(e, sshHost) => {
+                e.preventDefault();
+                let sshDefaultUsername: string | undefined;
+                const ep = cat.typeDef.sshEndpoint;
+                if (ep?.usernameFieldKey) {
+                  const val = String(resource.fields[ep.usernameFieldKey] ?? "");
+                  if (val) sshDefaultUsername = val;
+                }
+                if (!sshDefaultUsername && ep?.defaultUsername) {
+                  sshDefaultUsername = ep.defaultUsername;
+                }
+                setContextMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  ...(sshHost ? { sshHost } : {}),
+                  ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
+                  ...(cat.typeDef.supportsMetrics
+                    ? {
+                        pingTarget: {
+                          resourceId: resource.id,
+                          pluginId: resource.pluginId,
+                          resourceTypeId: cat.typeDef.id,
+                          displayName: resource.displayName,
+                        },
+                      }
+                    : {}),
+                });
+              }}
+            />
+          )}
+          renderCreateButton={(typeDef) => (
+            <CreateTile
+              key={`create-${typeDef.id}`}
+              label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
+              onClick={() => setCreateTarget(typeDef)}
+            />
+          )}
+        />
+      )}
 
       {envDeployDrop && (
         <SshEnvDeployModal
@@ -1279,10 +1331,24 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         <CredentialPreflightModal
           accountName={account.display_name}
           declaration={preflightDeclaration}
+          {...(accountProducts ? { products: normalizeProductIds(accountProducts) } : {})}
           runPreflight={runPreflightForAccount}
           fetchPolicyTemplate={fetchPolicyTemplateForAccount}
           onOpenExternal={(url) => void openExternalUrl(url)}
           onClose={() => setPreflightDeclaration(null)}
+        />
+      )}
+
+      {productsOpen && productsDeclaration && account && (
+        <ConnectionProductsModal
+          accountName={account.display_name}
+          declaration={productsDeclaration}
+          products={accountProducts}
+          onSave={saveProducts}
+          runPreflight={runPreflightForAccount}
+          fetchPolicyTemplate={fetchPolicyTemplateForAccount}
+          onOpenExternal={(url) => void openExternalUrl(url)}
+          onClose={() => setProductsOpen(false)}
         />
       )}
 

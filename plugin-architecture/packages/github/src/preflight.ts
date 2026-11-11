@@ -61,6 +61,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "budgets",
+      product: "costs",
       label: "Budgets",
       description: "List budgets; create, edit and delete them with write access.",
       requiredPermissions: [
@@ -76,6 +77,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "copilot-seats",
+      product: "costs",
       label: "Copilot seats",
       description: "List seats with last activity; assign and remove seats with write access.",
       requiredPermissions: [
@@ -93,6 +95,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "copilot-metrics",
+      product: "observability",
       label: "Copilot usage metrics",
       description: "Daily and weekly Copilot active users on the Metrics tab.",
       requiredPermissions: [
@@ -167,6 +170,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "secret-scanning",
+      product: "security",
       label: "Secret scanning alerts",
       description:
         "Read the organization's secret scanning alerts so leaked credentials are matched to what Infrawrench holds; write access lets Infrawrench close an alert as revoked after rotating the secret. Needs an organization owner or security manager. Organizations only.",
@@ -179,6 +183,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "vulnerabilities",
+      product: "security",
       label: "Dependabot alerts",
       description:
         "Open Dependabot alerts (CVEs and GHSA advisories in dependencies) across the repositories. The user must be an owner or security manager.",
@@ -197,6 +202,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "cost-centers",
+      product: "costs",
       label: "Cost centres",
       description: "List, create, edit and delete enterprise cost centres. Enterprises only.",
       requiredPermissions: [

@@ -181,6 +181,7 @@ export * from "./domains/ssh-keys";
 export * from "./domains/ssh-tunnels";
 export * from "./domains/starred";
 export * from "./domains/org-features";
+export * from "./domains/products";
 export * from "./domains/ci";
 export * from "./domains/status-incidents";
 export * from "./domains/status-pages";
@@ -339,6 +340,7 @@ import { SshKeysApi } from "./domains/ssh-keys";
 import { SshTunnelsApi } from "./domains/ssh-tunnels";
 import { StarredApi } from "./domains/starred";
 import { OrgFeaturesApi } from "./domains/org-features";
+import { ProductsApi } from "./domains/products";
 import { CiApi } from "./domains/ci";
 import { StatusIncidentsApi } from "./domains/status-incidents";
 import { StatusPagesApi } from "./domains/status-pages";
@@ -502,6 +504,7 @@ export const API_DEFINITIONS = {
   "ssh-tunnels": SshTunnelsApi,
   starred: StarredApi,
   orgFeatures: OrgFeaturesApi,
+  products: ProductsApi,
   ci: CiApi,
   "status-incidents": StatusIncidentsApi,
   "status-pages": StatusPagesApi,

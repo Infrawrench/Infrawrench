@@ -5,6 +5,7 @@ import {
   isValidFocusClassification,
   type FocusServiceClassification,
 } from "../focus.js";
+import { PRODUCT_IDS } from "../preflight.js";
 import { findUnsafeSvgConstructs } from "../svg-safety.js";
 import {
   NonEmpty,
@@ -478,6 +479,7 @@ export const pluginManifestSchema = Schema.Struct({
       capabilities: Schema.Array(
         Schema.Struct({
           id: NonEmpty,
+          product: Schema.optional(Schema.Literals(PRODUCT_IDS)),
           label: NonEmpty,
           description: Schema.optional(Schema.String),
           requiredPermissions: Schema.Array(

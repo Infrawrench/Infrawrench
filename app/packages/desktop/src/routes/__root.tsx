@@ -16,6 +16,11 @@ import {
   toast,
   TunnelSshAttachModal,
   useUIStore,
+  SidebarApps,
+  SidebarRecentTools,
+  ManageAccountsModal,
+  type ManagedAccountGroup,
+  useShowsInfrastructureSidebar,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
   workspaceTabTargetsEqual,
@@ -71,6 +76,8 @@ import {
   type CloudOrg,
 } from "../lib/cloud-api";
 import {
+  accountTabTarget,
+  homeTabTarget,
   dashboardTabTarget,
   settingsTabTarget,
   getWorkspaceNavigateArgs,
@@ -79,6 +86,9 @@ import {
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
 import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
+import { resolveDefaultDashboard } from "../lib/default-dashboard";
+import { useAppSettingsShortcut } from "../lib/app-settings";
+import { useOrgTools } from "../lib/org-tools";
 import { getLocalAccountCredentials } from "../lib/local-credentials";
 
 export const Route = createRootRoute({
@@ -108,33 +118,6 @@ async function validateCloudWorkspaceTabs(
     console.error("[workspace-tabs] cloud validation failed:", e);
     return tabs.map((tab) => tab);
   }
-}
-
-/**
- * The dashboard to fall back to: when signed in, the one the server resolves
- * for this member (their own default, else their role's, else the org's); the
- * local default otherwise. Dashboards live on whichever side is active, so
- * this has to branch on the org rather than always reading the local database.
- */
-async function resolveDefaultDashboard(
-  orgId: string | null,
-): Promise<{ id: string; name: string } | null> {
-  if (orgId) {
-    try {
-      const resolved = await getCloudDefaultDashboard(orgId);
-      if (resolved?.dashboardId) return { id: resolved.dashboardId, name: resolved.dashboardName };
-    } catch {
-      // An older server without the resolution route: the org default below.
-    }
-    const list = await listCloudDashboards(orgId);
-    const first = list.find((d) => d.isDefault) ?? list[0];
-    return first ? { id: first.id, name: first.name } : null;
-  }
-  const db = await getDb();
-  const rows = await db.select<{ id: string; name: string }[]>(
-    "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC LIMIT 1",
-  );
-  return rows[0] ?? null;
 }
 
 async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | null> {
@@ -177,6 +160,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "expiring" ||
     target.kind === "posture" ||
     target.kind === "vulnerabilities" ||
+    target.kind === "home" ||
     target.kind === "compliance" ||
     target.kind === "access-review" ||
     target.kind === "jit-access" ||
@@ -314,6 +298,8 @@ function RootLayout() {
   // window.location.search is always empty: read it from router state.
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showManageAccounts, setShowManageAccounts] = useState(false);
+  const [accountGroups, setAccountGroups] = useState<ManagedAccountGroup[]>([]);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
   const [tunnelAttach, setTunnelAttach] = useState<{
@@ -487,12 +473,8 @@ function RootLayout() {
       // Validation dropped everything (stale ids, a deleted dashboard), which
       // would leave the window on a route no open tab renders, i.e. blank.
       if (nextTabs.length === 0) {
-        const home = await resolveDefaultDashboard(orgIdSnapshot).catch(() => null);
-        if (!home || cancelled) return;
-        void navigateToWorkspaceTarget(navigate, dashboardTabTarget(home.id), {
-          label: home.name,
-          replace: true,
-        });
+        if (cancelled) return;
+        void navigateToWorkspaceTarget(navigate, homeTabTarget(), { replace: true });
       }
     }
 
@@ -605,36 +587,22 @@ function RootLayout() {
     }
   }
 
-  async function handleNewTab() {
-    const orgId = useUIStore.getState().activeCloudOrgId;
-    const home = await resolveDefaultDashboard(orgId).catch(() => null);
-    // Only the local side can fall back to a synthesized id; a cloud dashboard
-    // id has to come from the org.
-    if (!home && orgId) {
-      toast.error(gt("Couldn't open a new tab"), {
-        description: gt("No dashboards in this organization."),
-      });
-      return;
-    }
-    const target = dashboardTabTarget(home?.id ?? "dashboard-home");
-    createWorkspaceTabInstance(target, home?.name ?? gt("Home"));
+  const showAccounts = useShowsInfrastructureSidebar();
+  const orgTools = useOrgTools();
+  const settingsFor = useAppSettingsShortcut();
+
+  function handleNewTab() {
+    // A new tab opens on Home, the grid of products.
+    const target = homeTabTarget();
+    createWorkspaceTabInstance(target);
     void navigate(getWorkspaceNavigateArgs(target));
   }
 
-  async function handleSwitchOrg(orgId: string | null) {
+  function handleSwitchOrg(orgId: string | null) {
     setActiveOrgId(orgId);
-    try {
-      const first = await resolveDefaultDashboard(orgId);
-      if (!first) return;
-      void navigateToWorkspaceTarget(navigate, dashboardTabTarget(first.id), {
-        label: first.name,
-      });
-    } catch (e) {
-      console.error("[org-switch] failed to navigate to first dashboard:", e);
-      toast.error(gt("Couldn't switch organization"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
+    // Home exists on both sides, so the switch never depends on the new
+    // organization having a dashboard to land on.
+    void navigateToWorkspaceTarget(navigate, homeTabTarget());
   }
 
   return (
@@ -745,17 +713,47 @@ function RootLayout() {
 
                 <div className="flex-1 overflow-y-auto py-2">
                   <SidebarDashboards />
-                  <SidebarAccounts refreshKey={accountsVersion} />
+                  {/* Infrastructure's part of the sidebar, shown only in its
+                      context. Hidden rather than unmounted so expanded
+                      accounts and their refresh timers survive. */}
+                  <div hidden={!showAccounts}>
+                    <SidebarAccounts
+                      refreshKey={accountsVersion}
+                      onGroupsChange={setAccountGroups}
+                    />
+                  </div>
+                  {/* Below the accounts tree: when the tree shows it is what
+                      the person came for, and the apps list is long enough
+                      to push it out of view. */}
+                  <SidebarRecentTools tools={orgTools} scope={activeOrgId ?? "local"} />
+                  <SidebarApps tools={orgTools} settingsFor={settingsFor} />
                 </div>
 
                 <div className="border-t border-border p-2">
                   <button
                     type="button"
-                    onClick={() => setShowAddAccount(true)}
+                    onClick={() => setShowManageAccounts(true)}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
-                    <span className="text-base leading-none">+</span>
-                    {gt("Add account")}
+                    {/* lucide: plug */}
+                    <svg
+                      aria-hidden="true"
+                      width={14}
+                      height={14}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="opacity-60"
+                    >
+                      <path d="M12 22v-5" />
+                      <path d="M9 8V2" />
+                      <path d="M15 8V2" />
+                      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+                    </svg>
+                    {gt("Manage accounts")}
                   </button>
                   {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections
@@ -838,6 +836,18 @@ function RootLayout() {
               <Outlet />
             </main>
 
+            {showManageAccounts && (
+              <ManageAccountsModal
+                groups={accountGroups}
+                onClose={() => setShowManageAccounts(false)}
+                onAddAccount={() => setShowAddAccount(true)}
+                onOpenAccount={(accountId, displayName) =>
+                  void navigateToWorkspaceTarget(navigate, accountTabTarget(accountId), {
+                    label: displayName,
+                  })
+                }
+              />
+            )}
             {showAddAccount && (
               <AddAccountModal
                 onClose={() => setShowAddAccount(false)}

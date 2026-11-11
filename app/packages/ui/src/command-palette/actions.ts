@@ -3,6 +3,7 @@ import { useGT, useMessages } from "gt-react";
 import { useUIStore, type WorkspaceTabTarget } from "../store/ui.store.js";
 import { SETTINGS_SECTIONS } from "../settings/sections.js";
 import {
+  homeTabTarget,
   costCanvasesTabTarget,
   costReportsTabTarget,
   costsTabTarget,
@@ -33,6 +34,31 @@ export interface PaletteAction {
   run: () => void;
 }
 
+/** The part of a sidebar tool spotlight needs. */
+export interface PaletteTool {
+  key: string;
+  label: string;
+  onClick: () => void;
+}
+
+/**
+ * The permission a tool's page reads with, for the tools whose "Go to" action
+ * has always been gated. A tool not listed is offered like its sidebar row
+ * is: to everyone, with the page itself saying what the caller may not see.
+ */
+const TOOL_PERMISSIONS: Readonly<Record<string, string>> = {
+  costs: "costs:read",
+  "cost-reports": "costs:read",
+  "cost-canvases": "costs:read",
+  slos: "resources:read",
+  services: "resources:read",
+  incidents: "incidents:read",
+  runbooks: "resources:read",
+  "status-pages": "resources:read",
+  probes: "resources:read",
+  logs: "resources:read",
+};
+
 export interface PaletteOrg {
   id: string;
   name: string;
@@ -48,6 +74,12 @@ export interface PaletteActionContext {
   orgs?: readonly PaletteOrg[] | undefined;
   activeOrgId?: string | null | undefined;
   switchOrg?: ((orgId: string | null) => void) | undefined;
+  /**
+   * The platform's org tools (`useOrgTools`). When given, every tool gets a
+   * "Go to" action, so spotlight is the one place that reaches all of them
+   * by name; the hand-written pages below are the fallback without it.
+   */
+  tools?: readonly PaletteTool[] | undefined;
   /** Desktop: offer switching back to the local workspace. */
   localOption?: boolean | undefined;
 }
@@ -74,7 +106,7 @@ function requestCreate(kind: PaletteCreateKind) {
 export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
   const gt = useGT();
   const m = useMessages();
-  const { open, has, cloud, orgs, activeOrgId, switchOrg, localOption } = ctx;
+  const { open, has, cloud, orgs, activeOrgId, switchOrg, localOption, tools } = ctx;
 
   return useMemo(() => {
     const out: PaletteAction[] = [];
@@ -164,17 +196,41 @@ export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
             run: () => open(target, label),
           },
       );
-    go("costs", gt("Costs"), costsTabTarget(), "costs:read");
-    go("cost-reports", gt("Cost reports"), costReportsTabTarget(), "costs:read");
-    go("cost-canvases", gt("Canvases"), costCanvasesTabTarget(), "costs:read");
-    go("slos", gt("SLOs"), slosTabTarget(), "resources:read");
-    go("services", gt("Services"), servicesTabTarget(), "resources:read");
-    go("incidents", gt("Incidents"), incidentsTabTarget(), "incidents:read");
-    go("runbooks", gt("Runbooks"), runbooksTabTarget(), "resources:read");
-    go("status-pages", gt("Status pages"), statusPagesTabTarget(), "resources:read");
-    go("probes", gt("Probes"), probesTabTarget(), "resources:read");
-    go("logs", gt("Logs"), logsTabTarget(), "resources:read");
-    go("workflows", gt("Workflows"), workflowsTabTarget(), null, false);
+    add({
+      id: "go:home",
+      label: gt("Go to {page}", { page: gt("Home") }),
+      group: "go",
+      keywords: [gt("Home"), gt("apps")],
+      run: () => open(homeTabTarget(), gt("Home")),
+    });
+    if (tools) {
+      // The host's list already leaves out what this platform or this
+      // organization does not offer, so nothing else is filtered here but
+      // the permission the page reads with.
+      for (const tool of tools) {
+        const permission = TOOL_PERMISSIONS[tool.key];
+        if (permission && !has(permission)) continue;
+        add({
+          id: `go:${tool.key}`,
+          label: gt("Go to {page}", { page: tool.label }),
+          group: "go",
+          keywords: [tool.label],
+          run: tool.onClick,
+        });
+      }
+    } else {
+      go("costs", gt("Costs"), costsTabTarget(), "costs:read");
+      go("cost-reports", gt("Cost reports"), costReportsTabTarget(), "costs:read");
+      go("cost-canvases", gt("Canvases"), costCanvasesTabTarget(), "costs:read");
+      go("slos", gt("SLOs"), slosTabTarget(), "resources:read");
+      go("services", gt("Services"), servicesTabTarget(), "resources:read");
+      go("incidents", gt("Incidents"), incidentsTabTarget(), "incidents:read");
+      go("runbooks", gt("Runbooks"), runbooksTabTarget(), "resources:read");
+      go("status-pages", gt("Status pages"), statusPagesTabTarget(), "resources:read");
+      go("probes", gt("Probes"), probesTabTarget(), "resources:read");
+      go("logs", gt("Logs"), logsTabTarget(), "resources:read");
+      go("workflows", gt("Workflows"), workflowsTabTarget(), null, false);
+    }
 
     // Settings sections, the same filter both settings navs apply.
     if (cloud) {
@@ -214,5 +270,5 @@ export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
       }
     }
     return out;
-  }, [gt, m, open, has, cloud, orgs, activeOrgId, switchOrg, localOption]);
+  }, [gt, m, open, has, cloud, orgs, activeOrgId, switchOrg, localOption, tools]);
 }

@@ -8,7 +8,11 @@ import {
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
   OrgSwitcher,
-  SidebarToolsButton,
+  ManageAccountsModal,
+  SidebarApps,
+  SidebarHomeButton,
+  SidebarRecentTools,
+  useShowsInfrastructureSidebar,
   toast,
   useDataString,
   type Account,
@@ -25,54 +29,19 @@ import {
   SettingsIcon,
   usePaletteIntent,
 } from "@infrawrench/ui";
-import type { OrgFeature } from "@infrawrench/client-core";
-import { WorkflowIcon } from "@infrawrench/ui/workflows";
-import { CostsIcon } from "@infrawrench/ui/cost";
-import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
-import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
-import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
-import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
-import { InvoicesIcon } from "@infrawrench/ui/invoices";
-import {
-  DeployIcon,
-  ChangesIcon,
-  IacIcon,
-  GraphIcon,
-  ExpiryIcon,
-  PostureIcon,
-  VulnerabilitiesIcon,
-  ComplianceIcon,
-  AccessReviewIcon,
-  JitAccessIcon,
-  BackupsIcon,
-  WallboardIcon,
-  CalendarIcon,
-  RunbookIcon,
-  QueryMonitorIcon,
-  DomainsIcon,
-  EnvironmentDiffIcon,
-  FanoutIcon,
-  LogsIcon,
-  MetricAlertIcon,
-  ProbesIcon,
-  StatusPagesIcon,
-  QuotasIcon,
-  PriceCatalogIcon,
-  IncidentsIcon,
-  SlosIcon,
-  ServicesIcon,
-  DeliveryIcon,
-  CiIcon,
-  EnvironmentsIcon,
-} from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import {
+  accountTabTarget,
   chatTabTarget,
+  homeTabTarget,
   complianceTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
 } from "@/lib/workspace-tabs";
+import { accountSyncsResources } from "@infrawrench/client-core";
+import { useAppSettingsShortcut } from "@/lib/app-settings";
+import { useOrgTools } from "@/lib/org-tools";
 import { AddAccountModal } from "./AddAccountModal";
 import { reconnectProviderAccount } from "@/lib/provider-oauth";
 
@@ -153,6 +122,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     Record<string, Record<string, ResourceTypeMeta>>
   >({});
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showManageAccounts, setShowManageAccounts] = useState(false);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 
   // Dashboard state
@@ -204,20 +174,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     apiGet<Dashboard[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
   }, [apiBase, dashboardPinsVersion]);
 
-  // Features a platform admin rolls out per organization (CI): their
-  // entry points show only once the organization has them.
-  const [orgFeatures, setOrgFeatures] = useState<readonly OrgFeature[]>([]);
-  useEffect(() => {
-    setOrgFeatures([]);
-    if (!apiBase) return;
-    let cancelled = false;
-    apiGet<{ features: OrgFeature[] }>(`${apiBase}/features`)
-      .then((r) => !cancelled && setOrgFeatures(r.features))
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [apiBase]);
+  const orgTools = useOrgTools(orgId ?? undefined);
+  const settingsFor = useAppSettingsShortcut();
+  const showAccounts = useShowsInfrastructureSidebar();
 
   // Chat sessions: load on org change and refresh when conversations change
   // (new chat, archive, rename after the first turn).
@@ -436,6 +395,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           map: { ...base, [accountId]: { loading: false, resources: existing } },
         };
       });
+      // A connection made for Costs only keeps no inventory: the server
+      // refuses its resource sync, so there is nothing to refresh.
+      const account = groups.flatMap((g) => g.accounts).find((a) => a.id === accountId);
+      if (!accountSyncsResources(account?.products)) return;
       apiPost<{ incompleteLists?: Array<{ message: string }> }>(
         `${apiBase}/accounts/${accountId}/sync`,
       )
@@ -589,287 +552,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          <SidebarToolsButton
-            tools={[
-              {
-                key: "agents",
-                label: gt("Agents"),
-                icon: <span className="font-mono text-[11px]">&gt;_</span>,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/agents", params: { orgId: orgId! } }),
-              },
-              {
-                key: "workflows",
-                label: gt("Workflows"),
-                icon: <WorkflowIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } }),
-              },
-              {
-                key: "deploy",
-                label: gt("Deploy"),
-                icon: <DeployIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } }),
-              },
-              {
-                key: "costs",
-                label: gt("Costs"),
-                icon: <CostsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } }),
-              },
-              {
-                key: "cost-reports",
-                label: gt("Reports"),
-                icon: <CostReportsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/cost-reports", params: { orgId: orgId! } }),
-              },
-              {
-                key: "resource-reports",
-                label: gt("Resource reports"),
-                icon: <ResourceReportsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/resource-reports", params: { orgId: orgId! } }),
-              },
-              {
-                key: "cost-canvases",
-                label: gt("Canvases"),
-                icon: <CostCanvasesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/cost-canvases", params: { orgId: orgId! } }),
-              },
-              {
-                key: "k8s-efficiency",
-                label: gt("Kubernetes efficiency"),
-                icon: <KubernetesEfficiencyIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/k8s-efficiency", params: { orgId: orgId! } }),
-              },
-              {
-                key: "invoices",
-                label: gt("Invoices"),
-                icon: <InvoicesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/invoices", params: { orgId: orgId! } }),
-              },
-              {
-                key: "metric-alerts",
-                label: gt("Alerts"),
-                icon: <MetricAlertIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/metric-alerts", params: { orgId: orgId! } }),
-              },
-              {
-                key: "changes",
-                label: gt("Changes"),
-                icon: <ChangesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/changes", params: { orgId: orgId! } }),
-              },
-              {
-                key: "iac",
-                label: gt("IaC"),
-                icon: <IacIcon />,
-                onClick: () => void navigate({ to: "/org/$orgId/iac", params: { orgId: orgId! } }),
-              },
-              {
-                key: "graph",
-                label: gt("Graph"),
-                icon: <GraphIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/graph", params: { orgId: orgId! } }),
-              },
-              {
-                key: "environments",
-                label: gt("Environments"),
-                icon: <EnvironmentsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/environments", params: { orgId: orgId! } }),
-              },
-              {
-                key: "expiring",
-                label: gt("Expiring"),
-                icon: <ExpiryIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/expiring", params: { orgId: orgId! } }),
-              },
-              {
-                key: "posture",
-                label: gt("Posture"),
-                icon: <PostureIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
-              },
-              {
-                key: "vulnerabilities",
-                label: gt("Vulnerabilities"),
-                icon: <VulnerabilitiesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/vulnerabilities", params: { orgId: orgId! } }),
-              },
-              // A workspace-tab kind that remembers its framework: the tile
-              // returns to the open tab's framework rather than resetting it.
-              {
-                key: "compliance",
-                label: gt("Compliance"),
-                icon: <ComplianceIcon />,
-                onClick: () =>
-                  void navigate(
-                    getWorkspaceNavigateArgs(
-                      useUIStore
-                        .getState()
-                        .workspaceTabs.find((tab) => tab.target.kind === "compliance")?.target ??
-                        complianceTabTarget(),
-                    ),
-                  ),
-              },
-              {
-                key: "access-review",
-                label: gt("Access review"),
-                icon: <AccessReviewIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/access-review", params: { orgId: orgId! } }),
-              },
-              {
-                key: "jit-access",
-                label: gt("Just-in-time access"),
-                icon: <JitAccessIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/jit-access", params: { orgId: orgId! } }),
-              },
-              {
-                key: "backups",
-                label: gt("Backups"),
-                icon: <BackupsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/backups", params: { orgId: orgId! } }),
-              },
-              {
-                key: "wallboard",
-                label: gt("Wallboard"),
-                icon: <WallboardIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/wallboard", params: { orgId: orgId! } }),
-              },
-              {
-                key: "calendar",
-                label: gt("Calendar"),
-                icon: <CalendarIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/calendar", params: { orgId: orgId! } }),
-              },
-              {
-                key: "runbooks",
-                label: gt("Runbooks"),
-                icon: <RunbookIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/runbooks", params: { orgId: orgId! } }),
-              },
-              {
-                key: "query-monitors",
-                label: gt("Query monitors"),
-                icon: <QueryMonitorIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/query-monitors", params: { orgId: orgId! } }),
-              },
-              {
-                key: "dns",
-                label: gt("Domains"),
-                icon: <DomainsIcon />,
-                onClick: () => void navigate({ to: "/org/$orgId/dns", params: { orgId: orgId! } }),
-              },
-              {
-                key: "environment-diff",
-                label: gt("Env diff"),
-                icon: <EnvironmentDiffIcon />,
-                onClick: () =>
-                  void navigate({
-                    to: "/org/$orgId/environment-diff",
-                    params: { orgId: orgId! },
-                  }),
-              },
-              {
-                key: "probes",
-                label: gt("Probes"),
-                icon: <ProbesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
-              },
-              {
-                key: "slos",
-                label: gt("SLOs"),
-                icon: <SlosIcon />,
-                onClick: () => void navigate({ to: "/org/$orgId/slos", params: { orgId: orgId! } }),
-              },
-              {
-                key: "services",
-                label: gt("Services"),
-                icon: <ServicesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/services", params: { orgId: orgId! } }),
-              },
-              {
-                key: "delivery",
-                label: gt("Delivery"),
-                icon: <DeliveryIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/delivery", params: { orgId: orgId! } }),
-              },
-              ...(orgFeatures.includes("ci")
-                ? [
-                    {
-                      key: "ci",
-                      label: gt("CI"),
-                      icon: <CiIcon />,
-                      onClick: () =>
-                        void navigate({ to: "/org/$orgId/ci", params: { orgId: orgId! } }),
-                    },
-                  ]
-                : []),
-              {
-                key: "status-pages",
-                label: gt("Status pages"),
-                icon: <StatusPagesIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/status-pages", params: { orgId: orgId! } }),
-              },
-              {
-                key: "quotas",
-                label: gt("Quotas"),
-                icon: <QuotasIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/quotas", params: { orgId: orgId! } }),
-              },
-              {
-                key: "price-catalog",
-                label: gt("Price catalog"),
-                icon: <PriceCatalogIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/price-catalog", params: { orgId: orgId! } }),
-              },
-              {
-                key: "incidents",
-                label: gt("Incidents"),
-                icon: <IncidentsIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/incidents", params: { orgId: orgId! } }),
-              },
-              {
-                key: "ssh-fanout",
-                label: gt("Fan-out"),
-                icon: <FanoutIcon />,
-                onClick: () =>
-                  void navigate({ to: "/org/$orgId/ssh-fanout", params: { orgId: orgId! } }),
-              },
-              {
-                key: "logs",
-                label: gt("Logs"),
-                icon: <LogsIcon />,
-                onClick: () => void navigate({ to: "/org/$orgId/logs", params: { orgId: orgId! } }),
-              },
-            ]}
+          <SidebarHomeButton
+            active={pathname.startsWith(`/org/${orgId}/home`)}
+            onClick={() => void navigateToWorkspaceTarget(navigate, homeTabTarget())}
           />
           {/* Dashboards section */}
           <div className="mb-2">
@@ -888,17 +573,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             </div>
 
             {dashboardList.map((dash) => {
-              // The org home route shows the caller's resolved default (their
-              // own, their role's, else the org's), so that is the one that
-              // links home. Older servers send no flag: fall back to the org
-              // default. Deletion stays keyed on the org default.
-              const isLanding =
-                dash.isResolvedDefault ??
-                (dash.isDefault && !dashboardList.some((d) => d.isResolvedDefault));
-              const dashHref = isLanding ? `/org/${orgId}` : `/org/${orgId}/dashboard/${dash.id}`;
-              const isActive = isLanding
-                ? pathname === `/org/${orgId}` || pathname === `/org/${orgId}/`
-                : pathname === `/org/${orgId}/dashboard/${dash.id}`;
+              // Every dashboard has its own address, the caller's default
+              // included: the org's landing page is Home, not a dashboard.
+              const dashHref = `/org/${orgId}/dashboard/${dash.id}`;
+              const isActive = pathname === dashHref;
 
               if (renamingId === dash.id) {
                 return (
@@ -1036,151 +714,178 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             )}
           </div>
 
-          {/* Plugin groups */}
-          {loading && (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
-          )}
+          {/* Plugin groups: Infrastructure's part of the sidebar, shown only
+              in its context (see showsInfrastructureSidebar). Hidden rather
+              than unmounted so expanded accounts survive a visit elsewhere. */}
+          <div hidden={!showAccounts}>
+            {loading && (
+              <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
+            )}
 
-          {groups.map((group) => (
-            <div key={group.pluginId} className="mb-3">
-              {/* Plugin header */}
-              <div className="flex items-center gap-2 px-3 py-1">
-                <div
-                  className="size-4 flex-shrink-0"
-                  dangerouslySetInnerHTML={{ __html: group.logoSvg }}
-                  aria-hidden="true"
-                />
-                <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
-                  {gtData(group.displayName)}
-                </span>
-              </div>
+            {groups.map((group) => (
+              <div key={group.pluginId} className="mb-3">
+                {/* Plugin header */}
+                <div className="flex items-center gap-2 px-3 py-1">
+                  <div
+                    className="size-4 flex-shrink-0"
+                    dangerouslySetInnerHTML={{ __html: group.logoSvg }}
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
+                    {gtData(group.displayName)}
+                  </span>
+                </div>
 
-              {/* Accounts under this plugin */}
-              {group.accounts.map((account) => {
-                const isExpanded = expanded.has(account.id);
-                const resourceState = accountResources[account.id];
-                const issue = resourceState?.error ?? resourceState?.warning;
+                {/* Accounts under this plugin */}
+                {group.accounts.map((account) => {
+                  const isExpanded = expanded.has(account.id);
+                  const resourceState = accountResources[account.id];
+                  const issue = resourceState?.error ?? resourceState?.warning;
 
-                return (
-                  <div key={account.id}>
-                    {/* Account row */}
-                    <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
-                      <button
-                        type="button"
-                        onClick={() => void toggleExpand(account.id)}
-                        aria-expanded={isExpanded}
-                        aria-controls={`web-sidebar-account-${account.id}`}
-                        aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
-                        className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
-                      >
-                        <ChevronIcon
-                          direction="right"
-                          size={12}
-                          className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void navigate({
-                            to: "/org/$orgId/accounts/$accountId",
-                            params: { orgId: orgId!, accountId: account.id },
-                          })
-                        }
-                        className="flex items-center gap-2 flex-1 text-left min-w-0"
-                      >
-                        <span className="truncate">{account.displayName}</span>
-                        {issue && <IssueIndicator reason={issue} />}
-                      </button>
-                      {account.oauthStatus === "reconnect_required" && (
-                        <ProviderOAuthReconnectBadge
-                          accountName={account.displayName}
-                          onReconnect={
-                            group.oauthAvailable
-                              ? () => reconnectAccount(account, group.displayName)
-                              : undefined
+                  return (
+                    <div key={account.id}>
+                      {/* Account row */}
+                      <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
+                        <button
+                          type="button"
+                          onClick={() => void toggleExpand(account.id)}
+                          aria-expanded={isExpanded}
+                          aria-controls={`web-sidebar-account-${account.id}`}
+                          aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
+                          className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
+                        >
+                          <ChevronIcon
+                            direction="right"
+                            size={12}
+                            className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void navigate({
+                              to: "/org/$orgId/accounts/$accountId",
+                              params: { orgId: orgId!, accountId: account.id },
+                            })
                           }
-                          reconnecting={reconnectingId === account.id}
-                        />
-                      )}
-                    </div>
+                          className="flex items-center gap-2 flex-1 text-left min-w-0"
+                        >
+                          <span className="truncate">{account.displayName}</span>
+                          {issue && <IssueIndicator reason={issue} />}
+                        </button>
+                        {account.oauthStatus === "reconnect_required" && (
+                          <ProviderOAuthReconnectBadge
+                            accountName={account.displayName}
+                            onReconnect={
+                              group.oauthAvailable
+                                ? () => reconnectAccount(account, group.displayName)
+                                : undefined
+                            }
+                            reconnecting={reconnectingId === account.id}
+                          />
+                        )}
+                      </div>
 
-                    {/* Expanded resources */}
-                    {isExpanded && (
-                      <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
-                        {resourceState?.loading && (
-                          <div className="px-3 py-1 text-xs text-on-surface-faint">
-                            {gt("Loading…")}
-                          </div>
-                        )}
-                        {resourceState && !resourceState.loading && resourceState.error && (
-                          <div className="px-3 py-1 text-xs text-danger">
-                            {gt("Error loading resources")}
-                          </div>
-                        )}
-                        {resourceState &&
-                          !resourceState.loading &&
-                          !resourceState.error &&
-                          resourceState.resources.length === 0 && (
+                      {/* Expanded resources */}
+                      {isExpanded && (
+                        <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
+                          {resourceState?.loading && (
                             <div className="px-3 py-1 text-xs text-on-surface-faint">
-                              {gt("No resources")}
+                              {gt("Loading…")}
                             </div>
                           )}
-                        {resourceState?.resources.map((resource) => {
-                          const typeMeta = accountTypeMeta[account.id]?.[resource.resourceTypeId];
-                          return (
-                            <DraggableSidebarResource
-                              key={resource.id}
-                              resource={{
-                                id: resource.id,
-                                pluginId: resource.pluginId,
-                                resourceTypeId: resource.resourceTypeId,
-                                accountId: resource.accountId,
-                                displayName: resource.displayName,
-                                fields: resource.fieldsJson ?? {},
-                                ...(resource.externalId != null
-                                  ? { externalId: resource.externalId }
-                                  : {}),
-                                ...(typeMeta?.attachTargets
-                                  ? { attachTargets: typeMeta.attachTargets }
-                                  : {}),
-                                ...(typeMeta?.isSshHost ? { isSshHost: true } : {}),
-                                ...(typeMeta?.sshTunnelAttachSource
-                                  ? { isTunnelSshSource: true }
-                                  : {}),
-                              }}
-                              onClick={() =>
-                                void navigate({
-                                  to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                                  params: {
-                                    orgId: orgId!,
-                                    pluginId: resource.pluginId,
-                                    resourceTypeId: resource.resourceTypeId,
-                                    resourceId: resource.id,
-                                  },
-                                })
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                          {resourceState && !resourceState.loading && resourceState.error && (
+                            <div className="px-3 py-1 text-xs text-danger">
+                              {gt("Error loading resources")}
+                            </div>
+                          )}
+                          {resourceState &&
+                            !resourceState.loading &&
+                            !resourceState.error &&
+                            resourceState.resources.length === 0 && (
+                              <div className="px-3 py-1 text-xs text-on-surface-faint">
+                                {gt("No resources")}
+                              </div>
+                            )}
+                          {resourceState?.resources.map((resource) => {
+                            const typeMeta = accountTypeMeta[account.id]?.[resource.resourceTypeId];
+                            return (
+                              <DraggableSidebarResource
+                                key={resource.id}
+                                resource={{
+                                  id: resource.id,
+                                  pluginId: resource.pluginId,
+                                  resourceTypeId: resource.resourceTypeId,
+                                  accountId: resource.accountId,
+                                  displayName: resource.displayName,
+                                  fields: resource.fieldsJson ?? {},
+                                  ...(resource.externalId != null
+                                    ? { externalId: resource.externalId }
+                                    : {}),
+                                  ...(typeMeta?.attachTargets
+                                    ? { attachTargets: typeMeta.attachTargets }
+                                    : {}),
+                                  ...(typeMeta?.isSshHost ? { isSshHost: true } : {}),
+                                  ...(typeMeta?.sshTunnelAttachSource
+                                    ? { isTunnelSshSource: true }
+                                    : {}),
+                                }}
+                                onClick={() =>
+                                  void navigate({
+                                    to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                                    params: {
+                                      orgId: orgId!,
+                                      pluginId: resource.pluginId,
+                                      resourceTypeId: resource.resourceTypeId,
+                                      resourceId: resource.id,
+                                    },
+                                  })
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Below the accounts tree: when the tree shows it is what the
+              person came for, and the apps list is long enough to push it
+              out of view. */}
+          <SidebarRecentTools tools={orgTools} scope={orgId ?? "none"} />
+          <SidebarApps tools={orgTools} settingsFor={settingsFor} />
         </div>
 
-        {/* Add account button pinned to the bottom */}
+        {/* Manage accounts: every account, and the way to connect another */}
         <div className="border-t border-border p-2">
           <button
             type="button"
-            onClick={() => setShowAddAccount(true)}
+            onClick={() => setShowManageAccounts(true)}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
-            <span className="text-base leading-none">+</span>
-            {gt("Add account")}
+            {/* lucide: plug */}
+            <svg
+              aria-hidden="true"
+              width={14}
+              height={14}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="opacity-60"
+            >
+              <path d="M12 22v-5" />
+              <path d="M9 8V2" />
+              <path d="M15 8V2" />
+              <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+            </svg>
+            {gt("Manage accounts")}
           </button>
           <button
             type="button"
@@ -1193,6 +898,18 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
       </aside>
 
+      {showManageAccounts && (
+        <ManageAccountsModal
+          groups={groups}
+          onClose={() => setShowManageAccounts(false)}
+          onAddAccount={() => setShowAddAccount(true)}
+          onOpenAccount={(accountId, displayName) =>
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(accountId), {
+              label: displayName,
+            })
+          }
+        />
+      )}
       {showAddAccount && (
         <AddAccountModal
           onClose={() => setShowAddAccount(false)}

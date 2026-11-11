@@ -237,8 +237,42 @@ export {
 
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
-export { SidebarToolsButton, SidebarToolsLauncher } from "./components/sidebar/SidebarTools.js";
+export {
+  SidebarHomeButton,
+  SidebarToolsButton,
+  SidebarToolsLauncher,
+} from "./components/sidebar/SidebarTools.js";
 export type { SidebarToolDef } from "./components/sidebar/SidebarTools.js";
+// The products the app is presented as. Hosts load the Home panel by its
+// module subpath (`@infrawrench/ui/products/ProductsHomePanel`), never from
+// this barrel (see `lazyPanel`); it is exported here so the build emits it.
+export { ProductsHomePanel } from "./products/ProductsHomePanel.js";
+export { AppPicker } from "./products/AppPicker.js";
+export type { AppPickerProps } from "./products/AppPicker.js";
+export type { ProductsHomePanelProps } from "./products/ProductsHomePanel.js";
+export {
+  PRODUCTS,
+  PRODUCT_IDS,
+  findProduct,
+  groupToolsByProduct,
+  isProductId,
+  productForTool,
+  showsInfrastructureSidebar,
+  toolKeyForTabTarget,
+} from "./products/registry.js";
+export type { ProductDef, ProductId } from "./products/registry.js";
+export {
+  PRODUCT_POLICY_CHANGED_EVENT,
+  notifyProductPolicyChanged,
+  useDisabledProductsFrom,
+  withoutDisabledProducts,
+} from "./products/policy.js";
+export {
+  SidebarApps,
+  SidebarRecentTools,
+  useRecentTools,
+  useShowsInfrastructureSidebar,
+} from "./products/sidebar.js";
 
 export { OrgSwitcher } from "./components/OrgSwitcher.js";
 export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";
@@ -271,6 +305,11 @@ export {
 } from "./sharing/ShareDialog.js";
 export { ConfirmDeleteModal } from "./components/ConfirmDeleteModal.js";
 export { AddAccountModal } from "./components/AddAccountModal.js";
+export { ManageAccountsModal } from "./components/ManageAccountsModal.js";
+export type {
+  ManageAccountsModalProps,
+  ManagedAccountGroup,
+} from "./components/ManageAccountsModal.js";
 export type {
   PluginInfo,
   BastionOption,
@@ -304,6 +343,17 @@ export type {
   CredentialPreflightPanelProps,
   CredentialPreflightModalProps,
 } from "./components/CredentialPreflightPanel.js";
+export {
+  ConnectionProductsPicker,
+  ConnectionProductsModal,
+  ConnectionProductsNotice,
+  selectedConnectionProducts,
+} from "./components/ConnectionProducts.js";
+export type {
+  ConnectionProductsPickerProps,
+  ConnectionProductsModalProps,
+  ConnectionProductsNoticeProps,
+} from "./components/ConnectionProducts.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 export { SshFanoutView } from "./components/SshFanoutView.js";
 export type {
@@ -427,6 +477,7 @@ export type { DraggableSidebarResourceProps } from "./dnd/DraggableSidebarResour
 export type { DraggableResource, DraggableWorkflow } from "./dnd/types.js";
 
 export {
+  homeTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,

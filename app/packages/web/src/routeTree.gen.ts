@@ -37,6 +37,7 @@ import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdEnvironmentsRouteImport } from './routes/org.$orgId.environments'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdHomeRouteImport } from './routes/org.$orgId.home'
 import { Route as OrgOrgIdIacRouteImport } from './routes/org.$orgId.iac'
 import { Route as OrgOrgIdIncidentsRouteImport } from './routes/org.$orgId.incidents'
 import { Route as OrgOrgIdInvoicesRouteImport } from './routes/org.$orgId.invoices'
@@ -69,6 +70,7 @@ import { Route as OrgOrgIdComplianceFrameworkRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdCostCanvasesCanvasIdRouteImport } from './routes/org.$orgId.cost-canvases.$canvasId'
 import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdHomeProductIdRouteImport } from './routes/org.$orgId.home.$productId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
 import { Route as OrgOrgIdK8sEfficiencyReportIdRouteImport } from './routes/org.$orgId.k8s-efficiency.$reportId'
@@ -81,6 +83,7 @@ import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.
 import { Route as OrgOrgIdSettingsAiAttributionRouteImport } from './routes/org.$orgId.settings.ai-attribution'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
+import { Route as OrgOrgIdSettingsAppsRouteImport } from './routes/org.$orgId.settings.apps'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
@@ -252,6 +255,11 @@ const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
   path: '/graph',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdHomeRoute = OrgOrgIdHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdIacRoute = OrgOrgIdIacRouteImport.update({
   id: '/iac',
   path: '/iac',
@@ -418,6 +426,11 @@ const OrgOrgIdDashboardDashboardIdRoute =
     path: '/dashboard/$dashboardId',
     getParentRoute: () => OrgOrgIdRoute,
   } as any)
+const OrgOrgIdHomeProductIdRoute = OrgOrgIdHomeProductIdRouteImport.update({
+  id: '/$productId',
+  path: '/$productId',
+  getParentRoute: () => OrgOrgIdHomeRoute,
+} as any)
 const OrgOrgIdIncidentsIncidentIdRoute =
   OrgOrgIdIncidentsIncidentIdRouteImport.update({
     id: '/$incidentId',
@@ -487,6 +500,11 @@ const OrgOrgIdSettingsApprovalsRoute =
     path: '/approvals',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsAppsRoute = OrgOrgIdSettingsAppsRouteImport.update({
+  id: '/apps',
+  path: '/apps',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsAuditLogRoute =
   OrgOrgIdSettingsAuditLogRouteImport.update({
     id: '/audit-log',
@@ -684,6 +702,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
@@ -716,6 +735,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
@@ -727,6 +747,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -786,6 +807,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
@@ -817,6 +839,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
@@ -828,6 +851,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -890,6 +914,7 @@ export interface FileRoutesById {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
@@ -922,6 +947,7 @@ export interface FileRoutesById {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
@@ -933,6 +959,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
+  '/org/$orgId/settings/apps': typeof OrgOrgIdSettingsAppsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
@@ -996,6 +1023,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
@@ -1028,6 +1056,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
@@ -1039,6 +1068,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1098,6 +1128,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
@@ -1129,6 +1160,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
@@ -1140,6 +1172,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1201,6 +1234,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
@@ -1233,6 +1267,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
@@ -1244,6 +1279,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
+    | '/org/$orgId/settings/apps'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
@@ -1488,6 +1524,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdGraphRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/home': {
+      id: '/org/$orgId/home'
+      path: '/home'
+      fullPath: '/org/$orgId/home'
+      preLoaderRoute: typeof OrgOrgIdHomeRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/iac': {
       id: '/org/$orgId/iac'
       path: '/iac'
@@ -1712,6 +1755,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/home/$productId': {
+      id: '/org/$orgId/home/$productId'
+      path: '/$productId'
+      fullPath: '/org/$orgId/home/$productId'
+      preLoaderRoute: typeof OrgOrgIdHomeProductIdRouteImport
+      parentRoute: typeof OrgOrgIdHomeRoute
+    }
     '/org/$orgId/incidents/$incidentId': {
       id: '/org/$orgId/incidents/$incidentId'
       path: '/$incidentId'
@@ -1794,6 +1844,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/org/$orgId/settings/approvals'
       preLoaderRoute: typeof OrgOrgIdSettingsApprovalsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/apps': {
+      id: '/org/$orgId/settings/apps'
+      path: '/apps'
+      fullPath: '/org/$orgId/settings/apps'
+      preLoaderRoute: typeof OrgOrgIdSettingsAppsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/audit-log': {
@@ -2068,6 +2125,18 @@ const OrgOrgIdCostReportsRouteChildren: OrgOrgIdCostReportsRouteChildren = {
 const OrgOrgIdCostReportsRouteWithChildren =
   OrgOrgIdCostReportsRoute._addFileChildren(OrgOrgIdCostReportsRouteChildren)
 
+interface OrgOrgIdHomeRouteChildren {
+  OrgOrgIdHomeProductIdRoute: typeof OrgOrgIdHomeProductIdRoute
+}
+
+const OrgOrgIdHomeRouteChildren: OrgOrgIdHomeRouteChildren = {
+  OrgOrgIdHomeProductIdRoute: OrgOrgIdHomeProductIdRoute,
+}
+
+const OrgOrgIdHomeRouteWithChildren = OrgOrgIdHomeRoute._addFileChildren(
+  OrgOrgIdHomeRouteChildren,
+)
+
 interface OrgOrgIdIncidentsRouteChildren {
   OrgOrgIdIncidentsIncidentIdRoute: typeof OrgOrgIdIncidentsIncidentIdRoute
 }
@@ -2136,6 +2205,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAiAttributionRoute: typeof OrgOrgIdSettingsAiAttributionRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
+  OrgOrgIdSettingsAppsRoute: typeof OrgOrgIdSettingsAppsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
@@ -2172,6 +2242,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsAiAttributionRoute: OrgOrgIdSettingsAiAttributionRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
+  OrgOrgIdSettingsAppsRoute: OrgOrgIdSettingsAppsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
@@ -2250,6 +2321,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdEnvironmentsRoute: typeof OrgOrgIdEnvironmentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdHomeRoute: typeof OrgOrgIdHomeRouteWithChildren
   OrgOrgIdIacRoute: typeof OrgOrgIdIacRoute
   OrgOrgIdIncidentsRoute: typeof OrgOrgIdIncidentsRouteWithChildren
   OrgOrgIdInvoicesRoute: typeof OrgOrgIdInvoicesRouteWithChildren
@@ -2299,6 +2371,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdEnvironmentsRoute: OrgOrgIdEnvironmentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdHomeRoute: OrgOrgIdHomeRouteWithChildren,
   OrgOrgIdIacRoute: OrgOrgIdIacRoute,
   OrgOrgIdIncidentsRoute: OrgOrgIdIncidentsRouteWithChildren,
   OrgOrgIdInvoicesRoute: OrgOrgIdInvoicesRouteWithChildren,

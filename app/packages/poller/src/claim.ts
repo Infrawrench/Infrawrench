@@ -4,6 +4,10 @@ import {
   accountScopeCondition,
   type PollScope,
 } from "@infrawrench/server-core/runtime/account-runtime";
+import {
+  accountInventoryCondition,
+  accountProductCondition,
+} from "@infrawrench/server-core/runtime/account-products";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -46,7 +50,9 @@ export interface DueWorkflowRow {
 /**
  * Claim up to `limit` due accounts, leasing each for {@link ACCOUNT_LEASE_MS}.
  * Ordering matches the old single-instance query: least-recently-polled first,
- * with never-polled accounts (fresh sign-ups) at the front.
+ * with never-polled accounts (fresh sign-ups) at the front. An account
+ * connected for Costs alone is never claimed: nothing reads its inventory, and
+ * its credential was not given the permissions to list it.
  */
 export async function claimDueAccounts(
   limit: number,
@@ -60,6 +66,7 @@ export async function claimDueAccounts(
       WHERE deleted_at IS NULL
         AND (next_poll_at IS NULL OR next_poll_at <= now())
         ${accountScopeCondition(scope)}
+        ${accountInventoryCondition()}
       ORDER BY last_polled_at ASC NULLS FIRST, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -82,10 +89,16 @@ export async function claimDueAccounts(
  * whose manifest declares a `costs` capability (known at boot); accounts of
  * other plugins are never claimed. NULL cost_next_poll_at means "due now" so
  * pre-existing accounts are picked up automatically after deploy.
+ *
+ * `offeringPluginIds` are the plugins that offer Costs as a choice when
+ * connecting; an account of one of them that left Costs out is not claimed
+ * (`accountProductCondition`). Every claim below takes the same list for the
+ * app it feeds.
  */
 export async function claimDueCostAccounts(
   limit: number,
   costCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (costCapablePluginIds.length === 0) return [];
@@ -101,6 +114,7 @@ export async function claimDueCostAccounts(
         AND plugin_id IN ${costCapablePluginIds}
         AND (cost_next_poll_at IS NULL OR cost_next_poll_at <= now())
         ${accountScopeCondition(scope)}
+        ${accountProductCondition("costs", offeringPluginIds)}
       ORDER BY cost_last_polled_at ASC NULLS FIRST, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -129,6 +143,7 @@ export async function claimDueCostAccounts(
 export async function claimDueCreditAccounts(
   limit: number,
   creditCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (creditCapablePluginIds.length === 0) return [];
@@ -143,6 +158,7 @@ export async function claimDueCreditAccounts(
       AND a.plugin_id IN ${creditCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("costs", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -205,6 +221,7 @@ export async function claimDueCreditAccounts(
 export async function claimDueCommitmentAccounts(
   limit: number,
   commitmentCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (commitmentCapablePluginIds.length === 0) return [];
@@ -219,6 +236,7 @@ export async function claimDueCommitmentAccounts(
       AND a.plugin_id IN ${commitmentCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("costs", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -280,6 +298,7 @@ export async function claimDueCommitmentAccounts(
 export async function claimDueSeatAccounts(
   limit: number,
   seatCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (seatCapablePluginIds.length === 0) return [];
@@ -294,6 +313,7 @@ export async function claimDueSeatAccounts(
       AND a.plugin_id IN ${seatCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("costs", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -354,6 +374,7 @@ export async function claimDueSeatAccounts(
 export async function claimDueQuotaAccounts(
   limit: number,
   quotaCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (quotaCapablePluginIds.length === 0) return [];
@@ -368,6 +389,7 @@ export async function claimDueQuotaAccounts(
       AND a.plugin_id IN ${quotaCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("infrastructure", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -429,6 +451,7 @@ export async function claimDueQuotaAccounts(
 export async function claimDueIdleAccounts(
   limit: number,
   idleCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (idleCapablePluginIds.length === 0) return [];
@@ -443,6 +466,7 @@ export async function claimDueIdleAccounts(
       AND a.plugin_id IN ${idleCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("costs", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -504,6 +528,7 @@ export async function claimDueIdleAccounts(
 export async function claimDueVulnerabilityAccounts(
   limit: number,
   vulnerabilityCapablePluginIds: string[],
+  offeringPluginIds: readonly string[],
   scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (vulnerabilityCapablePluginIds.length === 0) return [];
@@ -518,6 +543,7 @@ export async function claimDueVulnerabilityAccounts(
       AND a.plugin_id IN ${vulnerabilityCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
       ${accountScopeCondition(scope, "a")}
+      ${accountProductCondition("security", offeringPluginIds, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE

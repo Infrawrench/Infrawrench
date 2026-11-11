@@ -1,3 +1,4 @@
+import { useDisabledProducts } from "@/lib/disabled-products";
 import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import {
@@ -7,7 +8,7 @@ import {
   type BastionOption,
   type CredentialFieldOption,
 } from "@infrawrench/ui";
-import type { PolicyTemplate, PreflightReport } from "@infrawrench/client-core";
+import type { PolicyTemplate, PreflightReport, ProductId } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
@@ -42,6 +43,8 @@ export function AddAccountModal({
   const [bastions, setBastions] = useState<BastionOption[]>([]);
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
+  // A new connection is only offered the apps the organization has on.
+  const disabledProducts = useDisabledProducts(orgId);
   const loadPlugins = useCallback(() => fetchPluginCatalog(orgId), [orgId]);
 
   useEffect(() => {
@@ -83,12 +86,16 @@ export function AddAccountModal({
       displayName: string,
       credentials: Record<string, string>,
       bastionId: string | null,
+      products: ProductId[] | null,
     ) => {
       const result = await apiPost<CreateAccountResponse>(`/api/org/${orgId}/accounts`, {
         pluginId,
         displayName,
         credentials,
         bastionId,
+        // Left out for every app, which is also what a server without the
+        // field understands.
+        ...(products ? { products } : {}),
       });
       if (result?.syncError) {
         toast.warning(gt("Account created but initial sync failed"), {
@@ -144,6 +151,7 @@ export function AddAccountModal({
 
   return (
     <SharedAddAccountModal
+      disabledProducts={disabledProducts}
       onClose={onClose}
       onAdded={onAdded}
       loadPlugins={loadPlugins}

@@ -14,6 +14,7 @@ import {
   jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
+  homeTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
   queryMonitorsTabTarget,
@@ -47,6 +48,13 @@ describe("tab target factories", () => {
 
   it("accountTabTarget", () => {
     expect(accountTabTarget("acc-1")).toEqual({ kind: "account", accountId: "acc-1" });
+  });
+
+  it("homeTabTarget", () => {
+    expect(homeTabTarget()).toEqual({ kind: "home" });
+    expect(homeTabTarget("costs")).toEqual({ kind: "home", productId: "costs" });
+    // A product the registry does not know lands on Home.
+    expect(homeTabTarget("not-a-product")).toEqual({ kind: "home" });
   });
 
   it("wallboardTabTarget", () => {

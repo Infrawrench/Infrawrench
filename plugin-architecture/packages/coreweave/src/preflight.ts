@@ -47,6 +47,7 @@ const PROBES: CapabilityProbe[] = [
   {
     capability: {
       id: "usage",
+      product: "costs",
       label: "Usage and estimated cost",
       description:
         "Hourly billable usage from the FOCUS usage export, priced at your negotiated rates or the published list prices.",

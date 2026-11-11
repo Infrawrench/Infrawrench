@@ -435,4 +435,12 @@
 // 1.101.0: a CI job says what it waited for (`needs` on `CiJobSummary`), and
 // a running run's live log (`GET /ci/runs/{runId}/logs`, Server-Sent Events,
 // not in the document, like the chat turn stream). Additive.
-export const API_VERSION = "1.101.0";
+// 1.102.0: the app is presented as products ("apps"). `home` in the tab kinds,
+// with the `productId` a product page's tab is on; the organization's product
+// policy (`GET|PUT /api/org/:orgId/products`, the apps turned off, written
+// with the new `org:apps:write` permission); accounts
+// carry `products`, the apps a connection is for (create, update, list,
+// detail); `product` on a plugin's preflight capability; and
+// `POST /accounts/{id}/sync` and `sync-type` answer 400 for a costs-only
+// account. Additive.
+export const API_VERSION = "1.102.0";

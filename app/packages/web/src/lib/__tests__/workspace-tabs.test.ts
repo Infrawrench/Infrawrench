@@ -424,6 +424,17 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "sftp" });
   });
 
+  it("returns home and product route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "home" })).toEqual({
+      to: "/org/$orgId/home",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "home", productId: "costs" })).toEqual({
+      to: "/org/$orgId/home/$productId",
+      params: { orgId: "test-org", productId: "costs" },
+    });
+  });
+
   it("returns wallboard route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "wallboard" })).toEqual({
       to: "/org/$orgId/wallboard",
@@ -554,6 +565,15 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses the org-scoped home and product paths", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/home")).toEqual({ kind: "home" });
+    expect(syncWorkspaceRouteFromPath("/org/test-org/home/costs")).toEqual({
+      kind: "home",
+      productId: "costs",
+    });
+    expect(syncWorkspaceRouteFromPath("/org/test-org/home/nope")).toEqual({ kind: "home" });
   });
 
   it("parses the org-scoped wallboard path", () => {

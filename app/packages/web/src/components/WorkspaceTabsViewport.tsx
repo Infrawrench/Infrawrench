@@ -125,6 +125,7 @@ const WebJitAccessPanel = lazyPanel(() =>
   import("./WebJitAccessPanel").then((m) => m.WebJitAccessPanel),
 );
 const WebBackupsPanel = lazyPanel(() => import("./WebBackupsPanel").then((m) => m.WebBackupsPanel));
+const WebHomePanel = lazyPanel(() => import("./WebHomePanel").then((m) => m.WebHomePanel));
 const WebWallboardPanel = lazyPanel(() =>
   import("./WebWallboardPanel").then((m) => m.WebWallboardPanel),
 );
@@ -793,6 +794,15 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               getWorkspaceNavigateArgs(resourceTabTarget(target.accountId, target.resourceId)),
             )
           }
+        />
+      );
+    case "home":
+      return (
+        <WebHomePanel
+          // Keyed by org so switching org refetches which tools it has.
+          key={orgId}
+          orgId={orgId}
+          productId={t.productId}
         />
       );
     case "wallboard":

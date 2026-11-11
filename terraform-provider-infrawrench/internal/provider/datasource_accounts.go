@@ -26,6 +26,7 @@ type accountItemModel struct {
 	PluginID    types.String `tfsdk:"plugin_id"`
 	DisplayName types.String `tfsdk:"display_name"`
 	BastionID   types.String `tfsdk:"bastion_id"`
+	Products    types.Set    `tfsdk:"products"`
 	CreatedAt   types.String `tfsdk:"created_at"`
 }
 
@@ -34,6 +35,7 @@ var accountItemAttrTypes = map[string]attr.Type{
 	"plugin_id":    types.StringType,
 	"display_name": types.StringType,
 	"bastion_id":   types.StringType,
+	"products":     types.SetType{ElemType: types.StringType},
 	"created_at":   types.StringType,
 }
 
@@ -92,6 +94,12 @@ func (r *accountsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							Computed:            true,
 							MarkdownDescription: "Id of the bastion the account is reached through, null when it is reached directly.",
 						},
+						"products": schema.SetAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+							MarkdownDescription: "The apps the connection is for, as product ids such as `costs`. " +
+								"Null when it is for every app the plugin offers.",
+						},
 						"created_at": schema.StringAttribute{
 							Computed:            true,
 							MarkdownDescription: "RFC 3339 timestamp of when the account was connected.",
@@ -131,11 +139,17 @@ func (r *accountsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		if wantPlugin != "" && a.PluginID != wantPlugin {
 			continue
 		}
+		products, diags := productsForState(ctx, a.Products, types.SetNull(types.StringType))
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 		rows = append(rows, accountItemModel{
 			ID:          types.StringValue(a.ID),
 			PluginID:    types.StringValue(a.PluginID),
 			DisplayName: types.StringValue(a.DisplayName),
 			BastionID:   stringValue(a.BastionID),
+			Products:    products,
 			CreatedAt:   types.StringValue(a.CreatedAt),
 		})
 	}
