@@ -94,6 +94,26 @@ export interface HomeApp {
 
 export const homeApps: HomeApp[] = [
   {
+    id: "dashboards",
+    name: "Dashboards",
+    points: [
+      "A draggable grid of resource cards, cost graphs, budgets, KPIs and notes",
+      "Live stats on every pinned resource",
+      "A default dashboard per person, per role or for the organization",
+      "Share a dashboard with a role or the whole organization",
+    ],
+    summary:
+      "Pin resources, cost graphs, budgets and notes from any app to one grid, and share it with your team.",
+    tools: [
+      { name: "Pins", doc: "dashboard", body: "Any resource, with live stats on the card." },
+      { name: "Cost widgets", body: "Graphs, budgets and KPIs from Costs." },
+      {
+        name: "Defaults",
+        body: "A default dashboard per person, per role or for the organization.",
+      },
+    ],
+  },
+  {
     id: "infrastructure",
     name: "Infrastructure",
     points: [
@@ -363,26 +383,6 @@ export const homeApps: HomeApp[] = [
         name: "Workflows",
         doc: "workflows",
         body: "TypeScript that acts across all your accounts, by hand, on a schedule or on a push.",
-      },
-    ],
-  },
-  {
-    id: "dashboards",
-    name: "Dashboards",
-    points: [
-      "A draggable grid of resource cards, cost graphs, budgets, KPIs and notes",
-      "Live stats on every pinned resource",
-      "A default dashboard per person, per role or for the organization",
-      "Share a dashboard with a role or the whole organization",
-    ],
-    summary:
-      "Pin resources, cost graphs, budgets and notes from any app to one grid, and share it with your team.",
-    tools: [
-      { name: "Pins", doc: "dashboard", body: "Any resource, with live stats on the card." },
-      { name: "Cost widgets", body: "Graphs, budgets and KPIs from Costs." },
-      {
-        name: "Defaults",
-        body: "A default dashboard per person, per role or for the organization.",
       },
     ],
   },
