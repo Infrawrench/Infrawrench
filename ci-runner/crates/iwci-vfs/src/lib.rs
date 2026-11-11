@@ -930,6 +930,146 @@ impl JobOverlay {
         }
         self.upper.remove_dir(path)
     }
+
+    /// Removes the directory at `path`, which the merged view already shows
+    /// empty: its upper copy (whiteouts and all) goes, and a snapshot
+    /// directory there is whited out.
+    fn drop_empty_dir(&self, path: &Path) -> virtual_fs::Result<()> {
+        if self.upper.metadata(path).is_ok_and(|m| m.is_dir()) {
+            self.purge_upper(path)?;
+        }
+        if self.base.metadata(path).is_ok_and(|m| m.is_dir()) {
+            self.white_out(path)?;
+        }
+        Ok(())
+    }
+
+    /// Removes the file or symlink at `path` (whiting out a snapshot one) and
+    /// gives back the bytes the job was charged for it.
+    fn unlink(&self, path: &Path) -> virtual_fs::Result<()> {
+        let size = self.upper_size(path);
+        self.inner.remove_file(path)?;
+        self.give(size);
+        Ok(())
+    }
+
+    /// Whether the job deleted `path` or a directory above it: a whiteout
+    /// hides the snapshot's entry there.
+    fn hidden(&self, path: &Path) -> bool {
+        path.ancestors().any(|p| {
+            whiteout_path(p).is_some_and(|marker| self.upper.symlink_metadata(&marker).is_ok())
+        })
+    }
+
+    fn clear_white_out(&self, path: &Path) {
+        if let Some(marker) = whiteout_path(path) {
+            let _ = self.upper.remove_file(&marker);
+        }
+    }
+
+    /// Moves what is at `from` to `to` in the merged view, as `rename(2)`
+    /// does. The overlay's own rename only works within the upper layer: a
+    /// snapshot file it copies up to `to`, which fails while `to`'s parent
+    /// exists only in the snapshot (that is, always, for a fresh job: #985),
+    /// and a snapshot directory or a symlink it cannot move at all. Modes are
+    /// left to the caller.
+    fn move_entry<'a>(
+        &'a self,
+        from: &'a Path,
+        to: &'a Path,
+    ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
+        Box::pin(async move {
+            let meta = self.inner.symlink_metadata(from)?;
+            if from == to {
+                return Ok(());
+            }
+            let kind = meta.file_type();
+            if kind.is_dir() && to.starts_with(from) {
+                return Err(FsError::InvalidInput);
+            }
+            let parent = to.parent().ok_or(FsError::InvalidInput)?;
+            if !self.inner.metadata(parent)?.is_dir() {
+                return Err(FsError::BaseNotDirectory);
+            }
+            // What `to` replaces: a file by a file, an empty directory by a
+            // directory, as on Linux.
+            if let Ok(existing) = self.inner.symlink_metadata(to) {
+                match (kind.is_dir(), existing.is_dir()) {
+                    (true, true) => {
+                        if self.inner.read_dir(to)?.next().is_some() {
+                            return Err(FsError::DirectoryNotEmpty);
+                        }
+                        self.drop_empty_dir(to)?;
+                    }
+                    (true, false) => return Err(FsError::BaseNotDirectory),
+                    (false, true) => return Err(FsError::InvalidInput),
+                    (false, false) => self.unlink(to)?,
+                }
+            }
+            // Everything below writes `to` into the upper layer, where its
+            // parent may so far exist only in the snapshot.
+            create_dir_all(&self.upper, parent).map_err(|_| FsError::IOError)?;
+            let from_in_base = self.base.symlink_metadata(from).is_ok() && !self.hidden(from);
+
+            if kind.is_symlink() {
+                let target = self.inner.readlink(from)?;
+                self.upper.create_symlink(&target, to)?;
+                self.clear_white_out(to);
+                return self.unlink(from);
+            }
+            if !kind.is_dir() {
+                if self.upper.symlink_metadata(from).is_ok() {
+                    // The job's own file (or its copy of a snapshot one):
+                    // the overlay renames it within the upper layer and
+                    // whites out a snapshot file at `from`.
+                    return self.inner.rename(from, to).await;
+                }
+                // A snapshot file is copied up to `to`, as a write to it
+                // would copy it up, and is not charged to the job for the
+                // same reason. Not with the overlay's `copy_reference`: the
+                // node that makes shares one read position between every
+                // handle, so a second read of the file comes back empty.
+                // Awaited, not through `read_file`: this runs inside the
+                // guest's executor, which `block_on` refuses to nest in.
+                let mut bytes = Vec::new();
+                let mut src = self.base.new_open_options().read(true).open(from)?;
+                src.read_to_end(&mut bytes).await?;
+                let mut dst = self
+                    .upper
+                    .new_open_options()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(to)?;
+                dst.write_all(&bytes).await?;
+                dst.flush().await?;
+                self.clear_white_out(to);
+                return self.white_out(from);
+            }
+            // A directory the snapshot has no part in, at either end, moves
+            // as one upper-layer directory.
+            if !from_in_base && self.base.symlink_metadata(to).is_err() {
+                return self.inner.rename(from, to).await;
+            }
+            // Otherwise entry by entry: `to` is made as `create_dir` makes it
+            // (a snapshot directory deleted there stays deleted), everything
+            // in `from` moves into it, and `from`, now empty, goes.
+            FileSystem::create_dir(self, to)?;
+            let children: Vec<PathBuf> = self
+                .inner
+                .read_dir(from)?
+                .flatten()
+                .map(|e| e.path)
+                .collect();
+            for child in children {
+                let Some(name) = child.file_name() else {
+                    continue;
+                };
+                self.move_entry(&child, &to.join(name)).await?;
+            }
+            self.drop_empty_dir(from)
+        })
+    }
 }
 
 impl FileSystem for JobOverlay {
@@ -963,13 +1103,7 @@ impl FileSystem for JobOverlay {
         if self.inner.read_dir(path)?.next().is_some() {
             return Err(FsError::DirectoryNotEmpty);
         }
-        let in_upper = self.upper.metadata(path).is_ok_and(|m| m.is_dir());
-        if in_upper {
-            self.purge_upper(path)?;
-        }
-        if self.base.metadata(path).is_ok_and(|m| m.is_dir()) {
-            self.white_out(path)?;
-        }
+        self.drop_empty_dir(path)?;
         self.modes.removed(path);
         Ok(())
     }
@@ -979,7 +1113,7 @@ impl FileSystem for JobOverlay {
         to: &'a Path,
     ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
         Box::pin(async move {
-            self.inner.rename(from, to).await?;
+            self.move_entry(from, to).await?;
             self.modes.renamed(from, to);
             Ok(())
         })
@@ -991,9 +1125,7 @@ impl FileSystem for JobOverlay {
         self.inner.symlink_metadata(path)
     }
     fn remove_file(&self, path: &Path) -> virtual_fs::Result<()> {
-        let size = self.upper_size(path);
-        self.inner.remove_file(path)?;
-        self.give(size);
+        self.unlink(path)?;
         self.modes.removed(path);
         Ok(())
     }
@@ -1555,10 +1687,7 @@ mod tests {
         assert_eq!(mode("/app/missing", true), None);
 
         // `chmod 600` then `mv`: the mode goes with the file, and a file
-        // created at the old path starts from the default. (The file is
-        // rewritten first: a file only in the snapshot cannot be renamed
-        // yet, #985.)
-        job.write("/app/data.txt", b"x").unwrap();
+        // created at the old path starts from the default.
         modes.set(Path::new("/app/data.txt"), 0o600);
         block_on(fs.rename(Path::new("/app/data.txt"), Path::new("/app/secret.txt"))).unwrap();
         assert_eq!(mode("/app/secret.txt", true), Some(0o600));
@@ -1586,6 +1715,169 @@ mod tests {
             true,
         );
         assert_eq!(other_mode.map(|(_, m)| m), Some(0o755));
+    }
+
+    fn rename(job: &JobFs, from: &str, to: &str) -> virtual_fs::Result<()> {
+        block_on(job.as_dyn().rename(Path::new(from), Path::new(to)))
+    }
+
+    fn names(job: &JobFs, dir: &str) -> Vec<String> {
+        let mut names: Vec<String> = job
+            .as_dyn()
+            .read_dir(Path::new(dir))
+            .unwrap()
+            .flatten()
+            .map(|e| e.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// A fresh job renaming checked-out files (#985): the overlay's own
+    /// rename copied a snapshot file up into a parent the upper layer did
+    /// not have yet, and failed with `EntryNotFound`.
+    #[test]
+    fn a_fresh_job_renames_snapshot_files() {
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/README.md", b"readme\n").unwrap();
+        builder.write("/app/run.sh", b"#!/bin/sh\n").unwrap();
+        builder.write("/app/src/a.ts", b"a\n").unwrap();
+        builder.write("/app/src/b.ts", b"b\n").unwrap();
+        builder.write("/app/docs/old.md", b"old\n").unwrap();
+        builder.set_mode("/app/run.sh", 0o755).unwrap();
+        let job = builder.freeze().fork();
+
+        // Within its directory, into another snapshot directory, over
+        // another snapshot file, and keeping its mode.
+        rename(&job, "/app/README.md", "/app/moved.md").unwrap();
+        rename(&job, "/app/src/a.ts", "/app/docs/a.ts").unwrap();
+        rename(&job, "/app/src/b.ts", "/app/docs/old.md").unwrap();
+        rename(&job, "/app/run.sh", "/app/docs/run.sh").unwrap();
+        for _ in 0..2 {
+            assert_eq!(job.read("/app/moved.md").unwrap(), b"readme\n");
+        }
+        assert!(job.read("/app/README.md").is_err());
+        assert_eq!(job.read("/app/docs/a.ts").unwrap(), b"a\n");
+        assert_eq!(job.read("/app/docs/old.md").unwrap(), b"b\n");
+        assert_eq!(names(&job, "/app/src"), Vec::<String>::new());
+        assert_eq!(names(&job, "/app/docs"), ["a.ts", "old.md", "run.sh"]);
+        assert_eq!(job.modes().get(Path::new("/app/docs/run.sh")), Some(0o755));
+        assert_eq!(job.modes().get(Path::new("/app/run.sh")), None);
+
+        // The moved file is the job's now: it can be written and removed.
+        job.write("/app/moved.md", b"edited\n").unwrap();
+        assert_eq!(job.read("/app/moved.md").unwrap(), b"edited\n");
+        job.remove_file("/app/docs/a.ts").unwrap();
+
+        // A missing source is still ENOENT, a missing target directory too.
+        assert_eq!(
+            rename(&job, "/app/README.md", "/app/x"),
+            Err(FsError::EntryNotFound)
+        );
+        assert!(rename(&job, "/app/moved.md", "/app/nowhere/x").is_err());
+
+        assert_eq!(
+            job.changes("/app"),
+            vec![
+                Change::Deleted {
+                    path: "/app/README.md".into()
+                },
+                Change::Modified {
+                    path: "/app/docs/old.md".into(),
+                    bytes: b"b\n".to_vec()
+                },
+                Change::Added {
+                    path: "/app/docs/run.sh".into(),
+                    bytes: b"#!/bin/sh\n".to_vec()
+                },
+                Change::Added {
+                    path: "/app/moved.md".into(),
+                    bytes: b"edited\n".to_vec()
+                },
+                Change::Deleted {
+                    path: "/app/run.sh".into()
+                },
+                Change::Deleted {
+                    path: "/app/src/a.ts".into()
+                },
+                Change::Deleted {
+                    path: "/app/src/b.ts".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_job_renames_its_own_files_into_snapshot_directories() {
+        let job = snapshot().fork();
+        job.write("/app/new.txt", b"new").unwrap();
+        rename(&job, "/app/new.txt", "/app/node_modules/new.txt").unwrap();
+        assert_eq!(job.read("/app/node_modules/new.txt").unwrap(), b"new");
+        assert!(job.read("/app/new.txt").is_err());
+        // A copied-up file moves as itself, not as the snapshot's copy.
+        job.write("/app/src/a.ts", b"changed").unwrap();
+        rename(&job, "/app/src/a.ts", "/app/old/a.ts").unwrap();
+        assert_eq!(job.read("/app/old/a.ts").unwrap(), b"changed");
+        assert!(job.read("/app/src/a.ts").is_err());
+    }
+
+    #[test]
+    fn a_job_renames_snapshot_directories_and_symlinks() {
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/dist/index.js", b"i").unwrap();
+        builder.write("/app/dist/lib/x.js", b"x").unwrap();
+        builder.write("/app/dist/bin/cli", b"c").unwrap();
+        builder.symlink("/app/dist/link", "index.js").unwrap();
+        builder.write("/app/empty/.keep", b"").unwrap();
+        builder.set_mode("/app/dist/bin/cli", 0o755).unwrap();
+        let job = builder.freeze().fork();
+        // The job's own work inside, which moves too.
+        job.write("/app/dist/lib/y.js", b"y").unwrap();
+        job.remove_file("/app/dist/index.js").unwrap();
+        job.write("/app/dist/index.js", b"rebuilt").unwrap();
+
+        rename(&job, "/app/dist", "/app/out").unwrap();
+        assert!(job.as_dyn().metadata(Path::new("/app/dist")).is_err());
+        assert_eq!(names(&job, "/app/out"), ["bin", "index.js", "lib", "link"]);
+        assert_eq!(names(&job, "/app/out/lib"), ["x.js", "y.js"]);
+        assert_eq!(job.read("/app/out/index.js").unwrap(), b"rebuilt");
+        assert_eq!(job.read("/app/out/link").unwrap(), b"rebuilt");
+        assert_eq!(
+            job.as_dyn().readlink(Path::new("/app/out/link")).unwrap(),
+            Path::new("index.js")
+        );
+        assert_eq!(job.modes().get(Path::new("/app/out/bin/cli")), Some(0o755));
+
+        // A directory goes over an empty one, never into a full one or
+        // under itself.
+        assert_eq!(
+            rename(&job, "/app/out", "/app/empty"),
+            Err(FsError::DirectoryNotEmpty)
+        );
+        assert_eq!(
+            rename(&job, "/app/out", "/app/out/lib/deeper"),
+            Err(FsError::InvalidInput)
+        );
+        job.remove_file("/app/empty/.keep").unwrap();
+        rename(&job, "/app/out", "/app/empty").unwrap();
+        assert_eq!(job.read("/app/empty/lib/x.js").unwrap(), b"x");
+
+        // Moving it back where it was deleted from does not bring back the
+        // snapshot entries the job removed.
+        rename(&job, "/app/empty", "/app/dist").unwrap();
+        assert_eq!(names(&job, "/app/dist"), ["bin", "index.js", "lib", "link"]);
+        assert_eq!(job.read("/app/dist/index.js").unwrap(), b"rebuilt");
+        assert!(job.as_dyn().metadata(Path::new("/app/empty")).is_err());
+
+        // A symlink the job made moves too.
+        symlink(job.as_dyn().as_ref(), "/app/mine", "dist/lib").unwrap();
+        rename(&job, "/app/mine", "/app/yours").unwrap();
+        assert_eq!(job.read("/app/yours/y.js").unwrap(), b"y");
+        assert!(
+            job.as_dyn()
+                .symlink_metadata(Path::new("/app/mine"))
+                .is_err()
+        );
     }
 
     #[test]
