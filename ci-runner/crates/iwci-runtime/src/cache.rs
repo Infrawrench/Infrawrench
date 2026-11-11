@@ -8,6 +8,11 @@
 //! and wasm features). Within a process the compiled `Module`s also stay in
 //! memory, where a clone is a reference count.
 //!
+//! Nothing is compiled with the shared engine itself. wasmer holds an
+//! engine's lock for the whole of a compile, and every job needs that lock
+//! to start a process, so a compile on the shared engine stopped every job
+//! until it ended (#963). See [`ModuleStore::compile`].
+//!
 //! Loading an artifact runs `Module::deserialize`, which in wasmer 7.5 trusts
 //! its input completely: the bytes become executable code. The cache
 //! directory is the runner's own, but a truncated write, a disk error or a
@@ -53,14 +58,14 @@ pub(crate) struct ModuleStore {
     stats: Stats,
 }
 
-/// Held while a module is loaded or compiled with the shared engine.
+/// Held while a module is loaded or compiled.
 ///
-/// A compile holds the engine's lock from start to finish, and so does
-/// every instantiation and every artifact load: while one job's module
-/// compiles, another job that starts a process waits on that lock, using no
-/// CPU and printing nothing, for as long as the compile takes. The stall
-/// check (stall.rs) therefore treats every job as busy while this is held
-/// by anyone.
+/// Loading an artifact into the shared engine holds the engine's lock, and
+/// so does every instantiation: another job that starts a process meanwhile
+/// waits on that lock, using no CPU and printing nothing. A compile no
+/// longer holds it (see [`ModuleStore::compile`]), but the load at its end
+/// does, so the stall check (stall.rs) still treats every job as busy while
+/// this is held by anyone.
 pub(crate) struct Working(Arc<ModuleStore>);
 
 impl Drop for Working {
@@ -128,10 +133,16 @@ impl Lru {
     }
 }
 
-/// The one engine every job compiles with: cranelift, default features for
-/// the host. Its fingerprint names the cache subdirectory.
+/// An engine as every job's is built: cranelift, default features for the
+/// host. Engines built here make artifacts any other one built here loads.
+fn build_engine() -> Engine {
+    EngineBuilder::new(Cranelift::new()).engine().into()
+}
+
+/// The one engine every job runs on. Its fingerprint names the cache
+/// subdirectory.
 pub(crate) fn new_engine() -> (Engine, String) {
-    let engine: Engine = EngineBuilder::new(Cranelift::new()).engine().into();
+    let engine = build_engine();
     let features = engine.as_sys().inner().features().clone();
     let target = engine.target().clone();
     let description = format!(
@@ -223,11 +234,8 @@ impl ModuleStore {
                         actual: hex::encode(actual),
                     });
                 }
-                let module = Module::new(&self.engine, wasm).map_err(Error::Compile)?;
+                let module = self.compile(&key, wasm)?;
                 self.stats.compiled.fetch_add(1, Ordering::Relaxed);
-                // A cache that cannot be written only costs the next process
-                // a compile, so the job goes on.
-                let _ = self.to_disk(&key, &module);
                 module
             }
         };
@@ -240,6 +248,41 @@ impl ModuleStore {
             .unwrap_or_else(|e| e.into_inner())
             .remove(&key);
         Ok(module)
+    }
+
+    /// Compiles `wasm` without holding the shared engine, and writes the
+    /// artifact to disk.
+    ///
+    /// wasmer 7.5's `Engine::compile` holds its engine's lock from start to
+    /// finish (`Artifact::new` takes `inner_mut()` for the compiler and keeps
+    /// it), and every instantiation, signature registration and artifact
+    /// load takes the same lock. So the compile runs on an engine of its
+    /// own, built as the shared one is (same compiler, target and features,
+    /// which the fingerprint describes), and its artifact is loaded into the
+    /// shared engine exactly as one from disk would be, which holds the
+    /// shared lock only while the code is copied in and registered. The
+    /// private engine, and the code it kept, go when this returns.
+    fn compile(&self, key: &WasmHash, wasm: &[u8]) -> Result<Module> {
+        let artifact = {
+            let engine = build_engine();
+            let module = Module::new(&engine, wasm).map_err(Error::Compile)?;
+            module.serialize()
+        };
+        let Ok(artifact) = artifact else {
+            // Not expected; compiling with the shared engine still works.
+            let module = Module::new(&self.engine, wasm).map_err(Error::Compile)?;
+            let _ = self.to_disk(key, &module);
+            return Ok(module);
+        };
+        // A cache that cannot be written only costs the next process a
+        // compile, so the job goes on.
+        let _ = self.write_artifact(key, &artifact);
+        // SAFETY: the bytes are what `Module::serialize` produced a moment
+        // ago, in this process, for an engine built as the shared one is.
+        match unsafe { Module::deserialize(&self.engine, artifact) } {
+            Ok(module) => Ok(module),
+            Err(_) => Module::new(&self.engine, wasm).map_err(Error::Compile),
+        }
     }
 
     fn in_memory(&self, key: &WasmHash) -> Option<Module> {
@@ -288,12 +331,16 @@ impl ModuleStore {
 
     fn to_disk(&self, key: &WasmHash, module: &Module) -> std::io::Result<()> {
         let bytes = module.serialize().map_err(std::io::Error::other)?;
-        let digest = hex::encode(Sha256::digest(&bytes));
+        self.write_artifact(key, &bytes)
+    }
+
+    fn write_artifact(&self, key: &WasmHash, bytes: &[u8]) -> std::io::Result<()> {
+        let digest = hex::encode(Sha256::digest(bytes));
         // Each file is written under a unique name and renamed into place,
         // so a reader sees a whole file or none. A reader that sees the new
         // artifact before the new digest fails verification and recompiles,
         // which is slow but safe.
-        write_atomically(&self.artifact_path(key), &bytes)?;
+        write_atomically(&self.artifact_path(key), bytes)?;
         write_atomically(&self.digest_path(key), digest.as_bytes())
     }
 

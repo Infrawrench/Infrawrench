@@ -1419,3 +1419,170 @@ fn node_options_put_the_support_preload_first() {
         preload
     );
 }
+
+/// A module that takes a while to compile: `functions` functions of a few
+/// hundred instructions each, none of them ever called.
+fn slow_to_compile(functions: usize) -> Vec<u8> {
+    let mut wat = String::from("(module (memory (export \"memory\") 1)\n");
+    for f in 0..functions {
+        wat.push_str(&format!(
+            "(func $f{f} (export \"f{f}\") (param i32 i64) (result i64) (local i32 i64)\n"
+        ));
+        for i in 0..60 {
+            wat.push_str(&format!(
+                "local.get 0 i32.const {i} i32.add i32.const 7 i32.mul local.set 2 \
+                 local.get 1 local.get 2 i64.extend_i32_u i64.xor i64.const {f} i64.rotl local.set 3 \
+                 local.get 3 local.get 2 i32.const 3 i32.and i32.eqz (if (result i64) (then i64.const 1) (else i64.const 2)) i64.add local.set 1\n"
+            ));
+        }
+        wat.push_str("local.get 1)\n");
+    }
+    wat.push(')');
+    wat::parse_str(&wat).unwrap()
+}
+
+/// #963: compiling a module used to hold the engine every job shares from
+/// start to finish, and starting any process needs that engine too, so
+/// every other job stopped starting processes until the compile ended.
+#[test]
+fn a_process_starts_while_another_job_compiles_a_module() {
+    use std::time::Instant;
+
+    let rt = runtime();
+    let small = wat_module("hello", HELLO);
+    rt.prepare(&small).unwrap();
+    let big = WasmModule::new("big", slow_to_compile(3000));
+    std::thread::scope(|scope| {
+        let compile = scope.spawn(|| {
+            let started = Instant::now();
+            rt.prepare(&big).unwrap();
+            started.elapsed()
+        });
+        while !rt.store.is_working() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        let started = Instant::now();
+        let job = snapshot(&[]).fork();
+        let outcome = rt
+            .run_command(&small, invocation(job.as_dyn(), &[]))
+            .unwrap();
+        let took = started.elapsed();
+        let compile_took = compile.join().unwrap();
+        assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+        // Waiting for the compile, the start took nearly all of it.
+        assert!(
+            took * 4 < compile_took,
+            "the process took {took:?} to start, against {compile_took:?} for the compile"
+        );
+    });
+    assert_eq!(rt.cache_stats().compiled, 2, "{:?}", rt.cache_stats());
+}
+
+/// Measures #963 on a real module: how long a process takes to start
+/// while another job compiles `IWCI_TEST_BIG_WASM` (a wasm module, or a
+/// webc whose largest atom is compiled), with `IWCI_BENCH_STARTERS` jobs
+/// (default 4) starting processes meanwhile, `IWCI_BENCH_PAUSE_MS` apart
+/// (default 0). Prints the numbers; run with `--ignored --nocapture`.
+#[test]
+#[ignore = "needs a large module (IWCI_TEST_BIG_WASM); prints timings"]
+fn bench_process_starts_during_a_compile() {
+    use std::sync::atomic::AtomicBool;
+    use std::time::Instant;
+
+    let path = std::env::var_os("IWCI_TEST_BIG_WASM").expect("IWCI_TEST_BIG_WASM");
+    let bytes = std::fs::read(&path).unwrap();
+    let wasm = if bytes.starts_with(b"\0asm") {
+        bytes
+    } else {
+        let version = webc::detect(&bytes[..]).unwrap();
+        let container =
+            webc::Container::from_bytes_and_version(bytes::Bytes::from(bytes), version).unwrap();
+        container
+            .atoms()
+            .into_values()
+            .max_by_key(|a| a.len())
+            .expect("the webc has an atom")
+            .to_vec()
+    };
+    let starters: usize = std::env::var("IWCI_BENCH_STARTERS")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(4);
+    let pause = Duration::from_millis(
+        std::env::var("IWCI_BENCH_PAUSE_MS")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0),
+    );
+    let big = WasmModule::new("big", wasm);
+    let rt = runtime();
+    let small = wat_module("hello", HELLO);
+    rt.prepare(&small).unwrap();
+    let start_one = || {
+        let job = snapshot(&[]).fork();
+        let started = Instant::now();
+        let outcome = rt
+            .run_command(&small, invocation(job.as_dyn(), &[]))
+            .unwrap();
+        assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+        started.elapsed()
+    };
+    let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+    let summary = |label: &str, mut all: Vec<Duration>| {
+        if all.is_empty() {
+            println!("{label}: no starts");
+            return;
+        }
+        all.sort();
+        let at = |q: f64| all[((all.len() - 1) as f64 * q).round() as usize];
+        println!(
+            "{label}: {} starts, median {:.1} ms, p90 {:.1} ms, max {:.1} ms",
+            all.len(),
+            ms(at(0.5)),
+            ms(at(0.9)),
+            ms(at(1.0))
+        );
+    };
+    summary("idle", (0..20).map(|_| start_one()).collect());
+
+    let compiled = AtomicBool::new(false);
+    let (compile_took, during) = std::thread::scope(|scope| {
+        let compile = scope.spawn(|| {
+            let started = Instant::now();
+            rt.prepare(&big).unwrap();
+            compiled.store(true, Ordering::SeqCst);
+            started.elapsed()
+        });
+        while !rt.store.is_working() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let jobs: Vec<_> = (0..starters)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut took = Vec::new();
+                    while !compiled.load(Ordering::SeqCst) {
+                        took.push(start_one());
+                        std::thread::sleep(pause);
+                    }
+                    took
+                })
+            })
+            .collect();
+        let during: Vec<Duration> = jobs.into_iter().flat_map(|j| j.join().unwrap()).collect();
+        (compile.join().unwrap(), during)
+    });
+    println!(
+        "compile of {} MiB of wasm: {:.0} ms",
+        big.bytes.len() >> 20,
+        ms(compile_took)
+    );
+    summary(&format!("during the compile, {starters} jobs"), during);
+
+    // The artifact is on disk now: a fresh runtime over the same cache
+    // loads it, which still takes the shared engine for a moment.
+    let again = Runtime::new(rt.dir.clone()).unwrap();
+    let started = Instant::now();
+    again.prepare(&big).unwrap();
+    println!("load from disk: {:.0} ms", ms(started.elapsed()));
+}
