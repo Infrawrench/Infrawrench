@@ -1071,6 +1071,70 @@ fn a_spinning_bash_script_is_stopped_by_the_timeout() {
     assert!(outcome.duration < Duration::from_secs(10), "{outcome:?}");
 }
 
+/// An interrupt traps compiled Wasm only, never host code that runs on the
+/// Wasm stack (#968). A host function's return path does, and takes the
+/// interrupt registry's lock, which `interrupt()` holds while it signals:
+/// a thread returning from a host call while its store was interrupted
+/// waited for that lock, the signal trapped it there, and what it was doing
+/// was abandoned. The first time a thread waits on a `parking_lot` lock it
+/// registers a thread-local destructor, and abandoning that left glibc a
+/// destructor node with no owner: the thread segfaulted as it exited, which
+/// is how test binaries died after killing a job whose forked subshell spun
+/// on syscalls. Here a fresh thread calls a host function in a loop while
+/// another interrupts its store as fast as it can, and is then joined: it
+/// must have been trapped each time, and exit whole. Before the vendored
+/// wasmer-vm patch this aborted, segfaulted or deadlocked every time.
+#[cfg(target_os = "linux")]
+#[test]
+fn killing_a_syscall_spinner_leaves_its_threads_whole() {
+    use std::sync::atomic::AtomicBool;
+    use wasmer::{Function, Instance, Store, imports};
+
+    let (engine, _) = crate::cache::new_engine();
+    let wasm = wat::parse_str(
+        r#"(module
+  (import "host" "call" (func $call))
+  (func (export "spin") (loop $l (call $call) (br $l))))"#,
+    )
+    .unwrap();
+    let module = wasmer::Module::new(&engine, wasm).unwrap();
+    for _ in 0..16 {
+        let (engine, module) = (engine.clone(), module.clone());
+        std::thread::spawn(move || {
+            let mut store = Store::new(engine);
+            let call = Function::new_typed(&mut store, || {});
+            let imports = imports! { "host" => { "call" => call } };
+            let instance = Instance::new(&mut store, &module, &imports).unwrap();
+            let spin = instance
+                .exports
+                .get_typed_function::<(), ()>(&store, "spin")
+                .unwrap();
+            let interrupter = store.interrupter();
+            let stop = Arc::new(AtomicBool::new(false));
+            let hammer = {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        interrupter.interrupt();
+                    }
+                })
+            };
+            for _ in 0..20 {
+                let err = spin.call(&mut store).unwrap_err();
+                assert_eq!(
+                    err.clone().to_trap(),
+                    Some(wasmer_types::TrapCode::HostInterrupt),
+                    "{err}"
+                );
+            }
+            stop.store(true, Ordering::Relaxed);
+            hammer.join().unwrap();
+        })
+        .join()
+        .unwrap();
+    }
+}
+
 /// A script whose processes all wait on nothing is stalled; one with a
 /// process computing in silence is not, for as long as it computes. Every
 /// process of the job counts: here bash waits in `sleep` while a subshell
@@ -1101,8 +1165,7 @@ fn a_script_stalls_only_when_all_of_it_is_idle() {
 
     // The same wait beside a subshell that computes for six seconds, three
     // windows, without a word: the job is left alone while it does, and
-    // stalls once it has finished. (The subshell ends by itself: a
-    // spinning one would have to be killed with the job.)
+    // stalls once it has finished.
     let mut inv = invocation(job.as_dyn(), &[]);
     inv.limits.timeout = Duration::from_secs(120);
     let outcome = rt
@@ -1121,6 +1184,23 @@ fn a_script_stalls_only_when_all_of_it_is_idle() {
     assert!(!outcome.timed_out, "{outcome:?}");
     assert!(outcome.duration >= Duration::from_secs(7), "{outcome:?}");
     assert!(outcome.duration < Duration::from_secs(90), "{outcome:?}");
+
+    // And beside one that never stops: never stalled, so killed with the
+    // job by its timeout. Killing a subshell that spins on syscalls once
+    // crashed this test binary as the runtime's threads exited (#968:
+    // `killing_a_syscall_spinner_leaves_its_threads_whole`).
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(8);
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "(while true; do :; done) & sleep 600",
+            inv,
+        )
+        .unwrap();
+    assert!(outcome.timed_out, "{outcome:?}");
+    assert_eq!(outcome.stalled_after, None, "{outcome:?}");
 }
 
 /// The real compiler: set IWCI_TEST_TS_RUST_WASM to ts-rust's

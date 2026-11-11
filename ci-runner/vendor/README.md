@@ -352,3 +352,59 @@ bash-node) and `shebang-missing-interpreter-fails`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
+
+## wasmer-vm 7.5.0
+
+From crates.io, sha256
+`3b60bc87e4993702174a81a6dd4503d915331b1d50caf868fd0998f61f34afa5`
+(it has no tests), and `wasmer-vm.patch` applied.
+
+**Why (#968).** The runner stops a job's spinning processes with Wasmer's
+host interrupt (`Store::interrupter`, behind `experimental-host-interrupt`):
+a SIGUSR1 to the thread running the store, whose handler makes the thread
+trap whenever its stack pointer is on the store's Wasm stack. Compiled Wasm
+is not all that runs there. A host function's return path does too
+(`StoreContext::get_current_transient`, then `interrupt_registry::is_interrupted`,
+which takes the registry's `DashMap` lock), and so do the libcalls. A trap
+there abandons that code where it stands. `interrupt()` holds the same
+`DashMap` shard while it sends the signal, so a thread returning from a
+syscall at that moment is waiting for that lock, in `parking_lot`, when the
+signal lands. The first time a thread parks, `parking_lot` sets up its
+thread data, whose destructor glibc registers with a list node that it
+links first and gives its owner (`map`) after taking the loader's lock; a
+trap in between left a node with no owner, and the thread segfaulted in
+`__call_tls_dtors` as it exited (`segfault at 498`, a null `map`'s
+`l_tls_dtor_count`). That is what killed the test binaries, which drop
+their pool threads after each `Runtime`, after a job whose forked subshell
+spun until its timeout: that subshell makes a syscall every few
+instructions, and the runner interrupts it every 50 ms for up to five
+seconds. A long-lived runner never ends its pool threads, so it would not
+crash this way, but the same abandonment leaves `parking_lot`'s queues and
+the store context's `RefCell` in whatever state the trap found them.
+
+`src/trap/traphandlers.rs` now records the executable segments of every
+loaded object when it installs its handlers (`dl_iterate_phdr`; the program,
+libc, the vDSO), and the SIGUSR1 handler traps only when the interrupted
+`pc` is outside all of them, which is to say in compiled Wasm, mapped
+anonymously. Elsewhere it still takes the request (so the next one can be
+sent) and returns; the store stays marked interrupted, and the host
+function's return path raises the trap at its own check, where nothing is
+half done. A store spinning in Wasm is trapped by the next interrupt the
+runner sends. One thing this gives up: a guest blocked in a
+`memory.atomic.wait` libcall is no longer trapped out of it (which left its
+lock taken), so it waits until it is notified; no guest the runner ships
+waits that way (WASIX's futexes are syscalls). Linux only: elsewhere no
+segment is recorded and the handler behaves as before.
+
+`crates/iwci-runtime`'s `killing_a_syscall_spinner_leaves_its_threads_whole`
+is the check: without this patch it failed ten runs in ten (aborts on a null
+pointer dereference, a segfault, `RefCell already borrowed`, deadlocks), and
+with it ten in ten pass.
+
+**Remove it** when a wasmer-vm release has the interrupt handler leave host
+code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
+of November 2026): delete `vendor/wasmer-vm*` and its `[patch.crates-io]`
+entry.
+
+To regenerate after editing: `diff -u` the changed file against the crate
+from crates.io with `a/` and `b/` labels, as for wasmer-napi.
