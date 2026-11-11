@@ -462,7 +462,10 @@ run at the same time without crashing the runner, and so worker threads work
 (see `vendor/README.md`). Every `node` is an isolate in the runner's own
 process, so a fault in that bridge is a crash of every run on the runner;
 #947 was one (shared registries left unlocked once jobs stopped taking
-turns). On Linux it builds for x86_64 and ARM64: the vendored bridge takes
+turns). It also means one `node`'s state can reach another's: #955 was a
+`node` that started as another ended being given the dead one's heap of
+`ArrayBuffer` memory, because the bridge found it by the address the two
+memories had in turn, and dying as it started with "Bad system call". On Linux it builds for x86_64 and ARM64: the vendored bridge takes
 ARM64's V8 from a later `wasmerio/v8-custom-builds` release (the same V8)
 and links libatomic there, and the release channel carries both
 (`x86_64-linux` and `aarch64-linux`); a runner installs its own

@@ -111,6 +111,30 @@ keeps the larger defaults. A clamped default reservation under 16 MiB is
 refused, so the guest reports "cannot create" instead of getting an isolate
 its first allocation terminates.
 
+**And: a guest heap keeps its memory mapped (#955).** The bridge allocates
+every `ArrayBuffer` backing store inside the guest's linear memory, through
+one `GuestHeap` per memory, found in a process-wide registry keyed by the
+memory's host address so that a `node`'s worker threads share one. The heap
+did not keep the memory alive, and it outlives it: when a `node` ends, its
+memory is unmapped while its env, which owns the heap, is dropped a moment
+later, and a V8 thread freeing a backing store holds the heap a while
+longer. Every `node` of every job is in the one runner process, and the
+kernel hands the next 4 GiB reservation the address just freed, so a `node`
+starting in that moment found the dead one's heap under its own memory's
+address and used it. That heap believes it owns the pages the dead `node`
+had grown into, which in the new one are where its own `malloc` puts its
+first allocations: the next zero-filled `ArrayBuffer` wiped the main
+thread's thread structure and whatever lay beside it. The `node` died as it
+started, most often with `EACCES` from a `read` and then
+`Program recieved fatal signal: Bad system call` from a thread that reads
+its own id as 0 (a signal nobody sent). It took two `node`s ending and
+starting at once in the runner, so suites that fork a `node` per test file
+met it first: about one fork in 3,000 on both architectures, and half of
+all two-copy runs of a 115-file Vitest suite on the ARM64 runner.
+`src/guest_heap.rs` now has the heap hold the shared memory's own handle
+(`SharedMemory`), so the mapping, and with it the address, lasts exactly as
+long as the heap.
+
 **And: the platform waits for an isolate's own work (#943).** The bridge
 binds no foreground task target for a WASIX guest (Edge.js's enqueue hook
 is guest code, which V8's threads cannot run), so a task V8 posts for an
