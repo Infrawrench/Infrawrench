@@ -69,11 +69,17 @@ pub const DEFAULT_HEAP_GROW_STEP: u64 = 128 * MIB;
 /// third as often as with V8's default. Reserved up front like any explicit
 /// young-generation request.
 pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
-/// iwci patch: the old generation an isolate starts with when others are
-/// already live (a `worker_threads` Worker, or a second `node` of the job):
-/// the published default, so a pool of workers fits in a job's memory; each
-/// grows through the near-heap-limit grants like the first.
+/// iwci patch: the old generation a `worker_threads` Worker starts with when
+/// other isolates are already live: the published default, so a pool of
+/// workers fits in a job's memory; each grows through the near-heap-limit
+/// grants like the first. A second `node` of the job is not a worker: it
+/// starts from [`DEFAULT_INITIAL_ISOLATE_HEAP`] (see [`IsolateRole`]).
 pub const DEFAULT_LATER_ISOLATE_HEAP: u64 = 64 * MIB;
+/// iwci patch: the young generation a second `node` of a job gets when the
+/// budget left for it is too small for [`DEFAULT_YOUNG_GENERATION`]: V8's own
+/// default for a heap that size is a few MiB, which promotes nearly every
+/// short-lived object into the old generation.
+pub const DEFAULT_PROCESS_YOUNG_GENERATION: u64 = 64 * MIB;
 /// iwci patch: the least old generation a clamped default reservation may
 /// get. Less is refused, so the guest reports a clean "cannot create" error
 /// instead of an isolate that is terminated by its first allocation.
@@ -238,6 +244,20 @@ pub struct RequestedHeap {
     pub max_young: u32,
     pub max_old: u32,
     pub code_range: u32,
+}
+
+/// iwci patch: what a new V8 env is for, which decides the heap it starts
+/// with once other isolates of the app are live.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IsolateRole {
+    /// A `worker_threads` Worker, or anything not known to be a process's
+    /// main isolate: the small published default, so a pool of them fits.
+    #[default]
+    Worker,
+    /// The main isolate of a guest process (the first env on its linear
+    /// memory), such as a `node` that another `node` of the job spawned. It
+    /// runs a whole program, so it starts with the first isolate's defaults.
+    Process,
 }
 
 /// The outcome of reserving budget for a new V8 env: the constraints to forward
@@ -509,10 +529,23 @@ impl ResourceBudget {
         req: RequestedHeap,
         max_envs: Option<usize>,
     ) -> Result<HeapReservation, EnvRejected> {
+        self.try_reserve_env_as(req, max_envs, IsolateRole::Worker)
+    }
+
+    /// [`try_reserve_env`] for an env whose [`IsolateRole`] is known (iwci
+    /// patch).
+    ///
+    /// [`try_reserve_env`]: ResourceBudget::try_reserve_env
+    pub fn try_reserve_env_as(
+        &self,
+        req: RequestedHeap,
+        max_envs: Option<usize>,
+        role: IsolateRole,
+    ) -> Result<HeapReservation, EnvRejected> {
         if !self.try_acquire_isolate(max_envs) {
             return Err(EnvRejected::TooManyEnvs);
         }
-        let Some(reservation) = self.plan_heap_reservation(req) else {
+        let Some(reservation) = self.plan_heap_reservation(req, role) else {
             self.release_isolate();
             self.exhaustion
                 .isolates_refused
@@ -573,7 +606,11 @@ impl ResourceBudget {
     /// the default old-generation ceiling and per-isolate overhead. Returns
     /// `None` if not even the minimum viable ceiling fits. Under an unlimited
     /// budget the request passes through unchanged and uncharged.
-    fn plan_heap_reservation(&self, req: RequestedHeap) -> Option<HeapReservation> {
+    fn plan_heap_reservation(
+        &self,
+        req: RequestedHeap,
+        role: IsolateRole,
+    ) -> Option<HeapReservation> {
         if self.is_unlimited() {
             return Some(HeapReservation {
                 max_young: req.max_young,
@@ -594,7 +631,18 @@ impl ResourceBudget {
         // worker env", most of it never used. The first isolate
         // (`try_acquire_isolate` has already counted this one) plans against
         // everything with the larger defaults, as before.
+        //
+        // A later isolate that is a process's main one (a `node` another
+        // `node` of the job spawned: Vitest's forks, a package script) keeps
+        // the quarter but asks for the first isolate's 256 MiB, and a young
+        // generation of 64 MiB when the default does not fit. On 64 MiB its
+        // working set sat between V8's GC trigger, halfway from the live
+        // size to the limit, and the 80% at which V8 asks the near-heap-limit
+        // callback for more: it never grew, and ran a full mark-compact every
+        // few megabytes it allocated, which was half of every Vitest jsdom
+        // fork's CPU time (2,075 mark-compacts in 24 test files; 61 after).
         let later = self.live_isolates() > 1;
+        let process = later && role == IsolateRole::Process;
         let remaining = if later {
             self.memory_remaining() / 4
         } else {
@@ -609,6 +657,8 @@ impl ResourceBudget {
             u64::from(req.max_young)
         } else if remaining >= 4 * DEFAULT_YOUNG_GENERATION {
             DEFAULT_YOUNG_GENERATION
+        } else if process && remaining >= 4 * DEFAULT_PROCESS_YOUNG_GENERATION {
+            DEFAULT_PROCESS_YOUNG_GENERATION
         } else {
             0
         };
@@ -625,7 +675,7 @@ impl ResourceBudget {
         let old_available = remaining - fixed;
         let requested_old = if req.max_old > 0 {
             u64::from(req.max_old)
-        } else if later {
+        } else if later && !process {
             DEFAULT_LATER_ISOLATE_HEAP
         } else {
             DEFAULT_INITIAL_ISOLATE_HEAP
@@ -1616,6 +1666,48 @@ mod external_accountant_tests {
             budget.release_env(res.ceiling_bytes);
         }
         budget.release_env(first.ceiling_bytes);
+        assert_eq!(budget.snapshot().v8_heap_reserved, 0);
+    }
+
+    #[test]
+    fn a_second_process_starts_with_the_first_isolates_old_generation() {
+        let budget = ResourceBudget::with_memory_limit(4096 * MIB);
+        let first = budget
+            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
+            .expect("fits");
+        assert_eq!(u64::from(first.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
+        // 4096 - 472 = 3624 MiB left; a quarter (906) holds the default young
+        // generation four times over.
+        let child = budget
+            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
+            .expect("fits");
+        assert_eq!(u64::from(child.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
+        assert_eq!(u64::from(child.max_young), DEFAULT_YOUNG_GENERATION);
+        // A worker of either keeps the small default.
+        let worker = budget
+            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Worker)
+            .expect("fits");
+        assert_eq!(u64::from(worker.max_old), DEFAULT_LATER_ISOLATE_HEAP);
+        // Less left: a quarter under four default young generations still
+        // gets the smaller one, not V8's few MiB.
+        let mut held = Vec::new();
+        while budget.memory_remaining() / 4 >= 4 * DEFAULT_YOUNG_GENERATION {
+            held.push(
+                budget
+                    .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
+                    .expect("fits"),
+            );
+        }
+        let squeezed = budget
+            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
+            .expect("fits");
+        assert_eq!(
+            u64::from(squeezed.max_young),
+            DEFAULT_PROCESS_YOUNG_GENERATION
+        );
+        for res in held.into_iter().chain([squeezed, worker, child, first]) {
+            budget.release_env(res.ceiling_bytes);
+        }
         assert_eq!(budget.snapshot().v8_heap_reserved, 0);
     }
 }

@@ -480,8 +480,12 @@ architecture's build.
 isolate of its own, charged against the job's `memory:` like the main one,
 so a job that starts more workers than its memory holds gets
 `ERR_WORKER_INIT_FAILED` ("Failed to create worker env") for the rest, and
-its report says memory if it then fails or hangs. A later isolate starts small (64 MiB old generation) and grows as
-it allocates; a 2 GiB job fits about fifteen idle workers.
+its report says memory if it then fails or hangs. A Worker started while other isolates are live starts small
+(64 MiB old generation) and grows as it allocates; a 2 GiB job fits about
+fifteen idle workers. A `node` that another `node` of the job spawns (a
+Vitest fork, a package script) starts with the first isolate's 256 MiB, as
+far as a quarter of what is left allows: on 64 MiB it collected its whole
+heap every few megabytes it allocated.
 
 `node:wasi` works. Edge.js 0.2.5 ships the module but not the binding behind
 it, so the runner gives every environment job `/usr/local/lib/iwci/node`
