@@ -30,6 +30,9 @@ usage:
                                          [--jobs-per-cpu 4] [--storage-quota 10GiB]
   iwci publish <dist-dir>...             upload builtins/*/build.sh output
   iwci release <binary> --version <v>    publish iwci itself [--channel stable]
+  iwci release-status --version <v>      whether that release is done: published,
+                                         uploaded, absent or superseded
+                                         [--target x86_64-linux] [--channel stable]
   iwci release-keygen                    a key pair for signing releases
   iwci version                           this build's version
   iwci help                              this text";
@@ -49,6 +52,7 @@ pub fn main() -> ExitCode {
         "serve" => serve::serve(args),
         "publish" => publish::publish(args),
         "release" => release::release(args),
+        "release-status" => release::status(args),
         "release-keygen" => release::keygen(args),
         "version" | "--version" => release::version(args),
         "help" | "--help" | "-h" => {
