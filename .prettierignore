@@ -55,6 +55,7 @@ app/packages/raycast/raycast-env.d.ts
 # must stay byte-for-byte as published apart from the patch file.
 ci-runner/vendor/wasmer-napi/
 ci-runner/vendor/wasmer-wasix/
+ci-runner/vendor/wasmer-vm/
 
 # @tybys/wasm-util's published bundle, vendored unmodified for the runner's
 # `node:wasi` (ci-runner/crates/iwci-runtime/node/README.md).

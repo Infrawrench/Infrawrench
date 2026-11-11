@@ -1,0 +1,104 @@
+--- a/src/trap/traphandlers.rs
++++ b/src/trap/traphandlers.rs
+@@ -261,7 +261,69 @@
+ 
+         #[cfg(feature = "experimental-host-interrupt")]
+         static mut PREV_SIGUSR1: MaybeUninit<libc::sigaction> = MaybeUninit::uninit();
++
++        /// The executable segments of every object loaded when the handlers
++        /// are installed (the program, libc, the vDSO), as start and end
++        /// addresses. Compiled Wasm is mapped anonymously, so an interrupt
++        /// whose pc is in one of these landed in host code.
++        #[cfg(feature = "experimental-host-interrupt")]
++        const HOST_CODE_RANGES: usize = 128;
++        #[cfg(feature = "experimental-host-interrupt")]
++        static HOST_CODE: [(AtomicUsize, AtomicUsize); HOST_CODE_RANGES] =
++            [const { (AtomicUsize::new(0), AtomicUsize::new(0)) }; HOST_CODE_RANGES];
++        #[cfg(feature = "experimental-host-interrupt")]
++        static HOST_CODE_LEN: AtomicUsize = AtomicUsize::new(0);
++
++        #[cfg(all(
++            feature = "experimental-host-interrupt",
++            any(target_os = "linux", target_os = "android")
++        ))]
++        unsafe fn record_host_code() {
++            unsafe extern "C" fn each(
++                info: *mut libc::dl_phdr_info,
++                _size: libc::size_t,
++                _data: *mut libc::c_void,
++            ) -> libc::c_int {
++                unsafe {
++                    let info = &*info;
++                    for i in 0..usize::from(info.dlpi_phnum) {
++                        let phdr = &*info.dlpi_phdr.add(i);
++                        if phdr.p_type != libc::PT_LOAD || phdr.p_flags & libc::PF_X == 0 {
++                            continue;
++                        }
++                        let n = HOST_CODE_LEN.load(Ordering::Relaxed);
++                        if n == HOST_CODE_RANGES {
++                            return 1;
++                        }
++                        let start = (info.dlpi_addr as usize).wrapping_add(phdr.p_vaddr as usize);
++                        HOST_CODE[n].0.store(start, Ordering::Relaxed);
++                        HOST_CODE[n].1.store(start + phdr.p_memsz as usize, Ordering::Relaxed);
++                        HOST_CODE_LEN.store(n + 1, Ordering::Release);
++                    }
++                    0
++                }
++            }
++            unsafe {
++                libc::dl_iterate_phdr(Some(each), ptr::null_mut());
++            }
++        }
+ 
++        #[cfg(all(
++            feature = "experimental-host-interrupt",
++            not(any(target_os = "linux", target_os = "android"))
++        ))]
++        unsafe fn record_host_code() {}
++
++        /// Whether `pc` is in host code (see [`HOST_CODE`]). Lock-free, for
++        /// the signal handler.
++        #[cfg(feature = "experimental-host-interrupt")]
++        fn in_host_code(pc: usize) -> bool {
++            let n = HOST_CODE_LEN.load(Ordering::Acquire);
++            HOST_CODE[..n].iter().any(|(start, end)| {
++                pc >= start.load(Ordering::Relaxed) && pc < end.load(Ordering::Relaxed)
++            })
++        }
++
+         unsafe fn platform_init() { unsafe {
+             let register = |slot: &mut MaybeUninit<libc::sigaction>, signal: i32, nodefer: bool| {
+                 let mut handler: libc::sigaction = mem::zeroed();
+@@ -303,7 +365,10 @@
+             // request comes in while one is already being processed,
+             // there's nothing meaningful we can do.
+             #[cfg(feature = "experimental-host-interrupt")]
+-            register(&mut PREV_SIGUSR1, libc::SIGUSR1, false);
++            {
++                record_host_code();
++                register(&mut PREV_SIGUSR1, libc::SIGUSR1, false);
++            }
+ 
+             // x86 uses SIGFPE to report division by zero
+             if cfg!(target_arch = "x86") || cfg!(target_arch = "x86_64") {
+@@ -388,6 +453,19 @@
+                     if !interrupt_registry::on_interrupted() {
+                         return;
+                     }
++                    // Host code runs on the Wasm stack too: a host
++                    // function's return path, which takes the interrupt
++                    // registry's lock, and the libcalls. A trap there
++                    // abandons it where it stands, with locks taken and
++                    // allocations half made (a thread-local destructor
++                    // registered without its owner, which then crashed the
++                    // thread as it exited). So only compiled Wasm is
++                    // trapped here; the store stays interrupted, and a host
++                    // function traps it as it returns.
++                    let (pc, _) = get_pc_sp(&*(context as *const ucontext_t));
++                    if in_host_code(pc) {
++                        return;
++                    }
+                     Some(TrapCode::HostInterrupt)
+                 }
+                 _ => None,
