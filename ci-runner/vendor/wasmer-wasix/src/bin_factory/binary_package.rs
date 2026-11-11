@@ -1,0 +1,477 @@
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use anyhow::Context;
+use once_cell::sync::OnceCell;
+use sha2::Digest;
+use virtual_fs::{FileSystem, MountFileSystem};
+use wasmer_config::package::{PackageHash, PackageId, PackageSource};
+use wasmer_package::package::Package;
+use webc::Container;
+use webc::compat::SharedBytes;
+
+use crate::{
+    Runtime,
+    runners::MappedDirectory,
+    runtime::resolver::{PackageInfo, ResolveError},
+};
+use wasmer_types::ModuleHash;
+
+#[derive(derive_more::Debug, Clone)]
+pub struct BinaryPackageCommand {
+    name: String,
+    metadata: webc::metadata::Command,
+    #[debug(ignore)]
+    pub(crate) atom: SharedBytes,
+    hash: ModuleHash,
+    features: Option<wasmer_types::Features>,
+    /// Package that declares this command in the resolved manifest graph.
+    ///
+    /// This identifies "who owns the command name" (the package that exposes
+    /// the command entry), even if execution uses an atom from another package.
+    package: PackageId,
+    /// Package that provides the module this command actually executes.
+    ///
+    /// Usually this matches `package`. It differs when the command's atom
+    /// annotation points at a dependency, so the command is declared by one
+    /// package but runs code from another package.
+    origin_package: PackageId,
+}
+
+impl BinaryPackageCommand {
+    pub fn new(
+        name: String,
+        metadata: webc::metadata::Command,
+        atom: SharedBytes,
+        hash: ModuleHash,
+        features: Option<wasmer_types::Features>,
+        package: PackageId,
+        origin_package: PackageId,
+    ) -> Self {
+        Self {
+            name,
+            metadata,
+            atom,
+            hash,
+            features,
+            package,
+            origin_package,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn metadata(&self) -> &webc::metadata::Command {
+        &self.metadata
+    }
+
+    /// Get a reference to this [`BinaryPackageCommand`]'s atom as a cheap
+    /// clone of the internal OwnedBuffer.
+    pub fn atom(&self) -> SharedBytes {
+        self.atom.clone()
+    }
+
+    /// Get a reference to this [`BinaryPackageCommand`]'s atom as a cheap
+    /// clone of the internal OwnedBuffer.
+    pub fn atom_ref(&self) -> &SharedBytes {
+        &self.atom
+    }
+
+    pub fn hash(&self) -> &ModuleHash {
+        &self.hash
+    }
+
+    pub fn package(&self) -> &PackageId {
+        &self.package
+    }
+
+    pub fn origin_package(&self) -> &PackageId {
+        &self.origin_package
+    }
+
+    /// Get the WebAssembly features required by this command's module
+    pub fn wasm_features(&self) -> Option<wasmer_types::Features> {
+        // Return only the pre-computed features from the container manifest
+        if let Some(features) = &self.features {
+            return Some(features.clone());
+        }
+
+        // If no annotations were found, return None
+        None
+    }
+}
+
+/// A WebAssembly package that has been loaded into memory.
+#[derive(derive_more::Debug, Clone)]
+pub struct BinaryPackageMount {
+    pub guest_path: PathBuf,
+    #[debug(ignore)]
+    pub fs: Arc<dyn FileSystem + Send + Sync>,
+    pub source_path: PathBuf,
+}
+
+#[derive(derive_more::Debug, Clone, Default)]
+pub struct BinaryPackageMounts {
+    #[debug(ignore)]
+    pub root_layer: Option<Arc<dyn FileSystem + Send + Sync>>,
+    pub mounts: Vec<BinaryPackageMount>,
+}
+
+impl BinaryPackageMounts {
+    pub fn from_mount_fs(fs: MountFileSystem) -> Self {
+        let mut root_layer = None;
+        let mut mounts = Vec::new();
+
+        for entry in fs.mount_entries() {
+            if entry.path == Path::new("/") {
+                root_layer = Some(entry.fs);
+            } else {
+                mounts.push(BinaryPackageMount {
+                    guest_path: entry.path,
+                    fs: entry.fs,
+                    source_path: entry.source_path,
+                });
+            }
+        }
+
+        Self { root_layer, mounts }
+    }
+
+    pub fn to_mount_fs(&self) -> Result<MountFileSystem, virtual_fs::FsError> {
+        let mount_fs = MountFileSystem::new();
+
+        if let Some(root_layer) = &self.root_layer {
+            mount_fs.mount(Path::new("/"), root_layer.clone())?;
+        }
+
+        for mount in &self.mounts {
+            mount_fs.mount_with_source(&mount.guest_path, &mount.source_path, mount.fs.clone())?;
+        }
+
+        Ok(mount_fs)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BinaryPackage {
+    pub id: PackageId,
+    /// Includes the ids of all the packages in the tree
+    pub package_ids: Vec<PackageId>,
+    /// The WebC format version of the root package.
+    pub webc_version: webc::Version,
+
+    pub when_cached: Option<u128>,
+    /// The name of the [`BinaryPackageCommand`] which is this package's
+    /// entrypoint.
+    pub entrypoint_cmd: Option<String>,
+    pub hash: OnceCell<ModuleHash>,
+    pub package_mounts: Option<Arc<BinaryPackageMounts>>,
+    pub commands: Vec<BinaryPackageCommand>,
+    pub uses: Vec<String>,
+    pub file_system_memory_footprint: u64,
+
+    pub additional_host_mapped_directories: Vec<MappedDirectory>,
+}
+
+impl BinaryPackage {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn from_dir(
+        dir: &Path,
+        rt: &(dyn Runtime + Send + Sync),
+    ) -> Result<Self, anyhow::Error> {
+        let source = rt.source();
+
+        // since each package must be in its own directory, hash of the `dir` should provide a good enough
+        // unique identifier for the package
+        let hash = sha2::Sha256::digest(dir.display().to_string().as_bytes()).into();
+        let id = PackageId::Hash(PackageHash::from_sha256_bytes(hash));
+
+        let manifest_path = dir.join("wasmer.toml");
+        let webc = Package::from_manifest(&manifest_path)?;
+        let container = Container::from(webc);
+        let manifest = container.manifest();
+
+        let root = PackageInfo::from_manifest(id, manifest, container.version())?;
+        let root_id = root.id.clone();
+
+        let resolution = crate::runtime::resolver::resolve(&root_id, &root, &*source).await?;
+        let mut pkg = rt
+            .package_loader()
+            .load_package_tree(&container, &resolution, true)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        // HACK: webc has no way to return its deserialized manifest to us, so we need to do it again here
+        // We already read and parsed the manifest once, so it'll succeed again. Unwrapping is safe at this point.
+        let wasmer_toml = std::fs::read_to_string(&manifest_path).unwrap();
+        let wasmer_toml: wasmer_config::package::Manifest = toml::from_str(&wasmer_toml).unwrap();
+        pkg.additional_host_mapped_directories.extend(
+            wasmer_toml
+                .fs
+                .into_iter()
+                .map(|(guest, host)| {
+                    anyhow::Ok(MappedDirectory {
+                        host: dir.join(host).canonicalize()?,
+                        guest,
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter(),
+        );
+
+        Ok(pkg)
+    }
+
+    /// Load a [`webc::Container`] and all its dependencies into a
+    /// [`BinaryPackage`].
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn from_webc(
+        container: &Container,
+        rt: &(dyn Runtime + Send + Sync),
+    ) -> Result<Self, anyhow::Error> {
+        let source = rt.source();
+
+        let manifest = container.manifest();
+        let id = PackageInfo::package_id_from_manifest(manifest)?
+            .or_else(|| {
+                container
+                    .webc_hash()
+                    .map(|hash| PackageId::Hash(PackageHash::from_sha256_bytes(hash)))
+            })
+            .ok_or_else(|| anyhow::Error::msg("webc file did not provide its hash"))?;
+
+        let root = PackageInfo::from_manifest(id, manifest, container.version())?;
+        let root_id = root.id.clone();
+
+        let resolution = crate::runtime::resolver::resolve(&root_id, &root, &*source).await?;
+        let pkg = rt
+            .package_loader()
+            .load_package_tree(container, &resolution, false)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        Ok(pkg)
+    }
+
+    /// Load a [`BinaryPackage`] and all its dependencies from a registry.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn from_registry(
+        specifier: &PackageSource,
+        runtime: &(dyn Runtime + Send + Sync),
+    ) -> Result<Self, anyhow::Error> {
+        let source = runtime.source();
+        let root_summary =
+            source
+                .latest(specifier)
+                .await
+                .map_err(|error| ResolveError::Registry {
+                    package: specifier.clone(),
+                    error,
+                })?;
+        let root = runtime.package_loader().load(&root_summary).await?;
+        let id = root_summary.package_id();
+
+        let resolution = crate::runtime::resolver::resolve(&id, &root_summary.pkg, &source)
+            .await
+            .context("Dependency resolution failed")?;
+        let pkg = runtime
+            .package_loader()
+            .load_package_tree(&root, &resolution, false)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        Ok(pkg)
+    }
+
+    pub fn get_command(&self, name: &str) -> Option<&BinaryPackageCommand> {
+        self.commands.iter().find(|cmd| cmd.name() == name)
+    }
+
+    pub fn get_command_origin_package(&self, name: &str) -> Option<&PackageId> {
+        self.get_command(name)
+            .map(BinaryPackageCommand::origin_package)
+    }
+
+    /// Resolve the entrypoint command name to a [`BinaryPackageCommand`].
+    pub fn get_entrypoint_command(&self) -> Option<&BinaryPackageCommand> {
+        self.entrypoint_cmd
+            .as_deref()
+            .and_then(|name| self.get_command(name))
+    }
+
+    /// Get the bytes for the entrypoint command.
+    #[deprecated(
+        note = "Use BinaryPackage::get_entrypoint_command instead",
+        since = "0.22.0"
+    )]
+    pub fn entrypoint_bytes(&self) -> Option<SharedBytes> {
+        self.get_entrypoint_command().map(|entry| entry.atom())
+    }
+
+    /// Get a hash for this binary package.
+    ///
+    /// Usually the hash of the entrypoint.
+    pub fn hash(&self) -> ModuleHash {
+        *self.hash.get_or_init(|| {
+            if let Some(cmd) = self.get_entrypoint_command() {
+                cmd.hash
+            } else {
+                ModuleHash::new(self.id.to_string())
+            }
+        })
+    }
+
+    pub fn infer_entrypoint(&self) -> Result<&str, anyhow::Error> {
+        if let Some(entrypoint) = self.entrypoint_cmd.as_deref() {
+            return Ok(entrypoint);
+        }
+
+        match self.commands.as_slice() {
+            [] => anyhow::bail!("The package doesn't contain any executable commands"),
+            [one] => Ok(one.name()),
+            [..] => {
+                let mut commands: Vec<_> = self.commands.iter().map(|cmd| cmd.name()).collect();
+                commands.sort();
+                anyhow::bail!(
+                    "Unable to determine the package's entrypoint. Please choose one of {commands:?}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::Digest;
+    use tempfile::TempDir;
+    use virtual_fs::AsyncReadExt;
+    use wasmer_package::utils::from_disk;
+
+    use crate::{
+        PluggableRuntime,
+        runtime::{package_loader::BuiltinPackageLoader, task_manager::VirtualTaskManager},
+    };
+
+    use super::*;
+
+    fn task_manager() -> Arc<dyn VirtualTaskManager + Send + Sync> {
+        cfg_select! {
+            feature = "sys-thread" => {
+                Arc::new(crate::runtime::task_manager::tokio::TokioTaskManager::new(tokio::runtime::Handle::current()))
+            }
+            _ => {
+                unimplemented!("Unable to get the task manager")
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[cfg_attr(
+        not(feature = "sys-thread"),
+        ignore = "The tokio task manager isn't available on this platform"
+    )]
+    async fn fs_table_can_map_directories_to_different_names() {
+        let temp = TempDir::new().unwrap();
+        let wasmer_toml = r#"
+            [package]
+            name = "some/package"
+            version = "0.0.0"
+            description = "a dummy package"
+
+            [fs]
+            "/public" = "./out"
+        "#;
+        let manifest = temp.path().join("wasmer.toml");
+        std::fs::write(&manifest, wasmer_toml).unwrap();
+        let out = temp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let file_txt = "Hello, World!";
+        std::fs::write(out.join("file.txt"), file_txt).unwrap();
+        let tasks = task_manager();
+        let mut runtime = PluggableRuntime::new(tasks);
+        runtime.set_package_loader(
+            BuiltinPackageLoader::new()
+                .with_shared_http_client(runtime.http_client().unwrap().clone()),
+        );
+
+        let pkg = Package::from_manifest(&manifest).unwrap();
+        let data = pkg.serialize().unwrap();
+        let webc_path = temp.path().join("package.webc");
+        std::fs::write(&webc_path, data).unwrap();
+
+        let pkg = BinaryPackage::from_webc(&from_disk(&webc_path).unwrap(), &runtime)
+            .await
+            .unwrap();
+
+        // We should have mapped "./out/file.txt" on the host to
+        // "/public/file.txt" on the guest.
+        let mut f = pkg
+            .package_mounts
+            .as_ref()
+            .expect("no package mounts")
+            .to_mount_fs()
+            .expect("mount fs reconstruction failed")
+            .new_open_options()
+            .read(true)
+            .open("/public/file.txt")
+            .unwrap();
+        let mut buffer = String::new();
+        f.read_to_string(&mut buffer).await.unwrap();
+        assert_eq!(buffer, file_txt);
+    }
+
+    #[tokio::test]
+    #[cfg_attr(
+        not(feature = "sys-thread"),
+        ignore = "The tokio task manager isn't available on this platform"
+    )]
+    async fn commands_use_the_atom_signature() {
+        let temp = TempDir::new().unwrap();
+        let wasmer_toml = r#"
+            [package]
+            name = "some/package"
+            version = "0.0.0"
+            description = "a dummy package"
+
+            [[module]]
+            name = "foo"
+            source = "foo.wasm"
+            abi = "wasi"
+
+            [[command]]
+            name = "cmd"
+            module = "foo"
+        "#;
+        let manifest = temp.path().join("wasmer.toml");
+        std::fs::write(&manifest, wasmer_toml).unwrap();
+
+        let atom_path = temp.path().join("foo.wasm");
+        std::fs::write(&atom_path, b"").unwrap();
+
+        let webc: Container = Package::from_manifest(&manifest).unwrap().into();
+
+        let tasks = task_manager();
+        let mut runtime = PluggableRuntime::new(tasks);
+        runtime.set_package_loader(
+            BuiltinPackageLoader::new()
+                .with_shared_http_client(runtime.http_client().unwrap().clone()),
+        );
+
+        let pkg = BinaryPackage::from_dir(temp.path(), &runtime)
+            .await
+            .unwrap();
+
+        assert_eq!(pkg.commands.len(), 1);
+        let command = pkg.get_command("cmd").unwrap();
+        let atom_sha256_hash = sha2::Sha256::digest(webc.get_atom("foo").unwrap()).into();
+        let module_hash = ModuleHash::from_bytes(atom_sha256_hash);
+        assert_eq!(command.hash(), &module_hash);
+        assert_eq!(command.package(), &pkg.id);
+        assert_eq!(pkg.get_command_origin_package("cmd"), Some(&pkg.id));
+        assert_eq!(command.origin_package(), &pkg.id);
+    }
+}

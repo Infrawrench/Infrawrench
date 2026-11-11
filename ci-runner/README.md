@@ -449,6 +449,11 @@ Environments:
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
 
+A file that starts with `#!` runs its interpreter, from bash or from
+Node's `child_process` alike (`#!/bin/bash`, `#!/usr/bin/env node`), and a
+background command (`server &`) runs beside the rest of the script. Both
+come from a patched wasmer-wasix (`vendor/README.md`).
+
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
 [`wasmer-napi`]. That is the `node` feature (`cargo build -p iwci --features

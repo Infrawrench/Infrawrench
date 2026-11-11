@@ -6068,8 +6068,6 @@ dependencies = [
 [[package]]
 name = "wasmer-wasix"
 version = "0.705.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d5bbce1be073ab1e40f5ed2468653832c22aecfd73e2ba763c41a5d831a4475"
 dependencies = [
  "anyhow",
  "async-trait",

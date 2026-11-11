@@ -178,6 +178,24 @@ jobs:
     run: |
       test "$TOKEN" = fixture-secret-value-0451
       echo "the token is $TOKEN"
+  # The rest of the script runs beside a background child (#961): bash
+  # used to wait for it after the next command, so the loop only ended
+  # once `done` existed.
+  background-passes:
+    using: env:bash@5
+    run: |
+      (sleep 3; touch done) &
+      i=0; while [ "$i" -lt 2000 ]; do i=$((i + 1)); done
+      test ! -e done
+      wait
+      test -e done
+  # A script runs its `#!` interpreter (#958), here `cat`, which prints it:
+  # bash on its own would have run the file as a shell script.
+  shebang-passes:
+    using: env:bash@5
+    run: |
+      printf '#!/bin/cat\nhello\n' > s
+      test "$(./s)" = "$(printf '#!/bin/cat\nhello')"
 YAML
       ;;
     tools)
@@ -550,6 +568,23 @@ jobs:
       wait
       cat a.out b.out
       test "$(cat a.out b.out | grep -c '^forked$')" = 2
+  # Node runs a script by its `#!` line, as Linux does (#958): by path,
+  # through `/usr/bin/env`, and found on PATH, with its arguments.
+  shebang-passes:
+    using: env:bash-node@24
+    run: |
+      printf '#!/bin/bash\necho hi "$@"\n' > s
+      test "$(node -e 'require("child_process").execFileSync("./s",{stdio:"inherit"})')" = hi
+      printf '#!/usr/bin/env node\nconsole.log(process.argv.slice(2).join(" "))\n' > n.js
+      test "$(node -e 'require("child_process").execFileSync("./n.js",["a","b"],{stdio:"inherit"})')" = "a b"
+      test "$(PATH="$PWD:$PATH" node -e 'require("child_process").execFileSync("s",["c"],{stdio:"inherit"})')" = "hi c"
+      test "$(./n.js d)" = d
+  # An interpreter that is not there is ENOENT, as on Linux.
+  shebang-missing-interpreter-fails:
+    using: env:bash-node@24
+    run: |
+      printf '#!/bin/no-such-interpreter\necho ran\n' > s
+      node -e 'try { require("child_process").execFileSync("./s") } catch (e) { console.error(e.code); process.exit(e.code === "ENOENT" ? 1 : 2) }'
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24
@@ -567,7 +602,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash-node/throw-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;

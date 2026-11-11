@@ -1,0 +1,6 @@
+*.out
+main
+*.wasm
+*.o
+*.so
+*.tmp
