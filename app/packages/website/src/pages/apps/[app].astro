@@ -73,17 +73,13 @@ const title = `${app.name} | Infrawrench`;
         </div>
       </section>
 
-      {
-        app.visual?.kind === 'shot' && (
-          <section class="hm-wrap">
-            <AppFrame shot={app.visual.shot} title={app.visual.title} alt={app.visual.alt} eager />
-          </section>
-        )
-      }
+      <section class="hm-wrap">
+        <AppFrame shot={`app-${app.id}`} title={app.name} alt={`The ${app.name} app in Infrawrench`} eager />
+      </section>
 
       {
-        app.visual?.kind === 'cost' && (
-          <section class="hm-wrap app-mock">
+        app.mock === 'cost' && (
+          <section class="hm-section-tight hm-wrap app-mock">
             <CostMock />
           </section>
         )

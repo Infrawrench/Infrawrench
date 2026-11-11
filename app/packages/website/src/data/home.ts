@@ -27,14 +27,6 @@ export const stripProviders = [
 
 export const STRIP_MORE = PROVIDER_COUNT - stripProviders.length;
 
-/** The tabs above the hero shot. `shot` names a pair in `public/screenshots/app/`. */
-export const heroViews = [
-  { id: "aws", shot: "ec2", label: "AWS", title: "Production · EC2 instances" },
-  { id: "kubernetes", shot: "k8s", label: "Kubernetes", title: "prod-eu · Pods" },
-  { id: "hetzner", shot: "hetzner", label: "Hetzner", title: "EU compute · Servers" },
-  { id: "cloudflare", shot: "cf", label: "Cloudflare", title: "acme.dev · Workers" },
-];
-
 export const teamBenefits = [
   {
     title: "One workspace for the team",
@@ -93,8 +85,11 @@ export interface HomeApp {
   tools: { name: string; body: string; doc?: string }[];
   /** What the app covers, for its own page (`/apps/<id>`). */
   points: string[];
-  /** What the app's own page shows under its heading, when there is something real to show. */
-  visual?: { kind: "shot"; shot: string; title: string; alt: string } | { kind: "cost" };
+  /**
+   * A drawn extra the app's own page shows under its screenshot. Every app's
+   * screenshot is `public/screenshots/app/app-<id>-{dark,light}.webp`.
+   */
+  mock?: "cost";
 }
 
 export const homeApps: HomeApp[] = [
@@ -161,12 +156,6 @@ export const homeApps: HomeApp[] = [
         body: "One command across many hosts, with the odd one out diffed.",
       },
     ],
-    visual: {
-      kind: "shot",
-      shot: "aws",
-      title: "Production · Aurora clusters",
-      alt: "An AWS account in Infrawrench, with Aurora clusters shown as tiles",
-    },
   },
   {
     id: "costs",
@@ -204,7 +193,7 @@ export const homeApps: HomeApp[] = [
         body: "Instance types and list prices compared across providers.",
       },
     ],
-    visual: { kind: "cost" },
+    mock: "cost",
   },
   {
     id: "observability",
@@ -424,11 +413,5 @@ export const homeApps: HomeApp[] = [
         body: "The same tools from your editor or your terminal.",
       },
     ],
-    visual: {
-      kind: "shot",
-      shot: "chat",
-      title: "Chat · CI jobs stuck on ci-runner-2",
-      alt: "Infrawrench chat finding a stuck CI runner and asking for approval to reboot it",
-    },
   },
 ];
