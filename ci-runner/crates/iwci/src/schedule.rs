@@ -1551,18 +1551,26 @@ fn run_job<T: Tools>(
         });
 
     let mut commit = None;
+    let memory = format!("ran out of its {} MiB of memory", job.memory_bytes >> 20);
+    // A job that hangs once memory runs short (a worker that could not
+    // start, waited for forever) says so beside the hang (#964).
+    let and_memory = |reason: String| {
+        if execution.out_of_memory {
+            format!("{reason}, after it {memory}")
+        } else {
+            reason
+        }
+    };
     let mut status = if execution.timed_out {
         Status::Failed {
-            reason: format!("timed out after {}s", job.timeout.as_secs()),
+            reason: and_memory(format!("timed out after {}s", job.timeout.as_secs())),
         }
     } else if let Some(secs) = execution.stalled_after {
         Status::Failed {
-            reason: stalled_reason(secs, job.timeout.as_secs()),
+            reason: and_memory(stalled_reason(secs, job.timeout.as_secs())),
         }
     } else if execution.out_of_memory {
-        Status::Failed {
-            reason: format!("ran out of its {} MiB of memory", job.memory_bytes >> 20),
-        }
+        Status::Failed { reason: memory }
     } else if execution.exit_code != 0 && write_budget.refused.load(Ordering::SeqCst) {
         Status::Failed {
             reason: format!(

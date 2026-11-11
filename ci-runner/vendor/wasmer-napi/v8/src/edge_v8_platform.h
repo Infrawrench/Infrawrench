@@ -73,6 +73,16 @@ class EdgeV8Platform final : public v8::Platform {
   // first. Returns at once when there is nothing to wait for.
   void WaitForPendingWork(v8::Isolate* isolate, std::chrono::microseconds timeout);
 
+  // iwci patch (#972): the isolate whose worker task runs on this thread, or
+  // null on a thread that is not running one. V8's out-of-memory handler is
+  // not told which isolate ran out, and on a worker thread no isolate is
+  // current.
+  static v8::Isolate* CurrentWorkerIsolate();
+  // iwci patch (#972): a thread working for this isolate was parked for good
+  // after V8 ran out of memory in it, so its work will never end: its event
+  // loop stops waiting for that work.
+  void AbandonIsolate(v8::Isolate* isolate);
+
   int NumberOfWorkerThreads() override;
   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
       v8::Isolate* isolate, v8::TaskPriority priority) override;

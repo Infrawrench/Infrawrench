@@ -319,6 +319,8 @@ impl NapiEnv {
                 host_stopped: Arc::clone(&self.host_stopped),
                 unwind_slack_available: std::sync::atomic::AtomicBool::new(true),
                 granted: AtomicU64::new(0),
+                stopped: std::sync::atomic::AtomicBool::new(false),
+                overdraft: AtomicU64::new(0),
             }));
             // SAFETY: `env` is the isolate just created; `boxed` outlives the
             // callback (freed only at this env's teardown, below).

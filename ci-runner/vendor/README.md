@@ -226,6 +226,64 @@ pool thread's CPU time for the posting job between `enter` and `exit`.
 Nothing upstream does this; a tree without it still builds if
 `stall::node_hooks` goes, and the stall check then misses that work.
 
+**And: V8 running out of memory is the job's, not the runner's (#972).**
+V8 ends the process when an isolate runs out of heap where it cannot
+recover, and the process is the runner: one job's `node` took every job
+with it, with no report. It happened two ways. A stopped isolate (its heap
+refused growth by the job's budget) got 16 MiB of slack to unwind in, and an
+allocation bigger than that, such as the next string of a string that
+doubles, met V8's own limit ("Reached heap limit"). And V8 only asks the
+near-heap-limit callback on the isolate's own thread: an allocation on a
+background compile thread that finds the heap within a page of its limit
+fails after its garbage collections without the callback ever being asked
+(`HeapAllocator::AllocateRawWithRetryOrFailSlowPath` in V8 13.6, with
+`Heap::CollectGarbageFromAnyThread`; a Maglev compile on ci-1, the
+"CALL_AND_RETRY_LAST" in #972). There is no public way to raise a heap limit
+outside that callback (`RemoveNearHeapLimitCallback` only lowers it), so the
+gap cannot be closed from here. Three changes:
+
+- `src/budget.rs`: after the slack, each further callback on a stopped
+  isolate raises V8's limit by 32 MiB, uncharged, up to 128 MiB
+  (`STOP_OVERDRAFT_STEP`, `MAX_STOP_OVERDRAFT`), so a stopped isolate rarely
+  meets V8's limit while it unwinds. It terminates with the lock-free
+  `snapi_bridge_host_terminate_execution`, since it runs inside a garbage
+  collection in whatever bridge call the thread was in.
+- `v8/src/unofficial_napi.cc`: every isolate gets an OOM handler from its
+  creation (it had none: the bridge attaches no embedder hooks), and V8 the
+  process-wide one (`V8::SetFatalMemoryErrorCallback`, for what it reports
+  without an isolate). V8 calls them before it aborts and aborts only if
+  they return. For an isolate the host budgets, the handler finds the
+  isolate (current on the job's thread; on a V8 worker thread, the owner
+  of the task it runs, from the platform's #943 bookkeeping), tells the
+  host (`napi_host_isolate_out_of_memory`), terminates the isolate and
+  parks the thread for good instead of returning. The isolate is
+  abandoned: its event loop stops waiting for the parked thread's task
+  (`EdgeV8Platform::AbandonIsolate`), and when its program releases its env
+  it is neither torn down nor disposed (a parked thread holds a running
+  local heap, so a garbage collection would wait for it forever, and
+  Dispose would join it forever while holding the lock every isolate
+  creation takes). Each one costs the parked thread (a V8 worker, or the
+  job's own) and the isolate's memory for the life of the process; a
+  stopped isolate's overdraft is what makes it rare. It does not park
+  where that would stop every job instead: while the thread holds
+  `g_isolate_lifecycle_mu` (an isolate being created or disposed) or once
+  the isolate is being disposed; V8 aborts there as before. Isolates the
+  host does not budget are left to V8.
+- `v8/src/js_native_api_v8.cc` and `v8/src/unofficial_napi_contextify.cc`:
+  `napi_create_arraybuffer`, `napi_create_buffer` and the contextify buffer
+  allocate with `ArrayBuffer::MaybeNew` and
+  `BackingStoreOnFailureMode::kReturnNull` and fail the call, where
+  `ArrayBuffer::New` and the default `NewBackingStore` call V8's fatal
+  out-of-memory when the guest's heap, which the job's budget can refuse,
+  has no room.
+
+The budget also counts what it refused or stopped (`MemoryExhaustion`:
+heaps stopped, heaps lost, isolates refused, guest-heap growth refused), so
+the runner can end a job whose JavaScript is over and say it ran out of
+memory (#964). Nothing upstream does any of this. `builtins/test.sh
+bash-node`'s `heap-*-fails` run beside the other jobs and must fail as out
+of memory with the runner still there.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),

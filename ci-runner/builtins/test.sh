@@ -628,6 +628,50 @@ jobs:
     timeout: 40s
     run: |
       node -e 'for (;;) {}'
+  # A `node` that outgrows the job's memory, while the jobs above run in the
+  # same runner (#972). Its heap is refused growth, it is stopped, and the
+  # job fails saying memory (#964). At 1 GiB, a string that doubles needs
+  # more in one allocation than a stopped isolate is given, so V8 reaches
+  # its own limit: 0.3.4 aborted the whole runner there every time, and the
+  # bridge now parks that thread and ends only this job.
+  heap-objects-fails:
+    using: env:bash-node@24
+    memory: 512MiB
+    timeout: 3m
+    run: |
+      node -e 'const a = []; for (;;) a.push({ x: Math.random(), s: "abc" + a.length })'
+  heap-strings-fails:
+    using: env:bash-node@24
+    memory: 1GiB
+    timeout: 3m
+    run: |
+      node -e 'const a = []; let s = "x"; for (;;) { s = s + s.slice(0, 1e6) + Math.random(); a.push(s.slice(1)); }'
+  # More worker threads than the job's memory holds: the rest fail to start
+  # (ERR_WORKER_INIT_FAILED), and when the program then fails, its report
+  # says memory rather than only "exited with 1" (#964).
+  workers-refused-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    memory: 512MiB
+    timeout: 3m
+    run: |
+      cat > /tmp/many.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      let refused = 0, settled = 0;
+      const workers = [];
+      for (let i = 0; i < 12; i++) {
+        const w = new Worker("setTimeout(() => {}, 1e9)", { eval: true });
+        w.on("online", () => ++settled === 12 && done());
+        w.on("error", (e) => { refused++; console.error(e.code); ++settled === 12 && done(); });
+        workers.push(w);
+      }
+      function done() {
+        console.log(`${refused} of 12 refused`);
+        for (const w of workers) w.terminate();
+        process.exitCode = refused > 0 ? 1 : 0;
+      }
+      JS
+      node /tmp/many.js
 YAML
       ;;
   esac
@@ -642,6 +686,8 @@ want_reason() {
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
+    bash-node/heap-objects-fails | bash-node/workers-refused-fails) echo "ran out of its 512 MiB of memory" ;;
+    bash-node/heap-strings-fails) echo "ran out of its 1024 MiB of memory" ;;
     *) echo "" ;;
   esac
 }
@@ -650,6 +696,9 @@ want_reason() {
 want_stderr() {
   case "$1" in
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
+    bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
+    bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*V8 ran out of heap in an isolate" ;;
+    bash-node/workers-refused-fails) echo "ERR_WORKER_INIT_FAILED.*iwci: the job ran out of its 512 MiB of memory.*worker threads could not start" ;;
     *) echo "" ;;
   esac
 }

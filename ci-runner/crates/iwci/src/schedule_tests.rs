@@ -100,10 +100,11 @@ impl Executor<String> for FakeExecutor {
             std::thread::sleep(Duration::from_millis(50));
         }
         // What the runtime reports for a job it stopped as hung.
-        if tool.contains(":hang@") {
+        if tool.contains(":hang@") || tool.contains(":hang-oom@") {
             return Ok(Execution {
                 exit_code: iwci_runtime::TIMEOUT_EXIT_CODE,
                 stalled_after: Some(300),
+                out_of_memory: tool.contains("-oom@"),
                 ..Default::default()
             });
         }
@@ -322,6 +323,21 @@ fn a_stalled_job_fails_naming_the_stall_and_blocks_its_dependents() {
         "stalled: no output and no CPU use for 5 minutes, so it was stopped before its 1200s timeout"
     );
     assert!(matches!(status(&report, "after"), Status::Skipped { .. }));
+}
+
+#[test]
+fn a_job_that_hangs_after_running_out_of_memory_says_both() {
+    let p = plan(
+        "name: x\njobs:\n  hang:\n    using: builtin:hang-oom@1\n    memory: 1GiB\n    timeout: 20m\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    let Status::Failed { reason } = status(&report, "hang") else {
+        panic!("{:?}", status(&report, "hang"));
+    };
+    assert_eq!(
+        reason,
+        "stalled: no output and no CPU use for 5 minutes, so it was stopped before its 1200s timeout, after it ran out of its 1024 MiB of memory"
+    );
 }
 
 #[test]

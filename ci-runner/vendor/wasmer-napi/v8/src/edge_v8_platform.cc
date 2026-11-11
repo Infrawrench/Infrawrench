@@ -105,6 +105,8 @@ struct EdgeV8Platform::IsolateState {
   std::condition_variable work_cv;
   bool shutdown_started = false;
   bool finished = false;
+  // iwci patch (#972): see EdgeV8Platform::AbandonIsolate. Under `mutex`.
+  bool abandoned = false;
   std::vector<FinishedCallback> finished_callbacks;
 };
 
@@ -643,6 +645,7 @@ bool EdgeV8Platform::HasPendingWork(v8::Isolate* isolate) {
   std::shared_ptr<IsolateState> state = GetState(isolate);
   if (!state) return false;
   std::lock_guard<std::mutex> lock(state->mutex);
+  if (state->abandoned) return false;
   return state->worker_tasks_in_flight != 0 || state->foreground_task_posted;
 }
 
@@ -652,8 +655,22 @@ void EdgeV8Platform::WaitForPendingWork(v8::Isolate* isolate,
   if (!state) return;
   std::unique_lock<std::mutex> lock(state->mutex);
   state->work_cv.wait_for(lock, timeout, [&] {
-    return state->foreground_task_posted || state->worker_tasks_in_flight == 0;
+    return state->abandoned || state->foreground_task_posted ||
+           state->worker_tasks_in_flight == 0;
   });
+}
+
+v8::Isolate* EdgeV8Platform::CurrentWorkerIsolate() {
+  return t_work_owner != nullptr && *t_work_owner ? (*t_work_owner)->isolate
+                                                  : nullptr;
+}
+
+void EdgeV8Platform::AbandonIsolate(v8::Isolate* isolate) {
+  std::shared_ptr<IsolateState> state = GetState(isolate);
+  if (!state) return;
+  std::lock_guard<std::mutex> lock(state->mutex);
+  state->abandoned = true;
+  state->work_cv.notify_all();
 }
 
 std::shared_ptr<EdgeV8Platform::IsolateState> EdgeV8Platform::CurrentWorkOwner() {

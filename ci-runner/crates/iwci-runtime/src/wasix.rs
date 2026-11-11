@@ -80,6 +80,11 @@ const MAX_TASKS: usize = 512;
 /// How often the kill is repeated while a timed-out job unwinds.
 const KILL_POLL: Duration = Duration::from_millis(50);
 
+/// How often a Node job is checked for having been stopped for memory
+/// (#972): its JavaScript is over then, and one of its threads may never
+/// return, so the job is ended rather than left to its timeout.
+const MEMORY_POLL: Duration = Duration::from_millis(200);
+
 /// Native stack for WASIX guests. bash and node recurse moderately; this is
 /// generous without costing anything until touched (it is reserved, not
 /// committed).
@@ -770,13 +775,19 @@ pub(crate) fn run(
             .stall_after
             .and_then(|after| StallWatch::new(after, Instant::now(), output(), cpu.total()));
         let stopped = loop {
-            let wake = match &watch {
+            let mut wake = match &watch {
                 Some(watch) => deadline.min(Instant::now() + watch.every()),
                 None => deadline,
             };
+            if node.is_some() {
+                wake = wake.min(Instant::now() + MEMORY_POLL);
+            }
             let wake = tokio::time::Instant::from_std(wake);
             if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
                 return (Some(result), None);
+            }
+            if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
+                break Stop::OutOfMemory;
             }
             let now = Instant::now();
             if now >= deadline {
@@ -838,9 +849,20 @@ pub(crate) fn run(
     };
     let out = stdout.take();
     let mut err = stderr.take();
+    let exhaustion = node.map(|node| node.exhaustion()).unwrap_or_default();
+    let failed = stopped.is_some() || exit_code != 0;
+    // Memory ran short for the job's Node (#964): a stopped heap ends the
+    // job; a refused isolate or buffer is the program's to handle, and is
+    // the reason only if the job then failed (as with a refused write).
+    let out_of_memory = hit_memory.load(Ordering::Acquire)
+        || exhaustion.stops_the_job()
+        || (failed && exhaustion.any());
     // What the runner knows of a failure that the job's own output does not
     // say, added to its log, which is all a one-off like #955 leaves behind.
     let mut notes = Vec::new();
+    if out_of_memory && let Some(note) = exhaustion.note(inv.limits.memory_bytes) {
+        notes.push(note);
+    }
     if stopped.is_none() && exit_code != 0 {
         // A trap in a child process or a guest thread: wasmer-wasix prints
         // it on the runner's stderr and the script carries on, or fails
@@ -879,7 +901,7 @@ pub(crate) fn run(
         duration: started.elapsed(),
         timed_out,
         stalled_after: caps.stall_after.filter(|_| stalled),
-        out_of_memory: hit_memory.load(Ordering::Acquire),
+        out_of_memory,
         error: if stopped.is_some() { None } else { error },
     })
 }
@@ -890,6 +912,8 @@ enum Stop {
     Timeout,
     /// No output and no CPU use for `Caps::stall_after` (stall.rs).
     Stalled,
+    /// Its JavaScript was stopped for memory (`NodeHooks::exhaustion`).
+    OutOfMemory,
 }
 
 /// Compiles every command of `packages` into the module cache, so the

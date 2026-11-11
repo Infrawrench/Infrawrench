@@ -496,6 +496,8 @@ impl GuestHeap {
                 .try_charge(Pool::WasmLinear, delta_bytes)
                 .is_err()
             {
+                // iwci patch (#964): so the embedder can say it was memory.
+                self.budget.note_buffer_refused();
                 return false;
             }
             delta_bytes
