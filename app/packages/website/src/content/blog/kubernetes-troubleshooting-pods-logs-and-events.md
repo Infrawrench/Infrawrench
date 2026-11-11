@@ -20,6 +20,7 @@ If you already know the status or error you are looking at, jump straight to its
 - Init:0/1, Init:Error or Init:CrashLoopBackOff: [pod stuck in Init](/blog/kubernetes-pod-stuck-init)
 - ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
 - CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
+- CreateContainerError: [missing commands, name conflicts and runtime failures](/blog/kubernetes-createcontainererror)
 - PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
 - StatefulSet pod waiting on the one before it: [StatefulSet pod stuck](/blog/kubernetes-statefulset-pod-stuck)
 

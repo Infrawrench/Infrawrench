@@ -19,6 +19,8 @@ The official docs state the rules plainly:
 
 When the problem is in environment variables (`env` with `configMapKeyRef` or `secretKeyRef`, or `envFrom`), kubectl usually shows the container waiting with the reason CreateContainerConfigError. When the problem is in a volume that mounts a ConfigMap or Secret, the pod usually sits in ContainerCreating with mount failure events instead. The fix is the same: make the reference point at something that exists.
 
+CreateContainerError, without the word Config, is a different problem: the configuration was built and the container runtime refused to create the container. The [CreateContainerError guide](/blog/kubernetes-createcontainererror) covers that one.
+
 The kubelet keeps retrying. Once the missing object or key appears, the pod starts without being deleted.
 
 ## Step 1: Confirm the waiting reason
