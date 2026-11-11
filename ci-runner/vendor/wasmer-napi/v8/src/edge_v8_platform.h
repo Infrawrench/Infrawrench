@@ -28,6 +28,19 @@ class EdgeV8Platform final : public v8::Platform {
   // this has no effect afterwards; it returns false in that case.
   static bool SetWorkerThreadCount(int count);
 
+  // iwci patch (#938): lets the embedder attribute worker tasks, which run
+  // on the process-wide pool, to whoever posted them. `capture` runs on the
+  // posting thread and returns a token (or null for "no one"); `enter` and
+  // `exit` run on the worker thread around the task, and tell the embedder
+  // that until `exit` this thread works for the token's owner (so a task
+  // posted from inside one is captured for the same owner); `release` frees
+  // the token when the task is destroyed, run or not. Process-wide; set
+  // before the first isolate is created.
+  static void SetWorkerTaskHooks(void* (*capture)(),
+                                 void (*enter)(void*),
+                                 void (*exit)(void*),
+                                 void (*release)(void*));
+
   ~EdgeV8Platform() override;
 
   bool RegisterIsolate(v8::Isolate* isolate);

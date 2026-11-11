@@ -119,6 +119,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stdout: lossy(&o.stdout),
                             stderr: with_error(lossy(&o.stderr), o.error),
                             timed_out: o.timed_out,
+                            stalled_after: None,
                             out_of_memory: o.out_of_memory,
                         }
                     }
@@ -132,6 +133,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stdout: lossy(&o.stdout),
                             stderr: with_error(lossy(&o.stderr), o.error),
                             timed_out: o.timed_out,
+                            stalled_after: o.stalled_after.map(|d| d.as_secs()),
                             out_of_memory: o.out_of_memory,
                         }
                     }
@@ -167,6 +169,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                     stdout: lossy(&o.stdout),
                     stderr: with_error(lossy(&o.stderr), o.error),
                     timed_out: o.timed_out,
+                    stalled_after: o.stalled_after.map(|d| d.as_secs()),
                     out_of_memory: o.out_of_memory,
                 }
             }

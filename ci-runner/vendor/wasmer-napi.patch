@@ -636,6 +636,46 @@
      let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -82,6 +82,37 @@
+     Ok(())
+ }
+ 
++/// iwci patch (#938): how an embedder learns whose work a V8 worker task is.
++///
++/// V8's background tasks (garbage collection, compilation) run on one
++/// process-wide pool. `capture` is called on the thread that posts a task and
++/// returns a token naming whoever that thread works for, or null for no one;
++/// `enter` and `exit` are called on the pool thread around the task with
++/// that token, and a task posted between them is captured on that thread in
++/// turn; `release` is called once when the task is destroyed, whether or not
++/// it ran.
++#[derive(Debug, Clone, Copy)]
++pub struct WorkerTaskHooks {
++    pub capture: unsafe extern "C" fn() -> *mut core::ffi::c_void,
++    pub enter: unsafe extern "C" fn(*mut core::ffi::c_void),
++    pub exit: unsafe extern "C" fn(*mut core::ffi::c_void),
++    pub release: unsafe extern "C" fn(*mut core::ffi::c_void),
++}
++
++/// Installs `hooks` for every V8 worker task posted from now on,
++/// process-wide. Call it before the first isolate is created.
++pub fn set_worker_task_hooks(hooks: WorkerTaskHooks) {
++    // Safety: the callee only stores the four function pointers.
++    unsafe {
++        snapi::snapi_bridge_set_worker_task_hooks(
++            hooks.capture,
++            hooks.enter,
++            hooks.exit,
++            hooks.release,
++        )
++    };
++}
++
+ /// The V8 platform already exists, so its worker pool can no longer be resized.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub struct WorkerThreadsAlreadyFixed;
 --- a/src/napi_bridge_init.cc
 +++ b/src/napi_bridge_init.cc
 @@ -29,6 +29,21 @@
@@ -690,9 +730,18 @@
    delete state;
    return napi_ok;
  }
-@@ -489,11 +511,9 @@
+@@ -488,12 +510,18 @@
+   return EdgeV8Platform::SetWorkerThreadCount(static_cast<int>(count)) ? 1 : 0;
  }
  
++// iwci patch (#938): host-only, see EdgeV8Platform::SetWorkerTaskHooks.
++extern "C" void snapi_bridge_set_worker_task_hooks(void* (*capture)(),
++                                                   void (*enter)(void*),
++                                                   void (*exit)(void*),
++                                                   void (*release)(void*)) {
++  EdgeV8Platform::SetWorkerTaskHooks(capture, enter, exit, release);
++}
++
  extern "C" int snapi_bridge_init() {
 -  std::lock_guard<std::recursive_mutex> lock(g_mu);
    // Intentionally do not create a N-API env here.
@@ -702,7 +751,7 @@
    return 1;
  }
  
-@@ -2914,7 +2934,6 @@
+@@ -2914,7 +2942,6 @@
  extern "C" int snapi_bridge_unofficial_create_env(int32_t module_api_version,
                                                    const void* guest_heap_ctx,
                                                    SnapiEnvState** env_out) {
@@ -710,7 +759,7 @@
    napi_env env = nullptr;
    unofficial_napi_env_owner owner = nullptr;
    napi_status s;
-@@ -2937,7 +2956,10 @@
+@@ -2937,7 +2964,10 @@
    }
    state->env = env;
    state->owner = owner;
@@ -722,7 +771,7 @@
  
    if (env_out != nullptr) *env_out = state;
    return napi_ok;
-@@ -2964,7 +2986,9 @@
+@@ -2964,7 +2994,9 @@
      uint32_t /*stack_limit*/,
      const void* guest_heap_ctx,
      SnapiEnvState** env_out) {
@@ -733,7 +782,7 @@
    unofficial_napi_env_create_options options{};
    const bool has_options =
        max_young_generation_size_in_bytes > 0 ||
-@@ -3000,7 +3024,10 @@
+@@ -3000,7 +3032,10 @@
    }
    state->env = env;
    state->owner = owner;
@@ -745,7 +794,7 @@
  
    if (env_out != nullptr) *env_out = state;
    return napi_ok;
-@@ -3024,7 +3051,6 @@
+@@ -3024,7 +3059,6 @@
  
  extern "C" int snapi_bridge_unofficial_set_host_near_heap_limit_callback(
      SnapiEnvState* env_state, const void* data) {
@@ -753,7 +802,7 @@
    if (env_state == nullptr || env_state->env == nullptr) {
      return napi_invalid_arg;
    }
-@@ -3053,7 +3079,6 @@
+@@ -3053,7 +3087,6 @@
  
  extern "C" int snapi_bridge_unofficial_set_value_limit(SnapiEnvState* env_state,
                                                         uint64_t limit) {
@@ -761,7 +810,7 @@
    if (env_state == nullptr) {
      return napi_invalid_arg;
    }
-@@ -3062,14 +3087,12 @@
+@@ -3062,14 +3095,12 @@
  }
  
  extern "C" int snapi_bridge_unofficial_release_env(SnapiEnvState* env_state) {
@@ -776,7 +825,7 @@
    return DisposeBridgeStateLocked(env_state);
  }
  
-@@ -3078,7 +3101,6 @@
+@@ -3078,7 +3109,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -784,7 +833,7 @@
    return unofficial_napi_collect_garbage(env);
  }
  
-@@ -3090,7 +3112,6 @@
+@@ -3090,7 +3120,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -792,7 +841,7 @@
    uint32_t state = unofficial_napi_event_loop_checkpoint_state_none;
    const int status = unofficial_napi_event_loop_checkpoint(
        env,
-@@ -3109,7 +3130,6 @@
+@@ -3109,7 +3138,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -800,7 +849,7 @@
    napi_value callback = callback_id == 0 ? nullptr : LoadValue(*bridge_state, callback_id);
    if (callback_id != 0 && callback == nullptr) return napi_invalid_arg;
    return unofficial_napi_set_prepare_stack_trace_callback(env, callback);
-@@ -3123,7 +3143,6 @@
+@@ -3123,7 +3151,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -808,7 +857,7 @@
    napi_value promise = LoadValue(*bridge_state, promise_id);
    if (promise == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -3143,7 +3162,6 @@
+@@ -3143,7 +3170,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -816,7 +865,7 @@
    napi_value proxy = LoadValue(*bridge_state, proxy_id);
    if (proxy == nullptr) return napi_invalid_arg;
    napi_value target = nullptr;
-@@ -3162,7 +3180,6 @@
+@@ -3162,7 +3188,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -824,7 +873,7 @@
    napi_value value = LoadValue(*bridge_state, value_id);
    if (value == nullptr) return napi_invalid_arg;
    napi_value entries = nullptr;
-@@ -3180,7 +3197,6 @@
+@@ -3180,7 +3205,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -832,7 +881,7 @@
    napi_value callsites = nullptr;
    napi_status s = unofficial_napi_get_call_sites(env, frames, &callsites);
    if (s != napi_ok) return s;
-@@ -3194,7 +3210,6 @@
+@@ -3194,7 +3218,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -840,7 +889,7 @@
    napi_value value = LoadValue(*bridge_state, value_id);
    if (value == nullptr) return napi_invalid_arg;
    bool result = false;
-@@ -3210,7 +3225,6 @@
+@@ -3210,7 +3233,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -848,7 +897,7 @@
    napi_value value = LoadValue(*bridge_state, value_id);
    if (value == nullptr) return napi_invalid_arg;
    napi_value name = nullptr;
-@@ -3227,7 +3241,6 @@
+@@ -3227,7 +3249,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -856,7 +905,7 @@
    size_t length =
        (wasm_length == 0xFFFFFFFFu) ? NAPI_AUTO_LENGTH : static_cast<size_t>(wasm_length);
    napi_value result = nullptr;
-@@ -3244,7 +3257,6 @@
+@@ -3244,7 +3265,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -864,7 +913,7 @@
    napi_value result = nullptr;
    napi_status s =
        unofficial_napi_get_continuation_preserved_embedder_data(env, &result);
-@@ -3259,7 +3271,6 @@
+@@ -3259,7 +3279,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -872,7 +921,7 @@
    napi_value value = value_id == 0 ? nullptr : LoadValue(*bridge_state, value_id);
    if (value_id != 0 && value == nullptr) return napi_invalid_arg;
    return unofficial_napi_set_continuation_preserved_embedder_data(env, value);
-@@ -3273,7 +3284,6 @@
+@@ -3273,7 +3292,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr || accepted_hooks_out == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -880,7 +929,7 @@
    // Guest callbacks cannot be installed as native provider function pointers.
    // Guest lifecycle stays in the Wasmer bridge, while the provider receives
    // the same single immutable attachment transition with empty native hooks.
-@@ -3287,8 +3297,24 @@
+@@ -3287,8 +3305,24 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -906,7 +955,7 @@
  }
  
  extern "C" int snapi_bridge_unofficial_cancel_terminate_execution(
-@@ -3296,7 +3322,6 @@
+@@ -3296,7 +3330,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -914,7 +963,7 @@
    return unofficial_napi_cancel_terminate_execution(env);
  }
  
-@@ -3307,7 +3332,6 @@
+@@ -3307,7 +3340,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -922,7 +971,7 @@
    if (wasm_fn_ptr == 0) return napi_invalid_arg;
    auto* request =
        new (std::nothrow) WasmInterruptRequest{bridge_state, guest_env, wasm_fn_ptr, data};
-@@ -3323,7 +3347,6 @@
+@@ -3323,7 +3355,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -930,7 +979,7 @@
    napi_value callback = LoadValue(*bridge_state, callback_id);
    if (callback == nullptr) return napi_invalid_arg;
    return unofficial_napi_enqueue_microtask(env, callback);
-@@ -3334,7 +3357,6 @@
+@@ -3334,7 +3365,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -938,7 +987,7 @@
    napi_value callback = callback_id == 0 ? nullptr : LoadValue(*bridge_state, callback_id);
    if (callback_id != 0 && callback == nullptr) return napi_invalid_arg;
    return unofficial_napi_set_promise_reject_callback(env, callback);
-@@ -3348,7 +3370,6 @@
+@@ -3348,7 +3378,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr || out_id == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -946,7 +995,7 @@
    napi_value value = LoadValue(*bridge_state, value_id);
    if (value == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -3368,7 +3389,6 @@
+@@ -3368,7 +3397,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -954,7 +1003,7 @@
    napi_value init = init_callback_id == 0 ? nullptr : LoadValue(*bridge_state, init_callback_id);
    napi_value before =
        before_callback_id == 0 ? nullptr : LoadValue(*bridge_state, before_callback_id);
-@@ -3389,7 +3409,6 @@
+@@ -3389,7 +3417,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -962,7 +1011,7 @@
    if (
        hash_seed_out == nullptr) {
      return napi_invalid_arg;
-@@ -3411,7 +3430,6 @@
+@@ -3411,7 +3438,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -970,7 +1019,7 @@
    napi_value error = LoadValue(*bridge_state, error_id);
    if (error == nullptr) return napi_invalid_arg;
    unofficial_napi_error_metadata metadata{};
-@@ -3447,7 +3465,6 @@
+@@ -3447,7 +3473,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -978,7 +1027,7 @@
    napi_value callback = callback_id == 0 ? nullptr : LoadValue(*bridge_state, callback_id);
    if (callback_id != 0 && callback == nullptr) return napi_invalid_arg;
    return unofficial_napi_configure_source_maps(env, enabled != 0, callback);
-@@ -3459,7 +3476,6 @@
+@@ -3459,7 +3484,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -986,7 +1035,7 @@
    napi_value error = LoadValue(*bridge_state, error_id);
    if (error == nullptr) return napi_invalid_arg;
    return unofficial_napi_preserve_error_source_message(env, error);
-@@ -3471,7 +3487,6 @@
+@@ -3471,7 +3495,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -994,7 +1043,7 @@
    napi_value promise = LoadValue(*bridge_state, promise_id);
    if (promise == nullptr) return napi_invalid_arg;
    return unofficial_napi_mark_promise_as_handled(env, promise);
-@@ -3483,7 +3498,6 @@
+@@ -3483,7 +3506,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1002,7 +1051,7 @@
    if (
        stats_out == nullptr) {
      return napi_invalid_arg;
-@@ -3499,7 +3513,6 @@
+@@ -3499,7 +3521,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1010,7 +1059,7 @@
    if (count_out == nullptr || (capacity > 0 && stats_out == nullptr)) {
      return napi_invalid_arg;
    }
-@@ -3512,7 +3525,6 @@
+@@ -3512,7 +3533,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1018,7 +1067,7 @@
    if (
        stats_out == nullptr) {
      return napi_invalid_arg;
-@@ -3527,7 +3539,6 @@
+@@ -3527,7 +3547,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1026,7 +1075,7 @@
    if (result_out == nullptr || profile_out == nullptr) {
      return napi_invalid_arg;
    }
-@@ -3548,7 +3559,6 @@
+@@ -3548,7 +3567,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1034,7 +1083,7 @@
    if (json_out == nullptr) return napi_invalid_arg;
    auto profile = reinterpret_cast<unofficial_napi_profile>(
        bridge_state->profile_handles.Load(profile_id));
-@@ -3571,7 +3581,6 @@
+@@ -3571,7 +3589,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1042,7 +1091,7 @@
    if (json_out == nullptr) {
      return napi_invalid_arg;
    }
-@@ -3597,7 +3606,6 @@
+@@ -3597,7 +3614,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1050,7 +1099,7 @@
    napi_value value = LoadValue(*bridge_state, value_id);
    if (value == nullptr) return napi_invalid_arg;
    // A zero id means "no transfer list" (the common case: structuredClone with
-@@ -3618,15 +3626,19 @@
+@@ -3618,15 +3634,19 @@
      uint32_t* message_out) {
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr || message_out == nullptr) return napi_invalid_arg;
@@ -1073,7 +1122,7 @@
    if (message_id == 0) {
      unofficial_napi_message_drop(message);
      return napi_generic_failure;
-@@ -3639,9 +3651,12 @@
+@@ -3639,9 +3659,12 @@
      SnapiEnvState* env_state,
      uint32_t message_id,
      uint32_t* value_out) {
@@ -1089,7 +1138,7 @@
    if (message == nullptr) return napi_invalid_arg;
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr || value_out == nullptr) {
-@@ -3659,9 +3674,12 @@
+@@ -3659,9 +3682,12 @@
  }
  
  extern "C" void snapi_bridge_unofficial_message_drop(uint32_t message_id) {
@@ -1105,7 +1154,7 @@
    if (message != nullptr) unofficial_napi_message_drop(message);
  }
  
-@@ -3670,7 +3688,6 @@
+@@ -3670,7 +3696,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1113,7 +1162,7 @@
    return unofficial_napi_notify_datetime_configuration_change(env);
  }
  
-@@ -3679,7 +3696,6 @@
+@@ -3679,7 +3704,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1121,7 +1170,7 @@
    napi_value result = nullptr;
    napi_status s = unofficial_napi_create_serdes_binding(env, &result);
    if (s != napi_ok) return s;
-@@ -3697,7 +3713,6 @@
+@@ -3697,7 +3721,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1129,7 +1178,7 @@
    napi_value code = LoadValue(*bridge_state, code_id);
    napi_value filename = LoadValue(*bridge_state, filename_id);
    napi_value resource_name = resource_name_id == 0 ? nullptr : LoadValue(*bridge_state, resource_name_id);
-@@ -3724,7 +3739,6 @@
+@@ -3724,7 +3747,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1137,7 +1186,7 @@
    napi_value sandbox_or_symbol = LoadValue(*bridge_state, sandbox_or_symbol_id);
    napi_value name = LoadValue(*bridge_state, name_id);
    napi_value origin = origin_id == 0 ? nullptr : LoadValue(*bridge_state, origin_id);
-@@ -3766,7 +3780,6 @@
+@@ -3766,7 +3788,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1145,7 +1194,7 @@
    napi_value sandbox_or_null = sandbox_or_null_id == 0 ? nullptr : LoadValue(*bridge_state, sandbox_or_null_id);
    napi_value source_text = source_text_id == 0 ? nullptr : LoadValue(*bridge_state, source_text_id);
    unofficial_napi_bytecode source_bytecode =
-@@ -3814,7 +3827,6 @@
+@@ -3814,7 +3835,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1153,7 +1202,7 @@
    napi_value source_text = source_text_id == 0 ? nullptr : LoadValue(*bridge_state, source_text_id);
    unofficial_napi_bytecode source_bytecode =
        LoadBytecodeHandle(*bridge_state, source_bytecode_id);
-@@ -3869,7 +3881,6 @@
+@@ -3869,7 +3889,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1161,7 +1210,7 @@
    napi_value source_text = LoadValue(*bridge_state, source_text_id);
    napi_value filename = LoadValue(*bridge_state, filename_id);
    napi_value params = params_id == 0 ? nullptr : LoadValue(*bridge_state, params_id);
-@@ -3912,7 +3923,6 @@
+@@ -3912,7 +3931,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1169,7 +1218,7 @@
    unofficial_napi_bytecode bytecode = LoadBytecodeHandle(*bridge_state, bytecode_id);
    if (bytecode == nullptr) return napi_invalid_arg;
    napi_value buffer = nullptr;
-@@ -3928,7 +3938,6 @@
+@@ -3928,7 +3946,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1177,7 +1226,7 @@
    unofficial_napi_bytecode bytecode = LoadBytecodeHandle(*bridge_state, bytecode_id);
    if (bytecode == nullptr) return napi_invalid_arg;
    napi_status s = unofficial_napi_bytecode_release(env, bytecode);
-@@ -3955,7 +3964,6 @@
+@@ -3955,7 +3972,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1185,7 +1234,7 @@
    napi_value wrapper = LoadValue(*bridge_state, wrapper_id);
    napi_value url = LoadValue(*bridge_state, url_id);
    napi_value context = context_id == 0 ? nullptr : LoadValue(*bridge_state, context_id);
-@@ -4033,7 +4041,6 @@
+@@ -4033,7 +4049,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1193,7 +1242,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_status s = unofficial_napi_module_wrap_destroy(env, module);
-@@ -4048,7 +4055,6 @@
+@@ -4048,7 +4063,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1201,7 +1250,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    std::vector<unofficial_napi_module> linked_modules(count, nullptr);
-@@ -4069,7 +4075,6 @@
+@@ -4069,7 +4083,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1209,7 +1258,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    return unofficial_napi_module_wrap_instantiate(env, module);
-@@ -4083,7 +4088,6 @@
+@@ -4083,7 +4096,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1217,7 +1266,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -4102,7 +4106,6 @@
+@@ -4102,7 +4114,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1225,7 +1274,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value filename = filename_id == 0 ? nullptr : LoadValue(*bridge_state, filename_id);
-@@ -4126,7 +4129,6 @@
+@@ -4126,7 +4137,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1233,7 +1282,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -4145,7 +4147,6 @@
+@@ -4145,7 +4155,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1241,7 +1290,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    if (status_out == nullptr && error_out == nullptr &&
-@@ -4176,7 +4177,6 @@
+@@ -4176,7 +4185,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1249,7 +1298,7 @@
    if (settled_out == nullptr) return napi_invalid_arg;
    unofficial_napi_module module =
        LoadModuleWrapHandle(*bridge_state, handle_id);
-@@ -4196,7 +4196,6 @@
+@@ -4196,7 +4204,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1257,7 +1306,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    napi_value export_name = LoadValue(*bridge_state, export_name_id);
    napi_value export_value = export_value_id == 0 ? nullptr : LoadValue(*bridge_state, export_value_id);
-@@ -4212,7 +4211,6 @@
+@@ -4212,7 +4219,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1265,7 +1314,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    napi_value source_object = source_object_id == 0 ? nullptr : LoadValue(*bridge_state, source_object_id);
    if (module == nullptr) return napi_invalid_arg;
-@@ -4227,7 +4225,6 @@
+@@ -4227,7 +4233,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1273,7 +1322,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -4244,7 +4241,6 @@
+@@ -4244,7 +4249,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1281,7 +1330,7 @@
    unofficial_napi_module module = LoadModuleWrapHandle(*bridge_state, handle_id);
    if (module == nullptr) return napi_invalid_arg;
    napi_value result = nullptr;
-@@ -4261,7 +4257,6 @@
+@@ -4261,7 +4265,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1289,7 +1338,7 @@
    napi_value import_callback = import_callback_id == 0
                                     ? nullptr
                                     : LoadValue(*bridge_state, import_callback_id);
-@@ -4288,7 +4283,6 @@
+@@ -4288,7 +4291,6 @@
    auto* bridge_state = RequireEnvState(env_state);
    if (bridge_state == nullptr) return napi_invalid_arg;
    napi_env env = bridge_state->env;
@@ -1299,16 +1348,24 @@
    napi_value result = nullptr;
 --- a/src/snapi.rs
 +++ b/src/snapi.rs
-@@ -54,7 +54,7 @@
+@@ -53,8 +53,15 @@
+ unsafe extern "C" {
      pub fn snapi_bridge_init() -> i32;
      pub fn snapi_bridge_set_v8_worker_thread_count(count: u32) -> i32;
++    // iwci patch (#938)
++    pub fn snapi_bridge_set_worker_task_hooks(
++        capture: unsafe extern "C" fn() -> *mut core::ffi::c_void,
++        enter: unsafe extern "C" fn(*mut core::ffi::c_void),
++        exit: unsafe extern "C" fn(*mut core::ffi::c_void),
++        release: unsafe extern "C" fn(*mut core::ffi::c_void),
++    );
      pub fn snapi_bridge_unofficial_configure_runtime(
 -        engine_flags: *const i8,
 +        engine_flags: *const std::ffi::c_char,
          engine_flags_length: u32,
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_env(
-@@ -162,7 +162,7 @@
+@@ -162,7 +169,7 @@
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_private_symbol(
          env: SnapiEnv,
@@ -1317,7 +1374,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -181,6 +181,9 @@
+@@ -181,6 +188,9 @@
          accepted_hooks_out: *mut u64,
      ) -> i32;
      pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
@@ -1327,7 +1384,7 @@
      pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
      pub fn snapi_bridge_unofficial_set_promise_reject_callback(
          env: SnapiEnv,
-@@ -431,13 +434,13 @@
+@@ -431,13 +441,13 @@
      pub fn snapi_bridge_get_global(env: SnapiEnv, out_id: *mut u32) -> i32;
      pub fn snapi_bridge_create_string_utf8(
          env: SnapiEnv,
@@ -1343,7 +1400,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -456,14 +459,14 @@
+@@ -456,14 +466,14 @@
      pub fn snapi_bridge_get_value_string_utf8(
          env: SnapiEnv,
          id: u32,
@@ -1360,7 +1417,7 @@
          bufsize: usize,
          result: *mut usize,
      ) -> i32;
-@@ -521,19 +524,19 @@
+@@ -521,19 +531,19 @@
      pub fn snapi_bridge_set_named_property(
          env: SnapiEnv,
          obj_id: u32,
@@ -1383,7 +1440,7 @@
          result: *mut i32,
      ) -> i32;
      pub fn snapi_bridge_set_element(env: SnapiEnv, obj_id: u32, index: u32, val_id: u32) -> i32;
-@@ -591,9 +594,9 @@
+@@ -591,9 +601,9 @@
          out_id: *mut u32,
      ) -> i32;
      pub fn snapi_bridge_throw(env: SnapiEnv, error_id: u32) -> i32;
@@ -1396,7 +1453,7 @@
      pub fn snapi_bridge_is_exception_pending(env: SnapiEnv, result: *mut i32) -> i32;
      pub fn snapi_bridge_get_and_clear_last_exception(env: SnapiEnv, out_id: *mut u32) -> i32;
      // Symbol
-@@ -941,7 +944,7 @@
+@@ -941,7 +951,7 @@
      // Callback system
      pub fn snapi_bridge_create_function(
          env: SnapiEnv,
@@ -1405,7 +1462,7 @@
          name_len: u32,
          reg_id: u32,
          out_id: *mut u32,
-@@ -979,11 +982,11 @@
+@@ -979,11 +989,11 @@
      // napi_define_class
      pub fn snapi_bridge_define_class(
          env: SnapiEnv,
@@ -1419,7 +1476,7 @@
          prop_name_ids: *const u32,
          prop_types: *const u32,
          prop_value_ids: *const u32,
-@@ -997,7 +1000,7 @@
+@@ -997,7 +1007,7 @@
          env: SnapiEnv,
          obj_id: u32,
          prop_count: u32,
@@ -1630,12 +1687,10 @@
    bool shutdown_started = false;
    bool finished = false;
    std::vector<FinishedCallback> finished_callbacks;
-@@ -134,6 +141,42 @@
-   std::shared_ptr<EdgeV8Platform::IsolateState> isolate_state_;
-   std::unique_ptr<v8::Task> task_;
+@@ -136,6 +143,84 @@
    std::atomic<bool> finished_ {false};
-+};
-+
+ };
+ 
 +// iwci patch (#943): the isolate the worker task running on this thread
 +// belongs to, so that what it posts in turn (a compile job's next step) is
 +// counted for the same isolate.
@@ -1670,10 +1725,54 @@
 + private:
 +  std::shared_ptr<EdgeV8Platform::IsolateState> owner_;
 +  std::unique_ptr<v8::Task> task_;
- };
- 
++};
++
++// iwci patch (#938): see EdgeV8Platform::SetWorkerTaskHooks.
++struct WorkerTaskHooks {
++  void* (*capture)() = nullptr;
++  void (*enter)(void*) = nullptr;
++  void (*exit)(void*) = nullptr;
++  void (*release)(void*) = nullptr;
++};
++std::atomic<const WorkerTaskHooks*> g_worker_task_hooks {nullptr};
++
++// A worker task that tells the embedder whose it is while it runs.
++class AttributedWorkerTask final : public v8::Task {
++ public:
++  AttributedWorkerTask(const WorkerTaskHooks* hooks,
++                       void* token,
++                       std::unique_ptr<v8::Task> task)
++      : hooks_(hooks), token_(token), task_(std::move(task)) {}
++
++  ~AttributedWorkerTask() override {
++    task_.reset();
++    hooks_->release(token_);
++  }
++
++  void Run() override {
++    hooks_->enter(token_);
++    task_->Run();
++    hooks_->exit(token_);
++  }
++
++ private:
++  const WorkerTaskHooks* hooks_;
++  void* token_;
++  std::unique_ptr<v8::Task> task_;
++};
++
++std::unique_ptr<v8::Task> AttributeWorkerTask(std::unique_ptr<v8::Task> task) {
++  const WorkerTaskHooks* hooks = g_worker_task_hooks.load(std::memory_order_acquire);
++  if (hooks == nullptr) return task;
++  void* token = hooks->capture();
++  if (token == nullptr) return task;
++  return std::make_unique<AttributedWorkerTask>(hooks, token, std::move(task));
++}
++
  void RunForegroundTaskRecord(napi_env /*env*/, void* data) {
-@@ -251,6 +294,13 @@
+   auto* record = static_cast<ForegroundTaskRecord*>(data);
+   if (record != nullptr && record->task) {
+@@ -251,6 +336,13 @@
        }
        if (delay_ms == 0) {
          runner->PostTask(std::move(counted_task), location);
@@ -1687,7 +1786,28 @@
        } else {
          runner->PostDelayedTask(std::move(counted_task), delay_ms / 1000.0, location);
        }
-@@ -510,8 +560,8 @@
+@@ -315,6 +407,20 @@
+   return true;
+ }
+ 
++void EdgeV8Platform::SetWorkerTaskHooks(void* (*capture)(),
++                                        void (*enter)(void*),
++                                        void (*exit)(void*),
++                                        void (*release)(void*)) {
++  // Never freed: a task posted before a later call may still hold the old
++  // set, and this is called once per process.
++  auto* hooks = new WorkerTaskHooks();
++  hooks->capture = capture;
++  hooks->enter = enter;
++  hooks->exit = exit;
++  hooks->release = release;
++  g_worker_task_hooks.store(hooks, std::memory_order_release);
++}
++
+ std::unique_ptr<EdgeV8Platform> EdgeV8Platform::Create() {
+   g_platform_created.store(true, std::memory_order_release);
+   std::unique_ptr<v8::Platform> fallback = v8::platform::NewDefaultPlatform(
+@@ -510,8 +616,8 @@
    state->runner->ClearTarget(env);
  }
  
@@ -1698,7 +1818,7 @@
    // ForegroundTaskRunner::PostTaskCommon forwards to the guest's bound
    // enqueue callback when one is set, but falls back to fallback_'s own
    // GetForegroundTaskRunner() when no guest target is bound (e.g. the guest
-@@ -520,10 +570,41 @@
+@@ -520,10 +626,41 @@
    // runner's queue, so tasks routed there -- including V8-internal work like
    // Heap::PostFinalizationRegistryCleanupTaskIfNeeded's cleanup task -- would
    // otherwise be posted and never run. Drain it explicitly.
@@ -1713,15 +1833,15 @@
 +    ran = true;
    }
 +  return ran;
-+}
-+
+ }
+ 
 +bool EdgeV8Platform::HasPendingWork(v8::Isolate* isolate) {
 +  std::shared_ptr<IsolateState> state = GetState(isolate);
 +  if (!state) return false;
 +  std::lock_guard<std::mutex> lock(state->mutex);
 +  return state->worker_tasks_in_flight != 0 || state->foreground_task_posted;
- }
- 
++}
++
 +void EdgeV8Platform::WaitForPendingWork(v8::Isolate* isolate,
 +                                        std::chrono::microseconds timeout) {
 +  std::shared_ptr<IsolateState> state = GetState(isolate);
@@ -1740,15 +1860,26 @@
  int EdgeV8Platform::NumberOfWorkerThreads() {
    return fallback_ != nullptr ? fallback_->NumberOfWorkerThreads() : 0;
  }
-@@ -599,6 +680,10 @@
+@@ -599,6 +736,12 @@
                                                 std::unique_ptr<v8::Task> task,
                                                 const v8::SourceLocation& location) {
    if (fallback_ != nullptr) {
++    // iwci patch (#938): and its CPU time against whoever posted it.
++    task = AttributeWorkerTask(std::move(task));
 +    // iwci patch (#943): counted against the isolate it is for.
 +    if (std::shared_ptr<IsolateState> owner = CurrentWorkOwner()) {
 +      task = std::make_unique<OwnedWorkerTask>(std::move(owner), std::move(task));
 +    }
      fallback_->PostTaskOnWorkerThread(priority, std::move(task), location);
+   }
+ }
+@@ -609,6 +752,8 @@
+     double delay_in_seconds,
+     const v8::SourceLocation& location) {
+   if (fallback_ != nullptr) {
++    // iwci patch (#938)
++    task = AttributeWorkerTask(std::move(task));
+     fallback_->PostDelayedTaskOnWorkerThread(priority, std::move(task), delay_in_seconds, location);
    }
  }
 --- a/v8/src/edge_v8_platform.h
@@ -1761,7 +1892,27 @@
  #include <memory>
  #include <mutex>
  #include <unordered_map>
-@@ -43,8 +44,22 @@
+@@ -27,6 +28,19 @@
+   // this has no effect afterwards; it returns false in that case.
+   static bool SetWorkerThreadCount(int count);
+ 
++  // iwci patch (#938): lets the embedder attribute worker tasks, which run
++  // on the process-wide pool, to whoever posted them. `capture` runs on the
++  // posting thread and returns a token (or null for "no one"); `enter` and
++  // `exit` run on the worker thread around the task, and tell the embedder
++  // that until `exit` this thread works for the token's owner (so a task
++  // posted from inside one is captured for the same owner); `release` frees
++  // the token when the task is destroyed, run or not. Process-wide; set
++  // before the first isolate is created.
++  static void SetWorkerTaskHooks(void* (*capture)(),
++                                 void (*enter)(void*),
++                                 void (*exit)(void*),
++                                 void (*release)(void*));
++
+   ~EdgeV8Platform() override;
+ 
+   bool RegisterIsolate(v8::Isolate* isolate);
+@@ -43,8 +57,22 @@
    void ClearForegroundTaskTarget(v8::Isolate* isolate, napi_env env);
    void AddPendingForegroundTask(const std::shared_ptr<IsolateState>& state);
    void CompletePendingForegroundTask(const std::shared_ptr<IsolateState>& state);
@@ -1785,7 +1936,7 @@
    int NumberOfWorkerThreads() override;
    std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
        v8::Isolate* isolate, v8::TaskPriority priority) override;
-@@ -86,6 +101,8 @@
+@@ -86,6 +114,8 @@
    void BeginShutdown(const std::shared_ptr<IsolateState>& state);
    void MaybeFinishIsolate(const std::shared_ptr<IsolateState>& state,
                            bool begin_shutdown);

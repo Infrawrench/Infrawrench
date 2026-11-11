@@ -270,6 +270,10 @@ pub struct Execution {
     pub stdout: String,
     pub stderr: String,
     pub timed_out: bool,
+    /// Seconds without output or CPU use after which the runner stopped
+    /// the job as hung, when it did (iwci-runtime's stall check).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stalled_after: Option<u64>,
     pub out_of_memory: bool,
 }
 
@@ -1467,6 +1471,10 @@ fn run_job<T: Tools>(
         Status::Failed {
             reason: format!("timed out after {}s", job.timeout.as_secs()),
         }
+    } else if let Some(secs) = execution.stalled_after {
+        Status::Failed {
+            reason: stalled_reason(secs, job.timeout.as_secs()),
+        }
     } else if execution.out_of_memory {
         Status::Failed {
             reason: format!("ran out of its {} MiB of memory", job.memory_bytes >> 20),
@@ -1887,6 +1895,7 @@ fn replay(
             stdout,
             stderr,
             timed_out: false,
+            stalled_after: None,
             out_of_memory: false,
         }),
         changes: Vec::new(),
@@ -1997,6 +2006,20 @@ pub fn parse_outputs(
         out.insert(name.to_string(), value);
     }
     Ok(out)
+}
+
+/// The failure reason of a job the runtime stopped as hung: no output and
+/// no CPU use for `secs`, before its `timeout` came.
+fn stalled_reason(secs: u64, timeout: u64) -> String {
+    let idle = if secs >= 60 && secs.is_multiple_of(60) {
+        let minutes = secs / 60;
+        format!("{minutes} minute{}", if minutes == 1 { "" } else { "s" })
+    } else {
+        format!("{secs}s")
+    };
+    format!(
+        "stalled: no output and no CPU use for {idle}, so it was stopped before its {timeout}s timeout"
+    )
 }
 
 /// Later entries replace earlier ones with the same key, keeping order.

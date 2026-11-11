@@ -25,10 +25,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use futures::future::BoxFuture;
 use sha2::Digest;
 use virtual_fs::{FileSystem, MountFileSystem, NullFile, RootFileSystemBuilder, TmpFileSystem};
 use wasmer::sys::NativeEngineExt;
@@ -40,6 +41,7 @@ use wasmer_wasix::bin_factory::{
 use wasmer_wasix::http::DynHttpClient;
 use wasmer_wasix::os::TtyBridge;
 use wasmer_wasix::runtime::module_cache::ModuleCache;
+use wasmer_wasix::runtime::module_cache::progress::ModuleLoadProgressReporter;
 use wasmer_wasix::runtime::package_loader::{PackageLoader, load_package_tree};
 use wasmer_wasix::runtime::resolver::{
     DistributionInfo, InMemorySource, PackageInfo, PackageSummary, Resolution, Source, WebcHash,
@@ -48,12 +50,13 @@ use wasmer_wasix::runtime::task_manager::VirtualTaskManager;
 use wasmer_wasix::runtime::{InstantiationState, ModuleInput, PluggableRuntime, TaintReason};
 use wasmer_wasix::virtual_net::DynVirtualNetworking;
 use wasmer_wasix::wasmer_wasix_types::wasi::{ExitCode, Signal};
-use wasmer_wasix::{Runtime as WasixRuntime, WasiEnvBuilder, WasiProcessId};
+use wasmer_wasix::{Runtime as WasixRuntime, SpawnError, WasiEnvBuilder, WasiProcessId};
 use webc::Container;
 
 use crate::cache::{ModuleStore, WasixCache};
 use crate::capture::Capture;
 use crate::limits::LimitingTunables;
+use crate::stall::{CpuMeter, JobTasks, StallWatch};
 use crate::{Error, Invocation, Outcome, Result, WebcPackage};
 
 /// The exit status reported for a job stopped by its timeout, as
@@ -144,6 +147,8 @@ impl JobControl {
 pub(crate) struct JobRuntime {
     inner: PluggableRuntime,
     control: Arc<JobControl>,
+    /// The module store, to say when a module is being loaded (stall.rs).
+    modules: Arc<ModuleStore>,
 }
 
 impl JobRuntime {
@@ -155,9 +160,12 @@ impl JobRuntime {
             &crate::node::NodeHooks,
         >,
         internet: bool,
+        cpu: Arc<CpuMeter>,
     ) -> Self {
         crate::signals::install();
-        let mut inner = PluggableRuntime::new(shared.tasks.clone());
+        // The shared threads, with the job's tasks counted by its meter
+        // (stall.rs).
+        let mut inner = PluggableRuntime::new(Arc::new(JobTasks::new(shared.tasks.clone(), cpu)));
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
         // public internet when the runtime offers it.
@@ -176,6 +184,7 @@ impl JobRuntime {
         Self {
             inner,
             control: Arc::default(),
+            modules: shared.store.clone(),
         }
     }
 }
@@ -183,7 +192,7 @@ impl JobRuntime {
 #[cfg(test)]
 impl JobRuntime {
     pub(crate) fn for_tests(shared: &WasixShared, engine: Engine) -> Self {
-        Self::new(shared, engine, None, None, false)
+        Self::new(shared, engine, None, None, false, Arc::default())
     }
 }
 
@@ -210,6 +219,24 @@ impl WasixRuntime for JobRuntime {
 
     fn engine(&self) -> Engine {
         self.inner.engine()
+    }
+
+    /// Every way wasmer-wasix loads a module for a job comes through here:
+    /// from the cache, or compiled on a miss. Either holds the shared
+    /// engine's lock, so the store is told for as long as it takes, however
+    /// it ends (stall.rs).
+    fn resolve_module<'a>(
+        &'a self,
+        input: ModuleInput<'a>,
+        engine: Option<&Engine>,
+        on_progress: Option<ModuleLoadProgressReporter>,
+    ) -> BoxFuture<'a, std::result::Result<Module, SpawnError>> {
+        let working = self.modules.working();
+        let load = self.inner.resolve_module(input, engine, on_progress);
+        Box::pin(async move {
+            let _working = working;
+            load.await
+        })
     }
 
     fn new_store(&self) -> wasmer::Store {
@@ -535,6 +562,9 @@ pub(crate) enum Entry<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Caps {
     pub(crate) output_bytes: usize,
+    /// Stop the job once it has gone this long without output or CPU use
+    /// (stall.rs); `None` waits for the timeout.
+    pub(crate) stall_after: Option<Duration>,
 }
 
 pub(crate) fn run(
@@ -557,7 +587,18 @@ pub(crate) fn run(
         Entry::Module(_) => None,
         Entry::Command { packages, .. } => Some(PackageSet::new(shared, packages)?),
     };
-    let runtime = JobRuntime::new(shared, engine, package_set.as_ref(), node, inv.internet);
+    let cpu = Arc::new(CpuMeter::default());
+    // This thread works for the job too: it loads the job's packages and
+    // modules and starts its first process, then waits for it.
+    let _driving = cpu.enter();
+    let runtime = JobRuntime::new(
+        shared,
+        engine,
+        package_set.as_ref(),
+        node,
+        inv.internet,
+        cpu.clone(),
+    );
     let control = runtime.control.clone();
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
 
@@ -576,8 +617,14 @@ pub(crate) fn run(
     let job_keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).chain(["PWD"]).collect();
     let uses = command_env_as_defaults(uses, &job_keys);
 
-    let stdout = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stdout);
-    let stderr = Capture::new(caps.output_bytes).with_sink(inv.log.clone(), crate::Stream::Stderr);
+    // Bytes written to either stream, which the stall check watches.
+    let written = Arc::new(AtomicU64::new(0));
+    let stdout = Capture::new(caps.output_bytes)
+        .with_sink(inv.log.clone(), crate::Stream::Stdout)
+        .counting(written.clone());
+    let stderr = Capture::new(caps.output_bytes)
+        .with_sink(inv.log.clone(), crate::Stream::Stderr)
+        .counting(written.clone());
 
     let mut builder = WasiEnvBuilder::new(program);
     builder.add_args(inv.args.iter());
@@ -653,12 +700,36 @@ pub(crate) fn run(
             process.signal_process(Signal::Sigkill)
         });
     };
-    let (result, timed_out) = tokio.block_on(async {
+    let (result, stopped) = tokio.block_on(async {
         let mut finished = Box::pin(handle.wait_finished());
-        let deadline = tokio::time::Instant::from_std(deadline);
-        if let Ok(result) = tokio::time::timeout_at(deadline, &mut finished).await {
-            return (Some(result), false);
-        }
+        let output = || written.load(Ordering::Relaxed);
+        let mut watch = caps
+            .stall_after
+            .and_then(|after| StallWatch::new(after, Instant::now(), output(), cpu.total()));
+        let stopped = loop {
+            let wake = match &watch {
+                Some(watch) => deadline.min(Instant::now() + watch.every()),
+                None => deadline,
+            };
+            let wake = tokio::time::Instant::from_std(wake);
+            if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
+                return (Some(result), None);
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                break Stop::Timeout;
+            }
+            if let Some(watch) = &mut watch
+                && watch.stalled(
+                    now,
+                    output(),
+                    cpu.total(),
+                    cpu.is_busy() || shared.store.is_working(),
+                )
+            {
+                break Stop::Stalled;
+            }
+        };
         // An interrupt is best effort (it can land just before a guest
         // enters wasm, and a process blocked in a syscall only sees the
         // signal when it wakes), so both are repeated until the job ends.
@@ -666,7 +737,7 @@ pub(crate) fn run(
         while Instant::now() < grace {
             kill();
             if let Ok(result) = tokio::time::timeout(KILL_POLL, &mut finished).await {
-                return (Some(result), true);
+                return (Some(result), Some(stopped));
             }
         }
         // Still running: mark every process finished so the job returns.
@@ -676,8 +747,10 @@ pub(crate) fn run(
             process.terminate(ExitCode::from(TIMEOUT_EXIT_CODE as u16))
         });
         let result = tokio::time::timeout(KILL_POLL, &mut finished).await.ok();
-        (result, true)
+        (result, Some(stopped))
     });
+    let timed_out = stopped == Some(Stop::Timeout);
+    let stalled = stopped == Some(Stop::Stalled);
 
     let result = match result {
         Some(result) => result,
@@ -705,7 +778,7 @@ pub(crate) fn run(
     // What the runner knows of a failure that the job's own output does not
     // say, added to its log, which is all a one-off like #955 leaves behind.
     let mut notes = Vec::new();
-    if !timed_out && exit_code != 0 {
+    if stopped.is_none() && exit_code != 0 {
         // A trap in a child process or a guest thread: wasmer-wasix prints
         // it on the runner's stderr and the script carries on, or fails
         // somewhere else, with nothing to show for it.
@@ -732,7 +805,7 @@ pub(crate) fn run(
         }
     }
     Ok(Outcome {
-        exit_code: if timed_out {
+        exit_code: if stopped.is_some() {
             TIMEOUT_EXIT_CODE
         } else {
             exit_code
@@ -742,9 +815,18 @@ pub(crate) fn run(
         truncated: out.truncated || err.truncated,
         duration: started.elapsed(),
         timed_out,
+        stalled_after: caps.stall_after.filter(|_| stalled),
         out_of_memory: hit_memory.load(Ordering::Acquire),
-        error: if timed_out { None } else { error },
+        error: if stopped.is_some() { None } else { error },
     })
+}
+
+/// Why the runner stopped a job that had not exited.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stop {
+    Timeout,
+    /// No output and no CPU use for `Caps::stall_after` (stall.rs).
+    Stalled,
 }
 
 /// Compiles every command of `packages` into the module cache, so the
@@ -762,6 +844,7 @@ pub(crate) fn prepare(
         Some(&set),
         None,
         false,
+        Arc::default(),
     );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
     for package in binary_packages(shared, &set, &runtime, tokio)? {

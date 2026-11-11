@@ -187,11 +187,26 @@ after 11.9.9 are V8 15.9 (`wasmerio/v8-custom-builds` 15.9.111.0 and
 11.9.9: when a wasmer-napi release targets 15.9, rebase this patch onto it
 without this hunk.
 
+**And: whose a worker task is.** V8's garbage collection and background
+compilation run on one process-wide worker pool, so their CPU time belongs
+to no job, and the runner's stall check (#938, `iwci-runtime/src/stall.rs`)
+counts a job's CPU time to tell a hung job from a quiet one: a job waiting
+on a long background compile would look hung. `set_worker_task_hooks`
+(`src/lib.rs`, through `snapi_bridge_set_worker_task_hooks` to
+`EdgeV8Platform::SetWorkerTaskHooks`) takes four callbacks: `capture` on the
+thread that posts a worker task, immediate or delayed, returning a token for
+whoever that thread works for, `enter` and `exit` on the pool thread around
+the task, and `release` when the task is destroyed. The runner counts the
+pool thread's CPU time for the posting job between `enter` and `exit`.
+Nothing upstream does this; a tree without it still builds if
+`stall::node_hooks` goes, and the stall check then misses that work.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
 and either a guest's event loop is kept alive and woken for its isolate's
-background work or the pinned Edge.js does that itself: delete
+background work or the pinned Edge.js does that itself, and the stall check
+has another way to count V8's worker threads or goes without: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs and one that compiles WebAssembly

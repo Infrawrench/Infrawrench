@@ -179,6 +179,48 @@ class OwnedWorkerTask final : public v8::Task {
   std::unique_ptr<v8::Task> task_;
 };
 
+// iwci patch (#938): see EdgeV8Platform::SetWorkerTaskHooks.
+struct WorkerTaskHooks {
+  void* (*capture)() = nullptr;
+  void (*enter)(void*) = nullptr;
+  void (*exit)(void*) = nullptr;
+  void (*release)(void*) = nullptr;
+};
+std::atomic<const WorkerTaskHooks*> g_worker_task_hooks {nullptr};
+
+// A worker task that tells the embedder whose it is while it runs.
+class AttributedWorkerTask final : public v8::Task {
+ public:
+  AttributedWorkerTask(const WorkerTaskHooks* hooks,
+                       void* token,
+                       std::unique_ptr<v8::Task> task)
+      : hooks_(hooks), token_(token), task_(std::move(task)) {}
+
+  ~AttributedWorkerTask() override {
+    task_.reset();
+    hooks_->release(token_);
+  }
+
+  void Run() override {
+    hooks_->enter(token_);
+    task_->Run();
+    hooks_->exit(token_);
+  }
+
+ private:
+  const WorkerTaskHooks* hooks_;
+  void* token_;
+  std::unique_ptr<v8::Task> task_;
+};
+
+std::unique_ptr<v8::Task> AttributeWorkerTask(std::unique_ptr<v8::Task> task) {
+  const WorkerTaskHooks* hooks = g_worker_task_hooks.load(std::memory_order_acquire);
+  if (hooks == nullptr) return task;
+  void* token = hooks->capture();
+  if (token == nullptr) return task;
+  return std::make_unique<AttributedWorkerTask>(hooks, token, std::move(task));
+}
+
 void RunForegroundTaskRecord(napi_env /*env*/, void* data) {
   auto* record = static_cast<ForegroundTaskRecord*>(data);
   if (record != nullptr && record->task) {
@@ -363,6 +405,20 @@ bool EdgeV8Platform::SetWorkerThreadCount(int count) {
   }
   g_worker_thread_count.store(requested, std::memory_order_release);
   return true;
+}
+
+void EdgeV8Platform::SetWorkerTaskHooks(void* (*capture)(),
+                                        void (*enter)(void*),
+                                        void (*exit)(void*),
+                                        void (*release)(void*)) {
+  // Never freed: a task posted before a later call may still hold the old
+  // set, and this is called once per process.
+  auto* hooks = new WorkerTaskHooks();
+  hooks->capture = capture;
+  hooks->enter = enter;
+  hooks->exit = exit;
+  hooks->release = release;
+  g_worker_task_hooks.store(hooks, std::memory_order_release);
 }
 
 std::unique_ptr<EdgeV8Platform> EdgeV8Platform::Create() {
@@ -680,6 +736,8 @@ void EdgeV8Platform::PostTaskOnWorkerThreadImpl(v8::TaskPriority priority,
                                                std::unique_ptr<v8::Task> task,
                                                const v8::SourceLocation& location) {
   if (fallback_ != nullptr) {
+    // iwci patch (#938): and its CPU time against whoever posted it.
+    task = AttributeWorkerTask(std::move(task));
     // iwci patch (#943): counted against the isolate it is for.
     if (std::shared_ptr<IsolateState> owner = CurrentWorkOwner()) {
       task = std::make_unique<OwnedWorkerTask>(std::move(owner), std::move(task));
@@ -694,6 +752,8 @@ void EdgeV8Platform::PostDelayedTaskOnWorkerThreadImpl(
     double delay_in_seconds,
     const v8::SourceLocation& location) {
   if (fallback_ != nullptr) {
+    // iwci patch (#938)
+    task = AttributeWorkerTask(std::move(task));
     fallback_->PostDelayedTaskOnWorkerThread(priority, std::move(task), delay_in_seconds, location);
   }
 }

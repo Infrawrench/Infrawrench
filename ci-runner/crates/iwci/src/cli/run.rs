@@ -4,6 +4,7 @@
 //! iwci run --repo https://github.com/org/repo --sha <commit> --repo-id <id>
 //!          [--branch main] [--event push|pull-request] [--base <sha>]
 //!          [--pipeline <file.yml>] [--cpus <n>] [--memory <size>] [--json]
+//!          [--stall-after 5m | --stall-after 0]
 //!          [--default-branch main]
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
 //!          [--var NAME=value]...
@@ -15,7 +16,7 @@
 
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -35,6 +36,9 @@ pub(super) struct Limits {
     pub cpus: usize,
     pub jobs_per_cpu: usize,
     pub memory: Option<u64>,
+    /// Stop a job after this long with no output and no CPU use; `None`
+    /// leaves hung jobs to their timeout.
+    pub stall_after: Option<Duration>,
 }
 
 pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
@@ -79,6 +83,23 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
         ),
         None => None,
     };
+    // A job that neither prints nor computes for this long is hung (#938);
+    // `0` turns the check off.
+    let stall_after = match args
+        .value("--stall-after")?
+        .or_else(|| std::env::var("IWCI_STALL_AFTER").ok())
+    {
+        Some(text) if text.trim() == "0" => None,
+        Some(text) => Some(
+            iwci_spec::parse_duration_secs(&text)
+                .filter(|&s| s >= 10)
+                .map(Duration::from_secs)
+                .ok_or_else(|| {
+                    format!("--stall-after takes a duration of at least 10s, such as `5m`, or 0 for none, not `{text}`")
+                })?,
+        ),
+        None => Some(iwci_runtime::DEFAULT_STALL_AFTER),
+    };
     // Wasmer compiles modules on rayon's global pool; size it before the
     // first compile so `--cpus` holds there too.
     let _ = rayon::ThreadPoolBuilder::new()
@@ -88,6 +109,7 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
         cpus,
         jobs_per_cpu,
         memory,
+        stall_after,
     })
 }
 
@@ -118,7 +140,8 @@ pub(super) fn open_runner(
     // loopback or private addresses; see iwci-runtime's network.rs.
     let runtime = iwci_runtime::Runtime::with_threads(cache.join("modules"), Some(limits.cpus))
         .map_err(|e| e.to_string())?
-        .with_internet();
+        .with_internet()
+        .with_stall_after(limits.stall_after);
     let slots = limits.cpus * limits.jobs_per_cpu;
     Ok(Runner {
         runtime: Arc::new(runtime),

@@ -510,6 +510,14 @@ extern "C" int snapi_bridge_set_v8_worker_thread_count(uint32_t count) {
   return EdgeV8Platform::SetWorkerThreadCount(static_cast<int>(count)) ? 1 : 0;
 }
 
+// iwci patch (#938): host-only, see EdgeV8Platform::SetWorkerTaskHooks.
+extern "C" void snapi_bridge_set_worker_task_hooks(void* (*capture)(),
+                                                   void (*enter)(void*),
+                                                   void (*exit)(void*),
+                                                   void (*release)(void*)) {
+  EdgeV8Platform::SetWorkerTaskHooks(capture, enter, exit, release);
+}
+
 extern "C" int snapi_bridge_init() {
   // Intentionally do not create a N-API env here.
   // Env creation is deferred until the guest explicitly calls
