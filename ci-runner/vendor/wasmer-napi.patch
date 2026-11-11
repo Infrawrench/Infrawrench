@@ -63,7 +63,7 @@
          .call()
 --- a/src/budget.rs
 +++ b/src/budget.rs
-@@ -53,12 +53,45 @@
+@@ -53,12 +53,51 @@
  const MIB: u64 = 1024 * 1024;
  
  /// Initial `max_old_generation_size` charged per V8 isolate at env creation.
@@ -86,11 +86,17 @@
 +/// third as often as with V8's default. Reserved up front like any explicit
 +/// young-generation request.
 +pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
-+/// iwci patch: the old generation an isolate starts with when others are
-+/// already live (a `worker_threads` Worker, or a second `node` of the job):
-+/// the published default, so a pool of workers fits in a job's memory; each
-+/// grows through the near-heap-limit grants like the first.
++/// iwci patch: the old generation a `worker_threads` Worker starts with when
++/// other isolates are already live: the published default, so a pool of
++/// workers fits in a job's memory; each grows through the near-heap-limit
++/// grants like the first. A second `node` of the job is not a worker: it
++/// starts from [`DEFAULT_INITIAL_ISOLATE_HEAP`] (see [`IsolateRole`]).
 +pub const DEFAULT_LATER_ISOLATE_HEAP: u64 = 64 * MIB;
++/// iwci patch: the young generation a second `node` of a job gets when the
++/// budget left for it is too small for [`DEFAULT_YOUNG_GENERATION`]: V8's own
++/// default for a heap that size is a few MiB, which promotes nearly every
++/// short-lived object into the old generation.
++pub const DEFAULT_PROCESS_YOUNG_GENERATION: u64 = 64 * MIB;
 +/// iwci patch: the least old generation a clamped default reservation may
 +/// get. Less is refused, so the guest reports a clean "cannot create" error
 +/// instead of an isolate that is terminated by its first allocation.
@@ -112,12 +118,10 @@
  /// Fixed per-isolate overhead charged to cover young generation, code range,
  /// and V8's own malloc'd metadata without sampling.
  pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
-@@ -155,8 +188,49 @@
-     pub v8_external: u64,
-     /// Number of live V8 isolates (envs) counted against `max_envs`.
+@@ -157,6 +196,47 @@
      pub live_isolates: usize,
-+}
-+
+ }
+ 
 +/// iwci patch (#964, #972): what the budget refused or stopped, so an
 +/// embedder can say that a program failed for want of memory. Counts since
 +/// the budget was made; all zero means memory never ran short.
@@ -136,8 +140,8 @@
 +    /// Growths of the guest heap (`ArrayBuffer` and `Buffer` memory) refused
 +    /// by the budget.
 +    pub buffers_refused: u64,
- }
- 
++}
++
 +impl MemoryExhaustion {
 +    /// The app's JavaScript was stopped for memory: nothing it runs from
 +    /// now on will get anywhere, and a lost heap's thread never returns.
@@ -162,7 +166,28 @@
  /// The (possibly clamped) heap constraints a guest requested for a new V8 env.
  /// Fields are bytes; `0` means "unset" (V8 picks its default).
  #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-@@ -207,6 +281,8 @@
+@@ -166,6 +246,20 @@
+     pub code_range: u32,
+ }
+ 
++/// iwci patch: what a new V8 env is for, which decides the heap it starts
++/// with once other isolates of the app are live.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum IsolateRole {
++    /// A `worker_threads` Worker, or anything not known to be a process's
++    /// main isolate: the small published default, so a pool of them fits.
++    #[default]
++    Worker,
++    /// The main isolate of a guest process (the first env on its linear
++    /// memory), such as a `node` that another `node` of the job spawned. It
++    /// runs a whole program, so it starts with the first isolate's defaults.
++    Process,
++}
++
+ /// The outcome of reserving budget for a new V8 env: the constraints to forward
+ /// to V8 (clamped to fit the budget) and the ceiling charged for them.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -207,6 +301,8 @@
      v8_external: AtomicU64,
      /// Live V8 isolates (envs), counted against `max_envs`.
      live_isolates: AtomicUsize,
@@ -171,7 +196,7 @@
  }
  
  impl std::fmt::Debug for ResourceBudget {
-@@ -257,6 +333,7 @@
+@@ -257,6 +353,7 @@
              v8_heap_reserved: AtomicU64::new(0),
              v8_external: AtomicU64::new(0),
              live_isolates: AtomicUsize::new(0),
@@ -179,7 +204,7 @@
          })
      }
  
-@@ -269,6 +346,7 @@
+@@ -269,6 +366,7 @@
              v8_heap_reserved: AtomicU64::new(0),
              v8_external: AtomicU64::new(0),
              live_isolates: AtomicUsize::new(0),
@@ -187,7 +212,7 @@
          }
      }
  
-@@ -380,9 +458,29 @@
+@@ -380,6 +478,26 @@
              v8_heap_reserved: self.v8_heap_reserved.load(Ordering::Acquire),
              v8_external: self.v8_external.load(Ordering::Acquire),
              live_isolates: self.live_isolates.load(Ordering::Acquire),
@@ -202,24 +227,40 @@
 +            heaps_lost: e.heaps_lost.load(Ordering::Acquire),
 +            isolates_refused: e.isolates_refused.load(Ordering::Acquire),
 +            buffers_refused: e.buffers_refused.load(Ordering::Acquire),
-         }
-     }
- 
++        }
++    }
++
 +    /// A growth of the guest heap was refused by this budget.
 +    pub(crate) fn note_buffer_refused(&self) {
 +        if !self.is_unlimited() {
 +            self.exhaustion
 +                .buffers_refused
 +                .fetch_add(1, Ordering::AcqRel);
-+        }
+         }
+     }
+ 
+@@ -411,11 +529,27 @@
+         req: RequestedHeap,
+         max_envs: Option<usize>,
+     ) -> Result<HeapReservation, EnvRejected> {
++        self.try_reserve_env_as(req, max_envs, IsolateRole::Worker)
 +    }
 +
-     /// Number of live V8 isolates counted against `max_envs`.
-     pub fn live_isolates(&self) -> usize {
-         self.live_isolates.load(Ordering::Acquire)
-@@ -416,6 +514,9 @@
++    /// [`try_reserve_env`] for an env whose [`IsolateRole`] is known (iwci
++    /// patch).
++    ///
++    /// [`try_reserve_env`]: ResourceBudget::try_reserve_env
++    pub fn try_reserve_env_as(
++        &self,
++        req: RequestedHeap,
++        max_envs: Option<usize>,
++        role: IsolateRole,
++    ) -> Result<HeapReservation, EnvRejected> {
+         if !self.try_acquire_isolate(max_envs) {
+             return Err(EnvRejected::TooManyEnvs);
          }
-         let Some(reservation) = self.plan_heap_reservation(req) else {
+-        let Some(reservation) = self.plan_heap_reservation(req) else {
++        let Some(reservation) = self.plan_heap_reservation(req, role) else {
              self.release_isolate();
 +            self.exhaustion
 +                .isolates_refused
@@ -227,7 +268,7 @@
              return Err(EnvRejected::HeapDoesNotFit);
          };
          if self
-@@ -423,6 +524,9 @@
+@@ -423,6 +557,9 @@
              .is_err()
          {
              self.release_isolate();
@@ -237,7 +278,20 @@
              return Err(EnvRejected::HeapDoesNotFit);
          }
          Ok(reservation)
-@@ -480,16 +584,40 @@
+@@ -469,7 +606,11 @@
+     /// the default old-generation ceiling and per-isolate overhead. Returns
+     /// `None` if not even the minimum viable ceiling fits. Under an unlimited
+     /// budget the request passes through unchanged and uncharged.
+-    fn plan_heap_reservation(&self, req: RequestedHeap) -> Option<HeapReservation> {
++    fn plan_heap_reservation(
++        &self,
++        req: RequestedHeap,
++        role: IsolateRole,
++    ) -> Option<HeapReservation> {
+         if self.is_unlimited() {
+             return Some(HeapReservation {
+                 max_young: req.max_young,
+@@ -480,16 +621,53 @@
              });
          }
  
@@ -251,7 +305,18 @@
 +        // worker env", most of it never used. The first isolate
 +        // (`try_acquire_isolate` has already counted this one) plans against
 +        // everything with the larger defaults, as before.
++        //
++        // A later isolate that is a process's main one (a `node` another
++        // `node` of the job spawned: Vitest's forks, a package script) keeps
++        // the quarter but asks for the first isolate's 256 MiB, and a young
++        // generation of 64 MiB when the default does not fit. On 64 MiB its
++        // working set sat between V8's GC trigger, halfway from the live
++        // size to the limit, and the 80% at which V8 asks the near-heap-limit
++        // callback for more: it never grew, and ran a full mark-compact every
++        // few megabytes it allocated, which was half of every Vitest jsdom
++        // fork's CPU time (2,075 mark-compacts in 24 test files; 61 after).
 +        let later = self.live_isolates() > 1;
++        let process = later && role == IsolateRole::Process;
 +        let remaining = if later {
 +            self.memory_remaining() / 4
 +        } else {
@@ -268,6 +333,8 @@
 +            u64::from(req.max_young)
 +        } else if remaining >= 4 * DEFAULT_YOUNG_GENERATION {
 +            DEFAULT_YOUNG_GENERATION
++        } else if process && remaining >= 4 * DEFAULT_PROCESS_YOUNG_GENERATION {
++            DEFAULT_PROCESS_YOUNG_GENERATION
 +        } else {
 +            0
 +        };
@@ -281,11 +348,11 @@
          if remaining <= fixed {
              return None;
          }
-@@ -497,16 +625,18 @@
+@@ -497,16 +675,18 @@
          let old_available = remaining - fixed;
          let requested_old = if req.max_old > 0 {
              u64::from(req.max_old)
-+        } else if later {
++        } else if later && !process {
 +            DEFAULT_LATER_ISOLATE_HEAP
          } else {
              DEFAULT_INITIAL_ISOLATE_HEAP
@@ -302,7 +369,7 @@
              max_old: u32::try_from(old).unwrap_or(u32::MAX),
              code_range: req.code_range,
              ceiling_bytes: fixed + old,
-@@ -528,13 +658,20 @@
+@@ -528,13 +708,20 @@
      pub(crate) unwind_slack_available: AtomicBool,
      /// Bytes granted beyond the initial ceiling by grow-step grants.
      pub(crate) granted: AtomicU64,
@@ -325,7 +392,7 @@
  /// isolate termination and expose the pre-reserved unwind slack once. A second
  /// denial leaves the limit unchanged, so the quota cannot be expanded repeatedly. The budget is atomic, so this is safe
  /// to call concurrently with charges on other threads.
-@@ -555,28 +692,86 @@
+@@ -555,28 +742,86 @@
      }
      // SAFETY: see the function's safety contract.
      let tracker = unsafe { &*(data as *const EnvHeapCharge) };
@@ -419,7 +486,7 @@
  }
  
  /// The live charge for one physical wasm-memory allocation.
-@@ -1041,9 +1236,11 @@
+@@ -1041,9 +1286,11 @@
              .expect("env fits");
          assert!(res.clamped);
          // Default old-gen (64 MiB) fits, plus 8 MiB overhead and 16 MiB unwind slack.
@@ -434,7 +501,7 @@
          assert_eq!(budget.live_isolates(), 1);
  
          budget.release_env(res.ceiling_bytes);
-@@ -1054,7 +1251,7 @@
+@@ -1054,7 +1301,7 @@
      #[test]
      fn env_reservation_clamps_old_gen_to_fit() {
          // Only 40 MiB: overhead (8) and unwind slack (16) leave 16 MiB for
@@ -443,7 +510,7 @@
          let budget = ResourceBudget::with_memory_limit(40 * MIB);
          let res = budget
              .try_reserve_env(RequestedHeap::default(), None)
-@@ -1154,6 +1351,8 @@
+@@ -1154,6 +1401,8 @@
              host_stopped: Arc::clone(&host_stopped),
              unwind_slack_available: AtomicBool::new(true),
              granted: AtomicU64::new(0),
@@ -452,7 +519,7 @@
          }));
          let data = ptr as *const c_void;
          let base = 100 * 1024 * 1024usize;
-@@ -1174,24 +1373,34 @@
+@@ -1174,24 +1423,34 @@
  
          // Budget exhaustion requests termination and exposes the already-reserved
          // unwind slack exactly once.
@@ -498,13 +565,10 @@
  
          // The tracker recorded exactly what was granted, and releasing it (as
          // env teardown does) returns the pool to zero.
-@@ -1200,9 +1409,54 @@
-         assert_eq!(granted, 2 * DEFAULT_HEAP_GROW_STEP);
-         budget.uncharge(Pool::V8HeapReserved, granted + DEFAULT_UNWIND_SLACK);
-         assert_eq!(budget.snapshot().v8_heap_reserved, 0);
-+    }
-+
-+    #[test]
+@@ -1203,6 +1462,51 @@
+     }
+ 
+     #[test]
 +    fn a_lost_heap_stops_the_app_and_is_counted() {
 +        let budget = ResourceBudget::with_memory_limit(64 * MIB);
 +        let host_stopped = Arc::new(AtomicBool::new(false));
@@ -524,9 +588,9 @@
 +        assert_eq!(budget.exhaustion().heaps_lost, 1);
 +        assert!(budget.exhaustion().stopped());
 +        drop(unsafe { Box::from_raw(ptr) });
-     }
- 
-     #[test]
++    }
++
++    #[test]
 +    fn a_refused_isolate_is_counted_but_does_not_stop_the_app() {
 +        let budget = ResourceBudget::with_memory_limit(DEFAULT_PER_ISOLATE_OVERHEAD);
 +        assert_eq!(
@@ -553,7 +617,7 @@
      fn near_heap_limit_callback_ignores_null_data() {
          assert_eq!(
              napi_host_near_heap_limit_grant(std::ptr::null(), 42, 7),
-@@ -1318,4 +1572,50 @@
+@@ -1318,4 +1622,92 @@
          assert_eq!(accountant.memory_charged(), 40);
          assert_eq!(budget.snapshot().v8_heap_reserved, 0);
      }
@@ -601,6 +665,48 @@
 +            budget.release_env(res.ceiling_bytes);
 +        }
 +        budget.release_env(first.ceiling_bytes);
++        assert_eq!(budget.snapshot().v8_heap_reserved, 0);
++    }
++
++    #[test]
++    fn a_second_process_starts_with_the_first_isolates_old_generation() {
++        let budget = ResourceBudget::with_memory_limit(4096 * MIB);
++        let first = budget
++            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
++            .expect("fits");
++        assert_eq!(u64::from(first.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
++        // 4096 - 472 = 3624 MiB left; a quarter (906) holds the default young
++        // generation four times over.
++        let child = budget
++            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
++            .expect("fits");
++        assert_eq!(u64::from(child.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
++        assert_eq!(u64::from(child.max_young), DEFAULT_YOUNG_GENERATION);
++        // A worker of either keeps the small default.
++        let worker = budget
++            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Worker)
++            .expect("fits");
++        assert_eq!(u64::from(worker.max_old), DEFAULT_LATER_ISOLATE_HEAP);
++        // Less left: a quarter under four default young generations still
++        // gets the smaller one, not V8's few MiB.
++        let mut held = Vec::new();
++        while budget.memory_remaining() / 4 >= 4 * DEFAULT_YOUNG_GENERATION {
++            held.push(
++                budget
++                    .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
++                    .expect("fits"),
++            );
++        }
++        let squeezed = budget
++            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
++            .expect("fits");
++        assert_eq!(
++            u64::from(squeezed.max_young),
++            DEFAULT_PROCESS_YOUNG_GENERATION
++        );
++        for res in held.into_iter().chain([squeezed, worker, child, first]) {
++            budget.release_env(res.ceiling_bytes);
++        }
 +        assert_eq!(budget.snapshot().v8_heap_reserved, 0);
 +    }
  }
@@ -667,7 +773,17 @@
  use std::ffi::c_void;
  use std::sync::Arc;
  use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-@@ -87,6 +87,25 @@
+@@ -11,7 +11,8 @@
+ use wasmer::{Function, Memory, Table};
+ 
+ use crate::budget::{
+-    EnvHeapCharge, EnvRejected, HeapReservation, Pool, RequestedHeap, ResourceBudget,
++    EnvHeapCharge, EnvRejected, HeapReservation, IsolateRole, Pool, RequestedHeap,
++    ResourceBudget,
+ };
+ use crate::snapi::{
+     SnapiEnv, snapi_bridge_unofficial_release_env,
+@@ -87,6 +88,25 @@
      tracker: usize,
  }
  
@@ -693,7 +809,7 @@
  pub(crate) struct NapiEnv {
      /// The app's shared accountant. V8 env (isolate) heap ceilings and the
      /// `max_envs` isolate count are charged against it; workers share the same
-@@ -94,7 +113,7 @@
+@@ -94,7 +114,7 @@
      pub(crate) budget: Arc<ResourceBudget>,
      /// Per-app cap on live V8 isolates (`None` = unlimited).
      pub(crate) max_envs: Option<usize>,
@@ -702,7 +818,7 @@
      host_stopped: Arc<AtomicBool>,
      /// Heap charge per live V8 env, keyed by guest env id, so teardown releases
      /// exactly what creation charged plus what the callback later granted.
-@@ -129,7 +148,7 @@
+@@ -129,7 +149,7 @@
      /// unconditional store growth. See `guest::callback::call_guest_callback`.
      pub(crate) func_cache: HashMap<u32, Function>,
      pub(crate) default_napi_env_id: Option<u32>,
@@ -711,7 +827,7 @@
      pub(crate) next_napi_scope_id: u32,
      pub(crate) napi_envs: HashMap<u32, usize>,
      pub(crate) napi_state_to_guest_env: HashMap<usize, u32>,
-@@ -168,7 +187,7 @@
+@@ -168,7 +188,7 @@
      pub(crate) fn new(
          budget: Arc<ResourceBudget>,
          max_envs: Option<usize>,
@@ -720,7 +836,7 @@
          host_stopped: Arc<AtomicBool>,
      ) -> Self {
          Self {
-@@ -187,7 +206,7 @@
+@@ -187,7 +207,7 @@
              table: None,
              func_cache: HashMap::new(),
              default_napi_env_id: None,
@@ -729,7 +845,30 @@
              next_napi_scope_id: 0,
              napi_envs: HashMap::new(),
              napi_state_to_guest_env: HashMap::new(),
-@@ -277,7 +296,7 @@
+@@ -259,7 +279,21 @@
+         &self,
+         requested: RequestedHeap,
+     ) -> Result<HeapReservation, EnvRejected> {
+-        self.budget.try_reserve_env(requested, self.max_envs)
++        // iwci patch: every thread of a guest process has a session of its
++        // own on the process's one linear memory, and every session holds
++        // the memory's guest heap. Only this session holding it means no
++        // other thread of the process is running: this env is the process's
++        // main isolate, not a Worker's. A process that starts threads before
++        // its first env is taken for a worker, which is the old behaviour.
++        #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
++        let role = match &self.guest_heap {
++            Some(heap) if Arc::strong_count(heap) == 1 => IsolateRole::Process,
++            _ => IsolateRole::Worker,
++        };
++        #[cfg(all(target_arch = "wasm32", feature = "js"))]
++        let role = IsolateRole::Worker;
++        self.budget
++            .try_reserve_env_as(requested, self.max_envs, role)
+     }
+ 
+     /// Register a successfully-created env, attach its heap charge, and — under
+@@ -277,7 +311,7 @@
                  .env_registry
                  .lock()
                  .expect("poisoned N-API env registry");
@@ -738,7 +877,7 @@
  
              // If the host already stopped this app's JS, an isolate created
              // afterwards must not start running either. Checking under the
-@@ -288,7 +307,7 @@
+@@ -288,7 +322,7 @@
              if self.host_stopped.load(Ordering::Acquire) {
                  // SAFETY: `env` is the isolate just created and is still live.
                  unsafe {
@@ -747,7 +886,7 @@
                  }
              }
          }
-@@ -300,6 +319,8 @@
+@@ -300,6 +334,8 @@
                  host_stopped: Arc::clone(&self.host_stopped),
                  unwind_slack_available: std::sync::atomic::AtomicBool::new(true),
                  granted: AtomicU64::new(0),
@@ -756,7 +895,7 @@
              }));
              // SAFETY: `env` is the isolate just created; `boxed` outlives the
              // callback (freed only at this env's teardown, below).
-@@ -388,18 +409,30 @@
+@@ -388,18 +424,30 @@
      }
  
      pub(crate) fn register_napi_env(&mut self, env: SnapiEnv) -> (u32, u32) {
@@ -795,7 +934,7 @@
          self.napi_envs.insert(env_id, env as usize);
          self.napi_state_to_guest_env.insert(env as usize, env_id);
          self.napi_scopes.insert(scope_id, env_id);
-@@ -460,7 +493,8 @@
+@@ -460,7 +508,8 @@
          self.env_registry
              .lock()
              .expect("poisoned N-API env registry")
@@ -805,7 +944,7 @@
  
          // Leases are environment-owned resources. Explicit release publishes
          // writes; environment teardown only discards snapshots and returns any
-@@ -502,6 +536,28 @@
+@@ -502,6 +551,28 @@
          Some(env)
      }
  
@@ -834,7 +973,7 @@
      pub(crate) fn resolve_napi_env(&self, guest_env: i32) -> SnapiEnv {
          let env_id = if guest_env > 0 {
              guest_env as u32
-@@ -546,7 +602,7 @@
+@@ -546,7 +617,7 @@
          let mut env = NapiEnv::new(
              Arc::clone(&budget),
              None,
@@ -843,7 +982,7 @@
              Arc::new(AtomicBool::new(false)),
          );
  
-@@ -575,7 +631,7 @@
+@@ -575,7 +646,7 @@
              let mut env = NapiEnv::new(
                  Arc::clone(&budget),
                  None,
@@ -852,7 +991,7 @@
                  Arc::new(AtomicBool::new(false)),
              );
              assert!(env.charge_declared_external(4 * MIB));
-@@ -593,7 +649,7 @@
+@@ -593,7 +664,7 @@
          let mut env = NapiEnv::new(
              ResourceBudget::unlimited(),
              None,
@@ -1035,8 +1174,8 @@
  pub use budget::{
 -    EnvRejected, HeapReservation, NapiMemoryAccountant, OverBudget, Pool, RequestedHeap,
 -    ResourceBudget, ResourceUsage,
-+    EnvRejected, HeapReservation, MemoryExhaustion, NapiMemoryAccountant, OverBudget, Pool,
-+    RequestedHeap, ResourceBudget, ResourceUsage,
++    EnvRejected, HeapReservation, IsolateRole, MemoryExhaustion, NapiMemoryAccountant,
++    OverBudget, Pool, RequestedHeap, ResourceBudget, ResourceUsage,
  };
  pub use ctx::{
      NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,

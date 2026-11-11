@@ -621,6 +621,37 @@ jobs:
     run: |
       printf '#!/bin/no-such-interpreter\necho ran\n' > s
       node -e 'try { require("child_process").execFileSync("./s") } catch (e) { console.error(e.code); process.exit(e.code === "ENOENT" ? 1 : 2) }'
+  # A `node` that another `node` forks gets the first isolate's old
+  # generation; a Worker keeps the small start. Forks once started from
+  # 64 MiB like workers, where a test file's working set never grew the heap
+  # and V8 collected all of it every few megabytes allocated, half of a
+  # jsdom Vitest run's CPU (vendor/README.md).
+  child-heap-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    memory: 2GiB
+    timeout: 3m
+    run: |
+      cat > /tmp/heap.js <<'JS'
+      const { fork } = require("node:child_process");
+      const { Worker } = require("node:worker_threads");
+      const limit = 'Math.round(require("node:v8").getHeapStatistics().heap_size_limit / 2 ** 20)';
+      if (process.argv[2] === "child") {
+        process.send(eval(limit));
+      } else {
+        const child = fork(__filename, ["child"]);
+        child.once("message", (forked) => {
+          const w = new Worker(`require("node:worker_threads").parentPort.postMessage(${limit})`, { eval: true });
+          w.once("message", (worker) => {
+            console.log(`forked ${forked} worker ${worker}`);
+            const ok = forked >= 256 && worker < 256;
+            child.kill();
+            w.terminate().then(() => process.exit(ok ? 0 : 1));
+          });
+        });
+      }
+      JS
+      node /tmp/heap.js
   # A script that never yields must still be stopped by the job's timeout.
   spin-fails:
     using: env:bash-node@24

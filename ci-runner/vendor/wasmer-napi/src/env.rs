@@ -11,7 +11,8 @@ use wasmer::TypedFunction;
 use wasmer::{Function, Memory, Table};
 
 use crate::budget::{
-    EnvHeapCharge, EnvRejected, HeapReservation, Pool, RequestedHeap, ResourceBudget,
+    EnvHeapCharge, EnvRejected, HeapReservation, IsolateRole, Pool, RequestedHeap,
+    ResourceBudget,
 };
 use crate::snapi::{
     SnapiEnv, snapi_bridge_unofficial_release_env,
@@ -278,7 +279,21 @@ impl NapiEnv {
         &self,
         requested: RequestedHeap,
     ) -> Result<HeapReservation, EnvRejected> {
-        self.budget.try_reserve_env(requested, self.max_envs)
+        // iwci patch: every thread of a guest process has a session of its
+        // own on the process's one linear memory, and every session holds
+        // the memory's guest heap. Only this session holding it means no
+        // other thread of the process is running: this env is the process's
+        // main isolate, not a Worker's. A process that starts threads before
+        // its first env is taken for a worker, which is the old behaviour.
+        #[cfg(not(all(target_arch = "wasm32", feature = "js")))]
+        let role = match &self.guest_heap {
+            Some(heap) if Arc::strong_count(heap) == 1 => IsolateRole::Process,
+            _ => IsolateRole::Worker,
+        };
+        #[cfg(all(target_arch = "wasm32", feature = "js"))]
+        let role = IsolateRole::Worker;
+        self.budget
+            .try_reserve_env_as(requested, self.max_envs, role)
     }
 
     /// Register a successfully-created env, attach its heap charge, and — under

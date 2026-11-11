@@ -111,6 +111,23 @@ keeps the larger defaults. A clamped default reservation under 16 MiB is
 refused, so the guest reports "cannot create" instead of getting an isolate
 its first allocation terminates.
 
+That 64 MiB start was meant for workers, but it also caught every `node` a
+job's `node` spawns, such as Vitest's forks, one per test file, and those
+never grew out of it. V8 starts a full mark-compact when the old generation
+reaches halfway from its live size to the limit, and asks the
+near-heap-limit callback for more only past 80% of the limit: a jsdom test
+file's 40 MB of live heap sat between the two, so the fork ran a full
+mark-compact every few megabytes it allocated, with a young generation of a
+few MiB promoting nearly everything into it (V8 sizes the young generation
+from the old one when the guest names none). That was half of the CPU time
+of a jsdom Vitest run: 2,075 mark-compacts over 24 of `ui`'s test files.
+`src/env.rs` now tells a process's main isolate from a worker's (the first
+env on a guest process's linear memory is the only session holding its
+guest heap), and `src/budget.rs` gives the former the first isolate's
+256 MiB old generation, still against a quarter of what is left, and a
+64 MiB young generation where the 192 MiB default does not fit: 61
+mark-compacts over the same files. Workers keep the small start.
+
 **And: a guest heap keeps its memory mapped (#955).** The bridge allocates
 every `ArrayBuffer` backing store inside the guest's linear memory, through
 one `GuestHeap` per memory, found in a process-wide registry keyed by the
