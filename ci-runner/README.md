@@ -525,11 +525,21 @@ ending) a `node` now and then lost a thread to a trap in its first
 instructions and died without a word. The patched exit sends that result
 to static storage.
 
+24.0.3 adds a patch to Edge.js's own source (`edgejs-worker-stop.patch`,
+#938). Edge.js stops a Worker by terminating its isolate and setting a flag
+its event loop checks between turns, but V8 lifts a termination once the
+JavaScript it interrupted has unwound, and the worker's message port went
+on to dispatch the next queued message in the same turn. A handler that
+blocked in `Atomics.wait` then blocked for good, and the parent waited
+forever to join the thread: rolldown's wasm worker threads idle exactly
+that way, so about one tsdown bundle in 300 to 600 printed its result and
+never exited. A stopped worker now drops its queued messages, as Node does.
+
 The build is reproducible, and without the patches it gives back Wasmer's
-module bit for bit (`EDGEJS_VERIFY=1`), so the two C library objects are
-the whole difference. Drop each patch when the sysroot Edge.js builds on
+module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
+difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
 has its fix, and go back to pinning Wasmer's package once a release has
-both.
+all three.
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
