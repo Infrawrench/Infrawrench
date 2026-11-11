@@ -443,13 +443,12 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
   .apps-panel {
     grid-area: 1 / 1;
     min-width: 0;
+    /* Swapped at once: a cross-fade between two screenshots of the same
+       window reads as a flicker. */
     visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.25s;
   }
   .apps-panel[data-active='true'] {
     visibility: visible;
-    opacity: 1;
   }
   .apps-foot {
     display: flex;
@@ -485,7 +484,6 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .apps-panel,
     .apps-grid button {
       transition: none;
     }
