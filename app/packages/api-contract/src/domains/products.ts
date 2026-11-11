@@ -4,7 +4,7 @@
  * Infrastructure off; a turned-off app leaves Home, the sidebar and the
  * Tools launcher, and its tools are refused for the chat agent and the MCP
  * server. Any member may read it, since every client needs it to draw its
- * navigation; changing it is `org:settings:write`.
+ * navigation; changing it is `org:apps:write`, which owners and admins hold.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
@@ -56,7 +56,7 @@ export class ProductsGroup extends HttpApiGroup.make("products")
       success: OrgProductPolicy,
       error: BadRequest,
     })
-      .annotate(RequiredPermission, "org:settings:write")
+      .annotate(RequiredPermission, "org:apps:write")
       .annotate(OpenApi.Summary, "Set the apps the organization has turned off")
       .annotate(
         OpenApi.Description,

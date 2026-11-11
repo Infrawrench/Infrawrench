@@ -51,7 +51,7 @@ describe("GET /products", () => {
 
 describe("PUT /products", () => {
   it("saves the list and records the change", async () => {
-    const res = await buildApp(["org:settings:write"]).request(
+    const res = await buildApp(["org:apps:write"]).request(
       "/",
       put({ disabled: ["costs", "automation"] }),
     );
@@ -67,7 +67,7 @@ describe("PUT /products", () => {
     );
   });
 
-  it("refuses a caller without org:settings:write", async () => {
+  it("refuses a caller without org:apps:write", async () => {
     const res = await buildApp(["resources:read"]).request("/", put({ disabled: [] }));
     expect(res.status).toBe(403);
     expect(mockSet).not.toHaveBeenCalled();
@@ -75,14 +75,14 @@ describe("PUT /products", () => {
 
   it("answers 400 with the store's sentence for a refused app", async () => {
     mockSet.mockRejectedValue(new MockProductSettingsError("Unknown app: billing"));
-    const res = await buildApp(["org:settings:write"]).request("/", put({ disabled: ["billing"] }));
+    const res = await buildApp(["org:apps:write"]).request("/", put({ disabled: ["billing"] }));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Unknown app: billing" });
     expect(mockLogAudit).not.toHaveBeenCalled();
   });
 
   it("answers 400 for a body that is not a list of ids", async () => {
-    const res = await buildApp(["org:settings:write"]).request("/", put({ disabled: "costs" }));
+    const res = await buildApp(["org:apps:write"]).request("/", put({ disabled: "costs" }));
     expect(res.status).toBe(400);
     expect(mockSet).not.toHaveBeenCalled();
   });

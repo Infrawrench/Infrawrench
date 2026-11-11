@@ -437,7 +437,8 @@
 // not in the document, like the chat turn stream). Additive.
 // 1.102.0: the app is presented as products ("apps"). `home` in the tab kinds,
 // with the `productId` a product page's tab is on; the organization's product
-// policy (`GET|PUT /api/org/:orgId/products`, the apps turned off); accounts
+// policy (`GET|PUT /api/org/:orgId/products`, the apps turned off, written
+// with the new `org:apps:write` permission); accounts
 // carry `products`, the apps a connection is for (create, update, list,
 // detail); `product` on a plugin's preflight capability; and
 // `POST /accounts/{id}/sync` and `sync-type` answer 400 for a costs-only

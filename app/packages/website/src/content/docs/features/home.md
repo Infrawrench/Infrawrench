@@ -125,7 +125,7 @@ An organization that does not use an app can turn it off. Open **Settings**, the
 
 Infrastructure cannot be turned off, so it is not on the page. It holds your accounts and resources, which every other app reads.
 
-**Who can do it.** Changing the switches needs the `org:settings:write` permission. Owners hold it. The built-in Admin role does not, so an admin sees the page but cannot change it. A [custom role](../team-and-billing/roles-and-permissions.md) can be given the permission. Every member can open the page and see which apps are on.
+**Who can do it.** Changing the switches needs the `org:apps:write` permission. Owners and admins hold it, and a [custom role](../team-and-billing/roles-and-permissions.md) can be given it. Every member can open the page and see which apps are on. Agent credentials can never hold it, because the switches decide which tools agents get.
 
 **What it hides.** An app that is off is removed from:
 

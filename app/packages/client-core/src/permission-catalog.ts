@@ -183,5 +183,12 @@ export const ALL_PERMISSIONS = [
   // what keeps an object whose owner left manageable. Admins and owners hold
   // it through their catalog-derived sets; members do not.
   "sharing:override",
+  // Turn the organization's apps on and off (Settings > Apps). Its own
+  // permission rather than `org:settings:write` so the built-in Admin role
+  // holds it through its catalog-derived set: which apps a team uses is an
+  // admin's call, where `org:settings:write` gates what only owners decide.
+  // No agent credential can hold it: the policy decides which tools agents
+  // get, so an agent that could change it could widen its own reach.
+  "org:apps:write",
   "org:settings:write",
 ] as const;

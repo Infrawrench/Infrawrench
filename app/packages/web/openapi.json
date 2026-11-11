@@ -23688,6 +23688,7 @@
           "invoices:issue",
           "pages:write",
           "sharing:override",
+          "org:apps:write",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
@@ -125532,7 +125533,7 @@
             }
           }
         },
-        "description": "Replaces the list. An unknown app id, or an app that cannot be turned off (`infrastructure`), is refused with a 400 and nothing is saved.\n\n_Requires permission: `org:settings:write`._",
+        "description": "Replaces the list. An unknown app id, or an app that cannot be turned off (`infrastructure`), is refused with a 400 and nothing is saved.\n\n_Requires permission: `org:apps:write`._",
         "summary": "Set the apps the organization has turned off",
         "requestBody": {
           "content": {
@@ -125544,7 +125545,7 @@
           },
           "required": true
         },
-        "x-required-permission": "org:settings:write",
+        "x-required-permission": "org:apps:write",
         "operationId": "putOrgOrgIdProducts"
       }
     },

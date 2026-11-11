@@ -131,7 +131,10 @@ export const API_KEY_SCOPE_GROUPS: readonly ApiKeyScopeGroup[] = [
   },
   {
     title: "Organization",
-    scopes: [{ value: "org:settings:write", label: "Organization settings (write)" }],
+    scopes: [
+      { value: "org:apps:write", label: "Apps (turn on and off)" },
+      { value: "org:settings:write", label: "Organization settings (write)" },
+    ],
   },
 ] as const;
 
@@ -189,6 +192,7 @@ export const AGENT_DENIED_SCOPES: readonly string[] = [
   "apikeys:write",
   "billing:read",
   "billing:write",
+  "org:apps:write",
   "org:settings:write",
 ];
 

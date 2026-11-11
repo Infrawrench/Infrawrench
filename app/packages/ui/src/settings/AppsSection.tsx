@@ -22,7 +22,7 @@ interface ProductPolicy {
  * lose by leaving the page.
  *
  * Every member can see the page (the navigation they get depends on it);
- * the switches need `org:settings:write`, like the other org-wide policies.
+ * the switches need `org:apps:write`, which owners and admins hold.
  * Infrastructure cannot be turned off, so it is not listed: a switch that
  * never moves is noise.
  */
@@ -30,7 +30,7 @@ export function AppsSection() {
   const gt = useGT();
   const copy = useProductCopy();
   const { orgId, api, has } = useSettingsHost();
-  const canEdit = has("org:settings:write");
+  const canEdit = has("org:apps:write");
 
   const [disabled, setDisabled] = useState<ProductId[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +95,7 @@ export function AppsSection() {
         <>
           {!canEdit && (
             <p className="mb-4 text-xs text-on-surface-muted">
-              {gt("You need the org:settings:write permission to change which apps are on.")}
+              {gt("Only owners and admins can change which apps are on.")}
             </p>
           )}
           <ul className="divide-y divide-border rounded-xl border border-border bg-surface-raised/50">

@@ -41,6 +41,7 @@ export const AGENT_DENIED_PERMISSIONS: readonly string[] = [
   "apikeys:write",
   "billing:read",
   "billing:write",
+  "org:apps:write",
   "org:settings:write",
 ];
 
