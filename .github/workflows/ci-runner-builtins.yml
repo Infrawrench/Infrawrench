@@ -23,6 +23,9 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # The vendored V8 bridge is what runs Node jobs: a change to it alone
+      # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
+      - "ci-runner/vendor/**"
       - "ci-runner/crates/iwci/src/cli/publish.rs"
       - "ci-runner/Cargo.lock"
       - "ci-runner/rust-toolchain.toml"
@@ -33,6 +36,9 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # The vendored V8 bridge is what runs Node jobs: a change to it alone
+      # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
+      - "ci-runner/vendor/**"
       - "ci-runner/crates/iwci/src/cli/publish.rs"
       - "ci-runner/Cargo.lock"
       - "ci-runner/rust-toolchain.toml"
