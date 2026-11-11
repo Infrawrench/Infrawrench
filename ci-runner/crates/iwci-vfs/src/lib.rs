@@ -98,6 +98,13 @@ pub fn create_dir_all(fs: &(impl FileSystem + ?Sized), path: impl AsRef<Path>) -
     let mut current = PathBuf::from("/");
     for component in path.components().skip(1) {
         current.push(component);
+        // Looked up first: the in-memory file system's `create_dir` lists
+        // the whole directory to find out whether it exists, which made
+        // every file written under a `node_modules/.pnpm` of thousands of
+        // packages cost a listing of all of them (#998).
+        if fs.metadata(&current).is_ok_and(|m| m.is_dir()) {
+            continue;
+        }
         match fs.create_dir(&current) {
             Ok(()) | Err(FsError::AlreadyExists) => {}
             Err(source) => return Err(fs_err(&current)(source)),
@@ -461,15 +468,26 @@ impl SnapshotBuilder {
     /// Files go in as read-only views of the same buffers, so replaying a
     /// cached `node_modules` costs no copy of its contents.
     pub fn apply(&self, entries: &[Entry]) -> Result<()> {
+        // Directories already made or found by this call: a layer lists a
+        // directory once and then thousands of files in it, so each parent
+        // is looked up once rather than once per file.
+        let mut dirs: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut ensure_dir = |dir: &Path| -> Result<()> {
+            if !dirs.contains(dir) {
+                create_dir_all(&self.fs, dir)?;
+                dirs.insert(dir.to_path_buf());
+            }
+            Ok(())
+        };
         for entry in entries {
             match entry {
-                Entry::Dir { path } => create_dir_all(&self.fs, path)?,
+                Entry::Dir { path } => ensure_dir(&normalise(path)?)?,
                 Entry::File { path, data } => {
                     let path = normalise(path)?;
                     if let Some(parent) = path.parent() {
-                        create_dir_all(&self.fs, parent)?;
+                        ensure_dir(parent)?;
                     }
-                    let _ = self.fs.remove_file(&path);
+                    // `insert_ro_file` replaces what is at `path` itself.
                     self.fs
                         .new_open_options_ext()
                         .insert_ro_file(&path, data.clone())
@@ -477,8 +495,13 @@ impl SnapshotBuilder {
                 }
                 Entry::Symlink { path, target } => {
                     let path = normalise(path)?;
+                    if let Some(parent) = path.parent() {
+                        ensure_dir(parent)?;
+                    }
                     let _ = self.fs.remove_file(&path);
-                    symlink(&self.fs, &path, target)?;
+                    self.fs
+                        .create_symlink(target, &path)
+                        .map_err(fs_err(&path))?;
                 }
             }
         }

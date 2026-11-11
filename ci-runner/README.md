@@ -692,7 +692,8 @@ iwci plan .infrawrench/ci/tests.yml [--json]      # the expanded jobs
 iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
-         [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>]
+         [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
+         [--keep-installs-unpacked 24h]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
@@ -740,10 +741,28 @@ keeps every write to itself. Both are stored, and a later run reuses the
 result only when every recorded read still sees the same thing. So a bumped
 lockfile, an edited patch file or a newly added `.npmrc` is a miss, without
 any installer having to list its inputs. A runner process keeps recent
-installs in memory and replays them by sharing buffers; on disk each is one
-zstd stream with a checksum, so a damaged file is a miss. In the end-to-end
-run above, pnpm and Go together took 4.3 s cold (downloads, unpacking and
-first compilation) and came from the cache in 0.25 s for the whole pipeline.
+installs in memory and replays them by sharing buffers. On disk an install
+is kept **unpacked** while it is in use: its files' bytes back to back
+after an index, with a SHA-256 per 8 MiB. A new process restores one by
+mapping the file and checking the hashes on every core, with no decoding
+and no copy, so the restored files are page cache the kernel can reclaim
+rather than the runner's own memory. Infrawrench's own `node_modules` (1.8
+GB in 209,000 files) is read and checked in 0.16 s and in the workspace 1 s
+later. An install nobody has used for `--keep-installs-unpacked` (default
+`24h`, on `run` and `serve`) is **packed** into one zstd stream with a
+checksum (371 MB for that one, about 3 s) and its unpacked copy removed;
+the next use unpacks it again, 1.2 s more, and keeps both until it goes
+unused again. `iwci serve` packs in the background at start and every ten
+minutes, `iwci run` after its run. Each file's modification time is the
+install's last use, so the window survives a restart. A damaged file of
+either kind, or one an older runner wrote, is a miss. Disk use is bounded
+per install (ecosystem, directory and options): the four most recently used
+states of its inputs are kept, each unpacked at its full size while in use
+(plus its packed copy, if it has been packed before) and packed after, so a
+runner holds about the raw size of the installs it ran in the last day. In
+the end-to-end run above, pnpm and Go together took 4.3 s cold (downloads,
+unpacking and first compilation) and came from the cache in 0.25 s for the
+whole pipeline.
 
 ## Limits
 

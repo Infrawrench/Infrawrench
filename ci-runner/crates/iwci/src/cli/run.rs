@@ -7,7 +7,7 @@
 //!          [--stall-after 5m | --stall-after 0]
 //!          [--default-branch main]
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
-//!          [--var NAME=value]...
+//!          [--keep-installs-unpacked 24h] [--var NAME=value]...
 //! ```
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
@@ -136,6 +136,16 @@ pub(super) fn open_runner(
     )?;
     let cache = super::cache_dir(args)?;
     let store = super::store::open(args, &cache)?;
+    // How long a cached install stays unpacked on disk after its last use
+    // before it is packed (`iwci_deps::cache`).
+    let keep_unpacked = match args.value("--keep-installs-unpacked")? {
+        None => iwci_deps::cache::DEFAULT_KEEP_UNPACKED,
+        Some(text) => iwci_spec::parse_duration_secs(&text)
+            .map(Duration::from_secs)
+            .ok_or_else(|| {
+                format!("--keep-installs-unpacked takes a duration such as `24h`, not `{text}`")
+            })?,
+    };
     // Jobs reach the public internet (registries, APIs), never the host's
     // loopback or private addresses; see iwci-runtime's network.rs.
     let runtime = iwci_runtime::Runtime::with_threads(cache.join("modules"), Some(limits.cpus))
@@ -148,9 +158,10 @@ pub(super) fn open_runner(
         store,
         git: iwci_git::GitCache::new(cache.join("git")).map_err(|e| e.to_string())?,
         fetcher: Arc::new(iwci_deps::fetch::HttpFetcher::new().with_cache_dir(cache.join("deps"))),
-        layers: Arc::new(iwci_deps::cache::LayerCache::new(Some(
-            cache.join("installs"),
-        ))),
+        layers: Arc::new(
+            iwci_deps::cache::LayerCache::new(Some(cache.join("installs")))
+                .with_keep_unpacked(keep_unpacked),
+        ),
         cpus: limits.cpus,
         jobs_per_cpu: limits.jobs_per_cpu,
         slots: shared_slots.then(|| Arc::new(schedule::Slots::new(slots))),
@@ -216,6 +227,9 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
     }
 
     let output = runner.run(&request)?;
+    // Installs not used for `--keep-installs-unpacked` are packed now; a
+    // server does this in the background instead.
+    runner.layers.compact();
     if json {
         let out = Output {
             commit: &output.commit,

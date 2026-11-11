@@ -4,7 +4,7 @@
 //! IWCI_SERVER_KEY=<32+ chars> iwci serve [--listen 127.0.0.1:8547]
 //!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>] [--stall-after 5m]
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
-//!     [--warm-every 10m | --no-warm]
+//!     [--warm-every 10m | --no-warm] [--keep-installs-unpacked 24h]
 //!     [--update-channel stable [--update-every 5m]]
 //! ```
 //!
@@ -16,6 +16,9 @@
 //! Every published builtin and environment is downloaded and compiled when
 //! the server starts and again every `--warm-every`, so jobs never wait on
 //! a cold tool.
+//!
+//! Cached installs not used for `--keep-installs-unpacked` are packed in
+//! the background, once at start and then every ten minutes.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -30,6 +33,9 @@ const DEFAULT_STORAGE_QUOTA: u64 = 10 << 30;
 
 /// How often a server looks for newly published builtins to warm.
 const DEFAULT_WARM_EVERY_SECS: u64 = 600;
+
+/// How often a server packs the installs that have gone unused.
+const COMPACT_EVERY_SECS: u64 = 600;
 
 /// How often a server checks its release channel.
 const DEFAULT_UPDATE_EVERY_SECS: u64 = 300;
@@ -85,6 +91,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     if !no_warm {
         server.keep_warm(std::time::Duration::from_secs(warm_every));
     }
+    server.keep_installs_compact(std::time::Duration::from_secs(COMPACT_EVERY_SECS));
     server.serve(&listen)?;
     Ok(ExitCode::SUCCESS)
 }
