@@ -84,6 +84,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             scratch: Some(inv.scratch.as_dyn()),
             commands,
             internet: inv.job.network,
+            modes: inv.fs.modes(),
         };
 
         let outcome = match (tool, action) {

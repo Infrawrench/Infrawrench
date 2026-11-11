@@ -27,6 +27,8 @@ pub use virtual_fs;
 pub mod archive;
 mod limit;
 pub use limit::WriteBudget;
+pub mod modes;
+pub use modes::{Modes, TrackModes};
 
 /// The file system type a guest is given.
 pub type DynFs = Arc<dyn FileSystem + Send + Sync>;
@@ -315,6 +317,9 @@ pub struct SnapshotBuilder {
     /// Set on a [`SnapshotBuilder::layer`]: what reads fall back to, and the
     /// log of those reads.
     base: Option<Arc<ReadBase>>,
+    /// Modes given to paths (see `modes.rs`), such as the executable bit of
+    /// a checked-out file.
+    modes: std::sync::Mutex<BTreeMap<PathBuf, u32>>,
 }
 
 impl SnapshotBuilder {
@@ -342,7 +347,18 @@ impl SnapshotBuilder {
                 fs: self.fs.clone(),
                 reads: Default::default(),
             })),
+            modes: Default::default(),
         }
+    }
+
+    /// Gives `path` the mode `mode` (its permission bits) in the snapshot.
+    pub fn set_mode(&self, path: impl AsRef<Path>, mode: u32) -> Result<()> {
+        let path = normalise(path)?;
+        self.modes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(path, mode & modes::MODE_BITS);
+        Ok(())
     }
 
     pub fn write(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<()> {
@@ -474,6 +490,7 @@ impl SnapshotBuilder {
     pub fn freeze(self) -> Snapshot {
         Snapshot {
             fs: Arc::new(ReadOnlyFs(self.fs)),
+            modes: Arc::new(self.modes.into_inner().unwrap_or_else(|e| e.into_inner())),
         }
     }
 }
@@ -523,9 +540,16 @@ fn walk_no_follow(
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     fs: Arc<ReadOnlyFs>,
+    modes: modes::SnapshotModes,
 }
 
 impl Snapshot {
+    /// The mode the snapshot gave `path`, if it gave it one (a checked-out
+    /// executable); other paths have the default for their type.
+    pub fn mode(&self, path: impl AsRef<Path>) -> Option<u32> {
+        self.modes.get(path.as_ref()).copied()
+    }
+
     pub fn read(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
         read_file(self.fs.as_ref(), path)
     }
@@ -618,6 +642,7 @@ impl Snapshot {
             upper: upper.clone(),
             base: self.fs.clone(),
             budget,
+            modes: Modes::over(self.modes.clone()),
         };
         JobFs {
             overlay: Arc::new(overlay),
@@ -657,6 +682,11 @@ impl JobFs {
     /// What the guest is given.
     pub fn as_dyn(&self) -> DynFs {
         self.overlay.clone()
+    }
+
+    /// The job's file modes: the snapshot's, and what the job changed.
+    pub fn modes(&self) -> Modes {
+        self.overlay.modes.clone()
     }
 
     pub fn read(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
@@ -805,12 +835,15 @@ fn whiteout_path(path: &Path) -> Option<PathBuf> {
 /// - Recreating a deleted lower-layer directory drops its whiteout, and the
 ///   old contents come back. Real overlayfs marks such a directory opaque;
 ///   here every lower entry is whited out inside the new one instead.
+///
+/// It also keeps the job's file modes in step with its paths (`modes.rs`).
 #[derive(Debug)]
 pub struct JobOverlay {
     inner: OverlayFileSystem<TmpFileSystem, [Arc<ReadOnlyFs>; 1]>,
     upper: TmpFileSystem,
     base: Arc<ReadOnlyFs>,
     budget: Option<Arc<dyn WriteBudget>>,
+    modes: Modes,
 }
 
 impl JobOverlay {
@@ -914,6 +947,7 @@ impl FileSystem for JobOverlay {
         if self.base.metadata(path).is_ok_and(|m| m.is_dir()) {
             self.white_out(path)?;
         }
+        self.modes.removed(path);
         Ok(())
     }
     fn rename<'a>(
@@ -921,7 +955,11 @@ impl FileSystem for JobOverlay {
         from: &'a Path,
         to: &'a Path,
     ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
-        self.inner.rename(from, to)
+        Box::pin(async move {
+            self.inner.rename(from, to).await?;
+            self.modes.renamed(from, to);
+            Ok(())
+        })
     }
     fn metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
         self.inner.metadata(path)
@@ -933,6 +971,7 @@ impl FileSystem for JobOverlay {
         let size = self.upper_size(path);
         self.inner.remove_file(path)?;
         self.give(size);
+        self.modes.removed(path);
         Ok(())
     }
     fn new_open_options(&self) -> virtual_fs::OpenOptions<'_> {
@@ -1469,6 +1508,75 @@ mod tests {
         buf.extend_from_slice(&(evil.len() as u32).to_le_bytes());
         buf.extend_from_slice(evil.as_bytes());
         assert!(archive::decode(&mut buf.as_slice(), 1 << 20).is_err());
+    }
+
+    #[test]
+    fn modes_come_from_the_snapshot_and_follow_a_jobs_renames_and_removals() {
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/run.sh", b"#!/bin/sh\n").unwrap();
+        builder.write("/app/data.txt", b"x").unwrap();
+        builder.set_mode("/app/run.sh", 0o755).unwrap();
+        let snap = builder.freeze();
+        assert_eq!(snap.mode("/app/run.sh"), Some(0o755));
+        assert_eq!(snap.mode("/app/data.txt"), None);
+
+        let job = snap.fork();
+        let fs = job.as_dyn();
+        let modes = job.modes();
+        let mode = |path: &str, follow: bool| {
+            modes::mode_of(fs.as_ref(), &modes, Path::new(path), follow).map(|(_, m)| m)
+        };
+        assert_eq!(mode("/app/run.sh", true), Some(0o755));
+        assert_eq!(mode("/app/data.txt", true), Some(0o644));
+        assert_eq!(mode("/app", true), Some(0o755));
+        assert_eq!(mode("/app/missing", true), None);
+
+        // `chmod 600` then `mv`: the mode goes with the file, and a file
+        // created at the old path starts from the default. (The file is
+        // rewritten first: a file only in the snapshot cannot be renamed
+        // yet, #985.)
+        job.write("/app/data.txt", b"x").unwrap();
+        modes.set(Path::new("/app/data.txt"), 0o600);
+        block_on(fs.rename(Path::new("/app/data.txt"), Path::new("/app/secret.txt"))).unwrap();
+        assert_eq!(mode("/app/secret.txt", true), Some(0o600));
+        job.write("/app/data.txt", b"y").unwrap();
+        assert_eq!(mode("/app/data.txt", true), Some(0o644));
+
+        // Writing a file keeps its mode; removing it does not.
+        job.write("/app/secret.txt", b"rewritten").unwrap();
+        assert_eq!(mode("/app/secret.txt", true), Some(0o600));
+        job.remove_file("/app/run.sh").unwrap();
+        job.write("/app/run.sh", b"echo").unwrap();
+        assert_eq!(mode("/app/run.sh", true), Some(0o644));
+
+        // A symlink reads as its target's, or as itself without following.
+        symlink(fs.as_ref(), "/app/link", "secret.txt").unwrap();
+        assert_eq!(mode("/app/link", true), Some(0o600));
+        assert_eq!(mode("/app/link", false), Some(0o777));
+
+        // None of it reaches another job.
+        let other = snap.fork();
+        let other_mode = modes::mode_of(
+            other.as_dyn().as_ref(),
+            &other.modes(),
+            Path::new("/app/run.sh"),
+            true,
+        );
+        assert_eq!(other_mode.map(|(_, m)| m), Some(0o755));
+    }
+
+    #[test]
+    fn a_tracked_mount_keeps_modes_by_guest_path() {
+        let modes = Modes::default();
+        let tmp: DynFs = Arc::new(TmpFileSystem::new());
+        let mount = TrackModes::new(tmp, modes.clone(), "/tmp/workflow");
+        write_file(&mount, "/a", b"a").unwrap();
+        modes.set(Path::new("/tmp/workflow/a"), 0o600);
+        block_on(mount.rename(Path::new("/a"), Path::new("/b"))).unwrap();
+        assert_eq!(modes.get(Path::new("/tmp/workflow/a")), None);
+        assert_eq!(modes.get(Path::new("/tmp/workflow/b")), Some(0o600));
+        mount.remove_file(Path::new("/b")).unwrap();
+        assert_eq!(modes.get(Path::new("/tmp/workflow/b")), None);
     }
 
     #[test]

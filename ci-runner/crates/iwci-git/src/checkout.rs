@@ -27,8 +27,8 @@ pub struct Checkout {
     pub tree: String,
     /// Regular files, executables included.
     pub files: usize,
-    /// Of `files`, how many git records as executable. The in-memory file
-    /// system has no mode bits, so this is reported rather than applied.
+    /// Of `files`, how many git records as executable. Each gets mode
+    /// `0755` in the snapshot (`SnapshotBuilder::set_mode`).
     pub executables: usize,
     pub symlinks: usize,
     pub directories: usize,
@@ -61,9 +61,10 @@ const FILES_PER_THREAD: usize = 512;
 pub(crate) fn checkout(
     repo: &gix::Repository,
     commit: ObjectId,
-    fs: &mem_fs::FileSystem,
+    builder: &iwci_vfs::SnapshotBuilder,
     into: &str,
 ) -> Result<Checkout> {
+    let fs = builder.fs();
     let tree = find_commit(repo, commit)?.tree_id()?.detach();
     let root = iwci_vfs::normalise(into)?;
     prepare_root(fs, &root)?;
@@ -90,6 +91,9 @@ pub(crate) fn checkout(
     let Walker { files, mut out, .. } = walker;
     out.files = files.len();
     out.bytes = write_files(repo, fs, &files)?;
+    for job in files.iter().filter(|job| job.executable) {
+        builder.set_mode(&job.path, iwci_vfs::modes::EXECUTABLE_MODE)?;
+    }
     Ok(out)
 }
 
@@ -97,6 +101,8 @@ pub(crate) fn checkout(
 struct FileJob {
     path: PathBuf,
     id: ObjectId,
+    /// Git's `100755`.
+    executable: bool,
 }
 
 fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob]) -> Result<u64> {
@@ -228,6 +234,7 @@ impl Walker<'_> {
                     self.files.push(FileJob {
                         path: self.path.clone(),
                         id: entry.oid.to_owned(),
+                        executable: kind == EntryKind::BlobExecutable,
                     });
                     self.out.executables += usize::from(kind == EntryKind::BlobExecutable);
                     Ok(())

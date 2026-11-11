@@ -1,0 +1,196 @@
+#!/bin/bash
+# chmod(1) for CI jobs (#959). WASIX has no call that sets a file's mode,
+# so the runner keeps modes itself and this sets them through /proc/iwci
+# (ci-runner/crates/iwci-runtime/src/modes.rs). Modes are recorded, not
+# enforced: a job's user can do anything to its own files.
+set -u
+
+me='chmod'
+recursive=0 quiet=0 verbose=0 changes=0 reference='' status=0
+args=()
+usage() {
+  printf 'Usage: %s [-R] [-f] [-v] [-c] MODE[,MODE]... FILE...\n' "$me" >&2
+  printf '  or:  %s [-R] [-f] [-v] [-c] --reference=RFILE FILE...\n' "$me" >&2
+  exit 1
+}
+
+while (($#)); do
+  case "$1" in
+    -R | --recursive) recursive=1 ;;
+    -f | --silent | --quiet) quiet=1 ;;
+    -v | --verbose) verbose=1 ;;
+    -c | --changes) changes=1 ;;
+    --reference=*) reference=${1#--reference=} ;;
+    --) shift; args+=("$@"); break ;;
+    # A mode such as `-w` or `-x` looks like an option and is not one.
+    -[rwxXstugoa]*) args+=("$1") ;;
+    -[Rfvc]*)
+      # Bundled flags (`-Rf`).
+      flags=${1#-}
+      while [[ -n $flags ]]; do
+        case "${flags:0:1}" in
+          R) recursive=1 ;; f) quiet=1 ;; v) verbose=1 ;; c) changes=1 ;;
+          *) printf "%s: invalid option -- '%s'\n" "$me" "${flags:0:1}" >&2; usage ;;
+        esac
+        flags=${flags:1}
+      done
+      ;;
+    -?*) printf "%s: unrecognized option '%s'\n" "$me" "$1" >&2; usage ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+
+encode() {
+  local path
+  case "$1" in
+    /*) path=$1 ;;
+    *) path=${PWD%/}/$1 ;;
+  esac
+  path=${path//%/%25}
+  REPLY=${path//\//%2F}
+}
+
+# The type letter and mode of $1, symlinks followed (or not, with $2 = l),
+# into kind and mode; kind is `missing` when there is nothing there.
+describe() {
+  local raw
+  encode "$1"
+  kind='' raw=0
+  read -r kind raw _ <"/proc/iwci/${2:-}stat/$REPLY"
+  [[ -n $kind ]] || kind=missing
+  mode=$((8#${raw:-0} & 07777))
+}
+
+if [[ -n $reference ]]; then
+  describe "$reference"
+  if [[ $kind == missing ]]; then
+    printf "%s: failed to get attributes of '%s': No such file or directory\n" "$me" "$reference" >&2
+    exit 1
+  fi
+  spec=$(printf '%o' "$mode")
+else
+  ((${#args[@]} >= 1)) || { printf '%s: missing operand\n' "$me" >&2; usage; }
+  spec=${args[0]}
+  args=("${args[@]:1}")
+fi
+((${#args[@]} >= 1)) || { printf "%s: missing operand after '%s'\n" "$me" "$spec" >&2; usage; }
+
+# The umask a mode without `ugoa` is filtered by: a job's processes cannot
+# change it, so it is the usual one.
+umask_bits=022
+
+# The mode $spec makes of mode $1 for a file of kind $2, into REPLY; fails
+# on a mode it cannot read.
+apply() {
+  local current=$1 is_dir=0 clause who ops op perms bits mask c i
+  [[ $2 == d ]] && is_dir=1
+  if [[ $spec =~ ^[0-7]{1,4}$ ]]; then
+    REPLY=$((8#$spec))
+    # As GNU chmod does, a directory keeps its setuid and setgid bits
+    # unless the mode spells all four digits.
+    if ((is_dir)) && ((${#spec} < 4)); then
+      REPLY=$((REPLY | (current & 06000)))
+    fi
+    return 0
+  fi
+  local new=$current
+  IFS=, read -ra clauses <<<"$spec"
+  ((${#clauses[@]})) || return 1
+  for clause in "${clauses[@]}"; do
+    [[ $clause =~ ^([ugoa]*)(([-+=]([rwxXst]*|[ugo]))+)$ ]] || return 1
+    who=${BASH_REMATCH[1]}
+    ops=${BASH_REMATCH[2]}
+    # Which bits the clause may touch.
+    mask=0
+    [[ -z $who || $who == *[ua]* ]] && mask=$((mask | 04700))
+    [[ -z $who || $who == *[ga]* ]] && mask=$((mask | 02070))
+    [[ -z $who || $who == *[oa]* ]] && mask=$((mask | 01007))
+    while [[ -n $ops ]]; do
+      op=${ops:0:1}
+      ops=${ops:1}
+      perms=${ops%%[-+=]*}
+      ops=${ops:${#perms}}
+      bits=0
+      if [[ $perms == [ugo] ]]; then
+        # Copy one class's rwx to the others.
+        case $perms in
+          u) c=$(((current >> 6) & 7)) ;;
+          g) c=$(((current >> 3) & 7)) ;;
+          o) c=$((current & 7)) ;;
+        esac
+        bits=$(((c << 6) | (c << 3) | c))
+      else
+        for ((i = 0; i < ${#perms}; i++)); do
+          case "${perms:i:1}" in
+            r) bits=$((bits | 0444)) ;;
+            w) bits=$((bits | 0222)) ;;
+            x) bits=$((bits | 0111)) ;;
+            X) if ((is_dir || (current & 0111))); then bits=$((bits | 0111)); fi ;;
+            s) bits=$((bits | 06000)) ;;
+            t) bits=$((bits | 01000)) ;;
+          esac
+        done
+      fi
+      bits=$((bits & mask))
+      [[ -z $who ]] && bits=$((bits & ~umask_bits))
+      case $op in
+        +) new=$((new | bits)) ;;
+        -) new=$((new & ~bits)) ;;
+        =)
+          local keep=$((mask & 0777))
+          [[ -z $who ]] && keep=$((keep & ~umask_bits))
+          # `=` leaves a directory's setuid and setgid alone, as GNU does.
+          ((is_dir)) || keep=$((keep | (mask & 07000)))
+          new=$(((new & ~keep) | bits))
+          ;;
+      esac
+    done
+  done
+  REPLY=$new
+}
+
+change() {
+  local file=$1 enc old new
+  describe "$file"
+  if [[ $kind == missing ]]; then
+    ((quiet)) || printf "%s: cannot access '%s': No such file or directory\n" "$me" "$file" >&2
+    status=1
+    return
+  fi
+  old=$mode
+  if ! apply "$old" "$kind"; then
+    printf "%s: invalid mode: '%s'\n" "$me" "$spec" >&2
+    exit 1
+  fi
+  new=$REPLY
+  encode "$file"
+  enc=$REPLY
+  if ! printf '%o\n' "$new" 2>/dev/null >"/proc/iwci/mode/$enc"; then
+    ((quiet)) || printf "%s: changing permissions of '%s': Operation not permitted\n" "$me" "$file" >&2
+    status=1
+    return
+  fi
+  if ((verbose)) || { ((changes)) && ((old != new)); }; then
+    if ((old == new)); then
+      printf "mode of '%s' retained as %04o\n" "$file" "$new"
+    else
+      printf "mode of '%s' changed from %04o to %04o\n" "$file" "$old" "$new"
+    fi
+  fi
+  if ((recursive)) && [[ $kind == d ]]; then
+    local entry
+    shopt -s dotglob nullglob
+    for entry in "${file%/}"/*; do
+      # Symlinks met on the way down are left alone, as GNU chmod does.
+      describe "$entry" l
+      [[ $kind == l ]] && continue
+      change "$entry"
+    done
+  fi
+}
+
+for file in "${args[@]}"; do
+  change "$file"
+done
+exit "$status"

@@ -81,6 +81,8 @@ printf "export const n: number = 'one';\n" >"$repo/ts/bad/a.ts"
 printf 'export const a = { b: 1 };\n' >"$repo/js/clean/a.js"
 printf 'export const a={b:1}\n' >"$repo/js/dirty/a.js"
 printf 'fixture line\n' >"$repo/data.txt"
+printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
+chmod +x "$repo/run.sh"
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -196,6 +198,40 @@ jobs:
     run: |
       printf '#!/bin/cat\nhello\n' > s
       test "$(./s)" = "$(printf '#!/bin/cat\nhello')"
+  # File modes are kept (#959): set by chmod and mktemp, read by stat,
+  # moved by mv, and a checked-out executable is one.
+  modes-passes:
+    using: env:bash@5
+    run: |
+      test "$(stat -c %a run.sh)" = 755
+      test "$(stat -c %a data.txt)" = 644
+      echo secret > f
+      chmod 600 f
+      test "$(stat -c %a f)" = 600
+      test "$(stat -c '%A %F %s' f)" = "-rw------- regular file 7"
+      chmod u+x,go+r f
+      test "$(stat -c %a f)" = 744
+      chmod -x f
+      test "$(stat -c %a f)" = 644
+      chmod 640 f
+      mv f g
+      test "$(stat -c %a g)" = 640
+      mkdir -p tree/sub
+      touch tree/sub/x
+      chmod -R go-rwx tree
+      test "$(stat -c %a tree tree/sub/x)" = "$(printf '700\n600')"
+      umask 077
+      key="$(mktemp)"
+      test "$(stat -c %a "$key")" = 600
+      dir="$(mktemp -d)"
+      test "$(stat -c %a "$dir")" = 700
+      rm "$key"
+      touch "$key"
+      test "$(stat -c %a "$key")" = 644
+      stat run.sh
+  stat-missing-fails:
+    using: env:bash@5
+    run: stat no-such-file
 YAML
       ;;
     tools)
@@ -602,7 +638,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/stat-missing-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
