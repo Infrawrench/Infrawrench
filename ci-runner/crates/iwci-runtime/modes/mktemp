@@ -1,0 +1,124 @@
+#!/bin/bash
+# mktemp(1) for CI jobs (#959): GNU's options, with the file made mode 0600
+# and a directory 0700, which the coreutils build cannot do because WASIX
+# has no file modes. The runner keeps them and this sets them through
+# /proc/iwci (ci-runner/crates/iwci-runtime/src/modes.rs).
+set -u
+
+me='mktemp'
+directory=0 dry_run=0 quiet=0 use_tmpdir=0 tmpdir='' suffix='' legacy_t=0
+template=''
+have_template=0
+usage() {
+  printf 'Usage: %s [-d] [-u] [-q] [-p DIR | --tmpdir[=DIR]] [-t] [--suffix=SUFF] [TEMPLATE]\n' "$me" >&2
+  exit 1
+}
+fail() {
+  ((quiet)) || printf '%s: %s\n' "$me" "$1" >&2
+  exit 1
+}
+
+while (($#)); do
+  case "$1" in
+    -d | --directory) directory=1 ;;
+    -u | --dry-run) dry_run=1 ;;
+    -q | --quiet) quiet=1 ;;
+    -t) legacy_t=1 use_tmpdir=1 ;;
+    -p) (($# > 1)) || usage; use_tmpdir=1 tmpdir=$2; shift ;;
+    -p*) use_tmpdir=1 tmpdir=${1#-p} ;;
+    --tmpdir) use_tmpdir=1 ;;
+    --tmpdir=*) use_tmpdir=1 tmpdir=${1#--tmpdir=} ;;
+    --suffix=*) suffix=${1#--suffix=} ;;
+    --suffix) (($# > 1)) || usage; suffix=$2; shift ;;
+    --) shift; break ;;
+    -[dqut][dqut]*)
+      flags=${1#-}
+      while [[ -n $flags ]]; do
+        case "${flags:0:1}" in
+          d) directory=1 ;; u) dry_run=1 ;; q) quiet=1 ;; t) legacy_t=1 use_tmpdir=1 ;;
+          *) printf "%s: invalid option -- '%s'\n" "$me" "${flags:0:1}" >&2; usage ;;
+        esac
+        flags=${flags:1}
+      done
+      ;;
+    -?*) printf "%s: unrecognized option '%s'\n" "$me" "$1" >&2; usage ;;
+    *) break ;;
+  esac
+  shift
+done
+if (($#)); then
+  template=$1 have_template=1
+  shift
+fi
+(($# == 0)) || { printf '%s: too many templates\n' "$me" >&2; usage; }
+
+if ((!have_template)); then
+  template=tmp.XXXXXXXXXX
+  use_tmpdir=1
+fi
+# The X's are the trailing run of them, before the suffix: a template whose
+# last character is not an X has its suffix in it (GNU).
+if [[ -z $suffix && $template != *X ]]; then
+  suffix=${template##*X}
+  template=${template%"$suffix"}
+fi
+[[ $suffix != */* ]] || fail "invalid suffix '$suffix', contains directory separator"
+xs=${template##*[!X]}
+[[ $template == *X ]] || xs=''
+((${#xs} >= 3)) || fail "too few X's in template '$template$suffix'"
+# Relative to a directory: -p's or $TMPDIR or /tmp, and for the old -t,
+# $TMPDIR before -p's.
+if ((use_tmpdir)); then
+  if ((legacy_t)); then
+    tmpdir=${TMPDIR:-${tmpdir:-/tmp}}
+    [[ $template != */* ]] || fail "invalid template, '$template', contains directory separator"
+  else
+    tmpdir=${tmpdir:-${TMPDIR:-/tmp}}
+    [[ $template != /* ]] || fail "invalid template, '$template'; with --tmpdir, it may not be absolute"
+  fi
+  template=${tmpdir%/}/$template
+fi
+
+alphabet=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
+stem=${template%"$xs"}
+for ((attempt = 0; attempt < 100; attempt++)); do
+  random=''
+  for ((i = 0; i < ${#xs}; i++)); do
+    random+=${alphabet:RANDOM % 62:1}
+  done
+  path=$stem$random$suffix
+  if ((dry_run)); then
+    [[ -e $path || -L $path ]] && continue
+    printf '%s\n' "$path"
+    exit 0
+  fi
+  if ((directory)); then
+    mkdir -- "$path" 2>/dev/null || { [[ -e $path ]] && continue; fail "failed to create directory via template '$template$suffix': No such file or directory"; }
+    mode=700
+  else
+    # noclobber makes the redirection an exclusive create (O_EXCL). It
+    # refuses any redirection to an existing file, /dev/null included, so
+    # stderr is quietened before it is set.
+    exec {stderr}>&2 2>/dev/null
+    set -C
+    created=0
+    : >"$path" && created=1
+    set +C
+    exec 2>&"$stderr" {stderr}>&-
+    if ((!created)); then
+      [[ -e $path || -L $path ]] && continue
+      fail "failed to create file via template '$template$suffix': No such file or directory"
+    fi
+    mode=600
+  fi
+  case "$path" in
+    /*) absolute=$path ;;
+    *) absolute=${PWD%/}/$path ;;
+  esac
+  encoded=${absolute//%/%25}
+  encoded=${encoded//\//%2F}
+  printf '%s\n' "$mode" >"/proc/iwci/mode/$encoded"
+  printf '%s\n' "$path"
+  exit 0
+done
+fail "failed to create file via template '$template$suffix': File exists"

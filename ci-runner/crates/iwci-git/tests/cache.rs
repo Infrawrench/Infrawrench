@@ -122,6 +122,12 @@ fn shallow_fetch_then_checkout_writes_files_symlinks_and_skips_submodules() {
     // An existing empty directory is fine.
     builder.mkdir_all("/other").unwrap();
     remote.checkout_into(&second, &builder, "/other").unwrap();
+
+    // Git's executable bit is the file's mode in the snapshot (#959).
+    let snapshot = builder.freeze();
+    assert_eq!(snapshot.mode("/app/bin/run.sh"), Some(0o755));
+    assert_eq!(snapshot.mode("/other/bin/run.sh"), Some(0o755));
+    assert_eq!(snapshot.mode("/app/README.md"), None);
 }
 
 #[test]

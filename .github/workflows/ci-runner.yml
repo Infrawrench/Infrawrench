@@ -58,7 +58,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/lib.sh builtins/test.sh builtins/publish.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/lib.sh builtins/test.sh builtins/publish.sh crates/iwci-runtime/modes/*
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures

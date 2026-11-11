@@ -472,47 +472,88 @@ pub(crate) fn node_options(env: &[(String, String)]) -> String {
 
 /// The root file system of a job: the job's own file system at `/`, with
 /// scratch mounts that keep WASIX's own files out of `JobFs::changes`.
+///
+/// A shell job (`shell`) also gets the mode commands in `/usr/local/bin` and
+/// the file system they work through (`modes.rs`). Every mount but the job's
+/// own (which does it itself) is wrapped so that removing or renaming a file
+/// moves its mode in `modes`.
 fn job_root(
     fs: crate::DynFs,
     scratch: Option<crate::DynFs>,
     commands: &[crate::PathCommand],
     node_support: bool,
+    shell: bool,
+    modes: &iwci_vfs::Modes,
 ) -> Result<MountFileSystem> {
-    let root = MountFileSystem::new();
-    let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
-    root.mount(Path::new("/"), fs).map_err(mount_err)?;
+    type Dyn = Arc<dyn FileSystem + Send + Sync>;
+    let tracked =
+        |fs: Dyn, at: &str| -> Dyn { Arc::new(iwci_vfs::TrackModes::new(fs, modes.clone(), at)) };
+    // (where, the path in the file system that appears there, what)
+    let mut mounts: Vec<(&str, &str, Dyn)> = vec![("/", "/", fs)];
     // /dev/null, /dev/zero, /dev/urandom and /dev/std{in,out,err} (which
-    // name the process's own descriptors), and an empty /tmp.
-    let system: Arc<dyn FileSystem + Send + Sync> =
-        Arc::new(RootFileSystemBuilder::default().build_tmp());
-    root.mount_with_source(Path::new("/dev"), Path::new("/dev"), system.clone())
-        .map_err(mount_err)?;
-    root.mount_with_source(Path::new("/tmp"), Path::new("/tmp"), system)
-        .map_err(mount_err)?;
+    // name the process's own descriptors), and an empty /tmp. Both mounts
+    // are given their own paths, so their paths are the guest's.
+    let system = tracked(Arc::new(RootFileSystemBuilder::default().build_tmp()), "/");
+    mounts.push(("/dev", "/dev", system.clone()));
+    mounts.push(("/tmp", "/tmp", system));
     // wasmer-wasix writes every package command's wasm into /bin and
     // /usr/bin so a shell can find it on PATH.
-    root.mount(Path::new("/bin"), Arc::new(TmpFileSystem::new()))
-        .map_err(mount_err)?;
-    root.mount(Path::new("/usr/bin"), Arc::new(TmpFileSystem::new()))
-        .map_err(mount_err)?;
-    if let Some(scratch) = scratch {
-        root.mount(Path::new(crate::SCRATCH_MOUNT), scratch)
-            .map_err(mount_err)?;
+    for dir in ["/bin", "/usr/bin"] {
+        mounts.push((dir, "/", tracked(Arc::new(TmpFileSystem::new()), dir)));
     }
-    if !commands.is_empty() {
+    if let Some(scratch) = scratch {
+        mounts.push((
+            crate::SCRATCH_MOUNT,
+            "/",
+            tracked(scratch, crate::SCRATCH_MOUNT),
+        ));
+    }
+    if !commands.is_empty() || shell {
         let bin = TmpFileSystem::new();
+        if shell {
+            for (name, bytes) in crate::modes::MODE_COMMANDS {
+                write_command(&bin, name, bytes)?;
+            }
+        }
+        // A tool of the same name wins over a mode command.
         for command in commands {
             write_command(&bin, &command.name, &command.module.bytes)?;
         }
-        root.mount(Path::new("/usr/local/bin"), Arc::new(bin))
-            .map_err(mount_err)?;
+        mounts.push((
+            "/usr/local/bin",
+            "/",
+            tracked(Arc::new(bin), "/usr/local/bin"),
+        ));
     }
     if node_support {
         let dir = TmpFileSystem::new();
         for (name, bytes) in NODE_SUPPORT {
             write_command(&dir, name, bytes)?;
         }
-        root.mount(Path::new(NODE_SUPPORT_DIR), Arc::new(dir))
+        mounts.push((
+            NODE_SUPPORT_DIR,
+            "/",
+            tracked(Arc::new(dir), NODE_SUPPORT_DIR),
+        ));
+    }
+
+    let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
+    let build = |mounts: &[(&str, &str, Dyn)]| -> Result<MountFileSystem> {
+        let root = MountFileSystem::new();
+        for (at, source, fs) in mounts {
+            root.mount_with_source(Path::new(at), Path::new(source), fs.clone())
+                .map_err(mount_err)?;
+        }
+        Ok(root)
+    };
+    let root = build(&mounts)?;
+    if shell {
+        // The mode files see the same mounts, without themselves. Package
+        // volumes wasmer-wasix mounts later (Edge.js's npm) are not among
+        // them, so a mode command does not see those.
+        let view: Dyn = Arc::new(build(&mounts)?);
+        let control = crate::modes::ModeControl::new(view, modes.clone());
+        root.mount(Path::new(crate::modes::MODES_DIR), Arc::new(control))
             .map_err(mount_err)?;
     }
     Ok(root)
@@ -661,6 +702,8 @@ pub(crate) fn run(
         inv.scratch.clone(),
         &inv.commands,
         node_support,
+        matches!(entry, Entry::Command { .. }),
+        &inv.modes,
     )?);
     // WASIX programs ask the runtime for their working directory. Plain WASI
     // ones built on wasi-libc cannot be given one: their cwd is always `/`,

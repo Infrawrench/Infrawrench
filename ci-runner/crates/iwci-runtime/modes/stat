@@ -1,0 +1,194 @@
+#!/bin/bash
+# stat(1) for CI jobs (#959). WASIX has no file modes, so the runner keeps
+# them and describes files through /proc/iwci
+# (ci-runner/crates/iwci-runtime/src/modes.rs); this formats what it says
+# the way GNU stat does. Not supported: -f (file system status). Inode and
+# device numbers are not known and read 0, and owners read as the job's
+# user, which has no name.
+set -u
+
+me='stat'
+deref=0 format='' terse=0 escapes=0 status=0
+files=()
+usage() {
+  printf 'Usage: %s [-L] [-c FORMAT | --printf=FORMAT | -t] FILE...\n' "$me" >&2
+  exit 1
+}
+
+while (($#)); do
+  case "$1" in
+    -L | --dereference) deref=1 ;;
+    -c | --format) (($# > 1)) || usage; format=$2; shift ;;
+    -c*) format=${1#-c} ;;
+    --format=*) format=${1#--format=} ;;
+    --printf) (($# > 1)) || usage; format=$2; escapes=1; shift ;;
+    --printf=*) format=${1#--printf=}; escapes=1 ;;
+    -t | --terse) terse=1 ;;
+    -Lc*) deref=1; format=${1#-Lc} ;;
+    --) shift; files+=("$@"); break ;;
+    -f | --file-system) printf '%s: -f is not supported in this environment\n' "$me" >&2; exit 1 ;;
+    -?*) printf "%s: invalid option -- '%s'\n" "$me" "${1#-}" >&2; usage ;;
+    *) files+=("$1") ;;
+  esac
+  shift
+done
+((${#files[@]})) || { printf '%s: missing operand\n' "$me" >&2; usage; }
+
+# `ls -l`'s string for the mode in $mode, into REPLY.
+symbolic() {
+  local m=$mode s=- shift_by special x set unset
+  case "$kind" in d | l | c | b | p | s) s=$kind ;; esac
+  for shift_by in 6 3 0; do
+    (((m >> (shift_by + 2)) & 1)) && s+=r || s+=-
+    (((m >> (shift_by + 1)) & 1)) && s+=w || s+=-
+    x=$(((m >> shift_by) & 1))
+    case $shift_by in
+      6) special=$(((m >> 11) & 1)) set=s unset=S ;;
+      3) special=$(((m >> 10) & 1)) set=s unset=S ;;
+      0) special=$(((m >> 9) & 1)) set=t unset=T ;;
+    esac
+    if ((special)); then
+      ((x)) && s+=$set || s+=$unset
+    else
+      ((x)) && s+='x' || s+=-
+    fi
+  done
+  REPLY=$s
+}
+
+# GNU's human-readable form of a time in nanoseconds, into REPLY.
+human_time() {
+  local secs=$(($1 / 1000000000)) frac=$(($1 % 1000000000)) when zone
+  printf -v when '%(%Y-%m-%d %H:%M:%S)T' "$secs"
+  printf -v zone '%(%z)T' "$secs"
+  printf -v REPLY '%s.%09d %s' "$when" "$frac" "$zone"
+}
+
+# One directive, $1, with its printf flags, width and precision, $2.
+directive() {
+  local d=$1 spec=$2 conv=s value
+  case "$d" in
+    a) conv=o value=$((mode & 07777)) ;;
+    A) symbolic; value=$REPLY ;;
+    b) conv=d value=$(((size + 511) / 512)) ;;
+    B) conv=d value=512 ;;
+    d | i | W) conv=d value=0 ;;
+    D | t | T) conv=x value=0 ;;
+    f) conv=x value=$mode ;;
+    F)
+      case "$kind" in
+        f) if ((size == 0)); then value='regular empty file'; else value='regular file'; fi ;;
+        d) value=directory ;;
+        l) value='symbolic link' ;;
+        c) value='character special file' ;;
+        b) value='block special file' ;;
+        p) value=fifo ;;
+        s) value=socket ;;
+        *) value='weird file' ;;
+      esac
+      ;;
+    g | u) conv=d value=$UID ;;
+    G | U) value=UNKNOWN ;;
+    h) conv=d value=1; [[ $kind == d ]] && value=2 ;;
+    m) value=/ ;;
+    n) value=$name ;;
+    N)
+      value="'${name//\'/\'\\\'\'}'"
+      [[ $kind == l ]] && value+=" -> '${link//\'/\'\\\'\'}'"
+      ;;
+    o) conv=d value=4096 ;;
+    s) conv=d value=$size ;;
+    w) value=- ;;
+    x) human_time "$atime"; value=$REPLY ;;
+    X) conv=d value=$((atime / 1000000000)) ;;
+    y) human_time "$mtime"; value=$REPLY ;;
+    Y) conv=d value=$((mtime / 1000000000)) ;;
+    z) human_time "$ctime"; value=$REPLY ;;
+    Z) conv=d value=$((ctime / 1000000000)) ;;
+    *) printf '%%%s%s' "$spec" "$d"; return ;;
+  esac
+  if [[ $conv == s ]]; then
+    # Of the flags (before the width), only `-` applies to a string.
+    local flags=${spec%%[1-9.]*}
+    spec=${flags//[#+ 0]/}${spec#"$flags"}
+  fi
+  # shellcheck disable=SC2059 # the format is built here, from checked parts
+  printf "%${spec}${conv}" "$value"
+}
+
+# Writes the format with every directive expanded (and with --printf, its
+# backslash escapes).
+expand() {
+  local f=$1 i=0 n=${#1} c spec
+  while ((i < n)); do
+    c=${f:i:1}
+    if [[ $c == % ]]; then
+      i=$((i + 1))
+      spec=''
+      while ((i < n)) && [[ ${f:i:1} == [-#+\ 0-9.] ]]; do
+        spec+=${f:i:1}
+        i=$((i + 1))
+      done
+      c=${f:i:1}
+      if [[ $c == % ]]; then
+        printf %%
+      elif [[ -z $c ]]; then
+        printf '%%%s' "$spec"
+      else
+        directive "$c" "$spec"
+      fi
+    elif [[ $c == "\\" ]] && ((escapes)); then
+      i=$((i + 1))
+      case "${f:i:1}" in
+        n) printf '\n' ;;
+        t) printf '\t' ;;
+        r) printf '\r' ;;
+        a) printf '\a' ;;
+        b) printf '\b' ;;
+        f) printf '\f' ;;
+        v) printf '\v' ;;
+        "\\") printf '%s' "\\" ;;
+        '"') printf '"' ;;
+        *) printf '\\%s' "${f:i:1}" ;;
+      esac
+    else
+      printf '%s' "$c"
+    fi
+    i=$((i + 1))
+  done
+}
+
+for name in "${files[@]}"; do
+  case "$name" in
+    /*) path=$name ;;
+    *) path=${PWD%/}/$name ;;
+  esac
+  encoded=${path//%/%25}
+  encoded=${encoded//\//%2F}
+  view=lstat
+  ((deref)) && view=stat
+  kind='' raw=0 size=0 atime=0 mtime=0 ctime=0 link=''
+  {
+    read -r kind raw size atime mtime ctime
+    IFS= read -r link
+  } <"/proc/iwci/$view/$encoded"
+  if [[ -z $kind || $kind == missing ]]; then
+    printf "%s: cannot statx '%s': No such file or directory\n" "$me" "$name" >&2
+    status=1
+    continue
+  fi
+  mode=$((8#$raw))
+  if ((terse)); then
+    escapes=0
+    expand '%n %s %b %f %u %g %D %i %h %t %T %X %Y %Z %W %o'
+    printf '\n'
+  elif [[ -n $format ]]; then
+    expand "$format"
+    ((escapes)) || printf '\n'
+  else
+    saved=$escapes escapes=1
+    expand '  File: %n\n  Size: %-10s\tBlocks: %-10b IO Block: %-6o %F\nDevice: %Dh/%dd\tInode: %-11i Links: %h\nAccess: (%04a/%10.10A)  Uid: (%5u/%8U)   Gid: (%5g/%8G)\nAccess: %x\nModify: %y\nChange: %z\n Birth: %w\n'
+    escapes=$saved
+  fi
+done
+exit "$status"

@@ -77,6 +77,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         scratch: None,
         commands: Vec::new(),
         internet: false,
+        modes: iwci_vfs::Modes::default(),
     }
 }
 

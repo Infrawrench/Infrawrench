@@ -557,6 +557,24 @@ shows a warning: a changed build needs a new version.
 [`wasmer-napi`]: https://crates.io/crates/wasmer-napi
 [`@tybys/wasm-util`]: https://github.com/toyobayashi/wasm-util
 
+### File modes
+
+A job's files keep their modes, as on Linux: a checked-out file git
+records as executable is `0755` and every other file `0644`, a directory
+`0755`, and a mode moves with its file through `mv` and is gone with it
+after `rm`. WASIX has no call that sets or reads a mode, so environments
+get three commands from the runner, ahead of coreutils on `PATH`, that do
+it through files the runner serves at `/proc/iwci`:
+
+- `chmod` (octal and symbolic modes, `-R`, `-f`, `-v`, `-c`, `--reference`),
+- `stat` (`-c`/`--printf` formats, `-L`, `-t`, and GNU's default output;
+  inode and device numbers read 0, and the job's user has no name),
+- `mktemp` (GNU's options), whose file is `0600` and directory `0700`.
+
+`stat -c %a "$(mktemp)"` therefore prints `600`. Programs that call
+`chmod(2)` or `stat(2)` themselves do not see modes (see the known
+limitations).
+
 ### Tools in a script
 
 `tools:` makes builtins and repository tools commands an `env:` script can
@@ -953,8 +971,13 @@ schedule once per runner. Its README has the routes; the short version:
 - **Runner-local caches** (git, downloads, installs, compiled modules)
   are not evicted yet and count against no owner; give the cache directory
   its own disk.
-- **The in-memory file system has no mode bits**, so executables are
-  checked out as plain files; a commit keeps the original mode.
+- **File modes reach scripts, not programs.** The runner keeps a mode per
+  file (see [File modes](#file-modes)), but WASIX has no way to pass one to
+  a program, so only the `chmod`, `stat` and `mktemp` commands see them:
+  Node's `fs.chmod` still does nothing, `fs.statSync(f).mode` has no
+  permission bits, coreutils' `ls -l` shows every file as `rwxrwxrwx`, and
+  nothing enforces a mode. A `changes: commit` keeps each file's original
+  mode (a new file is `100644`).
 - **Submodules** are skipped with a warning, and Cargo `git` dependencies
   are reported rather than vendored.
 - **Pushing** the commit a `changes: commit` job makes is left to the

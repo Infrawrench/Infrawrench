@@ -21,6 +21,7 @@
 mod cache;
 mod capture;
 mod limits;
+mod modes;
 mod network;
 mod node;
 mod signals;
@@ -190,6 +191,9 @@ pub struct Invocation {
     /// Whether the job may reach the public internet, when the runtime
     /// offers it (`Runtime::with_internet`). Off leaves only its loopback.
     pub internet: bool,
+    /// The modes of the job's files (`JobFs::modes`), which a script reads
+    /// and sets with `stat`, `chmod` and `mktemp` (`modes.rs`).
+    pub modes: iwci_vfs::Modes,
 }
 
 /// Where [`Invocation::scratch`] is mounted.

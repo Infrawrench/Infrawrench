@@ -284,8 +284,9 @@ impl RemoteCache {
 
     /// Writes the tree of `commit_sha` into `builder` under `into` (an
     /// absolute guest path such as `/app`, which must be absent or an empty
-    /// directory). Regular and executable files become files, symlinks
-    /// become symlinks, and submodules are skipped and listed in the result.
+    /// directory). Regular and executable files become files (an executable
+    /// one with mode `0755` in the snapshot), symlinks become symlinks, and
+    /// submodules are skipped and listed in the result.
     pub fn checkout_into(
         &self,
         commit_sha: &str,
@@ -295,7 +296,7 @@ impl RemoteCache {
         let id = parse_oid(commit_sha)?;
         let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Shared)?;
         let repo = self.open_or_not_fetched(commit_sha)?;
-        checkout::checkout(&repo, id, builder.fs(), into)
+        checkout::checkout(&repo, id, builder, into)
     }
 
     /// Paths (relative to the repository root, `/`-separated, sorted) whose
