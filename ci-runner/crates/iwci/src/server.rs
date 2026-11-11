@@ -325,6 +325,36 @@ impl Server {
             .expect("spawning the warming thread");
     }
 
+    /// Packs cached installs that have gone unused for the runner's
+    /// `--keep-installs-unpacked`: once now, then every `every`, in the
+    /// background. Packing takes no job slot.
+    pub fn keep_installs_compact(self: &Arc<Self>, every: std::time::Duration) {
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-compact".into())
+            .spawn(move || {
+                loop {
+                    let started = std::time::Instant::now();
+                    let out = server.runner.layers.compact();
+                    if out.packed > 0 || !out.problems.is_empty() {
+                        eprintln!(
+                            "iwci serve: packed {} unused installs in {:.1}s, freeing {} MiB{}",
+                            out.packed,
+                            started.elapsed().as_secs_f64(),
+                            out.freed >> 20,
+                            if out.problems.is_empty() {
+                                String::new()
+                            } else {
+                                format!("; problems: {}", out.problems.join("; "))
+                            }
+                        );
+                    }
+                    std::thread::sleep(every);
+                }
+            })
+            .expect("spawning the compacting thread");
+    }
+
     fn full(&self) -> Response<std::io::Cursor<Vec<u8>>> {
         let mut body = self.capacity();
         body["error"] = if self.draining.load(Ordering::SeqCst) {

@@ -24,6 +24,8 @@ usage:
                                          [--stall-after 5m] stop a job with no output
                                          and no CPU use for that long; 0 for never
                                          (also IWCI_STALL_AFTER)
+                                         [--keep-installs-unpacked 24h] pack a cached
+                                         install not used for that long
   iwci serve [--listen <addr>] [options]  run pipelines over HTTP (key: IWCI_SERVER_KEY)
                                          [--jobs-per-cpu 4] [--storage-quota 10GiB]
   iwci publish <dist-dir>...             upload builtins/*/build.sh output
