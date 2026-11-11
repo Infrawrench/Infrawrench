@@ -86,10 +86,13 @@ export interface HomeApp {
   /** What the app covers, for its own page (`/apps/<id>`). */
   points: string[];
   /**
-   * A drawn extra the app's own page shows under its screenshot. Every app's
-   * screenshot is `public/screenshots/app/app-<id>-{dark,light}.webp`.
+   * A drawn stand-in. `cost` is an extra the Costs page shows under its
+   * screenshot; `dashboard` replaces the screenshot, on the home page and on
+   * the app's page, because a dashboard is only worth showing with data on
+   * it. Every other app's screenshot is
+   * `public/screenshots/app/app-<id>-{dark,light}.webp`.
    */
-  mock?: "cost";
+  mock?: "cost" | "dashboard";
 }
 
 export const homeApps: HomeApp[] = [
@@ -369,6 +372,7 @@ export const homeApps: HomeApp[] = [
   {
     id: "dashboards",
     name: "Dashboards",
+    mock: "dashboard",
     points: [
       "A draggable grid of resource cards, cost graphs, budgets, KPIs and notes",
       "Live stats on every pinned resource",

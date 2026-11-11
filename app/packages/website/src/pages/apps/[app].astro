@@ -3,6 +3,7 @@ import '../../styles/global.css';
 import '../../styles/home.css';
 import AppFrame from '../../components/home/AppFrame.astro';
 import CostMock from '../../components/home/CostMock.astro';
+import DashboardMock from '../../components/home/DashboardMock.astro';
 import Analytics from '../../components/Analytics.astro';
 import { ArrowRight, Cloud } from 'lucide-astro';
 import { homeApps } from '../../data/home';
@@ -74,7 +75,13 @@ const title = `${app.name} | Infrawrench`;
       </section>
 
       <section class="hm-wrap">
-        <AppFrame shot={`app-${app.id}`} title={app.name} alt={`The ${app.name} app in Infrawrench`} eager />
+        {
+          app.mock === 'dashboard' ? (
+            <DashboardMock title={app.name} />
+          ) : (
+            <AppFrame shot={`app-${app.id}`} title={app.name} alt={`The ${app.name} app in Infrawrench`} eager />
+          )
+        }
       </section>
 
       {

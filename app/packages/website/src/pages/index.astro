@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import '../styles/home.css';
 import AppFrame from '../components/home/AppFrame.astro';
+import DashboardMock from '../components/home/DashboardMock.astro';
 import ProvidersModal from '../components/ProvidersModal.astro';
 import DownloadModal from '../components/DownloadModal.astro';
 import AgentSkillModal from '../components/AgentSkillModal.astro';
@@ -108,7 +109,6 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
 
     <main id="main-content" tabindex="-1">
       <section class="hero hm-wrap">
-        <span class="hm-eyebrow">Free desktop app · Cloud for teams</span>
         <h1 class="hm-h1">Every cloud you run on,<br /><span class="hm-grad">one platform.</span></h1>
         <p class="hm-lede">
           Infrawrench connects to {PROVIDER_COUNT_COPY} providers, finds everything you run on them, and gives your
@@ -166,12 +166,16 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
                   data-app-panel={app.id}
                   data-active={i === 0 ? 'true' : 'false'}
                 >
-                  <AppFrame
-                    shot={`app-${app.id}`}
-                    title={app.name}
-                    alt={`The ${app.name} app in Infrawrench`}
-                    eager={i === 0}
-                  />
+                  {app.mock === 'dashboard' ? (
+                    <DashboardMock title={app.name} />
+                  ) : (
+                    <AppFrame
+                      shot={`app-${app.id}`}
+                      title={app.name}
+                      alt={`The ${app.name} app in Infrawrench`}
+                      eager={i === 0}
+                    />
+                  )}
                   <div class="apps-foot">
                     <p>{app.tools.map((tool) => tool.name).join(' · ')}</p>
                     <a class="apps-more" href={`/apps/${app.id}`}>
@@ -342,7 +346,7 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
 
 <style>
   .hero {
-    padding: 96px 0 56px;
+    padding: 48px 0 56px;
     text-align: center;
   }
   .hero .hm-lede {
@@ -524,15 +528,10 @@ const nibbletsIcons = [KeyRound, ListChecks, House];
     color: var(--text);
   }
 
+  /* In colour. They were greyed out until hovered; the coloured strip is the
+     one that was asked to be kept. */
   .strip-logos img {
     border-radius: 8px;
-    filter: grayscale(1);
-    opacity: 0.75;
-    transition: 0.2s;
-  }
-  .strip-logos img:hover {
-    filter: none;
-    opacity: 1;
   }
   .strip-more {
     background: none;
