@@ -2,13 +2,15 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { msg, useGT, useMessages } from "gt-react";
 import { readRevnuMeasurement } from "@infrawrench/analytics";
-import { apiPost } from "@/lib/api";
+import { AppPicker } from "@infrawrench/ui";
+import { SWITCHABLE_PRODUCTS, type ProductId } from "@infrawrench/client-core";
+import { apiPost, apiPut } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({
   component: OnboardingPage,
 });
 
-type OnboardingStep = "create" | "plan";
+type OnboardingStep = "create" | "apps" | "plan";
 
 const FREE_FEATURES = [
   msg("1 user, 3 connected accounts"),
@@ -33,6 +35,10 @@ function OnboardingPage() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  // Which apps the organization expects to use. All of them to begin with:
+  // the question is what to leave out, and nothing is lost by skipping it.
+  const [apps, setApps] = useState<ProductId[]>([...SWITCHABLE_PRODUCTS]);
+  const [savingApps, setSavingApps] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -52,10 +58,31 @@ function OnboardingPage() {
       });
       setOrgId(org.id);
       setCreating(false);
-      setStep("plan");
+      setStep("apps");
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to create organization"));
       setCreating(false);
+    }
+  }
+
+  // The apps left unpicked are turned off for the organization, exactly as
+  // Settings > Apps would. Nothing is written when every app is kept.
+  async function handleApps() {
+    if (!orgId) return;
+    const disabled = SWITCHABLE_PRODUCTS.filter((id) => !apps.includes(id));
+    if (disabled.length === 0) {
+      setStep("plan");
+      return;
+    }
+    setSavingApps(true);
+    setError(null);
+    try {
+      await apiPut(`/api/org/${orgId}/products`, { disabled });
+      setStep("plan");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Failed to save your apps"));
+    } finally {
+      setSavingApps(false);
     }
   }
 
@@ -79,6 +106,32 @@ function OnboardingPage() {
       setError(e instanceof Error ? e.message : gt("Failed to start checkout"));
       setUpgrading(false);
     }
+  }
+
+  if (step === "apps") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
+        <div className="w-full max-w-2xl px-6">
+          <h1 className="text-2xl font-bold mb-2">{gt("Which apps will you use?")}</h1>
+          <p className="text-sm text-on-surface-tertiary mb-6">
+            {gt("The rest stay out of the way. You can change this any time in Settings.")}
+          </p>
+
+          <AppPicker selected={apps} onChange={setApps} disabled={savingApps} />
+
+          {error && <p className="text-xs text-danger mt-4">{error}</p>}
+
+          <button
+            type="button"
+            onClick={() => void handleApps()}
+            disabled={savingApps}
+            className="mt-6 w-full px-4 py-3 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-on-accent rounded-lg transition-colors"
+          >
+            {savingApps ? gt("Saving...") : gt("Continue")}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (step === "plan") {

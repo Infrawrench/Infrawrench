@@ -23037,5 +23037,6 @@
   "b2add9b502555e53": "Posture, vulnérabilités, conformité et accès.",
   "518ea80327681c9f": "Déploiements, CI, environnements et métriques de livraison.",
   "8f8024ddc34f13f5": "Agents et workflows.",
-  "87a159646dd1584d": "Paramètres de {app}"
+  "87a159646dd1584d": "Paramètres de {app}",
+  "99ccf63da321e0b4": "Seuls les propriétaires et les administrateurs peuvent modifier les applications activées."
 }

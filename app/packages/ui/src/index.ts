@@ -247,6 +247,8 @@ export type { SidebarToolDef } from "./components/sidebar/SidebarTools.js";
 // module subpath (`@infrawrench/ui/products/ProductsHomePanel`), never from
 // this barrel (see `lazyPanel`); it is exported here so the build emits it.
 export { ProductsHomePanel } from "./products/ProductsHomePanel.js";
+export { AppPicker } from "./products/AppPicker.js";
+export type { AppPickerProps } from "./products/AppPicker.js";
 export type { ProductsHomePanelProps } from "./products/ProductsHomePanel.js";
 export {
   PRODUCTS,

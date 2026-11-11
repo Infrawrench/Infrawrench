@@ -23253,5 +23253,9 @@
   "b2add9b502555e53": "Postura, vulnerabilidades, cumplimiento y acceso.",
   "518ea80327681c9f": "Despliegues, CI, entornos y métricas de entrega.",
   "8f8024ddc34f13f5": "Agentes y flujos de trabajo.",
-  "87a159646dd1584d": "Ajustes de {app}"
+  "87a159646dd1584d": "Ajustes de {app}",
+  "99ccf63da321e0b4": "Solo los propietarios y administradores pueden cambiar qué aplicaciones están activas.",
+  "b68bb835ac338b76": "No se pudieron guardar tus aplicaciones",
+  "1a8499c1dc785039": "¿Qué aplicaciones vas a usar?",
+  "ee474a1c71aa3603": "Las demás no estorbarán. Puedes cambiarlo cuando quieras en Ajustes."
 }
