@@ -397,6 +397,46 @@ jobs:
       })().catch((e) => { console.error(e); process.exit(1); });
       JS
       node /tmp/workers.js
+  # A worker stopped while it blocks in `Atomics.wait` with another message
+  # queued, by terminate() and by its parent exiting. The stop wakes the
+  # wait, V8 lifts the termination once the handler has unwound, and Edge.js
+  # went on to dispatch the queued message, whose handler blocked again: the
+  # parent waited forever in `pthread_join` (#938: rolldown's wasm worker
+  # threads, about one tsdown bundle in 300 to 600). `env:bash-node` 24.0.3
+  # drops a stopped worker's queued messages (environments/edgejs).
+  worker-stop-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 3m
+    run: |
+      cat > /tmp/stop.js <<'JS'
+      const assert = require("assert");
+      const { Worker } = require("worker_threads");
+      const waiter = () => {
+        const w = new Worker(`
+          const { parentPort } = require("worker_threads");
+          const cell = new Int32Array(new SharedArrayBuffer(4));
+          parentPort.on("message", (m) => {
+            parentPort.postMessage(m);
+            Atomics.wait(cell, 0, 0);
+          });
+        `, { eval: true });
+        w.postMessage(1);
+        w.postMessage(2);
+        return w;
+      };
+      const terminated = waiter();
+      terminated.once("message", async () => {
+        assert.equal(await terminated.terminate(), 1);
+        // Left running, unreferenced: stopped as this process exits.
+        const left = waiter();
+        left.once("message", () => {
+          left.unref();
+          console.log("worker stop ok");
+        });
+      });
+      JS
+      node /tmp/stop.js
   # Isolates made and released on many threads at once while they load
   # ES modules: the bridge's env registry and the module-wrap maps are
   # shared by every isolate in the runner, and were once changed without a
@@ -441,8 +481,8 @@ jobs:
       node churn.mjs > b.out &
       wait
       test "$(cat a.out b.out | grep -c '^churned$')" = 2
-  # A `node` that waits on nothing, as #938's never exited: no output, no
-  # CPU, a timer far in the future. It is stopped as stalled long before its
+  # A `node` that waits on nothing, the way a hung one looks (#938): no
+  # output, no CPU, a timer far in the future. It is stopped as stalled long before its
   # timeout, and says so (this pipeline runs with --stall-after 15s).
   hang-fails:
     using: env:bash-node@24

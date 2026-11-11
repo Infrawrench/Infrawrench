@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
-# races fixed that no release of it, and so no release of Edge.js, has fixed.
+# races fixed that no release of it, and so no release of Edge.js, has fixed,
+# and with one fix to Edge.js itself.
 #
 # The C library is linked into Edge.js's module, so a fix to it is a rebuild
 # of that module. Each is one patch here and one object of `libc.a`:
@@ -22,8 +23,21 @@
 #     wasix-org/wasix-libc#146: the result of that last call goes to static
 #     storage. Drop it once a sysroot carries a fix for that issue.
 #
+# And one patch to Edge.js's own source, applied to its checkout:
+#
+#   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
+#     its isolate from the parent's thread and setting a flag its loop
+#     checks between turns, but V8 lifts a termination once it has unwound
+#     the JavaScript that was running, and the worker's port went on to
+#     dispatch the next queued message in the same turn. Its handler ran
+#     normally, and one that blocked in `Atomics.wait` (rolldown's idle wasm
+#     threads) blocked for good while the parent waited in `pthread_join`:
+#     about one tsdown bundle in 300 to 600 never exited. The patch drops a
+#     stopped worker's queued messages instead, as Node does once it cannot
+#     call into JavaScript. Ours (nothing upstream yet).
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
-# two objects of the C library replaced:
+# two objects of the C library replaced and that patch applied:
 #
 #   1. The sysroot 0.2.5 was built on (wasix-libc v2026-07-30.1), with the
 #      two objects in its `libc.a` recompiled from that tag's source plus the
@@ -45,7 +59,7 @@
 #                               that the module is the published one, bit
 #                               for bit: the proof that the pins below are
 #                               what 0.2.5 was built from, and so that the
-#                               C library objects are the only difference
+#                               patches are the only difference
 #
 # Two things Edge.js's build compiles in are held to what the published
 # module has, or neither of those would hold: the source path (`__FILE__`
@@ -53,9 +67,9 @@
 # does this, which is why it needs to be able to create that directory) and
 # OpenSSL's build time (SOURCE_DATE_EPOCH).
 #
-# Drop a patch once the sysroot Edge.js builds on has its fix, and this
-# directory, pinning Wasmer's package again, once a `wasmer/edgejs` release
-# has both.
+# Drop a patch once the sysroot Edge.js builds on, or Edge.js itself, has
+# its fix, and this directory, pinning Wasmer's package again, once a
+# `wasmer/edgejs` release has all three.
 #
 # x86_64 Linux only: the pinned toolchain archives are that platform's. Five
 # to ten minutes on four cores, 600 MB of downloads, 4 GB of disk.
@@ -68,8 +82,9 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Our build of 0.2.5. A changed build is a new number after `iwci.`:
-# 1 had the first patch alone, 2 has both.
-VERSION="0.2.5-iwci.2"
+# 1 had the first patch alone, 2 both C library patches, 3 adds the Edge.js
+# one.
+VERSION="0.2.5-iwci.3"
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
@@ -212,6 +227,9 @@ fi
 checkout "$src" "$EDGEJS_REPO" "$EDGEJS_COMMIT"
 touch "$src/.git/iwci-build"
 git -C "$src" -c protocol.version=2 submodule update -q --init --depth 1 "${EDGEJS_SUBMODULES[@]}"
+if [[ "${EDGEJS_VERIFY:-}" != 1 ]]; then
+  git -C "$src" apply "$self/edgejs-worker-stop.patch"
+fi
 (cd "$src" && SOURCE_DATE_EPOCH="$EDGEJS_BUILT_ON" ./wasix/build-wasix.sh) >"$work/edgejs.log" 2>&1 || {
   tail -n 60 "$work/edgejs.log" >&2
   exit 1

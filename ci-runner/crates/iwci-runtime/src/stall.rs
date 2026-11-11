@@ -1,9 +1,9 @@
 //! Telling a hung job from a quiet one (#938).
 //!
-//! A job that has finished its work but never exits (a Node whose event
-//! loop waits on a wake-up that never comes, its libuv threads parked on
-//! futexes) looks from outside like one still working, and used to hold its
-//! slot until its timeout. What tells them apart is CPU time: a long compile
+//! A job that has finished its work but never exits (#938 was a `node`
+//! joining a worker thread that never ended, every thread parked) looks
+//! from outside like one still working, and used to hold its slot until its
+//! timeout. What tells them apart is CPU time: a long compile
 //! that prints nothing still uses CPU, a hung process uses none. So a job is
 //! *stalled* once it has neither written output nor used more than a sliver
 //! of CPU time for [`StallWatch`]'s window, and it is stopped then rather

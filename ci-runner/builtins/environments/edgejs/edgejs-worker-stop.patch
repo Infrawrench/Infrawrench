@@ -1,0 +1,23 @@
+diff --git a/src/internal_binding/binding_messaging.cc b/src/internal_binding/binding_messaging.cc
+index 6b7ddb9d..5393724d 100644
+--- a/src/internal_binding/binding_messaging.cc
++++ b/src/internal_binding/binding_messaging.cc
+@@ -3529,6 +3529,18 @@ void ProcessQueuedMessages(MessagePortWrap* wrap, bool force, size_t processing_
+       break;
+     }
+ 
++    // A worker asked to stop runs no more JavaScript: the rest of the queue
++    // is dropped, as Node's MessagePort::OnMessage does once it cannot call
++    // into JS. The termination that stops a worker ends when it unwinds out
++    // of the handler that was running, so the next message's handler ran
++    // normally, and one that blocked in Atomics.wait blocked for good while
++    // the parent waited to join the thread.
++    if (!EdgeWorkerEnvOwnsProcessState(wrap->handle_wrap.env) &&
++        EdgeWorkerEnvStopRequested(wrap->handle_wrap.env)) {
++      DeleteTransferredPortRefs(wrap->handle_wrap.env, &next.transferred_ports);
++      continue;
++    }
++
+     napi_value self = EdgeHandleWrapGetRefValue(wrap->handle_wrap.env, wrap->handle_wrap.wrapper_ref);
+     napi_value payload = nullptr;
+     napi_value message_error = nullptr;
