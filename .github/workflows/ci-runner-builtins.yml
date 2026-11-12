@@ -207,6 +207,17 @@ jobs:
           path: ci-runner/dist/package/edgejs
           key: edgejs-${{ hashFiles('ci-runner/builtins/environments/edgejs/**', 'ci-runner/builtins/lib.sh') }}
 
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). The build
+      # is reproducible and environments/build.sh checks the package against
+      # the hash it pins, so a cached one is as good as a fresh one. One per
+      # architecture, so each architecture's build is checked against the pin.
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+
       - name: Build the environment
         run: bash builtins/environments/build.sh bash-node
 
@@ -247,6 +258,17 @@ jobs:
         with:
           workspaces: ci-runner
 
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). The build
+      # is reproducible and environments/build.sh checks the package against
+      # the hash it pins, so a cached one is as good as a fresh one. One per
+      # architecture, so each architecture's build is checked against the pin.
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+
       # And env:postgres, which Python jobs use as a service.
       - name: Build the environments
         run: bash builtins/environments/build.sh python postgres
@@ -283,6 +305,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ci-runner
+
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). The build
+      # is reproducible and environments/build.sh checks the package against
+      # the hash it pins, so a cached one is as good as a fresh one. One per
+      # architecture, so each architecture's build is checked against the pin.
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
 
       # All five versions, and php-cli (environments/php-cli/build.sh), whose
       # hash is pinned: built here on ARM64, it must come out as it does on
@@ -334,6 +367,17 @@ jobs:
           workspaces: ci-runner
           shared-key: go-${{ runner.arch }}
           save-if: ${{ matrix.minor == '1.27' }}
+
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). The build
+      # is reproducible and environments/build.sh checks the package against
+      # the hash it pins, so a cached one is as good as a fresh one. One per
+      # architecture, so each architecture's build is checked against the pin.
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
 
       # From go.dev's release archive and the patch series in
       # builtins/environments/go/<minor>/ (a minute or two). The build is

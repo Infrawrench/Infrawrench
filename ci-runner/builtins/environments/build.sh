@@ -3,7 +3,7 @@
 # script executes in. bash runs as a WASIX program and spawns every other
 # command from the same set of packages, all inside the one isolate.
 #
-#   env:bash       bash, coreutils, sed, grep and findutils
+#   env:bash       bash, coreutils, sed, grep, findutils and Git
 #   env:bash-node  the same plus Edge.js (node, npm and pnpm)
 #   env:python     the same as env:bash plus CPython with pip
 #   env:php        the same as env:bash plus PHP (Wasmer's phpix), Composer
@@ -31,13 +31,17 @@
 # `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
 # that split an argument at its line feeds (#1003, #1022);
 # `php-cli/build.sh` packages env:php's own `php` and Composer; and
-# `pglite-server/build.sh` env:postgres's server for many connections. Each
-# result is pinned here by hash like the others, so a build that comes out
-# different fails.
+# `pglite-server/build.sh` env:postgres's server for many connections; and
+# `git/build.sh` builds Git, which Wasmer does not publish, from its
+# release. Each result is pinned here by hash like the others, so a build
+# that comes out different fails.
 #
 #   environments/build.sh              all of them
-#   environments/build.sh bash         just this one (Linux, or macOS on
-#                                      arm64: patch-module.sh's Wasmer CLI)
+#   environments/build.sh bash         just this one (Linux, x86_64 or
+#                                      arm64, to build Git; or its webc
+#                                      already in dist/package/git/ and
+#                                      macOS on arm64: patch-module.sh's
+#                                      Wasmer CLI)
 #   environments/build.sh python       the same
 #   environments/build.sh php          every PHP version (Linux, x86_64 or
 #                                      ARM64, to build php-cli)
@@ -51,9 +55,9 @@
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
-# Needs: curl, shasum, and what patch-module.sh needs; bash-node, php and
-# postgres also what edgejs/build.sh, php-cli/build.sh and
-# pglite-server/build.sh need.
+# Needs: curl, shasum, and what patch-module.sh and git/build.sh need;
+# bash-node, php and postgres also what edgejs/build.sh, php-cli/build.sh
+# and pglite-server/build.sh need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -69,6 +73,9 @@ COREUTILS_PKG="wasmer/coreutils 1.0.27 35028c4e6b9fa8cccdffdcab2007d1df3af31b3f2
 SED_PKG="wasmer/sed 4.9.0 c7f3db6a65e504328156b688195eff14456412974f0a75d05fb8e5155d545539 4.9.0-iwci.1"
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
+# Git, built by git/build.sh from its release for WASIX; the hash is its
+# output's, as with Edge.js. Every environment has it (README.md, "Git").
+GIT_PKG="iwci/git 2.56.1-iwci.1 f3982909036630fa0d3b3fdbc0ddf4c91ae18ad3d13e35bc3f81b798f5a22f18"
 PYTHON_PKG="python/python 3.13.20 a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
 PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
 PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
@@ -135,14 +142,16 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.6 bedf2792e85b37a76c8690f80ce6108e43b0b2e408bf8e93bde60741a46a9a83"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
-# The environment's version is the Go release's.
+# Each line is the environment's version, then the packages'. The
+# environment's version was the Go release's until Git came in: its patch
+# number is now the environment's own revision, as with the others.
 go_pkgs() {
   case "$1" in
-    1.23) echo "1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
-    1.24) echo "1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
-    1.25) echo "1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
-    1.26) echo "1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
-    1.27) echo "1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
+    1.23) echo "1.23.13 1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
+    1.24) echo "1.24.14 1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
+    1.25) echo "1.25.15 1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
+    1.26) echo "1.26.12 1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
+    1.27) echo "1.27.5 1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
     *) return 1 ;;
   esac
 }
@@ -174,6 +183,7 @@ fetch() {
     wasmer/edgejs) ours=edgejs ;;
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
+    iwci/git) ours=git ;;
   esac
   if [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
@@ -232,7 +242,7 @@ JSON
   echo "built $out"
 }
 
-TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG")
+TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG" "$GIT_PKG")
 if [[ $# -eq 0 ]]; then
   set -- bash bash-node python php go postgres
 fi
@@ -242,7 +252,8 @@ for env in "$@"; do
       # 5.1.17: an argument with a line feed in it reaches the program whole
       # (#1003).
       # 5.1.18: and so does a command sed's `e` runs (#1022).
-      build_env bash 5.1.18 "GNU bash 5.1 with coreutils, sed, grep and findutils" "" "${TOOLS[@]}"
+      # 5.1.19: and Git.
+      build_env bash 5.1.19 "GNU bash 5.1 with coreutils, sed, grep, findutils and Git" "" "${TOOLS[@]}"
       ;;
     bash-node)
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
@@ -259,7 +270,8 @@ for env in "$@"; do
       #         runner makes (#996), `vm.Script#createCachedData()` works
       #         (#1007, in the runner), and so do `worker.cpuUsage()`
       #         (#1006) and Node's CPU times (#1038).
-      build_env bash-node 24.0.8 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.9: and Git.
+      build_env bash-node 24.0.9 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
@@ -270,15 +282,17 @@ for env in "$@"; do
           echo "error: no Go $minor; know ${GO_MINORS[*]}" >&2
           exit 2
         fi
-        read -r version go_sha cache_sha <<<"$pkgs"
-        build_env go "${version%-iwci.*}" "GNU bash 5.1, coreutils, sed, grep, findutils and Go ${version%-iwci.*} (go, gofmt)" \
+        # Go's release plus one: and Git.
+        read -r env_version version go_sha cache_sha <<<"$pkgs"
+        build_env go "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Go ${version%-iwci.*} (go, gofmt)" \
           "$GO_ENV" "${TOOLS[@]}" "iwci/go $version $go_sha" "iwci/go-std-cache $version $cache_sha"
       done
       ;;
     python)
       # 3.13.16: bash passes an argument with a line feed in it whole (#1003).
       # 3.13.17: and so does sed's `e` command (#1022).
-      build_env python 3.13.17 "GNU bash 5.1, coreutils, sed, grep, findutils and CPython 3.13.15 with pip" \
+      # 3.13.18: and Git.
+      build_env python 3.13.18 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     php)
@@ -288,17 +302,19 @@ for env in "$@"; do
       # +1 on each: bash passes an argument with a line feed in it whole
       # (#1003).
       # +2: and so does sed's `e` command (#1022).
-      for pkg in "8.1.36 8.1.34 $PHP81_PKG" "8.2.37 8.2.35 $PHP82_PKG" "8.3.38 8.3.36 $PHP83_PKG" \
-        "8.4.29 8.4.27 $PHP84_PKG" "8.5.14 8.5.12 $PHP85_PKG"; do
+      # +3: and Git.
+      for pkg in "8.1.37 8.1.34 $PHP81_PKG" "8.2.38 8.2.35 $PHP82_PKG" "8.3.39 8.3.36 $PHP83_PKG" \
+        "8.4.30 8.4.27 $PHP84_PKG" "8.5.15 8.5.12 $PHP85_PKG"; do
         read -r version php package <<<"$pkg"
-        build_env php "$version" "GNU bash 5.1, coreutils, sed, grep, findutils, PHP $php (Wasmer's phpix) and Composer" \
+        build_env php "$version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git, PHP $php (Wasmer's phpix) and Composer" \
           "$PHP_ENV" "${TOOLS[@]}" "$package" "$SENDMAIL_PKG" "$ICU_DATA_PKG" "$PHP_CLI_PKG"
       done
       ;;
     postgres)
       # Its version is PostgreSQL's, as python's is CPython's.
       # 18.4.1: and pglite-server, for many connections and pgcrypto.
-      build_env postgres 18.4.1 "GNU bash 5.1, coreutils, sed, grep, findutils and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
+      # 18.4.2: and Git.
+      build_env postgres 18.4.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
         "" "${TOOLS[@]}" "$PGLITE_PKG" "$PGLITE_SERVER_PKG"
       ;;
     *)

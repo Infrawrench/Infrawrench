@@ -1,0 +1,162 @@
+diff --git a/run-command.c b/run-command.c
+index ce84db8..fecce5a 100644
+--- a/run-command.c
++++ b/run-command.c
+@@ -17,6 +17,9 @@
+ #include "config.h"
+ #include "packfile.h"
+ #include "compat/nonblock.h"
++#ifdef SPAWN_WITHOUT_FORK
++#include <spawn.h>
++#endif
+ 
+ void child_process_init(struct child_process *child)
+ {
+@@ -745,7 +748,146 @@ int start_command(struct child_process *cmd)
+ 	if (cmd->odb_to_close)
+ 		odb_close(cmd->odb_to_close);
+ 
+-#ifndef GIT_WINDOWS_NATIVE
++#ifdef SPAWN_WITHOUT_FORK
++/*
++ * A platform with no fork() (WASIX built with wasm exception handling)
++ * starts the child with posix_spawn() instead. The file actions are what the
++ * forked child below does before its execve(), in the same order, and an
++ * exec that fails says so with the same messages.
++ */
++{
++	int null_fd = -1;
++	char **childenv;
++	struct strvec argv = STRVEC_INIT;
++	posix_spawn_file_actions_t actions;
++	pid_t pid;
++	int err = 0;
++
++	if (prepare_cmd(&argv, cmd) < 0) {
++		failed_errno = errno;
++		cmd->pid = -1;
++		if (!cmd->silent_exec_failure)
++			error_errno("cannot run %s", cmd->args.v[0]);
++		goto end_of_spawn;
++	}
++
++	trace_argv_printf(&argv.v[1], "trace: start_command:");
++
++	if (cmd->no_stdin || cmd->no_stdout || cmd->no_stderr)
++		null_fd = xopen("/dev/null", O_RDWR | O_CLOEXEC);
++
++	childenv = prep_childenv(cmd->env.v);
++
++	if ((err = posix_spawn_file_actions_init(&actions)))
++		goto spawn_failed;
++
++#define SPAWN_DUP2(from, to) \
++	if (!err) \
++		err = posix_spawn_file_actions_adddup2(&actions, (from), (to))
++#define SPAWN_CLOSE(fd) \
++	if (!err) \
++		err = posix_spawn_file_actions_addclose(&actions, (fd))
++
++	if (cmd->no_stdin) {
++		SPAWN_DUP2(null_fd, 0);
++	} else if (need_in) {
++		SPAWN_DUP2(fdin[0], 0);
++		SPAWN_CLOSE(fdin[0]);
++		SPAWN_CLOSE(fdin[1]);
++	} else if (cmd->in) {
++		SPAWN_DUP2(cmd->in, 0);
++		SPAWN_CLOSE(cmd->in);
++	}
++
++	if (cmd->no_stderr) {
++		SPAWN_DUP2(null_fd, 2);
++	} else if (need_err) {
++		SPAWN_DUP2(fderr[1], 2);
++		SPAWN_CLOSE(fderr[0]);
++		SPAWN_CLOSE(fderr[1]);
++	} else if (cmd->err > 1) {
++		SPAWN_DUP2(cmd->err, 2);
++		SPAWN_CLOSE(cmd->err);
++	}
++
++	if (cmd->no_stdout) {
++		SPAWN_DUP2(null_fd, 1);
++	} else if (cmd->stdout_to_stderr) {
++		SPAWN_DUP2(2, 1);
++	} else if (need_out) {
++		SPAWN_DUP2(fdout[1], 1);
++		SPAWN_CLOSE(fdout[0]);
++		SPAWN_CLOSE(fdout[1]);
++	} else if (cmd->out > 1) {
++		SPAWN_DUP2(cmd->out, 1);
++		SPAWN_CLOSE(cmd->out);
++	}
++
++	if (cmd->close_fd_above_stderr) {
++		/*
++		 * Only what the child would still have open: closing anything
++		 * else fails the spawn, where the forked child ignores it.
++		 */
++		long max_fd = sysconf(_SC_OPEN_MAX);
++		int fd;
++		if (max_fd < 0 || max_fd > 4096)
++			max_fd = 4096;
++		for (fd = 3; fd < max_fd; fd++) {
++			int flags = fcntl(fd, F_GETFD);
++			if (flags == -1 || (flags & FD_CLOEXEC))
++				continue;
++			if ((need_in && (fd == fdin[0] || fd == fdin[1])) ||
++			    (need_out && (fd == fdout[0] || fd == fdout[1])) ||
++			    (need_err && (fd == fderr[0] || fd == fderr[1])) ||
++			    (!need_in && !cmd->no_stdin && fd == cmd->in) ||
++			    (!need_out && !cmd->no_stdout && fd == cmd->out) ||
++			    (!need_err && !cmd->no_stderr && fd == cmd->err))
++				continue;
++			SPAWN_CLOSE(fd);
++		}
++	}
++
++	if (cmd->dir && !err)
++		err = posix_spawn_file_actions_addchdir_np(&actions, cmd->dir);
++
++#undef SPAWN_DUP2
++#undef SPAWN_CLOSE
++
++	/*
++	 * Run the command at argv.v[1]; argv.v[0] is SHELL_PATH, which
++	 * interprets it if it cannot be executed itself (ENOEXEC).
++	 */
++	if (!err) {
++		err = posix_spawn(&pid, argv.v[1], &actions, NULL,
++				  (char *const *) argv.v + 1, childenv);
++		if (err == ENOEXEC)
++			err = posix_spawn(&pid, argv.v[0], &actions, NULL,
++					  (char *const *) argv.v, childenv);
++	}
++	posix_spawn_file_actions_destroy(&actions);
++
++spawn_failed:
++	if (err) {
++		cmd->pid = -1;
++		failed_errno = err;
++		if (!cmd->silent_exec_failure || err != ENOENT) {
++			errno = err;
++			error_errno("cannot exec '%s'", cmd->args.v[0]);
++		}
++	} else {
++		cmd->pid = pid;
++		if (cmd->clean_on_exit)
++			mark_child_for_cleanup(cmd->pid, cmd);
++	}
++
++	if (null_fd >= 0)
++		close(null_fd);
++	strvec_clear(&argv);
++	free(childenv);
++}
++end_of_spawn:
++
++#elif !defined(GIT_WINDOWS_NATIVE)
+ {
+ 	int notify_pipe[2];
+ 	int null_fd = -1;

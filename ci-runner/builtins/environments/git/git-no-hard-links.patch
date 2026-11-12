@@ -1,0 +1,27 @@
+diff --git a/git-compat-util.h b/git-compat-util.h
+index e2d7a2d..6138cb0 100644
+--- a/git-compat-util.h
++++ b/git-compat-util.h
+@@ -582,6 +582,22 @@ static inline bool strip_suffix(const char *str, const char *suffix,
+ 
+ #endif /* NO_MMAP */
+ 
++#ifdef NO_HARD_LINKS
++/*
++ * The file system cannot give a file a second name: link() fails, as it
++ * does on one without hard links, and Git copies or renames instead
++ * (clone, and object files with OBJECT_CREATION_USES_RENAMES).
++ */
++static inline int git_link_unsupported(const char *oldpath, const char *newpath)
++{
++	(void)oldpath;
++	(void)newpath;
++	errno = EPERM;
++	return -1;
++}
++#define link(oldpath, newpath) git_link_unsupported(oldpath, newpath)
++#endif
++
+ #ifdef NO_ST_BLOCKS_IN_STRUCT_STAT
+ #define on_disk_bytes(st) ((st).st_size)
+ #else
