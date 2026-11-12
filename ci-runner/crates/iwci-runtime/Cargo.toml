@@ -52,6 +52,9 @@ async-trait = "0.1"
 url = "2"
 bytes = "1.9"
 getrandom = "0.3"
+# How wasmer-wasix numbers inodes, which `/proc/iwci/ino/` has to match
+# (modes.rs `ino_of`). Already in the tree, through wasmer-wasix.
+xxhash-rust = { version = "0.8.10", default-features = false, features = ["xxh64"] }
 wasmer-napi = { version = "=0.705.0", features = ["wasix"], optional = true }
 
 [dev-dependencies]

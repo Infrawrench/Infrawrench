@@ -125,7 +125,7 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.4 db3d944ce796cfa271eb718634759d6bebffe85b5ad805c7424a77684d831df5"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.5 b05e9d14ebf6d5840653bec7aa9d441037fe1c0d13399de15340c1e020771b01"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # The environment's version is the Go release's.
@@ -243,7 +243,11 @@ for env in "$@"; do
       # 24.0.4: and stopping a Worker that is ending frees nothing in use (#938).
       # 24.0.5: and bash passes an argument with a line feed in it whole (#1003).
       # 24.0.6: and so does sed's `e` command (#1022).
-      build_env bash-node 24.0.6 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.7: and neither does asking a Worker for its heap statistics, CPU
+      #         use, a report or its loop's idle time, which now work
+      #         (#938, #1006); and `stat`, `chmod` and friends read and set
+      #         the runner's file modes (#959).
+      build_env bash-node 24.0.7 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
