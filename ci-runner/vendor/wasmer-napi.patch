@@ -1179,7 +1179,7 @@
  };
  pub use ctx::{
      NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,
-@@ -82,6 +82,37 @@
+@@ -82,6 +82,66 @@
      Ok(())
  }
  
@@ -1212,6 +1212,35 @@
 +            hooks.release,
 +        )
 +    };
++}
++
++/// iwci patch (#990): what confining V8's fatal out-of-memory to one isolate
++/// (#972) has cost this process since it started. Each confinement parks the
++/// thread that ran out for good and abandons its isolate, never disposed;
++/// none of it comes back until the process ends.
++#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
++pub struct OutOfMemoryLosses {
++    /// Isolates abandoned, with their heaps.
++    pub lost_isolates: u64,
++    /// Threads parked for good: an app's own, or a V8 worker thread.
++    pub parked_threads: u64,
++    /// Of those, V8 worker threads: the shared pool (sized by
++    /// [`set_v8_worker_threads`]) is one thread short for each.
++    pub parked_worker_threads: u64,
++}
++
++/// See [`OutOfMemoryLosses`].
++pub fn out_of_memory_losses() -> OutOfMemoryLosses {
++    let mut losses = OutOfMemoryLosses::default();
++    // Safety: the callee writes three u64s under its own lock.
++    unsafe {
++        snapi::snapi_bridge_out_of_memory_losses(
++            &mut losses.lost_isolates,
++            &mut losses.parked_threads,
++            &mut losses.parked_worker_threads,
++        )
++    };
++    losses
 +}
 +
  /// The V8 platform already exists, so its worker pool can no longer be resized.
@@ -1889,7 +1918,7 @@
    napi_value result = nullptr;
 --- a/src/snapi.rs
 +++ b/src/snapi.rs
-@@ -53,8 +53,15 @@
+@@ -53,8 +53,21 @@
  unsafe extern "C" {
      pub fn snapi_bridge_init() -> i32;
      pub fn snapi_bridge_set_v8_worker_thread_count(count: u32) -> i32;
@@ -1900,13 +1929,19 @@
 +        exit: unsafe extern "C" fn(*mut core::ffi::c_void),
 +        release: unsafe extern "C" fn(*mut core::ffi::c_void),
 +    );
++    // iwci patch (#990)
++    pub fn snapi_bridge_out_of_memory_losses(
++        lost_isolates: *mut u64,
++        parked_threads: *mut u64,
++        parked_worker_threads: *mut u64,
++    );
      pub fn snapi_bridge_unofficial_configure_runtime(
 -        engine_flags: *const i8,
 +        engine_flags: *const std::ffi::c_char,
          engine_flags_length: u32,
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_env(
-@@ -162,7 +169,7 @@
+@@ -162,7 +175,7 @@
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_private_symbol(
          env: SnapiEnv,
@@ -1915,7 +1950,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -181,6 +188,9 @@
+@@ -181,6 +194,9 @@
          accepted_hooks_out: *mut u64,
      ) -> i32;
      pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
@@ -1925,7 +1960,7 @@
      pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
      pub fn snapi_bridge_unofficial_set_promise_reject_callback(
          env: SnapiEnv,
-@@ -431,13 +441,13 @@
+@@ -431,13 +447,13 @@
      pub fn snapi_bridge_get_global(env: SnapiEnv, out_id: *mut u32) -> i32;
      pub fn snapi_bridge_create_string_utf8(
          env: SnapiEnv,
@@ -1941,7 +1976,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -456,14 +466,14 @@
+@@ -456,14 +472,14 @@
      pub fn snapi_bridge_get_value_string_utf8(
          env: SnapiEnv,
          id: u32,
@@ -1958,7 +1993,7 @@
          bufsize: usize,
          result: *mut usize,
      ) -> i32;
-@@ -521,19 +531,19 @@
+@@ -521,19 +537,19 @@
      pub fn snapi_bridge_set_named_property(
          env: SnapiEnv,
          obj_id: u32,
@@ -1981,7 +2016,7 @@
          result: *mut i32,
      ) -> i32;
      pub fn snapi_bridge_set_element(env: SnapiEnv, obj_id: u32, index: u32, val_id: u32) -> i32;
-@@ -591,9 +601,9 @@
+@@ -591,9 +607,9 @@
          out_id: *mut u32,
      ) -> i32;
      pub fn snapi_bridge_throw(env: SnapiEnv, error_id: u32) -> i32;
@@ -1994,7 +2029,7 @@
      pub fn snapi_bridge_is_exception_pending(env: SnapiEnv, result: *mut i32) -> i32;
      pub fn snapi_bridge_get_and_clear_last_exception(env: SnapiEnv, out_id: *mut u32) -> i32;
      // Symbol
-@@ -941,7 +951,7 @@
+@@ -941,7 +957,7 @@
      // Callback system
      pub fn snapi_bridge_create_function(
          env: SnapiEnv,
@@ -2003,7 +2038,7 @@
          name_len: u32,
          reg_id: u32,
          out_id: *mut u32,
-@@ -979,11 +989,11 @@
+@@ -979,11 +995,11 @@
      // napi_define_class
      pub fn snapi_bridge_define_class(
          env: SnapiEnv,
@@ -2017,7 +2052,7 @@
          prop_name_ids: *const u32,
          prop_types: *const u32,
          prop_value_ids: *const u32,
-@@ -997,7 +1007,7 @@
+@@ -997,7 +1013,7 @@
          env: SnapiEnv,
          obj_id: u32,
          prop_count: u32,
@@ -2554,7 +2589,7 @@
  #include <vector>
  
  #include <libplatform/libplatform.h>
-@@ -120,6 +121,41 @@
+@@ -120,6 +121,46 @@
  
  std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>& g_near_heap_limit_callbacks =
      *new std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>();
@@ -2583,6 +2618,11 @@
 +// Isolates abandoned by a parked thread: never disposed.
 +std::unordered_set<v8::Isolate*>& g_lost_isolates =
 +    *new std::unordered_set<v8::Isolate*>();
++// iwci patch (#990): the threads parked for good, and how many of those were
++// V8's own worker threads (no isolate current), which its pool never gets
++// back. For `snapi_bridge_out_of_memory_losses`.
++uint64_t g_parked_threads = 0;
++uint64_t g_parked_worker_threads = 0;
 +// Isolates being disposed. Dispose joins the isolate's background work under
 +// `g_isolate_lifecycle_mu`, which every isolate creation takes, so a thread
 +// parked for one of these would stop Node in every job for good: there the
@@ -2596,7 +2636,7 @@
  
  struct InterruptRequest {
    napi_env env = nullptr;
-@@ -462,6 +498,11 @@
+@@ -462,6 +503,11 @@
  }
  extern "C" __attribute__((weak)) void napi_host_guest_heap_release(
      void* /*ctx*/) {}
@@ -2608,7 +2648,7 @@
  
  class TrackingArrayBufferAllocator final : public v8::ArrayBuffer::Allocator {
   public:
-@@ -584,9 +625,29 @@
+@@ -584,9 +630,29 @@
    }
    return v8::IsolateGroup::GetDefault();
  }
@@ -2638,7 +2678,7 @@
    v8::Isolate* isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
    if (isolate == nullptr) return nullptr;
    if (platform != nullptr && !platform->RegisterIsolate(isolate)) {
-@@ -594,6 +655,9 @@
+@@ -594,6 +660,9 @@
      return nullptr;
    }
    v8::Isolate::Initialize(isolate, params);
@@ -2648,7 +2688,7 @@
    return isolate;
  }
  
-@@ -628,13 +692,17 @@
+@@ -628,13 +697,17 @@
    if (isolate == nullptr) return;
  
    PlatformShutdownWaiter waiter;
@@ -2673,7 +2713,7 @@
    }
    WaitForPlatformShutdown(&waiter, shutdown_pump_handle);
  }
-@@ -667,14 +735,68 @@
+@@ -667,14 +740,70 @@
    }
  }
  
@@ -2700,6 +2740,8 @@
 +      return;
 +    }
 +    g_lost_isolates.insert(isolate);
++    g_parked_threads += 1;
++    if (v8::Isolate::TryGetCurrent() == nullptr) g_parked_worker_threads += 1;
 +    // Under the lock: env release erases the data under it before the host
 +    // frees it.
 +    napi_host_isolate_out_of_memory(it->second);
@@ -2744,7 +2786,7 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.oom;
-@@ -683,12 +805,22 @@
+@@ -683,12 +812,22 @@
      if (env_it != g_env_by_isolate.end()) {
        env = env_it->second;
      }
@@ -2767,11 +2809,10 @@
  napi_status ConfigureRuntime(const char* engine_flags,
                               size_t engine_flags_length) {
    if ((engine_flags_length > 0 && engine_flags == nullptr) ||
-@@ -709,6 +841,37 @@
-   if (engine_flags_length > 0) {
+@@ -710,12 +849,46 @@
      v8::V8::SetFlagsFromString(engine_flags,
                                 static_cast<int>(engine_flags_length));
-+  }
+   }
 +  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
 +  // process-wide JS dispatch table with a protection key and grants access to
 +  // it in the PKRU register of the thread that first initialises V8, and of
@@ -2802,10 +2843,10 @@
 +    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
 +    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
 +                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
-   }
++  }
    v8::V8::InitializeICUDefaultLocation("");
    v8::V8::InitializeExternalStartupData("");
-@@ -716,6 +879,9 @@
+   g_runtime.platform = EdgeV8Platform::Create();
    if (g_runtime.platform == nullptr) return napi_generic_failure;
    v8::V8::InitializePlatform(g_runtime.platform.get());
    v8::V8::Initialize();
@@ -2815,7 +2856,26 @@
    g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                  engine_flags_length);
    return napi_ok;
-@@ -1776,8 +1942,8 @@
+@@ -1705,6 +1878,18 @@
+ }
+ 
+ extern "C" {
++
++// iwci patch (#990): what confining V8's out-of-memory has cost the process
++// so far (see `g_oom_mu`): isolates abandoned, threads parked, and how many
++// of those were V8 worker threads. Host-only; never called by a guest.
++void snapi_bridge_out_of_memory_losses(uint64_t* lost_isolates,
++                                       uint64_t* parked_threads,
++                                       uint64_t* parked_worker_threads) {
++  std::lock_guard<std::mutex> lock(g_oom_mu);
++  if (lost_isolates != nullptr) *lost_isolates = g_lost_isolates.size();
++  if (parked_threads != nullptr) *parked_threads = g_parked_threads;
++  if (parked_worker_threads != nullptr) *parked_worker_threads = g_parked_worker_threads;
++}
+ 
+ napi_status NAPI_CDECL unofficial_napi_configure_runtime(
+     const unofficial_napi_runtime_options* options) {
+@@ -1776,8 +1961,8 @@
  
    env->isolate->SetFatalErrorHandler(
        hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
@@ -2826,7 +2886,7 @@
    *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
    return napi_ok;
  }
-@@ -1845,7 +2011,7 @@
+@@ -1845,7 +2030,7 @@
      env->isolate->SetPromiseHook(nullptr);
      env->isolate->SetPromiseRejectCallback(nullptr);
      env->isolate->SetFatalErrorHandler(nullptr);
@@ -2835,38 +2895,34 @@
    }
    delete env;
    return napi_ok;
-@@ -1871,6 +2037,12 @@
-       it->second.callback = callback_or_null;
+@@ -1872,6 +2057,12 @@
        it->second.data = data;
        install_provider_callback = inserted;
-+    }
+     }
 +    // iwci patch (#972): only the host installs one (the guest's import is a
 +    // no-op), with its budget tracker as `data`.
 +    {
 +      std::lock_guard<std::mutex> lock(g_oom_mu);
 +      g_oom_host_data[env->isolate] = data;
-     }
++    }
      if (install_provider_callback) {
        env->isolate->AddNearHeapLimitCallback(NearHeapLimitCallback, env);
-@@ -1884,6 +2056,10 @@
+     }
+@@ -1883,6 +2074,10 @@
+     std::lock_guard<std::mutex> lock(g_runtime_mu);
      remove_provider_callback =
          g_near_heap_limit_callbacks.erase(env->isolate) != 0;
-   }
++  }
 +  {
 +    std::lock_guard<std::mutex> lock(g_oom_mu);
 +    g_oom_host_data.erase(env->isolate);
-+  }
+   }
    if (remove_provider_callback) {
      env->isolate->RemoveNearHeapLimitCallback(
-         NearHeapLimitCallback, restored_heap_limit);
-@@ -2007,23 +2183,47 @@
+@@ -2007,23 +2202,47 @@
    if (owner == nullptr) return napi_invalid_arg;
    auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
  
--  napi_status status = napi_ok;
--  if (scope->env != nullptr) {
--    status = DestroyEnvInstance(scope->env);
--    scope->env = nullptr;
 +  // iwci patch (#972): an isolate a parked thread abandoned is never torn
 +  // down. That thread holds a running local heap, so the next garbage
 +  // collection, a finalizer's included, would wait for it forever, and
@@ -2879,14 +2935,16 @@
 +  {
 +    std::lock_guard<std::mutex> lock(g_oom_mu);
 +    lost = g_lost_isolates.count(scope->isolate) != 0;
-   }
- 
-+  napi_status status = napi_ok;
-+  if (scope->env != nullptr && !lost) {
-+    status = DestroyEnvInstance(scope->env);
 +  }
-+  scope->env = nullptr;
 +
+   napi_status status = napi_ok;
+-  if (scope->env != nullptr) {
++  if (scope->env != nullptr && !lost) {
+     status = DestroyEnvInstance(scope->env);
+-    scope->env = nullptr;
+   }
++  scope->env = nullptr;
+ 
    v8::Isolate* isolate = scope->isolate;
    std::shared_ptr<TrackingArrayBufferAllocator> allocator = scope->allocator;
    delete scope;
@@ -2899,7 +2957,8 @@
 +      std::lock_guard<std::mutex> lock(g_oom_mu);
 +      lost = g_lost_isolates.count(isolate) != 0;
 +      if (!lost) g_disposing_isolates.insert(isolate);
-+    }
+     }
+-    DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
 +    if (!lost) {
 +      EdgeV8Platform* platform = nullptr;
 +      {
@@ -2907,15 +2966,14 @@
 +        platform = g_runtime.platform.get();
 +      }
 +      DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
-     }
--    DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
++    }
 +    std::lock_guard<std::mutex> lock(g_oom_mu);
 +    g_disposing_isolates.erase(isolate);
 +    g_oom_host_data.erase(isolate);
    }
    if (allocator != nullptr) {
      {
-@@ -2121,34 +2321,95 @@
+@@ -2121,52 +2340,122 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -2971,8 +3029,8 @@
 -  env->DrainFinalizerQueue();
 -  PumpPlatformForegroundTasks(env);
 +  return true;
-+}
-+
+ }
+ 
 +// iwci patch (#943): how long a host task turn may wait for the platform's
 +// work. With nothing runnable in the loop (it has only timers or I/O that are
 +// not due yet, or it is empty) the turn waits up to kPlatformWaitLimit;
@@ -3024,10 +3082,10 @@
 +  (void)DrainMicrotasksForEnv(env, &ran);
 +  streak.turns = has_runnable_work && !ran ? streak.turns + 1 : 0;
 +  return true;
- }
- 
++}
++
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-@@ -2156,17 +2417,26 @@
+     napi_env env,
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {

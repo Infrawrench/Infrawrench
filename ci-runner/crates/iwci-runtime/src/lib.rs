@@ -59,6 +59,39 @@ pub fn set_node_worker_threads(cpus: usize) {
     let _ = cpus;
 }
 
+/// What V8 running out of memory where it cannot recover has cost this
+/// process so far (#990). The bridge keeps each such out-of-memory to its
+/// job by parking the thread that ran out for good and abandoning the
+/// isolate (vendor/README.md), so none of it comes back until the process
+/// ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct V8Losses {
+    /// Isolates abandoned, with their memory, which no job's `memory:`
+    /// counts any more.
+    pub lost_isolates: u64,
+    /// Threads parked for good: a job's own, or one of V8's workers.
+    pub parked_threads: u64,
+    /// Of those, V8 worker threads. The pool is process-wide and sized to
+    /// `--cpus` ([`set_node_worker_threads`]), so each one leaves every
+    /// later Node job's garbage collection and compilation fewer threads.
+    pub parked_worker_threads: u64,
+}
+
+/// See [`V8Losses`]; all zero without the `node` feature.
+pub fn v8_losses() -> V8Losses {
+    #[cfg(feature = "node")]
+    {
+        let losses = wasmer_napi::out_of_memory_losses();
+        V8Losses {
+            lost_isolates: losses.lost_isolates,
+            parked_threads: losses.parked_threads,
+            parked_worker_threads: losses.parked_worker_threads,
+        }
+    }
+    #[cfg(not(feature = "node"))]
+    V8Losses::default()
+}
+
 /// What each of stdout and stderr keeps before truncating.
 pub const DEFAULT_OUTPUT_CAP: usize = 8 << 20;
 
