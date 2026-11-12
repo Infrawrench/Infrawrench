@@ -644,13 +644,19 @@ fn guest_unofficial_napi_request_interrupt(
     })
 }
 
+// iwci patch (#1061): cloning and reading a message lend the store, as an
+// import that runs JavaScript does. Deserializing makes each ArrayBuffer's
+// backing store in the guest heap, and without a store the heap can only use
+// what it already holds: a copied buffer larger than that came back as a
+// failed take ("Message could not be deserialized") or a failed clone, now
+// and then, depending on what earlier allocations had left.
 fn guest_unofficial_napi_structured_clone(
     mut env: FunctionEnvMut<NapiEnv>,
     napi_env: i32,
     value: i32,
     transfer_list: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let value_id = if value > 0 { value as u32 } else { 0 };
     let transfer_list_id = if transfer_list > 0 {
@@ -659,13 +665,13 @@ fn guest_unofficial_napi_structured_clone(
         0
     };
     let mut out = 0u32;
-    let status = unsafe {
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_structured_clone(env_handle, value_id, transfer_list_id, &mut out)
-    };
+    })?;
     if status == 0 && result_ptr > 0 {
         write_guest_u32(&mut env, result_ptr as u32, out);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_message_create(
@@ -673,19 +679,19 @@ fn guest_unofficial_napi_message_create(
     napi_env: i32,
     value: i32,
     payload_out_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     if payload_out_ptr <= 0 {
-        return 1;
+        return Ok(1);
     }
     let env_handle = snapi_env(&env, napi_env);
     let mut message = 0u32;
-    let status = unsafe {
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_message_create(env_handle, value.max(0) as u32, &mut message)
-    };
+    })?;
     if status == 0 {
         write_guest_u32(&mut env, payload_out_ptr as u32, message);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_message_take(
@@ -693,22 +699,23 @@ fn guest_unofficial_napi_message_take(
     napi_env: i32,
     payload: i32,
     result_out_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     if payload <= 0 {
-        return 1;
+        return Ok(1);
     }
     if result_out_ptr <= 0 {
         unsafe { snapi_bridge_unofficial_message_drop(payload as u32) };
-        return 1;
+        return Ok(1);
     }
     let env_handle = snapi_env(&env, napi_env);
     let mut value = 0u32;
-    let status =
-        unsafe { snapi_bridge_unofficial_message_take(env_handle, payload as u32, &mut value) };
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
+        snapi_bridge_unofficial_message_take(env_handle, payload as u32, &mut value)
+    })?;
     if status == 0 {
         write_guest_u32(&mut env, result_out_ptr as u32, value);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_message_drop(_env: FunctionEnvMut<NapiEnv>, payload: i32) {

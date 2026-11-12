@@ -811,6 +811,22 @@ next one slept until the parent's next timer: `spawnSync` with a
 the timeout ran out (one call in six to eight, four at a time on
 two CPUs), and an asynchronous child's `exit` waited for the next timer.
 
+24.0.12 adds `edgejs-post-message.patch` (#1061): `postMessage` of a value
+of several thousand objects arrives, where it used to be lost without an
+error or leave the receiver waiting until the stall check. Edge.js copied
+every posted value through N-API before V8 serialized it, keeping every
+handle of the copy until the call returned and finding what it had
+already copied by comparing with everything so far. Plain data with nothing
+to transfer now goes to V8's serializer alone, as Node's does and as
+`structuredClone` already did, and is not walked again when it is read
+(100,000 objects through a `MessageChannel` in about 0.2 s); a value with
+something to transfer still takes the copy, now in linear time and with
+its handles released step by step (100,000 objects in about 6.5 s); and a
+copy that fails throws `DataCloneError`. The runner's side of the same
+issue is in `vendor/wasmer-napi`: a copied buffer of 16 or 64 MiB failed
+to read now and then (a `messageerror`, "Message could not be
+deserialized"), because reading a message could not grow the guest heap.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
