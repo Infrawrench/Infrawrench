@@ -297,6 +297,23 @@ jobs:
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
+  # Waiting for a background service's log line, and for one that never
+  # comes: the helper says what it waited for and shows the file's end.
+  wait-for-log-passes:
+    using: env:bash@5
+    run: |
+      (sleep 1; echo starting; sleep 1; echo "server ready on 5432") > svc.log &
+      wait-for-log svc.log 'ready on [0-9]+$' --timeout 30s
+      grep -q 'ready on 5432' svc.log
+      wait
+  wait-for-log-timeout-fails:
+    using: env:bash@5
+    run: |
+      echo starting > svc.log
+      wait-for-log svc.log ready --timeout 1s
+  wait-for-port-timeout-fails:
+    using: env:bash@5
+    run: wait-for-port 5999 --timeout 1s
   # Nothing in a job is a terminal (#1008): its stdin is empty, its output
   # goes to the log, and a pipe, a file or /dev/null in their place is not
   # one either. Every descriptor used to say it was.
@@ -756,6 +773,27 @@ jobs:
       test "$(node -p 'JSON.stringify(process.argv.slice(1))' 'a
       b' c)" = '["a\nb","c"]'
       test "$(node -e 'process.stdout.write(require("child_process").execFileSync("bash", ["-c", "printf \"%s|\" \"$@\"", "_", "x\ny", "z"]))')" = "$(printf 'x\ny|z|')"
+  # A server started in the background, waited for, then used. It counts
+  # its connections and answers with the count, so the client being its
+  # first proves wait-for-port never connected: pglite, which serves one
+  # client and exits, would have been gone.
+  wait-for-port-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    run: |
+      cat > /tmp/server.js <<'JS'
+      let n = 0;
+      setTimeout(() => {
+        require("node:net").createServer((s) => s.end(`connection ${++n}\n`)).listen(7000, "127.0.0.1");
+      }, 1000);
+      JS
+      # WASIX bash has no job specs (`%1`), so the pid.
+      node /tmp/server.js &
+      server=$!
+      wait-for-port 7000 --timeout 60s
+      got="$(node -e 'require("node:net").connect(7000, "127.0.0.1").on("data", (d) => process.stdout.write(d))')"
+      kill "$server"
+      test "$got" = "connection 1"
   # An interpreter that is not there is ENOENT, as on Linux.
   shebang-missing-interpreter-fails:
     using: env:bash-node@24
@@ -908,6 +946,18 @@ jobs:
   raise-fails:
     using: env:python@3.13
     run: python -c 'raise SystemExit("expected")'
+  # Python's own HTTP server in the background, found by its port and by
+  # its log line, then asked for a file.
+  wait-for-service-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python -u -m http.server 8000 --bind 127.0.0.1 > http.log 2>&1 &
+      server=$!
+      wait-for-port 8000 --host localhost --timeout 60s
+      wait-for-log http.log 'Serving HTTP on' --timeout 10s
+      test "$(python -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8000/data.txt").read().decode().strip())')" = "fixture line"
+      kill "$server"
   # A script on stdin runs as a script (#1008): Python took the pipe for a
   # terminal, printed its prompts and read a block line by line.
   stdin-script-passes:
@@ -1023,7 +1073,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash/stat-missing-fails | python/pytest-fails | python/raise-fails | php/phpunit-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | php/phpunit-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
@@ -1038,6 +1088,8 @@ want_reason() {
 # What a job's stderr must contain, as an extended regular expression.
 want_stderr() {
   case "$1" in
+    bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
+    bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*V8 ran out of heap in an isolate" ;;

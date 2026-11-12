@@ -154,6 +154,8 @@ pub(crate) struct JobRuntime {
     control: Arc<JobControl>,
     /// The module store, to say when a module is being loaded (stall.rs).
     modules: Arc<ModuleStore>,
+    /// What the job listens on, for `wait-for-port` (services.rs).
+    listeners: crate::network::Listeners,
 }
 
 impl JobRuntime {
@@ -174,9 +176,9 @@ impl JobRuntime {
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
         // public internet when the runtime offers it.
-        inner.set_networking_implementation(crate::network::JobNetwork::new(
-            shared.outside.clone().filter(|_| internet),
-        ));
+        let network = crate::network::JobNetwork::new(shared.outside.clone().filter(|_| internet));
+        let listeners = network.listeners();
+        inner.set_networking_implementation(network);
         inner.http_client = None;
         inner.set_module_cache(WasixCache(shared.store.clone()));
         let packages = packages.cloned().unwrap_or_default();
@@ -190,6 +192,7 @@ impl JobRuntime {
             inner,
             control: Arc::default(),
             modules: shared.store.clone(),
+            listeners,
         }
     }
 }
@@ -479,7 +482,9 @@ pub(crate) fn node_options(env: &[(String, String)]) -> String {
 /// scratch mounts that keep WASIX's own files out of `JobFs::changes`.
 ///
 /// A shell job (`shell`) also gets the mode commands in `/usr/local/bin` and
-/// the file system they work through (`modes.rs`). Every mount but the job's
+/// the file system they work through (`modes.rs`), and the commands that
+/// wait for its background services with theirs (`services.rs`). Every
+/// mount but the job's
 /// own (which does it itself) is wrapped so that removing or renaming a file
 /// moves its mode in `modes`.
 fn job_root(
@@ -489,6 +494,7 @@ fn job_root(
     node_support: bool,
     shell: bool,
     modes: &iwci_vfs::Modes,
+    listeners: &crate::network::Listeners,
 ) -> Result<MountFileSystem> {
     type Dyn = Arc<dyn FileSystem + Send + Sync>;
     let tracked =
@@ -516,7 +522,10 @@ fn job_root(
     if !commands.is_empty() || shell {
         let bin = TmpFileSystem::new();
         if shell {
-            for (name, bytes) in crate::modes::MODE_COMMANDS {
+            for (name, bytes) in crate::modes::MODE_COMMANDS
+                .iter()
+                .chain(crate::services::SERVICE_COMMANDS)
+            {
                 write_command(&bin, name, bytes)?;
             }
         }
@@ -559,6 +568,9 @@ fn job_root(
         let view: Dyn = Arc::new(build(&mounts)?);
         let control = crate::modes::ModeControl::new(view, modes.clone());
         root.mount(Path::new(crate::modes::MODES_DIR), Arc::new(control))
+            .map_err(mount_err)?;
+        let ports = crate::services::PortControl::new(listeners.clone());
+        root.mount(Path::new(crate::services::PORTS_DIR), Arc::new(ports))
             .map_err(mount_err)?;
     }
     Ok(root)
@@ -666,6 +678,7 @@ pub(crate) fn run(
         cpu.clone(),
     );
     let control = runtime.control.clone();
+    let listeners = runtime.listeners.clone();
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
 
     let uses = match &package_set {
@@ -709,6 +722,7 @@ pub(crate) fn run(
         node_support,
         matches!(entry, Entry::Command { .. }),
         &inv.modes,
+        &listeners,
     )?);
     // WASIX programs ask the runtime for their working directory. Plain WASI
     // ones built on wasi-libc cannot be given one: their cwd is always `/`,

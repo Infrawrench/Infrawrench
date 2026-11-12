@@ -1,0 +1,73 @@
+#!/bin/bash
+# wait-for-log FILE PATTERN [--timeout 30s]: waits until FILE has a line
+# matching PATTERN (an extended regular expression, as `grep -E` reads
+# one), for a service a job started in the background (`server > log &`).
+# Exits 0 once it does, 1 when the time runs out, 2 on a usage error. See
+# ci-runner/crates/iwci-runtime/src/services.rs.
+set -u
+
+me='wait-for-log'
+timeout=30s
+args=()
+usage() {
+  printf 'Usage: %s FILE PATTERN [--timeout DURATION]\n' "$me" >&2
+  printf '  DURATION is a number of seconds, or one with ms, s, m or h (30s, 500ms, 2m)\n' >&2
+  exit 2
+}
+
+while (($#)); do
+  case "$1" in
+    -t | --timeout) (($# > 1)) || usage; timeout=$2; shift ;;
+    --timeout=*) timeout=${1#--timeout=} ;;
+    -h | --help) usage ;;
+    --) shift; args+=("$@"); break ;;
+    -?*) printf "%s: unrecognized option '%s'\n" "$me" "$1" >&2; usage ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+((${#args[@]} == 2)) || usage
+file=${args[0]} pattern=${args[1]}
+
+# A duration in milliseconds, into REPLY.
+millis() {
+  [[ $1 =~ ^([0-9]+)(ms|s|m|h)?$ ]] || return 1
+  case "${BASH_REMATCH[2]}" in
+    ms) REPLY=$((10#${BASH_REMATCH[1]})) ;;
+    '' | s) REPLY=$((10#${BASH_REMATCH[1]} * 1000)) ;;
+    m) REPLY=$((10#${BASH_REMATCH[1]} * 60000)) ;;
+    h) REPLY=$((10#${BASH_REMATCH[1]} * 3600000)) ;;
+  esac
+}
+# Milliseconds since the epoch, into REPLY.
+now() {
+  local t=${EPOCHREALTIME/./}
+  REPLY=$((10#$t / 1000))
+}
+
+millis "$timeout" || { printf "%s: invalid duration '%s'\n" "$me" "$timeout" >&2; usage; }
+limit=$REPLY
+# A pattern grep refuses is a usage error now, not a timeout later.
+grep -Eq -- "$pattern" /dev/null 2>/dev/null
+(($? != 2)) || { printf "%s: invalid pattern '%s'\n" "$me" "$pattern" >&2; exit 2; }
+now
+deadline=$((REPLY + limit))
+while :; do
+  [[ -f $file ]] && grep -Eq -- "$pattern" "$file" 2>/dev/null && exit 0
+  now
+  ((REPLY < deadline)) || break
+  sleep 0.1
+done
+
+if [[ -e $file ]]; then
+  printf "%s: no line of %s matched '%s' within %s\n" "$me" "$file" "$pattern" "$timeout" >&2
+  if [[ -s $file ]]; then
+    printf '%s: its last lines:\n' "$me" >&2
+    tail -n 5 -- "$file" | sed 's/^/  /' >&2
+  else
+    printf '%s: it is empty\n' "$me" >&2
+  fi
+else
+  printf "%s: %s did not appear within %s (waiting for a line matching '%s')\n" "$me" "$file" "$timeout" "$pattern" >&2
+fi
+exit 1

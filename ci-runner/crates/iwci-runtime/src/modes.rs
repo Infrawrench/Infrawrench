@@ -234,14 +234,14 @@ fn describe(
     })
 }
 
-fn dir_meta() -> Metadata {
+pub(crate) fn dir_meta() -> Metadata {
     Metadata {
         ft: FileType::new_dir(),
         ..Default::default()
     }
 }
 
-fn file_meta() -> Metadata {
+pub(crate) fn file_meta() -> Metadata {
     Metadata {
         ft: FileType::new_file(),
         ..Default::default()
@@ -374,11 +374,21 @@ impl Setter {
 }
 
 /// An open file of [`ModeControl`]: what it described when it was opened,
-/// and for `mode/` a [`Setter`].
+/// and for `mode/` a [`Setter`]. `services.rs` serves its files with it too.
 #[derive(Debug)]
-struct ControlFile {
+pub(crate) struct ControlFile {
     data: Cursor<Vec<u8>>,
     setter: Option<Setter>,
+}
+
+impl ControlFile {
+    /// A file that reads `content` and refuses writes.
+    pub(crate) fn read_only(content: String) -> Self {
+        Self {
+            data: Cursor::new(content.into_bytes()),
+            setter: None,
+        }
+    }
 }
 
 impl AsyncRead for ControlFile {

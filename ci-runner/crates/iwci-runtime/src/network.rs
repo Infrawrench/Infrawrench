@@ -175,17 +175,64 @@ impl JobNetwork {
     /// the one on that address, or for the IPv4 loopback a dual-stack one on
     /// the same port.
     fn listener_for(&self, peer: SocketAddr) -> Result<SocketAddr> {
+        self.listening
+            .lock()
+            .expect("listener set")
+            .listener_for(peer)
+            .ok_or(NetworkError::ConnectionRefused)
+    }
+
+    /// What the job listens on, for `/proc/iwci/tcp` (services.rs).
+    pub(crate) fn listeners(&self) -> Listeners {
+        Listeners(self.listening.clone())
+    }
+}
+
+impl Listening {
+    /// See [`JobNetwork::listener_for`].
+    fn listener_for(&self, peer: SocketAddr) -> Option<SocketAddr> {
         let peer = normalise(peer);
-        let listening = self.listening.lock().expect("listener set");
-        if listening.addrs.contains(&peer) {
-            return Ok(peer);
+        if self.addrs.contains(&peer) {
+            return Some(peer);
         }
-        if peer.ip() == IpAddr::V4(Ipv4Addr::LOCALHOST)
-            && listening.dual_stack.contains(&peer.port())
-        {
-            return Ok(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), peer.port()));
+        if peer.ip() == IpAddr::V4(Ipv4Addr::LOCALHOST) && self.dual_stack.contains(&peer.port()) {
+            return Some(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), peer.port()));
         }
-        Err(NetworkError::ConnectionRefused)
+        None
+    }
+}
+
+/// A read-only view of what a job listens on, shared with its
+/// [`JobNetwork`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Listeners(Arc<Mutex<Listening>>);
+
+impl Listeners {
+    /// Whether a connection to `peer` would reach a listener in the job: a
+    /// loopback address something listens on, as a connect would route it.
+    /// Nothing is connected to find out.
+    pub(crate) fn reaches(&self, peer: SocketAddr) -> bool {
+        peer.ip().is_loopback()
+            && self
+                .0
+                .lock()
+                .expect("listener set")
+                .listener_for(peer)
+                .is_some()
+    }
+
+    /// The addresses something listens on, sorted.
+    pub(crate) fn addrs(&self) -> Vec<SocketAddr> {
+        let mut addrs: Vec<_> = self
+            .0
+            .lock()
+            .expect("listener set")
+            .addrs
+            .iter()
+            .copied()
+            .collect();
+        addrs.sort();
+        addrs
     }
 }
 
