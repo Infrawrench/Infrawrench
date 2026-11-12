@@ -9,6 +9,8 @@
 // | `GET /v1/capacity` | every runner's slots, and the pool's total |
 // | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most free slots |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
+// | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
+// | `POST /v1/concurrency` | a request's pipelines and their concurrency groups, from any runner; runs nothing |
 // | `POST /v1/prepare` | warms a runner for a request |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
 // | `DELETE /v1/storage/{owner}/{repo-id}` | clears a repository's caches, on any runner |
@@ -205,6 +207,45 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     const placed = await deps.pool.place(`${path}${url.search}`, text);
     if (!placed) return full();
     return relay(placed.runner, placed.response);
+  }
+
+  if (method === "POST" && path === "/v1/concurrency") {
+    // What a run would hold, worked out by a runner without running it. The
+    // groups may read variables, never secrets, so only variables are added.
+    const body = await readBody(request);
+    if (body instanceof Response) return body;
+    const { trusted: _trusted, secrets: _secrets, ...rest } = body.value;
+    const { owner, repoId } = identify(rest);
+    if (isId(owner) && isId(repoId)) {
+      const stored = await forRun(deps.values, deps.secretsKey, owner, repoId, false);
+      const own = rest.vars;
+      const vars = {
+        ...stored.vars,
+        ...(typeof own === "object" && own !== null && !Array.isArray(own) ? own : {}),
+      };
+      if (Object.keys(vars).length > 0) rest.vars = vars;
+    }
+    const response = await deps.pool.any(path, { method: "POST", body: JSON.stringify(rest) });
+    return response
+      ? new Response(response.body, { status: response.status, headers: response.headers })
+      : error(503, "no runner answered");
+  }
+
+  if (method === "POST" && parts[0] === "v1" && parts[1] === "runs" && parts.length === 4) {
+    if (parts[3] !== "cancel") return error(404, "no such route");
+    const run = parseRunId(third, deps.pool);
+    if (!run) return error(404, "no such run");
+    const body = await request.text();
+    if (body.length > MAX_BODY) return error(413, `the body is over ${MAX_BODY} bytes`);
+    try {
+      const response = await deps.pool.call(run.runner, `/v1/runs/${run.id}/cancel`, {
+        method: "POST",
+        body: body.length > 0 ? body : "{}",
+      });
+      return relay(run.runner, response);
+    } catch {
+      return error(502, "the runner with that run did not answer");
+    }
   }
 
   if (
@@ -421,6 +462,68 @@ async function values(request: Request, deps: Deps, parts: string[]): Promise<Re
   return json(200, { ...scope, name, "updated-at": deps.now() });
 }
 
+/** How far back a scheduled run is looked for as still holding its group. */
+const GROUP_LOOKBACK_SECS = 6 * 3600;
+
+/** A scheduled pipeline's concurrency group, lowercased (groups ignore case), or null. */
+function groupOf(pipeline: ScheduledPipeline): string | null {
+  const group = pipeline.concurrency?.group;
+  return typeof group === "string" && group.length > 0 ? group.toLowerCase() : null;
+}
+
+/**
+ * Frees `group` for a scheduled pipeline about to fire, among the proxy's own
+ * scheduled runs of the repository (the app's runs are the app's to order):
+ * a run of the group still going is cancelled when the pipeline says
+ * `cancel-in-progress`, and otherwise this fire is skipped, as a full pool's
+ * is, rather than queued. Returns the skip's outcome, or null to fire.
+ */
+async function makeRoom(
+  deps: Deps,
+  row: ScheduleRow,
+  pipeline: ScheduledPipeline,
+  group: string,
+  minute: number,
+): Promise<string | null> {
+  const files = row.pipelines.filter((p) => groupOf(p) === group).map((p) => p.file);
+  const started = await deps.store.startedFires(
+    row.owner,
+    row.repoId,
+    files,
+    minute - GROUP_LOOKBACK_SECS,
+    5,
+  );
+  for (const fire of started) {
+    const run = parseRunId(fire.runId, deps.pool);
+    if (!run) continue;
+    let state: unknown;
+    try {
+      const response = await deps.pool.call(
+        run.runner,
+        `/v1/runs/${run.id}?owner=${encodeURIComponent(row.owner)}`,
+      );
+      state = response.ok ? ((await response.json()) as { state?: unknown }).state : null;
+    } catch {
+      // A runner that does not answer has no run to wait for.
+      state = null;
+    }
+    if (state !== "running") continue;
+    if (pipeline.concurrency?.["cancel-in-progress"] !== true) {
+      return `concurrency: waiting for ${fire.runId} in group ${group}`;
+    }
+    try {
+      const response = await deps.pool.call(run.runner, `/v1/runs/${run.id}/cancel`, {
+        method: "POST",
+        body: "{}",
+      });
+      await response.body?.cancel();
+    } catch {
+      // Its runner went away, and the run with it.
+    }
+  }
+  return null;
+}
+
 export interface TickResult {
   started: string[];
   skipped: string[];
@@ -466,10 +569,29 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
   const fires = rows.flatMap((row) =>
     row.pipelines.filter((p) => anyDue(p.cron, date)).map((pipeline) => ({ row, pipeline })),
   );
+  // One fire per concurrency group of a repository in a minute: the last in
+  // file order, as the newest of runs queued together would be.
+  const lastOfGroup = new Map<string, number>();
+  fires.forEach(({ row, pipeline }, i) => {
+    const group = groupOf(pipeline);
+    if (group !== null) lastOfGroup.set(`${row.owner}/${row.repoId}/${group}`, i);
+  });
   await Promise.all(
-    fires.map(async ({ row, pipeline }) => {
+    fires.map(async ({ row, pipeline }, i) => {
       const label = `${row.owner}/${row.repoId}/${pipeline.file}`;
       if (!(await deps.store.claimFire(row.owner, row.repoId, pipeline.file, minute))) return;
+      const group = groupOf(pipeline);
+      if (group !== null) {
+        const outcome =
+          lastOfGroup.get(`${row.owner}/${row.repoId}/${group}`) !== i
+            ? `concurrency: a later pipeline of group ${group} fired this minute`
+            : await makeRoom(deps, row, pipeline, group, minute);
+        if (outcome !== null) {
+          result.skipped.push(label);
+          await deps.store.settleFire(row.owner, row.repoId, pipeline.file, minute, null, outcome);
+          return;
+        }
+      }
       const request: Record<string, unknown> = {
         repo: row.repo,
         branch: row.branch,

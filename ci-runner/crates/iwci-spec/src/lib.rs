@@ -45,6 +45,35 @@ pub struct Context {
     pub vars: std::collections::BTreeMap<String, String>,
     /// The repository's workspace packages, for `packages:` jobs.
     pub packages: PackagesSource,
+    /// A pull request's number, for `${{ pull-request.number }}`; `None` for
+    /// any other event.
+    pub pull_request: Option<u64>,
+    /// The pipeline's `name:`, for `${{ pipeline.name }}`. [`parse`] sets it
+    /// from the file; what a caller passes is ignored.
+    pub pipeline_name: String,
+}
+
+impl Context {
+    /// `${{ pull-request.number }}`: the number, or empty.
+    pub fn pull_request_number(&self) -> String {
+        match (self.event, self.pull_request) {
+            (Event::PullRequest, Some(n)) => n.to_string(),
+            _ => String::new(),
+        }
+    }
+}
+
+/// The number in a pull request's ref (`refs/pull/<n>/head`) or in the
+/// branch name a pull request run is given (`pull/<n>`), if either is one.
+pub fn pull_request_number(git_ref: Option<&str>, branch: &str) -> Option<u64> {
+    let from = |text: &str, prefix: &str| -> Option<u64> {
+        let rest = text.strip_prefix(prefix)?;
+        let digits = rest.split('/').next()?;
+        digits.parse().ok().filter(|n| *n > 0)
+    };
+    git_ref
+        .and_then(|r| from(r, "refs/pull/"))
+        .or_else(|| from(branch, "pull/"))
 }
 
 /// What `packages:` jobs expand over.
@@ -106,6 +135,8 @@ impl std::error::Error for SpecErrors {}
 /// A turbo-style graph of a monorepo is several jobs per package (build,
 /// bundle, test, format): 180 packages already make about 700.
 pub const MAX_JOBS: usize = 1024;
+/// The longest a concurrency group may be, once substituted.
+pub const MAX_CONCURRENCY_GROUP: usize = 256;
 pub const MAX_MATRIX_ENTRIES: usize = 64;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 10 * 60;
 pub const MAX_TIMEOUT_SECS: u64 = 60 * 60;
@@ -174,6 +205,10 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
             message: e.to_string(),
         }])
     })?;
+    let ctx = &Context {
+        pipeline_name: raw.name.clone(),
+        ..ctx.clone()
+    };
     let mut expand_errors = Vec::new();
     let generated = packages::expand(&mut raw, &ctx.packages, &mut expand_errors);
     // Each job carries the services it starts with from here on, so a job
@@ -421,6 +456,7 @@ impl Validator<'_> {
             self.error("name", "must not be empty");
         }
         let triggers = self.triggers(raw.on);
+        let concurrency = raw.concurrency.as_ref().and_then(|c| self.concurrency(c));
         let base_ws = raw.workspace.unwrap_or_default();
         let base_clone = Some(base_ws.clone.unwrap_or_default());
         let base_deps = base_ws.deps.unwrap_or_default();
@@ -574,12 +610,78 @@ impl Validator<'_> {
         Plan {
             name: raw.name,
             triggers,
+            concurrency,
             workspaces,
             jobs,
             scratch_bytes,
             decls: self.decls.clone(),
             ctx: self.ctx.clone(),
         }
+    }
+
+    /// The pipeline's `concurrency:`, its group substituted from the run's
+    /// context. Only names that are known before the run starts are
+    /// allowed: a group decides whether the run starts at all.
+    fn concurrency(&mut self, raw: &raw::Concurrency) -> Option<Concurrency> {
+        let (text, cancel_in_progress, path) = match raw {
+            raw::Concurrency::Group(g) => (g.as_str(), false, "concurrency"),
+            raw::Concurrency::Full(m) => {
+                (m.group.as_str(), m.cancel_in_progress, "concurrency.group")
+            }
+        };
+        let mut rest = text;
+        while let Some(start) = rest.find("${{") {
+            let after = &rest[start + 3..];
+            let Some(end) = after.find("}}") else { break };
+            let name = after[..end].trim();
+            if name == "matrix"
+                || name.starts_with("matrix.")
+                || name.starts_with("needs.")
+                || name.starts_with("package.")
+                || name.starts_with("hashFiles(")
+            {
+                self.error(
+                    path,
+                    format!(
+                        "`{name}` is not known before the run starts, so a concurrency group cannot use it"
+                    ),
+                );
+                return None;
+            }
+            rest = &after[end + 2..];
+        }
+        let scope = interp::Scope {
+            ctx: self.ctx,
+            matrix: interp::MatrixScope::None,
+            needs_list: &[],
+            decls: self.decls,
+            needs: None,
+            deferred: std::cell::Cell::new(false),
+            hash_files: std::cell::Cell::new(false),
+            package: None,
+        };
+        let group = match interp::substitute(text, &scope) {
+            Ok(g) => g.trim().to_string(),
+            Err(e) => {
+                self.error(path, e);
+                return None;
+            }
+        };
+        if group.is_empty() {
+            self.error(path, "the group is empty once substituted");
+            return None;
+        }
+        if group.chars().count() > MAX_CONCURRENCY_GROUP {
+            self.error(
+                path,
+                format!("the group is over {MAX_CONCURRENCY_GROUP} characters once substituted"),
+            );
+            return None;
+        }
+        Some(Concurrency {
+            group,
+            cancel_in_progress,
+        })
     }
 
     fn triggers(&mut self, raw: Option<raw::Triggers>) -> Triggers {

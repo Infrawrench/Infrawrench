@@ -69,12 +69,13 @@ export function baseKey(id: string): string {
   return bracket === -1 ? id : id.slice(0, bracket);
 }
 
-/** What a group shows: running wins, then a failure, then waiting, then skipped, then passed. */
+/** What a group shows: running wins, then a failure, then waiting, then cancelled, then skipped, then passed. */
 export function groupStatus(jobs: readonly GraphJob[]): CiLiveJobStatus {
   if (jobs.some((j) => j.status === "running")) return "running";
   if (jobs.some((j) => j.status === "failed")) return "failed";
   if (jobs.some((j) => j.status === "error")) return "error";
   if (jobs.some((j) => j.status === "pending")) return "pending";
+  if (jobs.some((j) => j.status === "cancelled")) return "cancelled";
   if (jobs.length > 0 && jobs.every((j) => j.status === "skipped")) return "skipped";
   return "passed";
 }

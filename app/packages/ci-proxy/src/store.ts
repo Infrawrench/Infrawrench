@@ -9,6 +9,18 @@ export interface ScheduledPipeline {
   cron: string[];
   /** The pipeline file's text, sent with the run so exactly it runs. */
   text: string;
+  /**
+   * Its `concurrency:` as the runner evaluated it for a scheduled run, or
+   * null (absent from runners before it).
+   */
+  concurrency?: { group: string; "cancel-in-progress": boolean } | null;
+}
+
+/** A scheduled run the proxy started. */
+export interface StartedFire {
+  file: string;
+  minute: number;
+  runId: string;
 }
 
 export interface ScheduleRow {
@@ -39,6 +51,17 @@ export interface ScheduleStore {
     runId: string | null,
     outcome: string,
   ): Promise<void>;
+  /**
+   * The newest runs started for `files` of a repository since `since`
+   * (Unix seconds, a minute), newest first, at most `limit`.
+   */
+  startedFires(
+    owner: string,
+    repoId: string,
+    files: string[],
+    since: number,
+    limit: number,
+  ): Promise<StartedFire[]>;
 }
 
 interface DbRow {
@@ -151,6 +174,26 @@ export class D1Store implements ScheduleStore {
       .bind(runId, outcome, owner, repoId, file, minute)
       .run();
   }
+
+  async startedFires(
+    owner: string,
+    repoId: string,
+    files: string[],
+    since: number,
+    limit: number,
+  ): Promise<StartedFire[]> {
+    if (files.length === 0) return [];
+    const { results } = await this.db
+      .prepare(
+        `SELECT file, minute, run_id FROM schedule_fires
+         WHERE owner = ? AND repo_id = ? AND minute >= ? AND outcome = 'started' AND run_id IS NOT NULL
+           AND file IN (${files.map(() => "?").join(", ")})
+         ORDER BY minute DESC LIMIT ?`,
+      )
+      .bind(owner, repoId, since, ...files, limit)
+      .all<{ file: string; minute: number; run_id: string }>();
+    return results.map((r) => ({ file: r.file, minute: r.minute, runId: r.run_id }));
+  }
 }
 
 export class MemoryStore implements ScheduleStore {
@@ -186,5 +229,24 @@ export class MemoryStore implements ScheduleStore {
     outcome: string,
   ): Promise<void> {
     this.fires.set(`${owner}/${repoId}/${file}/${minute}`, { runId, outcome });
+  }
+  async startedFires(
+    owner: string,
+    repoId: string,
+    files: string[],
+    since: number,
+    limit: number,
+  ): Promise<StartedFire[]> {
+    const out: StartedFire[] = [];
+    for (const [key, fire] of this.fires) {
+      const prefix = `${owner}/${repoId}/`;
+      if (!key.startsWith(prefix) || fire.outcome !== "started" || fire.runId === null) continue;
+      const rest = key.slice(prefix.length);
+      const cut = rest.lastIndexOf("/");
+      const file = rest.slice(0, cut);
+      const minute = Number(rest.slice(cut + 1));
+      if (files.includes(file) && minute >= since) out.push({ file, minute, runId: fire.runId });
+    }
+    return out.sort((a, b) => b.minute - a.minute).slice(0, limit);
   }
 }

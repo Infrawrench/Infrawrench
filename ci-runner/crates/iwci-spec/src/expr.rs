@@ -21,13 +21,22 @@ use std::fmt;
 /// A name an expression can read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Name {
-    NeedsResult { job: String },
-    NeedsOutput { job: String, output: String },
+    NeedsResult {
+        job: String,
+    },
+    NeedsOutput {
+        job: String,
+        output: String,
+    },
     CommitSha,
     CommitShortSha,
     CommitBranch,
     RepoId,
     Event,
+    /// The pipeline's `name:`.
+    PipelineName,
+    /// A pull request's number; empty for any other event.
+    PullRequestNumber,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +128,8 @@ pub fn parse_name(text: &str) -> Result<Name, String> {
         ["commit", "branch"] => Ok(Name::CommitBranch),
         ["repo", "id"] => Ok(Name::RepoId),
         ["event"] => Ok(Name::Event),
+        ["pipeline", "name"] => Ok(Name::PipelineName),
+        ["pull-request", "number"] => Ok(Name::PullRequestNumber),
         ["needs", job, "result"] => Ok(Name::NeedsResult {
             job: job.to_string(),
         }),
@@ -127,7 +138,7 @@ pub fn parse_name(text: &str) -> Result<Name, String> {
             output: output.to_string(),
         }),
         _ => Err(format!(
-            "unknown name `{text}`; available: `needs.<job>.result`, `needs.<job>.outputs.<name>`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`"
+            "unknown name `{text}`; available: `needs.<job>.result`, `needs.<job>.outputs.<name>`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`"
         )),
     }
 }
@@ -469,6 +480,8 @@ impl fmt::Display for Name {
             Name::CommitBranch => f.write_str("commit.branch"),
             Name::RepoId => f.write_str("repo.id"),
             Name::Event => f.write_str("event"),
+            Name::PipelineName => f.write_str("pipeline.name"),
+            Name::PullRequestNumber => f.write_str("pull-request.number"),
         }
     }
 }

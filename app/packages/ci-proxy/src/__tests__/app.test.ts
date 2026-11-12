@@ -33,6 +33,10 @@ class FakeRunner {
   down = false;
   draining = false;
   cleared: string[] = [];
+  /** A run's state by id; finished unless set. */
+  states = new Map<string, string>();
+  cancels: Array<{ id: string; body: unknown }> = [];
+  resolved: Array<Record<string, unknown>> = [];
 
   constructor(
     readonly url: string,
@@ -60,6 +64,17 @@ class FakeRunner {
         runs_active: this.runs.length,
       });
     }
+    const cancel = /^\/v1\/runs\/([0-9a-f]{32})\/cancel$/.exec(path);
+    if (cancel && init.method === "POST") {
+      const id = cancel[1] ?? "";
+      this.cancels.push({ id, body: JSON.parse(String(init.body)) as unknown });
+      if (this.states.get(id) !== "running") return json(200, { id, state: "finished" });
+      return json(202, { id, state: "cancelling" });
+    }
+    if (path === "/v1/concurrency" && init.method === "POST") {
+      this.resolved.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return json(200, { commit: "c0ffee", pipelines: [] });
+    }
     if (path.startsWith("/v1/runs") && init.method === "POST") {
       if (this.slotsFree === 0) return json(429, { error: "full" });
       const id = (this.runs.length + 1).toString(16).padStart(32, "0");
@@ -73,8 +88,11 @@ class FakeRunner {
         headers: { "Content-Type": "text/event-stream" },
       });
     }
-    const status = /^\/v1\/runs\/([0-9a-f]{32})$/.exec(path);
-    if (status) return json(200, { id: status[1], state: "finished", runner: this.url });
+    const status = /^\/v1\/runs\/([0-9a-f]{32})(\?.*)?$/.exec(path);
+    if (status) {
+      const id = status[1] ?? "";
+      return json(200, { id, state: this.states.get(id) ?? "finished", runner: this.url });
+    }
     if (path === "/v1/schedules/read") return json(200, this.schedules);
     if (path.startsWith("/v1/usage/")) return json(200, { runner: this.url });
     const clear = /^\/v1\/storage\/([^/]+)\/([^/]+)$/.exec(path);
@@ -264,6 +282,114 @@ describe("proxy", () => {
 
     expect((await call("DELETE", "/v1/schedules/github.com-acme/web")).status).toBe(200);
     expect((await store.all()).length).toBe(0);
+  });
+});
+
+describe("concurrency", () => {
+  it("resolves a request's groups on any runner with variables but never secrets", async () => {
+    const a = new FakeRunner("http://a.test", 2, 0);
+    a.down = true;
+    const b = new FakeRunner("http://b.test", 2, 0);
+    const { call, values } = await setup([a, b]);
+    await values.put("var", "github.com-acme", "", "STAGE", "prod", 1);
+    await values.put("secret", "github.com-acme", "", "TOKEN", "sealed", 1);
+    const res = await call("POST", "/v1/concurrency", {
+      repo: "https://github.com/acme/web",
+      branch: "main",
+      trusted: true,
+      secrets: { OWN: "x" },
+      vars: { MINE: "1" },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { commit: string }).commit).toBe("c0ffee");
+    const sent = b.resolved[0];
+    expect(sent?.vars).toEqual({ STAGE: "prod", MINE: "1" });
+    expect(sent).not.toHaveProperty("secrets");
+    expect(sent).not.toHaveProperty("trusted");
+
+    b.down = true;
+    expect((await call("POST", "/v1/concurrency", { repo: "r", branch: "main" })).status).toBe(503);
+  });
+
+  it("cancels a run, or some of its pipelines, on the runner that has it", async () => {
+    const a = new FakeRunner("http://a.test", 4, 1);
+    const b = new FakeRunner("http://b.test", 4, 4);
+    const { call } = await setup([a, b]);
+    const started = (await (
+      await call("POST", "/v1/runs", { repo: "https://github.com/acme/web", branch: "main" })
+    ).json()) as { id: string };
+    const runnerId = started.id.split(".")[1] ?? "";
+    b.states.set(runnerId, "running");
+
+    const whole = await call("POST", `/v1/runs/${started.id}/cancel`);
+    expect(whole.status).toBe(202);
+    expect(((await whole.json()) as { id: string }).id).toBe(started.id);
+    const some = await call("POST", `/v1/runs/${started.id}/cancel`, {
+      pipelines: [".infrawrench/ci/test.yml"],
+    });
+    expect(some.status).toBe(202);
+    expect(b.cancels).toEqual([
+      { id: runnerId, body: {} },
+      { id: runnerId, body: { pipelines: [".infrawrench/ci/test.yml"] } },
+    ]);
+    expect(a.cancels).toEqual([]);
+
+    expect((await call("POST", "/v1/runs/9.00000000000000000000000000000001/cancel")).status).toBe(
+      404,
+    );
+    expect((await call("POST", `/v1/runs/${started.id}/stop`)).status).toBe(404);
+  });
+
+  it("cancels or waits for the group's scheduled run, and fires one of a group per minute", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const pipeline = (file: string, cancel: boolean) => ({
+      file,
+      name: file,
+      cron: ["0 * * * *"],
+      text: `name: ${file}`,
+      concurrency: { group: "Nightly", "cancel-in-progress": cancel },
+    });
+    runner.schedules = {
+      owner: "github.com-acme",
+      "repo-id": "web",
+      branch: "main",
+      commit: "c0ffee",
+      pipelines: [pipeline("a.yml", false), pipeline("b.yml", false)],
+      problems: [],
+    };
+    const { call, deps, store } = await setup([runner]);
+    expect(
+      (await call("PUT", "/v1/schedules", { repo: "https://github.com/acme/web" })).status,
+    ).toBe(201);
+
+    // Both due: only the last of the group fires.
+    const day1 = Date.UTC(2026, 10, 9, 3, 0) / 1000;
+    const first = await tick(deps, day1);
+    expect(first.started).toEqual(["github.com-acme/web/b.yml"]);
+    expect(first.skipped).toEqual(["github.com-acme/web/a.yml"]);
+    expect(runner.runs).toHaveLength(1);
+
+    // Still running an hour later: without cancel-in-progress the next fire waits (skipped).
+    const runningId = runner.runs[0]?.id ?? "";
+    runner.states.set(runningId, "running");
+    const day2 = Date.UTC(2026, 10, 9, 4, 0) / 1000;
+    const second = await tick(deps, day2);
+    expect(second.started).toEqual([]);
+    expect(second.skipped).toHaveLength(2);
+    expect([...store.fires.values()].map((f) => f.outcome)).toContain(
+      `concurrency: waiting for 0.${runningId} in group nightly`,
+    );
+    expect(runner.cancels).toEqual([]);
+
+    // With cancel-in-progress the running one is cancelled and the new one fires.
+    const row = (await store.all())[0];
+    if (!row) throw new Error("no row");
+    row.pipelines = [pipeline("b.yml", true)];
+    await store.put(row);
+    const day3 = Date.UTC(2026, 10, 9, 5, 0) / 1000;
+    const third = await tick(deps, day3);
+    expect(third.started).toEqual(["github.com-acme/web/b.yml"]);
+    expect(runner.cancels).toEqual([{ id: runningId, body: {} }]);
   });
 });
 

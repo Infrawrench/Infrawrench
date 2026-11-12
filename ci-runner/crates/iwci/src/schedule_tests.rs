@@ -129,6 +129,21 @@ impl Executor<String> for FakeExecutor {
         if tool.contains(":slow@") {
             std::thread::sleep(Duration::from_millis(50));
         }
+        // Cancels its own run, as `POST /v1/runs/{id}/cancel` would while it
+        // runs, then waits to be stopped as the runtime would stop it.
+        if tool.contains(":cancel-run@") {
+            let cancel = inv.cancel.as_ref().expect("a cancellable run");
+            cancel.cancel();
+            let until = Instant::now() + Duration::from_secs(5);
+            while !cancel.is_cancelled() && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            return Ok(Execution {
+                exit_code: iwci_runtime::TIMEOUT_EXIT_CODE,
+                cancelled: true,
+                ..Default::default()
+            });
+        }
         // What the runtime reports for a job it stopped as hung.
         if tool.contains(":hang@") || tool.contains(":hang-oom@") {
             return Ok(Execution {
@@ -333,6 +348,7 @@ fn run_full(
         secrets,
         skip_task_cache: false,
         downloads: None,
+        cancel: None,
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -715,6 +731,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         secrets: BTreeMap::new(),
         skip_task_cache: false,
         downloads: None,
+        cancel: None,
     };
     run(
         plan,
@@ -1001,6 +1018,7 @@ fn runs_share_the_runners_slots() {
         secrets: BTreeMap::new(),
         skip_task_cache: false,
         downloads: None,
+        cancel: None,
     };
     // Two runs at once, each wanting four jobs in parallel: together they
     // never exceed the two slots.
@@ -1053,6 +1071,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         secrets: BTreeMap::new(),
         skip_task_cache: false,
         downloads: None,
+        cancel: None,
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -1307,6 +1326,7 @@ fn run_cached_with(
         secrets: BTreeMap::new(),
         skip_task_cache,
         downloads: None,
+        cancel: None,
     };
     let report = run(
         plan,
@@ -1582,6 +1602,7 @@ fn run_looked_up(
         secrets: BTreeMap::new(),
         skip_task_cache: false,
         downloads: None,
+        cancel: None,
     };
     let report = run(
         plan,
@@ -1953,6 +1974,7 @@ fn run_downloads(
         secrets,
         skip_task_cache: false,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
+        cancel: None,
     };
     run(
         &p,
@@ -2060,4 +2082,135 @@ fn downloads_follow_when_and_say_when_nothing_keeps_them() {
     };
     assert!(notes("a").contains(&"downloads: nothing under its `downloads:` paths".to_string()));
     assert!(notes("b").contains(&"downloads: this runner keeps no downloads".to_string()));
+}
+
+#[test]
+fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
+    // One job at a time, and the queue is a stack: `a` runs first, `b` is
+    // queued behind it when it cancels the run.
+    let plan = iwci_spec::parse(
+        "name: x\njobs:\n  b: { using: builtin:ok@1, args: [] }\n  a: { using: builtin:cancel-run@1, args: [] }\n  c: { using: builtin:ok@1, args: [], needs: [a] }\n  d: { using: builtin:ok@1, args: [], needs: [a], if: 'always()' }\n",
+        &Context::default(),
+    )
+    .unwrap();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let events = Arc::new(Mutex::new(Vec::<LogEvent>::new()));
+    let sink = events.clone();
+    let memory = Arc::new(MemoryBudget::new(8 << 30));
+    let options = Options {
+        parallelism: 1,
+        changed_paths: None,
+        base_env: vec![],
+        memory: Some(memory.clone()),
+        caches: None,
+        logs: Some(Arc::new(move |e| sink.lock().unwrap().push(e))),
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        downloads: None,
+        cancel: Some(iwci_runtime::Cancel::new()),
+    };
+    let report = run(
+        &plan,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    assert_eq!(*exec.order.lock().unwrap(), vec!["a".to_string()]);
+    assert!(!report.passed());
+    let cancelled = Status::Cancelled {
+        reason: CANCELLED_REASON.into(),
+    };
+    for id in ["a", "b", "c", "d"] {
+        assert_eq!(status(&report, id), &cancelled, "{id}");
+    }
+    let job = |id: &str| report.jobs.iter().find(|j| j.id == id).unwrap();
+    assert!(job("a").execution.as_ref().unwrap().cancelled);
+    assert!(job("b").execution.is_none(), "never started");
+    assert!(job("c").execution.is_none() && job("d").execution.is_none());
+    assert_eq!(memory.used(), 0, "every reservation is given back");
+    let finished: Vec<String> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            LogEvent::JobFinished { job, status, .. } => Some(format!("{job}={status}")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(finished.len(), 4, "{finished:?}");
+    assert!(
+        finished.iter().all(|f| f.ends_with("=cancelled")),
+        "{finished:?}"
+    );
+    let json = serde_json::to_value(job("b")).unwrap();
+    assert_eq!(json["status"], "cancelled");
+    assert_eq!(json["reason"], CANCELLED_REASON);
+}
+
+#[test]
+fn a_run_cancelled_before_it_starts_runs_nothing() {
+    let plan = iwci_spec::parse(
+        "name: x\njobs:\n  a: { using: builtin:ok@1, args: [] }\n  b: { using: builtin:ok@1, args: [], needs: [a] }\n",
+        &Context::default(),
+    )
+    .unwrap();
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let cancel = iwci_runtime::Cancel::new();
+    cancel.cancel();
+    let options = Options {
+        parallelism: 2,
+        changed_paths: None,
+        base_env: vec![],
+        memory: None,
+        caches: None,
+        logs: None,
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        downloads: None,
+        cancel: Some(cancel),
+    };
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let report = run(
+        &plan,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    assert!(exec.order.lock().unwrap().is_empty());
+    assert_eq!(ws.builds.load(Ordering::SeqCst), 0);
+    assert!(
+        report
+            .jobs
+            .iter()
+            .all(|j| matches!(j.status, Status::Cancelled { .. }))
+    );
 }

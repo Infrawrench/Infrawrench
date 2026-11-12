@@ -223,9 +223,76 @@ impl RunRequest {
 #[derive(Debug, Serialize)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum PipelineOutput {
-    Ran { file: String, report: RunReport },
-    NotTriggered { file: String, name: String },
-    Invalid { file: String, errors: Vec<String> },
+    Ran {
+        file: String,
+        report: RunReport,
+    },
+    NotTriggered {
+        file: String,
+        name: String,
+    },
+    Invalid {
+        file: String,
+        errors: Vec<String>,
+    },
+    /// Cancelled before it started (`POST /v1/runs/{id}/cancel`). One
+    /// cancelled while it ran is `Ran`, its unfinished jobs `cancelled`.
+    Cancelled {
+        file: String,
+        name: String,
+    },
+}
+
+/// What cancels a run, or some of its pipelines, while it goes: the server
+/// keeps one per running run for `POST /v1/runs/{id}/cancel`.
+#[derive(Debug, Default)]
+pub struct RunControl {
+    all: std::sync::atomic::AtomicBool,
+    files: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// The pipeline running now, by file, and what stops it.
+    current: std::sync::Mutex<Option<(String, iwci_runtime::Cancel)>>,
+}
+
+impl RunControl {
+    /// Cancels the whole run (`None`) or the pipelines of these files: the
+    /// one running now is stopped, and the others never start.
+    pub fn cancel(&self, files: Option<&[String]>) {
+        match files {
+            None => self.all.store(true, std::sync::atomic::Ordering::SeqCst),
+            Some(files) => self
+                .files
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend(files.iter().cloned()),
+        }
+        let current = self.current.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((file, cancel)) = current.as_ref()
+            && self.is_cancelled(file)
+        {
+            cancel.cancel();
+        }
+    }
+
+    pub fn is_cancelled(&self, file: &str) -> bool {
+        self.all.load(std::sync::atomic::Ordering::SeqCst)
+            || self
+                .files
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains(file)
+    }
+
+    /// The flag for `file`'s pipeline as it starts, already set if it was
+    /// cancelled before.
+    pub(crate) fn start(&self, file: &str) -> iwci_runtime::Cancel {
+        let mut current = self.current.lock().unwrap_or_else(|e| e.into_inner());
+        let cancel = iwci_runtime::Cancel::new();
+        if self.is_cancelled(file) {
+            cancel.cancel();
+        }
+        *current = Some((file.to_string(), cancel.clone()));
+        cancel
+    }
 }
 
 /// What a run used, for billing. A job is charged for its wall time at
@@ -257,6 +324,10 @@ pub struct RunOutput {
     pub owner: String,
     pub repo_id: String,
     pub passed: bool,
+    /// Something of the run was cancelled: a pipeline before it started,
+    /// or a job. `passed` is false then.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cancelled: bool,
     pub pipelines: Vec<PipelineOutput>,
     pub usage: Usage,
     pub started_at: u64,
@@ -305,7 +376,86 @@ struct Target {
     event: Event,
 }
 
+impl Target {
+    /// What the run's pipelines are parsed with.
+    fn context(&self, req: &RunRequest) -> Context {
+        Context {
+            commit_sha: self.sha.clone(),
+            branch: self.branch.clone(),
+            repo_id: self.repo_id.as_str().to_string(),
+            event: self.event,
+            vars: req.vars.clone(),
+            packages: self.packages.clone(),
+            pull_request: match self.event {
+                Event::PullRequest => {
+                    iwci_spec::pull_request_number(Some(&self.git_ref), &self.branch)
+                }
+                _ => None,
+            },
+            pipeline_name: String::new(),
+        }
+    }
+}
+
+/// One pipeline a request triggers, and its concurrency group.
+#[derive(Debug, Serialize)]
+pub struct PipelineConcurrency {
+    pub file: String,
+    pub name: String,
+    pub concurrency: Option<iwci_spec::Concurrency>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConcurrencyOutput {
+    pub commit: String,
+    pub pipelines: Vec<PipelineConcurrency>,
+}
+
 impl Runner {
+    /// Which pipelines a run of `req` would run, and the concurrency group
+    /// of each, without running anything: the commit and its pipeline
+    /// files resolved and parsed as the run would (the same `base` for
+    /// `paths:`). Files that do not parse are left out; the run reports
+    /// them.
+    pub fn concurrency(&self, req: &RunRequest) -> Result<ConcurrencyOutput, String> {
+        let r = self.resolve(req)?;
+        let changed_paths = match &req.base {
+            Some(base) => {
+                r.remote
+                    .fetch_commit(base, iwci_git::Depth::Shallow(1), r.auth.as_ref(), None)
+                    .map_err(|e| format!("fetch base {base}: {e}"))?;
+                Some(
+                    r.remote
+                        .changed_paths(base, &r.sha)
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            None => None,
+        };
+        let ctx = r.context(req);
+        let mut pipelines = Vec::new();
+        for (file, text) in &r.pipelines {
+            let Ok(plan) = iwci_spec::parse(text, &ctx) else {
+                continue;
+            };
+            if !plan
+                .triggers
+                .matches(r.event, &r.branch, changed_paths.as_deref())
+            {
+                continue;
+            }
+            pipelines.push(PipelineConcurrency {
+                file: file.clone(),
+                name: plan.name,
+                concurrency: plan.concurrency,
+            });
+        }
+        Ok(ConcurrencyOutput {
+            commit: r.sha,
+            pipelines,
+        })
+    }
+
     fn resolve(&self, req: &RunRequest) -> Result<Target, String> {
         check_named("secrets", &req.secrets.0)?;
         check_named("vars", &req.vars)?;
@@ -405,7 +555,7 @@ impl Runner {
     /// Runs every pipeline of the requested commit that its event triggers,
     /// under a new run id.
     pub fn run(&self, req: &RunRequest) -> Result<RunOutput, String> {
-        self.run_with_logs(req, &random_id(), None)
+        self.run_with_logs(req, &random_id(), None, None)
     }
 
     /// [`Runner::run`] as run `run_id` (what its downloads are stored
@@ -415,6 +565,7 @@ impl Runner {
         req: &RunRequest,
         run_id: &str,
         logs: Option<schedule::LogFn>,
+        control: Option<Arc<RunControl>>,
     ) -> Result<RunOutput, String> {
         let started_at = now_secs();
         let run = RepoId::new(run_id).map_err(|e| format!("run id: {e}"))?;
@@ -432,21 +583,14 @@ impl Runner {
             }
             None => None,
         };
-        let ctx = Context {
-            commit_sha: r.sha.clone(),
-            branch: r.branch.clone(),
-            repo_id: r.repo_id.as_str().to_string(),
-            event: r.event,
-            vars: req.vars.clone(),
-            packages: r.packages.clone(),
-        };
+        let ctx = r.context(req);
         let (tools, executor, workspaces, committer) = self.parts(&r, req);
         let default_branch = req
             .default_branch
             .clone()
             .unwrap_or_else(|| "main".to_string());
         let quota = req.storage_quota.or(self.default_storage_quota);
-        let options = schedule::Options {
+        let mut options = schedule::Options {
             // With shared slots the slots are the limit; without, `cpus`.
             parallelism: self.slots.as_ref().map_or(self.cpus, |s| s.total()),
             changed_paths: changed_paths.clone(),
@@ -482,10 +626,12 @@ impl Runner {
             logs: logs.clone(),
             slots: self.slots.clone(),
             skip_task_cache: req.no_task_cache,
+            cancel: None,
         };
 
         let mut pipelines = Vec::new();
         let mut passed = true;
+        let mut cancelled = false;
         let mut usage = Usage::default();
         for (file, text) in &r.pipelines {
             let plan = match iwci_spec::parse(text, &ctx) {
@@ -513,8 +659,22 @@ impl Runner {
                 });
                 continue;
             }
+            if control.as_ref().is_some_and(|c| c.is_cancelled(file)) {
+                passed = false;
+                cancelled = true;
+                pipelines.push(PipelineOutput::Cancelled {
+                    file: file.clone(),
+                    name: plan.name,
+                });
+                continue;
+            }
+            options.cancel = control.as_ref().map(|c| c.start(file));
             let report = schedule::run(&plan, &workspaces, &tools, &executor, &committer, &options);
             passed &= report.passed();
+            cancelled |= report
+                .jobs
+                .iter()
+                .any(|j| matches!(j.status, schedule::Status::Cancelled { .. }));
             usage.add(&self.usage_of(&report));
             pipelines.push(PipelineOutput::Ran {
                 file: file.clone(),
@@ -528,6 +688,7 @@ impl Runner {
             owner: r.owner.as_str().to_string(),
             repo_id: r.repo_id.as_str().to_string(),
             passed,
+            cancelled,
             pipelines,
             usage,
             started_at,
@@ -560,14 +721,7 @@ impl Runner {
     /// follows starts from cache.
     pub fn prepare(&self, req: &RunRequest) -> Result<PrepareOutput, String> {
         let r = self.resolve(req)?;
-        let ctx = Context {
-            commit_sha: r.sha.clone(),
-            branch: r.branch.clone(),
-            repo_id: r.repo_id.as_str().to_string(),
-            event: r.event,
-            vars: req.vars.clone(),
-            packages: r.packages.clone(),
-        };
+        let ctx = r.context(req);
         let (tools, _, workspaces, _) = self.parts(&r, req);
         let mut out = PrepareOutput {
             commit: r.sha.clone(),

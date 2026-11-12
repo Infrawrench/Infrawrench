@@ -104,6 +104,9 @@ pub struct Invocation<'a> {
     /// Receives output as it is written (`true` for stderr), when someone
     /// is following the run's logs.
     pub log: Option<OutputSink>,
+    /// Set when the run is cancelled; the job is then stopped as its
+    /// timeout would stop it.
+    pub cancel: Option<iwci_runtime::Cancel>,
 }
 
 /// One of a job's `services:`, its tool resolved and its environment built.
@@ -181,7 +184,13 @@ fn status_word(status: &Status) -> &'static str {
         Status::Failed { .. } => "failed",
         Status::Skipped { .. } => "skipped",
         Status::Error { .. } => "error",
+        Status::Cancelled { .. } => "cancelled",
     }
+}
+
+/// The word a report and the live log use for a status.
+pub fn status_name(status: &Status) -> &'static str {
+    status_word(status)
 }
 
 fn emit_finished(options: &Options, report: &JobReport) {
@@ -293,6 +302,9 @@ pub struct Execution {
     /// ready in time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_failure: Option<String>,
+    /// The job was stopped because its run was cancelled.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cancelled: bool,
 }
 
 pub trait Executor<T>: Send + Sync {
@@ -333,7 +345,16 @@ pub enum Status {
     Error {
         message: String,
     },
+    /// The run was cancelled (`POST /v1/runs/{id}/cancel`): stopped while
+    /// it ran, as a timeout stops a job, or never started. Counted as a
+    /// failure: what needs it is cancelled too.
+    Cancelled {
+        reason: String,
+    },
 }
+
+/// Why a cancelled job, and every job after it, did not finish.
+pub const CANCELLED_REASON: &str = "the run was cancelled";
 
 impl Status {
     pub fn is_success(&self) -> bool {
@@ -434,6 +455,16 @@ pub struct Options {
     /// Where `downloads:` are kept; `None` keeps none, and a job that
     /// asks says so in its notes.
     pub downloads: Option<Arc<dyn Downloads>>,
+    /// Set when this pipeline is cancelled: no job starts after it, running
+    /// jobs are stopped, and every job that did not finish reports
+    /// [`Status::Cancelled`].
+    pub cancel: Option<iwci_runtime::Cancel>,
+}
+
+impl Options {
+    fn cancelled(&self) -> bool {
+        self.cancel.as_ref().is_some_and(|c| c.is_cancelled())
+    }
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -860,6 +891,8 @@ impl expr::Env for ConditionEnv<'_> {
             Name::CommitBranch => ctx.branch.clone(),
             Name::RepoId => ctx.repo_id.clone(),
             Name::Event => ctx.event.as_str().to_string(),
+            Name::PipelineName => ctx.pipeline_name.clone(),
+            Name::PullRequestNumber => ctx.pull_request_number(),
         }
     }
 
@@ -918,6 +951,15 @@ pub fn run<T: Tools>(
     if let Some(budget) = &options.memory {
         budget.watch(&wake);
     }
+    if let Some(cancel) = &options.cancel {
+        // Waiting workers and lookups wake at once to report what is left.
+        let weak = Arc::downgrade(&wake);
+        cancel.on_cancel(move || {
+            if let Some(wake) = weak.upgrade() {
+                wake.notify_all();
+            }
+        });
+    }
     activate(&mut state.lock().unwrap(), plan, options);
     // One scratch directory for the whole run, held to `scratch:` as a
     // job's files are held to its `memory:`.
@@ -967,6 +1009,11 @@ pub fn run<T: Tools>(
                             s = wake.wait(s, &state, seen);
                         }
                     };
+                    if options.cancelled() {
+                        let report = cancelled_report(&job);
+                        complete(&state, &wake, plan, options, template, report, Vec::new());
+                        continue;
+                    }
                     let workspace = LazyWorkspace {
                         spec: &plan.workspaces[job.workspace],
                         workspaces,
@@ -994,7 +1041,7 @@ pub fn run<T: Tools>(
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
-                    let (template, job, lookup, inherited) = {
+                    let (template, job, lookup, inherited, reserved) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // Read before the budget is, so memory given
@@ -1003,7 +1050,11 @@ pub fn run<T: Tools>(
                             // The newest job whose memory fits the runner's
                             // budget right now; the reservation is held until
                             // it finishes. Without a budget, simply the newest.
+                            // A cancelled run's queued jobs are only
+                            // reported, so they need no memory.
+                            let cancelled = options.cancelled();
                             let fits = match &options.memory {
+                                _ if cancelled => s.queue.len().checked_sub(1),
                                 None => s.queue.len().checked_sub(1),
                                 Some(budget) => s
                                     .queue
@@ -1015,7 +1066,8 @@ pub fn run<T: Tools>(
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (template, job, lookup, inherited);
+                                let reserved = !cancelled && options.memory.is_some();
+                                break (template, job, lookup, inherited, reserved);
                             }
                             if s.running == 0 && s.lookups.is_empty() && s.queue.is_empty() {
                                 // Nothing queued, nothing running, nothing
@@ -1051,6 +1103,14 @@ pub fn run<T: Tools>(
                             s = wake.wait(s, &state, seen);
                         }
                     };
+                    if options.cancelled() {
+                        if let (true, Some(budget)) = (reserved, &options.memory) {
+                            budget.give(job.memory_bytes);
+                        }
+                        let report = cancelled_report(&job);
+                        complete(&state, &wake, plan, options, template, report, Vec::new());
+                        continue;
+                    }
                     // A slot shared with every other run on this runner;
                     // held for the job's workspace build and its run.
                     let slot = options.slots.as_ref().map(|s| s.acquire());
@@ -1066,7 +1126,7 @@ pub fn run<T: Tools>(
                         &inherited, lookup, &mut kept,
                     );
                     drop(slot);
-                    if let Some(budget) = &options.memory {
+                    if let (true, Some(budget)) = (reserved, &options.memory) {
                         budget.give(job.memory_bytes);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
@@ -1152,6 +1212,18 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
             return;
         };
         let template = s.waiting.remove(pos);
+        if options.cancelled() {
+            let report = key_report(
+                template,
+                Status::Cancelled {
+                    reason: CANCELLED_REASON.into(),
+                },
+                true,
+            );
+            emit_finished(options, &report);
+            finish(s, template, vec![report], Vec::new());
+            continue;
+        }
         let env = ConditionEnv {
             plan,
             needs: &template.needs,
@@ -1268,10 +1340,12 @@ fn finish(
     artifacts: Vec<Entry>,
 ) {
     let blocks = reports.iter().any(|r| r.blocks);
-    let result = if reports
-        .iter()
-        .any(|r| matches!(r.status, Status::Failed { .. } | Status::Error { .. }))
-    {
+    let result = if reports.iter().any(|r| {
+        matches!(
+            r.status,
+            Status::Failed { .. } | Status::Error { .. } | Status::Cancelled { .. }
+        )
+    }) {
         JobResult::Failure
     } else if reports
         .iter()
@@ -1623,6 +1697,7 @@ fn run_job<T: Tools>(
             env,
             path: &workspace.path,
             log,
+            cancel: options.cancel.clone(),
         },
     );
     if let Some(sink) = &line_sink {
@@ -1695,7 +1770,11 @@ fn run_job<T: Tools>(
             reason
         }
     };
-    let mut status = if let Some(failure) = &execution.service_failure {
+    let mut status = if execution.cancelled {
+        Status::Cancelled {
+            reason: CANCELLED_REASON.into(),
+        }
+    } else if let Some(failure) = &execution.service_failure {
         // The job never started; the failure (masked above) names the
         // service.
         Status::Failed {
@@ -2200,6 +2279,7 @@ fn replay(
             stalled_after: None,
             out_of_memory: false,
             service_failure: None,
+            cancelled: false,
         }),
         changes: Vec::new(),
         commit: None,
@@ -2332,6 +2412,16 @@ fn merge_env(into: &mut Vec<(String, String)>, from: &[(String, String)]) {
         into.retain(|(existing, _)| existing != k);
         into.push((k.clone(), v.clone()));
     }
+}
+
+/// A job of a cancelled run that never started.
+fn cancelled_report(job: &PlannedJob) -> JobReport {
+    let mut report = errored(job, String::new(), Duration::ZERO);
+    report.status = Status::Cancelled {
+        reason: CANCELLED_REASON.into(),
+    };
+    report.memory_mib = 0;
+    report
 }
 
 fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {

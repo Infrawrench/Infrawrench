@@ -35,7 +35,8 @@ export interface ProxyProgress {
   }>;
 }
 
-export type JobEntryStatus = "pending" | "running" | "passed" | "failed" | "skipped" | "error";
+export type JobEntryStatus =
+  "pending" | "running" | "passed" | "failed" | "skipped" | "error" | "cancelled";
 
 export interface JobEntry {
   name: string;
@@ -56,7 +57,7 @@ export interface JobGroup {
 /** The most job checks one run gets; past it the run's own check still says everything. */
 export const MAX_JOB_CHECKS = 50;
 
-const FINISHED: readonly string[] = ["passed", "failed", "skipped", "error"];
+const FINISHED: readonly string[] = ["passed", "failed", "skipped", "error", "cancelled"];
 
 /**
  * The key a group's check is kept under in `ci_runs.job_checks`. A JSON
@@ -153,11 +154,12 @@ const MARK: Record<JobEntryStatus, string> = {
   failed: "❌",
   error: "❌",
   skipped: "⏭️",
+  cancelled: "⏹️",
 };
 
 export interface JobCheckState {
   status: "queued" | "in_progress" | "completed";
-  conclusion?: "success" | "failure" | "skipped";
+  conclusion?: "success" | "failure" | "skipped" | "cancelled";
   title: string;
   summary: string;
 }
@@ -171,7 +173,8 @@ export function jobCheckState(group: JobGroup): JobCheckState {
   const skipped = count("skipped");
   const pending = count("pending");
   const running = count("running");
-  const done = passed + failed + skipped;
+  const cancelled = count("cancelled");
+  const done = passed + failed + skipped + cancelled;
   const status: JobCheckState["status"] =
     done === total ? "completed" : pending === total ? "queued" : "in_progress";
   const conclusion =
@@ -179,9 +182,11 @@ export function jobCheckState(group: JobGroup): JobCheckState {
       ? undefined
       : failed > 0
         ? "failure"
-        : skipped === total
-          ? "skipped"
-          : "success";
+        : cancelled > 0
+          ? "cancelled"
+          : skipped === total
+            ? "skipped"
+            : "success";
   let title: string;
   if (total === 1) {
     const only = group.entries[0]!;
@@ -193,16 +198,19 @@ export function jobCheckState(group: JobGroup): JobCheckState {
           ? "Running"
           : only.status === "skipped"
             ? "Skipped"
-            : only.cached
-              ? "Passed (from the task cache)"
-              : only.status === "passed"
-                ? `Passed in ${time}`
-                : `Failed after ${time}`;
+            : only.status === "cancelled"
+              ? "Cancelled"
+              : only.cached
+                ? "Passed (from the task cache)"
+                : only.status === "passed"
+                  ? `Passed in ${time}`
+                  : `Failed after ${time}`;
   } else {
     const parts = [`${passed} of ${total} passed`];
     if (failed > 0) parts.push(`${failed} failed`);
     if (running > 0) parts.push(`${running} running`);
     if (skipped > 0) parts.push(`${skipped} skipped`);
+    if (cancelled > 0) parts.push(`${cancelled} cancelled`);
     title = parts.join(", ");
   }
   const rows = group.entries.map(

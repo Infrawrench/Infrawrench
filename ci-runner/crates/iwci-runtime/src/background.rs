@@ -136,8 +136,12 @@ impl Services {
         &mut self,
         starter: &Starter<'_>,
         deadline: Instant,
+        cancel: Option<&crate::Cancel>,
     ) -> std::result::Result<(), String> {
         loop {
+            if cancel.is_some_and(|c| c.is_cancelled()) {
+                return Err("the run was cancelled before its services were ready".into());
+            }
             let now = Instant::now();
             let mut waiting = false;
             for service in &mut self.running {

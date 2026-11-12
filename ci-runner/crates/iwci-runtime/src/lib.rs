@@ -21,6 +21,7 @@
 mod background;
 mod builtins;
 mod cache;
+mod cancel;
 mod capture;
 mod limits;
 mod modes;
@@ -41,6 +42,7 @@ use sha2::{Digest, Sha256};
 use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
 
 pub use cache::{CacheStats, DEFAULT_MODULE_MEMORY};
+pub use cancel::Cancel;
 pub use iwci_vfs::DynFs;
 pub use stall::DEFAULT_STALL_AFTER;
 pub use tsc::TscOutcome;
@@ -234,6 +236,9 @@ pub struct Invocation {
     /// stopped when it ends (`background.rs`). The job starts once every
     /// one is ready.
     pub services: Vec<Service>,
+    /// Set when the job's run is cancelled: the job is then stopped the way
+    /// its timeout would stop it, services and all.
+    pub cancel: Option<Cancel>,
 }
 
 /// A script's `PATH` when nothing sets one: tools and the runner's own
@@ -353,6 +358,9 @@ pub struct Outcome {
     pub truncated: bool,
     pub duration: Duration,
     pub timed_out: bool,
+    /// The job was stopped because its run was cancelled. Its exit code is
+    /// [`TIMEOUT_EXIT_CODE`], as for a timeout.
+    pub cancelled: bool,
     /// The job was stopped before its timeout because it had gone this
     /// long without writing output or using CPU time: hung, not working
     /// (see [`Runtime::with_stall_after`]). Its exit code is
@@ -375,6 +383,7 @@ impl Outcome {
     pub fn success(&self) -> bool {
         self.exit_code == 0
             && !self.timed_out
+            && !self.cancelled
             && self.stalled_after.is_none()
             && self.error.is_none()
             && self.service_failure.is_none()

@@ -15,6 +15,8 @@
 //! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting |
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
+//! | `POST /v1/runs/{id}/cancel` | cancels a run on this runner, or some of its pipelines (`{ "pipelines": [file, ...] }`) |
+//! | `POST /v1/concurrency` | the pipelines a request would run and each one's concurrency group, runs nothing |
 //! | `POST /v1/prepare` | warms the clone, installs and tools for a request, runs nothing |
 //! | `GET /v1/storage/{owner}[?quota=]` | the owner's storage (caches and downloads), per repository |
 //! | `DELETE /v1/storage/{owner}/{repo-id}` | deletes one repository's caches (never its downloads), and says what went |
@@ -33,14 +35,15 @@ use tiny_http::{Header, Method, Request, Response};
 
 use crate::adapters::caches::{clear_repository, storage_usage};
 
+#[path = "server_concurrency.rs"]
+mod concurrency;
 #[path = "server_lifecycle.rs"]
 pub(crate) mod lifecycle;
 #[path = "server_schedules.rs"]
 mod schedules;
 
 type Reply = Response<std::io::Cursor<Vec<u8>>>;
-use crate::runner::{PipelineOutput, RunRequest, Runner, Usage, now_secs};
-use crate::schedule::Status;
+use crate::runner::{PipelineOutput, RunControl, RunRequest, Runner, Usage, now_secs};
 
 /// Bodies are a request and maybe a pipeline file: small.
 const MAX_BODY: usize = 1 << 20;
@@ -49,6 +52,8 @@ const RETRY_AFTER_SECS: u64 = 10;
 /// Finished runs kept in memory for `GET /v1/runs/{id}`; older ones are
 /// read back from the store with `?owner=`.
 const KEEP_FINISHED: usize = 1000;
+/// The current [`UsageRecord::schema`].
+pub const USAGE_SCHEMA: u32 = 2;
 
 pub struct Server {
     runner: Arc<Runner>,
@@ -65,6 +70,8 @@ pub struct Server {
     key: Vec<u8>,
     runs: Mutex<HashMap<String, RunEntry>>,
     logs: Mutex<HashMap<String, Arc<LogHub>>>,
+    /// What cancels each run while it runs, by id.
+    controls: Mutex<HashMap<String, Arc<RunControl>>>,
     order: Mutex<Vec<String>>,
     active: AtomicUsize,
     /// The host's memory and what the runner keeps of it outside the job
@@ -94,7 +101,8 @@ struct RunEntry {
 }
 
 /// One run's line in the bill, stored at
-/// `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`.
+/// `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`. `schema` 2: a job's
+/// `status` may be `cancelled`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
     pub schema: u32,
@@ -176,6 +184,7 @@ impl Server {
             key: key.into_bytes(),
             runs: Mutex::default(),
             logs: Mutex::default(),
+            controls: Mutex::default(),
             order: Mutex::default(),
             active: AtomicUsize::new(0),
             memory_host: None,
@@ -320,6 +329,14 @@ impl Server {
                         None => error(404, "no live log for that run on this runner").boxed(),
                     }
                 }
+                (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(&mut request) {
+                    Ok(files) => self.cancel_run(id, files.as_deref()).boxed(),
+                    Err(e) => error(400, e).boxed(),
+                },
+                (Method::Post, ["v1", "concurrency"]) => match read_request(&mut request) {
+                    Ok(req) => self.concurrency(&req).boxed(),
+                    Err(e) => error(400, e).boxed(),
+                },
                 (Method::Post, ["v1", "drain"]) => {
                     self.begin_drain("asked to by POST /v1/drain");
                     json_response(202, &self.capacity()).boxed()
@@ -528,6 +545,11 @@ impl Server {
         self.remember(entry);
         let hub = Arc::new(LogHub::default());
         self.logs.lock().unwrap().insert(id.clone(), hub.clone());
+        let control = Arc::new(RunControl::default());
+        self.controls
+            .lock()
+            .unwrap()
+            .insert(id.clone(), control.clone());
         let runner = self.runner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let id_for_thread = id.clone();
@@ -535,8 +557,10 @@ impl Server {
         std::thread::spawn(move || {
             let sink = hub.clone();
             let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
-            let outcome = runner.run_with_logs(&req, &id_for_thread, Some(logs));
+            let outcome = runner.run_with_logs(&req, &id_for_thread, Some(logs), Some(control));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
+            // Finished and remembered: a cancel from now on answers that.
+            this.controls.lock().unwrap().remove(&id_for_thread);
             hub.close(&entry);
             this.active.fetch_sub(1, Ordering::SeqCst);
             let _ = done_tx.send(entry);
@@ -568,13 +592,7 @@ impl Server {
                         for j in &report.jobs {
                             jobs.push(JobUsage {
                                 id: j.id.clone(),
-                                status: match &j.status {
-                                    Status::Passed => "passed",
-                                    Status::Failed { .. } => "failed",
-                                    Status::Skipped { .. } => "skipped",
-                                    Status::Error { .. } => "error",
-                                }
-                                .to_string(),
+                                status: crate::schedule::status_name(&j.status).to_string(),
                                 duration_ms: if j.execution.is_some() {
                                     j.duration_ms
                                 } else {
@@ -586,7 +604,7 @@ impl Server {
                     }
                 }
                 let record = UsageRecord {
-                    schema: 1,
+                    schema: USAGE_SCHEMA,
                     run_id: id.to_string(),
                     owner: owner.as_str().to_string(),
                     repo_id: output.repo_id.clone(),
@@ -606,7 +624,7 @@ impl Server {
             }
             Err(e) => {
                 let record = UsageRecord {
-                    schema: 1,
+                    schema: USAGE_SCHEMA,
                     run_id: id.to_string(),
                     owner: owner.as_str().to_string(),
                     repo_id: req
@@ -939,10 +957,22 @@ impl LogHub {
             .as_ref()
             .and_then(|r| r.get("passed"))
             .and_then(|p| p.as_bool());
+        let cancelled = entry
+            .result
+            .as_ref()
+            .and_then(|r| r.get("cancelled"))
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false);
         let mut state = self.state.lock().unwrap();
         let end = frame(
             "run-finished",
-            &json!({ "id": entry.id, "state": entry.state, "passed": passed, "error": entry.error }),
+            &json!({
+                "id": entry.id,
+                "state": entry.state,
+                "passed": passed,
+                "cancelled": cancelled,
+                "error": entry.error,
+            }),
         );
         state.frames.push(end);
         state.done = true;
@@ -990,6 +1020,31 @@ impl Read for HubReader {
         self.at += n;
         Ok(n)
     }
+}
+
+/// A cancel's body: nothing or `{}` for the whole run, or the pipeline
+/// files to cancel.
+fn read_cancel(request: &mut Request) -> Result<Option<Vec<String>>, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Body {
+        #[serde(default)]
+        pipelines: Option<Vec<String>>,
+    }
+    let mut body = Vec::new();
+    request
+        .as_reader()
+        .take(MAX_BODY as u64 + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| e.to_string())?;
+    if body.len() > MAX_BODY {
+        return Err(format!("the body is over {MAX_BODY} bytes"));
+    }
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    let body: Body = serde_json::from_slice(&body).map_err(|e| format!("body: {e}"))?;
+    Ok(body.pipelines)
 }
 
 fn read_request(request: &mut Request) -> Result<RunRequest, String> {

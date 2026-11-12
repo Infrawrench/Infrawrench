@@ -18,7 +18,46 @@ pub struct Pipeline {
     /// The most the run's shared `/tmp/workflow` may hold, such as `2GiB`.
     #[serde(default)]
     pub scratch: Option<String>,
+    /// At most one run of a repository per group is in progress: a name,
+    /// or `{ group, cancel-in-progress }`. The runner evaluates it; whoever
+    /// dispatches runs (the app) enforces it.
+    #[serde(default)]
+    pub concurrency: Option<Concurrency>,
     pub jobs: IndexMap<String, Job>,
+}
+
+/// `concurrency: <group>` or `concurrency: { group, cancel-in-progress }`.
+/// Deserialised by hand, like [`OneOrMany`], so an unknown key in the map
+/// form is reported as such.
+#[derive(Debug, Clone)]
+pub enum Concurrency {
+    Group(String),
+    Full(ConcurrencyMap),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct ConcurrencyMap {
+    pub group: String,
+    /// A new run cancels the one in progress in its group, rather than
+    /// waiting for it.
+    #[serde(default)]
+    pub cancel_in_progress: bool,
+}
+
+impl<'de> Deserialize<'de> for Concurrency {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(group) => Ok(Concurrency::Group(group)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(Concurrency::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`concurrency` is a group name or `{ group, cancel-in-progress }`",
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

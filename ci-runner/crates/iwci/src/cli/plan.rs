@@ -112,6 +112,7 @@ fn placeholder_context(file: &str) -> Context {
             ),
             None => iwci_spec::PackagesSource::Unknown,
         },
+        ..Default::default()
     }
 }
 

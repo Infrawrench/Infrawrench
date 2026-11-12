@@ -93,6 +93,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             internet: inv.job.network,
             modes: inv.fs.modes(),
             services,
+            cancel: inv.cancel.clone(),
         };
 
         let outcome = match (tool, action) {
@@ -137,6 +138,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stalled_after: None,
                             out_of_memory: o.out_of_memory,
                             service_failure: None,
+                            cancelled: o.cancelled,
                         }
                     }
                     Abi::Wasi | Abi::Wasix => {
@@ -152,6 +154,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stalled_after: o.stalled_after.map(|d| d.as_secs()),
                             out_of_memory: o.out_of_memory,
                             service_failure: o.service_failure,
+                            cancelled: o.cancelled,
                         }
                     }
                 }
@@ -175,6 +178,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                     stalled_after: o.stalled_after.map(|d| d.as_secs()),
                     out_of_memory: o.out_of_memory,
                     service_failure: o.service_failure,
+                    cancelled: o.cancelled,
                 }
             }
             // Validation pairs `env:` with `run:` and tools with `args:`, and

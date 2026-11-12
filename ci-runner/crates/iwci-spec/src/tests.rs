@@ -8,6 +8,7 @@ fn ctx() -> Context {
         event: Event::Push,
         vars: Default::default(),
         packages: PackagesSource::Unknown,
+        ..Default::default()
     }
 }
 
@@ -1627,4 +1628,140 @@ fn bad_services_are_reported() {
         "name: x\njobs:\n  a:\n    using: env:bash@5\n    run: 'true'\n    task-cache: true\n    services:\n      db: { using: env:bash@5, run: x, env: { T: '${{ secrets.T }}' } }\n",
         "services read secrets cannot be task-cached",
     );
+}
+
+#[test]
+fn concurrency_is_a_group_or_a_group_and_cancel_in_progress() {
+    let plan = parse(
+        "name: Test\nconcurrency: ${{ pipeline.name }}-${{ commit.branch }}\njobs:\n  a: { using: builtin:t@1, args: [] }\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.concurrency,
+        Some(Concurrency {
+            group: "Test-main".into(),
+            cancel_in_progress: false,
+        })
+    );
+    let pr = Context {
+        event: Event::PullRequest,
+        branch: "pull/12".into(),
+        pull_request: Some(12),
+        vars: [("ENV".to_string(), "prod".to_string())].into(),
+        ..ctx()
+    };
+    let plan = parse(
+        "name: Deploy\nconcurrency:\n  group: deploy-${{ vars.ENV }}-pr-${{ pull-request.number }}\n  cancel-in-progress: true\njobs:\n  a: { using: builtin:t@1, args: [] }\n",
+        &pr,
+    )
+    .unwrap();
+    assert_eq!(
+        plan.concurrency,
+        Some(Concurrency {
+            group: "deploy-prod-pr-12".into(),
+            cancel_in_progress: true,
+        })
+    );
+    // A push has no pull request number.
+    let plan = parse(
+        "name: x\nconcurrency: { group: 'pr-${{ pull-request.number }}x' }\njobs:\n  a: { using: builtin:t@1, args: [] }\n",
+        &Context {
+            pull_request: Some(3),
+            ..ctx()
+        },
+    )
+    .unwrap();
+    assert_eq!(plan.concurrency.unwrap().group, "pr-x");
+    // Without one, none.
+    let plan = parse(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [] }\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert!(plan.concurrency.is_none());
+}
+
+#[test]
+fn pipeline_name_and_pull_request_number_work_in_any_value() {
+    let plan = parse(
+        "name: Lint\njobs:\n  a: { using: builtin:t@1, args: ['${{ pipeline.name }}', '${{ pull-request.number }}'], if: \"pipeline.name == 'Lint'\" }\n",
+        &Context {
+            event: Event::PullRequest,
+            pull_request: Some(7),
+            ..ctx()
+        },
+    )
+    .unwrap();
+    match &first(&plan).action {
+        Action::Args { args } => assert_eq!(args, &vec!["Lint".to_string(), "7".to_string()]),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_concurrency_group_must_be_known_before_the_run() {
+    for (yaml, needle) in [
+        (
+            "concurrency: g-${{ matrix }}",
+            "not known before the run starts",
+        ),
+        (
+            "concurrency: { group: 'g-${{ needs.a.outputs.x }}' }",
+            "not known before the run starts",
+        ),
+        (
+            "concurrency: '${{ hashFiles(\"a\") }}'",
+            "not known before the run starts",
+        ),
+        (
+            "concurrency: '${{ secrets.T }}'",
+            "secrets can only be used",
+        ),
+        ("concurrency: '${{ nope }}'", "unknown expression"),
+        (
+            "concurrency: \"${{ vars.EMPTY }}\"",
+            "empty once substituted",
+        ),
+        (
+            "concurrency: { group: g, zzz: true }",
+            "unknown field `zzz`",
+        ),
+        (
+            "concurrency: { cancel-in-progress: true }",
+            "missing field `group`",
+        ),
+        ("concurrency: [a]", "a group name or"),
+    ] {
+        let full = format!("name: x\n{yaml}\njobs:\n  a: {{ using: builtin:t@1, args: [] }}\n");
+        let errs = match parse(&full, &ctx()) {
+            Ok(_) => panic!("{yaml}: expected an error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(errs.contains(needle), "{yaml}: {errs}");
+    }
+    let long = format!(
+        "name: x\nconcurrency: {}\njobs:\n  a: {{ using: builtin:t@1, args: [] }}\n",
+        "g".repeat(MAX_CONCURRENCY_GROUP + 1)
+    );
+    assert!(
+        parse(&long, &ctx())
+            .unwrap_err()
+            .to_string()
+            .contains("over 256 characters")
+    );
+}
+
+#[test]
+fn a_pull_request_number_comes_from_its_ref_or_branch() {
+    assert_eq!(
+        pull_request_number(Some("refs/pull/42/head"), "x"),
+        Some(42)
+    );
+    assert_eq!(
+        pull_request_number(Some("refs/heads/main"), "pull/7"),
+        Some(7)
+    );
+    assert_eq!(pull_request_number(None, "main"), None);
+    assert_eq!(pull_request_number(None, "pull/x"), None);
 }

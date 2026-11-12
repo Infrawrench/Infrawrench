@@ -304,6 +304,9 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
                 PipelineOutput::NotTriggered { file, name } => {
                     println!("{} {name} ({file})", style::dim("not triggered:"));
                 }
+                PipelineOutput::Cancelled { file, name } => {
+                    println!("{} {name} ({file}): cancelled", style::dim("cancelled"));
+                }
                 PipelineOutput::Invalid { file, errors } => {
                     println!("{} {file}", style::fail("invalid"));
                     for e in errors {
@@ -349,6 +352,7 @@ fn print_report(report: &RunReport) {
             Status::Failed { reason } => (style::fail("FAIL"), reason.clone()),
             Status::Skipped { reason } => (style::dim("skip"), reason.clone()),
             Status::Error { message } => (style::fail("ERR "), message.clone()),
+            Status::Cancelled { reason } => (style::warn("STOP"), reason.clone()),
         };
         println!(
             "  {mark} {} {} {}",

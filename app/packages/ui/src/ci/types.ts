@@ -37,6 +37,11 @@ export interface CiClient {
    * the new run. With `noTaskCache` every `task-cache:` job runs.
    */
   retryRun(id: string, opts: { noTaskCache: boolean }): Promise<CiRun>;
+  /**
+   * Cancels a queued, waiting or running run and answers it: cancelled, or
+   * still running with `cancelRequested` while its runner stops it.
+   */
+  cancelRun(id: string): Promise<CiRun>;
   /** The caches CI keeps, per connected account and repository. */
   listCaches(): Promise<CiCaches>;
   /** Deletes one repository's caches and answers what went. */

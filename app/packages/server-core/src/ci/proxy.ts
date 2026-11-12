@@ -69,6 +69,8 @@ export interface ProxyRun {
     /** The runner's id for the run, which its downloads are stored under. */
     run_id?: string;
     passed?: boolean;
+    /** Something in it was cancelled (runners from the release with cancelling). */
+    cancelled?: boolean;
     usage?: { vcpu_seconds?: number; memory_gib_seconds?: number };
     pipelines?: Array<{
       outcome?: string;

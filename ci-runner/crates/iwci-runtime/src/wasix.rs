@@ -1055,22 +1055,26 @@ pub(crate) fn run(
     // (background.rs).
     let deadline = started + inv.limits.timeout;
     let mut services = Services::start(&starter, &inv.services, &stderr, &inv.cwd)?;
-    if let Err(failure) = services.wait_ready(&starter, deadline) {
+    let cancel = inv.cancel.clone();
+    let cancelled = || cancel.as_ref().is_some_and(|c| c.is_cancelled());
+    if let Err(failure) = services.wait_ready(&starter, deadline, cancel.as_ref()) {
         services.stop(&interrupt);
         stderr.push(format!("iwci: {failure}\n").as_bytes());
         let out = stdout.take();
         let err = stderr.take();
+        let cancelled = cancelled();
         return Ok(Outcome {
-            exit_code: 1,
+            exit_code: if cancelled { TIMEOUT_EXIT_CODE } else { 1 },
             stdout: out.bytes,
             stderr: err.bytes,
             truncated: out.truncated || err.truncated,
             duration: started.elapsed(),
             timed_out: false,
+            cancelled,
             stalled_after: None,
             out_of_memory: hit_memory.load(Ordering::Acquire),
             error: None,
-            service_failure: Some(failure),
+            service_failure: (!cancelled).then_some(failure),
         });
     }
 
@@ -1123,6 +1127,9 @@ pub(crate) fn run(
             if !services.is_empty() {
                 wake = wake.min(Instant::now() + SERVICE_POLL);
             }
+            if cancel.is_some() {
+                wake = wake.min(Instant::now() + crate::cancel::CANCEL_POLL);
+            }
             let wake = tokio::time::Instant::from_std(wake);
             if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
                 return (Some(result), None);
@@ -1130,6 +1137,9 @@ pub(crate) fn run(
             services.report_exits(&stderr);
             if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
                 break Stop::OutOfMemory;
+            }
+            if cancelled() {
+                break Stop::Cancelled;
             }
             let now = Instant::now();
             if now >= deadline {
@@ -1174,6 +1184,7 @@ pub(crate) fn run(
     }
     let timed_out = stopped == Some(Stop::Timeout);
     let stalled = stopped == Some(Stop::Stalled);
+    let was_cancelled = stopped == Some(Stop::Cancelled);
 
     let result = match result {
         Some(result) => result,
@@ -1249,6 +1260,7 @@ pub(crate) fn run(
         truncated: out.truncated || err.truncated,
         duration: started.elapsed(),
         timed_out,
+        cancelled: was_cancelled,
         stalled_after: caps.stall_after.filter(|_| stalled),
         out_of_memory,
         error: if stopped.is_some() { None } else { error },
@@ -1264,6 +1276,8 @@ enum Stop {
     Stalled,
     /// Its JavaScript was stopped for memory (`NodeHooks::exhaustion`).
     OutOfMemory,
+    /// Its run was cancelled (`Invocation::cancel`).
+    Cancelled,
 }
 
 /// Compiles every command of `packages` into the disk cache, so the first

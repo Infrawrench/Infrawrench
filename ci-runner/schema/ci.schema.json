@@ -61,6 +61,18 @@
       "type": "string",
       "description": "The most the run's shared /tmp/workflow directory may hold, as a size such as `2GiB` (16MiB to 16GiB, default 1GiB). Every job of the run sees the same directory; it is memory, and it is gone when the run ends."
     },
+    "concurrency": {
+      "description": "At most one run of this repository per group is in progress. A group name (a new run waits for the one in progress, and only the newest waiting run is kept), or `{ group, cancel-in-progress }`. The group may use `${{ commit.branch }}`, `${{ pipeline.name }}`, `${{ pull-request.number }}`, `${{ event }}`, `${{ vars.<name> }}` and the other names known before a run starts; groups compare case-insensitively.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "$ref": "#/$defs/concurrency"
+        }
+      ]
+    },
     "jobs": {
       "type": "object",
       "minProperties": 1,
@@ -637,6 +649,23 @@
           "pattern": "^([0-9]+[smh])+$",
           "default": "60s",
           "description": "How long to wait, at most the job's timeout."
+        }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group"],
+      "properties": {
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The group's name, substituted like any other value; at most 256 characters once substituted."
+        },
+        "cancel-in-progress": {
+          "type": "boolean",
+          "default": false,
+          "description": "A new run cancels the pipelines in this group of the run in progress, instead of waiting for it."
         }
       }
     }

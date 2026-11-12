@@ -455,4 +455,11 @@
 // `GET /ci/runs/{runId}/download?job=&path=` answers a short-lived link the
 // CI proxy serves one of them from. Clearing a repository's caches leaves its
 // downloads, which keep their own retention. Additive.
-export const API_VERSION = "1.104.0";
+// 1.105.0: CI concurrency groups and cancelling. `POST
+// /api/org/:orgId/ci/runs/:runId/cancel` (`ci:approve`) cancels a queued,
+// waiting or running run and answers it; `CiRunStatus` gains `pending`
+// (waiting for its `concurrency:` group) and `cancelled`, a job's status
+// gains `cancelled`, and `CiRun` gains optional `concurrencyGroups` and
+// `cancelRequested`. A cancelled run can be retried. Additive (new enum
+// values, which clients decode leniently).
+export const API_VERSION = "1.105.0";

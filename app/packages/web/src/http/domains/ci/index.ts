@@ -33,6 +33,7 @@ import {
   getRun,
   listRuns,
   openRunLogs,
+  cancelRun,
   rejectRun,
   retryRun,
 } from "@infrawrench/server-core/ci/runs";
@@ -237,6 +238,23 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
             entityType: "ci_run",
             entityId: run.id,
             metadata: { retryOf: params.runId, repo: run.repoFullName, noTaskCache },
+          }),
+        );
+        return yield* respond(CiRunSchema)(run);
+      }),
+    )
+    .handle("cancelRun", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const run = yield* legacyTry(() => cancelRun(organizationId, params.runId), refusal);
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.run.cancel",
+            entityType: "ci_run",
+            entityId: params.runId,
+            metadata: { repo: run.repoFullName, status: run.status },
           }),
         );
         return yield* respond(CiRunSchema)(run);
