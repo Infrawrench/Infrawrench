@@ -1,0 +1,22 @@
+#!/bin/bash
+# `php` in `env:php`: Wasmer's phpix, made to behave like php-cli where it
+# does not.
+#
+# phpix changes into a script's directory before running it, and ignores
+# its own -C, so `php vendor/bin/phpunit` would look for phpunit.xml in
+# vendor/bin. The caller's directory goes along in PHP_CALLER_CWD, and
+# lib/cwd.php, prepended to the script, changes back into it.
+#
+# phpix names `PHP_BINARY` after the path it was started as, so starting it
+# as this script makes a `php` that Composer or PHPUnit start come back here.
+#
+# It also has no -m or -l; those are answered here when they come first.
+lib=/opt/php-cli/lib
+case "${1-}" in
+  -m) set -- "$lib/modules.php" ;;
+  -l)
+    shift
+    set -- "$lib/lint.php" "$@"
+    ;;
+esac
+PHP_CALLER_CWD="$PWD" exec -a /opt/php-cli/bin/php phpix -d "auto_prepend_file=$lib/cwd.php" "$@"

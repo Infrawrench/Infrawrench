@@ -441,11 +441,12 @@ Builtins:
 
 Environments:
 
-| Environment    | Packages                                                                                                                            |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `bash@5`       | `wasmer/bash` 1.0.25 (GNU bash 5.1), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 |
-| `bash-node@24` | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                      |
-| `python@3.13`  | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                  |
+| Environment            | Packages                                                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                                               |
+| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                    |
+| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
+| `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
@@ -677,6 +678,77 @@ packages again. A verified pip installer is
 one runner issue showing: an argument containing a newline arrives split
 at it ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)), so
 a multi-line `python -c` runs only its first line (put the code in a file).
+
+### PHP
+
+`env:php@8.1`, `@8.2`, `@8.3`, `@8.4` and `@8.5` are PHP 8.1.34, 8.2.35,
+8.3.36, 8.4.27 and 8.5.12, from Wasmer's `phpix` packages (0.3.1), beside
+the tools of `env:bash@5` and Composer 2.11.2:
+
+```yaml
+test:
+  using: env:php@8.4
+  run: |
+    composer install
+    vendor/bin/phpunit
+```
+
+Every version has the same extensions, `bcmath ctype curl date dom exif
+fileinfo filter ftp gd hash iconv igbinary imagick intl json libxml
+mbstring mysqli mysqlnd openssl pcre PDO pdo_mysql pdo_pgsql pdo_sqlite
+pgsql Phar posix Reflection session SimpleXML soap sodium SPL sqlite3
+standard tokenizer xml xmlreader xmlwriter zip zlib` and OPcache, plus the
+ones PHP itself added since 8.1: `random` from 8.2, `lexbor` and `uri` in
+8.5. There is no Xdebug or PCOV, so no code coverage, and no JIT.
+
+phpix is not php-cli: it is a server and script runner of Wasmer's that
+embeds PHP. The environment's own `php` (`builtins/environments/php-cli`,
+first on `PATH`, ahead of phpix's) makes up the differences a pipeline
+meets:
+
+- **The working directory.** phpix changes into a script's own directory
+  before running it, and ignores its `-C`, so `php vendor/bin/phpunit`
+  looked for `phpunit.xml` in `vendor/bin` and Composer for
+  `composer.json` beside its phar. `php` changes back to where it was
+  started (a file prepended to the script), so scripts, `vendor/bin/*` and
+  `composer` work in the job's directory, with no `--working-dir`.
+- **`PHP_BINARY`** is that `php`, so a PHP that Composer (`@php`, scripts)
+  or PHPUnit starts behaves the same.
+- **`php -m` and `php -l`**, which phpix does not have, when they come
+  first. `-l` checks syntax with PHP's parser, so errors only the compiler
+  finds (a function declared twice) pass.
+
+What still differs from php-cli:
+
+- Of php-cli's options only `-r`, `-f`, `-d`, `-c`, `-n`, `-v`, `-h` and
+  `-S` (a server) work, plus `-m` and `-l` above: no `-i` (`phpinfo()`
+  prints HTML), `-a`, `-s` or `-w`, and no script on standard input.
+- A fatal error (an uncaught exception) exits with 79, not 255.
+- `mail()` fails: sendmail has no backend.
+- A repository's own `auto_prepend_file` is replaced by the environment's.
+- Composer has no `unzip`, `7z` or `git`: it unpacks archives with the
+  zip extension (and says so), and a package it would have to clone from
+  source does not install.
+- A multi-line `php -r` runs only its first line
+  ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)); put
+  the code in a file.
+
+The environment sets `PATH` (php-cli first), `COMPOSER_ALLOW_SUPERUSER=1`
+(a job runs as root, which Composer warns about on every command) and
+`COMPOSER_NO_INTERACTION=1` (nobody answers, and every descriptor reads as
+a terminal, [#1008](https://github.com/Infrawrench/Infrawrench/issues/1008)).
+
+Composer downloads from Packagist when the job runs, as pip does: it needs
+the job's network, and nothing checks the downloads against
+`composer.lock` beyond what Composer itself does
+([#1015](https://github.com/Infrawrench/Infrawrench/issues/1015)).
+
+**Where it comes from.** phpix is libphp from `wasix-org/php` (MIT) inside
+a host program of Wasmer's whose source is not public, and the OpenSSL and
+curl built into it report development versions (OpenSSL 3.2.0-dev, curl
+8.4.0-DEV). The packages are pinned by hash, so nothing changes under a
+pin, but what is inside them can only be checked by running it. Composer's
+phar is pinned by the SHA-256 getcomposer.org publishes.
 
 ### Go and Rust
 
@@ -1211,7 +1283,7 @@ repository that has something to pass and something to fail for each tool.
 cargo build -p iwci
 bash builtins/test.sh                        # gofmt and bash
 bash builtins/test.sh typescript oxfmt       # needs their toolchains
-bash builtins/test.sh python                 # needs the internet (pip)
+bash builtins/test.sh python php             # need the internet (pip, Composer)
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 
@@ -1221,8 +1293,8 @@ fail; a tool that will not resolve or start is an error and fails the test.
 
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
-which each need a large toolchain, and python, whose tests install from the
-internet, on changes to the builtins, the runtime or the store, and
+which each need a large toolchain, and python and php, whose tests install
+from the internet, on changes to the builtins, the runtime or the store, and
 nightly, because those builds resolve crates and a WASIX toolchain that
 this repository does not pin byte for byte. The Node job
 runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the

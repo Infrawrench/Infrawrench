@@ -1,0 +1,4 @@
+#!/bin/bash
+# Composer, pinned by php-cli/build.sh, run by this package's `php` so it
+# works in the directory it was started from.
+exec /opt/php-cli/bin/php /opt/php-cli/lib/composer.phar "$@"
