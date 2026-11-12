@@ -378,6 +378,215 @@ fn unlinking_a_directory_fails_and_leaves_it_removable() {
     );
 }
 
+/// Removes directories nothing has looked up yet, exiting with a code
+/// naming the first call that did not give the errno it should: ENOTEMPTY
+/// (55) for one with entries, ENOTDIR (54) for a file and for a symlink to a
+/// directory, ENOENT (44) for nothing, and success for an empty one.
+const RMDIR_UNSEEN: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/full")
+  (data (i32.const 120) "/work/empty")
+  (data (i32.const 140) "/work/file")
+  (data (i32.const 160) "/work/link")
+  (data (i32.const 180) "/work/none")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (call $expect (call $rmdir (i32.const 3) (i32.const 100) (i32.const 10)) (i32.const 55) (i32.const 10))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 140) (i32.const 10)) (i32.const 54) (i32.const 11))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 160) (i32.const 10)) (i32.const 54) (i32.const 12))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 44) (i32.const 13))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 120) (i32.const 11)) (i32.const 0) (i32.const 14))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 120) (i32.const 11)) (i32.const 44) (i32.const 15))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 100) (i32.const 10)) (i32.const 55) (i32.const 16))))
+"#;
+
+/// `rmdir` of a directory nothing had looked up yet found no entry in
+/// WASIX's directory cache and answered ENOENT, empty or not (#1057): a
+/// recursive delete that calls `rmdir` first and recurses on ENOTEMPTY took
+/// a populated checkout directory for gone.
+#[test]
+fn removing_a_directory_nothing_looked_up_says_what_it_is() {
+    let rt = runtime();
+    let builder = SnapshotBuilder::new();
+    builder.mkdir_all("/work/empty").unwrap();
+    builder.write("/work/full/child/file", b"child").unwrap();
+    builder.write("/work/file", b"file").unwrap();
+    builder.symlink("/work/link", "full").unwrap();
+    let job = builder.freeze().fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("rmdir-unseen", RMDIR_UNSEEN),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(job.read("/work/full/child/file").unwrap(), b"child");
+    assert!(job.as_dyn().metadata(Path::new("/work/empty")).is_err());
+    assert_eq!(job.changes("/"), Vec::new());
+}
+
+/// Links files and a directory, exiting with a code naming the first call
+/// that did not give the errno it should: EPERM (63) for a link, EEXIST (20)
+/// onto a name that is there, ENOENT (44) for a name that is not.
+const LINKS: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_link" (func $link (param i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/file")
+  (data (i32.const 120) "/work/second")
+  (data (i32.const 140) "/work/full")
+  (data (i32.const 160) "/work/dirlink")
+  (data (i32.const 180) "/work/gone")
+  (data (i32.const 200) "/work/keep")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
+      (i32.const 3) (i32.const 120) (i32.const 12)) (i32.const 63) (i32.const 10))
+    (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 12) (i32.const 400))
+      (i32.const 44) (i32.const 11))
+    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 140) (i32.const 10)
+      (i32.const 3) (i32.const 160) (i32.const 13)) (i32.const 63) (i32.const 12))
+    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
+      (i32.const 3) (i32.const 200) (i32.const 10)) (i32.const 20) (i32.const 13))
+    (call $expect (call $unlink (i32.const 3) (i32.const 100) (i32.const 10)) (i32.const 0) (i32.const 14))
+    (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10) (i32.const 400))
+      (i32.const 44) (i32.const 15))
+    ;; a link onto a deleted snapshot file fails and leaves it deleted
+    (call $expect (call $unlink (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 0) (i32.const 16))
+    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 200) (i32.const 10)
+      (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 63) (i32.const 17))
+    (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 180) (i32.const 10) (i32.const 400))
+      (i32.const 44) (i32.const 18))))
+"#;
+
+/// A job's file system has no hard links, so `link()` fails with EPERM, as
+/// on a file system without them (#1052). It used to succeed with a second
+/// name only WASIX's cache knew, after which removing the first name
+/// removed nothing.
+#[test]
+fn a_hard_link_is_refused_and_leaves_one_name() {
+    let rt = runtime();
+    let builder = SnapshotBuilder::new();
+    builder.write("/work/full/child/file", b"child").unwrap();
+    builder.write("/work/file", b"file").unwrap();
+    builder.write("/work/gone", b"gone").unwrap();
+    builder.write("/work/keep", b"keep").unwrap();
+    let job = builder.freeze().fork();
+    let outcome = rt
+        .run_command(&wat_module("links", LINKS), invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(job.read("/work/keep").unwrap(), b"keep");
+    assert_eq!(
+        job.changes("/"),
+        vec![
+            Change::Deleted {
+                path: "/work/file".into()
+            },
+            Change::Deleted {
+                path: "/work/gone".into()
+            },
+        ]
+    );
+}
+
+/// Renames a new file and a directory with a file in it, and writes the
+/// `st_ino` of each as 8 raw bytes: the renamed file by path and by its
+/// open descriptor, then the file in the renamed directory and the
+/// directory. Exits with a code from 10 up when a call fails.
+const RENAMED_INODES: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_filestat_get" (func $fstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_rename" (func $rename (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_create_directory" (func $mkdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/b")
+  (data (i32.const 110) "/work/c")
+  (data (i32.const 120) "/work/d")
+  (data (i32.const 130) "/work/d/f")
+  (data (i32.const 140) "/work/e")
+  (data (i32.const 150) "/work/e/f")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  ;; writes the st_ino of the filestat at 400
+  (func $ino
+    (i32.store (i32.const 0) (i32.const 408))
+    (i32.store (i32.const 4) (i32.const 8))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8))))
+  (func $stat_ino (param $path i32) (param $len i32) (param $code i32)
+    (call $check (call $stat (i32.const 3) (i32.const 1) (local.get $path) (local.get $len) (i32.const 400))
+      (local.get $code))
+    (call $ino))
+  (func $create (param $path i32) (param $len i32) (param $code i32) (result i32)
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (local.get $path) (local.get $len)
+      (i32.const 1) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (local.get $code))
+    (i32.load (i32.const 24)))
+  (func (export "_start")
+    (local $fd i32)
+    (local.set $fd (call $create (i32.const 100) (i32.const 7) (i32.const 10)))
+    (call $check (call $rename (i32.const 3) (i32.const 100) (i32.const 7)
+      (i32.const 3) (i32.const 110) (i32.const 7)) (i32.const 11))
+    (call $stat_ino (i32.const 110) (i32.const 7) (i32.const 12))
+    (call $check (call $fstat (local.get $fd) (i32.const 400)) (i32.const 13))
+    (call $ino)
+    (call $check (call $fd_close (local.get $fd)) (i32.const 14))
+    (call $check (call $mkdir (i32.const 3) (i32.const 120) (i32.const 7)) (i32.const 15))
+    (call $check (call $fd_close (call $create (i32.const 130) (i32.const 9) (i32.const 16))) (i32.const 17))
+    (call $check (call $stat (i32.const 3) (i32.const 1) (i32.const 130) (i32.const 9) (i32.const 400))
+      (i32.const 18))
+    (call $check (call $rename (i32.const 3) (i32.const 120) (i32.const 7)
+      (i32.const 3) (i32.const 140) (i32.const 7)) (i32.const 19))
+    (call $stat_ino (i32.const 150) (i32.const 9) (i32.const 20))
+    (call $stat_ino (i32.const 140) (i32.const 7) (i32.const 21))))
+"#;
+
+/// A renamed file or directory reports the inode number of its new path,
+/// as one looked up there would (#1054). The runner finds a file's mode by
+/// that number (`/proc/iwci/ino/`, which Edge.js's and Git's C library
+/// read after every `stat`), so with the number of its old path a mode set
+/// on a file renamed into place read back as the default: `git init` found
+/// modes untrustworthy and set `core.filemode=false`.
+#[test]
+fn a_renamed_file_has_the_inode_number_of_its_new_path() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("renamed-inodes", RENAMED_INODES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    let got: Vec<u64> = outcome
+        .stdout
+        .chunks(8)
+        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let ino = |path: &str| crate::modes::ino_of(Path::new(path));
+    assert_eq!(
+        got,
+        vec![
+            ino("/work/c"),
+            ino("/work/c"),
+            ino("/work/e/f"),
+            ino("/work/e")
+        ]
+    );
+}
+
 /// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
 /// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
 /// one `fd_fdstat_get` gives stdin once that pipe is put in its place and

@@ -79,7 +79,9 @@ pub(crate) fn path_filestat_get_internal(
         flags & __WASI_LOOKUP_SYMLINK_FOLLOW != 0,
     )?;
 
-    let st_ino = file_inode.ino().as_u64();
+    // The number the inode reports, which a rename moves to the new path's
+    // (`path_rename`'s `renumber`); `fstat` reports the same one.
+    let st_ino = file_inode.stat.read().unwrap().st_ino;
     let mut stat = if file_inode.is_preopened {
         *file_inode.stat.read().unwrap().deref()
     } else {

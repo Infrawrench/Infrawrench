@@ -220,6 +220,7 @@ pub fn path_rename_internal(
                     let mut guard = source_entry.write();
                     if let Kind::File { path, .. } = guard.deref_mut() {
                         *path = target_guest_path.clone();
+                        renumber(&source_entry, path);
                     } else {
                         unreachable!()
                     }
@@ -333,10 +334,12 @@ fn rename_inode_tree(inode: &InodeGuard, source_dir_path: &Path, target_dir_path
     match guard.deref_mut() {
         Kind::File { path, .. } => {
             *path = adjust_path(path, source_dir_path, target_dir_path);
+            renumber(inode, path);
             return;
         }
         Kind::Dir { path, entries, .. } => {
             *path = adjust_path(path, source_dir_path, target_dir_path);
+            renumber(inode, path);
             children = entries.values().cloned().collect::<Vec<_>>();
         }
         _ => return,
@@ -346,6 +349,18 @@ fn rename_inode_tree(inode: &InodeGuard, source_dir_path: &Path, target_dir_path
     for child in children {
         rename_inode_tree(&child, source_dir_path, target_dir_path);
     }
+}
+
+/// Gives a moved file or directory the inode number of its new path, as a
+/// lookup of that path would number it (`Inode::from_path`). Inode numbers
+/// are hashes of paths here, and an embedder that keeps something per path
+/// finds it again from a `st_ino` that way (the runner's file modes, which
+/// its C library reads by `st_ino`); with the old number, a mode set on a
+/// file renamed into place was not found. Only the reported number moves:
+/// the inode's identity (`InodeGuard::ino`) stays what it was.
+fn renumber(inode: &InodeGuard, path: &Path) {
+    inode.stat.write().unwrap().st_ino =
+        crate::fs::Inode::from_path(path.to_string_lossy().as_ref()).as_u64();
 }
 
 fn adjust_path(path: &Path, source_dir_path: &Path, target_dir_path: &Path) -> PathBuf {

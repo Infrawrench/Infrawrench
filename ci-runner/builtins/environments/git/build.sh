@@ -26,9 +26,9 @@
 #     as Git's Windows port peeks for `#!`.
 #
 #   git-no-hard-links.patch (NO_HARD_LINKS). The job's file system cannot
-#     give a file a second name yet: link() appeared to work, and the next
-#     process found neither name (#1052). link() fails, as on a file system
-#     without hard links, so Git renames object files into place
+#     give a file a second name: link() appeared to work, and the next
+#     process found neither name (#1052; it now fails with EPERM). Here
+#     link() fails without trying, so Git renames object files into place
 #     (OBJECT_CREATION_USES_RENAMES) and a clone from a path copies. Drop it
 #     once the job's file system has hard links.
 #
@@ -36,10 +36,10 @@
 # with the same three objects rebuilt from edgejs/'s patches): relative
 # paths that threads cannot trade (#937), a thread exit that writes nothing
 # into a joined stack (#967), and the runner's file modes (#959), so Git
-# checks an executable out as 0755 and, with `core.filemode` true, records
-# one as `100755`. (`git init` sets it false for now: its probe chmods
-# .git/config, which was renamed into place, #1054.) edgejs/build.sh says
-# what each patch is.
+# checks an executable out as 0755, `git init` sets `core.filemode` true
+# (its probe chmods .git/config, which it renamed into place, and reads the
+# mode back, #1054), and an executable is recorded as `100755`.
+# edgejs/build.sh says what each patch is.
 #
 # Not built: Perl and Python commands (`send-email`, `svn`, `p4`, ...),
 # `git daemon`, `git http-backend`, `git imap-send`, `git shell`,

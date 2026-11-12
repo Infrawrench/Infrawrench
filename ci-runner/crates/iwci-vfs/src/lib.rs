@@ -1096,8 +1096,12 @@ impl FileSystem for JobOverlay {
     fn create_symlink(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
         self.inner.create_symlink(source, target)
     }
-    fn hard_link(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
-        self.inner.hard_link(source, target)
+    /// No hard links (#1052): neither layer can give a file a second name,
+    /// so WASIX's `link()` fails with EPERM. Not through the overlay, whose
+    /// `hard_link` removes the whiteout at `target` before its upper layer
+    /// refuses, which can bring a deleted snapshot file back.
+    fn hard_link(&self, _source: &Path, _target: &Path) -> virtual_fs::Result<()> {
+        Err(FsError::Unsupported)
     }
     fn remove_dir(&self, path: &Path) -> virtual_fs::Result<()> {
         if !self.inner.symlink_metadata(path)?.is_dir() {
@@ -1424,6 +1428,39 @@ mod tests {
                 Change::Modified {
                     path: "/app/src/a.ts".into(),
                     bytes: b"new".to_vec()
+                },
+                Change::Deleted {
+                    path: "/app/src/b.ts".into()
+                },
+            ]
+        );
+    }
+
+    /// No hard links (#1052), and refusing one changes nothing: the
+    /// overlay's own `hard_link` removes the whiteout at the target before
+    /// refusing.
+    #[test]
+    fn a_hard_link_is_refused_and_a_deleted_file_stays_deleted() {
+        let job = snapshot().fork();
+        let fs = job.as_dyn();
+        job.remove_file("/app/src/b.ts").unwrap();
+        let err = fs
+            .hard_link(Path::new("/app/src/a.ts"), Path::new("/app/src/b.ts"))
+            .unwrap_err();
+        assert_eq!(err, FsError::Unsupported);
+        assert!(job.read("/app/src/b.ts").is_err());
+        job.write("/app/mine", b"x").unwrap();
+        assert_eq!(
+            fs.hard_link(Path::new("/app/mine"), Path::new("/app/other")),
+            Err(FsError::Unsupported)
+        );
+        assert!(job.read("/app/other").is_err());
+        assert_eq!(
+            job.changes("/app"),
+            vec![
+                Change::Added {
+                    path: "/app/mine".into(),
+                    bytes: b"x".to_vec()
                 },
                 Change::Deleted {
                     path: "/app/src/b.ts".into()

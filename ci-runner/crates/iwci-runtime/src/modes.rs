@@ -203,10 +203,12 @@ fn decode(name: &str) -> Option<PathBuf> {
 
 /// The `st_ino` wasmer-wasix gives the file at `path` (absolute, no
 /// symlinks left): the 64-bit xxHash of the path as its file system was
-/// asked for it (`Inode::from_path`). The C library has an `st_ino` from
+/// asked for it (`Inode::from_path`), and after a rename the number of its
+/// new path (vendor/README.md, #1054). The C library has an `st_ino` from
 /// `fstat` and no path, so this is how `ino/` finds the file. Tested end to
-/// end in `builtins/test.sh` (`bash-node/modes-passes`), since a change in
-/// how wasmer-wasix numbers inodes breaks it.
+/// end in `builtins/test.sh` (`bash-node/modes-passes` and
+/// `renamed-modes-passes`), since a change in how wasmer-wasix numbers
+/// inodes breaks it.
 pub(crate) fn ino_of(path: &Path) -> u64 {
     xxhash_rust::xxh64::xxh64(path.as_os_str().as_encoded_bytes(), 0)
 }

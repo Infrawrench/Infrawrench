@@ -48,6 +48,18 @@ pub(crate) fn path_remove_directory_internal(
     let env = ctx.data();
     let (memory, state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
+    // Look the directory up first, which caches it in its parent's entries:
+    // only what something looked up is there, so `rmdir` of a directory
+    // nothing had looked at yet (one from the backing file system) found
+    // no entry and answered ENOENT, whether or not it was empty. Whether it
+    // is empty is then the file system's to say (`fs_remove_dir`), since
+    // its cached entries are only the ones looked up. A symlink is not
+    // followed: it is not a directory to remove.
+    let inode = state.fs.get_inode_at_path(inodes, fd, path, false)?;
+    if matches!(inode.read().deref(), Kind::Symlink { .. }) {
+        return Err(Errno::Notdir);
+    }
+
     let (parent_inode, dir_name) =
         state
             .fs
