@@ -372,17 +372,37 @@ process-wide handler, the last thing before V8 aborts. In V8 13.6 that
 handler runs after the isolate's own one returns, so the one-second
 timeout alone never aborted the runner.
 
+**And: code cache comes back as a Buffer of its own (#1007).**
+`vm.Script#createCachedData()`, a module's cached data and the code cache
+Edge.js records for its built-ins all go through `CreateNodeBufferFromBytes`
+in `v8/src/unofficial_napi_contextify.cc`, which called the global
+`Buffer.from` from C++. Under 4 KiB that copies into Buffer's shared pool,
+and renewing the pool calls the guest's `createUnsafeArrayBuffer`; these
+host calls lend the guest no store, so that call failed ("[callback
+trampoline] no store lent to this thread"), returned `undefined`, and the
+new pool was empty. Every pooled allocation in the process threw from then
+on (`RangeError: Invalid typed array length`): 200 `createCachedData()`
+calls failed 10 runs in 10, and recording the built-ins cache killed
+`node` in its bootstrap. The bytes now get a backing store of their own,
+viewed as a Uint8Array whose prototype is set to `Buffer.prototype`, as
+`napi_create_buffer` does, with no JavaScript run: `Buffer` and its
+`prototype` are read only as data properties (a getter or a proxy reads as
+absent, and the result is then a plain Uint8Array, which Edge.js turns into
+a Buffer itself). Reported as wasmerio/napi#146; drop the hunk with the
+release that fixes it.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
-and either a guest's event loop is kept alive and woken for its isolate's
-background work or the pinned Edge.js does that itself, and the stall check
-has another way to count V8's worker threads or goes without: delete
+and #146's fix, and either a guest's event loop is kept alive and woken
+for its isolate's background work or the pinned Edge.js does that itself,
+and the stall check has another way to count V8's worker threads or goes
+without: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
-one that runs Workers, one that churns envs and one that compiles WebAssembly
-in the background, which are the checks; check the heap sizes against a
-Worker pool too.
+one that runs Workers, one that churns envs, one that compiles WebAssembly
+in the background and one that makes code cache (`cached-data-passes`),
+which are the checks; check the heap sizes against a Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.

@@ -706,6 +706,42 @@ bool ReadArrayBufferViewBytes(v8::Local<v8::Value> value,
   return true;
 }
 
+// iwci patch (#1007): an own data property of `object`, read without running
+// JavaScript. A getter is not called, and a proxy is not looked into (its
+// traps are script code): either reads as absent.
+bool OwnDataProperty(v8::Local<v8::Context> context,
+                     v8::Local<v8::Object> object,
+                     const char* name,
+                     v8::Local<v8::Value>* out) {
+  v8::Isolate* isolate = context->GetIsolate();
+  if (object->IsProxy()) return false;
+  v8::Local<v8::Value> descriptor;
+  if (!object->GetOwnPropertyDescriptor(context, OneByteString(isolate, name)).ToLocal(&descriptor) ||
+      !descriptor->IsObject()) {
+    return false;
+  }
+  // V8 made the descriptor: `value` is its own data property when there is
+  // one, and asking for it only when it is own never reaches a prototype.
+  v8::Local<v8::Object> fields = descriptor.As<v8::Object>();
+  v8::Local<v8::String> value_key = OneByteString(isolate, "value");
+  return fields->HasRealNamedProperty(context, value_key).FromMaybe(false) &&
+         fields->GetRealNamedProperty(context, value_key).ToLocal(out);
+}
+
+// iwci patch (#1007): the bytes as a Node Buffer in memory of their own, made
+// without running JavaScript. Calling the global `Buffer.from` from here,
+// as the provider did, ran script inside a host call that had not lent its
+// guest store: `Buffer.from` copies a short input into Buffer's shared pool,
+// renewing the pool calls the guest's `createUnsafeArrayBuffer`, the call into
+// the guest failed ("no store lent to this thread") and returned undefined,
+// and the new pool was empty. Every pooled allocation in the process then
+// threw (`RangeError: Invalid typed array length`), which broke
+// `vm.Script#createCachedData()` and the built-ins code cache. And the
+// global `Buffer` is the script's to replace. So: a Uint8Array over its own
+// backing store, given `Buffer.prototype` as `napi_create_buffer` does, read
+// only from data properties. When that prototype cannot be had (no `Buffer`
+// yet, or one that is not a Uint8Array subclass) the result is the plain
+// Uint8Array, which Edge.js turns into a Buffer itself.
 bool CreateNodeBufferFromBytes(napi_env env, const uint8_t* data, size_t size, napi_value* out) {
   if (out == nullptr) return false;
   *out = nullptr;
@@ -725,21 +761,15 @@ bool CreateNodeBufferFromBytes(napi_env env, const uint8_t* data, size_t size, n
   v8::Local<v8::ArrayBuffer> ab = v8::ArrayBuffer::New(isolate, std::move(store));
   v8::Local<v8::Uint8Array> view = v8::Uint8Array::New(ab, 0, size);
 
-  v8::Local<v8::Object> global = context->Global();
-  v8::Local<v8::Value> buffer_ctor_value;
-  if (global->Get(context, OneByteString(isolate, "Buffer")).ToLocal(&buffer_ctor_value) &&
-      buffer_ctor_value->IsFunction()) {
-    v8::Local<v8::Object> buffer_ctor_obj = buffer_ctor_value.As<v8::Object>();
-    v8::Local<v8::Value> from_value;
-    if (buffer_ctor_obj->Get(context, OneByteString(isolate, "from")).ToLocal(&from_value) &&
-        from_value->IsFunction()) {
-      v8::Local<v8::Value> argv[1] = {view};
-      v8::Local<v8::Value> buffer_out;
-      if (from_value.As<v8::Function>()->Call(context, buffer_ctor_value, 1, argv).ToLocal(&buffer_out)) {
-        *out = napi_v8_wrap_value(env, buffer_out);
-        return *out != nullptr;
-      }
-    }
+  v8::Local<v8::Value> buffer_ctor;
+  v8::Local<v8::Value> buffer_proto;
+  if (OwnDataProperty(context, context->Global(), "Buffer", &buffer_ctor) &&
+      buffer_ctor->IsFunction() &&
+      OwnDataProperty(context, buffer_ctor.As<v8::Object>(), "prototype", &buffer_proto) &&
+      buffer_proto->IsObject() && !buffer_proto->IsProxy() &&
+      buffer_proto.As<v8::Object>()->GetPrototypeV2()->StrictEquals(view->GetPrototypeV2())) {
+    // On failure `view` stays a valid Uint8Array.
+    (void)view->SetPrototypeV2(context, buffer_proto);
   }
 
   *out = napi_v8_wrap_value(env, view);

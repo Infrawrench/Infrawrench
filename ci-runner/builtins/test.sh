@@ -1292,6 +1292,31 @@ jobs:
       for (let i = 0; i < 4; i++) one(i);
       JS
       test "$(node /tmp/readers.js)" = "readers ok"
+  # `vm.Script#createCachedData()` (#1007): the bridge built its Buffer with
+  # the global `Buffer.from`, inside a call that could not reach back into
+  # Edge.js, so renewing Buffer's pool there left it empty and the next
+  # pooled allocation threw (`Invalid typed array length`), every run. It
+  # now makes the Buffer itself, without the pool.
+  cached-data-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 2m
+    run: |
+      cat > /tmp/cache.js <<'JS'
+      const vm = require("node:vm");
+      const assert = require("node:assert");
+      for (let i = 0; i < 200; i++) {
+        const data = new vm.Script(`(function f${i}(a) { return a + ${i}; })`).createCachedData();
+        assert.ok(Buffer.isBuffer(data) && data.length > 0);
+      }
+      assert.equal(Buffer.from("x".repeat(416)).length, 416);
+      const source = "(function g(a) { return a * 2; })";
+      const script = new vm.Script(source, { cachedData: new vm.Script(source).createCachedData() });
+      assert.equal(script.cachedDataRejected, false);
+      assert.equal(script.runInThisContext()(21), 42);
+      console.log("cached data ok");
+      JS
+      for i in 1 2 3; do test "$(node /tmp/cache.js)" = "cached data ok"; done
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap
