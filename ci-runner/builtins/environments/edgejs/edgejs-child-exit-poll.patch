@@ -1,0 +1,36 @@
+diff --git a/deps/libuv-wasix/src/unix/core.c b/deps/libuv-wasix/src/unix/core.c
+index f51e086..21824c0 100644
+--- a/deps/libuv-wasix/src/unix/core.c
++++ b/deps/libuv-wasix/src/unix/core.c
+@@ -47,8 +47,8 @@
+ #include <time.h> /* clock_gettime */
+ 
+ #if defined(__wasi__)
+-/* Fallback poll period when a child is live but uv__next_timeout() would block
+- * forever. Applied only at the uv__io_poll() call site in uv_run(). */
++/* Longest poll while a child is live. Applied only at the uv__io_poll() call
++ * site in uv_run(). */
+ #define UV__WASIX_CHILD_POLL_MS 100
+ #endif
+ 
+@@ -464,10 +464,16 @@ int uv_run(uv_loop_t* loop, uv_run_mode mode) {
+     uv__metrics_inc_loop_count(loop);
+ 
+ #if defined(__wasi__)
+-    /* WASIX does not reliably deliver SIGCHLD for posix_spawn children.
+-     * Reap after each poll; only override an unbounded poll sleep so timer
+-     * deadlines and short poll timeouts stay unchanged. */
+-    if (!uv__queue_empty(&loop->process_handles) && timeout < 0)
++    /* WASIX does not deliver SIGCHLD for posix_spawn children, so nothing
++     * wakes the poll when one exits: reap after each poll, and never sleep
++     * longer than UV__WASIX_CHILD_POLL_MS while a child is live. A pending
++     * timer is no bound: a child closes its stdio before its exit status
++     * can be read, so the poll that saw the end of its output can find it
++     * still running, and the next one then slept until the timer (spawnSync
++     * with a timeout returned only when it ran out). A shorter sleep still
++     * wakes for every timer on time. */
++    if (!uv__queue_empty(&loop->process_handles) &&
++        (timeout < 0 || timeout > UV__WASIX_CHILD_POLL_MS))
+       timeout = UV__WASIX_CHILD_POLL_MS;
+ #endif
+ 

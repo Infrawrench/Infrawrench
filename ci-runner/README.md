@@ -800,6 +800,17 @@ transferables) now skips the copy and goes to V8's serializer alone, as
 Node's does; a document of a few thousand objects used to run out of N-API
 handles in the copy (`DataCloneError`).
 
+24.0.11 adds `edgejs-child-exit-poll.patch` (#1065), to Edge.js's libuv:
+a `node` notices a child's exit within 100 ms whatever timers it has
+pending. WASIX sends no SIGCHLD, so libuv asks whether a child has exited
+after each poll, and bounded the poll for that only when nothing else
+would end it. A child's output ends before its exit can be read, so the
+poll that saw the end of it could find the child still running, and the
+next one slept until the parent's next timer: `spawnSync` with a
+`timeout` returned, with the child's status and output intact, only when
+the timeout ran out (one call in six to eight, four at a time on
+two CPUs), and an asynchronous child's `exit` waited for the next timer.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

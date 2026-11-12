@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, and with seven fixes to
+# and file modes and CPU time read from the runner, and with eight fixes to
 # Edge.js itself and its built-ins code cache turned on.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
@@ -42,7 +42,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And eight patches to Edge.js's own source, applied to its checkout:
+# And nine patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -132,6 +132,18 @@
 #     document of a few thousand objects ran out of them (DataCloneError).
 #     Ours; drafted for Edge.js.
 #
+#   edgejs-child-exit-poll.patch (#1065). WASIX sends no SIGCHLD, so its
+#     libuv finds out that a child exited only by asking after each poll,
+#     and bounded the poll for that only when it would otherwise sleep
+#     forever. A child's output ends before its exit status can be read, so
+#     the poll that saw the end of it could find the child still running,
+#     and with any timer pending the next poll slept until that timer:
+#     `spawnSync` with a timeout returned when the timeout ran out, with
+#     the child's status and output as if nothing had happened (one call
+#     in six to eight with four at once on two CPUs). A loop with a child now
+#     never sleeps longer than libuv-wasix's 100 ms child poll. Ours, in
+#     libuv-wasix; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -181,10 +193,11 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Our build of 0.2.5. A changed build is a new number after `iwci.`:
 # 1 had the first patch alone, 2 both C library patches, 3 adds the first
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
-# the built-ins cache and CPU time, 7 open flags and structured clone.
-VERSION="0.2.5-iwci.7"
+# the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
+# child exit poll.
+VERSION="0.2.5-iwci.8"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
