@@ -1874,6 +1874,107 @@ jobs:
       });
       JS
       test "$(node /tmp/status.js)" = "status ok"
+  # postMessage of a large value arrives whole, every way a message goes
+  # (#1061): Edge.js copied each value through N-API first and kept every
+  # handle of the copy until the call returned, so a value of a few thousand
+  # objects ran out of the bridge's handles and the message was lost without
+  # an error, or the receiver waited for it until the stall check. And a
+  # copied buffer bigger than the receiver's guest heap had spare failed to
+  # read (a `messageerror`), now and then. edgejs-post-message.patch, and
+  # vendor/wasmer-napi lending the store to message reads.
+  post-message-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 5m
+    memory: 4GiB
+    run: |
+      cat > /tmp/post.js <<'JS'
+      const { Worker, MessageChannel, isMainThread, parentPort } = require("node:worker_threads");
+      const assert = require("node:assert");
+      const makeDoc = (n) => {
+        const doc = { paths: {} };
+        for (let i = 0; i < n; i++) doc.paths["/p" + i] = { get: { responses: { 200: { d: i } } } };
+        return doc;
+      };
+      const checkDoc = (got, n) => {
+        assert.equal(Object.keys(got.paths).length, n);
+        assert.equal(got.paths["/p" + (n - 1)].get.responses[200].d, n - 1);
+      };
+      if (!isMainThread) {
+        parentPort.on("message", (m) => {
+          if (m.kind === "doc") {
+            checkDoc(m.doc, m.n);
+            parentPort.postMessage({ kind: "doc", doc: makeDoc(m.n) });
+          } else if (m.kind === "buf") {
+            assert.equal(new Uint8Array(m.buf)[m.size - 1], 7);
+            const buf = new ArrayBuffer(m.size);
+            new Uint8Array(buf)[m.size - 1] = 9;
+            parentPort.postMessage({ kind: "buf", buf }, m.transfer ? [buf] : []);
+          } else if (m.kind === "burst") {
+            for (let i = 0; i < m.count; i++) parentPort.postMessage({ kind: "tick" });
+          } else {
+            parentPort.close();
+          }
+        });
+        parentPort.on("messageerror", (e) => { throw e; });
+        return;
+      }
+      const once = (port, kind) => new Promise((resolve, reject) => {
+        const onMessage = (m) => {
+          if (kind !== undefined && m.kind !== kind) return;
+          port.off("message", onMessage);
+          resolve(m);
+        };
+        port.on("message", onMessage);
+        port.once("messageerror", reject);
+      });
+      (async () => {
+        const n = 25000; // 100,000 objects
+        let { port1, port2 } = new MessageChannel();
+        let got = once(port1);
+        port2.postMessage(makeDoc(n));
+        checkDoc(await got, n);
+        // With something to transfer, the value takes the walks.
+        const buf = new ArrayBuffer(16);
+        got = once(port1);
+        port2.postMessage({ doc: makeDoc(8000), buf }, [buf]);
+        checkDoc((await got).doc, 8000);
+        const inner = new MessageChannel();
+        got = once(port1);
+        port2.postMessage({ doc: makeDoc(8000), port: inner.port1, again: inner.port1 }, [inner.port1]);
+        const withPort = await got;
+        checkDoc(withPort.doc, 8000);
+        assert.ok(withPort.port === withPort.again);
+        withPort.port.close();
+        inner.port2.close();
+        assert.throws(() => port2.postMessage({ f() {} }), { name: "DataCloneError" });
+        port1.close();
+        const worker = new Worker(__filename);
+        worker.on("messageerror", (e) => { throw e; });
+        got = once(worker, "doc");
+        worker.postMessage({ kind: "doc", n, doc: makeDoc(n) });
+        checkDoc((await got).doc, n);
+        for (const size of [16 << 20, 64 << 20]) {
+          for (const transfer of [false, true]) {
+            const out = new ArrayBuffer(size);
+            new Uint8Array(out)[size - 1] = 7;
+            got = once(worker, "buf");
+            worker.postMessage({ kind: "buf", size, transfer, buf: out }, transfer ? [out] : []);
+            const back = (await got).buf;
+            assert.equal(back.byteLength, size);
+            assert.equal(new Uint8Array(back)[size - 1], 9);
+          }
+        }
+        let ticks = 0;
+        await new Promise((resolve) => {
+          worker.on("message", (m) => { if (m.kind === "tick" && ++ticks === 100000) resolve(); });
+          worker.postMessage({ kind: "burst", count: 100000 });
+        });
+        worker.postMessage({ kind: "done" });
+        console.log("post ok");
+      })();
+      JS
+      test "$(node /tmp/post.js)" = "post ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap

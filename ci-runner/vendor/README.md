@@ -441,6 +441,22 @@ Drop this with a V8 built with multiple cages
 `IsolateGroup::Create` gives each job a cage of its own) or without pointer
 compression.
 
+**And: cloning and reading a message lend the store (#1061).** A backing
+store the bridge makes for V8 lives in the guest heap, which can grow the
+guest's memory only with the store that owns it, and only imports that run
+JavaScript lend theirs; without it the heap serves what it already holds.
+`unofficial_napi_message_take` (a `postMessage` being read),
+`unofficial_napi_message_create` and `unofficial_napi_structured_clone`
+did not, and reading a message makes each ArrayBuffer in it afresh, so a
+copied buffer larger than what the heap had to spare failed: the receiver
+got a `messageerror` ("Message could not be deserialized") no one listens
+for, and the sender's message was lost. Whether it failed depended on what
+earlier allocations had left, so a 16 or 64 MiB buffer arrived one time and
+not the next, on the released runner as with the rest of #1061 fixed.
+`src/guest/napi.rs` now runs the three inside `with_cb_context`, as
+`napi_call_function` is, so the heap grows for them. Upstream main has the
+same imports (checked November 2026).
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
@@ -451,8 +467,9 @@ without: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs, one that compiles WebAssembly
-in the background and one that makes code cache (`cached-data-passes`),
-which are the checks; check the heap sizes against a Worker pool too.
+in the background, one that makes code cache (`cached-data-passes`) and
+one that posts large values and buffers (`post-message-passes`), which are
+the checks; check the heap sizes against a Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.
