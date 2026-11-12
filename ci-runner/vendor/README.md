@@ -492,3 +492,33 @@ before dropping the other two.
 
 To regenerate after editing: `diff -u` the changed file against the crate
 from crates.io with `a/` and `b/` labels, as for wasmer-napi.
+
+## virtual-net 0.705.0
+
+From crates.io, sha256
+`bd95d7124df8647ae6d74b8074ac683479f14a8ee0cdc909a0a21a171052b566`, whole
+(its tests are in `src/`), with `virtual-net.patch` applied.
+
+**Why (#1009).** A job's loopback is wasmer's `LoopbackNetworking`, which
+puts every listener in its `tcp_listeners` map so connections can find it,
+and nothing ever took one out: a port a job listened on stayed taken until
+the job ended, after the socket was closed and after its process exited, and
+binding it again failed with `EADDRINUSE`. A test suite that starts and stops
+a server on a fixed port, or a service restarted inside a job, could not.
+`src/loopback.rs` now hands out the listener wrapped in a
+`LoopbackListeningSocket` that removes its own entry when it is dropped,
+which is when the guest's last descriptor for it closes, as connected sockets
+already released their port. The runtime's own listener set
+(`iwci-runtime/src/network.rs`) already did the same, so connections to a
+closed port were refused; only the address stayed taken.
+`a_closed_listener_frees_its_port_for_the_next_one` there and
+`builtins/test.sh bash-node`'s `rebind-passes` are the checks, and the patch
+adds `test_loopback_closed_listener_releases_its_port` beside upstream's
+loopback tests.
+
+**Remove it** when a virtual-net release after 0.705.0 releases a closed
+listener's address (wasmerio/wasmer `main` still keeps it as of November
+2026): delete `vendor/virtual-net*` and its `[patch.crates-io]` entry.
+
+To regenerate after editing: `diff -u` the changed files against the crate
+from crates.io with `a/` and `b/` labels.

@@ -560,6 +560,39 @@ mod tests {
     }
 
     #[test]
+    fn a_closed_listener_frees_its_port_for_the_next_one() {
+        // A suite that starts and stops a server on a fixed port, or a
+        // service restarted within a job (#1009): wasmer's loopback kept
+        // every listener's port until the job ended.
+        let net = JobNetwork::new(None);
+        for at in ["127.0.0.1:5555", "0.0.0.0:5555", "[::]:5555"] {
+            for _ in 0..3 {
+                let listener = block_on(net.listen_tcp(addr(at), false, false, false)).unwrap();
+                assert!(
+                    matches!(
+                        block_on(net.bind_tcp(addr(at), false, false, false)),
+                        Err(NetworkError::AddressInUse)
+                    ),
+                    "{at}"
+                );
+                drop(listener);
+                // Again through a socket bound first, as libuv listens.
+                let mut bound = block_on(net.bind_tcp(addr(at), false, false, false))
+                    .unwrap_or_else(|e| panic!("{at}: {e:?}"));
+                let mut listener = bound.listen().unwrap();
+                let mut client =
+                    block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:5555"))).unwrap();
+                let (mut server, _) = listener.try_accept().unwrap();
+                assert_eq!(
+                    round_trip(client.as_mut(), server.as_mut(), b"ping"),
+                    b"ping",
+                    "{at}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_listener_on_the_ipv6_unspecified_address_takes_ipv4_too() {
         // Where Node listens when it is given no host; its callers then
         // connect to 127.0.0.1.
