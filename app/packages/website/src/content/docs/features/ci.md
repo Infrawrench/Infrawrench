@@ -70,6 +70,27 @@ jobs:
       pytest
 ```
 
+### Background services
+
+A job can start a server in the background with `&` and test against it on `127.0.0.1`. Each job has a network of its own, so ports never clash between jobs, and anything still running when the script ends is stopped. Two commands wait until a service is ready, so a job need not guess with `sleep`:
+
+- `wait-for-port 3000` waits until something in the job listens on port 3000. It never connects to find out, which matters for a server that serves a single client and then exits.
+- `wait-for-log server.log 'listening on'` waits until a line of the file matches the pattern.
+
+Both give up after 30 seconds (`--timeout 2m` for longer) and fail the job with a message saying what they waited for.
+
+```yaml
+jobs:
+  api:
+    using: env:bash-node@24
+    run: |
+      node server.js > server.log 2>&1 &
+      wait-for-port 3000
+      npm test
+```
+
+No environment includes a database server yet, and there is no MySQL, MariaDB or Redis build for WebAssembly. SQLite needs no server and is available in `env:python@3.13` and the PHP environments.
+
 ## Monorepos: a job per package
 
 In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:
