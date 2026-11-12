@@ -47,6 +47,9 @@ pub struct BuiltWorkspace {
     pub warnings: Vec<String>,
     /// One line per dependency install: whether it came from the cache.
     pub installs: Vec<String>,
+    /// Directories an install put commands in (pip's console scripts),
+    /// put first on a job's `PATH` whatever else sets it.
+    pub path: Vec<String>,
 }
 
 pub trait Workspaces: Send + Sync {
@@ -96,6 +99,8 @@ pub struct Invocation<'a> {
     pub scratch: &'a JobFs,
     /// The job's own `env:` over the workspace's, over the runner's `IWCI_*`.
     pub env: Vec<(String, String)>,
+    /// The workspace's command directories, to go first on `PATH`.
+    pub path: &'a [String],
     /// Receives output as it is written (`true` for stderr), when someone
     /// is following the run's logs.
     pub log: Option<OutputSink>,
@@ -1545,6 +1550,7 @@ fn run_job<T: Tools>(
             fs: &fs,
             scratch: shared.scratch,
             env,
+            path: &workspace.path,
             log,
         },
     );
@@ -1899,10 +1905,15 @@ fn task_cache_key(
     hash.update(b"iwci task cache 1\0");
     hash.update(serde_json::to_vec(&definition).ok()?);
     for dep in &ws.deps {
-        let names: &[&str] = match dep.ecosystem {
-            iwci_spec::Ecosystem::Pnpm => &["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
-            iwci_spec::Ecosystem::Go => &["go.mod", "go.sum"],
-            iwci_spec::Ecosystem::Cargo => &["Cargo.lock"],
+        let names: Vec<&str> = match dep.ecosystem {
+            iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+            iwci_spec::Ecosystem::Go => vec!["go.mod", "go.sum"],
+            iwci_spec::Ecosystem::Cargo => vec!["Cargo.lock"],
+            iwci_spec::Ecosystem::Pip => match &dep.file {
+                Some(file) => vec![file.as_str()],
+                None => iwci_deps::pip::DEFAULT_FILES.to_vec(),
+            },
+            iwci_spec::Ecosystem::Composer => vec!["composer.lock", "composer.json"],
         };
         for name in names {
             let path = format!("{}/{name}", dep.dir);

@@ -90,7 +90,8 @@ fn the_example_pipeline_expands() {
         vec![DepSpec {
             ecosystem: Ecosystem::Go,
             dir: "/app/terraform-provider-infrawrench".into(),
-            only: None
+            only: None,
+            file: None
         }]
     );
 
@@ -325,6 +326,14 @@ fn paths_and_workspaces() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ go: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "only applies to pnpm",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ composer: { file: a.lock } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "file applies only to pip",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ pip: { file: ../../etc/passwd } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "inside the clone",
     );
     assert_error(
         "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    deps: [pnpm]\n",

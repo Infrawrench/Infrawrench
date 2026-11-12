@@ -290,6 +290,10 @@ pub struct DepSpec {
     pub dir: String,
     /// pnpm: limit the install to these importers' closure.
     pub only: Option<Vec<String>>,
+    /// pip: the lock, relative to `dir`. Left out of the serialised form
+    /// when unset, so workspaces that do not name one keep their keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -298,6 +302,8 @@ pub enum Ecosystem {
     Pnpm,
     Go,
     Cargo,
+    Pip,
+    Composer,
 }
 
 impl Ecosystem {
@@ -306,6 +312,8 @@ impl Ecosystem {
             "pnpm" => Some(Ecosystem::Pnpm),
             "go" => Some(Ecosystem::Go),
             "cargo" => Some(Ecosystem::Cargo),
+            "pip" => Some(Ecosystem::Pip),
+            "composer" => Some(Ecosystem::Composer),
             _ => None,
         }
     }
@@ -315,6 +323,8 @@ impl Ecosystem {
             Ecosystem::Pnpm => "pnpm",
             Ecosystem::Go => "go",
             Ecosystem::Cargo => "cargo",
+            Ecosystem::Pip => "pip",
+            Ecosystem::Composer => "composer",
         }
     }
 }

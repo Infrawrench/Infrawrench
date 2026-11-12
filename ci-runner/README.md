@@ -29,9 +29,10 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
 3. **Install** (`iwci-deps`). Read the lockfiles from the snapshot and fetch
    exactly what they pin, verified against the lockfile's hashes and cached
    by content: pnpm (laid out like pnpm's isolated `node_modules`), Go
-   modules (a `GOMODCACHE`) and Cargo crates (a `vendor/` directory). No
-   package manager runs and no install script executes. Both its results
-   are cached: see [Caching](#caching).
+   modules (a `GOMODCACHE`), Cargo crates (a `vendor/` directory), Python
+   wheels (the interpreter's user site) and Composer packages (`vendor/`
+   and its autoloader). No package manager runs and no install script
+   executes. Both its results are cached: see [Caching](#caching).
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
    and content-addressed blobs in R2, verified by sha256.
 5. **Run** (`iwci-runtime`). Jobs run in parallel as soon as their `needs`
@@ -112,9 +113,12 @@ schedule, which in this repository is the proxy Worker (see
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
 
-`workspace.deps`: a list of `pnpm`, `go` or `cargo`, or `- go: { dir: tools }`
-to read a lockfile below the root. pnpm also takes `only: [app/packages/web]`
-to install just those importers' closure.
+`workspace.deps`: a list of `pnpm`, `go`, `cargo`, `pip` or `composer`, or
+`- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
+`only: [app/packages/web]` to install just those importers' closure, and pip
+`file: requirements/ci.txt` to read another lock than `pylock.toml` or
+`requirements.txt`. [Python](#python) and [PHP](#php) say what the pip and
+Composer installers check.
 
 ### Filters
 
@@ -708,13 +712,85 @@ sets and a job's `env:` can override:
 | `PIP_DISABLE_PIP_VERSION_CHECK` | `1`                                         | No request to PyPI for pip's own newest version.                                                                                                                        |
 | `PYTEST_ADDOPTS`                | `-p no:faulthandler`                        | pytest's faulthandler plugin cannot start ("Value too large for data type"). pytest adds this to a repository's own `addopts`; a job that sets its own must keep it.    |
 
-pip downloads when the job runs, over the job's [network](#networking), so
-a job that installs packages must not set `network: false`. Unlike the
-pnpm, Go and Cargo installers (`workspace.deps`), which fetch before the
-job and check every file against the lockfile, nothing checks what pip
-fetches beyond pip's own `--require-hashes`, and each job downloads its
-packages again. A verified pip installer is
-[#1015](https://github.com/Infrawrench/Infrawrench/issues/1015).
+`pip install` downloads when the job runs, over the job's
+[network](#networking), checked only as far as pip checks (its
+`--require-hashes`), and every job downloads its packages again.
+`deps: [pip]` installs a lock before the job instead, the way the pnpm, Go
+and Cargo installers do
+([#1015](https://github.com/Infrawrench/Infrawrench/issues/1015)):
+
+```yaml
+workspace:
+  deps:
+    - pip # pylock.toml, else requirements.txt, at the root
+    - pip: { dir: service, file: requirements/ci.txt }
+jobs:
+  test:
+    using: env:python@3.13
+    network: false # nothing to download
+    run: python -m pytest
+```
+
+The lock is a requirements file whose every entry is pinned with `==` and
+carries `--hash=sha256:` lines (`pip-compile --generate-hashes`, `uv pip
+compile --generate-hashes`, `poetry export`), or a PEP 751 `pylock.toml`
+(`pip lock`, `uv export --format pylock.toml`). `uv.lock` and `poetry.lock`
+go through those exporters: each is its resolver's whole graph for every
+platform, and the exported file is where the WASIX wheels come in (below).
+What the installer does with it:
+
+- **Markers.** Each entry's markers are evaluated for `env:python`
+  (CPython 3.13.15, `sys_platform` `wasi`, `platform_machine` `wasm32`) and
+  the entries that do not hold are left out, as pip would leave them out
+  there.
+- **Which file.** A requirements entry's files are looked up on the file's
+  own `--index-url` and `--extra-index-url`, then on PyPI and
+  `https://python-registry.wasix.org/simple/`; a `pylock.toml` names its
+  files itself. Only a file whose SHA-256 the lock lists is a candidate,
+  so an index is trusted for where to look and nothing else. Of the
+  candidates, the wheel whose tags suit CPython 3.13 on `wasix_wasm32`
+  best is taken, ranked as pip ranks them: a WASIX build, then pure
+  Python. A wheel only for other platforms, or only a source distribution,
+  is refused with the files it found: a job cannot build one.
+- **Verified, then installed.** The wheel is checked against its hash
+  before anything is unpacked, then installed as pip installs it, without
+  running pip: its files in the site directory and its `.data` schemes
+  where they belong, a script for each console entry point, `INSTALLER`,
+  and a `RECORD` of where everything went. Nothing runs at install time.
+- **Missing dependencies** an installed distribution declares
+  (`Requires-Dist`, markers evaluated) and the lock does not install are
+  reported as warnings, since only the lock decides what is installed.
+
+Packages go into the interpreter's user site: the job gets
+`PYTHONUSERBASE=/root/.local`, so they are in
+`/root/.local/lib/python3.13/site-packages` with their `.pth` files read,
+and `/root/.local/bin` (the console scripts) goes first on `PATH`. `pip
+list` in the job shows them. The install is cached like the others (see
+[Caching](#caching)).
+
+**WASIX wheels in a lock.** A package with compiled code needs its WASIX
+build's hash in the lock, and a lock made on a laptop does not have it:
+Wasmer's index publishes its builds under a local version
+(`numpy 2.5.1+wasix.3`), and `pip-compile --generate-hashes
+--extra-index-url https://python-registry.wasix.org/simple/` hashes only
+the files of the version it resolved for the laptop (`2.5.1`, PyPI's). The
+simplest lock is one made where the job runs, with `pip lock` (pip 26.2 in
+`env:python`), which picks the files for that interpreter and records
+them, the WASIX wheel included:
+
+```yaml
+lock:
+  using: env:python@3.13
+  run: |
+    pip lock -r requirements.in -o pylock.toml
+    cat pylock.toml # commit what it prints
+```
+
+A requirements file works as well when the WASIX wheel's hash is added to
+its entry by hand: `==2.5.1` matches `2.5.1+wasix.3`, and the index lists
+each file's SHA-256 (`https://python-registry.wasix.org/simple/numpy/`).
+A lock without a WASIX build for such a package fails the install, naming
+the wheels it found.
 
 `python -c` (multi-line included), `python - <<EOF` and a script piped to
 `python` work.
@@ -775,10 +851,53 @@ The environment sets `PATH` (php-cli first), `COMPOSER_ALLOW_SUPERUSER=1`
 `COMPOSER_NO_INTERACTION=1` (nobody answers, and every descriptor reads as
 a terminal, [#1008](https://github.com/Infrawrench/Infrawrench/issues/1008)).
 
-Composer downloads from Packagist when the job runs, as pip does: it needs
-the job's network, and nothing checks the downloads against
-`composer.lock` beyond what Composer itself does
-([#1015](https://github.com/Infrawrench/Infrawrench/issues/1015)).
+`composer install` downloads from Packagist when the job runs, over the
+job's network, checked only as far as Composer checks. `deps: [composer]`
+installs `composer.lock` before the job instead
+([#1015](https://github.com/Infrawrench/Infrawrench/issues/1015)):
+
+```yaml
+workspace:
+  deps: [composer] # composer.lock at the root; `- composer: { dir: api }` for another
+jobs:
+  test:
+    using: env:php@8.4
+    network: false
+    run: vendor/bin/phpunit
+```
+
+What is verified, package by package:
+
+- **A dist with a `shasum`** (a private repository, Satis) is downloaded
+  and checked against that SHA-1 before it is unpacked.
+- **A dist without one**, which is nearly every package on Packagist (the
+  lock points at a GitHub archive and records `"shasum": ""`), is
+  installed from the commit the lock names in `source.reference`: the
+  runner fetches that commit from `source.url` (https only, without
+  credentials) into its git cache, and git's object ids tie every byte of
+  the tree to the commit id. The tree is laid out as the archive would
+  have it (GitHub makes it with `git archive`): what the package's
+  `.gitattributes` mark `export-ignore` is left out. `export-subst` is not
+  applied, so a file that uses it keeps its placeholder.
+- **A `path` package**, a directory of the repository, is linked from
+  `vendor/`, as Composer links it.
+- **Anything else is refused**: a dist without a hash whose source is not
+  a git commit (a branch, an `hg` or `svn` source, a non-https URL), and
+  `target-dir`.
+
+Then it writes what `composer install` writes: `vendor/bin` with
+Composer's own proxies, `vendor/composer/installed.json` and
+`installed.php`, Composer's `ClassLoader` and `InstalledVersions` (from
+Composer 2.11.2, MIT, the environment's version), and the autoloader:
+PSR-0, PSR-4, the class map (Composer's way of finding classes, over each
+`classmap` path less `exclude-from-classmap`) and `files`, for every
+package and the root's `autoload` and `autoload-dev`. The autoloader is
+written on every run rather than cached with the packages, since a root
+`classmap` scans the repository's own files. Dev packages are installed,
+as `composer install` installs them by default. Plugins and scripts do not
+run (as with `--no-plugins --no-scripts`), so a package a plugin would put
+elsewhere (`composer/installers`) stays in `vendor/`, and there is no
+`platform_check.php`.
 
 **Where it comes from.** phpix is libphp from `wasix-org/php` (MIT) inside
 a host program of Wasmer's whose source is not public, and the OpenSSL and
@@ -1123,16 +1242,16 @@ commit) runs in about 0.35 s.
 Everything a run builds is cached under `--cache`, so the second run of a
 commit, and of most commits after it, does almost nothing:
 
-| What             | Kept under  | Keyed by                                                                                                                                    |
-| ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| git objects      | `git/`      | One repository per remote. A commit already there costs no network.                                                                         |
-| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files). Re-verified on every read. |
-| installs         | `installs/` | What the install read. See below.                                                                                                           |
-| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                      |
-| tools from R2    | `objects/`  | sha256.                                                                                                                                     |
+| What             | Kept under  | Keyed by                                                                                                                                                                                       |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| git objects      | `git/`      | One repository per remote (the run's, and Composer packages fetched by commit). A commit already there costs no network.                                                                       |
+| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`. Re-verified on every read. |
+| installs         | `installs/` | What the install read. See below.                                                                                                                                                              |
+| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                         |
+| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                        |
 
-**Installs** (`node_modules`, the `GOMODCACHE`, `vendor/`) are cached
-whole. An install runs in a layer over the checkout that records every read
+**Installs** (`node_modules`, the `GOMODCACHE`, `vendor/`, a Python user
+site) are cached whole. An install runs in a layer over the checkout that records every read
 reaching the checkout, including files it looked for and did not find, and
 keeps every write to itself. Both are stored, and a later run reuses the
 result only when every recorded read still sees the same thing. So a bumped
@@ -1507,7 +1626,7 @@ manifests at `releases/iwci/channels/<channel>.json`.
 | `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                            |
 | `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                          |
 | `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.           |
-| `iwci-deps`    | pnpm, Go and Cargo installers over a verifying, caching fetcher.                    |
+| `iwci-deps`    | pnpm, Go, Cargo, pip and Composer installers over a verifying, caching fetcher.     |
 | `iwci-store`   | R2 and local object stores, manifests, tool resolution.                             |
 | `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments. |
 | `iwci`         | The scheduler and the `iwci` command.                                               |

@@ -1,4 +1,5 @@
-//! Installs a workspace's dependencies into its snapshot.
+//! Installs a workspace's dependencies into its snapshot: pnpm, Go
+//! modules, Cargo crates, Python wheels (pip) and Composer packages.
 //!
 //! Installation runs on the host, before any job, because it is the only
 //! step that needs the network: the isolates that run jobs get none. Each
@@ -12,8 +13,11 @@
 //! its hash, and [`cache::LayerCache`] keeps whole installs, keyed by what
 //! each one read.
 
+mod archive;
 pub mod cache;
 pub mod cargo;
+pub mod composer;
 pub mod fetch;
 pub mod go;
+pub mod pip;
 pub mod pnpm;

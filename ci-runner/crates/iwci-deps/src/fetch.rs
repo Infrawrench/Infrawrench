@@ -19,8 +19,14 @@ pub enum Integrity {
     /// A Subresource Integrity string as npm and pnpm lockfiles carry it:
     /// `sha512-<base64>` (also `sha384-`, `sha256-` and the legacy `sha1-`).
     Sri(String),
-    /// A hex SHA-256, as `Cargo.lock`'s `checksum` carries it.
+    /// A hex SHA-256, as `Cargo.lock`'s `checksum` and a pip lock's
+    /// `--hash=sha256:` carry it.
     Sha256Hex(String),
+    /// A hex SHA-1, as `composer.lock`'s `dist.shasum` carries it: the only
+    /// hash Composer records. Finding a second file with a given SHA-1 is
+    /// still out of reach, which is what checking a download against a
+    /// recorded hash needs; collisions are not.
+    Sha1Hex(String),
     /// A Go module zip, checked against `go.sum`'s `h1:` hash. That hash
     /// covers the module's files rather than the zip's bytes, so checking it
     /// means reading the zip (`go::zip_h1`), which is still done before
@@ -36,6 +42,10 @@ pub enum Integrity {
     /// files, which no hash covers, and a `.mod` that `go.sum` does not pin
     /// (the installer checks it against the verified zip instead).
     VerifiedAfterExtraction,
+    /// A package index's listing (a PEP 503 page): nothing pins it, and it
+    /// is trusted for nothing but where to look. Every file it leads to is
+    /// fetched with the lockfile's own hash. Never cached.
+    Unpinned,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -44,6 +54,8 @@ pub enum FetchError {
     Http { url: String, message: String },
     #[error("{url}: content does not match the lockfile's hash ({expected})")]
     IntegrityMismatch { url: String, expected: String },
+    #[error("{url}: not found")]
+    NotFound { url: String },
     #[error("{url}: larger than the {limit} byte limit")]
     TooLarge { url: String, limit: u64 },
     #[error("unsupported integrity {0}")]
@@ -64,7 +76,7 @@ pub fn verify(url: &str, bytes: &[u8], integrity: &Integrity) -> Result<(), Fetc
         expected: expected.to_string(),
     };
     match integrity {
-        Integrity::VerifiedAfterExtraction => Ok(()),
+        Integrity::VerifiedAfterExtraction | Integrity::Unpinned => Ok(()),
         Integrity::GoModuleZip {
             module,
             version,
@@ -82,6 +94,14 @@ pub fn verify(url: &str, bytes: &[u8], integrity: &Integrity) -> Result<(), Fetc
         }
         Integrity::Sha256Hex(hex_digest) => {
             let actual = hex::encode(sha2::Sha256::digest(bytes));
+            if actual.eq_ignore_ascii_case(hex_digest) {
+                Ok(())
+            } else {
+                Err(mismatch(hex_digest))
+            }
+        }
+        Integrity::Sha1Hex(hex_digest) => {
+            let actual = hex::encode(sha1::Sha1::digest(bytes));
             if actual.eq_ignore_ascii_case(hex_digest) {
                 Ok(())
             } else {
@@ -171,9 +191,8 @@ impl Fetcher for MemoryFetcher {
             .unwrap()
             .get(url)
             .cloned()
-            .ok_or_else(|| FetchError::Http {
+            .ok_or_else(|| FetchError::NotFound {
                 url: url.to_string(),
-                message: "404 Not Found".to_string(),
             })?;
         verify(url, &bytes, integrity)?;
         Ok(bytes)
@@ -263,8 +282,9 @@ const MAX_REDIRECTS: usize = 8;
 /// again on every read (a corrupted or tampered entry is deleted and
 /// fetched afresh), and entries are written to a temporary file and renamed
 /// into place, so concurrent runs sharing a cache never see half a file.
-/// Artifacts with [`Integrity::VerifiedAfterExtraction`] are never cached,
-/// because their key would have to be the URL.
+/// Artifacts with [`Integrity::VerifiedAfterExtraction`] or
+/// [`Integrity::Unpinned`] are never cached, because their key would have
+/// to be the URL.
 ///
 /// Transient failures (connection errors, timeouts, 408, 429 and 5xx) are
 /// retried with exponential backoff. Redirects are followed here rather
@@ -466,6 +486,13 @@ impl HttpFetcher {
             if status == 408 || status == 429 || status >= 500 {
                 return Err(Attempt::Retry(format!("HTTP {status}")));
             }
+            // A package index answers a project it does not have this way,
+            // which an installer that asks several indexes expects.
+            if status == 404 || status == 410 {
+                return Err(Attempt::Fail(FetchError::NotFound {
+                    url: url.to_string(),
+                }));
+            }
             if !(200..300).contains(&status) {
                 return Err(http(format!("HTTP {status}")));
             }
@@ -557,6 +584,10 @@ fn cache_key(integrity: &Integrity) -> Option<(&'static str, String)> {
             let valid = hex_digest.len() == 64 && hex_digest.bytes().all(|b| b.is_ascii_hexdigit());
             valid.then(|| ("sha256", hex_digest.to_ascii_lowercase()))
         }
+        Integrity::Sha1Hex(hex_digest) => {
+            let valid = hex_digest.len() == 40 && hex_digest.bytes().all(|b| b.is_ascii_hexdigit());
+            valid.then(|| ("sha1", hex_digest.to_ascii_lowercase()))
+        }
         // Keyed by what was verified. The `h1:` text already names the
         // content; hashing it gives a fixed-length, path-safe name.
         Integrity::GoModuleZip {
@@ -572,7 +603,7 @@ fn cache_key(integrity: &Integrity) -> Option<(&'static str, String)> {
         Integrity::GoMod { h1 } => {
             Some(("go-mod", hex::encode(sha2::Sha256::digest(h1.as_bytes()))))
         }
-        Integrity::VerifiedAfterExtraction => None,
+        Integrity::VerifiedAfterExtraction | Integrity::Unpinned => None,
     }
 }
 
@@ -822,7 +853,7 @@ mod http_tests {
         let sri = Integrity::Sri("sha256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=".into());
         let results = fetch_all(&fetcher, &[("a".into(), sri.clone()), ("b".into(), sri)], 4);
         assert!(results[0].is_ok());
-        assert!(matches!(results[1], Err(FetchError::Http { .. })));
+        assert!(matches!(results[1], Err(FetchError::NotFound { .. })));
     }
 
     /// A real download, to check the TLS stack and the registry's answers.

@@ -122,7 +122,7 @@
       }
     },
     "ecosystem": {
-      "enum": ["pnpm", "go", "cargo"]
+      "enum": ["pnpm", "go", "cargo", "pip", "composer"]
     },
     "deps": {
       "type": "array",
@@ -153,6 +153,10 @@
                     "type": "string"
                   },
                   "description": "pnpm only: install just these importers' dependency closure."
+                },
+                "file": {
+                  "type": "string",
+                  "description": "pip only: the lock to read, relative to `dir`, instead of `pylock.toml` or `requirements.txt`."
                 }
               }
             }

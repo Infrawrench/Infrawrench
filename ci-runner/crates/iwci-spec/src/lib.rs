@@ -684,7 +684,9 @@ impl Validator<'_> {
             let Some(ecosystem) = Ecosystem::parse(&name) else {
                 self.error(
                     &dep_path,
-                    format!("unknown ecosystem `{name}`; expected `pnpm`, `go` or `cargo`"),
+                    format!(
+                        "unknown ecosystem `{name}`; expected `pnpm`, `go`, `cargo`, `pip` or `composer`"
+                    ),
                 );
                 continue;
             };
@@ -709,10 +711,25 @@ impl Validator<'_> {
             if options.only.is_some() && ecosystem != Ecosystem::Pnpm {
                 self.error(format!("{dep_path}.only"), "only applies to pnpm");
             }
+            let file = match options.file {
+                Some(_) if ecosystem != Ecosystem::Pip => {
+                    self.error(format!("{dep_path}.file"), "file applies only to pip");
+                    None
+                }
+                Some(file) if join_relative(&dir, &file).is_none() || file.is_empty() => {
+                    self.error(
+                        format!("{dep_path}.file"),
+                        "must be a relative path inside the clone, without `..`",
+                    );
+                    None
+                }
+                file => file,
+            };
             let spec = DepSpec {
                 ecosystem,
                 dir,
                 only: options.only,
+                file,
             };
             if specs.contains(&spec) {
                 self.error(&dep_path, "listed twice");
