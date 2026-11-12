@@ -1087,7 +1087,9 @@ jobs:
   # job fails saying memory (#964). At 1 GiB, a string that doubles needs
   # more in one allocation than a stopped isolate is given, so V8 reaches
   # its own limit: 0.3.4 aborted the whole runner there every time, and the
-  # bridge now parks that thread and ends only this job.
+  # bridge now parks that thread and ends only this job. Its isolate can
+  # also be torn down first, now with room to finish collecting (#1021),
+  # so that note is not required.
   heap-objects-fails:
     using: env:bash-node@24
     memory: 512MiB
@@ -1407,7 +1409,7 @@ want_stderr() {
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
-    bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*V8 ran out of heap in an isolate" ;;
+    bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-refused-fails) echo "ERR_WORKER_INIT_FAILED.*iwci: the job ran out of its 512 MiB of memory.*worker threads could not start" ;;
     *) echo "" ;;
