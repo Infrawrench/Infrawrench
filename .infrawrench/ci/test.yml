@@ -23,9 +23,11 @@
 # Node a working `node:wasi`. rolldown leaves that build out of its own
 # optional dependencies, so the root package.json lists it.
 #
+# - Database migrations: `db:migrate` twice against a fresh database, the
+#   second run proving it a no-op.
+#
 # Still on GitHub Actions only (.github/workflows/test.yml):
-# - Database migrations and database tests: they need Postgres and
-#   ClickHouse services, which a job cannot start.
+# - Database tests: they need a ClickHouse service.
 name: Test
 
 on:
@@ -299,3 +301,37 @@ jobs:
         - "!plugingen/**"
     timeout: 20m
     memory: 2GiB
+
+  # `db:migrate` (drizzle-kit migrate) against an empty database, then again:
+  # the second run must find nothing to apply. pglite-server stands in for
+  # Postgres; of pgcrypto the migrations call only digest(), which it has.
+  # drizzle-kit loads drizzle.config.ts through the tsx it bundles, which
+  # needs esbuild: node-preload.cjs hands it web's esbuild-wasm, as it does
+  # Vite. Any user and database are accepted, so DATABASE_URL is the one
+  # docker-compose.dev.yml uses.
+  migrations:
+    name: Database migrations
+    deps:
+      - pnpm:
+          only: [app/packages/web]
+    using: env:bash-node@24
+    cwd: /app/app/packages/web
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite-server
+        ready: { port: 5432 }
+    env:
+      DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+    run: |
+      node node_modules/drizzle-kit/bin.cjs migrate
+      node node_modules/drizzle-kit/bin.cjs migrate
+    task-cache:
+      inputs:
+        - app/packages/web/drizzle.config.ts
+        - app/packages/web/package.json
+        - app/packages/web/src/db/migrations/**
+        - .infrawrench/ci/node-preload.cjs
+    memory: 3GiB
+    timeout: 20m
