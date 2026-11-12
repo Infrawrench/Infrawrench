@@ -3,7 +3,7 @@ use std::{
     ffi::CStr,
     sync::{
         Arc, LazyLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -24,8 +24,11 @@ struct StoreInterruptState {
     /// fail its `Send` bounds even though we only treat the value as an opaque
     /// thread identifier.
     pthread: usize,
-    /// Whether this store was interrupted.
-    interrupted: bool,
+    /// Whether this store was interrupted. iwci patch (#994): shared with
+    /// each of the store's installations in [`ThreadInterruptState`], so
+    /// [`is_interrupted`], which every host function's return path calls,
+    /// reads it there without locking this map.
+    interrupted: Arc<AtomicBool>,
     /// See comments in [`ThreadInterruptState`].
     thread_current_signal_target_store: Arc<AtomicUsize>,
 }
@@ -35,7 +38,8 @@ struct StoreInterruptState {
 struct ThreadInterruptState {
     /// We need to maintain a stack of active stores per thread, hence the vec.
     /// This should not be touched by the interrupt handler.
-    active_stores: Vec<StoreId>,
+    /// iwci patch (#994): with each store's `interrupted` flag.
+    active_stores: Vec<(StoreId, Arc<AtomicBool>)>,
 
     /// Always stores the top entry from `active_stores`. Needed since a vec is not
     /// safe to access from signal handlers.
@@ -97,19 +101,20 @@ pub fn install(store_id: StoreId) -> Result<InterruptInstallGuard, InstallError>
 
         StoreInterruptState {
             pthread,
-            interrupted: false,
+            interrupted: Arc::new(AtomicBool::new(false)),
             thread_current_signal_target_store,
         }
     });
 
-    if store_state.interrupted {
+    if store_state.interrupted.load(Ordering::Acquire) {
         return Err(InstallError::AlreadyInterrupted);
     }
+    let interrupted = store_state.interrupted.clone();
 
     THREAD_INTERRUPT_STATE.with(|t| {
         // Safety: See comments on THREAD_INTERRUPT_STATE.
         let borrow = unsafe { t.get().as_mut().unwrap() };
-        borrow.active_stores.push(store_id);
+        borrow.active_stores.push((store_id, interrupted));
         borrow
             .current_active_store
             .store(store_id.as_raw().get(), Ordering::Release);
@@ -126,13 +131,13 @@ pub(super) fn uninstall(store_id: StoreId) {
     let has_more_installations = THREAD_INTERRUPT_STATE.with(|t| {
         // Safety: See comments on THREAD_INTERRUPT_STATE.
         let borrow = unsafe { t.get().as_mut().unwrap() };
-        match borrow.active_stores.pop_if(|x| *x == store_id) {
+        match borrow.active_stores.pop_if(|x| x.0 == store_id) {
             Some(_) => {
                 borrow.current_active_store.store(
-                    borrow.active_stores.last().map_or(0, |x| x.as_raw().get()),
+                    borrow.active_stores.last().map_or(0, |x| x.0.as_raw().get()),
                     Ordering::Release,
                 );
-                borrow.active_stores.contains(&store_id)
+                borrow.active_stores.iter().any(|x| x.0 == store_id)
             }
             None => panic!("InterruptInstallGuard dropped out of order"),
         }
@@ -177,7 +182,7 @@ pub fn interrupt(store_id: StoreId) -> Result<(), InterruptError> {
         return Err(InterruptError::OtherInterruptInProgress);
     }
 
-    store_state.interrupted = true;
+    store_state.interrupted.store(true, Ordering::Release);
 
     unsafe {
         #[allow(trivial_numeric_casts)]
@@ -226,9 +231,33 @@ pub(crate) fn on_interrupted() -> bool {
 }
 
 /// Returns true if the store with the given ID has already been interrupted.
+///
+/// iwci patch (#994): every host function's return path asks this, and it
+/// took a write lock on the map's shard to do it (`entry`), so every
+/// store's thread in the process wrote the same few cache lines on every
+/// host call. A store installed on this thread, which is the store whose
+/// host function is returning, has its flag in this thread's state; the
+/// map is only read, under a shared lock, for any other.
 pub fn is_interrupted(store_id: StoreId) -> bool {
-    let Entry::Occupied(store_state_entry) = STORE_INTERRUPT_STATE.entry(store_id) else {
-        return false;
-    };
-    store_state_entry.get().interrupted
+    // `try_with`: unlike `install`, this can be asked from a thread that
+    // never installed a store (a future polled elsewhere), even one whose
+    // thread-locals are being torn down.
+    let local = THREAD_INTERRUPT_STATE.try_with(|t| {
+        // Safety: See comments on THREAD_INTERRUPT_STATE. Not called from
+        // the signal handler, and nothing else changes this thread's state
+        // while this runs.
+        let state = unsafe { t.get().as_ref().unwrap() };
+        state
+            .active_stores
+            .iter()
+            .rev()
+            .find(|x| x.0 == store_id)
+            .map(|x| x.1.load(Ordering::Acquire))
+    });
+    if let Ok(Some(interrupted)) = local {
+        return interrupted;
+    }
+    STORE_INTERRUPT_STATE
+        .get(&store_id)
+        .is_some_and(|state| state.interrupted.load(Ordering::Acquire))
 }

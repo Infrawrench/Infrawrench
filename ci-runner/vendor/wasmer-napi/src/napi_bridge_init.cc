@@ -194,6 +194,17 @@ struct CallbackBinding {
 // Never destroyed: static destructors race concurrent env teardown at process
 // exit (see the runtime-globals comment in unofficial_napi.cc).
 std::unordered_set<SnapiEnvState*>& g_envs = *new std::unordered_set<SnapiEnvState*>();
+// iwci patch: bumped under `g_mu` before every erase from `g_envs` (#994).
+// `LookupEnvState` remembers, per thread, the last env it found in `g_envs`
+// and the epoch it found it in; while the epoch has not moved, nothing has
+// left the set since, so that env is still a member and the lookup needs
+// no lock. An erase invalidates every thread's entry at once, and a freed
+// env whose address comes back for a new one is looked up afresh. Plain
+// `thread_local`s of trivial types, so no thread-exit destructor is
+// registered for them.
+std::atomic<uint64_t> g_envs_epoch{1};
+thread_local SnapiEnvState* t_found_env = nullptr;
+thread_local uint64_t t_found_env_epoch = 0;
 // Message resources cross environment boundaries, so their guest-visible IDs
 // cannot belong to either the source or destination environment. The table is
 // process-wide and each entry is removed atomically by take or drop.
@@ -215,9 +226,22 @@ SnapiEnvState* LookupEnvState(SnapiEnvState* env_state) {
   // The pointer originates from the guest (via the Rust env-id layer); gate it
   // on live-env membership before the first dereference so a stale or forged
   // env handle fails cleanly instead of touching freed memory.
+  //
+  // iwci patch: one Node `statSync` makes about a hundred of these, and each
+  // took the process-wide `g_mu`, so every Node job on the runner took it
+  // in turn for every host call (#994). The answer is the same as under the
+  // lock: `env_state` was a member when the epoch was read (see
+  // `g_envs_epoch`).
+  if (t_found_env == env_state &&
+      t_found_env_epoch == g_envs_epoch.load(std::memory_order_acquire)) {
+    if (env_state->env == nullptr) return nullptr;
+    return env_state;
+  }
   std::lock_guard<std::recursive_mutex> lock(g_mu);
   if (g_envs.find(env_state) == g_envs.end()) return nullptr;
   if (env_state->env == nullptr) return nullptr;
+  t_found_env = env_state;
+  t_found_env_epoch = g_envs_epoch.load(std::memory_order_relaxed);
   return env_state;
 }
 
@@ -482,6 +506,7 @@ napi_status DisposeBridgeStateLocked(SnapiEnvState* state) {
     state->env = nullptr;
     {
       std::lock_guard<std::recursive_mutex> lock(g_mu);
+      g_envs_epoch.fetch_add(1, std::memory_order_acq_rel);
       g_envs.erase(state);
     }
     delete state;
@@ -491,6 +516,7 @@ napi_status DisposeBridgeStateLocked(SnapiEnvState* state) {
   state->env = nullptr;
   {
     std::lock_guard<std::recursive_mutex> lock(g_mu);
+    g_envs_epoch.fetch_add(1, std::memory_order_acq_rel);
     g_envs.erase(state);
   }
   delete state;
@@ -2684,7 +2710,16 @@ extern "C" int snapi_bridge_define_class(SnapiEnvState* env_state,
 extern "C" void* snapi_bridge_swap_active_callback_ctx(SnapiEnvState* env_state, void* callback_ctx) {
   auto* bridge_state = LookupEnvState(env_state);
   if (bridge_state == nullptr) return nullptr;
-  return bridge_state->active_callback_ctx.exchange(callback_ctx, std::memory_order_acq_rel);
+  // iwci patch (#994): a load and a store, not an exchange. Every import
+  // that can run JavaScript swaps twice (in and out), and the exchange's
+  // full barrier was a tenth of a Node `statSync` loop's cycles once the
+  // lookup above stopped locking. Only the env's own thread installs a
+  // context (it points into that thread's stack, and the save and restore
+  // around each call already assume no other thread swaps in between), so
+  // nothing can change it between the two.
+  void* prev = bridge_state->active_callback_ctx.load(std::memory_order_relaxed);
+  bridge_state->active_callback_ctx.store(callback_ctx, std::memory_order_release);
+  return prev;
 }
 
 extern "C" int snapi_bridge_get_cb_info(SnapiEnvState* env_state, uint32_t cbinfo_id,

@@ -392,6 +392,7 @@ impl VMOwnedMemory {
     /// Converts this owned memory into shared memory
     pub fn to_shared(self) -> VMSharedMemory {
         VMSharedMemory {
+            definition: SharedDefinition(self.mmap.get_vm_memory_definition()),
             mmap: Arc::new(RwLock::new(self.mmap)),
             config: self.config,
             conditions: ThreadConditions::new(),
@@ -472,11 +473,26 @@ impl LinearMemory for VMOwnedMemory {
 pub struct VMSharedMemory {
     // The underlying allocation.
     mmap: Arc<RwLock<WasmMmap>>,
+    // iwci patch (#994): the memory definition of `mmap`, which a `WasmMmap`
+    // never replaces, so `vmmemory` and `size` need not take `mmap`'s lock.
+    // Every host function that touches guest memory makes a `MemoryView`,
+    // which asks both, and every thread of a guest shares this lock.
+    definition: SharedDefinition,
     // Configuration of this memory
     config: VMMemoryConfig,
     // waiters list for this memory
     conditions: ThreadConditions,
 }
+
+/// iwci patch (#994): see `VMSharedMemory::definition`.
+#[derive(Debug, Clone, Copy)]
+struct SharedDefinition(NonNull<VMMemoryDefinition>);
+
+/// # SAFETY: it points at the definition its `WasmMmap` owns or was given,
+/// which is as safe to share as the `WasmMmap` (see above).
+unsafe impl Send for SharedDefinition {}
+/// # SAFETY: see above.
+unsafe impl Sync for SharedDefinition {}
 
 impl VMSharedMemory {
     /// Create a new linear memory instance with specified minimum and maximum number of wasm pages.
@@ -550,8 +566,10 @@ impl VMSharedMemory {
     /// Copies this memory to a new memory
     pub fn copy(&self) -> Result<Self, MemoryError> {
         let guard = self.mmap.read().unwrap();
+        let mmap = guard.copy()?;
         Ok(Self {
-            mmap: Arc::new(RwLock::new(guard.copy()?)),
+            definition: SharedDefinition(mmap.get_vm_memory_definition()),
+            mmap: Arc::new(RwLock::new(mmap)),
             config: self.config.clone(),
             conditions: ThreadConditions::new(),
         })
@@ -569,9 +587,17 @@ impl LinearMemory for VMSharedMemory {
     }
 
     /// Returns the size of the memory in pages
+    ///
+    /// iwci patch (#994): read from the definition without `mmap`'s lock,
+    /// as `WasmMmap::size` reads it under the lock, and as `MemoryView`
+    /// reads `current_length` beside it without one. A `grow` on another
+    /// thread can change it at any moment either way, since nothing holds
+    /// the lock once this returns.
     fn size(&self) -> Pages {
-        let guard = self.mmap.read().unwrap();
-        guard.size()
+        unsafe {
+            let len = std::ptr::read_volatile(&raw const (*self.definition.0.as_ptr()).current_length);
+            Bytes::from(len).try_into().unwrap()
+        }
     }
 
     /// Returns the memory style for this memory.
@@ -603,9 +629,10 @@ impl LinearMemory for VMSharedMemory {
     }
 
     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm code.
+    ///
+    /// iwci patch (#994): without `mmap`'s lock, see `definition`.
     fn vmmemory(&self) -> NonNull<VMMemoryDefinition> {
-        let guard = self.mmap.read().unwrap();
-        guard.vm_memory_definition.as_ptr()
+        self.definition.0
     }
 
     /// Shared memory can always be cloned

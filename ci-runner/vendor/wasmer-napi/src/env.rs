@@ -88,6 +88,31 @@ struct EnvHeapChargeHandle {
     tracker: usize,
 }
 
+/// iwci patch (#994): `napi_envs` is looked up on every N-API import (the
+/// guest names its env by id), and SipHash was a few percent of a Node
+/// `statSync` loop. The ids are small integers the host allocates, never
+/// chosen by a guest, so a multiplicative hash is enough.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EnvIdHasher(u64);
+
+impl std::hash::Hasher for EnvIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0.rotate_left(8) ^ u64::from(b)).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        }
+    }
+
+    fn write_u32(&mut self, n: u32) {
+        self.0 = u64::from(n).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+pub(crate) type EnvIdHash = std::hash::BuildHasherDefault<EnvIdHasher>;
+
 /// The live envs of one application, shared by all of its stores.
 ///
 /// iwci patch: a WASIX application runs one store (and so one `NapiEnv`) per
@@ -151,7 +176,7 @@ pub(crate) struct NapiEnv {
     pub(crate) default_napi_env_id: Option<u32>,
     #[cfg(all(target_arch = "wasm32", feature = "js"))]
     pub(crate) next_napi_scope_id: u32,
-    pub(crate) napi_envs: HashMap<u32, usize>,
+    pub(crate) napi_envs: HashMap<u32, usize, EnvIdHash>,
     pub(crate) napi_state_to_guest_env: HashMap<usize, u32>,
     pub(crate) napi_scopes: HashMap<u32, u32>,
     #[cfg(all(target_arch = "wasm32", feature = "js"))]
@@ -209,7 +234,7 @@ impl NapiEnv {
             default_napi_env_id: None,
             #[cfg(all(target_arch = "wasm32", feature = "js"))]
             next_napi_scope_id: 0,
-            napi_envs: HashMap::new(),
+            napi_envs: HashMap::default(),
             napi_state_to_guest_env: HashMap::new(),
             napi_scopes: HashMap::new(),
             #[cfg(all(target_arch = "wasm32", feature = "js"))]
