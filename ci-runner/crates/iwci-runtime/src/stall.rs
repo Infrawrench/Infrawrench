@@ -76,6 +76,10 @@ thread_local! {
     /// The job this thread is working for now, if any: what a V8 worker task
     /// posted from here is counted for.
     static CURRENT: RefCell<Option<Arc<CpuMeter>>> = const { RefCell::new(None) };
+    /// The guest process this thread runs a thread of now, and this thread's
+    /// CPU clock when it started to: what the guest's own CPU clocks read
+    /// ([`guest_cpu`]).
+    static GUEST: RefCell<Option<(Arc<Mutex<Threads>>, Duration)>> = const { RefCell::new(None) };
 }
 
 /// The CPU time used by the threads working for a job.
@@ -92,6 +96,10 @@ pub(crate) struct CpuMeter {
     /// Work in progress for the job on threads that are not registered
     /// (see the module comment).
     busy: AtomicUsize,
+    /// The same, counted per guest process (by pid) and only on the threads
+    /// that run its own threads: what its `CLOCK_PROCESS_CPUTIME_ID` and
+    /// `getrusage` read (#1038).
+    processes: Mutex<HashMap<u32, Arc<Mutex<Threads>>>>,
 }
 
 impl std::fmt::Debug for CpuMeter {
@@ -235,6 +243,16 @@ impl CpuMeter {
         Some(threads.retired + live + brief)
     }
 
+    /// The CPU time of guest process `pid` of the job.
+    fn process(&self, pid: u32) -> Arc<Mutex<Threads>> {
+        self.processes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(pid)
+            .or_default()
+            .clone()
+    }
+
     fn add_brief(&self, time: Duration) {
         let nanos = u64::try_from(time.as_nanos()).unwrap_or(u64::MAX);
         self.brief.fetch_add(nanos, Ordering::AcqRel);
@@ -253,6 +271,74 @@ impl Drop for CpuGuard {
             threads.retired += used;
         }
     }
+}
+
+/// Counts the calling thread's CPU time for a guest process, and makes it the
+/// one the guest's CPU clocks read, until dropped on the same thread.
+struct GuestGuard {
+    previous: Option<(Arc<Mutex<Threads>>, Duration)>,
+    process: Arc<Mutex<Threads>>,
+    registered: Option<i64>,
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+impl GuestGuard {
+    fn enter(process: Arc<Mutex<Threads>>) -> Self {
+        let current = Clock::current().and_then(|(tid, clock)| Some((tid, clock, clock.read()?)));
+        let start = current.map_or(Duration::ZERO, |(_, _, start)| start);
+        let registered = current.map(|(tid, clock, start)| {
+            let mut threads = process.lock().unwrap_or_else(|e| e.into_inner());
+            threads.live.entry(tid).or_insert((clock, start));
+            tid
+        });
+        let previous = GUEST.with(|guest| guest.replace(Some((process.clone(), start))));
+        Self {
+            previous,
+            process,
+            registered,
+            _not_send: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Drop for GuestGuard {
+    fn drop(&mut self) {
+        GUEST.with(|guest| guest.replace(self.previous.take()));
+        let Some(tid) = self.registered else { return };
+        let mut threads = self.process.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((clock, start)) = threads.live.remove(&tid) {
+            let used = clock
+                .read()
+                .map_or(Duration::ZERO, |now| now.saturating_sub(start));
+            threads.retired += used;
+        }
+    }
+}
+
+/// What a guest's CPU clocks read (#1038), installed into wasmer-wasix
+/// (`set_cpu_clocks`, vendor/README.md): its thread's CPU time since that
+/// thread started running on this host thread, or its process's, summed
+/// over the threads it ran on, in nanoseconds. `None` on a thread that runs
+/// no guest, and where there are no thread clocks. Without this the guest
+/// read the host's clocks: the whole runner's CPU time (every job's), or
+/// the time of whichever pooled host thread runs it, earlier tenants' work
+/// included.
+pub(crate) fn guest_cpu(thread: bool) -> Option<u64> {
+    let used = GUEST.with(|guest| {
+        let guest = guest.borrow();
+        let (process, start) = guest.as_ref()?;
+        if thread {
+            return Some(Clock::own()?.saturating_sub(*start));
+        }
+        let threads = process.lock().unwrap_or_else(|e| e.into_inner());
+        let live: Duration = threads
+            .live
+            .values()
+            .filter_map(|(clock, start)| Some(clock.read()?.saturating_sub(*start)))
+            .sum();
+        Some(threads.retired + live)
+    })?;
+    Some(u64::try_from(used.as_nanos()).unwrap_or(u64::MAX))
 }
 
 impl Drop for BusyGuard {
@@ -444,8 +530,10 @@ impl VirtualTaskManager for JobTasks {
         // task resumes it).
         let run = task.callbacks.run;
         let meter = self.meter.clone();
+        let process = self.meter.process(task.env.pid().raw());
         task.callbacks.run = Box::new(move |props| {
             let _counted = meter.enter();
+            let _guest = GuestGuard::enter(process);
             run(props)
         });
         // A process or thread resuming from a deep sleep first waits on the
@@ -597,6 +685,48 @@ mod tests {
     use super::*;
 
     const MIN: Duration = Duration::from_secs(60);
+
+    /// Burns about `time` of this thread's CPU.
+    #[cfg(target_os = "linux")]
+    fn spin(time: Duration) {
+        let start = Clock::own().unwrap();
+        let mut x = 0u64;
+        while Clock::own().unwrap() - start < time {
+            x = std::hint::black_box(x.wrapping_add(1));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_guest_reads_its_own_cpu_time_not_the_hosts() {
+        // A host thread that has worked before the guest starts on it.
+        spin(Duration::from_millis(50));
+        assert_eq!(guest_cpu(true), None, "no guest on this thread yet");
+        let meter = Arc::new(CpuMeter::default());
+        let process = meter.process(7);
+        {
+            let _guest = GuestGuard::enter(process.clone());
+            spin(Duration::from_millis(20));
+            let thread = guest_cpu(true).unwrap();
+            let own = guest_cpu(false).unwrap();
+            // Its own 20 ms, not the host thread's 70.
+            assert!((20_000_000..50_000_000).contains(&thread), "{thread}");
+            assert!(own >= thread && own < 50_000_000, "{own}");
+        }
+        assert_eq!(guest_cpu(false), None);
+        // A second thread of the same process adds to the process's time.
+        std::thread::spawn(move || {
+            let _guest = GuestGuard::enter(process);
+            spin(Duration::from_millis(20));
+            assert!(guest_cpu(true).unwrap() < 40_000_000);
+            assert!(guest_cpu(false).unwrap() >= 40_000_000);
+        })
+        .join()
+        .unwrap();
+        // Another process of the job starts from nothing.
+        let _guest = GuestGuard::enter(meter.process(8));
+        assert!(guest_cpu(false).unwrap() < 10_000_000);
+    }
 
     #[test]
     fn a_job_with_neither_output_nor_cpu_stalls_after_the_window() {

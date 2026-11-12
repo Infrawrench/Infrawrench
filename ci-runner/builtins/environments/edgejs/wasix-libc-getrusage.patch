@@ -1,0 +1,62 @@
+diff --git a/libc-top-half/musl/src/misc/getrusage.c b/libc-top-half/musl/src/misc/getrusage.c
+index b816545..289a982 100644
+--- a/libc-top-half/musl/src/misc/getrusage.c
++++ b/libc-top-half/musl/src/misc/getrusage.c
+@@ -7,6 +7,23 @@
+ #include <__typedef_clock_t.h>
+ #include <__struct_rusage.h>
+ clock_t __clock(void);
++
++// iwci (#1038): `ru` with `clock`'s reading as its user time. WASIX has no
++// way to tell user time from system time, so system time reads 0.
++__attribute__((__visibility__("hidden")))
++int __wasilibc_iwci_rusage(__wasi_clockid_t clock, struct rusage *ru)
++{
++	__wasi_timestamp_t now = 0;
++	__wasi_errno_t error = __wasi_clock_time_get(clock, 1, &now);
++	if (error != 0) {
++		errno = error;
++		return -1;
++	}
++	*ru = (struct rusage) {};
++	ru->ru_utime.tv_sec = now / 1000000000;
++	ru->ru_utime.tv_usec = (now % 1000000000) / 1000;
++	return 0;
++}
+ #endif
+ 
+ int getrusage(int who, struct rusage *ru)
+@@ -40,16 +57,17 @@ int getrusage(int who, struct rusage *ru)
+ 	}
+ 	return __syscall_ret(r);
+ #else
++	// iwci (#1038): CPU time, from WASIX's CPU clocks, which the runner
++	// answers for the guest process and thread asking. This read the
++	// monotonic clock, which is not CPU time but wall-clock time since the
++	// host started, gave it as user and system time alike, and put
++	// nanoseconds times 1000 in tv_usec. (This build's header has no
++	// RUSAGE_THREAD: its RUSAGE_SELF is musl's value for it.)
++	__wasi_clockid_t clock;
+ 	switch (who) {
+-		case RUSAGE_SELF: {
+-			__wasi_timestamp_t now = 0;
+-    		(void)__wasi_clock_time_get(__WASI_CLOCKID_MONOTONIC, 0, &now);
+-
+-			ru->ru_utime.tv_sec = now / 1000000000;
+-			ru->ru_utime.tv_usec = (now % 1000000000) * 1000;
+-			ru->ru_stime = ru->ru_utime;
+-			return 0;
+-		}
++		case RUSAGE_SELF:
++			clock = __WASI_CLOCKID_PROCESS_CPUTIME_ID;
++			break;
+ 		case RUSAGE_CHILDREN:
+ 			*ru = (struct rusage) {};
+ 			return 0;
+@@ -57,5 +75,6 @@ int getrusage(int who, struct rusage *ru)
+ 			errno = EINVAL;
+ 			return -1;
+ 	}
++	return __wasilibc_iwci_rusage(clock, ru);
+ #endif
+ }

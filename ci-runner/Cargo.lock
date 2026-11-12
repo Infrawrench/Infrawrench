@@ -2954,6 +2954,7 @@ dependencies = [
  "regex",
  "serde_json",
  "sha2",
+ "shared-buffer",
  "thiserror",
  "tokio",
  "tracing",

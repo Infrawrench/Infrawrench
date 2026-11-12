@@ -683,13 +683,43 @@ those requests work at all: Edge.js queues each on the worker's loop and
 also asks the engine to interrupt the worker's JavaScript for it, which the
 bridge refuses from another thread, and it reported that as a failure with
 the request still queued, so the task was freed and then run (`node`
-crashed or hung) or the call failed. `worker.cpuUsage()` still never
-settles. `wasix-libc-modes.patch` (#959, `posix.o` and
+crashed or hung) or the call failed. `wasix-libc-modes.patch` (#959, `posix.o` and
 `fstat.o`) makes the C library ask the runner for file modes: `stat`,
 `lstat`, `fstatat` and `fstat` fill in the permission bits from
 `/proc/iwci`, `chmod`, `fchmod` and `fchmodat` set them, and `open` with
 `O_CREAT` and `mkdir` record the mode they were given, less the `umask`
 (see [File modes](#file-modes)).
+
+24.0.8 adds three. `edgejs-worker-cpu-usage.patch` (#1006) makes
+`worker.cpuUsage()` settle: libuv reads a thread's CPU time with
+`getrusage(RUSAGE_THREAD)`, which its WASIX build lacks, and the failure
+reached the parent with a null argument that made the call to its callback
+fail, so the promise never settled. A worker, and
+`process.threadCpuUsage()`, now read the thread's CPU clock instead, and
+any task that fails is answered. `wasix-libc-getrusage.patch` (#1038,
+`getrusage.o`) makes the C library's `getrusage` read CPU time: it gave
+the monotonic clock (days since the host started) as both user and system
+time, so `process.cpuUsage()` counted sleeping as work. The CPU clocks it
+now reads are the runner's: a guest thread's and a guest process's own CPU
+time (`vendor/README.md`, wasmer-wasix), not the runner's whole process's
+or a pooled host thread's. All of it is user time; system time reads 0.
+bash and coreutils keep Wasmer's C library, so the shell's `time` and
+`times` still print the monotonic clock until wasix-libc fixes it. `edgejs-builtins-cache.patch` (#996) turns on Edge.js's
+code cache for its built-in modules, which only a build with the engine
+compiled in had, so a `node` no longer compiles the built-ins it loads from
+source at every start. V8 takes only a cache its own build wrote with the
+same flags, so the runner makes it, before the first job of an
+environment with `node`: a job of its own runs that environment's Edge.js
+over its built-ins with recording on (a few seconds, once per environment
+and process), and every later job gets the file read-only beside the
+preload, as `/usr/local/lib/iwci/node/edge.builtins`
+(`crates/iwci-runtime/src/builtins.rs`). Nothing a job does changes it: a
+cache a job could write would be code every later job ran. A `node` only
+reads it; one that should record its own (`EDGE_BUILTINS_CACHE=<file>
+EDGE_BUILTINS_CACHE_RECORD=1`) writes that file, in its own job.
+`EDGE_BYTECODE_CACHE=0` turns it off. On ci-1 `node -e 0` went from 54 or 55
+ms to 41 to 43 ms, and a `node` that loads `child_process`, `stream`,
+`crypto` and `worker_threads` from 60 to 68 ms to 45 to 52 ms.
 
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole

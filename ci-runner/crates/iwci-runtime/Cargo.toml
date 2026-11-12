@@ -51,6 +51,10 @@ anyhow = "1"
 async-trait = "0.1"
 url = "2"
 bytes = "1.9"
+# The buffer a read-only file of virtual-fs's holds, which lets every job
+# share one copy of Edge.js's built-ins cache (builtins.rs). Already in the
+# tree, through virtual-fs.
+shared-buffer = "0.1.4"
 getrandom = "0.3"
 # How wasmer-wasix numbers inodes, which `/proc/iwci/ino/` has to match
 # (modes.rs `ino_of`). Already in the tree, through wasmer-wasix.

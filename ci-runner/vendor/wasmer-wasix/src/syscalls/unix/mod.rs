@@ -33,10 +33,38 @@ pub fn platform_clock_res_get(
     Ok(t_out)
 }
 
+/// What a guest's CPU clocks read, when the embedder says (iwci patch,
+/// #1038): `Some(nanoseconds)` for the process or the thread asking, on the
+/// thread that runs it, or `None` for the host's clock as before.
+pub type CpuClocks = fn(thread: bool) -> Option<u64>;
+
+static CPU_CLOCKS: std::sync::OnceLock<CpuClocks> = std::sync::OnceLock::new();
+
+/// Answers `CLOCK_PROCESS_CPUTIME_ID` and `CLOCK_THREAD_CPUTIME_ID` with
+/// `clocks` from now on, for every guest (iwci patch, #1038). The host's
+/// clocks are the whole host process's CPU time, every guest's together,
+/// and the CPU time of whichever host thread runs the guest thread, work it
+/// did for others before included; an embedder that runs guests of
+/// different users in one process knows better. Set once; later calls are
+/// ignored.
+pub fn set_cpu_clocks(clocks: CpuClocks) {
+    let _ = CPU_CLOCKS.set(clocks);
+}
+
 pub fn platform_clock_time_get(
     clock_id: Snapshot0Clockid,
     precision: Timestamp,
 ) -> Result<i64, Errno> {
+    let thread = match clock_id {
+        Snapshot0Clockid::ProcessCputimeId => Some(false),
+        Snapshot0Clockid::ThreadCputimeId => Some(true),
+        _ => None,
+    };
+    if let (Some(thread), Some(clocks)) = (thread, CPU_CLOCKS.get())
+        && let Some(nanos) = clocks(thread)
+    {
+        return Ok(i64::try_from(nanos).unwrap_or(i64::MAX));
+    }
     let unix_clock_id = match clock_id {
         Snapshot0Clockid::Monotonic => CLOCK_MONOTONIC,
         Snapshot0Clockid::ProcessCputimeId => CLOCK_PROCESS_CPUTIME_ID,
