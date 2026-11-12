@@ -1442,6 +1442,31 @@ fn a_bash_script_can_use_descriptors_3_and_4() {
     );
 }
 
+/// A child's exit status reaches its parent whole (#1053). wasmer-wasix
+/// reported it through an `Errno`, which has no value past 78, so every
+/// status from 80 up read as 79: `git`'s fatal 128, a shell's 126 and 127,
+/// `timeout`'s 124 and 128 plus a signal's number all looked alike.
+#[test]
+fn a_childs_exit_status_reaches_its_parent_whole() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let script = "set +e\nfor c in 1 78 79 80 126 127 128 200 255; do bash -c \"exit $c\"; printf '%s ' $?; done\n\
+        bash -c 'exit 129' & wait $!; echo $?\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "1 78 79 80 126 127 128 200 255 129\n",
+        "{stderr:?}"
+    );
+}
+
 /// `rm -rf` of snapshot directories followed by recreating one, the shape
 /// of every `rm -rf dist && mkdir dist` build script. The overlay fix in
 /// iwci-vfs is what makes this pass.

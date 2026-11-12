@@ -696,6 +696,17 @@ now resolves the path first (without following a symlink, which is
 `ENOTDIR`), and the file system decides whether the directory is empty.
 Upstream main has the same lookup (checked November 2026).
 
+**A child's exit status reaches its parent whole (#1053).** `proc_join`
+reports a child's status in a union whose field is typed as an `Errno`,
+and converting the status to one maps everything past the last errno (78)
+to `Errno::Unknown`, which is 79: `$?`, `wait` and Node's
+`spawnSync(...).status` read every status from 80 up as 79, so `git`'s
+fatal 128, a shell's 126 and 127 and `timeout`'s 124 looked alike. Only a
+parent saw it; the job's own status comes from the runner. wasix-libc reads
+the field as a number, so `src/syscalls/wasix/proc_join.rs` now writes the
+status itself (its low 8 bits, what `wait` reports) over it. Upstream main
+has the same conversion (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -705,11 +716,12 @@ can be renamed, a guest's CPU clocks are its own, and a blocking accept
 or receive waits with no timeout of its own and still ends for a signal,
 the task manager's idle threads end without queueing a task behind a
 busy one, a link the file system cannot make fails and `rmdir` finds a
-directory nothing looked up, and once the runner finds a renamed file's
-mode without its new path's inode number: delete `vendor/wasmer-wasix*`,
+directory nothing looked up, a child's exit status reaches its parent
+unchanged, and once the runner finds a renamed file's mode without its new
+path's inode number: delete `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
-`builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
-bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
+`builtins/test.sh`'s `background-passes`, `exit-status-passes` and
+`shebang-passes` (bash and bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
 (bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
 and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
@@ -723,6 +735,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `an_accept_timeout_the_program_sets_still_applies`,
 `a_service_blocked_in_accept_takes_its_sigterm`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
+`a_childs_exit_status_reaches_its_parent_whole`,
 `removing_a_directory_nothing_looked_up_says_what_it_is`,
 `a_hard_link_is_refused_and_leaves_one_name` and
 `a_renamed_file_has_the_inode_number_of_its_new_path`.

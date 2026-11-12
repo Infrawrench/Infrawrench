@@ -47,6 +47,7 @@ pub(super) fn proc_join_internal<M: MemorySize + 'static>(
             let mut ret = Errno::Success;
 
             let view = unsafe { ctx.data().memory_view(&ctx) };
+            let mut exit_status = None;
             let status = match status {
                 JoinStatusResult::Nothing => JoinStatus {
                     tag: JoinStatusType::Nothing,
@@ -59,10 +60,17 @@ pub(super) fn proc_join_internal<M: MemorySize + 'static>(
                     };
                     pid_ptr.write(&view, option_pid).ok();
 
+                    // The union types the status as an `Errno`, and turning
+                    // the code into one maps every status from 80 up (past
+                    // the last errno) to `Errno::Unknown`, 79: `git`'s fatal
+                    // 128 read as 79 in its parent. The C library reads the
+                    // field as a plain number, so the status itself is
+                    // written over it below.
+                    exit_status = Some((exit_code.raw() & 0xff) as u16);
                     JoinStatus {
                         tag: JoinStatusType::ExitNormal,
                         u: JoinStatusUnion {
-                            exit_normal: exit_code.into(),
+                            exit_normal: Errno::Success,
                         },
                     }
                 }
@@ -75,6 +83,11 @@ pub(super) fn proc_join_internal<M: MemorySize + 'static>(
                 }
             };
             wasi_try_mem_ok!(status_ptr.write(&view, status));
+            if let Some(code) = exit_status {
+                let field = M::Offset::from(std::mem::offset_of!(JoinStatus, u) as u32);
+                let code_ptr = wasi_try_mem_ok!(status_ptr.cast::<u8>().add_offset(field));
+                wasi_try_mem_ok!(code_ptr.cast::<u16>().write(&view, code));
+            }
             Ok(ret)
         }
     };
