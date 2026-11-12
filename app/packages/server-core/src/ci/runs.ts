@@ -20,6 +20,7 @@
  */
 import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
+  CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
   type CiDownload,
   type CiDownloadLink,
@@ -36,6 +37,7 @@ import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
 import { upsertCheck } from "./checks.js";
+import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
 import {
   abandonJobChecks,
   groupsFromJobs,
@@ -65,6 +67,26 @@ const LOST_AFTER_MS = 2 * 60 * 60_000;
 const GONE_AFTER_MS = 2 * 60_000;
 const GONE_REASON =
   "The runner restarted while this run was going, and the run went with it. Retry it from the CI tab, or push again.";
+/** Finished runs whose report the runners keep, with each job's output. */
+const FINISHED_WITH_REPORT: readonly CiRunStatus[] = ["passed", "failed", "cancelled"];
+const CANCELLED_BY_PERSON = "Cancelled from Infrawrench.";
+
+function cancelledCheck(reason: string) {
+  return {
+    status: "completed",
+    conclusion: "cancelled",
+    title: "Cancelled",
+    summary: reason,
+  } as const;
+}
+
+/** Why a finished run was cancelled: a person, or a newer run of one of its groups. */
+function cancelledReason(row: CiRunRow): string {
+  if (row.cancelRequestedAt) return CANCELLED_BY_PERSON;
+  const group = (row.concurrency ?? []).find((e) => e.cancelled)?.group;
+  return group ? `Cancelled by a newer run of its concurrency group \`${group}\`.` : "Cancelled.";
+}
+
 /** A fork's run nobody approved in this long is closed. */
 export const APPROVAL_EXPIRES_MS = 14 * 24 * 60 * 60_000;
 
@@ -169,7 +191,7 @@ async function load(id: string): Promise<CiRunRow | null> {
 
 async function finish(
   row: CiRunRow,
-  status: "passed" | "failed" | "error" | "rejected",
+  status: "passed" | "failed" | "error" | "rejected" | "cancelled",
   reason: string | null,
   extra: Partial<typeof ciRuns.$inferInsert> = {},
 ): Promise<void> {
@@ -283,6 +305,20 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   const body = dispatchBody(row, token);
 
+  // Its pipelines' concurrency groups, read once, before it first goes.
+  if (row.concurrency === null) {
+    const entries = await resolveConcurrency(body);
+    if (!Array.isArray(entries)) {
+      await retryLater(row, entries.retry);
+      return;
+    }
+    if (entries.some((e) => e.group !== null)) {
+      if (!(await admitRun(row, entries))) return;
+    } else {
+      await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
+    }
+  }
+
   let res: Response;
   try {
     res = await proxyFetch("/v1/runs", { method: "POST", body: JSON.stringify(body) });
@@ -308,10 +344,19 @@ export async function dispatchRun(id: string): Promise<void> {
     });
     return;
   }
-  await db
+  const [started] = await db
     .update(ciRuns)
     .set({ status: "running", proxyRunId: answer.id, startedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")));
+    .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")))
+    .returning();
+  if (!started) {
+    // Cancelled while it was being sent: the runner has it, so stop it there.
+    await sendCancel(answer.id);
+    await db.update(ciRuns).set({ proxyRunId: answer.id }).where(eq(ciRuns.id, row.id));
+    return;
+  }
+  // Pipelines a newer run cancelled before this one started.
+  await resendCancels(started);
   await upsertCheck(row, {
     status: "in_progress",
     title: "Running",
@@ -368,9 +413,24 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
       out.push(withOutput ? { ...summary, stdout: "", stderr: summary.reason ?? "" } : summary);
       continue;
     }
+    if (pipeline.outcome === "cancelled") {
+      const summary: CiJobSummary = {
+        pipeline: pipeline.name ?? pipeline.file ?? "pipeline",
+        id: pipeline.file ?? "pipeline",
+        name: "Pipeline",
+        status: "cancelled",
+        reason: "Cancelled before it started.",
+        durationMs: null,
+      };
+      out.push(withOutput ? { ...summary, stdout: "", stderr: "" } : summary);
+      continue;
+    }
     for (const job of pipeline.report?.jobs ?? []) {
       const status =
-        job.status === "passed" || job.status === "failed" || job.status === "skipped"
+        job.status === "passed" ||
+        job.status === "failed" ||
+        job.status === "skipped" ||
+        job.status === "cancelled"
           ? job.status
           : "error";
       const summary: CiJobSummary = {
@@ -406,13 +466,15 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
 const SUMMARY_ORDER: Record<CiJobSummary["status"], number> = {
   error: 0,
   failed: 0,
+  cancelled: 1,
   skipped: 1,
   passed: 2,
 };
 
 export function checkSummary(jobs: CiJobSummary[]): string {
   if (jobs.length === 0) return "No pipeline ran for this event.";
-  const mark = (s: string) => (s === "passed" ? "✅" : s === "skipped" ? "⏭️" : "❌");
+  const mark = (s: string) =>
+    s === "passed" ? "✅" : s === "skipped" ? "⏭️" : s === "cancelled" ? "⏹️" : "❌";
   const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\s+/g, " ");
   const rows = jobs
     .map((j, i) => ({ j, i }))
@@ -427,6 +489,7 @@ export function checkSummary(jobs: CiJobSummary[]): string {
 /** Brings a running run up to date from the proxy. */
 export async function syncRun(row: CiRunRow): Promise<void> {
   if (row.status !== "running" || !row.proxyRunId) return;
+  await resendCancels(row);
   let run: ProxyRun;
   try {
     run = await proxyJson<ProxyRun>(
@@ -435,7 +498,12 @@ export async function syncRun(row: CiRunRow): Promise<void> {
   } catch (err) {
     const started = (row.startedAt ?? row.createdAt).getTime();
     const gone = err instanceof CiProxyError && err.status === 404;
-    if (Date.now() - started > (gone ? GONE_AFTER_MS : LOST_AFTER_MS)) {
+    if (gone && row.cancelRequestedAt && Date.now() - started > GONE_AFTER_MS) {
+      // Asked to stop, and gone: nothing is left to cancel.
+      await finish(row, "cancelled", CANCELLED_BY_PERSON);
+      await abandonJobChecks(row, CANCELLED_BY_PERSON);
+      await upsertCheck(row, cancelledCheck(CANCELLED_BY_PERSON));
+    } else if (Date.now() - started > (gone ? GONE_AFTER_MS : LOST_AFTER_MS)) {
       const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
       await finish(row, "error", reason);
       // Its jobs' checks would otherwise say "in progress" for good.
@@ -469,14 +537,27 @@ export async function syncRun(row: CiRunRow): Promise<void> {
   }
   const jobs = jobsOf(run, false);
   const passed = run.result?.passed === true;
-  await finish(row, passed ? "passed" : "failed", null, {
+  const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  // A failure says more than the cancel that followed it.
+  const cancelled =
+    !passed &&
+    failedCount === 0 &&
+    (run.result?.cancelled === true || jobs.some((j) => j.status === "cancelled"));
+  const cancelReason = cancelled ? cancelledReason(row) : null;
+  await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
     jobs,
     vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
   // Every job's check finished, including any no poll saw running.
   await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
-  const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  if (cancelReason !== null) {
+    await upsertCheck(row, {
+      ...cancelledCheck(cancelReason),
+      summary: `${cancelReason}\n\n${checkSummary(jobs)}`,
+    });
+    return;
+  }
   const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
   // No pipeline matched this event (a push to a branch when `on.push` only
   // names main): skipped, not a green pass for code nothing checked.
@@ -555,6 +636,80 @@ export async function rejectRun(organizationId: string, id: string, userId: stri
     title: "Not approved",
     summary: "A maintainer chose not to run CI for this commit from a fork.",
   });
+}
+
+/**
+ * Cancels a run: one that has not started (queued, or waiting for its
+ * concurrency group) ends at once; a running one is stopped by its runner,
+ * and ends as cancelled when the next poll reads its report. Takes the
+ * approval permission, as a retry does. A runner from before cancelling
+ * answers 404, and the run is left to finish.
+ */
+export async function cancelRun(organizationId: string, id: string): Promise<CiRun> {
+  const row = await loadOwned(organizationId, id);
+  if (!CI_CANCELLABLE_STATUSES.includes(row.status)) {
+    throw new CiInputError(
+      row.status === "awaiting_approval"
+        ? "This run is waiting for approval; reject it instead."
+        : "Only a queued, waiting or running run can be cancelled.",
+      409,
+    );
+  }
+  const now = new Date();
+  if (row.status !== "running") {
+    const [cancelled] = await db
+      .update(ciRuns)
+      .set({
+        status: "cancelled",
+        statusReason: CANCELLED_BY_PERSON,
+        cancelRequestedAt: now,
+        finishedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(ciRuns.id, row.id), inArray(ciRuns.status, ["queued", "pending"])))
+      .returning();
+    // It started in between: cancel it as a running one.
+    if (!cancelled) return cancelRun(organizationId, id);
+    await upsertCheck(cancelled, cancelledCheck(CANCELLED_BY_PERSON));
+    return toWire(cancelled);
+  }
+  const [marked] = await db
+    .update(ciRuns)
+    .set({ cancelRequestedAt: now, updatedAt: now })
+    .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "running")))
+    .returning();
+  if (!marked) throw new CiInputError("The run has just finished.", 409);
+  if (!marked.proxyRunId) return toWire(marked);
+  let res: Response;
+  try {
+    res = await proxyFetch(`/v1/runs/${encodeURIComponent(marked.proxyRunId)}/cancel`, {
+      method: "POST",
+      body: "{}",
+    });
+  } catch {
+    // The next poll sends it again.
+    return toWire(marked);
+  }
+  await res.body?.cancel();
+  if (res.status === 404) {
+    await db
+      .update(ciRuns)
+      .set({ cancelRequestedAt: null, updatedAt: new Date() })
+      .where(eq(ciRuns.id, row.id));
+    throw new CiInputError(
+      "The runner with this run cannot cancel it (it predates cancelling, or lost the run); it will finish on its own.",
+      409,
+    );
+  }
+  if (res.status < 500) {
+    const [sent] = await db
+      .update(ciRuns)
+      .set({ cancelSentAt: new Date() })
+      .where(eq(ciRuns.id, row.id))
+      .returning();
+    return toWire(sent ?? marked);
+  }
+  return toWire(marked);
 }
 
 /**
@@ -679,6 +834,16 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     retryOfRunId: row.retryOfRunId,
     retriedAsRunId,
     noTaskCache: row.noTaskCache,
+    ...(row.concurrency !== null
+      ? {
+          concurrencyGroups: [
+            ...new Set(row.concurrency.flatMap((e) => (e.group === null ? [] : [e.group]))),
+          ],
+        }
+      : {}),
+    ...(row.cancelRequestedAt !== null && row.status === "running"
+      ? { cancelRequested: true }
+      : {}),
   };
 }
 
@@ -709,7 +874,7 @@ export async function getRun(organizationId: string, id: string): Promise<CiRunD
   const row = await loadOwned(organizationId, id);
   const retries = await newestRetries(organizationId, [row.id]);
   let jobs: CiJobOutput[] | null = null;
-  if (row.proxyRunId && (row.status === "passed" || row.status === "failed")) {
+  if (row.proxyRunId && FINISHED_WITH_REPORT.includes(row.status)) {
     try {
       const run = await proxyJson<ProxyRun>(
         `/v1/runs/${encodeURIComponent(row.proxyRunId)}?owner=${encodeURIComponent(row.ownerKey)}`,
@@ -739,7 +904,7 @@ export async function getDownloadLink(
     .where(and(eq(ciRuns.id, id), eq(ciRuns.organizationId, organizationId)))
     .limit(1);
   if (!row) throw new CiInputError("No such run.", 404);
-  if (!row.proxyRunId || (row.status !== "passed" && row.status !== "failed")) {
+  if (!row.proxyRunId || !FINISHED_WITH_REPORT.includes(row.status)) {
     throw new CiInputError("The run has not finished.", 409);
   }
   const run = await proxyJson<ProxyRun>(

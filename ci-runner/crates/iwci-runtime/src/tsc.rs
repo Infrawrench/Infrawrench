@@ -89,6 +89,8 @@ pub struct TscOutcome {
     pub diagnostics_json: Option<String>,
     pub duration: std::time::Duration,
     pub timed_out: bool,
+    /// The run was cancelled, and the compile stopped for it.
+    pub cancelled: bool,
     pub out_of_memory: bool,
     /// The trap, when the module crashed instead of returning or exiting
     /// (core.js throws in that case).
@@ -211,9 +213,11 @@ pub(crate) fn run(
     let ts_output = export("ts_output")?;
     let ts_output_len = export("ts_output_len")?;
 
-    let watchdog = Watchdog::start(started + inv.limits.timeout, move || {
-        interrupter.interrupt()
-    });
+    let watchdog = Watchdog::start(
+        started + inv.limits.timeout,
+        inv.cancel.clone(),
+        move || interrupter.interrupt(),
+    );
     let ran = (|| -> std::result::Result<i32, RuntimeError> {
         if let Ok(initialize) = instance.exports.get_function("_initialize") {
             initialize.call(&mut store, &[])?;
@@ -227,13 +231,14 @@ pub(crate) fn run(
             .map_err(|e| RuntimeError::new(e.to_string()))?;
         first_i32(&ts_run.call(&mut store, &[])?)
     })();
-    let timed_out = watchdog.finish();
+    let (stopped, cancelled) = watchdog.finish();
+    let timed_out = stopped && !cancelled;
 
     let mut error = None;
     let mut read_reply = diagnostics_json;
     let exit_code = match ran {
         Ok(code) => code,
-        Err(err) if timed_out || err.clone().to_trap() == Some(TrapCode::HostInterrupt) => {
+        Err(err) if stopped || err.clone().to_trap() == Some(TrapCode::HostInterrupt) => {
             read_reply = false;
             TIMEOUT_EXIT_CODE
         }
@@ -281,6 +286,7 @@ pub(crate) fn run(
         diagnostics_json,
         duration: started.elapsed(),
         timed_out,
+        cancelled,
         out_of_memory: hit_memory.load(Ordering::Acquire),
         error,
     })

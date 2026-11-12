@@ -1,7 +1,8 @@
 /**
  * The poller passes that keep CI moving.
  *
- * - `runCiStatusPass` dispatches queued runs (retrying a busy or unreachable
+ * - `runCiStatusPass` lets runs waiting for their concurrency group go once
+ *   it is free, dispatches queued runs (retrying a busy or unreachable
  *   runner pool) and follows running ones, which is what moves every check
  *   on GitHub and the CI tab. It runs on a loop of its own every few seconds
  *   (`ownLoopMs` in the poller's registry), not on the shared tick: behind
@@ -17,6 +18,7 @@
 import { runWithConcurrency } from "@infrawrench/client-core";
 
 import { reportRunUsage, reportStorage, sampleStorage } from "./billing.js";
+import { admitRun, pendingRuns } from "./concurrency.js";
 import { ciProxyConfigured } from "./proxy.js";
 import { dispatchRun, dueQueuedRunIds, expireApprovals, runningRuns, syncRun } from "./runs.js";
 
@@ -29,6 +31,11 @@ export const CI_RUN_CONCURRENCY = 16;
 
 export async function runCiStatusPass(): Promise<void> {
   if (!ciProxyConfigured()) return;
+  // Runs waiting for a concurrency group, oldest first and one at a time,
+  // so the one whose group came free first goes first.
+  for (const row of await pendingRuns(20)) {
+    await admitRun(row).catch((err) => console.warn(`[ci] admitting ${row.id} failed:`, err));
+  }
   await runWithConcurrency(await dueQueuedRunIds(20), CI_RUN_CONCURRENCY, (id) =>
     dispatchRun(id).catch((err) => console.warn(`[ci] dispatching ${id} failed:`, err)),
   );

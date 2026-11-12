@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.104.0",
+    "version": "1.105.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -62875,6 +62875,17 @@
           "noTaskCache": {
             "type": "boolean",
             "description": "The run did not read the task cache: every `task-cache:` job ran, and saved its result again."
+          },
+          "concurrencyGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `concurrency:` groups its pipelines hold or wait for, once the runners have read them."
+          },
+          "cancelRequested": {
+            "type": "boolean",
+            "description": "Someone asked to cancel the run, and its runner is stopping it."
           }
         },
         "required": [
@@ -62917,7 +62928,8 @@
               "passed",
               "failed",
               "skipped",
-              "error"
+              "error",
+              "cancelled"
             ]
           },
           "reason": {
@@ -62971,11 +62983,13 @@
         "enum": [
           "awaiting_approval",
           "queued",
+          "pending",
           "running",
           "passed",
           "failed",
           "error",
-          "rejected"
+          "rejected",
+          "cancelled"
         ]
       },
       "CiDownloadLink": {
@@ -63040,7 +63054,8 @@
               "passed",
               "failed",
               "skipped",
-              "error"
+              "error",
+              "cancelled"
             ]
           },
           "reason": {
@@ -126385,6 +126400,76 @@
         },
         "x-required-permission": "ci:approve",
         "operationId": "postOrgOrgIdCiRunsRunIdRetry"
+      }
+    },
+    "/api/org/{orgId}/ci/runs/{runId}/cancel": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, cancelled or being cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A queued run, or one waiting for its concurrency group, ends as cancelled at once. A running one is stopped by its runner, its running jobs as a timeout would stop them, and ends as cancelled once the runner reports it. A run waiting for approval is rejected instead.\n\n_Requires permission: `ci:approve`._",
+        "summary": "Cancel a CI run",
+        "x-required-permission": "ci:approve",
+        "operationId": "postOrgOrgIdCiRunsRunIdCancel"
       }
     },
     "/api/org/{orgId}/ci/caches": {

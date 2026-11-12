@@ -106,6 +106,17 @@ export const CiRunSchema = Schema.Struct({
         "The run did not read the task cache: every `task-cache:` job ran, and saved its result again.",
     }),
   ),
+  concurrencyGroups: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description:
+        "The `concurrency:` groups its pipelines hold or wait for, once the runners have read them.",
+    }),
+  ),
+  cancelRequested: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: "Someone asked to cancel the run, and its runner is stopping it.",
+    }),
+  ),
 }).annotate({ identifier: "CiRun" });
 
 export const CiRunDetailSchema = Schema.Struct({
@@ -304,6 +315,18 @@ export class CiGroup extends HttpApiGroup.make("ci")
         "Queues a new run of the same repository, commit, branch and event, linked to this one. A run waiting for approval is approved instead, and a fork's pull request still runs without secrets.",
       )
       .annotate(SuccessDescription, "The new run, queued"),
+    HttpApiEndpoint.post("cancelRun", "/runs/:runId/cancel", {
+      params: RunParams,
+      success: CiRunSchema,
+      error: [NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:approve")
+      .annotate(OpenApi.Summary, "Cancel a CI run")
+      .annotate(
+        OpenApi.Description,
+        "A queued run, or one waiting for its concurrency group, ends as cancelled at once. A running one is stopped by its runner, its running jobs as a timeout would stop them, and ends as cancelled once the runner reports it. A run waiting for approval is rejected instead.",
+      )
+      .annotate(SuccessDescription, "The run, cancelled or being cancelled"),
     HttpApiEndpoint.get("listCaches", "/caches", {
       params: OrgParams,
       success: CiCachesSchema,

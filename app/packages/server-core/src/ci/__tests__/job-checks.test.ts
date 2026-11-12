@@ -105,6 +105,36 @@ describe("a check per job", () => {
     expect(jobCheckState(failed[0]!)).toMatchObject({ status: "completed", conclusion: "failure" });
   });
 
+  it("concludes a cancelled job's check as cancelled, and a failure over it as a failure", () => {
+    const job = (id: string, status: "passed" | "failed" | "cancelled") => ({
+      pipeline: "Test",
+      id,
+      name: id,
+      status,
+      reason: status === "cancelled" ? "cancelled" : null,
+      durationMs: 1,
+    });
+    const [only] = groupsFromJobs([job("unit", "cancelled")], "Cached: x");
+    expect(jobCheckState(only!)).toMatchObject({
+      status: "completed",
+      conclusion: "cancelled",
+      title: "Cancelled",
+    });
+    const [mixed] = groupsFromJobs(
+      [job("build[a]", "passed"), job("build[b]", "cancelled")],
+      "Cached: x",
+    );
+    expect(jobCheckState(mixed!)).toMatchObject({
+      conclusion: "cancelled",
+      title: "1 of 2 passed, 1 cancelled",
+    });
+    const [failed] = groupsFromJobs(
+      [job("build[a]", "failed"), job("build[b]", "cancelled")],
+      "Cached: x",
+    );
+    expect(jobCheckState(failed!)).toMatchObject({ conclusion: "failure" });
+  });
+
   it("creates each check once and updates only what changed", async () => {
     const run = target();
     await syncJobChecks(run, groupsFromProgress(progress({ prep: { status: "running" } })));

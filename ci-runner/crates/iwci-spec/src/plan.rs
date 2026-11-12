@@ -14,6 +14,9 @@ use crate::expr::Expr;
 pub struct Plan {
     pub name: String,
     pub triggers: Triggers,
+    /// The pipeline's `concurrency:`, its group substituted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<Concurrency>,
     /// The distinct workspaces the jobs need, each built once per run.
     pub workspaces: Vec<WorkspaceSpec>,
     /// In file order.
@@ -92,6 +95,15 @@ impl Plan {
         }
         crate::instantiate(self, template, needs)
     }
+}
+
+/// At most one run of a repository per `group` is in progress. Groups
+/// compare case-insensitively; this is the group as substituted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Concurrency {
+    pub group: String,
+    pub cancel_in_progress: bool,
 }
 
 /// One job key of the file. A matrix job expands into several

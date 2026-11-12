@@ -98,6 +98,9 @@ describe("retryRefusal", () => {
     expect(retryRefusal({ status: "passed" })).toBeNull();
     expect(retryRefusal({ status: "failed" })).toBeNull();
     expect(retryRefusal({ status: "error" })).toBeNull();
+    // A cancelled run (by a person, or a newer run of its group) retries too.
+    expect(retryRefusal({ status: "cancelled" })).toBeNull();
+    expect(retryRefusal({ status: "pending" })).toMatch(/not finished/);
     expect(retryRefusal({ status: "awaiting_approval" })).toMatch(/approve it instead/);
     expect(retryRefusal({ status: "rejected" })).toMatch(/rejected/);
     expect(retryRefusal({ status: "queued" })).toMatch(/not finished/);

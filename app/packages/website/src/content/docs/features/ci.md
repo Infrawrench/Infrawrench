@@ -177,22 +177,61 @@ While a run is going, the page follows it live: jobs change state as they start 
 
 A job that has printed nothing and used no CPU for five minutes is stopped instead of being left to run out its timeout, and fails with a reason that starts _stalled_. That is what a hung process looks like: a job that is working uses CPU, however quiet it is. A job that only waits in silence for that long, on a slow download or a `sleep`, is stopped too, so have it print something now and then.
 
-A run is **Queued** while every runner is busy and starts as soon as one is free. A run that cannot start is marked **Error** with the reason, for example that your plan does not include CI.
+A run is **Queued** while every runner is busy and starts as soon as one is free, and **Waiting** while another run holds one of its [concurrency groups](#concurrency-groups). A run that cannot start is marked **Error** with the reason, for example that your plan does not include CI.
 
 When a job fails because one of its processes was ended by a signal, or crashed, its output ends with a few lines starting `iwci:` that say what the runner saw: which signal it was and what sent it, or the crash itself. They are there to go in a bug report; your own commands' output is above them.
 
 ### Retry a run
 
-A run that has finished (**Passed**, **Failed** or **Error**) can run again without a new push. Open it and choose:
+A run that has finished (**Passed**, **Failed**, **Error** or **Cancelled**) can run again without a new push. Open it and choose:
 
 - **Retry** runs the same commit, branch and event again. Jobs with `task-cache:` whose inputs have not changed come back from the task cache, so a retry after a flaky failure reruns only what needs to run.
 - **Retry without cache** runs every job, reading nothing from the task cache. What passes is saved again, so the next run is cached as usual. Jobs still restore their `cache:` entries; to start those cold too, [clear the repository's caches](#caches) first.
 
-A failed run also has a **Retry** button in the runs table. The retry is a new run, marked **retry** in the table. Its page links back with **Retry of run …**, and the run it retries links to the newest retry with **Retried as run …**. On GitHub, the retry's check replaces the earlier one on the commit or pull request.
+A failed or cancelled run also has a **Retry** button in the runs table. The retry is a new run, marked **retry** in the table. Its page links back with **Retry of run …**, and the run it retries links to the newest retry with **Retried as run …**. On GitHub, the retry's check replaces the earlier one on the commit or pull request.
 
 Retrying takes the `ci:approve` permission, the same as approving a fork's pull request. A run waiting for approval is approved rather than retried, and a rejected one cannot be retried. A retry of a fork's pull request still runs without your secrets.
 
 <insert [A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry] here>
+
+A retry joins its pipelines' [concurrency groups](#concurrency-groups) like any other run, as the newest run of each.
+
+### Cancel a run
+
+A run that has not finished (**Queued**, **Waiting** or **Running**) has a **Cancel** button, on its page and in the runs table. A run that has not started ends as **Cancelled** at once. A running one is stopped by its runner: running jobs are stopped as a timeout would stop them (their background services too), jobs that had not started never start, and the run shows **Cancelling…** until the runner has stopped it, a few seconds later. It then ends as **Cancelled**, and so does its check on GitHub. A job that failed before the cancel keeps the run **Failed**. Jobs are billed for the time they ran.
+
+Cancelling takes the `ci:approve` permission, like retrying, and is recorded in the audit log. A run waiting for approval is rejected rather than cancelled.
+
+<insert [A running CI run's page with the Cancel button beside "Open on GitHub", and below the header the line "Concurrency groups: ci-main"] here>
+
+## Concurrency groups
+
+A pipeline can say that only one run of it, or of a set of pipelines, goes at a time. Put it at the top of the pipeline file:
+
+```yaml
+name: Deploy
+concurrency: deploy-${{ commit.branch }}
+```
+
+or, to have a newer run stop the one already going:
+
+```yaml
+name: Test
+concurrency:
+  group: ${{ pipeline.name }}-${{ commit.branch }}
+  cancel-in-progress: true
+```
+
+The group is a name built from the run: `${{ commit.branch }}` (a pull request's is `pull/<number>`), `${{ pull-request.number }}` (empty for a push), `${{ pipeline.name }}`, `${{ event }}`, `${{ repo.id }}`, `${{ commit.sha }}` and `${{ vars.<name> }}`. Groups belong to one repository, and their names ignore case. A pull request from a fork has groups of its own: its pipeline file is the fork's to write, so once approved it can only wait for, or cancel, runs of the same pull request, never your branches' runs.
+
+At most one run of a group goes at a time in a repository. When a new run joins a group another run holds:
+
+- With `cancel-in-progress: true`, the older run's pipelines in that group are cancelled, and the new run starts. The older run's other pipelines carry on, so a deploy in no group is not stopped by a test pipeline's group.
+- Without it, the new run waits, marked **Waiting**, and starts when the group is free. Only the newest waiting run is kept: an older one that is still waiting is cancelled.
+
+A run is every pipeline its push or pull request starts, so it waits while any of its groups is taken, and its page lists its groups under **Concurrency groups**. A run never waits behind, or cancels, a newer run of its group: if a newer one got there first, the older one is cancelled. Retries join their groups as the newest run.
+
+Groups apply to whole pipelines; a single job cannot have a group of its own.
 
 ## Downloads
 

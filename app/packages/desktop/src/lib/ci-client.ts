@@ -137,6 +137,8 @@ export function createDesktopCiClient(): CiClient {
     },
     retryRun: (runId, { noTaskCache }): Promise<CiRun> =>
       runRpc(ci().retryRun({ params: { orgId: requireOrgId(), runId }, payload: { noTaskCache } })),
+    cancelRun: (runId): Promise<CiRun> =>
+      runRpc(ci().cancelRun({ params: { orgId: requireOrgId(), runId } })),
     listCaches: async (): Promise<CiCaches> => {
       const { accounts } = await runRpc(ci().listCaches({ params: { orgId: requireOrgId() } }));
       return { accounts: accounts.map((a) => ({ ...a, repos: [...a.repos] })) };

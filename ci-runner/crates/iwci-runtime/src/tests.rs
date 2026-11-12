@@ -79,6 +79,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         internet: false,
         modes: iwci_vfs::Modes::default(),
         services: Vec::new(),
+        cancel: None,
     }
 }
 
@@ -2501,4 +2502,101 @@ http.createServer((req, res) => res.end("hello from " + process.env.WHO))
             "{stderr:?}"
         );
     }
+}
+
+/// Cancels `cancel` after `after`, from another thread, as the server does
+/// when `POST /v1/runs/{id}/cancel` comes in.
+fn cancel_after(cancel: &Cancel, after: Duration) {
+    let cancel = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(after);
+        cancel.cancel();
+    });
+}
+
+#[test]
+fn a_cancelled_job_and_its_service_are_stopped_as_a_timeout_would_stop_them() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(120);
+    // The service spins without a syscall once listening, so only the
+    // watchdog stops it; the job spins too.
+    inv.services = vec![module_service(
+        "spin",
+        listener(4446, 0, true),
+        Ready::Port(4446),
+        Duration::from_secs(10),
+    )];
+    let cancel = Cancel::new();
+    inv.cancel = Some(cancel.clone());
+    cancel_after(&cancel, Duration::from_millis(500));
+    let module = wat_module(
+        "spin",
+        r#"(module (memory (export "memory") 1) (func (export "_start") (loop $l (br $l))))"#,
+    );
+    let outcome = rt.run_command(&module, inv).unwrap();
+    assert!(outcome.cancelled, "{outcome:?}");
+    assert!(!outcome.timed_out && !outcome.success(), "{outcome:?}");
+    assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
+    assert_eq!(outcome.service_failure, None);
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.contains("[service spin] listening on 4446"),
+        "{stderr:?}"
+    );
+    // Both are gone well within the service's stop grace, not at the
+    // job's two-minute timeout.
+    assert!(
+        outcome.duration < background::STOP_GRACE + Duration::from_secs(4),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn a_job_cancelled_while_its_service_starts_never_runs() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![module_service(
+        "db",
+        listener(4447, 0, false),
+        Ready::Port(5432),
+        Duration::from_secs(60),
+    )];
+    let cancel = Cancel::new();
+    inv.cancel = Some(cancel.clone());
+    cancel_after(&cancel, Duration::from_millis(300));
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert!(outcome.cancelled, "{outcome:?}");
+    assert_eq!(
+        outcome.service_failure, None,
+        "a cancel is not the service's fault"
+    );
+    assert!(job.read("/work/out.txt").is_err(), "the job never ran");
+    assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
+}
+
+#[test]
+fn a_cancelled_tsc_is_stopped() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let module = wat_module(
+        "tsc-spin",
+        r#"(module
+          (memory (export "memory") 1)
+          (func (export "ts_input") (param i32) (result i32) (i32.const 1024))
+          (func (export "ts_output") (result i32) (i32.const 0))
+          (func (export "ts_output_len") (result i32) (i32.const 0))
+          (func (export "ts_run") (result i32) (loop $l (br $l)) (i32.const 0)))"#,
+    );
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(120);
+    let cancel = Cancel::new();
+    inv.cancel = Some(cancel.clone());
+    cancel_after(&cancel, Duration::from_millis(300));
+    let outcome = rt.run_tsc(&module, inv, false).unwrap();
+    assert!(outcome.cancelled && !outcome.timed_out, "{outcome:?}");
+    assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
+    assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
 }

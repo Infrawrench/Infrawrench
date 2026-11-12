@@ -48,7 +48,35 @@ export const ciAccounts = pgTable(
 );
 
 export type CiRunStatus =
-  "awaiting_approval" | "queued" | "running" | "passed" | "failed" | "error" | "rejected";
+  | "awaiting_approval"
+  | "queued"
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "error"
+  | "rejected"
+  | "cancelled";
+
+/**
+ * One pipeline a run triggers, as the runners read it before the run starts
+ * (`POST /v1/concurrency`), with its `concurrency:` group. Every triggered
+ * pipeline is listed, grouped or not, so a run whose grouped pipelines are
+ * all cancelled before it starts is known to have nothing left to run.
+ */
+export interface CiConcurrencyEntry {
+  /** The pipeline file, as the runner names it in the run's report. */
+  file: string;
+  /** The pipeline's `name:`. */
+  pipeline: string;
+  /** As the runner substituted it; compared lowercased (groups ignore case). */
+  group: string | null;
+  cancelInProgress: boolean;
+  /** Cancelled by a newer run of its group. */
+  cancelled?: boolean;
+  /** The runner has been told (or a run that never started needs no telling). */
+  cancelSent?: boolean;
+}
 
 /** One run of a repository's pipelines for a push or a pull request. */
 export const ciRuns = pgTable(
@@ -87,6 +115,15 @@ export const ciRuns = pgTable(
     }),
     /** Run every `task-cache:` job rather than replay a passing run's entry. */
     noTaskCache: boolean("no_task_cache").notNull().default(false),
+    /**
+     * Its pipelines and their `concurrency:` groups, read before dispatch;
+     * null until then. A run holds its groups from the moment it is admitted
+     * (queued with this set, or running) until it ends.
+     */
+    concurrency: jsonb("concurrency").$type<CiConcurrencyEntry[]>(),
+    /** Someone asked to cancel the whole run, and when the runner was told. */
+    cancelRequestedAt: timestamp("cancel_requested_at"),
+    cancelSentAt: timestamp("cancel_sent_at"),
     status: text("status").$type<CiRunStatus>().notNull(),
     /** Why a run errored or was rejected. */
     statusReason: text("status_reason"),
@@ -126,6 +163,7 @@ export const ciRuns = pgTable(
     orgCreatedIdx: index("ci_runs_org_created_idx").on(t.organizationId, t.createdAt),
     statusIdx: index("ci_runs_status_idx").on(t.status, t.nextAttemptAt),
     retryOfIdx: index("ci_runs_retry_of_idx").on(t.retryOfRunId),
+    repoStatusIdx: index("ci_runs_repo_status_idx").on(t.installationId, t.repoFullName, t.status),
   }),
 );
 

@@ -132,7 +132,7 @@ A `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:w
 
 - `ci:read`: [CI](../features/ci.md) runs and usage. Members hold it.
 - `ci:write`: which GitHub accounts run CI, CI secrets and variables, and clearing a repository's CI caches. Admins and owners hold it.
-- `ci:approve`: approving or rejecting CI for pull requests from forks, and retrying runs. Admins and owners hold it.
+- `ci:approve`: approving or rejecting CI for pull requests from forks, and retrying and cancelling runs. Admins and owners hold it.
 
 ### Config as code
 

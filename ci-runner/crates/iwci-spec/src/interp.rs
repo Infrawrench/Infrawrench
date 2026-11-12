@@ -193,7 +193,7 @@ impl Scope<'_> {
         }
         let name = expr::parse_name(text).map_err(|_| {
             format!(
-                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `vars.<name>`, `secrets.<name>` (in `env:`)"
+                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `vars.<name>`, `secrets.<name>` (in `env:`)"
             )
         })?;
         check_name(&name, self.needs_list, self.decls)?;
@@ -203,6 +203,8 @@ impl Scope<'_> {
             Name::CommitBranch => self.ctx.branch.clone(),
             Name::RepoId => self.ctx.repo_id.clone(),
             Name::Event => self.ctx.event.as_str().to_string(),
+            Name::PipelineName => self.ctx.pipeline_name.clone(),
+            Name::PullRequestNumber => self.ctx.pull_request_number(),
             Name::NeedsResult { job } => match self.needs {
                 Some(values) => values.result(job).as_str().to_string(),
                 None => {

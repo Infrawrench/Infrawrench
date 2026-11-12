@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import {
+  CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
   CI_RUN_STATUSES,
   type CiAccount,
@@ -24,7 +25,7 @@ export interface CiPanelProps {
   onSelectRun: (id: string | null) => void;
   /** `ci:write`: choose which GitHub accounts run CI, set values, clear caches. */
   canWrite: boolean;
-  /** `ci:approve`: approve or reject forks' pull requests, and retry runs. */
+  /** `ci:approve`: approve or reject forks' pull requests, and retry and cancel runs. */
   canApprove: boolean;
   /**
    * Open a link (GitHub, the App install page). Desktop passes its
@@ -41,7 +42,7 @@ export interface CiPanelProps {
 
 type Gt = ReturnType<typeof useGT>;
 
-const ACTIVE: readonly CiRunStatus[] = ["queued", "running"];
+const ACTIVE: readonly CiRunStatus[] = ["queued", "pending", "running"];
 
 export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
   switch (status) {
@@ -49,6 +50,8 @@ export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
       return gt("Awaiting approval");
     case "queued":
       return gt("Queued");
+    case "pending":
+      return gt("Waiting");
     case "running":
       return gt("Running");
     case "passed":
@@ -59,6 +62,8 @@ export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
       return gt("Error");
     case "rejected":
       return gt("Rejected");
+    case "cancelled":
+      return gt("Cancelled");
   }
 }
 
@@ -70,6 +75,7 @@ function statusClass(status: CiRunStatus | CiJobOutput["status"]): string {
     case "error":
       return "bg-danger/15 text-danger";
     case "awaiting_approval":
+    case "pending":
       return "bg-warning/15 text-warning";
     case "running":
     case "queued":
@@ -429,6 +435,80 @@ function RetryButtons({
   );
 }
 
+/**
+ * Cancels a run that has not finished: at once when it has not started, and
+ * through its runner when it is running, which says "Cancelling" until the
+ * runner has stopped it.
+ */
+function CancelButton({
+  run,
+  client,
+  onCancelled,
+}: {
+  run: CiRun;
+  client: CiClient;
+  onCancelled: (run: CiRun) => void;
+}) {
+  const gt = useGT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (run.cancelRequested) {
+    return (
+      <span role="status" className="text-xs text-on-surface-faint">
+        {gt("Cancelling…")}
+      </span>
+    );
+  }
+  const cancel = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onCancelled(await client.cancelRun(run.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Could not cancel the run"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void cancel()}
+        title={gt("Stop this run. Running jobs are stopped as a timeout would stop them.")}
+        className="rounded border border-border px-2 py-0.5 text-xs text-on-surface hover:bg-surface-sunken disabled:opacity-50"
+      >
+        {gt("Cancel")}
+      </button>
+      {error ? (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The run's `concurrency:` groups, when its pipelines have any. */
+function ConcurrencyGroups({ run }: { run: CiRun }) {
+  const gt = useGT();
+  const groups = run.concurrencyGroups ?? [];
+  if (groups.length === 0) return null;
+  return (
+    <p className="text-xs text-on-surface-muted">
+      {gt("Concurrency groups:")}{" "}
+      {groups.map((group, i) => (
+        <span key={group}>
+          {i > 0 ? ", " : null}
+          <code className="font-mono">{group}</code>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function RunSource({ run }: { run: CiRun }) {
   const gt = useGT();
   if (run.pullNumber !== null) {
@@ -581,9 +661,18 @@ function RunDetailView({
               <div className="ml-auto">
                 <RetryButtons run={run} client={client} onRetried={(next) => onOpenRun(next.id)} />
               </div>
+            ) : canApprove && CI_CANCELLABLE_STATUSES.includes(run.status) ? (
+              <div className="ml-auto">
+                <CancelButton
+                  run={run}
+                  client={client}
+                  onCancelled={() => setNonce((n) => n + 1)}
+                />
+              </div>
             ) : null}
           </div>
           <RetryLinks run={run} onOpenRun={onOpenRun} />
+          <ConcurrencyGroups run={run} />
           <p className="text-xs text-on-surface-muted">
             <RunSource run={run} />
             {run.statusReason ? <span className="ml-2">{run.statusReason}</span> : null}
@@ -840,10 +929,14 @@ export function CiPanel({
                           <td className="py-1.5">
                             {run.status === "awaiting_approval" && canApprove ? (
                               <ApprovalButtons run={run} client={client} onDecided={refresh} />
-                            ) : (run.status === "failed" || run.status === "error") &&
+                            ) : (run.status === "failed" ||
+                                run.status === "error" ||
+                                run.status === "cancelled") &&
                               canApprove &&
                               !run.retriedAsRunId ? (
                               <RetryButtons run={run} client={client} compact onRetried={refresh} />
+                            ) : CI_CANCELLABLE_STATUSES.includes(run.status) && canApprove ? (
+                              <CancelButton run={run} client={client} onCancelled={refresh} />
                             ) : null}
                           </td>
                         </tr>

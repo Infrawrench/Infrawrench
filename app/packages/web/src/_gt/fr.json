@@ -23291,5 +23291,9 @@
   "37d378961905c076": "Binaire : stocké tel que la tâche l'a laissé",
   "2261b5f8db5349f3": "Stockage en Gio-heures",
   "b406a107b240ab78": "Stockage actuel",
-  "1e508135da849895": "Facturé en calcul et en stockage (caches et téléchargements) sur la facture de votre forfait."
+  "1e508135da849895": "Facturé en calcul et en stockage (caches et téléchargements) sur la facture de votre forfait.",
+  "41fb8326c7720036": "Annulation…",
+  "6bc75632fd9c9136": "Impossible d'annuler l'exécution",
+  "6138c22e3558dad8": "Arrêter cette exécution. Les tâches en cours sont arrêtées comme le ferait un délai d'expiration.",
+  "cd3046beba202ed2": "Groupes de concurrence :"
 }

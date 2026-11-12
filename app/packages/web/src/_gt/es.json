@@ -23292,5 +23292,9 @@
   "37d378961905c076": "Binario: guardado tal como lo dejó el trabajo",
   "2261b5f8db5349f3": "Almacenamiento en GiB-hora",
   "b406a107b240ab78": "Almacenamiento actual",
-  "1e508135da849895": "Se factura como cómputo y almacenamiento (cachés y descargas) en la factura de su plan."
+  "1e508135da849895": "Se factura como cómputo y almacenamiento (cachés y descargas) en la factura de su plan.",
+  "41fb8326c7720036": "Cancelando…",
+  "6bc75632fd9c9136": "No se pudo cancelar la ejecución",
+  "6138c22e3558dad8": "Detén esta ejecución. Los trabajos en curso se detienen como lo haría un tiempo de espera agotado.",
+  "cd3046beba202ed2": "Grupos de concurrencia:"
 }

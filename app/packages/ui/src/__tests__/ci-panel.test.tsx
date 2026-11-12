@@ -94,6 +94,12 @@ function client() {
       retryOfRunId: id,
       noTaskCache: opts.noTaskCache,
     })),
+    cancelRun: vi.fn(async (id: string) => ({
+      ...run,
+      id,
+      status: "running" as const,
+      cancelRequested: true,
+    })),
     listCaches: vi.fn(async () => ({
       accounts: [
         {
@@ -263,6 +269,68 @@ describe("CiPanel", () => {
     expect(onSelectRun).toHaveBeenLastCalledWith(run.id);
     fireEvent.click(screen.getByText("Retried as run 44444444"));
     expect(onSelectRun).toHaveBeenLastCalledWith("44444444-4444-4444-8444-444444444444");
+  });
+
+  it("cancels a running run, says it is cancelling, and shows its groups", async () => {
+    const c = client();
+    const running: CiRun = {
+      ...run,
+      status: "running",
+      finishedAt: null,
+      jobs: null,
+      concurrencyGroups: ["ci-feature"],
+    };
+    c.getRun
+      .mockResolvedValueOnce({ run: running, jobs: null })
+      .mockResolvedValue({ run: { ...running, cancelRequested: true }, jobs: null });
+    render(
+      <CiPanel client={c} selectedRunId={run.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy());
+    expect(screen.getByText("ci-feature")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(c.cancelRun).toHaveBeenCalledWith(run.id));
+    await waitFor(() => expect(screen.getByText("Cancelling…")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("offers no cancel without ci:approve, and a retry for a cancelled run", async () => {
+    const c = {
+      ...client(),
+      listRuns: vi.fn(async () => [
+        { ...run, status: "pending" as const, statusReason: "Waiting for its group" },
+      ]),
+    };
+    const { unmount } = render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove={false}
+      />,
+    );
+    // The badge, beside the status filter's option.
+    await waitFor(() => expect(screen.getAllByText("Waiting")).toHaveLength(2));
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    unmount();
+
+    const cancelled = {
+      ...client(),
+      listRuns: vi.fn(async () => [{ ...run, status: "cancelled" as const }]),
+    };
+    render(
+      <CiPanel
+        client={cancelled}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByText("Cancelled")).toHaveLength(2));
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("retries a failed run from the list without opening it", async () => {

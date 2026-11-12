@@ -3,8 +3,8 @@ import type { CiLiveJobStatus } from "@infrawrench/client-core";
 /**
  * A CI job's status as a 24x24 stroke glyph, the same grid and weight as the
  * app's other icons: a tick for passed, a cross for failed, a bang for an
- * error the runner reported, a slashed circle for skipped, a turning arc for
- * running and an empty ring for waiting. Colour comes from the status, so
+ * error the runner reported, a slashed circle for skipped, a square for
+ * cancelled, a turning arc for running and an empty ring for waiting. Colour comes from the status, so
  * the icon reads the same in the sidebar, the graph and the log header.
  */
 export function CiStatusIcon({
@@ -54,6 +54,7 @@ export function CiStatusIcon({
         </>
       ) : null}
       {status === "skipped" ? <path d="m5.6 18.4 12.8-12.8" /> : null}
+      {status === "cancelled" ? <rect x="9" y="9" width="6" height="6" rx="1" /> : null}
     </svg>
   );
 }

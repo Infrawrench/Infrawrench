@@ -91,13 +91,14 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key         | Meaning                                                                                                                     |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `name`      | Required.                                                                                                                   |
-| `on`        | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push. |
-| `workspace` | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                      |
-| `scratch`   | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.            |
-| `jobs`      | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                        |
+| Key           | Meaning                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | Required.                                                                                                                                      |
+| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push.                    |
+| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                         |
+| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                               |
+| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency). |
+| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                           |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
 in UTC: five fields (minute, hour, day of month, month, day of week) taking
@@ -177,12 +178,65 @@ Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
 `${{ needs.<job>.result }}`, `${{ commit.sha }}`, `${{ commit.short-sha }}`,
-`${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`, `${{ vars.<name> }}`,
+`${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`,
+`${{ pipeline.name }}` (the file's `name:`), `${{ pull-request.number }}`
+(empty unless the event is `pull-request`), `${{ vars.<name> }}`,
 and, in `env:` values only, `${{ secrets.<name> }}` (see
 [Secrets and variables](#secrets-and-variables)). Each is one name;
 operators belong in `if:`. Every name is checked when the file is parsed:
 reading a job that is not in `needs:`, or an output that job does not
 declare, is an error at push time rather than an empty string at run time.
+
+### Concurrency
+
+```yaml
+concurrency: deploy-${{ commit.branch }}
+# or
+concurrency:
+  group: ${{ pipeline.name }}-${{ commit.branch }}
+  cancel-in-progress: true
+```
+
+A pipeline in a group runs only when no other run of the same repository
+holds that group. The runner evaluates the group (it parses the file; see
+`POST /v1/concurrency`) and stops a run when asked (`POST
+/v1/runs/{id}/cancel`); it sees one run at a time, so whoever dispatches a
+repository's runs enforces the groups. In this repository that is the app
+(`app/packages/server-core/src/ci/`):
+
+- Per repository, at most one run per group is admitted. Group names
+  compare case-insensitively.
+- With `cancel-in-progress: true`, a newer run cancels the older run in its
+  group: only that run's pipelines in the group are stopped (`POST
+/v1/runs/{id}/cancel` with `{ "pipelines": [...] }`; its other pipelines
+  carry on) and end `cancelled`. Without it the newer run waits
+  (`pending`), and an older run already waiting in the group is cancelled:
+  only the newest waiting run is kept.
+- An older run never displaces or waits behind a newer one: one that
+  reaches its group after a newer run of it is cancelled as superseded.
+- A run is every pipeline a commit's event triggers, so a run waits as a
+  whole for the groups of all of them, and holds them all.
+- A pull request from a fork has its groups scoped to that pull request,
+  since its pipeline files are the fork's.
+- The group is substituted when the file is parsed, so it can use the names
+  known before a run starts (`commit.*`, `repo.id`, `event`,
+  `pipeline.name`, `pull-request.number`, `vars.*`), not `matrix`, `needs`,
+  `package` or secrets. It is at most 256 characters once substituted, and
+  not empty. `cancel-in-progress` is `true` or `false`, not an expression.
+- Jobs have no `concurrency:` of their own: a job-level group would need the
+  runner to hold a job back on a lock only the dispatcher sees.
+- Scheduled runs are fired by the proxy, not the app (see
+  [Scheduled runs](#scheduled-runs)), so a scheduled pipeline's group only
+  counts the proxy's other scheduled runs: the proxy's runs and the app's
+  never wait for each other.
+
+A cancelled job is stopped the way its timeout would stop it (its processes
+interrupted, then killed, its services stopped) and reports
+`"status": "cancelled"`; jobs that had not started report `cancelled`
+without running, and so do the jobs that need them, `if: always()` or
+not. A pipeline cancelled before it started is reported as
+`{ "outcome": "cancelled", "file", "name" }`. A cancelled job saves no
+`cache:` or `task-cache:` entry, and is billed for the time it ran.
 
 ### Secrets and variables
 
@@ -1612,6 +1666,8 @@ answer for any owner, and a full runner says so instead of queueing.
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
+| `POST /v1/runs/{id}/cancel`             | Cancels a run on this runner, or only some of its pipelines (below).                                                                                                    |
+| `POST /v1/concurrency`                  | The pipelines a request (below) would run and each one's `concurrency:` group, without running anything (below).                                                        |
 | `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.                                                                                           |
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
 | `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches, never its downloads (below), and answers what went.                                                                                    |
@@ -1676,7 +1732,8 @@ A request body (for `runs` and `prepare`):
   its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU
   (`vcpu_seconds`) and the memory it reserved over that time
   (`memory_gib_seconds`). Failed and errored runs are recorded too, with no
-  usage. Storage is read from `GET /v1/storage/{owner}`, for billing by
+  usage. The record's `schema` is 2: from it a job's `status` may be
+  `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`). Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
   the same four per repository under `repos`.
@@ -1686,6 +1743,28 @@ A request body (for `runs` and `prepare`):
   make room.
 - **Run ids.** A finished run's result carries its `run_id`, which is what
   its downloads are stored under.
+- **Cancelling.** `POST /v1/runs/{id}/cancel` with no body, or `{}`,
+  cancels the whole run; `{ "pipelines": [".infrawrench/ci/test.yml"] }`
+  cancels only those pipeline files (a pipeline sent as `pipeline` text is
+  `request`): the one running is stopped and the others never start. It
+  answers `202 { "id", "state": "cancelling" }` for a run running on this
+  runner, `200 { "id", "state": "finished" }` for one it has already
+  finished (nothing changes), and `404` otherwise; asking twice is
+  harmless. Stopping takes as long as a timeout's (at most a few seconds,
+  services included). The run's result then has `"cancelled": true` and
+  `"passed": false`, its stopped and never-started jobs
+  `"status": "cancelled"` (see [Concurrency](#concurrency)), and the live
+  log's `job-finished` events say `cancelled` and `run-finished` carries
+  `cancelled`.
+- **Concurrency groups.** `POST /v1/concurrency` takes the same body as a
+  run and resolves it as a run would (the commit, the pipeline files or
+  `pipeline`, `base` for `paths:`), without a job slot, answering only the
+  pipelines the event triggers:
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" } }] }`,
+  with `"concurrency": null` for a pipeline without one. Files that do not
+  parse are left out (the run reports them). `400` for a bad request,
+  `422` when the commit cannot be fetched. `POST /v1/schedules/read`
+  carries each scheduled pipeline's `concurrency` the same way.
 - **Without the task cache.** A request with `"no-task-cache": true`, or
   `iwci run --no-task-cache`, runs every `task-cache:` job instead of
   replaying a passing run's entry, and each says so in its cache lines. A job that
@@ -1738,6 +1817,12 @@ schedule once per runner. Its README has the routes; the short version:
    `event: schedule` and the stored text as `pipeline`.
 3. A minute that finds every runner full is recorded as `no-capacity` and
    not retried. Billing is the runners' own usage record, as for any run.
+4. Of a group's pipelines due in the same minute only the last fires. A
+   scheduled run of the group still going (started in the last 6 hours)
+   is cancelled when the pipeline has `cancel-in-progress`; otherwise the
+   fire is skipped and recorded as `concurrency: waiting for ...`, never
+   queued, as a full pool is. Pushes and pull requests, which the app
+   dispatches, are not counted, and do not wait for scheduled runs.
 
 ## Known limitations
 

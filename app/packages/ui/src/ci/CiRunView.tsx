@@ -94,6 +94,8 @@ export function ciJobStatusLabel(status: CiLiveJobStatus, gt: Gt): string {
       return gt("Running");
     case "pending":
       return gt("Waiting");
+    case "cancelled":
+      return gt("Cancelled");
   }
 }
 

@@ -7,16 +7,20 @@
 export const CI_RUN_STATUSES = [
   "awaiting_approval",
   "queued",
+  /** Waiting for its concurrency group: another run of the repository holds it. */
+  "pending",
   "running",
   "passed",
   "failed",
   "error",
   "rejected",
+  /** Stopped before it finished: by a newer run of its concurrency group, or by a person. */
+  "cancelled",
 ] as const;
 
 export type CiRunStatus = (typeof CI_RUN_STATUSES)[number];
 
-export const CI_JOB_STATUSES = ["passed", "failed", "skipped", "error"] as const;
+export const CI_JOB_STATUSES = ["passed", "failed", "skipped", "error", "cancelled"] as const;
 
 export type CiJobStatus = (typeof CI_JOB_STATUSES)[number];
 
@@ -93,6 +97,13 @@ export interface CiRun {
   retriedAsRunId?: string | null;
   /** Run without reading the task cache: every `task-cache:` job ran. */
   noTaskCache?: boolean;
+  /**
+   * The concurrency groups its pipelines hold or wait for (`concurrency:`),
+   * once the runners have read them; absent before then.
+   */
+  concurrencyGroups?: string[];
+  /** Someone asked to cancel it and the runner is stopping it. */
+  cancelRequested?: boolean;
 }
 
 export interface CiRunDetail {
@@ -134,7 +145,15 @@ export interface CiUsage {
 }
 
 /** The runs a retry can start from: finished ones. */
-export const CI_RETRYABLE_STATUSES: readonly CiRunStatus[] = ["passed", "failed", "error"];
+export const CI_RETRYABLE_STATUSES: readonly CiRunStatus[] = [
+  "passed",
+  "failed",
+  "error",
+  "cancelled",
+];
+
+/** The runs that can be cancelled: not started, waiting for their group, or running. */
+export const CI_CANCELLABLE_STATUSES: readonly CiRunStatus[] = ["queued", "pending", "running"];
 
 /** One repository's stored caches (`cache:` and `task-cache:` entries). */
 export interface CiRepoCache {

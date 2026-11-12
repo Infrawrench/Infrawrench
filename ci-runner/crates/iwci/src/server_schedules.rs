@@ -33,11 +33,12 @@ impl Server {
             branch: branch.clone(),
             repo_id: repo_id.as_str().to_string(),
             event: Event::Schedule,
-            // Variables only decide what a run does, not which pipelines
-            // have schedules.
-            vars: Default::default(),
+            // Variables do not decide which pipelines have schedules, but
+            // a concurrency group may read one.
+            vars: req.vars.clone(),
             // Which packages a job runs in does not decide its schedule.
             packages: Default::default(),
+            ..Default::default()
         };
         let mut pipelines = Vec::new();
         let mut problems = Vec::new();
@@ -48,6 +49,9 @@ impl Server {
                     "name": plan.name,
                     "cron": plan.triggers.schedule.iter().map(|c| c.source()).collect::<Vec<_>>(),
                     "text": text,
+                    // What a scheduled run's group is, for the proxy that
+                    // fires it (it keeps its own fires to their groups).
+                    "concurrency": plan.concurrency,
                 })),
                 Ok(_) => {}
                 Err(e) => problems.push(format!("{file}: {e}")),

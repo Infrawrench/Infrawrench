@@ -38,6 +38,7 @@ const mockReject = vi.fn();
 const mockDispatch = vi.fn();
 const mockOpenLogs = vi.fn();
 const mockRetry = vi.fn();
+const mockCancel = vi.fn();
 const mockDownloadLink = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
   openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
@@ -48,6 +49,7 @@ vi.mock("@infrawrench/server-core/ci/runs", () => ({
   rejectRun: (...a: unknown[]) => mockReject(...a),
   dispatchRun: (...a: unknown[]) => mockDispatch(...a),
   retryRun: (...a: unknown[]) => mockRetry(...a),
+  cancelRun: (...a: unknown[]) => mockCancel(...a),
   getDownloadLink: (...a: unknown[]) => mockDownloadLink(...a),
 }));
 const mockListCaches = vi.fn();
@@ -274,6 +276,58 @@ describe("CI routes", () => {
     expect(waiting.status).toBe(409);
     await settle();
     expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("cancels under ci:approve only, audited", async () => {
+    const denied = await app(["ci:read", "ci:write"]).request(`/runs/${RUN}/cancel`, {
+      method: "POST",
+    });
+    expect(denied.status).toBe(403);
+    expect(mockCancel).not.toHaveBeenCalled();
+
+    mockCancel.mockResolvedValue({
+      id: RUN,
+      repoFullName: "acme/web",
+      event: "push",
+      headRef: "main",
+      sha: "a".repeat(40),
+      pullNumber: null,
+      headRepoFullName: null,
+      fromFork: false,
+      actorLogin: "octo",
+      status: "running",
+      statusReason: null,
+      createdAt: "2026-11-12T10:00:00.000Z",
+      startedAt: "2026-11-12T10:00:05.000Z",
+      finishedAt: null,
+      jobs: null,
+      vcpuSeconds: null,
+      memoryGibSeconds: null,
+      githubUrl: "https://github.com/acme/web/commit/" + "a".repeat(40),
+      concurrencyGroups: ["ci-main"],
+      cancelRequested: true,
+    });
+    const ok = await app(["ci:approve"]).request(`/runs/${RUN}/cancel`, { method: "POST" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({
+      id: RUN,
+      cancelRequested: true,
+      concurrencyGroups: ["ci-main"],
+    });
+    expect(mockCancel).toHaveBeenCalledWith("org-1", RUN);
+    await settle();
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ci.run.cancel",
+        entityId: RUN,
+        metadata: { repo: "acme/web", status: "running" },
+      }),
+    );
+
+    mockCancel.mockRejectedValueOnce(
+      new FakeCiInputError("Only a queued, waiting or running run can be cancelled.", 409),
+    );
+    expect((await app().request(`/runs/${RUN}/cancel`, { method: "POST" })).status).toBe(409);
   });
 
   it("lists caches under ci:read and clears one under ci:write, audited", async () => {

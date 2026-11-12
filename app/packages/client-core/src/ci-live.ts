@@ -5,7 +5,7 @@
  * Both apps reduce the stream with {@link reduceCiLog} and render the same
  * view the finished run's report gives.
  */
-import type { CiJobStatus } from "./ci";
+import { CI_JOB_STATUSES, type CiJobStatus } from "./ci";
 import type { SseFrame } from "./sse";
 
 /** One job key of a pipeline, as the runner announces it before any job runs. */
@@ -29,7 +29,13 @@ export type CiLogEvent =
       cached?: boolean;
     }
   | { event: "truncated"; after_bytes?: number }
-  | { event: "run-finished"; passed?: boolean | null; error?: string | null };
+  | {
+      event: "run-finished";
+      passed?: boolean | null;
+      error?: string | null;
+      /** Something in it was cancelled (runners from the release with cancelling). */
+      cancelled?: boolean;
+    };
 
 /**
  * A frame of the log stream as a {@link CiLogEvent}, or `null` for one this
@@ -97,7 +103,7 @@ export function ciLiveJobKey(pipeline: string, id: string): string {
   return `${pipeline}\u0000${id}`;
 }
 
-const FINISHED: readonly string[] = ["passed", "failed", "skipped", "error"];
+const FINISHED: readonly string[] = CI_JOB_STATUSES;
 
 /**
  * `run` with `events` applied, in order. Pipelines run one after another, so

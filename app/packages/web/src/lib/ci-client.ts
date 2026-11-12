@@ -76,6 +76,7 @@ export function createWebCiClient(orgId: string): CiClient {
     },
     retryRun: (id, { noTaskCache }) =>
       apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/retry`, { noTaskCache }),
+    cancelRun: (id) => apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/cancel`),
     listCaches: () => apiGet<CiCaches>(`${base}/caches`),
     clearCache: (installationId, repo) =>
       apiDelete<CiCacheCleared>(`${base}/caches/${installationId}/${encodeURIComponent(repo)}`),

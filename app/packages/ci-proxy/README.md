@@ -17,23 +17,25 @@ bucket (below).
 Every route but `/healthz` and `/v1/artifacts/...` needs
 `Authorization: Bearer <PROXY_KEY>`.
 
-| Route                                                                 | Does                                                                              |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `GET /healthz`                                                        | `200 ok`, unauthenticated.                                                        |
-| `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | A job's download, for a link the app signed (below); no bearer key.               |
-| `GET`, `PUT /v1/runners`                                              | The runners runs go to (below).                                                   |
-| `GET /v1/capacity`                                                    | Each runner's slots and whether it answered, and the pool's totals.               |
-| `POST /v1/runs[?wait=true]`                                           | A run on the runner with the most free slots. `429` only when every runner is.    |
-| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                         | From the runner that has the run. Logs stream through as Server-Sent Events.      |
-| `POST /v1/prepare`                                                    | Warms a runner for a request, placed like a run.                                  |
-| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                        | From any runner that answers; they all read the same store.                       |
-| `DELETE /v1/storage/{owner}/{repo-id}`                                | Clears one repository's caches (never its downloads), on any runner that answers. |
-| `PUT /v1/schedules`                                                   | Registers a repository's scheduled pipelines (below).                             |
-| `GET /v1/schedules/{owner}`                                           | An owner's registered repositories, their crons and the last refresh's error.     |
-| `DELETE /v1/schedules/{owner}/{repo-id}`                              | Stops a repository's scheduled runs.                                              |
-| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets`                      | Secret names and when each was set; never values.                                 |
-| `PUT`, `DELETE .../secrets/{name}`                                    | Sets (`{ "value": "..." }`) or removes a secret.                                  |
-| `GET`, `PUT`, `DELETE .../vars[/{name}]`                              | The same for variables, whose values are listed.                                  |
+| Route                                                                 | Does                                                                               |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /healthz`                                                        | `200 ok`, unauthenticated.                                                         |
+| `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | A job's download, for a link the app signed (below); no bearer key.                |
+| `GET`, `PUT /v1/runners`                                              | The runners runs go to (below).                                                    |
+| `GET /v1/capacity`                                                    | Each runner's slots and whether it answered, and the pool's totals.                |
+| `POST /v1/runs[?wait=true]`                                           | A run on the runner with the most free slots. `429` only when every runner is.     |
+| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                         | From the runner that has the run. Logs stream through as Server-Sent Events.       |
+| `POST /v1/runs/{id}/cancel`                                           | Cancels the run, or the pipelines the body names, on the runner that has it.       |
+| `POST /v1/concurrency`                                                | A request's pipelines and their concurrency groups, from any runner; runs nothing. |
+| `POST /v1/prepare`                                                    | Warms a runner for a request, placed like a run.                                   |
+| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                        | From any runner that answers; they all read the same store.                        |
+| `DELETE /v1/storage/{owner}/{repo-id}`                                | Clears one repository's caches (never its downloads), on any runner that answers.  |
+| `PUT /v1/schedules`                                                   | Registers a repository's scheduled pipelines (below).                              |
+| `GET /v1/schedules/{owner}`                                           | An owner's registered repositories, their crons and the last refresh's error.      |
+| `DELETE /v1/schedules/{owner}/{repo-id}`                              | Stops a repository's scheduled runs.                                               |
+| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets`                      | Secret names and when each was set; never values.                                  |
+| `PUT`, `DELETE .../secrets/{name}`                                    | Sets (`{ "value": "..." }`) or removes a secret.                                   |
+| `GET`, `PUT`, `DELETE .../vars[/{name}]`                              | The same for variables, whose values are listed.                                   |
 
 Request bodies are the runner's (`ci-runner/README.md`, "HTTP API"). A run id
 is the runner's id prefixed with the runner's name (`ci-1.<32 hex>`), which
@@ -101,6 +103,17 @@ Every minute it:
 
 A minute in which every runner is full is recorded as `no-capacity` and not
 retried; the next due minute fires normally.
+
+A pipeline with `concurrency:` (`ci-runner/README.md`, "Concurrency") keeps
+its group among the proxy's own scheduled runs of the repository: of the
+group's pipelines due in one minute only the last in file order fires, and
+a scheduled run of the group still going from the last six hours is
+cancelled when the pipeline says `cancel-in-progress: true`, or else the new
+fire is skipped and recorded as `concurrency: waiting for ...`, for the same
+reason a full pool's is not queued. Runs the app starts (pushes, pull
+requests, retries) keep their groups in the app, which sees all of them; the
+two do not wait for each other. On `POST /v1/concurrency` the proxy adds the
+stored variables, never secrets, since a group may read `vars`.
 
 ## Downloads
 
