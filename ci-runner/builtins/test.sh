@@ -741,6 +741,53 @@ jobs:
       console.log(text, fs.existsSync("data.txt"), fs.readdirSync("go").sort().join(","), fs.readlinkSync("node-link"));
       JS
       test "$(node /tmp/rename.js)" = "fixture line false clean,renamed data.txt"
+  # `fs.rmSync(dir, { recursive: true })` removes the tree (#1049). Its
+  # `remove` tries `unlink` before `rmdir`, and WASIX's unlink of a
+  # directory dropped it from its directory cache before refusing, so the
+  # `rmdir` found nothing, and the call removed nothing and succeeded
+  # (wasmer-wasix.patch, from wasmerio/wasmer#7076).
+  rm-recursive-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      cat > /tmp/rm.js <<'JS'
+      const fs = require("node:fs");
+      const os = require("node:os");
+      const path = require("node:path");
+      const assert = require("node:assert");
+      const tree = () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rm-"));
+        fs.mkdirSync(path.join(dir, "a", "b"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "a", "b", "f"), "x");
+        fs.writeFileSync(path.join(dir, "g"), "y");
+        fs.mkdirSync(path.join(dir, "empty"));
+        return dir;
+      };
+      for (const remove of [
+        (dir) => fs.rmSync(dir, { recursive: true }),
+        (dir) => fs.rmSync(dir, { recursive: true, force: true }),
+        (dir) => fs.rmdirSync(dir, { recursive: true }),
+      ]) {
+        const dir = tree();
+        remove(dir);
+        assert.equal(fs.existsSync(dir), false);
+      }
+      const empty = fs.mkdtempSync(path.join(os.tmpdir(), "rm-"));
+      fs.rmSync(empty, { recursive: true });
+      assert.equal(fs.existsSync(empty), false);
+      // Unlinking a directory fails and changes nothing.
+      const kept = tree();
+      assert.throws(() => fs.unlinkSync(kept), { code: "EISDIR" });
+      assert.deepStrictEqual(fs.readdirSync(kept).sort(), ["a", "empty", "g"]);
+      fs.rmSync(kept, { recursive: true });
+      assert.equal(fs.existsSync(kept), false);
+      // A directory from the checkout.
+      fs.rmSync("go", { recursive: true });
+      assert.equal(fs.existsSync("go"), false);
+      console.log("rm ok");
+      JS
+      test "$(node /tmp/rm.js)" = "rm ok"
+      test ! -e go
   # Two isolates alive at once, each growing its heap well past where it
   # starts: two jobs' `node` once crashed the runner on a CPU with memory
   # protection keys, and a burst of allocation outran fixed heap grants and
