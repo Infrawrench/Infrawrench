@@ -9,8 +9,8 @@
 #   env:php        the same as env:bash plus PHP (Wasmer's phpix), Composer
 #                  and a `php` that behaves like php-cli (php-cli/build.sh)
 #   env:go         the same as env:bash plus a Go toolchain (five minors)
-#   env:postgres   the same as env:bash plus PostgreSQL (Wasmer's pglite),
-#                  for a job's `services:`
+#   env:postgres   the same as env:bash plus PostgreSQL (Wasmer's pglite)
+#                  and pglite-server, for a job's `services:`
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -25,13 +25,14 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Four packages are not taken from the CDN as they are. `edgejs/build.sh`
+# Five packages are not taken from the CDN as they are. `edgejs/build.sh`
 # builds Wasmer's Edge.js 0.2.5 from source on a C library without the races
 # behind #937 and #967, which no Wasmer release has yet; `bash/build.sh` and
 # `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
-# that split an argument at its line feeds (#1003, #1022); and
-# `php-cli/build.sh` packages env:php's own `php` and Composer. Each result
-# is pinned here by hash like the others, so a build that comes out
+# that split an argument at its line feeds (#1003, #1022);
+# `php-cli/build.sh` packages env:php's own `php` and Composer; and
+# `pglite-server/build.sh` env:postgres's server for many connections. Each
+# result is pinned here by hash like the others, so a build that comes out
 # different fails.
 #
 #   environments/build.sh              all of them
@@ -45,12 +46,14 @@
 #                                      or uses its webcs already in
 #                                      dist/package/go/
 #   environments/build.sh go@1.25      just that minor
-#   environments/build.sh postgres     the same as bash
+#   environments/build.sh postgres     the same as bash, on Linux (x86_64 or
+#                                      ARM64) to build pglite-server
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
-# Needs: curl, shasum, and what patch-module.sh needs; bash-node and php also
-# what edgejs/build.sh and php-cli/build.sh need.
+# Needs: curl, shasum, and what patch-module.sh needs; bash-node, php and
+# postgres also what edgejs/build.sh, php-cli/build.sh and
+# pglite-server/build.sh need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -79,6 +82,10 @@ ICU_DATA_PKG="wasmer/icu-data 78.3.0 6e27d8c3828d52fb7ad66afb8438d4c18dde7f5b8df
 # exits; the database is in memory. A service (`services:`), not a job's
 # own environment: README.md, "Services".
 PGLITE_PKG="wasmer/pglite 0.2.0 4dd0b5db74b06ecf899f19fae460fd775fbb7a6a93663541786efacd633c7a10"
+# Built by pglite-server/build.sh: many connections over pglite's one, a
+# transaction at a time, and a pgcrypto (pglite has no OpenSSL). Its hash is
+# its output's, as with Edge.js.
+PGLITE_SERVER_PKG="iwci/pglite-server 1.0.0 2ee4e13f7554cc290a6954508f157292646966e15998d583468ba0a422cecab4"
 # python/python's version is Wasmer's, not the interpreter's: 3.13.20 holds
 # CPython 3.13.15, which named the environment's first version. Its prefix is
 # a Nix store path inside the package, where pip puts console scripts
@@ -166,6 +173,7 @@ fetch() {
     wasmer/sed) ours="sed" ;;
     wasmer/edgejs) ours=edgejs ;;
     iwci/php-cli) ours="php-cli" ;;
+    iwci/pglite-server) ours="pglite-server" ;;
   esac
   if [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
@@ -285,8 +293,9 @@ for env in "$@"; do
       ;;
     postgres)
       # Its version is PostgreSQL's, as python's is CPython's.
-      build_env postgres 18.4.0 "GNU bash 5.1, coreutils, sed, grep, findutils and PostgreSQL 18.4 (Wasmer's pglite: one connection, in memory)" \
-        "" "${TOOLS[@]}" "$PGLITE_PKG"
+      # 18.4.1: and pglite-server, for many connections and pgcrypto.
+      build_env postgres 18.4.1 "GNU bash 5.1, coreutils, sed, grep, findutils and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
+        "" "${TOOLS[@]}" "$PGLITE_PKG" "$PGLITE_SERVER_PKG"
       ;;
     *)
       echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>) and postgres" >&2
