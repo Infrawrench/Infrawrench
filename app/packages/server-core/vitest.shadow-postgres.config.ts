@@ -17,7 +17,16 @@ const include = readdirSync(testsDir)
   .filter((name) => readFileSync(join(testsDir, name), "utf8").includes("helpers/fake-postgres"))
   .map((name) => `${testsDir}/${name}`);
 
+// The Turso driver's addon has no WebAssembly build; where Node itself is
+// WebAssembly (Infrawrench CI's runner), the client's own entry without it,
+// as in vitest.config.ts.
+const libsqlWithoutAddon =
+  (process.platform as string) === "wasi"
+    ? [{ find: /^@libsql\/client$/, replacement: "@libsql/client/web" }]
+    : [];
+
 export default defineConfig({
+  resolve: { alias: libsqlWithoutAddon },
   test: {
     environment: "node",
     include,
