@@ -50,13 +50,16 @@ Choosing accounts takes the `ci:write` permission; everyone in the organization 
 
 A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a bash script (`run:`) in an environment:
 
-| Environment        | What it has                                                  |
-| ------------------ | ------------------------------------------------------------ |
-| `env:bash@5`       | bash, coreutils, sed, grep and findutils                     |
-| `env:bash-node@24` | the same, plus `node` (Node 24 compatible), `npm` and `pnpm` |
-| `env:python@3.13`  | the same as `env:bash@5`, plus Python 3.13 with `pip`        |
+| Environment                    | What it has                                                               |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `env:bash@5`                   | bash, coreutils, sed, grep and findutils                                  |
+| `env:bash-node@24`             | the same, plus `node` (Node 24 compatible), `npm` and `pnpm`              |
+| `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                     |
+| `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer |
 
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not, and `python -m venv` is not available: packages install into the job's own copy of Python. pip downloads while the job runs, so leave the job's network on (no `network: false`).
+
+In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
 
 ```yaml
 jobs:

@@ -6,9 +6,12 @@
 #   env:bash       bash, coreutils, sed, grep and findutils
 #   env:bash-node  the same plus Edge.js (node, npm and pnpm)
 #   env:python     the same as env:bash plus CPython with pip
+#   env:php        the same as env:bash plus PHP (Wasmer's phpix), Composer
+#                  and a `php` that behaves like php-cli (php-cli/build.sh)
 #
 # An environment can also set default environment variables, which a job's
-# own `env:` overrides (python's make pip and pytest work here).
+# own `env:` overrides (python's make pip and pytest work here, php's put
+# php-cli's commands first).
 #
 # Edge.js's WASIX package carries no JavaScript engine of its own; it
 # imports N-API from the host, and the runner provides it with V8 through
@@ -19,18 +22,22 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Edge.js is the one package not taken from the CDN. `edgejs/build.sh`
-# builds Wasmer's 0.2.5 from source on a C library without the races behind
-# #937 and #967, which no Wasmer release has yet; its result is pinned here
-# by hash like the others, so a build that comes out different fails.
+# Two packages are not taken from the CDN. `edgejs/build.sh` builds Wasmer's
+# Edge.js 0.2.5 from source on a C library without the races behind #937 and
+# #967, which no Wasmer release has yet, and `php-cli/build.sh` packages
+# env:php's own `php` and Composer. Each result is pinned here by hash like
+# the others, so a build that comes out different fails.
 #
 #   environments/build.sh              all of them
 #   environments/build.sh bash         just this one (any host)
 #   environments/build.sh python       the same
+#   environments/build.sh php          every PHP version (Linux, x86_64 or
+#                                      ARM64, to build php-cli)
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
-# Needs: curl, shasum; bash-node also what edgejs/build.sh needs.
+# Needs: curl, shasum; bash-node and php also what edgejs/build.sh and
+# php-cli/build.sh need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -41,6 +48,13 @@ SED_PKG="wasmer/sed 4.9.0 3fc12256be87f6b8b7810d68d642359a6220f63b39a2ea6ef7a2bb
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
 PYTHON_PKG="python/python 3.13.20 a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
+PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
+PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
+PHP83_PKG="phpix/phpix-83-64bit 0.3.1 d2ff745903b5c6130662a198d330456daf8cb953438a0d8b8246130a3fb25043"
+PHP84_PKG="phpix/phpix-84-64bit 0.3.1 87544a1e1f2aa90d51a8e03f7c488688a13c76e60bf66bd2e24259cd53a9d818"
+PHP85_PKG="phpix/phpix-85-64bit 0.3.1 b7e965aad52225c843d0b2540e060f097bd431adcdf228de387c395f435dc074"
+SENDMAIL_PKG="sendmail/sendmail 0.1.10 95e52a98e0e684c681c128a07a8031ed284cb5bea71b73a74a44d037a5288d13"
+ICU_DATA_PKG="wasmer/icu-data 78.3.0 6e27d8c3828d52fb7ad66afb8438d4c18dde7f5b8dffae7069bc1fd989076c20"
 # python/python's version is Wasmer's, not the interpreter's: 3.13.20 holds
 # CPython 3.13.15, which is the environment's version. Its prefix is a Nix
 # store path inside the package, where pip puts console scripts (`pytest`).
@@ -69,19 +83,46 @@ PYTHON_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:'"$PYTHON_PREFIX"'/bin",
     "PIP_ROOT_USER_ACTION": "ignore",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     "PYTEST_ADDOPTS": "-p no:faulthandler"'
+# phpix is Wasmer's PHP: libphp from wasix-org/php inside a host of their
+# own whose source is not public, and its OpenSSL and curl report
+# development versions (3.2.0-dev, 8.4.0-DEV). It needs sendmail (`mail()`)
+# and the ICU data (`intl`) beside it. php-cli/build.sh builds the rest
+# (a `php` that keeps the working directory, Composer); its hash is its
+# output's, as with Edge.js.
+PHP_CLI_PKG="iwci/php-cli 1.0.0 83be1308ebb5e9aca02ded9133aec8f6de24c15e763ae0568adff80301f983ea"
+# What PHP jobs need here (README.md, "PHP"):
+#   PATH  php-cli's `php` and `composer` ahead of phpix's own `php`.
+#   COMPOSER_ALLOW_SUPERUSER  a job runs as root, which Composer warns
+#     about on every command.
+#   COMPOSER_NO_INTERACTION  nobody answers a question in a job, and a job's
+#     descriptors all read as terminals (#1008), so Composer would ask.
+PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
+    "COMPOSER_ALLOW_SUPERUSER": "1",
+    "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.4 db3d944ce796cfa271eb718634759d6bebffe85b5ad805c7424a77684d831df5"
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4"
   local file="$dir/${name//\//-}-$version.webc"
-  if [[ "$name" == wasmer/edgejs ]]; then
+  local ours=""
+  case "$name" in
+    wasmer/edgejs) ours=edgejs ;;
+    iwci/php-cli) ours=php-cli ;;
+  esac
+  if [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
-    local built="$dist/package/edgejs/$version/edgejs.webc"
-    [[ -f "$built" ]] || bash "$here/environments/edgejs/build.sh" >&2
+    local built="$dist/package/$ours/$version/$ours.webc"
+    [[ -f "$built" ]] || bash "$here/environments/$ours/build.sh" >&2
     cp "$built" "$file"
   else
-    curl -fsSL --retry 3 -o "$file" "https://cdn.wasmer.io/webcimages/$sha.webc"
+    # Once per run: environments share most of their packages.
+    local cached="$SCRATCH/cdn/$sha.webc"
+    if [[ ! -f "$cached" ]]; then
+      mkdir -p "$SCRATCH/cdn"
+      curl -fsSL --retry 3 -o "$cached" "https://cdn.wasmer.io/webcimages/$sha.webc"
+    fi
+    cp "$cached" "$file"
   fi
   local actual
   actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
@@ -123,7 +164,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python
+  set -- bash bash-node python php
 fi
 for env in "$@"; do
   case "$env" in
@@ -142,8 +183,15 @@ for env in "$@"; do
       build_env python 3.13.15 "GNU bash 5.1, coreutils, sed, grep, findutils and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
+    php)
+      # phpix 0.3.1 holds PHP 8.1.34, 8.2.35, 8.3.36, 8.4.27 and 8.5.12.
+      for pkg in "8.1.34 $PHP81_PKG" "8.2.35 $PHP82_PKG" "8.3.36 $PHP83_PKG" "8.4.27 $PHP84_PKG" "8.5.12 $PHP85_PKG"; do
+        build_env php "${pkg%% *}" "GNU bash 5.1, coreutils, sed, grep, findutils, PHP ${pkg%% *} (Wasmer's phpix) and Composer" \
+          "$PHP_ENV" "${TOOLS[@]}" "${pkg#* }" "$SENDMAIL_PKG" "$ICU_DATA_PKG" "$PHP_CLI_PKG"
+      done
+      ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node and python" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python and php" >&2
       exit 2
       ;;
   esac

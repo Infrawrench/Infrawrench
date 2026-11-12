@@ -8,7 +8,7 @@
 # is not formatted, tsc reports the type error).
 #
 #   builtins/test.sh                 gofmt, bash and tools (the default)
-#   builtins/test.sh typescript oxfmt bash-node python
+#   builtins/test.sh typescript oxfmt bash-node python php
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list.
@@ -22,8 +22,9 @@
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`, and x86_64 Linux to build its
 # Edge.js, see environments/edgejs/build.sh). SKIP_BUILD=1 publishes what is
-# already in dist/ instead of building. python installs packages from PyPI
-# and Wasmer's wheel index, so it needs the internet. Needs: git, jq, and
+# already in dist/ instead of building. python and php install packages
+# (from PyPI and Wasmer's wheel index, and from Packagist), so they need the
+# internet. Needs: git, jq, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -44,11 +45,11 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/$name/build.sh"
       dirs=("$dist"/builtin/"$name"/*)
       ;;
-    bash | bash-node | python)
+    bash | bash-node | python | php)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -60,7 +61,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, tools" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, tools" >&2
       exit 2
       ;;
   esac
@@ -88,6 +89,62 @@ printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n' 
 printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 6\n' >"$repo/py/bad/test_calc.py"
 # A repository's own addopts, which the environment's must not replace.
 printf '[pytest]\naddopts = -ra\n' >"$repo/py/ok/pytest.ini"
+# A Composer project with a dependency it uses, tested by PHPUnit; the bad
+# one expects the wrong greeting. No lock file: each PHP version resolves
+# the PHPUnit it supports.
+for dir in ok bad; do
+  mkdir -p "$repo/php/$dir/src" "$repo/php/$dir/tests"
+  cat >"$repo/php/$dir/composer.json" <<'JSON'
+{
+  "require": { "monolog/monolog": "^3.0" },
+  "require-dev": { "phpunit/phpunit": "^10.5 || ^11.5 || ^12.0" },
+  "autoload": { "psr-4": { "App\\": "src/" } },
+  "scripts": { "test": "phpunit" }
+}
+JSON
+  cat >"$repo/php/$dir/phpunit.xml" <<'XML'
+<?xml version="1.0"?>
+<phpunit bootstrap="vendor/autoload.php">
+  <testsuites><testsuite name="app"><directory>tests</directory></testsuite></testsuites>
+</phpunit>
+XML
+  cat >"$repo/php/$dir/src/Greeter.php" <<'PHP'
+<?php
+namespace App;
+
+use Monolog\Logger;
+
+final class Greeter
+{
+    public function __construct(private Logger $log) {}
+
+    public function greet(string $name): string
+    {
+        $this->log->info('greeting', ['name' => $name]);
+        return "Hello, $name";
+    }
+}
+PHP
+done
+for want in "ok:Hello, Ada" "bad:Goodbye, Ada"; do
+  cat >"$repo/php/${want%%:*}/tests/GreeterTest.php" <<PHP
+<?php
+use App\\Greeter;
+use Monolog\\Handler\\TestHandler;
+use Monolog\\Logger;
+use PHPUnit\\Framework\\TestCase;
+
+final class GreeterTest extends TestCase
+{
+    public function testGreets(): void
+    {
+        \$log = new TestHandler();
+        \$this->assertSame('${want#*:}', (new Greeter(new Logger('t', [\$log])))->greet('Ada'));
+        \$this->assertTrue(\$log->hasInfoThatContains('greeting'));
+    }
+}
+PHP
+done
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
@@ -839,6 +896,81 @@ jobs:
       test "$(python -c 'import os; print(os.isatty(0), os.isatty(1))' < /dev/null)" = "False False"
 YAML
       ;;
+    php)
+      cat <<'YAML'
+name: php
+jobs:
+  # Each version: Composer installs a project and PHPUnit passes its test.
+  php81-passes:
+    using: env:php@8.1
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      test "$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" = 8.1
+      composer install
+      vendor/bin/phpunit
+  php82-passes:
+    using: env:php@8.2
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      test "$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" = 8.2
+      composer install
+      vendor/bin/phpunit
+  php83-passes:
+    using: env:php@8.3
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      test "$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" = 8.3
+      composer install
+      vendor/bin/phpunit
+  php84-passes:
+    using: env:php@8.4
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      test "$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" = 8.4
+      composer install
+      vendor/bin/phpunit
+  php85-passes:
+    using: env:php@8.5
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      test "$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" = 8.5
+      composer install
+      vendor/bin/phpunit
+  # What env:php's own `php` (environments/php-cli) adds to phpix: a script
+  # runs in the caller's directory, not its own; -m and -l; and a `php` that
+  # Composer starts (`composer test`, through PHP_BINARY) is that one too.
+  php-cli-passes:
+    using: env:php@8.5
+    cwd: /app/php/ok
+    timeout: 10m
+    run: |
+      mkdir -p sub
+      printf '<?php echo getcwd();' > sub/cwd.php
+      test "$(php sub/cwd.php)" = "$PWD"
+      php -m | grep -qx intl
+      test "$(php -l src/Greeter.php)" = "No syntax errors detected in src/Greeter.php"
+      composer --version
+      composer install
+      composer test
+  phpunit-fails:
+    using: env:php@8.5
+    cwd: /app/php/bad
+    timeout: 10m
+    run: |
+      composer install
+      vendor/bin/phpunit
+  lint-fails:
+    using: env:php@8.5
+    run: |
+      printf '<?php echo (;' > /tmp/bad.php
+      php -l /tmp/bad.php
+YAML
+      ;;
   esac
 }
 
@@ -847,7 +979,8 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash/stat-missing-fails | python/pytest-fails | python/raise-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/stat-missing-fails | python/pytest-fails | python/raise-fails | php/phpunit-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
