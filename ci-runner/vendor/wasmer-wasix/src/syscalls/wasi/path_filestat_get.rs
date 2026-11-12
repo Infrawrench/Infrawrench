@@ -67,7 +67,7 @@ pub(crate) fn path_filestat_get_internal(
     flags: LookupFlags,
     path_string: &str,
 ) -> Result<Filestat, Errno> {
-    let root_dir = state.fs.get_fd(fd)?;
+    let root_dir = state.fs.get_path_base_fd(fd, path_string)?;
 
     if !root_dir.inner.rights.contains(Rights::PATH_FILESTAT_GET) {
         return Err(Errno::Access);

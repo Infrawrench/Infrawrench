@@ -465,7 +465,10 @@ come from a patched wasmer-wasix (`vendor/README.md`), as does this: no
 descriptor in a job is a terminal. Its stdin is empty and its output goes to
 the log, so `[ -t 1 ]` is false, a script piped to an interpreter runs as a
 script rather than an interactive session, and tools that colour or prompt
-only on a terminal do neither.
+only on a terminal do neither. A script can use any descriptor, 3 and 4
+included (`exec 3>&1`,
+[#1019](https://github.com/Infrawrench/Infrawrench/issues/1019)), which
+are WASIX's preopens underneath.
 
 An argument with a line feed in it reaches the program whole, so a
 multi-line `node -e`, `python -c` or `bash -c` runs every line

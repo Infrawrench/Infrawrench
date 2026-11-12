@@ -226,7 +226,7 @@ fn path_open_internal_with_symlink_depth(
         dirfd
     };
     let path_arg = std::path::PathBuf::from(path);
-    let working_dir = match state.fs.get_fd(effective_dirfd) {
+    let working_dir = match state.fs.get_path_base_fd(dirfd, path) {
         Ok(fd) => fd,
         Err(err) => return Ok(Err(err)),
     };

@@ -326,6 +326,34 @@ jobs:
       test "$(bash -c 'test -t 1 && echo tty || echo no')" = no
       bash -c 'test -t 1 && echo tty || echo no' > /tmp/t
       test "$(cat /tmp/t)" = no
+  # A script can put its own descriptors on 3 and 4 (#1019), which were
+  # the runtime's preopens and refused with "Not supported" (5 and up
+  # worked), and paths and the programs it starts keep working, whether
+  # they are still there or closed again.
+  low-fds-passes:
+    using: env:bash@5
+    run: |
+      exec 3>&1
+      echo three >&3
+      exec 4>&1
+      echo four >&4
+      test "$(cat data.txt)" = "fixture line"
+      test "$(bash -c 'echo child >&4' 4>&1)" = child
+      echo covered > c.txt
+      read -r line < c.txt
+      test "$line" = covered
+      exec 3>&- 4>&-
+      printf 'one\ntwo\n' > lines
+      exec 3< lines
+      read -r a <&3
+      exec 4< lines
+      read -r b <&4
+      read -r c <&3
+      test "$a $b $c" = "one one two"
+      exec 3<&- 4<&-
+      exec 5>&1
+      test "$(cat lines | wc -l)" = 2
+      ls / > /dev/null
   # An argument with a line feed in it reaches the program whole (#1003):
   # bash's exec joined the arguments with line feeds and WASIX split them
   # there again, so this printed `a|b|c|`. Through a second bash, through

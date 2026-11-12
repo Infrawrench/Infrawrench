@@ -80,8 +80,8 @@ pub(crate) fn path_link_internal(
 ) -> Result<(), Errno> {
     let env = ctx.data();
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
-    let source_fd = state.fs.get_fd(old_fd)?;
-    let target_fd = state.fs.get_fd(new_fd)?;
+    let source_fd = state.fs.get_path_base_fd(old_fd, old_path)?;
+    let target_fd = state.fs.get_path_base_fd(new_fd, new_path)?;
 
     if !source_fd.inner.rights.contains(Rights::PATH_LINK_SOURCE)
         || !target_fd.inner.rights.contains(Rights::PATH_LINK_TARGET)

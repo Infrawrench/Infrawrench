@@ -32,11 +32,11 @@ pub fn path_readlink<M: MemorySize>(
     let env = ctx.data();
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
-    let base_dir = wasi_try_ok!(state.fs.get_fd(dir_fd));
+    let mut path_str = unsafe { get_input_str_ok!(&memory, path, path_len) };
+    let base_dir = wasi_try_ok!(state.fs.get_path_base_fd(dir_fd, &path_str));
     if !base_dir.inner.rights.contains(Rights::PATH_READLINK) {
         return Ok(Errno::Access);
     }
-    let mut path_str = unsafe { get_input_str_ok!(&memory, path, path_len) };
     Span::current().record("path", path_str.as_str());
 
     let inode = wasi_try_ok!(state.fs.get_inode_at_path(inodes, dir_fd, &path_str, false));
