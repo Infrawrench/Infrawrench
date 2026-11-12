@@ -4,6 +4,7 @@ import type {
   CiAccount,
   CiCacheCleared,
   CiCaches,
+  CiDownloadLink,
   CiLogEvent,
   CiRun,
   CiRunDetail,
@@ -27,6 +28,8 @@ export interface CiClient {
    * log cannot be followed (the run is not running, the network).
    */
   streamRunLogs(id: string, signal: AbortSignal): AsyncIterable<CiLogEvent>;
+  /** A short-lived link to a file a job of a finished run kept with `downloads:`. */
+  downloadLink(runId: string, jobId: string, path: string): Promise<CiDownloadLink>;
   approveRun(id: string): Promise<void>;
   rejectRun(id: string): Promise<void>;
   /**

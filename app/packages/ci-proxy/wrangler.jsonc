@@ -27,6 +27,11 @@
     },
   ],
 
+  // The runners' bucket (IWCI_R2_BUCKET), never `infrawrench-ci`, which
+  // holds something else. The proxy serves jobs' downloads from it and sweeps
+  // the expired ones (src/artifacts.ts).
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "infrawrench-ci-runners" }],
+
   "vars": {
     // Only used while the `runners` table is empty: comma-separated
     // `name=url` entries (or plain URLs, named by position). The Terraform
@@ -38,4 +43,5 @@
   //   PROXY_KEY   the bearer key callers send to this Worker
   //   RUNNER_KEY  the IWCI_SERVER_KEY the runners were started with
   //   SECRETS_KEY 32 random bytes, base64: seals stored secrets (README.md)
+  //   ARTIFACT_SIGNING_KEY  signs download links; the app's CI_ARTIFACT_SIGNING_KEY
 }

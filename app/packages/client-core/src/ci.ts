@@ -40,6 +40,28 @@ export interface CiJobOutput extends CiJobSummary {
   /** What the job printed, with the run's secrets masked by the runner. */
   stdout: string;
   stderr: string;
+  /** The files it kept for download (`downloads:`); absent when none. */
+  downloads?: CiDownload[] | undefined;
+}
+
+/** A file a job kept with `downloads:`, in the runners' store until it expires. */
+export interface CiDownload {
+  /** Relative to the clone when it is under it, else absolute. */
+  path: string;
+  size: number;
+  /** Of the stored bytes (for text, after masking). */
+  sha256: string;
+  contentType: string;
+  /** When it stops being served and is deleted. */
+  expiresAt: string;
+  /** Text, with the run's secrets masked; `false` for a binary, stored as it was. */
+  masked: boolean;
+}
+
+/** A short-lived link the CI proxy serves one download from. */
+export interface CiDownloadLink {
+  url: string;
+  expiresAt: string;
 }
 
 export interface CiRun {
@@ -105,9 +127,9 @@ export interface CiUsage {
   runs: number;
   vcpuSeconds: number;
   memoryGibSeconds: number;
-  /** Cache storage over the month, sampled hourly. */
+  /** Storage (caches and downloads) over the month, sampled hourly. */
   storageGibHours: number;
-  /** Cache storage now, when the runners answered. */
+  /** Storage (caches and downloads) now, when the runners answered. */
   storageBytes: number | null;
 }
 

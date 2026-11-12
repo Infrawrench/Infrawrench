@@ -186,6 +186,36 @@ Retrying takes the `ci:approve` permission, the same as approving a fork's pull 
 
 <insert [A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry] here>
 
+## Downloads
+
+`downloads:` keeps files from a job for you to download from the run: a build, a test report, a coverage page. They are listed on the run's **Summary** under **Downloads**, and on each job's own page, with their size and how long they are kept. **Download** fetches the file; on the desktop app it opens in your browser, which saves it.
+
+```yaml
+jobs:
+  build:
+    using: env:bash-node@24
+    run: pnpm run build && tar -czf app.tar.gz dist
+    downloads: [app.tar.gz]
+
+  e2e:
+    using: env:bash-node@24
+    run: pnpm run test:e2e
+    downloads:
+      paths: [playwright-report, test-results/junit.xml]
+      retention: 7d
+      when: always
+```
+
+<insert [The CI run page on Summary, below the graph: the Downloads list with app.tar.gz from the build job and junit.xml from the e2e job, each with its size, "Kept until" date and a Download button] here>
+
+- **What is kept**: the files the job wrote under the paths you list. A directory keeps every file in it, each as its own download; put them in an archive in your script to download them as one.
+- **When**: after the job passes, unless `when:` says `failure` (for a report of what failed) or `always`.
+- **How long**: 30 days unless `retention:` says otherwise, between `1h` and `365d`. The runners keep files for at most 90 days. An expired file is deleted and shows as **Expired**.
+- **How big**: up to 256 MiB per file and 1 GiB per run. A file over a limit is left out and the job's notes say so; the job still passes.
+- **Secrets**: in a text file, your secrets are replaced with `***`, as in the log. **A binary file (an archive, an image, a compiled program) is stored exactly as the job left it, secrets and all**, so never write a secret into one you download. Pull requests from forks never have your secrets.
+- **Who can download**: anyone in the organization who can see the run (`ci:read`). Each **Download** makes a link that works for 15 minutes, for that one file; nothing is public.
+- A job with `task-cache:` cannot have `downloads:`: when the task cache stands in for it, it does not run, so there is nothing to keep.
+
 ## Pull requests from forks
 
 A pull request from a fork runs code you have not reviewed, so it never runs on its own:
@@ -213,7 +243,7 @@ Names are letters, digits and `_`, not starting with a digit. Managing them take
 
 The **Caches** card lists what each repository's jobs have saved, with `cache:` and `task-cache:`, across every branch and pull request: how many entries and how much space, largest first, under each GitHub account with its total against its storage quota.
 
-To start a repository from nothing, for example after a cache that keeps restoring something broken, choose **Clear cache** on its row. The dialog says how many entries and how much space go before anything is deleted. Clearing deletes that repository's entries for every branch and pull request, and the card then says what was removed. The next run of each job starts cold and saves its caches again. Other repositories keep theirs, and so does the runners' own copy of your dependencies, which is not counted as your storage.
+To start a repository from nothing, for example after a cache that keeps restoring something broken, choose **Clear cache** on its row. The dialog says how many entries and how much space go before anything is deleted. Clearing deletes that repository's entries for every branch and pull request, and the card then says what was removed. The next run of each job starts cold and saves its caches again. Other repositories keep theirs, and so does the runners' own copy of your dependencies, which is not counted as your storage. The repository's [downloads](#downloads) are not caches and stay until they expire.
 
 Everyone who can see runs can see the card; clearing a cache takes `ci:write` and is recorded in the [audit log](../team-and-billing/audit-log.md).
 
@@ -221,11 +251,11 @@ Everyone who can see runs can see the card; clearing a cache takes `ci:write` an
 
 ## Usage and billing
 
-CI is part of paid plans. The usage card shows this month's runs, compute and cache storage. It is billed on your plan's invoice, by what you use:
+CI is part of paid plans. The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
 
 - **vCPU time**: each job's running time, at its share of a vCPU.
 - **Memory**: the memory each job reserves, for as long as it runs.
-- **Cache storage**: the space your caches take on the runners, measured every hour. Task cache results count here too.
+- **Storage**: the space your caches and [downloads](#downloads) take on the runners, measured every hour. Task cache results count here too, and a download stops counting when it expires.
 
 A job the task cache stood in for did not run, so it uses no vCPU time or memory.
 

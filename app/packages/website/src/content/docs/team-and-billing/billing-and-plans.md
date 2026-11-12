@@ -116,6 +116,6 @@ These are never billed:
 
 - **vCPU time**, per second: each job's running time at its share of a vCPU.
 - **Memory**, per GiB-second: the memory each job reserves while it runs.
-- **Cache storage**, per GiB-hour: the space your caches take on the runners, measured every hour.
+- **Storage**, per GiB-hour: the space your caches and [downloads](../features/ci.md#downloads) take on the runners, measured every hour.
 
-The **CI** page shows this month's runs, compute and cache storage. Complimentary organizations are never billed for CI.
+The **CI** page shows this month's runs, compute and storage. Complimentary organizations are never billed for CI.

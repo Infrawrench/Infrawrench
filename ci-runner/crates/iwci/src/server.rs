@@ -16,8 +16,8 @@
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
 //! | `POST /v1/prepare` | warms the clone, installs and tools for a request, runs nothing |
-//! | `GET /v1/storage/{owner}[?quota=]` | the owner's cache storage, per repository |
-//! | `DELETE /v1/storage/{owner}/{repo-id}` | deletes one repository's caches, and says what went |
+//! | `GET /v1/storage/{owner}[?quota=]` | the owner's storage (caches and downloads), per repository |
+//! | `DELETE /v1/storage/{owner}/{repo-id}` | deletes one repository's caches (never its downloads), and says what went |
 //! | `GET /v1/usage/{owner}[?month=YYYY-MM]` | the owner's billed usage for a month |
 //! | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, with their crons and text, for the proxy that fires them |
 
@@ -113,15 +113,7 @@ pub struct JobUsage {
     pub memory_mib: u64,
 }
 
-/// A random id, from the kernel. The runner already only builds for Unix
-/// (the git cache's file locks), so `/dev/urandom` is always there.
-fn random_id() -> String {
-    let mut bytes = [0u8; 16];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut bytes);
-    }
-    hex::encode(bytes)
-}
+use crate::runner::random_id;
 
 /// Year and month of a Unix time, for the usage key layout.
 fn year_month(secs: u64) -> (i64, u32) {
@@ -460,7 +452,7 @@ impl Server {
         std::thread::spawn(move || {
             let sink = hub.clone();
             let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
-            let outcome = runner.run_with_logs(&req, Some(logs));
+            let outcome = runner.run_with_logs(&req, &id_for_thread, Some(logs));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
             hub.close(&entry);
             this.active.fetch_sub(1, Ordering::SeqCst);

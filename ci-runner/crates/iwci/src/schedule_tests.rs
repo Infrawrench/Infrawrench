@@ -211,6 +211,26 @@ impl Executor<String> for FakeExecutor {
             names.sort();
             stdout.push_str(&names.join(","));
         }
+        // `dl-write` leaves a text report and a binary blob, both holding
+        // the job's `TOKEN`, and a file the checkout already had untouched.
+        if tool.contains(":dl-write") {
+            let token = inv
+                .env
+                .iter()
+                .find(|(k, _)| k == "TOKEN")
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default();
+            inv.fs
+                .write(
+                    "/app/out/report.txt",
+                    format!("ok\ntoken={token}\n").as_bytes(),
+                )
+                .unwrap();
+            let mut blob = vec![0u8, 159, 146, 150];
+            blob.extend_from_slice(token.as_bytes());
+            inv.fs.write("/app/out/blob.bin", &blob).unwrap();
+            inv.fs.write("/tmp/core.txt", b"core").unwrap();
+        }
         if tool.contains(":scratch-write@") {
             inv.scratch
                 .write("/shared.txt", inv.job.id.as_bytes())
@@ -311,6 +331,7 @@ fn run_full(
         slots: None,
         secrets,
         skip_task_cache: false,
+        downloads: None,
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -692,6 +713,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        downloads: None,
     };
     run(
         plan,
@@ -977,6 +999,7 @@ fn runs_share_the_runners_slots() {
         slots: Some(slots.clone()),
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        downloads: None,
     };
     // Two runs at once, each wanting four jobs in parallel: together they
     // never exceed the two slots.
@@ -1028,6 +1051,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        downloads: None,
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -1281,6 +1305,7 @@ fn run_cached_with(
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache,
+        downloads: None,
     };
     let report = run(
         plan,
@@ -1555,6 +1580,7 @@ fn run_looked_up(
         slots,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        downloads: None,
     };
     let report = run(
         plan,
@@ -1861,4 +1887,176 @@ fn a_service_is_part_of_a_task_cache_key() {
     assert_ne!(key(&with), key(&other));
     // A job without services keeps the key it had before they existed.
     assert_eq!(key(&none), key(&job("    services: false\n")));
+}
+
+/// Keeps what a run's jobs upload, as the store adapter would.
+#[derive(Default)]
+struct FakeDownloads {
+    uploads: Mutex<Vec<(String, PendingDownload, u64)>>,
+}
+
+impl Downloads for FakeDownloads {
+    fn upload(
+        &self,
+        job: &str,
+        files: Vec<PendingDownload>,
+        retention_secs: u64,
+    ) -> (Vec<DownloadedFile>, Vec<String>) {
+        let mut kept = Vec::new();
+        for file in files {
+            kept.push(DownloadedFile {
+                path: file.path.clone(),
+                size: file.data.len() as u64,
+                sha256: String::new(),
+                content_type: String::new(),
+                expires_at: retention_secs,
+                key: format!("artifacts/o/r/run/{}", kept.len()),
+                masked: file.masked,
+            });
+            self.uploads
+                .lock()
+                .unwrap()
+                .push((job.to_string(), file, retention_secs));
+        }
+        (kept, vec!["one more thing".into()])
+    }
+}
+
+fn run_downloads(
+    yaml: &str,
+    secrets: BTreeMap<String, String>,
+    store: Option<Arc<FakeDownloads>>,
+) -> RunReport {
+    let p = plan(yaml);
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let options = Options {
+        parallelism: 2,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory: None,
+        caches: None,
+        logs: None,
+        slots: None,
+        secrets,
+        skip_task_cache: false,
+        downloads: store.map(|s| s as Arc<dyn Downloads>),
+    };
+    run(
+        &p,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    )
+}
+
+#[test]
+fn downloads_are_masked_text_and_unmasked_binaries() {
+    let store = Arc::new(FakeDownloads::default());
+    let secret = "hunter2-download-value";
+    let report = run_downloads(
+        "name: x\njobs:\n  a:\n    using: builtin:dl-write@1\n    env: { TOKEN: \"${{ secrets.TOKEN }}\" }\n    downloads: { paths: [out, /tmp/core.txt, src], retention: 2d }\n",
+        BTreeMap::from([("TOKEN".to_string(), secret.to_string())]),
+        Some(store.clone()),
+    );
+    let job = &report.jobs[0];
+    assert_eq!(job.status, Status::Passed, "{job:?}");
+    let uploads = store.uploads.lock().unwrap();
+    // Only what the job wrote: not the checkout's own `src/a.ts`.
+    let mut paths: Vec<&str> = uploads.iter().map(|(_, f, _)| f.path.as_str()).collect();
+    paths.sort_unstable();
+    assert_eq!(paths, ["/tmp/core.txt", "out/blob.bin", "out/report.txt"]);
+    assert!(uploads.iter().all(|(j, _, r)| j == "a" && *r == 2 * 86_400));
+    let file = |p: &str| &uploads.iter().find(|(_, f, _)| f.path == p).unwrap().1;
+    // The text file never reaches the store with the secret in it.
+    let text = file("out/report.txt");
+    assert!(text.masked);
+    assert_eq!(text.data, b"ok\ntoken=***\n");
+    assert!(
+        !uploads
+            .iter()
+            .any(|(_, f, _)| f.masked && String::from_utf8_lossy(&f.data).contains(secret))
+    );
+    // A binary file is uploaded as it is, which the docs say plainly.
+    let blob = file("out/blob.bin");
+    assert!(!blob.masked);
+    assert!(blob.data.ends_with(secret.as_bytes()));
+    // The report lists them and never holds the secret.
+    assert_eq!(job.downloads.len(), 3);
+    assert!(!serde_json::to_string(&report).unwrap().contains(secret));
+    assert!(
+        job.notes
+            .iter()
+            .any(|n| n.starts_with("downloads: kept 3 of 3 file(s)")),
+        "{:?}",
+        job.notes
+    );
+    assert!(job.notes.iter().any(|n| n == "downloads: one more thing"));
+}
+
+#[test]
+fn downloads_follow_when_and_say_when_nothing_keeps_them() {
+    // A failure keeps nothing by default...
+    let store = Arc::new(FakeDownloads::default());
+    let report = run_downloads(
+        "name: x\njobs:\n  a:\n    using: builtin:dl-write-fail@1\n    downloads: [out]\n",
+        BTreeMap::new(),
+        Some(store.clone()),
+    );
+    assert!(matches!(report.jobs[0].status, Status::Failed { .. }));
+    assert!(store.uploads.lock().unwrap().is_empty());
+    assert!(report.jobs[0].downloads.is_empty());
+    // ...unless `when:` says so, and then a pass keeps nothing.
+    let report = run_downloads(
+        "name: x\njobs:\n  a:\n    using: builtin:dl-write-fail@1\n    downloads: { paths: [out], when: failure }\n  b:\n    using: builtin:dl-write@1\n    downloads: { paths: [out], when: failure }\n  c:\n    using: builtin:dl-write@1\n    downloads: { paths: [out], when: always }\n",
+        BTreeMap::new(),
+        Some(store.clone()),
+    );
+    let jobs: std::collections::BTreeSet<String> = store
+        .uploads
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(j, _, _)| j.clone())
+        .collect();
+    assert_eq!(jobs.into_iter().collect::<Vec<_>>(), ["a", "c"]);
+    assert!(
+        report
+            .jobs
+            .iter()
+            .find(|j| j.id == "b")
+            .unwrap()
+            .downloads
+            .is_empty()
+    );
+    // A path the job wrote nothing under, and a runner with no store.
+    let report = run_downloads(
+        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n    downloads: [out]\n  b:\n    using: builtin:dl-write@1\n    downloads: [out]\n",
+        BTreeMap::new(),
+        None,
+    );
+    let notes = |id: &str| {
+        report
+            .jobs
+            .iter()
+            .find(|j| j.id == id)
+            .unwrap()
+            .notes
+            .clone()
+    };
+    assert!(notes("a").contains(&"downloads: nothing under its `downloads:` paths".to_string()));
+    assert!(notes("b").contains(&"downloads: this runner keeps no downloads".to_string()));
 }

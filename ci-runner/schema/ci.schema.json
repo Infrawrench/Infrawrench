@@ -377,6 +377,23 @@
           },
           "description": "Paths (relative to the clone, or absolute) whose files are handed on once the job passes: every job that needs this one, directly or through others, starts with them in its file system. They are not changes, count toward the run's `scratch:` limit, and may use `${{ matrix }}`."
         },
+        "downloads": {
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            {
+              "$ref": "#/$defs/downloads"
+            }
+          ],
+          "description": "Files kept for people to download from the run once the job ends: paths (relative to the clone, or absolute) whose files the job wrote, uploaded to the runners' object store and kept for `retention`. A list of paths, or `{ paths, retention, when }`. Text files have the run's secrets masked; binary files are uploaded as they are. Not for a task-cached job."
+        },
         "packages": {
           "oneOf": [
             {
@@ -409,6 +426,32 @@
               "$ref": "#/$defs/services"
             }
           ]
+        }
+      }
+    },
+    "downloads": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Paths relative to the clone, or absolute, that may use `${{ matrix }}`; a directory keeps every file the job wrote under it."
+        },
+        "retention": {
+          "type": "string",
+          "pattern": "^([0-9]+[smhd])+$",
+          "description": "How long the files are kept, between `1h` and `365d`, such as `7d`. Default `30d`. A runner may keep them for less (`--download-max-retention`, default `90d`)."
+        },
+        "when": {
+          "enum": ["success", "failure", "always"],
+          "description": "Which outcomes of the job keep them: `success` (the default), `failure` (a test report, a crash dump) or `always`."
         }
       }
     },

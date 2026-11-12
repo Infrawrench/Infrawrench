@@ -31,6 +31,12 @@ export interface CiPanelProps {
    * `openExternal`; without it links open in a new tab.
    */
   onOpenUrl?: ((url: string) => void) | undefined;
+  /**
+   * Start a download from a signed link. Desktop passes its `openExternal`
+   * (the browser saves the file); without it the page goes to the link,
+   * which the CI proxy answers as an attachment, so the page stays.
+   */
+  onDownloadUrl?: ((url: string) => void) | undefined;
 }
 
 type Gt = ReturnType<typeof useGT>;
@@ -244,9 +250,9 @@ function UsageCard({ usage }: { usage: CiUsage }) {
     [gt("Runs"), String(usage.runs)],
     [gt("vCPU hours"), (usage.vcpuSeconds / 3600).toFixed(2)],
     [gt("Memory GiB-hours"), (usage.memoryGibSeconds / 3600).toFixed(2)],
-    [gt("Cache GiB-hours"), usage.storageGibHours.toFixed(1)],
+    [gt("Storage GiB-hours"), usage.storageGibHours.toFixed(1)],
     [
-      gt("Cache now"),
+      gt("Storage now"),
       usage.storageBytes === null ? "" : `${(usage.storageBytes / 1024 ** 3).toFixed(2)} GiB`,
     ],
   ];
@@ -259,7 +265,7 @@ function UsageCard({ usage }: { usage: CiUsage }) {
         {gt("Usage in {month}", { month: usage.month })}
       </h3>
       <p className="text-xs text-on-surface-faint">
-        {gt("Billed as compute and cache storage on your plan's invoice.")}
+        {gt("Billed as compute and storage (caches and downloads) on your plan's invoice.")}
       </p>
       <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {cells.map(([label, value]) => (
@@ -488,6 +494,7 @@ function RunDetailView({
   canApprove,
   onOpenUrl,
   onOpenRun,
+  onDownloadUrl,
   onBack,
 }: {
   runId: string;
@@ -495,6 +502,7 @@ function RunDetailView({
   canApprove: boolean;
   onOpenUrl?: ((url: string) => void) | undefined;
   onOpenRun: (id: string) => void;
+  onDownloadUrl?: ((url: string) => void) | undefined;
   onBack: () => void;
 }) {
   const gt = useGT();
@@ -536,6 +544,15 @@ function RunDetailView({
     const timer = setInterval(() => setNonce((n) => n + 1), 5000);
     return () => clearInterval(timer);
   }, [status]);
+
+  const download = useCallback(
+    async (jobId: string, path: string) => {
+      const link = await client.downloadLink(runId, jobId, path);
+      if (onDownloadUrl) onDownloadUrl(link.url);
+      else window.location.assign(link.url);
+    },
+    [client, runId, onDownloadUrl],
+  );
 
   const run = detail?.run;
   return (
@@ -600,7 +617,13 @@ function RunDetailView({
           ) : (detail.jobs ?? run.jobs)!.length === 0 ? (
             <p className="text-xs text-on-surface-faint">{gt("No pipeline ran for this event.")}</p>
           ) : (
-            <CiRunView run={run} jobs={detail.jobs ?? run.jobs} live={null} liveError={null} />
+            <CiRunView
+              run={run}
+              jobs={detail.jobs ?? run.jobs}
+              live={null}
+              liveError={null}
+              onDownload={download}
+            />
           )}
         </>
       )}
@@ -615,6 +638,7 @@ export function CiPanel({
   canWrite,
   canApprove,
   onOpenUrl,
+  onDownloadUrl,
 }: CiPanelProps) {
   const gt = useGT();
   // A string, not `gt`, in the effect's deps: `gt` is not referentially
@@ -715,6 +739,7 @@ export function CiPanel({
               canApprove={canApprove}
               onOpenUrl={onOpenUrl}
               onOpenRun={onSelectRun}
+              onDownloadUrl={onDownloadUrl}
               onBack={() => {
                 onSelectRun(null);
                 refresh();

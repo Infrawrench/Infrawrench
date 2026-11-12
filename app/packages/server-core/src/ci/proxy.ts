@@ -4,6 +4,7 @@
  * `CI_PROXY_KEY`; without them CI stays off, whatever the feature flags say.
  */
 
+import type { ProxyDownload } from "./downloads.js";
 import type { ProxyProgress } from "./job-checks.js";
 
 export function ciProxyConfigured(): boolean {
@@ -65,6 +66,8 @@ export interface ProxyRun {
   /** While it runs (runner 0.3.1 and later): each pipeline's jobs and their states so far. */
   progress?: ProxyProgress;
   result?: {
+    /** The runner's id for the run, which its downloads are stored under. */
+    run_id?: string;
     passed?: boolean;
     usage?: { vcpu_seconds?: number; memory_gib_seconds?: number };
     pipelines?: Array<{
@@ -86,6 +89,8 @@ export interface ProxyRun {
           /** The job keys it waited for (runner 0.3.1 and later). */
           needs?: string[];
           execution?: { stdout?: string; stderr?: string } | null;
+          /** What it kept with `downloads:`; absent from runners before it. */
+          downloads?: ProxyDownload[];
         }>;
       };
     }>;

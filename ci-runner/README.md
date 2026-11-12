@@ -164,6 +164,7 @@ everything through.
 | `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                          |
 | `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                   |
 | `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                            |
+| `downloads`  | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                          |
 | `packages`   | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                            |
 | `task-cache` | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                          |
 | `services`   | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services). |
@@ -247,6 +248,70 @@ jobs:
   `memory:`.
 - Everything kept lives in memory until the run ends and counts toward the
   run's `scratch:` limit; a job whose artifacts would pass it fails.
+
+### Downloads
+
+`downloads:` keeps files for people rather than for other jobs: a build, a
+test report, a coverage page. Once the job ends they are uploaded to the
+runners' object store, listed in the job's report, and offered on the run's
+page in the app, each behind a link that works for a few minutes.
+
+```yaml
+jobs:
+  build:
+    using: env:bash-node@24
+    run: pnpm run build && tar -czf app.tar.gz dist
+    downloads: [app.tar.gz]
+
+  e2e:
+    using: env:bash-node@24
+    run: pnpm run test:e2e
+    downloads:
+      paths: [playwright-report, test-results/junit.xml]
+      retention: 7d # default 30d
+      when: always # success (default), failure or always
+```
+
+| Key         | Meaning                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paths`     | Up to 64 paths, relative to the clone or absolute, that may use `${{ matrix }}`. A directory keeps every file under it.                         |
+| `retention` | How long the files are kept: `12h`, `7d`, between `1h` and `365d`. Default `30d`. A runner may keep them for less (`--download-max-retention`). |
+| `when`      | Which outcomes of the job keep them: `success` (the default), `failure` (a crash dump, a report of what failed) or `always`.                    |
+
+- **What is kept.** The files the job added or changed under its paths, as
+  with `artifacts:`: not the checkout's own files there, and not files it
+  was handed by the jobs it needs. Each file is stored as itself (no
+  archive), so a directory of 500 files is 500 downloads; tar it in the
+  script to offer one. A path the job wrote nothing under is a note in its
+  report, not a failure.
+- **Secrets.** A text file (valid UTF-8 without a NUL byte) has the run's
+  secret values replaced with `***` before it leaves the job, the same
+  masking its log gets. **A binary file is uploaded exactly as the job left
+  it, unmasked**: an archive, an image, a compiled program or a compressed
+  report that contains a secret keeps it. Do not put secrets in what you
+  download. A pull request from a fork gets no secrets in the first place.
+- **Limits.** One file may be up to `--download-max-file` (default and most
+  256 MiB) and one run's files together up to `--download-max-run` (default
+  1 GiB). A file over either limit is left out and the job's notes say so;
+  the job does not fail for it, and neither does an upload the store
+  refuses.
+- **Storage.** Downloads count toward the owner's storage quota with its
+  caches, and are billed with them (`GET /v1/storage/{owner}`). An upload
+  that does not fit evicts the owner's oldest caches; a download is never
+  evicted to make room, so when downloads alone fill the quota, a new one is
+  refused with a note.
+- **Expiry.** A file stops being served when its retention runs out, and
+  the proxy's Cron Trigger deletes it within about an hour after
+  (`app/packages/ci-proxy`, "Downloads"). A local `--store` is never swept.
+- **Not with `task-cache:`**: a hit does not run the job, so there would be
+  nothing to upload.
+- Each file is stored at `artifacts/<owner>/<repo-id>/<run-id>/<expires>-<id>`,
+  where `<id>` is a hash of the job's id and the file's path. The report's
+  `downloads` list gives each file's `path`, `size`, `sha256` (of the stored
+  bytes, so after masking), `content_type`, `expires_at`, `key` and whether
+  it was `masked`. Nothing is public: the bucket has no public access, and
+  the proxy serves a file only for a link the app signed after checking who
+  is asking.
 
 ### Workspace packages
 
@@ -1094,7 +1159,8 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
          [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
-         [--keep-installs-unpacked 24h] [--no-task-cache]
+         [--keep-installs-unpacked 24h] [--no-task-cache] \
+         [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
@@ -1295,8 +1361,8 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
 | `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.                                                                                           |
-| `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                                                                                                 |
-| `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches (below) and answers what went.                                                                                                          |
+| `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
+| `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches, never its downloads (below), and answers what went.                                                                                    |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
 | `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text.                                                                                  |
 | `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
@@ -1351,10 +1417,15 @@ A request body (for `runs` and `prepare`):
   (`vcpu_seconds`) and the memory it reserved over that time
   (`memory_gib_seconds`). Failed and errored runs are recorded too, with no
   usage. Storage is read from `GET /v1/storage/{owner}`, for billing by
-  GB-month.
-- **Quotas.** An owner's caches across all its repositories are held to its
-  storage quota: the request's `storage-quota`, else the server's
-  `--storage-quota` (default 10 GiB).
+  GB-month: `used_bytes` is caches and unexpired downloads together, with
+  `entries` (cache entries), `download_bytes` and `downloads` beside it and
+  the same four per repository under `repos`.
+- **Quotas.** An owner's caches and downloads across all its repositories
+  are held to its storage quota: the request's `storage-quota`, else the
+  server's `--storage-quota` (default 10 GiB). Only caches are evicted to
+  make room.
+- **Run ids.** A finished run's result carries its `run_id`, which is what
+  its downloads are stored under.
 - **Without the task cache.** A request with `"no-task-cache": true`, or
   `iwci run --no-task-cache`, runs every `task-cache:` job instead of
   replaying a passing run's entry, and each says so in its cache lines. A job that
@@ -1367,7 +1438,8 @@ A request body (for `runs` and `prepare`):
   pointers, which is what `GET /v1/storage/{owner}` counts for that
   repository. It answers
   `{ "owner", "repo-id", "deleted_objects", "deleted_bytes", "deleted_entries" }`.
-  Other repositories, other owners, run reports, billing records and each
+  Its downloads (`artifacts/`) keep their own retention and are not
+  touched. Other repositories, other owners, run reports, billing records and each
   runner's own caches (git objects, installs, compiled modules) stay. A run
   saving at the same moment can leave its new entry behind.
 
@@ -1516,7 +1588,8 @@ live under their own prefixes, and a repository's uploaded tools live under
 `repos/<repo-id>/tools/`, which is the only place a `repo:` reference looks.
 Uploading is not implemented: the layout is the contract the upload API
 will write to. Job caches are under `caches/<owner>/<repo-id>/<scope>/`,
-billing records under `usage/<owner>/`, run reports under
+downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
+[Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
 `runs/<owner>/`, and releases of `iwci` itself under
 `releases/iwci/<version>/<target>` (immutable) with signed channel
 manifests at `releases/iwci/channels/<channel>.json`.

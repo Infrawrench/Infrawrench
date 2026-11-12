@@ -19,6 +19,7 @@ use iwci_vfs::SnapshotBuilder;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::caches::{StoreCaches, owner_from_url};
+use crate::adapters::downloads::{DownloadLimits, StoreDownloads};
 use crate::adapters::tools::{RuntimeExecutor, StoreTools};
 use crate::adapters::workspace::{GitCommitter, GitWorkspaces};
 use crate::schedule::{self, MemoryBudget, RunReport, Slots, Tools, Workspaces};
@@ -42,6 +43,8 @@ pub struct Runner {
     pub author: Identity,
     /// The storage quota for an owner that a request does not set one for.
     pub default_storage_quota: Option<u64>,
+    /// What `downloads:` may keep.
+    pub download_limits: DownloadLimits,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -247,6 +250,8 @@ impl Usage {
 
 #[derive(Debug, Serialize)]
 pub struct RunOutput {
+    /// The id the run's downloads are stored under.
+    pub run_id: String,
     pub commit: String,
     pub branch: String,
     pub owner: String,
@@ -265,6 +270,17 @@ pub struct PrepareOutput {
     pub installs: Vec<String>,
     pub tools: Vec<String>,
     pub problems: Vec<String>,
+}
+
+/// A random id for a run, from the kernel. The runner already only builds
+/// for Unix (the git cache's file locks), so `/dev/urandom` is always there.
+pub fn random_id() -> String {
+    use std::io::Read;
+    let mut bytes = [0u8; 16];
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        let _ = f.read_exact(&mut bytes);
+    }
+    hex::encode(bytes)
 }
 
 pub fn now_secs() -> u64 {
@@ -385,18 +401,22 @@ impl Runner {
         Ok((r.sha, r.pipelines))
     }
 
-    /// Runs every pipeline of the requested commit that its event triggers.
+    /// Runs every pipeline of the requested commit that its event triggers,
+    /// under a new run id.
     pub fn run(&self, req: &RunRequest) -> Result<RunOutput, String> {
-        self.run_with_logs(req, None)
+        self.run_with_logs(req, &random_id(), None)
     }
 
-    /// [`Runner::run`], sending live log events to `logs`.
+    /// [`Runner::run`] as run `run_id` (what its downloads are stored
+    /// under), sending live log events to `logs`.
     pub fn run_with_logs(
         &self,
         req: &RunRequest,
+        run_id: &str,
         logs: Option<schedule::LogFn>,
     ) -> Result<RunOutput, String> {
         let started_at = now_secs();
+        let run = RepoId::new(run_id).map_err(|e| format!("run id: {e}"))?;
         let r = self.resolve(req)?;
         let changed_paths = match &req.base {
             Some(base) => {
@@ -424,6 +444,7 @@ impl Runner {
             .default_branch
             .clone()
             .unwrap_or_else(|| "main".to_string());
+        let quota = req.storage_quota.or(self.default_storage_quota);
         let options = schedule::Options {
             // With shared slots the slots are the limit; without, `cpus`.
             parallelism: self.slots.as_ref().map_or(self.cpus, |s| s.total()),
@@ -447,7 +468,15 @@ impl Runner {
                 &r.branch,
                 &default_branch,
                 r.event,
-                req.storage_quota.or(self.default_storage_quota),
+                quota,
+            ))),
+            downloads: Some(Arc::new(StoreDownloads::new(
+                self.store.clone(),
+                &r.owner,
+                &r.repo_id,
+                &run,
+                quota,
+                self.download_limits,
             ))),
             logs: logs.clone(),
             slots: self.slots.clone(),
@@ -492,6 +521,7 @@ impl Runner {
             });
         }
         Ok(RunOutput {
+            run_id: run.as_str().to_string(),
             commit: r.sha,
             branch: r.branch,
             owner: r.owner.as_str().to_string(),

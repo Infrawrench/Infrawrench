@@ -983,6 +983,77 @@ jobs:
 }
 
 #[test]
+fn downloads_take_a_list_or_options() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  plain:
+    using: builtin:t@1
+    downloads: [dist/app.tar.gz]
+  report:
+    matrix: [web, ui]
+    using: builtin:t@1
+    downloads:
+      paths: ["reports/${{ matrix }}", /tmp/core]
+      retention: 7d
+      when: always
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.job("plain").unwrap().downloads,
+        Some(DownloadSpec {
+            paths: vec!["/app/dist/app.tar.gz".into()],
+            retention_secs: DEFAULT_DOWNLOAD_RETENTION_SECS,
+            when: DownloadWhen::Success,
+        })
+    );
+    assert_eq!(
+        plan.job("report[ui]").unwrap().downloads,
+        Some(DownloadSpec {
+            paths: vec!["/app/reports/ui".into(), "/tmp/core".into()],
+            retention_secs: 7 * 86_400,
+            when: DownloadWhen::Always,
+        })
+    );
+    assert_eq!(plan.job("plain").unwrap().artifacts, Vec::<String>::new());
+
+    let job = |downloads: &str| {
+        format!("name: x\njobs:\n  t:\n    using: builtin:t@1\n    downloads: {downloads}\n")
+    };
+    assert_error(&job("[../x]"), "without `..`");
+    assert_error(&job("[/iwci/output]"), "not a path a job can download");
+    assert_error(&job("[]"), "needs 1 to 64 non-empty paths");
+    assert_error(
+        &job("{ paths: [a], retention: 30m }"),
+        "between 1h and 365d",
+    );
+    assert_error(
+        &job("{ paths: [a], retention: 400d }"),
+        "between 1h and 365d",
+    );
+    assert_error(&job("{ paths: [a], retention: soon }"), "not a duration");
+    assert_error(
+        &job("{ paths: [a], when: sometimes }"),
+        "`success`, `failure` or `always`",
+    );
+    assert_error(&job("{ paths: [a], zzz: 1 }"), "unknown field `zzz`");
+    assert_error(
+        "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    downloads: [dist]\n",
+        "can only keep absolute paths",
+    );
+    assert_error(
+        "name: x\njobs:\n  t:\n    using: builtin:t@1\n    task-cache: true\n    downloads: [dist]\n",
+        "cannot be task-cached",
+    );
+    assert!(DownloadWhen::Failure.keeps(false) && !DownloadWhen::Failure.keeps(true));
+    assert!(DownloadWhen::Always.keeps(true) && DownloadWhen::Always.keeps(false));
+    assert!(DownloadWhen::Success.keeps(true) && !DownloadWhen::Success.keeps(false));
+}
+
+#[test]
 fn jobs_reach_the_internet_unless_they_turn_it_off() {
     let plan = parse(
         "name: x\njobs:\n  online:\n    using: builtin:t@1\n  offline:\n    using: builtin:t@1\n    network: false\n",

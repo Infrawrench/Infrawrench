@@ -11,6 +11,7 @@ import {
   CiApi,
   CiCacheClearedSchema,
   CiCachesSchema,
+  CiDownloadLinkSchema,
   CiRunDetailSchema,
   CiRunSchema,
   CiStatusSchema,
@@ -28,6 +29,7 @@ import {
   approveRun,
   CiInputError,
   dispatchRun,
+  getDownloadLink,
   getRun,
   listRuns,
   openRunLogs,
@@ -150,6 +152,16 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
         const { organizationId } = yield* requireCi;
         const detail = yield* legacyTry(() => getRun(organizationId, params.runId), refusal);
         return yield* respond(CiRunDetailSchema)(detail);
+      }),
+    )
+    .handle("downloadLink", ({ params, query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const link = yield* legacyTry(
+          () => getDownloadLink(organizationId, params.runId, query.job, query.path),
+          refusal,
+        );
+        return yield* respond(CiDownloadLinkSchema)(link);
       }),
     )
     .handle("runLogs", ({ params }) =>

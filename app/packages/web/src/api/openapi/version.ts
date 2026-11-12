@@ -450,4 +450,9 @@
 // (`ci:read`) lists each account's caches per repository, and
 // `DELETE /api/org/:orgId/ci/caches/:installationId/:repo` (`ci:write`)
 // clears one repository's. Additive.
-export const API_VERSION = "1.103.0";
+// 1.104.0: CI downloads. A finished job's output lists the files it kept
+// with `downloads:` (`downloads` on `CiJobOutput`), and
+// `GET /ci/runs/{runId}/download?job=&path=` answers a short-lived link the
+// CI proxy serves one of them from. Clearing a repository's caches leaves its
+// downloads, which keep their own retention. Additive.
+export const API_VERSION = "1.104.0";

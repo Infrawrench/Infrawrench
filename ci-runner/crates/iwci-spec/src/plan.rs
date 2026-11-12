@@ -355,6 +355,9 @@ pub struct PlannedJob {
     /// to the jobs that need this one once it passes.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<String>,
+    /// `downloads:`: files uploaded for people to download after the job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub downloads: Option<DownloadSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package: Option<PackageRef>,
     /// `task-cache:`: skipped, with what a passing run kept, when nothing
@@ -364,6 +367,48 @@ pub struct PlannedJob {
     /// `services:` (with `workspace.services`), in the order they start.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub services: Vec<PlannedService>,
+}
+
+/// A job's `downloads:`, checked: what it keeps, for how long, and after
+/// which outcomes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DownloadSpec {
+    /// Absolute, normalised guest paths, as `artifacts:` has them.
+    pub paths: Vec<String>,
+    /// How long the files are kept, in seconds.
+    pub retention_secs: u64,
+    pub when: DownloadWhen,
+}
+
+/// Which outcomes of a job keep its downloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DownloadWhen {
+    /// Only a job that passes (the default).
+    Success,
+    /// Only a job that fails: a test report, a crash dump.
+    Failure,
+    Always,
+}
+
+impl DownloadWhen {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "success" => Some(Self::Success),
+            "failure" => Some(Self::Failure),
+            "always" => Some(Self::Always),
+            _ => None,
+        }
+    }
+
+    /// Whether a job that `passed` (or did not) keeps its downloads.
+    pub fn keeps(self, passed: bool) -> bool {
+        match self {
+            Self::Success => passed,
+            Self::Failure => !passed,
+            Self::Always => true,
+        }
+    }
 }
 
 /// A program the runner starts in the job's isolate before the job, and

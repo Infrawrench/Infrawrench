@@ -86,44 +86,14 @@ impl StoreCaches {
     /// Makes room for `incoming` bytes at `object` within the owner's
     /// quota by deleting the owner's least recently saved entries.
     fn make_room(&self, object: &str, incoming: u64) -> Result<(), String> {
-        let Some(quota) = self.quota else {
-            return Ok(());
-        };
-        if incoming > quota {
-            return Err(format!(
-                "the cache is {} KiB, more than the owner's whole {} KiB storage quota",
-                incoming.div_ceil(1024),
-                quota.div_ceil(1024)
-            ));
-        }
-        let mut objects = self
-            .store
-            .list_detailed(&format!("caches/{}/", self.owner))
-            .map_err(|e| e.to_string())?;
-        // The entry being replaced frees its own bytes.
-        objects.retain(|o| o.key != object);
-        let mut used: u64 = objects.iter().map(|o| o.size).sum();
-        if used + incoming <= quota {
-            return Ok(());
-        }
-        // Oldest first; entries before the small prefix pointers, so a
-        // pointer is only dropped when nothing else is left to drop.
-        let mut candidates: Vec<_> = objects
-            .into_iter()
-            .filter(|o| o.key.ends_with(".zst"))
-            .collect();
-        candidates.sort_by_key(|o| (o.modified.unwrap_or(0), o.key.clone()));
-        for victim in candidates {
-            if used + incoming <= quota {
-                break;
-            }
-            self.store.delete(&victim.key).map_err(|e| e.to_string())?;
-            used = used.saturating_sub(victim.size);
-        }
-        if used + incoming > quota {
-            return Err("the owner's storage quota is full".into());
-        }
-        Ok(())
+        make_room(
+            self.store.as_ref(),
+            &self.owner,
+            self.quota,
+            object,
+            incoming,
+            "the cache",
+        )
     }
 
     fn load(&self, object: &str, key: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
@@ -146,20 +116,90 @@ impl StoreCaches {
     }
 }
 
-/// What an owner's caches take up, for the storage endpoint and billing.
+/// Makes room for `incoming` bytes (`what`, at `object`) within `owner`'s
+/// storage quota, which its caches and its downloads share. Only caches are
+/// ever evicted, least recently saved first: a cache can be rebuilt, and a
+/// download is kept for as long as its job asked. A download past its
+/// expiry is not counted, whether or not it has been swept yet.
+pub fn make_room(
+    store: &dyn ObjectStore,
+    owner: &str,
+    quota: Option<u64>,
+    object: &str,
+    incoming: u64,
+    what: &str,
+) -> Result<(), String> {
+    let Some(quota) = quota else {
+        return Ok(());
+    };
+    if incoming > quota {
+        return Err(format!(
+            "{what} is {} KiB, more than the owner's whole {} KiB storage quota",
+            incoming.div_ceil(1024),
+            quota.div_ceil(1024)
+        ));
+    }
+    let mut objects = store
+        .list_detailed(&format!("caches/{owner}/"))
+        .map_err(|e| e.to_string())?;
+    // The entry being replaced frees its own bytes.
+    objects.retain(|o| o.key != object);
+    let now = crate::runner::now_secs();
+    let downloads: u64 = store
+        .list_detailed(&format!("{}/{owner}/", crate::adapters::downloads::PREFIX))
+        .map_err(|e| e.to_string())?
+        .iter()
+        .filter(|o| crate::adapters::downloads::expiry(&o.key).is_none_or(|e| e > now))
+        .map(|o| o.size)
+        .sum();
+    let mut used: u64 = objects.iter().map(|o| o.size).sum::<u64>() + downloads;
+    if used + incoming <= quota {
+        return Ok(());
+    }
+    // Oldest first; entries before the small prefix pointers, so a
+    // pointer is only dropped when nothing else is left to drop.
+    let mut candidates: Vec<_> = objects
+        .into_iter()
+        .filter(|o| o.key.ends_with(".zst"))
+        .collect();
+    candidates.sort_by_key(|o| (o.modified.unwrap_or(0), o.key.clone()));
+    for victim in candidates {
+        if used + incoming <= quota {
+            break;
+        }
+        store.delete(&victim.key).map_err(|e| e.to_string())?;
+        used = used.saturating_sub(victim.size);
+    }
+    if used + incoming > quota {
+        return Err("the owner's storage quota is full".into());
+    }
+    Ok(())
+}
+
+/// What an owner stores (its caches and its downloads), for the storage
+/// endpoint and billing.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct StorageUsage {
     pub owner: String,
+    /// Caches and downloads together: what the quota holds and what is
+    /// billed.
     pub used_bytes: u64,
     pub quota_bytes: Option<u64>,
+    /// Cache entries.
     pub entries: u64,
+    /// Of `used_bytes`, the downloads (`downloads:`) not yet expired.
+    pub download_bytes: u64,
+    pub downloads: u64,
     pub repos: std::collections::BTreeMap<String, RepoUsage>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct RepoUsage {
+    /// Caches and downloads together.
     pub bytes: u64,
     pub entries: u64,
+    pub download_bytes: u64,
+    pub downloads: u64,
 }
 
 /// Everything stored for `owner`, broken down by repository.
@@ -174,19 +214,42 @@ pub fn storage_usage(
         quota_bytes: quota,
         ..Default::default()
     };
-    for object in store.list_detailed(&prefix).map_err(|e| e.to_string())? {
-        let repo = object.key[prefix.len()..]
+    let repo_of = |key: &str, prefix: &str| {
+        key[prefix.len()..]
             .split('/')
             .next()
             .unwrap_or_default()
-            .to_string();
-        let entry = usage.repos.entry(repo).or_default();
+            .to_string()
+    };
+    for object in store.list_detailed(&prefix).map_err(|e| e.to_string())? {
+        let entry = usage
+            .repos
+            .entry(repo_of(&object.key, &prefix))
+            .or_default();
         entry.bytes += object.size;
         usage.used_bytes += object.size;
         if object.key.ends_with(".zst") {
             entry.entries += 1;
             usage.entries += 1;
         }
+    }
+    let prefix = format!("{}/{}/", crate::adapters::downloads::PREFIX, owner.as_str());
+    let now = crate::runner::now_secs();
+    for object in store.list_detailed(&prefix).map_err(|e| e.to_string())? {
+        // Expired and not swept yet: no longer served, so not billed.
+        if crate::adapters::downloads::expiry(&object.key).is_some_and(|e| e <= now) {
+            continue;
+        }
+        let entry = usage
+            .repos
+            .entry(repo_of(&object.key, &prefix))
+            .or_default();
+        entry.bytes += object.size;
+        entry.download_bytes += object.size;
+        entry.downloads += 1;
+        usage.used_bytes += object.size;
+        usage.download_bytes += object.size;
+        usage.downloads += 1;
     }
     Ok(usage)
 }
@@ -210,10 +273,11 @@ const CLEAR_THREADS: usize = 8;
 
 /// Deletes everything stored for one repository of `owner`: every branch's
 /// and pull request's `cache:` and `task-cache:` entries and their prefix
-/// pointers, which is what [`storage_usage`] counts for it. Nothing outside
-/// `caches/<owner>/<repo>/` is touched, so other repositories, other owners
-/// and the runners' own caches (git objects, installs, compiled modules)
-/// stay. A run saving while this runs may leave its entry behind.
+/// pointers, which is what [`storage_usage`] counts for it as caches.
+/// Nothing outside `caches/<owner>/<repo>/` is touched, so its downloads
+/// (`artifacts/`, which keep their own retention), other repositories,
+/// other owners and the runners' own caches (git objects, installs,
+/// compiled modules) stay. A run saving while this runs may leave its entry behind.
 pub fn clear_repository(
     store: &dyn ObjectStore,
     owner: &RepoId,
@@ -669,6 +733,12 @@ mod tests {
         store
             .put("usage/github.com-acme/x.json", b"{}", "application/json")
             .unwrap();
+        // A download of `web`'s, which is not a cache.
+        let download = format!(
+            "artifacts/github.com-acme/web/run/99999999999-{}",
+            "a".repeat(32)
+        );
+        store.put(&download, b"report", "text/plain").unwrap();
 
         let before = storage_usage(store.as_ref(), &acme, None).unwrap();
         let web = before.repos["web"].clone();
@@ -678,10 +748,14 @@ mod tests {
             clear_repository(store.as_ref(), &acme, &RepoId::new("web").unwrap()).unwrap();
         assert_eq!(cleared.deleted_entries, 3);
         assert_eq!(cleared.deleted_objects, 5, "three entries and two pointers");
-        assert_eq!(cleared.deleted_bytes, web.bytes);
+        assert_eq!(cleared.deleted_bytes, web.bytes - web.download_bytes);
 
         let after = storage_usage(store.as_ref(), &acme, None).unwrap();
-        assert!(!after.repos.contains_key("web"), "{after:?}");
+        // Only the download is left of `web`.
+        assert_eq!(after.repos["web"].entries, 0, "{after:?}");
+        assert_eq!(after.repos["web"].bytes, 6);
+        assert_eq!(after.repos["web"].downloads, 1);
+        assert!(store.get(&download).unwrap().is_some());
         assert_eq!(after.repos["web-admin"].entries, 1);
         assert!(
             caches(&acme, "web", "main", Event::Push)

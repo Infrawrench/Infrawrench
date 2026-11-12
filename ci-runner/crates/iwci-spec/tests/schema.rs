@@ -70,6 +70,10 @@ fn schema_matches_the_structs() {
             "/$defs/packageFilter",
         ),
         (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    downloads: { zzz: 1 }\n",
+            "/$defs/downloads",
+        ),
+        (
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    task-cache: { zzz: 1 }\n",
             "/$defs/taskCacheInputs",
         ),
