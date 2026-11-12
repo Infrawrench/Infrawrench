@@ -66,7 +66,12 @@ opt-level = 2
 # wasmer-vm 7.5.0 with vendor/wasmer-vm.patch: an interrupt traps compiled
 # Wasm only, never host code on the Wasm stack (#968). See vendor/README.md
 # for when to remove it.
+#
+# virtual-net 0.705.0 with vendor/virtual-net.patch: closing a loopback
+# listener frees its port, so a job can listen on it again (#1009). See
+# vendor/README.md for when to remove it.
 [patch.crates-io]
 wasmer-napi = { path = "vendor/wasmer-napi" }
 wasmer-wasix = { path = "vendor/wasmer-wasix" }
 wasmer-vm = { path = "vendor/wasmer-vm" }
+virtual-net = { path = "vendor/virtual-net" }

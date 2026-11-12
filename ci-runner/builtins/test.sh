@@ -286,6 +286,33 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'const k = []; for (let i = 0; i < 4e6; i++) k.push({ i, s: "y" + i }); console.log(k.length)'
+  # A closed listener frees its port (#1009): a server stopped and started
+  # again on one port in one `node`, and in a second `node` once the
+  # first has exited. The port used to stay taken until the job ended.
+  rebind-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/serve.js <<'JS'
+      const net = require("node:net");
+      const listen = () => new Promise((ok, no) => {
+        const s = net.createServer((c) => c.end("hi")).on("error", no);
+        s.listen(5555, "127.0.0.1", () => ok(s));
+      });
+      const ask = () => new Promise((ok, no) => {
+        let got = "";
+        net.connect(5555, "127.0.0.1").on("data", (d) => (got += d)).on("end", () => ok(got)).on("error", no);
+      });
+      (async () => {
+        for (let i = 0; i < 3; i++) {
+          const s = await listen();
+          if ((await ask()) !== "hi") throw new Error("no answer");
+          await new Promise((ok) => s.close(ok));
+        }
+        console.log("rebound");
+      })().catch((e) => { console.error(e); process.exit(1); });
+      JS
+      test "$(node /tmp/serve.js)" = rebound
+      test "$(node /tmp/serve.js)" = rebound
   # Edge.js has `node:wasi` without the binding behind it; the runner's
   # support files (iwci-runtime/node) make it work, which the wasm32-wasi
   # builds of native packages need (rolldown, and so Vite, Vitest and

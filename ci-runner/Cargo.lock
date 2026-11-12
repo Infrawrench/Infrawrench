@@ -5558,8 +5558,6 @@ dependencies = [
 [[package]]
 name = "virtual-net"
 version = "0.705.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd95d7124df8647ae6d74b8074ac683479f14a8ee0cdc909a0a21a171052b566"
 dependencies = [
  "anyhow",
  "async-trait",
