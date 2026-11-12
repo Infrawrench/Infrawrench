@@ -844,6 +844,63 @@ answers that point inside are dropped. UDP is not offered.
 loopback. The `iwci` command turns the internet on for its jobs; the
 runtime's own tests never use it.
 
+### Background services
+
+A job starts a service the way a shell script does, with `&`, on its own
+loopback, and the runner ends whatever is still running when the script
+finishes. Two commands on every environment's `PATH` wait for it to be
+ready, so a job need not guess with `sleep`:
+
+- `wait-for-port PORT [--host 127.0.0.1] [--timeout 30s]` returns once
+  something in the job listens on the port (`--host` is `127.0.0.1`, `::1`
+  or `localhost`; a job can only wait for its own services). It never
+  connects: the runner knows every listener on the job's loopback, and a
+  port with one is a port a connection would be accepted on.
+- `wait-for-log FILE PATTERN [--timeout 30s]` returns once a line of the
+  file matches the pattern, an extended regular expression as `grep -E`
+  reads it.
+
+Each exits 1 when its time runs out, saying what it waited for
+(`wait-for-log` also prints the file's last lines), and 2 on a usage error.
+Durations are seconds, or a number with `ms`, `s`, `m` or `h`.
+
+```yaml
+api-tests:
+  using: env:bash-node@24
+  run: |
+    node server.js > server.log 2>&1 &
+    wait-for-port 3000
+    npm test
+```
+
+Not connecting matters for services that take a single client.
+[`wasmer/pglite`](https://wasmer.io/wasmer/pglite) (PostgreSQL 18.4 for
+WASIX) serves one connection and exits when that client disconnects, so a
+readiness probe that connected would stop the database it was waiting for.
+Its log line is the clearest signal, and `wait-for-port 5432` is safe too:
+
+```yaml
+db-tests:
+  using: env:python@3.13
+  run: |
+    pglite > pg.log 2>&1 &
+    wait-for-log pg.log 'OLIPHAUNT_WASIX_SOCKET_READY 5432'
+    pytest   # one connection, for the whole run
+```
+
+What is and is not available:
+
+- **No environment carries a database yet.** pglite runs as above once a
+  job has its package; it is one backend with one connection, in memory,
+  with `plpgsql`, so a test suite has to share a single connection.
+- **No real MySQL, MariaDB or Redis exists for WASIX**, nor for WASI.
+  A MySQL-compatible server (go-mysql-server, an in-memory engine that
+  speaks the MySQL protocol) runs, but it is not MySQL: no InnoDB
+  semantics, and partial isolation and dialect coverage.
+- **SQLite** needs no server: Python's `sqlite3` is in `env:python`.
+- **There is no `services:` key yet.** Services are started by the script,
+  so only `env:` jobs can have them.
+
 ## The `iwci` command
 
 ```sh

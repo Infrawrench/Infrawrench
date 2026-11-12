@@ -1,0 +1,89 @@
+#!/bin/bash
+# wait-for-port PORT [--host 127.0.0.1] [--timeout 30s]: waits until
+# something in the job listens on PORT, for a service it started in the
+# background (`server &`). Exits 0 once it does, 1 when the time runs out,
+# 2 on a usage error.
+#
+# It never connects: the runner says whether a connection would be accepted
+# (/proc/iwci/tcp, ci-runner/crates/iwci-runtime/src/services.rs), so a
+# service that serves one client and then exits (pglite) is still there
+# afterwards. Only the job's own loopback can be waited on.
+set -u
+
+me='wait-for-port'
+host=127.0.0.1 timeout=30s
+args=()
+usage() {
+  printf 'Usage: %s PORT [--host HOST] [--timeout DURATION]\n' "$me" >&2
+  printf '  HOST is 127.0.0.1 (the default), ::1 or localhost\n' >&2
+  printf '  DURATION is a number of seconds, or one with ms, s, m or h (30s, 500ms, 2m)\n' >&2
+  exit 2
+}
+
+while (($#)); do
+  case "$1" in
+    -H | --host) (($# > 1)) || usage; host=$2; shift ;;
+    --host=*) host=${1#--host=} ;;
+    -t | --timeout) (($# > 1)) || usage; timeout=$2; shift ;;
+    --timeout=*) timeout=${1#--timeout=} ;;
+    -h | --help) usage ;;
+    --) shift; args+=("$@"); break ;;
+    -?*) printf "%s: unrecognized option '%s'\n" "$me" "$1" >&2; usage ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+((${#args[@]} == 1)) || usage
+port=${args[0]}
+if ! [[ $port =~ ^[0-9]+$ ]] || ((10#$port < 1 || 10#$port > 65535)); then
+  printf "%s: invalid port '%s'\n" "$me" "$port" >&2
+  usage
+fi
+port=$((10#$port))
+
+# The addresses a connection to HOST could go to.
+case "$host" in
+  127.0.0.1 | 0.0.0.0) addrs=("127.0.0.1:$port") ;;
+  ::1 | '[::1]' | :: | '[::]') addrs=("[::1]:$port") ;;
+  localhost) addrs=("127.0.0.1:$port" "[::1]:$port") ;;
+  *)
+    printf "%s: '%s' is not this job's loopback; a job can only wait for its own services (127.0.0.1, ::1 or localhost)\n" "$me" "$host" >&2
+    exit 2
+    ;;
+esac
+
+# A duration in milliseconds, into REPLY.
+millis() {
+  [[ $1 =~ ^([0-9]+)(ms|s|m|h)?$ ]] || return 1
+  case "${BASH_REMATCH[2]}" in
+    ms) REPLY=$((10#${BASH_REMATCH[1]})) ;;
+    '' | s) REPLY=$((10#${BASH_REMATCH[1]} * 1000)) ;;
+    m) REPLY=$((10#${BASH_REMATCH[1]} * 60000)) ;;
+    h) REPLY=$((10#${BASH_REMATCH[1]} * 3600000)) ;;
+  esac
+}
+# Milliseconds since the epoch, into REPLY.
+now() {
+  local t=${EPOCHREALTIME/./}
+  REPLY=$((10#$t / 1000))
+}
+
+millis "$timeout" || { printf "%s: invalid duration '%s'\n" "$me" "$timeout" >&2; usage; }
+limit=$REPLY
+now
+deadline=$((REPLY + limit))
+while :; do
+  for addr in "${addrs[@]}"; do
+    state=''
+    if ! read -r state 2>/dev/null <"/proc/iwci/tcp/$addr"; then
+      printf '%s: this runner cannot say what is listening (/proc/iwci/tcp is missing)\n' "$me" >&2
+      exit 2
+    fi
+    [[ $state == listening ]] && exit 0
+  done
+  now
+  ((REPLY < deadline)) || break
+  sleep 0.1
+done
+printf '%s: nothing listened on %s port %s within %s\n' "$me" "$host" "$port" "$timeout" >&2
+exit 1
