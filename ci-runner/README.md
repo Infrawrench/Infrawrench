@@ -448,6 +448,13 @@ Environments:
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
 
+An environment's major and minor version follow the runtime it carries
+(Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
+CPython 3.13. Its patch number is the environment's own revision, not the
+runtime's: `bash-node` 24.0.5 is not Node 24.0.5, and `python` 3.13.16 and
+`php` 8.4.28 carry the same interpreters as 3.13.15 and 8.4.27 with a
+changed bash. Each table entry names the runtime release inside.
+
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
 
