@@ -1156,9 +1156,15 @@ importers:
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
+      esbuild-wasm:
+        specifier: 0.28.1
+        version: 0.28.1
       react:
         specifier: 19.0.0
         version: 19.0.0
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
       typescript:
         specifier: 'catalog:'
         version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
@@ -1821,6 +1827,9 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0(supports-color@10.2.2)
       esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      esbuild-wasm:
         specifier: ^0.25.12
         version: 0.25.12
       typescript:
@@ -12446,6 +12455,11 @@ packages:
 
   esbuild-wasm@0.25.12:
     resolution: {integrity: sha512-rZqkjL3Y6FwLpSHzLnaEy8Ps6veCNo1kZa9EOfJvmWtBq5dJH4iVjfmOO6Mlkv9B0tt9WFPFmb/VxlgJOnueNg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  esbuild-wasm@0.28.1:
+    resolution: {integrity: sha512-p/GD4E8oYRjg3kjdKrnMb0s4PzXgJF42e0MF4H0+ACyK/kIlFRp3e0fzOleIG+wBBm6MM3XQrbpe7soEA+vJIA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -25967,6 +25981,8 @@ snapshots:
     optional: true
 
   esbuild-wasm@0.25.12: {}
+
+  esbuild-wasm@0.28.1: {}
 
   esbuild@0.25.12:
     optionalDependencies:

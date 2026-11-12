@@ -29,6 +29,13 @@
 //    WebContainer, as the runner's Node does, because workerd cannot run
 //    there; `astro check` never starts it (see 1), so Astro's command line
 //    does not see the name.
+//
+// 3. `fs.cpSync` of a directory throws EACCES (#1075). Node 24 copies a
+//    directory in C++ unless the call has a `filter`, and that copy is what
+//    fails; with one it walks the tree in JavaScript, which works. So a
+//    recursive call without a filter is given one that keeps everything.
+//    `ray build` (the Raycast extension) and the VS Code extension's
+//    package script both copy directories this way.
 "use strict";
 
 const fs = require("node:fs");
@@ -94,6 +101,16 @@ if (process.platform === "wasi" && typeof mod.registerHooks === "function") {
       return resolved;
     },
   });
+
+  const cpSync = fs.cpSync;
+  fs.cpSync = function (src, dest, options) {
+    if (options?.recursive && !options.filter) {
+      options = { ...options, filter: () => true };
+    }
+    return cpSync.call(this, src, dest, options);
+  };
+  // `import { cpSync } from "node:fs"` reads the export, not the property.
+  mod.syncBuiltinESMExports();
 
   if (/[\\/]astro[\\/]bin[\\/]astro\.mjs$/.test(process.argv[1] ?? "")) {
     const { webcontainer: _, ...versions } = process.versions;

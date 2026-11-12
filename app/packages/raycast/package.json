@@ -114,7 +114,9 @@
   "devDependencies": {
     "@types/node": "22.19.17",
     "@types/react": "^19.2.18",
+    "esbuild-wasm": "0.28.1",
     "react": "19.0.0",
+    "tar": "^7.5.22",
     "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
