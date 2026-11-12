@@ -511,6 +511,22 @@ jobs:
       test ! -e done
       wait
       test -e done
+  # A child's exit status reaches its parent whole (#1053): every status
+  # from 80 up read as 79, so a script could not tell `git`'s fatal 128
+  # from a missing command's 127.
+  exit-status-passes:
+    using: env:bash@5
+    run: |
+      got=""
+      for c in 1 79 80 126 127 128 200 255; do
+        status=0
+        bash -c "exit $c" || status=$?
+        got="$got $status"
+      done
+      test "$got" = " 1 79 80 126 127 128 200 255"
+      status=0
+      git rev-parse --verify no-such-ref 2>/dev/null || status=$?
+      test "$status" = 128
   # A script runs its `#!` interpreter (#958), here `cat`, which prints it:
   # bash on its own would have run the file as a shell script.
   shebang-passes:
@@ -1839,6 +1855,25 @@ jobs:
       });
       JS
       test "$(node /tmp/exit.js)" = "child exit ok"
+  # A child's exit status reaches a `node` whole (#1053): spawnSync and
+  # `exit` read every status from 80 up as 79.
+  exit-status-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      cat > /tmp/status.js <<'JS'
+      const { spawn, spawnSync } = require("node:child_process");
+      const assert = require("node:assert");
+      for (const c of [1, 79, 80, 128, 255]) {
+        assert.equal(spawnSync("bash", ["-c", `exit ${c}`]).status, c);
+      }
+      assert.equal(spawnSync("git", ["rev-parse", "--verify", "no-such-ref"]).status, 128);
+      spawn("bash", ["-c", "exit 129"]).on("exit", (code) => {
+        assert.equal(code, 129);
+        console.log("status ok");
+      });
+      JS
+      test "$(node /tmp/status.js)" = "status ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap
