@@ -23,6 +23,7 @@ Every route but `/healthz` needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`    | From the runner that has the run. Logs stream through as Server-Sent Events.   |
 | `POST /v1/prepare`                               | Warms a runner for a request, placed like a run.                               |
 | `GET /v1/storage/{owner}`, `/v1/usage/{owner}`   | From any runner that answers; they all read the same store.                    |
+| `DELETE /v1/storage/{owner}/{repo-id}`           | Clears one repository's caches, on any runner that answers.                    |
 | `PUT /v1/schedules`                              | Registers a repository's scheduled pipelines (below).                          |
 | `GET /v1/schedules/{owner}`                      | An owner's registered repositories, their crons and the last refresh's error.  |
 | `DELETE /v1/schedules/{owner}/{repo-id}`         | Stops a repository's scheduled runs.                                           |

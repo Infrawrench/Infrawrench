@@ -346,6 +346,10 @@ task-cache:
 - Entries are kept with the [job caches](#job-caches), scoped and counted
   the same way: a pull request's entries are never read by a push to the
   default branch.
+- **A run can skip it.** A request with `"no-task-cache": true`, or
+  `iwci run --no-task-cache`, runs every task-cached job as if each lookup
+  missed, and saves what passes as usual. Clearing a repository's caches
+  (`DELETE /v1/storage/{owner}/{repo-id}`) drops its entries for good.
 - A job that reads secrets or commits its changes cannot be task-cached:
   its result could depend on what the key cannot hold. Nor should one that
   reads the run's shared `/tmp/workflow`, which is not part of its key.
@@ -1090,7 +1094,7 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
          [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
-         [--keep-installs-unpacked 24h]
+         [--keep-installs-unpacked 24h] [--no-task-cache]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
@@ -1292,6 +1296,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
 | `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.                                                                                           |
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's cache storage, total and per repository, against its quota.                                                                                                 |
+| `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches (below) and answers what went.                                                                                                          |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
 | `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text.                                                                                  |
 | `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
@@ -1313,7 +1318,8 @@ A request body (for `runs` and `prepare`):
   "ref": "optional: the ref the commit is reachable from, such as refs/pull/12/head; default refs/heads/<branch>",
   "token": "optional: for a private repository; never stored or echoed",
   "secrets": { "NPM_TOKEN": "optional: never stored or echoed, masked in output" },
-  "vars": { "REGION": "optional: for ${{ vars.<name> }}" }
+  "vars": { "REGION": "optional: for ${{ vars.<name> }}" },
+  "no-task-cache": "optional: true runs every task-cache: job; passes still save"
 }
 ```
 
@@ -1349,6 +1355,21 @@ A request body (for `runs` and `prepare`):
 - **Quotas.** An owner's caches across all its repositories are held to its
   storage quota: the request's `storage-quota`, else the server's
   `--storage-quota` (default 10 GiB).
+- **Without the task cache.** A request with `"no-task-cache": true`, or
+  `iwci run --no-task-cache`, runs every `task-cache:` job instead of
+  replaying a passing run's entry, and each says so in its cache lines. A job that
+  passes still saves under its key, so the next run that reads the task
+  cache is cached again. `cache:` entries restore as usual; to drop those
+  too, clear the repository's caches.
+- **Clearing a repository's caches.** `DELETE /v1/storage/{owner}/{repo-id}`
+  deletes everything under `caches/<owner>/<repo-id>/`: every branch's and
+  pull request's `cache:` and `task-cache:` entries and their `restore-keys`
+  pointers, which is what `GET /v1/storage/{owner}` counts for that
+  repository. It answers
+  `{ "owner", "repo-id", "deleted_objects", "deleted_bytes", "deleted_entries" }`.
+  Other repositories, other owners, run reports, billing records and each
+  runner's own caches (git objects, installs, compiled modules) stay. A run
+  saving at the same moment can leave its new entry behind.
 
 ### Warm builtins
 

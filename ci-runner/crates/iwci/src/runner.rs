@@ -93,6 +93,11 @@ pub struct RunRequest {
     /// the base repository's pull ref carries.
     #[serde(default, rename = "ref")]
     pub git_ref: Option<String>,
+    /// Run every `task-cache:` job rather than replay a passing run's
+    /// entry. Entries are still saved, so the next run without it is
+    /// cached again. `cache:` entries are restored as usual.
+    #[serde(default)]
+    pub no_task_cache: bool,
 }
 
 /// A run's secrets. Its `Debug` lists names only, so logging a request
@@ -446,6 +451,7 @@ impl Runner {
             ))),
             logs: logs.clone(),
             slots: self.slots.clone(),
+            skip_task_cache: req.no_task_cache,
         };
 
         let mut pipelines = Vec::new();
@@ -786,6 +792,18 @@ mod tests {
                 .storage_quota,
             None
         );
+    }
+
+    #[test]
+    fn a_request_can_skip_the_task_cache() {
+        let parse = |body: &str| serde_json::from_str::<RunRequest>(body);
+        assert!(!parse("{\"repo\": \"r\"}").unwrap().no_task_cache);
+        assert!(
+            parse("{\"repo\": \"r\", \"no-task-cache\": true}")
+                .unwrap()
+                .no_task_cache
+        );
+        assert!(parse("{\"repo\": \"r\", \"no-task-cache\": \"yes\"}").is_err());
     }
 
     #[test]

@@ -8,6 +8,7 @@
 //!          [--default-branch main]
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
 //!          [--keep-installs-unpacked 24h] [--var NAME=value]...
+//!          [--no-task-cache]
 //! ```
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
@@ -194,6 +195,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
         // From the environment only, never a flag (see `Runner::resolve`).
         token: None,
         git_ref: args.value("--ref")?,
+        no_task_cache: args.flag("--no-task-cache"),
         secrets: crate::runner::Secrets(
             std::env::vars()
                 .filter_map(|(k, v)| {

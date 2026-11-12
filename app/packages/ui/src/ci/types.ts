@@ -2,6 +2,8 @@
 // the client seam a host must provide.
 import type {
   CiAccount,
+  CiCacheCleared,
+  CiCaches,
   CiLogEvent,
   CiRun,
   CiRunDetail,
@@ -27,6 +29,15 @@ export interface CiClient {
   streamRunLogs(id: string, signal: AbortSignal): AsyncIterable<CiLogEvent>;
   approveRun(id: string): Promise<void>;
   rejectRun(id: string): Promise<void>;
+  /**
+   * Queues a finished run again (same commit, branch and event) and answers
+   * the new run. With `noTaskCache` every `task-cache:` job runs.
+   */
+  retryRun(id: string, opts: { noTaskCache: boolean }): Promise<CiRun>;
+  /** The caches CI keeps, per connected account and repository. */
+  listCaches(): Promise<CiCaches>;
+  /** Deletes one repository's caches and answers what went. */
+  clearCache(installationId: number, repo: string): Promise<CiCacheCleared>;
   usage(): Promise<CiUsage>;
   /** The repository names an installation can see, for the scope picker. */
   listRepos(installationId: number): Promise<string[]>;

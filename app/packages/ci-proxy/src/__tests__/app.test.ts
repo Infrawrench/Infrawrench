@@ -32,6 +32,7 @@ class FakeRunner {
   };
   down = false;
   draining = false;
+  cleared: string[] = [];
 
   constructor(
     readonly url: string,
@@ -76,6 +77,11 @@ class FakeRunner {
     if (status) return json(200, { id: status[1], state: "finished", runner: this.url });
     if (path === "/v1/schedules/read") return json(200, this.schedules);
     if (path.startsWith("/v1/usage/")) return json(200, { runner: this.url });
+    const clear = /^\/v1\/storage\/([^/]+)\/([^/]+)$/.exec(path);
+    if (clear && init.method === "DELETE") {
+      this.cleared.push(`${clear[1]}/${clear[2]}`);
+      return json(200, { owner: clear[1], "repo-id": clear[2], deleted_objects: 3 });
+    }
     return json(404, { error: "no route" });
   }
 }
@@ -174,6 +180,37 @@ describe("proxy", () => {
       runner: string;
     };
     expect(usage.runner).toBe("http://b.test");
+  });
+
+  it("clears a repository's caches on a runner that answers, and checks the ids", async () => {
+    const a = new FakeRunner("http://a.test", 2, 2);
+    a.down = true;
+    const b = new FakeRunner("http://b.test", 2, 2);
+    const { call } = await setup([a, b]);
+    const res = await call("DELETE", "/v1/storage/github.com-acme/web");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { deleted_objects: number }).deleted_objects).toBe(3);
+    expect(b.cleared).toEqual(["github.com-acme/web"]);
+
+    expect((await call("DELETE", "/v1/storage/github.com-acme/..")).status).toBe(404);
+    expect((await call("DELETE", "/v1/storage/github.com-acme/a..b")).status).toBe(400);
+    expect((await call("DELETE", "/v1/storage/github.com-acme/we%20b")).status).toBe(400);
+    expect(b.cleared).toEqual(["github.com-acme/web"]);
+
+    b.down = true;
+    expect((await call("DELETE", "/v1/storage/github.com-acme/web")).status).toBe(503);
+  });
+
+  it("passes a run's no-task-cache on to the runner", async () => {
+    const runner = new FakeRunner("http://a.test", 2, 2);
+    const { call } = await setup([runner]);
+    const res = await call("POST", "/v1/runs", {
+      repo: "https://github.com/acme/web",
+      branch: "main",
+      "no-task-cache": true,
+    });
+    expect(res.status).toBe(202);
+    expect(runner.runs[0]?.body["no-task-cache"]).toBe(true);
   });
 
   it("registers schedules without tokens and fires each due pipeline once", async () => {

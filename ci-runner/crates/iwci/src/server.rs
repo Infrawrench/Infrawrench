@@ -17,6 +17,7 @@
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
 //! | `POST /v1/prepare` | warms the clone, installs and tools for a request, runs nothing |
 //! | `GET /v1/storage/{owner}[?quota=]` | the owner's cache storage, per repository |
+//! | `DELETE /v1/storage/{owner}/{repo-id}` | deletes one repository's caches, and says what went |
 //! | `GET /v1/usage/{owner}[?month=YYYY-MM]` | the owner's billed usage for a month |
 //! | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, with their crons and text, for the proxy that fires them |
 
@@ -30,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tiny_http::{Header, Method, Request, Response};
 
-use crate::adapters::caches::storage_usage;
+use crate::adapters::caches::{clear_repository, storage_usage};
 
 #[path = "server_lifecycle.rs"]
 pub(crate) mod lifecycle;
@@ -261,6 +262,9 @@ impl Server {
                 },
                 (Method::Get, ["v1", "storage", owner]) => {
                     self.storage(owner, query.get("quota")).boxed()
+                }
+                (Method::Delete, ["v1", "storage", owner, repo]) => {
+                    self.clear_storage(owner, repo).boxed()
                 }
                 (Method::Get, ["v1", "usage", owner]) => {
                     self.usage(owner, query.get("month")).boxed()
@@ -672,6 +676,16 @@ impl Server {
         };
         match storage_usage(self.runner.store.as_ref(), &owner, quota) {
             Ok(usage) => json_response(200, &serde_json::to_value(usage).unwrap_or_default()),
+            Err(e) => error(502, format!("store: {e}")),
+        }
+    }
+
+    fn clear_storage(&self, owner: &str, repo: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+        let (Ok(owner), Ok(repo)) = (RepoId::new(owner), RepoId::new(repo)) else {
+            return error(400, "bad owner or repository id");
+        };
+        match clear_repository(self.runner.store.as_ref(), &owner, &repo) {
+            Ok(cleared) => json_response(200, &serde_json::to_value(cleared).unwrap_or_default()),
             Err(e) => error(502, format!("store: {e}")),
         }
     }

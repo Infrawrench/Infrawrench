@@ -350,6 +350,7 @@
     "./products/settings": "./src/products/settings.ts",
     "./ci/accounts": "./src/ci/accounts.ts",
     "./ci/billing": "./src/ci/billing.ts",
+    "./ci/caches": "./src/ci/caches.ts",
     "./ci/events": "./src/ci/events.ts",
     "./ci/pass": "./src/ci/pass.ts",
     "./ci/runs": "./src/ci/runs.ts",

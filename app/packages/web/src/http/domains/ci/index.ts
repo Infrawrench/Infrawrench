@@ -9,6 +9,8 @@ import { HttpApiBuilder } from "effect/http-api";
 import {
   CiAccountSchema,
   CiApi,
+  CiCacheClearedSchema,
+  CiCachesSchema,
   CiRunDetailSchema,
   CiRunSchema,
   CiStatusSchema,
@@ -21,6 +23,7 @@ import {
 import { CI_RUN_STATUSES } from "@infrawrench/client-core";
 import { ciStatus, setCiAccount } from "@infrawrench/server-core/ci/accounts";
 import { ciUsage } from "@infrawrench/server-core/ci/billing";
+import { clearCiCache, listCiCaches } from "@infrawrench/server-core/ci/caches";
 import {
   approveRun,
   CiInputError,
@@ -29,6 +32,7 @@ import {
   listRuns,
   openRunLogs,
   rejectRun,
+  retryRun,
 } from "@infrawrench/server-core/ci/runs";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 import { orgHasFeature } from "@infrawrench/server-core/features";
@@ -201,6 +205,61 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
           }),
         );
         return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("retryRun", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const noTaskCache = payload.noTaskCache === true;
+        const run = yield* legacyTry(
+          () => retryRun(organizationId, params.runId, session.userId ?? "", { noTaskCache }),
+          refusal,
+        );
+        // `keepAlive`: on the edge the dispatch outlives the response.
+        yield* fireAndForget(() => keepAlive(dispatchRun(run.id)));
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.run.retry",
+            entityType: "ci_run",
+            entityId: run.id,
+            metadata: { retryOf: params.runId, repo: run.repoFullName, noTaskCache },
+          }),
+        );
+        return yield* respond(CiRunSchema)(run);
+      }),
+    )
+    .handle("listCaches", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const caches = yield* legacy(() => listCiCaches(organizationId));
+        return yield* respond(CiCachesSchema)(caches);
+      }),
+    )
+    .handle("clearCache", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const cleared = yield* legacyTry(
+          () => clearCiCache(organizationId, params.installationId, params.repo),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.cache.clear",
+            entityType: "ci_cache",
+            entityId: `${params.installationId}/${cleared.repo}`,
+            metadata: {
+              installationId: params.installationId,
+              repo: cleared.repo,
+              deletedEntries: cleared.deletedEntries,
+              deletedBytes: cleared.deletedBytes,
+            },
+          }),
+        );
+        return yield* respond(CiCacheClearedSchema)(cleared);
       }),
     )
     .handle("listValues", ({ query }) =>

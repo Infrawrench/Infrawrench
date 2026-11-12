@@ -4,6 +4,8 @@ import { Effect, Stream } from "effect";
 import {
   ciLogEvent,
   type CiAccount,
+  type CiCacheCleared,
+  type CiCaches,
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
@@ -130,6 +132,14 @@ export function createDesktopCiClient(): CiClient {
     rejectRun: async (runId) => {
       await runRpc(ci().rejectRun({ params: { orgId: requireOrgId(), runId } }));
     },
+    retryRun: (runId, { noTaskCache }): Promise<CiRun> =>
+      runRpc(ci().retryRun({ params: { orgId: requireOrgId(), runId }, payload: { noTaskCache } })),
+    listCaches: async (): Promise<CiCaches> => {
+      const { accounts } = await runRpc(ci().listCaches({ params: { orgId: requireOrgId() } }));
+      return { accounts: accounts.map((a) => ({ ...a, repos: [...a.repos] })) };
+    },
+    clearCache: (installationId, repo): Promise<CiCacheCleared> =>
+      runRpc(ci().clearCache({ params: { orgId: requireOrgId(), installationId, repo } })),
     usage: (): Promise<CiUsage> =>
       runRpc(ci().usage({ params: { orgId: requireOrgId() }, query: {} })),
     listRepos: async (installationId) => {
