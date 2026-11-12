@@ -579,8 +579,22 @@ next one: only the first buffer waits, the rest take what has arrived (it
 used to sit out the 30 s before returning the first buffer's bytes).
 Upstream main still defaults to 30 s (checked November 2026).
 
+**Unlinking a directory changes nothing (#1049).** `path_unlink_file`
+took the entry out of its parent's cached entries, and lowered its link
+count, before it looked at what it had taken out, and only then answered
+`EISDIR` for a directory. The directory was still there, but the cache no
+longer knew it, so the `path_remove_directory` that follows answered
+`ENOENT`. The C library's `remove`, which libc++'s `std::filesystem::remove`
+calls, tries `unlink` before `rmdir`, and libc++ takes `ENOENT` for
+"already gone": Edge.js's `fs.rmSync(dir, { recursive: true })` (and
+`fs.rmdirSync` with `recursive`) removed nothing and reported success,
+which left a test's temporary directories behind, a kubeconfig's
+credentials among them. `src/syscalls/wasi/path_unlink_file.rs` now
+refuses a directory before it touches anything: wasmerio/wasmer#7076,
+merged to `main` after 0.705.0 and in no release yet.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
-#6982 (a non-blocking wait for any child), 2fc27ff21, a standard stream
+#6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
 still classify as streams, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
@@ -592,13 +606,15 @@ entry in `../Cargo.toml`, and check `builtins/test.sh`'s
 `shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
 bash-node), `low-fds-passes`, `rename-passes` (bash and bash-node),
 `bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
-`python/idle-server-passes`, `python/idle-server-timeout-fails` and
-`postgres/idle-client-passes`, and `iwci-runtime`'s
-`no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`,
+`bash-node/rm-recursive-passes`, `python/idle-server-passes`,
+`python/idle-server-timeout-fails` and `postgres/idle-client-passes`, and
+`iwci-runtime`'s `no_descriptor_is_a_terminal`,
+`a_program_can_replace_the_preopens_and_keep_its_paths`,
 `a_bash_script_can_use_descriptors_3_and_4`,
 `a_blocking_accept_or_recv_is_stopped_by_the_timeout`,
-`an_accept_timeout_the_program_sets_still_applies` and
-`a_service_blocked_in_accept_takes_its_sigterm`.
+`an_accept_timeout_the_program_sets_still_applies`,
+`a_service_blocked_in_accept_takes_its_sigterm` and
+`unlinking_a_directory_fails_and_leaves_it_removable`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

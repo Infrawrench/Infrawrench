@@ -321,6 +321,62 @@ fn a_program_can_replace_the_preopens_and_keep_its_paths() {
     );
 }
 
+/// Unlinks directories and a file and removes the directories, exiting with
+/// a code naming the first call that did not give the errno it should.
+/// Unlinking a directory must fail with EISDIR (31) and change nothing:
+/// the C library's `remove` (and so `std::filesystem::remove`, Edge.js's
+/// `fs.rmSync`) tries `unlink` before `rmdir`.
+const UNLINK_DIRS: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/empty")
+  (data (i32.const 120) "/work/full")
+  (data (i32.const 140) "/work/file")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (call $expect (call $unlink (i32.const 3) (i32.const 100) (i32.const 11)) (i32.const 31) (i32.const 10))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 100) (i32.const 11)) (i32.const 0) (i32.const 11))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 100) (i32.const 11)) (i32.const 44) (i32.const 12))
+    (call $expect (call $unlink (i32.const 3) (i32.const 120) (i32.const 10)) (i32.const 31) (i32.const 13))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 120) (i32.const 10)) (i32.const 55) (i32.const 14))
+    (call $expect (call $unlink (i32.const 3) (i32.const 120) (i32.const 10)) (i32.const 31) (i32.const 15))
+    (call $expect (call $rmdir (i32.const 3) (i32.const 120) (i32.const 10)) (i32.const 55) (i32.const 16))
+    (call $expect (call $unlink (i32.const 3) (i32.const 140) (i32.const 10)) (i32.const 0) (i32.const 17))
+    (call $expect (call $unlink (i32.const 3) (i32.const 140) (i32.const 10)) (i32.const 44) (i32.const 18))))
+"#;
+
+/// Unlinking a directory used to take it out of WASIX's directory cache
+/// before refusing, so the `rmdir` that follows found nothing (ENOENT) and
+/// left the directory where it was: Edge.js's `fs.rmSync(dir, { recursive:
+/// true })` removed nothing and reported success (#1049).
+#[test]
+fn unlinking_a_directory_fails_and_leaves_it_removable() {
+    let rt = runtime();
+    let builder = SnapshotBuilder::new();
+    builder.mkdir_all("/work/empty").unwrap();
+    builder.write("/work/full/child/file", b"child").unwrap();
+    builder.write("/work/file", b"file").unwrap();
+    let job = builder.freeze().fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("unlink-dirs", UNLINK_DIRS),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(job.read("/work/full/child/file").unwrap(), b"child");
+    assert_eq!(
+        job.changes("/"),
+        vec![Change::Deleted {
+            path: "/work/file".into()
+        }]
+    );
+}
+
 /// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
 /// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
 /// one `fd_fdstat_get` gives stdin once that pipe is put in its place and
