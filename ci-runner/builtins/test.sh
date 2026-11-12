@@ -1126,6 +1126,23 @@ jobs:
       }
       JS
       node /tmp/many.js
+  # Worker threads that outgrow the job's memory together with their
+  # parent. The runner stops the job and each thread disposes its isolate
+  # at the heap limit, mid-marking, and V8 finishes the marking first with a
+  # full collection, which reached that limit in an isolate being disposed
+  # and aborted the runner (#1021). A race, so a smoke check.
+  workers-heap-fails:
+    using: env:bash-node@24
+    memory: 1GiB
+    timeout: 3m
+    run: |
+      cat > /tmp/wh.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      const src = "const a = []; for (;;) a.push({ x: Math.random(), s: 'w' + a.length })";
+      for (let i = 0; i < 4; i++) new Worker(src, { eval: true }).on("error", () => {});
+      const a = []; for (;;) a.push({ y: Math.random() });
+      JS
+      node /tmp/wh.js
 YAML
       ;;
     go@*)
@@ -1378,7 +1395,7 @@ want_reason() {
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/heap-objects-fails | bash-node/workers-refused-fails) echo "ran out of its 512 MiB of memory" ;;
-    bash-node/heap-strings-fails) echo "ran out of its 1024 MiB of memory" ;;
+    bash-node/heap-strings-fails | bash-node/workers-heap-fails) echo "ran out of its 1024 MiB of memory" ;;
     *) echo "" ;;
   esac
 }
@@ -1391,6 +1408,7 @@ want_stderr() {
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*V8 ran out of heap in an isolate" ;;
+    bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/workers-refused-fails) echo "ERR_WORKER_INIT_FAILED.*iwci: the job ran out of its 512 MiB of memory.*worker threads could not start" ;;
     *) echo "" ;;
   esac
