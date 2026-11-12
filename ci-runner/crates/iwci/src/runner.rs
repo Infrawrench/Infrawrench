@@ -379,6 +379,7 @@ impl Runner {
             fetcher: self.fetcher.clone(),
             layers: self.layers.clone(),
             threads: self.cpus,
+            git: Some(self.git.clone()),
         };
         let mut author = self.author.clone();
         author.time = now_secs() as i64;

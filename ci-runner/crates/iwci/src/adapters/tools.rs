@@ -71,6 +71,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             env.push((k, v));
         }
         let commands = path_commands(path_tools, inv.fs, &mut env)?;
+        prepend_path(&mut env, inv.path);
         let services = services
             .iter()
             .map(|s| service(s, inv.fs))
@@ -358,4 +359,26 @@ fn with_error(mut stderr: String, error: Option<String>) -> String {
         stderr.push_str(&e);
     }
     stderr
+}
+
+/// Puts `dirs` (what the workspace's installs provide, such as pip's
+/// console scripts) first on `PATH`, ahead of whatever the environment's
+/// manifest or the job set, or of the runtime's default.
+fn prepend_path(env: &mut Vec<(String, String)>, dirs: &[String]) {
+    if dirs.is_empty() {
+        return;
+    }
+    let current = env.iter().rev().find(|(k, _)| k == "PATH").map_or_else(
+        || iwci_runtime::DEFAULT_PATH.to_string(),
+        |(_, v)| v.clone(),
+    );
+    let mut parts: Vec<&str> = dirs.iter().map(String::as_str).collect();
+    parts.extend(
+        current
+            .split(':')
+            .filter(|p| !p.is_empty() && !dirs.iter().any(|d| d == p)),
+    );
+    let joined = parts.join(":");
+    env.retain(|(k, _)| k != "PATH");
+    env.push(("PATH".to_string(), joined));
 }

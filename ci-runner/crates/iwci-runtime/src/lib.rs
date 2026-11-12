@@ -235,6 +235,10 @@ pub struct Invocation {
     pub services: Vec<Service>,
 }
 
+/// A script's `PATH` when nothing sets one: tools and the runner's own
+/// commands in `/usr/local/bin`, then the packages' commands.
+pub const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+
 /// Where [`Invocation::scratch`] is mounted.
 pub const SCRATCH_MOUNT: &str = "/tmp/workflow";
 
@@ -564,9 +568,6 @@ impl Runtime {
         )
     }
 }
-
-/// `PATH` for a script whose environment does not set one.
-pub(crate) const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 
 /// The arguments that make `entry` (a shell) run `script` strictly: bash
 /// with `set -euo pipefail` first, any other shell `set -eu`.

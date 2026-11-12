@@ -27,8 +27,8 @@
 # Edge.js, see environments/edgejs/build.sh). SKIP_BUILD=1 publishes what is
 # already in dist/ instead of building. python, php and go need the internet:
 # python and php install packages (from PyPI and Wasmer's wheel index, and
-# from Packagist), and go fetches its fixture's module and an HTTPS page.
-# Needs: git, jq, and
+# from Packagist, in jobs and through `deps:`), and go fetches its fixture's
+# module and an HTTPS page. Needs: git, jq, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -334,12 +334,76 @@ func main() {
 	fmt.Println(resp.Status)
 }
 EOF
+# A Python project installed by `deps: [pip]`: requests and what it needs
+# from PyPI, and numpy as Wasmer's WASIX wheel, in pip-compile's format
+# with the WASIX wheel's hash beside PyPI's sdist (README, "WASIX wheels in
+# a lock"): the installer must pass over the sdist, and colorama is for
+# Windows only, so it must not be installed.
+mkdir -p "$repo/py/locked"
+cat >"$repo/py/locked/requirements.txt" <<'TXT'
+--extra-index-url https://python-registry.wasix.org/simple/
+
+certifi==2026.10.23 \
+    --hash=sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+    # via requests
+charset-normalizer==3.5.2 \
+    --hash=sha256:b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685
+    # via requests
+colorama==0.4.6 ; sys_platform == "win32" \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
+idna==3.20 \
+    --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+    # via requests
+numpy==2.5.1 \
+    --hash=sha256:84c967049bdf089778addfdda3d4b8b1b69d620be8477f66eebbfe5b65728ab4 \
+    --hash=sha256:a48a113e6afea91f5608793bafa7ef2ad481fefbda87ec5069f483de61cb9fa3
+requests==2.34.2 \
+    --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+    # via requests
+TXT
+# The same Composer project installed by `deps: [composer]`. Its
+# composer.lock is resolved just before the pipelines run (below), so it
+# follows Packagist as the other PHP jobs do; bad/ expects the wrong
+# greeting.
+mkdir -p "$repo/php/locked/bad"
+cp -R "$repo/php/ok/." "$repo/php/locked/"
+cp "$repo/php/bad/tests/GreeterTest.php" "$repo/php/locked/bad/"
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
+
+# php/locked's composer.lock, resolved by Composer in env:php without
+# installing anything, and committed for the installer to read.
+for name in "$@"; do
+  [[ "$name" == php ]] || continue
+  cat >"$SCRATCH/php-lock.yml" <<'YAML'
+name: php-lock
+jobs:
+  lock:
+    using: env:php@8.4
+    cwd: /app/php/locked
+    timeout: 10m
+    run: |
+      composer update --no-install --no-progress --quiet
+      cat composer.lock
+YAML
+  out="$("$IWCI" run --repo "$repo" --branch main --pipeline "$SCRATCH/php-lock.yml" --json \
+    --store "$SCRATCH/store" --cache "$SCRATCH/cache")" || true
+  if ! jq -r '.pipelines[0].report.jobs[0].execution.stdout // ""' <<<"$out" |
+    jq -e '.packages | length > 0' >/dev/null 2>&1; then
+    echo "error: could not resolve php/locked/composer.lock:" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  jq -r '.pipelines[0].report.jobs[0].execution.stdout' <<<"$out" >"$repo/php/locked/composer.lock"
+  git -C "$repo" add -A
+  git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm "composer.lock"
+done
 
 pipeline() {
   case "$1" in
@@ -1422,6 +1486,28 @@ jobs:
       wait-for-log http.log 'Serving HTTP on' --timeout 10s
       test "$(python -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8000/data.txt").read().decode().strip())')" = "fixture line"
       kill "$server"
+  # A hashed requirements file installed before the job (`deps: [pip]`,
+  # #1015): the job has no network, so everything it imports came through
+  # the verifying installer, numpy as Wasmer's WASIX wheel, into the user
+  # site, with charset-normalizer's console script on PATH.
+  pip-deps-passes:
+    using: env:python@3.13
+    deps: [{ pip: { dir: py/locked } }]
+    network: false
+    timeout: 5m
+    run: |
+      test "$(python -c 'import numpy; print(int(numpy.arange(5).sum()))')" = 10
+      python -c 'import numpy, site, sys; assert numpy.__file__.startswith(site.getusersitepackages()), numpy.__file__'
+      python -c 'import requests; print(requests.__version__)'
+      pip show numpy | grep -q '^Version: 2.5.1+wasix'
+      test -z "$(pip show colorama 2>/dev/null)"
+      normalizer --version
+  pip-deps-fails:
+    using: env:python@3.13
+    deps: [{ pip: { dir: py/locked } }]
+    network: false
+    timeout: 5m
+    run: python -c 'import numpy; assert int(numpy.arange(5).sum()) == 11'
   # A script on stdin runs as a script (#1008): Python took the pipe for a
   # terminal, printed its prompts and read a block line by line.
   stdin-script-passes:
@@ -1586,6 +1672,28 @@ jobs:
     run: |
       composer install
       vendor/bin/phpunit
+  # composer.lock installed before the job (`deps: [composer]`, #1015):
+  # each package checked against its dist hash or its git commit, laid out
+  # without what its .gitattributes leave out of a dist, with Composer's
+  # autoloader and bin proxies, and no network in the job.
+  composer-deps-passes:
+    using: env:php@8.4
+    cwd: /app/php/locked
+    deps: [{ composer: { dir: php/locked } }]
+    network: false
+    timeout: 10m
+    run: |
+      test -f vendor/phpunit/phpunit/phpunit
+      test ! -e vendor/phpunit/phpunit/tests
+      php -r 'require "vendor/autoload.php"; echo Composer\InstalledVersions::getPrettyVersion("phpunit/phpunit"), "\n";'
+      vendor/bin/phpunit
+  composer-deps-fails:
+    using: env:php@8.4
+    cwd: /app/php/locked
+    deps: [{ composer: { dir: php/locked } }]
+    network: false
+    timeout: 10m
+    run: vendor/bin/phpunit bad
   lint-fails:
     using: env:php@8.5
     run: |
@@ -1609,7 +1717,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | php/phpunit-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;

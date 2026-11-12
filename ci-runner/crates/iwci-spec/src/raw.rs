@@ -140,6 +140,7 @@ pub enum Depth {
 }
 
 /// `pnpm`, or `pnpm: { dir: app }` to point at a lockfile below the root.
+/// The ecosystems are `pnpm`, `go`, `cargo`, `pip` and `composer`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Dep {
@@ -156,6 +157,10 @@ pub struct DepOptions {
     /// pnpm only: install just these importers' dependency closure.
     #[serde(default)]
     pub only: Option<Vec<String>>,
+    /// pip only: the lock to read, relative to `dir`, instead of
+    /// `pylock.toml` or `requirements.txt`.
+    #[serde(default)]
+    pub file: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

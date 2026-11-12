@@ -36,6 +36,7 @@ impl Workspaces for FakeWorkspaces {
             env: vec![("FROM_WS".into(), "1".into())],
             warnings: vec![],
             installs: vec![],
+            path: vec![],
         })
     }
 }

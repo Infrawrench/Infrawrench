@@ -1,6 +1,6 @@
 [package]
 name = "iwci-deps"
-description = "Installs a workspace's dependencies (pnpm, Go modules, Cargo crates) into its snapshot"
+description = "Installs a workspace's dependencies (pnpm, Go modules, Cargo crates, pip wheels, Composer packages) into its snapshot"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,7 +12,12 @@ iwci-vfs.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
-# Go and Cargo installers: module zips, crate tarballs, Cargo.lock and the
+# Composer: `composer.lock` records a dist's SHA-1, and the autoloader keys
+# each `files` entry by an MD5 of its name, as Composer does.
+sha1 = { version = "0.11", default-features = false }
+md-5 = { version = "0.11", default-features = false }
+# Go, Cargo, pip and Composer installers: module zips, wheels, Composer
+# dists, crate tarballs, Cargo.lock, pylock.toml and the
 # checksum files cargo's directory source reads. Compression backends are
 # limited to what those formats use (deflate only).
 zip = { version = "9.4.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
