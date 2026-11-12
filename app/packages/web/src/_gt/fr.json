@@ -23503,5 +23503,14 @@
   "cb0e71458bd9b525": "Abandonner les modifications non enregistrées ?",
   "4aeb197a30093e5f": "Continuer à modifier",
   "58e50717381ca373": "Dépôts choisis",
-  "9f6d98932df0b15b": "Motifs séparés par des virgules. Laissez vide pour toutes les branches."
+  "9f6d98932df0b15b": "Motifs séparés par des virgules. Laissez vide pour toutes les branches.",
+  "1b6ee6fd513ef22e": "Exécution planifiée de {file} sur {branch}",
+  "90680df64620e849": "Planifiée sur {branch}",
+  "150641f892810130": "Déclenché par : planification, sur {branch}",
+  "d729015324a2b93f": "Impossible de charger les planifications",
+  "cdb55036716821b2": "Aucun pipeline d'une branche par défaut n'a de planification.",
+  "769cc15402f536b5": "{repo} sur {branch}",
+  "c0635aaba2417a31": "La dernière lecture a échoué : {error}",
+  "27835f74fbdd7600": "Pipelines planifiés de {repo}",
+  "c0554b7fe1c99cf0": "Prochaine exécution"
 }

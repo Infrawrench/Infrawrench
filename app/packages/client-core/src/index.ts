@@ -1084,6 +1084,7 @@ export {
   type ParsedCron,
   type CronOccurrenceOptions,
 } from "./cron";
+export { ciCronDue, nextCiCronDue, parseCiCron, type CiCron } from "./ci-cron";
 export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./custom-costs";

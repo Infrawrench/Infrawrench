@@ -30,6 +30,8 @@ const proxy = {
   claimFailures: 0,
   /** Answer the next N run requests with a 503. */
   runFailures: 0,
+  /** What `POST /v1/schedules/read` answers. */
+  scheduled: [] as unknown[],
 };
 
 /** What the fake plugins were asked. */
@@ -122,6 +124,9 @@ vi.mock("../../ci/proxy.js", async (importOriginal) => {
     const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     proxy.calls.push({ path, body });
     if (path === "/v1/concurrency") return json(200, { pipelines: proxy.pipelines });
+    if (path === "/v1/schedules/read") {
+      return json(200, { commit: body?.["sha"] ?? "f".repeat(40), pipelines: proxy.scheduled });
+    }
     if (path === "/v1/runs") {
       if (proxy.runFailures > 0) {
         proxy.runFailures--;
@@ -457,6 +462,77 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
         },
       },
     });
+  });
+
+  it("lends a scheduled run what the default branch is lent, as a push to it", async () => {
+    const { db, schema, eq } = await modules();
+    const { and } = await import("drizzle-orm");
+    const schedules = await import("../../ci/schedules");
+    const deploy = {
+      file: ".infrawrench/ci/nightly.yml",
+      name: "Nightly",
+      concurrency: null,
+      jobs: [{ key: "deploy", connections: [{ name: "Production cluster" }] }],
+    };
+    proxy.scheduled = [
+      {
+        file: deploy.file,
+        name: deploy.name,
+        cron: ["* * * * *"],
+        text: "name: Nightly\non:\n  schedule:\n    - cron: '* * * * *'\n",
+      },
+    ];
+    // A push to the default branch registers the repository and asks for a read.
+    await push("main", []);
+    await schedules.refreshSchedules(1_000);
+    const [registered] = await db
+      .select()
+      .from(schema.ciSchedules)
+      .where(eq(schema.ciSchedules.organizationId, orgId));
+    expect(registered?.pipelines.map((p) => p.file)).toEqual([deploy.file]);
+
+    await schedules.fireDueSchedules();
+    const [scheduled] = await db
+      .select()
+      .from(schema.ciRuns)
+      .where(and(eq(schema.ciRuns.organizationId, orgId), eq(schema.ciRuns.event, "schedule")));
+    expect(scheduled).toMatchObject({
+      branch: "main",
+      headRef: "main",
+      fromFork: false,
+      pipelineFile: deploy.file,
+      status: "queued",
+    });
+
+    proxy.pipelines = [deploy];
+    proxy.calls = [];
+    await db
+      .update(schema.ciRuns)
+      .set({ nextAttemptAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.ciRuns.id, scheduled!.id));
+    const { runs } = await modules();
+    await runs.dispatchRun(scheduled!.id);
+    const sent = proxy.calls.find((c) => c.path === "/v1/runs")?.body ?? {};
+    expect(sent).toMatchObject({
+      event: "schedule",
+      branch: "main",
+      pipeline: (proxy.scheduled[0] as { text: string }).text,
+    });
+    // Not a pull request, so the proxy adds secrets without `trusted`.
+    expect(sent["trusted"]).toBeUndefined();
+    // The connection is lent on `main` only, which is the branch it runs on.
+    expect(sent["lent"]).toMatchObject({
+      connections: { "Production cluster": { files: expect.any(Array) } },
+    });
+    const lends = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(eq(schema.auditLogs.organizationId, orgId));
+    expect(
+      lends.some(
+        (a) => a.action === "ci.lend" && (a.metadata as { runId: string }).runId === scheduled!.id,
+      ),
+    ).toBe(true);
   });
 
   it("runs a cloud job from claim to teardown, and reaps what nothing owns", async () => {

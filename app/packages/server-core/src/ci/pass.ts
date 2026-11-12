@@ -1,7 +1,8 @@
 /**
  * The poller passes that keep CI moving.
  *
- * - `runCiStatusPass` lets runs waiting for their concurrency group go once
+ * - `runCiStatusPass` fires pipelines' `on.schedule` crons
+ *   (`schedules.ts`), lets runs waiting for their concurrency group go once
  *   it is free, dispatches queued runs (retrying a busy or unreachable
  *   runner pool) and follows running ones, which is what moves every check
  *   on GitHub and the CI tab. It runs on a loop of its own every few seconds
@@ -21,6 +22,7 @@ import { reportRunUsage, reportStorage, sampleStorage } from "./billing.js";
 import { admitRun, pendingRuns } from "./concurrency.js";
 import { ciProxyConfigured } from "./proxy.js";
 import { dispatchRun, dueQueuedRunIds, expireApprovals, runningRuns, syncRun } from "./runs.js";
+import { fireDueSchedules, refreshSchedules } from "./schedules.js";
 
 /**
  * How many runs one pass works on at once. Each run's own GitHub writes stay
@@ -31,6 +33,11 @@ export const CI_RUN_CONCURRENCY = 16;
 
 export async function runCiStatusPass(): Promise<void> {
   if (!ciProxyConfigured()) return;
+  // Scheduled pipelines due this minute become queued runs first, so this
+  // same pass dispatches them. Only a few repositories are re-read per pass;
+  // a read clones a branch.
+  await fireDueSchedules().catch((err) => console.warn("[ci] firing schedules failed:", err));
+  await refreshSchedules().catch((err) => console.warn("[ci] reading schedules failed:", err));
   // Runs waiting for a concurrency group, oldest first and one at a time,
   // so the one whose group came free first goes first.
   for (const row of await pendingRuns(20)) {

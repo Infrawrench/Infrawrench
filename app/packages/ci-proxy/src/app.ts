@@ -17,6 +17,7 @@
 // | `POST /v1/prepare` | warms a runner for a request |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
 // | `DELETE /v1/storage/{owner}/{repo-id}` | clears a repository's caches, on any runner |
+// | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, from any runner; stores nothing (the app's schedules) |
 // | `PUT /v1/schedules` | registers a repository's `on.schedule` pipelines |
 // | `GET /v1/schedules/{owner}` | an owner's registered schedules |
 // | `DELETE /v1/schedules/{owner}/{repo-id}` | stops a repository's scheduled runs |
@@ -26,7 +27,7 @@
 
 import { serveDownload, type Downloads } from "./artifacts";
 import { authorised } from "./auth";
-import { anyDue } from "./cron";
+import { ciCronDue } from "@infrawrench/client-core";
 import { identify, isId } from "./identity";
 import { isRunnerName, isRunnerUrl, parseRunId, type Pool, type RunnerEntry } from "./pool";
 import type { RunnerList } from "./runners";
@@ -331,9 +332,13 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     return relay(placed.runner, placed.response);
   }
 
-  if (method === "POST" && path === "/v1/concurrency") {
-    // What a run would hold, worked out by a runner without running it. The
-    // groups may read variables, never secrets, so only variables are added.
+  if (method === "POST" && (path === "/v1/concurrency" || path === "/v1/schedules/read")) {
+    // What a run would hold, or which of a branch's pipelines have
+    // `on.schedule`, worked out by a runner without running anything. The
+    // app fires its repositories' schedules itself and reads them here with
+    // an installation token, which passes through and is never stored (unlike
+    // `PUT /v1/schedules`, which keeps what it reads). Concurrency groups may
+    // read variables, never secrets, so only variables are added.
     const body = await readBody(request);
     if (body instanceof Response) return body;
     const { trusted: _trusted, secrets: _secrets, lent: _lent, ...rest } = body.value;
@@ -698,7 +703,7 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
   }
 
   const fires = rows.flatMap((row) =>
-    row.pipelines.filter((p) => anyDue(p.cron, date)).map((pipeline) => ({ row, pipeline })),
+    row.pipelines.filter((p) => ciCronDue(p.cron, date)).map((pipeline) => ({ row, pipeline })),
   );
   // One fire per concurrency group of a repository in a minute: the last in
   // file order, as the newest of runs queued together would be.

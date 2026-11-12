@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.107.0",
+    "version": "1.108.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -63225,6 +63225,125 @@
         ],
         "additionalProperties": false
       },
+      "CiSchedules": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiRepoSchedule"
+            }
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "additionalProperties": false
+      },
+      "CiRepoSchedule": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "repoFullName": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The default branch's commit the pipelines were read from, which scheduled runs check out."
+          },
+          "pipelines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiScheduledPipeline"
+            }
+          },
+          "refreshedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the default branch was last read; null until the first read."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the last read failed, or which pipeline files did not parse."
+          }
+        },
+        "required": [
+          "installationId",
+          "repoFullName",
+          "defaultBranch",
+          "sha",
+          "pipelines",
+          "refreshedAt",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "CiScheduledPipeline": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The pipeline file, under `.infrawrench/ci/`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its `on.schedule` cron expressions, in UTC."
+          },
+          "nextRunAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The next minute one of them fires on; null when none ever does."
+          }
+        },
+        "required": [
+          "file",
+          "name",
+          "cron",
+          "nextRunAt"
+        ],
+        "additionalProperties": false
+      },
       "CiCacheCleared": {
         "type": "object",
         "properties": {
@@ -63400,8 +63519,10 @@
             "type": "string",
             "enum": [
               "push",
-              "pull-request"
-            ]
+              "pull-request",
+              "schedule"
+            ],
+            "description": "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head."
           },
           "headRef": {
             "type": "string"
@@ -63560,6 +63681,10 @@
           "noTaskCache": {
             "type": "boolean",
             "description": "The run did not read the task cache: every `task-cache:` job ran, and saved its result again."
+          },
+          "pipelineFile": {
+            "type": "string",
+            "description": "A scheduled run's pipeline file, whose `on.schedule` cron started it."
           },
           "concurrencyGroups": {
             "type": "array",
@@ -127499,6 +127624,54 @@
         "summary": "Clear a repository's CI caches",
         "x-required-permission": "ci:write",
         "operationId": "deleteOrgOrgIdCiCachesInstallationIdRepo"
+      }
+    },
+    "/api/org/{orgId}/ci/schedules": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled pipelines per repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiSchedules"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Each repository's pipelines with `on.schedule` on its default branch, as last read, with each pipeline's next run. They are read again on every push to the default branch, which is also how a schedule is added, changed or removed. Repositories with no scheduled pipeline are left out unless their last read failed.\n\n_Requires permission: `ci:read`._",
+        "summary": "Repositories' scheduled pipelines",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiSchedules"
       }
     },
     "/api/org/{orgId}/ci/values": {

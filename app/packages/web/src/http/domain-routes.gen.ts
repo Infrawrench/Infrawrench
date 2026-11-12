@@ -701,6 +701,7 @@ export const DOMAIN_ROUTES: readonly DomainRoute[] = [
   ["ci","POST","/api/org/:orgId/ci/runs/:runId/retry"],
   ["ci","POST","/api/org/:orgId/ci/runs/:runId/cancel"],
   ["ci","GET","/api/org/:orgId/ci/caches"],
+  ["ci","GET","/api/org/:orgId/ci/schedules"],
   ["ci","DELETE","/api/org/:orgId/ci/caches/:installationId/:repo"],
   ["ci","GET","/api/org/:orgId/ci/values"],
   ["ci","PUT","/api/org/:orgId/ci/values/:kind/:name"],

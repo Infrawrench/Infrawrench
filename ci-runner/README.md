@@ -110,8 +110,9 @@ day fields are restricted, a day matching either runs, as in classic cron. A
 scheduled run checks out the default branch's head, its event is
 `schedule`, and it reads and writes the same caches as a push to that
 branch. Runners do not keep time: something outside them has to fire the
-schedule, which in this repository is the proxy Worker (see
-[Scheduled runs](#scheduled-runs)).
+schedule, which in this repository is the app for repositories connected
+through its GitHub App, and the proxy Worker for repositories registered
+with it directly (see [Scheduled runs](#scheduled-runs)).
 
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
@@ -234,10 +235,11 @@ repository's runs enforces the groups. In this repository that is the app
   not empty. `cancel-in-progress` is `true` or `false`, not an expression.
 - Jobs have no `concurrency:` of their own: a job-level group would need the
   runner to hold a job back on a lock only the dispatcher sees.
-- Scheduled runs are fired by the proxy, not the app (see
-  [Scheduled runs](#scheduled-runs)), so a scheduled pipeline's group only
-  counts the proxy's other scheduled runs: the proxy's runs and the app's
-  never wait for each other.
+- The app's scheduled runs hold their groups beside its pushes and pull
+  requests. A repository registered with the proxy instead has its
+  scheduled pipelines' groups counted only among the proxy's other scheduled
+  runs (see [Scheduled runs](#scheduled-runs)): the proxy's runs and the
+  app's never wait for each other.
 
 A cancelled job is stopped the way its timeout would stop it (its processes
 interrupted, then killed, its services stopped) and reports
@@ -2649,10 +2651,24 @@ off.
 
 ## Scheduled runs
 
+Runners keep no clock: in a pool, every runner keeping its own would fire
+each schedule once per runner. Two things in front of them fire schedules,
+each matching crons with client-core's `ci-cron.ts`, which follows
+`iwci-spec/src/cron.rs` with shared test cases:
+
+- **The app**, for repositories connected through its GitHub App
+  (`server-core/src/ci/schedules.ts`). It reads a repository's scheduled
+  pipelines through the proxy's `POST /v1/schedules/read` (which passes the
+  installation token to a runner and stores nothing) on every push to the
+  default branch, and its `ci` poller pass queues each due pipeline as a
+  run with `event: schedule`, the pipeline's text and the commit it was read
+  from, dispatched, billed and reported on GitHub like a push.
+- **The proxy**, for repositories registered with it directly, described
+  below.
+
 `app/packages/ci-proxy` is a Cloudflare Worker that sits in front of the
-runners and owns schedules, because a Cron Trigger fires once for a whole
-Worker, where every runner in a pool keeping its own clock would fire each
-schedule once per runner. Its README has the routes; the short version:
+runners, and a Cron Trigger fires once for a whole Worker. Its README has
+the routes; the short version:
 
 1. `PUT /v1/schedules` on the proxy registers a repository. The proxy asks a
    runner (`POST /v1/schedules/read`) which pipelines on the default branch

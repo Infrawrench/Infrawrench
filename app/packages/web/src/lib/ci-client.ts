@@ -14,6 +14,7 @@ import {
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
+  type CiSchedules,
   type CiStatus,
   type CiUsage,
   type CiValues,
@@ -84,6 +85,7 @@ export function createWebCiClient(orgId: string): CiClient {
       apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/retry`, { noTaskCache }),
     cancelRun: (id) => apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/cancel`),
     listCaches: () => apiGet<CiCaches>(`${base}/caches`),
+    listSchedules: () => apiGet<CiSchedules>(`${base}/schedules`),
     clearCache: (installationId, repo) =>
       apiDelete<CiCacheCleared>(`${base}/caches/${installationId}/${encodeURIComponent(repo)}`),
     usage: () => apiGet<CiUsage>(`${base}/usage`),

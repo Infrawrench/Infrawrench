@@ -23504,5 +23504,14 @@
   "cb0e71458bd9b525": "¿Descartar los cambios sin guardar?",
   "4aeb197a30093e5f": "Seguir editando",
   "58e50717381ca373": "Repositorios elegidos",
-  "9f6d98932df0b15b": "Patrones separados por comas. Déjalo vacío para todas las ramas."
+  "9f6d98932df0b15b": "Patrones separados por comas. Déjalo vacío para todas las ramas.",
+  "1b6ee6fd513ef22e": "Ejecución programada de {file} en {branch}",
+  "90680df64620e849": "Programada en {branch}",
+  "150641f892810130": "Activado por: programación, en {branch}",
+  "d729015324a2b93f": "No se pudieron cargar las programaciones",
+  "cdb55036716821b2": "Ningún pipeline de una rama predeterminada tiene una programación.",
+  "769cc15402f536b5": "{repo} en {branch}",
+  "c0635aaba2417a31": "La última lectura falló: {error}",
+  "27835f74fbdd7600": "Pipelines programados de {repo}",
+  "c0554b7fe1c99cf0": "Próxima ejecución"
 }

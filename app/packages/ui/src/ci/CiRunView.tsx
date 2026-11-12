@@ -541,7 +541,9 @@ export function CiRunView({
   const subtitle =
     run.event === "pull-request"
       ? gt("On: pull request #{number}", { number: String(run.pullNumber ?? "") })
-      : gt("On: push to {branch}", { branch: run.headRef });
+      : run.event === "schedule"
+        ? gt("On: schedule, on {branch}", { branch: run.headRef })
+        : gt("On: push to {branch}", { branch: run.headRef });
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">

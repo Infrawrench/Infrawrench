@@ -248,6 +248,29 @@ A run is every pipeline its push or pull request starts, so it waits while any o
 
 Groups apply to whole pipelines; a single job cannot have a group of its own.
 
+## Schedules
+
+A pipeline can also run on a timer. List up to 16 cron expressions under `on.schedule`, always in UTC:
+
+```yaml
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+    - cron: "@weekly"
+```
+
+An expression has five fields (minute, hour, day of month, month, day of week) and takes `*`, numbers, ranges (`9-17`), steps (`*/15`), lists (`1,15`), month and weekday names (`jan`, `mon-fri`), Sunday as 0 or 7, and `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly`. When both day fields are set, a day matching either one runs. A pipeline can have `schedule` beside `push` and `pull-request`; `${{ event }}` is `schedule` in a scheduled run.
+
+When a cron is due, that one pipeline runs on the head of your default branch, as it was at the latest push Infrawrench saw, the way a push to it would: with your secrets, and reading and writing the default branch's caches. The other pipelines of the commit do not run. The runs table shows it as **Scheduled** with the pipeline file, and GitHub shows it on that commit as **Infrawrench CI / schedule**, a check of its own, so a branch protection rule that requires **Infrawrench CI / push** never waits on a scheduled run.
+
+Schedules are read from the default branch each time you push to it, so the push that adds, changes or removes a schedule is what makes it take effect. A repository that already had scheduled pipelines when you turned CI on for it starts with its next push to the default branch. The **Schedules** card on the CI page lists each repository's scheduled pipelines, their crons and when each runs next, and says when a pipeline file could not be read.
+
+<insert [The CI page's Schedules card: one repository on main with a "Nightly" pipeline (0 3 * * *) and its next run time, and a second repository with a red "The last read failed" line] here>
+
+A scheduled run starts in the minute it is due. If runs could not be started for a few minutes, the ones missed in the last five start as soon as they can; older ones are skipped rather than run late. A scheduled run can use what [CI access](#ci-access) allows on your default branch, joins its pipeline's [concurrency group](#concurrency-groups) like any other run, and is billed like any other: your plan has to include CI. A repository the GitHub App can no longer read stops running its schedules after a day.
+
 ## Downloads
 
 `downloads:` keeps files from a job for you to download from the run: a build, a test report, a coverage page. They are listed on the run's **Summary** under **Downloads**, and on each job's own page, with their size and how long they are kept. **Download** fetches the file; on the desktop app it opens in your browser, which saves it.
@@ -313,7 +336,7 @@ Everyone who can see runs can see the **CI access** card. It lists each connecti
 
 ### Repositories and branches
 
-Each permission holds for **Every repository** CI runs for, or, with **Chosen repositories**, the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster.
+Each permission holds for **Every repository** CI runs for, or, with **Chosen repositories**, the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster. A [scheduled run](#schedules) is checked by your default branch, which it runs on, so it gets what a push to the default branch gets.
 
 ### Cloud jobs
 

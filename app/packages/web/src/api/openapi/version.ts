@@ -474,4 +474,9 @@
 // /ci/access/ssh-keys/:id` (`ci:read`, the key's owner) lends one's own key.
 // `CiJobSummary` gains optional `access` and `cloud`, and `CiRunDetail`
 // optional `cloudJobs`. Additive.
-export const API_VERSION = "1.107.0";
+// 1.108.0: CI schedules. Pipelines' `on.schedule` crons fire for repositories
+// connected through the GitHub App: `CiRun.event` gains `schedule`, `CiRun`
+// gains optional `pipelineFile`, and `GET /api/org/:orgId/ci/schedules`
+// (`ci:read`) lists each repository's scheduled pipelines with their next
+// run. Additive (a new enum value, which clients decode leniently).
+export const API_VERSION = "1.108.0";

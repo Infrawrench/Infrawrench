@@ -15,6 +15,7 @@ import {
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
+  type CiSchedules,
   type CiStatus,
   type CiUsage,
   type CiValues,
@@ -148,6 +149,15 @@ export function createDesktopCiClient(): CiClient {
     listCaches: async (): Promise<CiCaches> => {
       const { accounts } = await runRpc(ci().listCaches({ params: { orgId: requireOrgId() } }));
       return { accounts: accounts.map((a) => ({ ...a, repos: [...a.repos] })) };
+    },
+    listSchedules: async (): Promise<CiSchedules> => {
+      const { schedules } = await runRpc(ci().listSchedules({ params: { orgId: requireOrgId() } }));
+      return {
+        schedules: schedules.map((s) => ({
+          ...s,
+          pipelines: s.pipelines.map((p) => ({ ...p, cron: [...p.cron] })),
+        })),
+      };
     },
     clearCache: (installationId, repo): Promise<CiCacheCleared> =>
       runRpc(ci().clearCache({ params: { orgId: requireOrgId(), installationId, repo } })),

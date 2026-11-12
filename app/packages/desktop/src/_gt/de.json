@@ -23283,5 +23283,14 @@
   "cb0e71458bd9b525": "Nicht gespeicherte Änderungen verwerfen?",
   "4aeb197a30093e5f": "Weiter bearbeiten",
   "58e50717381ca373": "Ausgewählte Repositories",
-  "9f6d98932df0b15b": "Muster durch Kommas getrennt. Leer lassen für jeden Branch."
+  "9f6d98932df0b15b": "Muster durch Kommas getrennt. Leer lassen für jeden Branch.",
+  "1b6ee6fd513ef22e": "Geplante Ausführung von {file} auf {branch}",
+  "90680df64620e849": "Geplant auf {branch}",
+  "150641f892810130": "Ausgelöst durch: Zeitplan, auf {branch}",
+  "d729015324a2b93f": "Zeitpläne konnten nicht geladen werden",
+  "cdb55036716821b2": "Keine Pipeline auf einem Standard-Branch hat einen Zeitplan.",
+  "769cc15402f536b5": "{repo} auf {branch}",
+  "c0635aaba2417a31": "Das letzte Lesen ist fehlgeschlagen: {error}",
+  "27835f74fbdd7600": "Geplante Pipelines von {repo}",
+  "c0554b7fe1c99cf0": "Nächste Ausführung"
 }

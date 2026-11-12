@@ -19,6 +19,7 @@ import {
   CiDownloadLinkSchema,
   CiRunDetailSchema,
   CiRunSchema,
+  CiSchedulesSchema,
   CiStatusSchema,
   CiUsageSchema,
   CiValuesSchema,
@@ -53,6 +54,7 @@ import {
   rejectRun,
   retryRun,
 } from "@infrawrench/server-core/ci/runs";
+import { listCiSchedules } from "@infrawrench/server-core/ci/schedules";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 import { orgHasFeature } from "@infrawrench/server-core/features";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
@@ -300,6 +302,13 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
         const { organizationId } = yield* requireCi;
         const caches = yield* legacy(() => listCiCaches(organizationId));
         return yield* respond(CiCachesSchema)(caches);
+      }),
+    )
+    .handle("listSchedules", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const schedules = yield* legacy(() => listCiSchedules(organizationId));
+        return yield* respond(CiSchedulesSchema)(schedules);
       }),
     )
     .handle("clearCache", ({ params }) =>

@@ -122,6 +122,26 @@ function client() {
         },
       ],
     })),
+    listSchedules: vi.fn(async () => ({
+      schedules: [
+        {
+          installationId: 7,
+          repoFullName: "acme/api",
+          defaultBranch: "main",
+          sha: "c".repeat(40),
+          pipelines: [
+            {
+              file: ".infrawrench/ci/nightly.yml",
+              name: "Nightly",
+              cron: ["0 3 * * *"],
+              nextRunAt: "2026-11-10T03:00:00.000Z",
+            },
+          ],
+          refreshedAt: "2026-11-09T10:00:00.000Z",
+          error: "other.yml: unknown key `whenn`",
+        },
+      ],
+    })),
     clearCache: vi.fn(async (installationId: number, repo: string) => ({
       installationId,
       repo,
@@ -377,6 +397,28 @@ describe("CiPanel", () => {
     expect(c.listRuns).toHaveBeenCalledTimes(1);
     expect(c.listValues).toHaveBeenCalledTimes(1);
     expect(c.listCaches).toHaveBeenCalledTimes(1);
+    expect(c.listSchedules).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists scheduled pipelines and labels a scheduled run", async () => {
+    const c = client();
+    c.listRuns.mockResolvedValue([
+      {
+        ...run,
+        event: "schedule",
+        headRef: "main",
+        pullNumber: null,
+        pipelineFile: ".infrawrench/ci/nightly.yml",
+      },
+    ]);
+    render(<CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />);
+    await waitFor(() => expect(screen.getByText("acme/api on main")).toBeTruthy());
+    expect(screen.getByText("Nightly")).toBeTruthy();
+    expect(screen.getByText("0 3 * * *")).toBeTruthy();
+    expect(screen.getByText("The last read failed: other.yml: unknown key `whenn`")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByText("Scheduled .infrawrench/ci/nightly.yml on main")).toBeTruthy(),
+    );
   });
 
   it("opens a run from anywhere on its row, but not from the approval buttons", async () => {

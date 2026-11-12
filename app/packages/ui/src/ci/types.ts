@@ -16,6 +16,7 @@ import type {
   CiRun,
   CiRunDetail,
   CiRunStatus,
+  CiSchedules,
   CiStatus,
   CiUsage,
   CiValues,
@@ -51,6 +52,8 @@ export interface CiClient {
   cancelRun(id: string): Promise<CiRun>;
   /** The caches CI keeps, per connected account and repository. */
   listCaches(): Promise<CiCaches>;
+  /** Each repository's pipelines with `on.schedule`, as last read from its default branch. */
+  listSchedules(): Promise<CiSchedules>;
   /** Deletes one repository's caches and answers what went. */
   clearCache(installationId: number, repo: string): Promise<CiCacheCleared>;
   usage(): Promise<CiUsage>;
