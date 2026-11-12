@@ -548,11 +548,12 @@ impl NapiEnv {
         // this env reserved.
         if let Some(handle) = self.env_heap_charges.remove(&env_id) {
             let granted = if handle.tracker != 0 {
-                // SAFETY: reclaim the box created in `commit_isolate`. The
-                // near-heap-limit callback holding this pointer only runs during
-                // JS execution, and no JS runs between here and the paired env
-                // release that removes the callback and disposes the isolate, so
-                // freeing it now is safe.
+                // SAFETY: reclaim the box created in `commit_isolate`. iwci
+                // patch (#1021): both callers release the env first, which
+                // removes the near-heap-limit callback holding this pointer
+                // and erases it from the out-of-memory handler's map (both
+                // run inside garbage collections, the release's included),
+                // so nothing reads it any more.
                 let boxed = unsafe { Box::from_raw(handle.tracker as *mut EnvHeapCharge) };
                 boxed.granted.load(Ordering::Acquire)
             } else {
@@ -615,10 +616,15 @@ impl Drop for NapiEnv {
     fn drop(&mut self) {
         let scope_ids: Vec<u32> = self.napi_scopes.keys().copied().collect();
         for scope_id in scope_ids {
-            if let Some(env) = self.unregister_napi_scope(scope_id) {
+            // iwci patch (#1021): released before its heap tracker is freed,
+            // as the guest's own release does: the release collects garbage,
+            // and the near-heap-limit callback and the out-of-memory handler
+            // hold the tracker until it is done.
+            if let Some((env_id, env)) = self.begin_unregister_napi_scope(scope_id) {
                 unsafe {
                     let _ = snapi_bridge_unofficial_release_env(env);
                 }
+                self.finish_unregister_napi_env(env_id, env);
             }
         }
         // Release any external memory the guest declared but did not take back.

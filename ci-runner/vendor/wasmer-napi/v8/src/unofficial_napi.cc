@@ -85,6 +85,23 @@ struct PrepareStackTraceState {
 };
 
 std::mutex g_runtime_mu;
+// iwci patch (#1021): set while this thread holds `g_runtime_mu`, so the
+// out-of-memory handler knows whether waiting for it could ever end. A
+// trivial type: nothing is registered to run at thread exit.
+thread_local bool t_holds_runtime_mu = false;
+
+// iwci patch (#1021): the only way `g_runtime_mu` is taken, so the flag
+// above is never wrong.
+class RuntimeLock {
+ public:
+  RuntimeLock() : lock_(g_runtime_mu) { t_holds_runtime_mu = true; }
+  ~RuntimeLock() { t_holds_runtime_mu = false; }
+  RuntimeLock(const RuntimeLock&) = delete;
+  RuntimeLock& operator=(const RuntimeLock&) = delete;
+
+ private:
+  std::lock_guard<std::mutex> lock_;
+};
 // Deliberately heap-allocated and never freed: process exit (std::process::exit
 // in the wasmer CLI, or exit() in any embedder) runs static destructors on the
 // main thread while env teardown may still be running on another thread.
@@ -425,7 +442,7 @@ v8::MaybeLocal<v8::Value> NapiPrepareStackTraceCallback(v8::Local<v8::Context> c
                                                         v8::Local<v8::Array> trace) {
   napi_env env = nullptr;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto env_it = g_env_by_isolate.find(context->GetIsolate());
     if (env_it != g_env_by_isolate.end()) {
       env = env_it->second;
@@ -438,7 +455,7 @@ v8::MaybeLocal<v8::Value> NapiPrepareStackTraceCallback(v8::Local<v8::Context> c
 
   v8::Local<v8::Function> callback;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     callback = LookupPrepareStackTraceCallback(env, context);
   }
 
@@ -474,7 +491,7 @@ size_t NearHeapLimitCallback(void* raw_env,
   }
   NearHeapLimitCallbackState state;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto callback_it = g_near_heap_limit_callbacks.find(isolate);
     if (callback_it != g_near_heap_limit_callbacks.end()) {
       state = callback_it->second;
@@ -484,6 +501,22 @@ size_t NearHeapLimitCallback(void* raw_env,
     return current_heap_limit;
   }
   return state.callback(env, state.data, current_heap_limit, initial_heap_limit);
+}
+
+// iwci patch (#1021): an isolate's near-heap-limit callback from its env's
+// release on: no JavaScript runs any more, so the heap only has to finish
+// collecting and tear down. Grants room in steps, uncharged, up to the
+// limit its data encodes (the heap's at release plus
+// `kTeardownHeapSlackMax`).
+constexpr size_t kTeardownHeapSlackStep = 32u * 1024 * 1024;
+constexpr size_t kTeardownHeapSlackMax = 128u * 1024 * 1024;
+
+size_t TeardownNearHeapLimitCallback(void* data,
+                                     size_t current_heap_limit,
+                                     size_t /*initial_heap_limit*/) {
+  const size_t cap = static_cast<size_t>(reinterpret_cast<uintptr_t>(data));
+  if (current_heap_limit >= cap) return current_heap_limit;
+  return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
 }
 
 // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
@@ -725,7 +758,7 @@ void FatalErrorCallback(const char* location, const char* message) {
   unofficial_napi_fatal_error_callback callback = nullptr;
   napi_env env = nullptr;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto callback_it = g_fatal_error_callbacks.find(isolate);
     if (callback_it != g_fatal_error_callbacks.end()) {
       callback = callback_it->second.fatal;
@@ -749,24 +782,43 @@ v8::Isolate* IsolateOutOfMemory() {
 }
 
 // iwci patch (#972): see `g_oom_mu`. Returns only when the isolate cannot be
-// confined (not budgeted by the host, unknown, or mid creation or disposal),
-// and V8 then aborts the process as it always did.
-void ConfineOutOfMemory(v8::Isolate* isolate,
-                        const char* location,
-                        const v8::OOMDetails& details) {
-  if (isolate == nullptr || t_in_isolate_lifecycle) return;
+// confined, with why (#1021), and V8 then aborts the process as it always
+// did: no isolate known on this thread, one the host does not budget (or
+// not yet: it is still being created), or one being disposed.
+const char* ConfineOutOfMemory(v8::Isolate* isolate,
+                               const char* location,
+                               const v8::OOMDetails& details) {
+  if (isolate == nullptr) {
+    return "no isolate is current on this thread and it runs no task the "
+           "platform knows the isolate of";
+  }
+  // Parking here would hold `g_isolate_lifecycle_mu`, which every isolate
+  // creation and disposal takes. Only the isolate being created (not yet
+  // budgeted) or disposed (below) runs on such a thread.
+  if (t_in_isolate_lifecycle) {
+    return "this thread holds g_isolate_lifecycle_mu (creating or disposing "
+           "an isolate)";
+  }
   {
     std::lock_guard<std::mutex> lock(g_oom_mu);
     auto it = g_oom_host_data.find(isolate);
-    if (it == g_oom_host_data.end() || g_disposing_isolates.count(isolate) != 0) {
-      return;
+    // iwci patch (#1021): an isolate already abandoned stays confined after
+    // its env is released, which erases its host data: another of its
+    // threads (a background compile) can still run out.
+    const bool lost = g_lost_isolates.count(isolate) != 0;
+    if (it == g_oom_host_data.end() && !lost) {
+      return "the host does not budget this isolate (or not yet: it is being "
+             "created)";
+    }
+    if (g_disposing_isolates.count(isolate) != 0) {
+      return "the isolate is being disposed, which waits for this thread";
     }
     g_lost_isolates.insert(isolate);
     g_parked_threads += 1;
     if (v8::Isolate::TryGetCurrent() == nullptr) g_parked_worker_threads += 1;
     // Under the lock: env release erases the data under it before the host
     // frees it.
-    napi_host_isolate_out_of_memory(it->second);
+    if (it != g_oom_host_data.end()) napi_host_isolate_out_of_memory(it->second);
   }
   // Thread-safe. When this is a worker thread, the isolate's own thread
   // stops running JavaScript and its event loop stops waiting for this
@@ -774,6 +826,16 @@ void ConfineOutOfMemory(v8::Isolate* isolate,
   isolate->TerminateExecution();
   if (EdgeV8Platform* platform = g_oom_platform.load(std::memory_order_acquire)) {
     platform->AbandonIsolate(isolate);
+  }
+  // iwci patch (#1021): V8 ran out of memory under `g_runtime_mu`, taken by
+  // this thread (a global handle made under it). Every env creation takes
+  // it, so it is let go here. The frame that took it never resumes, so its
+  // guard never unlocks it again; the maps it guards are only changed by
+  // whole container operations, which never call into V8, so they are
+  // consistent between any two calls that can run out.
+  if (t_holds_runtime_mu) {
+    t_holds_runtime_mu = false;
+    g_runtime_mu.unlock();
   }
   std::fprintf(stderr,
                "\n# V8 ran out of %s memory in isolate %p (%s%s%s).\n"
@@ -789,21 +851,19 @@ void ConfineOutOfMemory(v8::Isolate* isolate,
 
 void OOMErrorCallback(const char* location, const v8::OOMDetails& details) {
   v8::Isolate* isolate = IsolateOutOfMemory();
+  // V8 calls `ProcessOOMErrorCallback` next, which says why.
   if (isolate == nullptr) return;
 
   unofficial_napi_oom_error_callback callback = nullptr;
   napi_env env = nullptr;
-  // iwci patch (#972): never block on `g_runtime_mu` here. V8 can run out
-  // of memory in a thread that holds it (a global handle made under it):
-  // waiting would hang that thread, and parking it would hold the lock every
-  // env creation takes. Others hold it only briefly, so a lock that stays
-  // taken for a second is taken as this thread's own, and V8 aborts.
-  std::unique_lock<std::mutex> lock(g_runtime_mu, std::defer_lock);
-  for (int i = 0; i < 1000 && !lock.try_lock(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  if (!lock.owns_lock()) return;
   {
+    // iwci patch (#1021): V8 can run out of memory in a thread that holds
+    // `g_runtime_mu` (a global handle made under it), and that thread reads
+    // the maps as it is. Any other holder lets go of it, so this waits for
+    // as long as that takes. (#972 gave up after a second, taking a lock
+    // still held as this thread's own; under load that was not.)
+    std::optional<RuntimeLock> lock;
+    if (!t_holds_runtime_mu) lock.emplace();
     auto callback_it = g_fatal_error_callbacks.find(isolate);
     if (callback_it != g_fatal_error_callbacks.end()) {
       callback = callback_it->second.oom;
@@ -812,20 +872,37 @@ void OOMErrorCallback(const char* location, const v8::OOMDetails& details) {
     if (env_it != g_env_by_isolate.end()) {
       env = env_it->second;
     }
-    lock.unlock();
   }
   if (callback != nullptr) {
     callback(env, location, details.is_heap_oom, details.detail);
   }
-  ConfineOutOfMemory(isolate, location, details);
+  // Returns only when it cannot confine, and then so does
+  // `ProcessOOMErrorCallback`, which V8 calls next and which says why.
+  (void)ConfineOutOfMemory(isolate, location, details);
 }
 
 // iwci patch (#972): process-wide, for what V8 reports without an isolate
 // (V8::FatalProcessOutOfMemory(nullptr, ...) on a worker thread, a zone
-// allocation for instance). After an isolate's own handler V8 calls this
-// too, which returns as that one did.
+// allocation for instance). With an isolate, V8 13.6 calls this after the
+// isolate's own handler returns, and aborts once this returns too
+// ("API fatal error handler returned after process out of memory").
 void ProcessOOMErrorCallback(const char* location, const v8::OOMDetails& details) {
-  ConfineOutOfMemory(IsolateOutOfMemory(), location, details);
+  v8::Isolate* isolate = IsolateOutOfMemory();
+  const char* why = ConfineOutOfMemory(isolate, location, details);
+  // iwci patch (#1021): the last thing before V8 aborts the process, so a
+  // runner that went down this way says which case it was.
+  std::fprintf(stderr,
+               "\n# iwci: V8 ran out of %s memory (%s%s%s) in isolate %p on %s, "
+               "and it could not be confined to its program: %s.\n\n",
+               details.is_heap_oom ? "JavaScript heap" : "process",
+               location != nullptr ? location : "",
+               details.detail != nullptr ? ": " : "",
+               details.detail != nullptr ? details.detail : "",
+               static_cast<void*>(isolate),
+               v8::Isolate::TryGetCurrent() != nullptr ? "a thread it is entered on"
+                                                   : "a thread with no isolate entered",
+               why);
+  std::fflush(stderr);
 }
 
 napi_status ConfigureRuntime(const char* engine_flags,
@@ -834,7 +911,7 @@ napi_status ConfigureRuntime(const char* engine_flags,
       engine_flags_length > static_cast<size_t>(std::numeric_limits<int>::max())) {
     return napi_invalid_arg;
   }
-  std::lock_guard<std::mutex> lock(g_runtime_mu);
+  RuntimeLock lock;
   if (g_runtime.platform != nullptr) {
     return g_runtime.engine_flags.size() == engine_flags_length &&
                    (engine_flags_length == 0 ||
@@ -896,7 +973,7 @@ napi_status ConfigureRuntime(const char* engine_flags,
 
 napi_status AcquireRuntime(EdgeV8Platform** platform_out) {
   if (platform_out == nullptr) return napi_invalid_arg;
-  std::lock_guard<std::mutex> lock(g_runtime_mu);
+  RuntimeLock lock;
   if (g_runtime.platform == nullptr) return napi_invalid_arg;
   g_runtime.refcount++;
   *platform_out = g_runtime.platform.get();
@@ -904,7 +981,7 @@ napi_status AcquireRuntime(EdgeV8Platform** platform_out) {
 }
 
 void ReleaseRuntime() {
-  std::lock_guard<std::mutex> lock(g_runtime_mu);
+  RuntimeLock lock;
   if (g_runtime.refcount == 0) return;
   g_runtime.refcount--;
   // Keep shared V8 runtime alive for process lifetime in tests to avoid
@@ -919,7 +996,7 @@ void PromiseRejectCallback(v8::PromiseRejectMessage message) {
   napi_env env = nullptr;
   v8::Local<v8::Function> callback;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     const auto env_it = g_env_by_isolate.find(isolate);
     if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
     env = env_it->second;
@@ -1029,7 +1106,7 @@ void PromiseHookCallback(v8::PromiseHookType type,
   napi_env env = nullptr;
   v8::Local<v8::Function> callback;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     const auto env_it = g_env_by_isolate.find(isolate);
     if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
     env = env_it->second;
@@ -1071,7 +1148,7 @@ std::array<v8::Local<v8::Function>, 4> LookupPromiseHooksForContext(napi_env env
   std::array<v8::Local<v8::Function>, 4> hooks;
   if (env == nullptr || isolate == nullptr) return hooks;
 
-  std::lock_guard<std::mutex> lock(g_runtime_mu);
+  RuntimeLock lock;
   auto hooks_it = g_promise_hooks.find(isolate);
   if (hooks_it == g_promise_hooks.end()) return hooks;
 
@@ -1938,7 +2015,7 @@ napi_status NAPI_CDECL unofficial_napi_attach_env(
     return napi_invalid_arg;
   }
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     if (g_runtime.platform != nullptr &&
         !g_runtime.platform->BindForegroundTaskTarget(
             env->isolate,
@@ -1974,7 +2051,7 @@ napi_status NAPI_CDECL unofficial_napi_create_env_from_context(
   auto* env = new (std::nothrow) napi_env__(context, module_api_version);
   if (env == nullptr) return napi_generic_failure;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     g_env_by_isolate[env->isolate] = env;
   }
   *result = env;
@@ -1985,8 +2062,9 @@ static napi_status DestroyEnvInstance(napi_env env) {
   if (env == nullptr) return napi_invalid_arg;
   ProfilerState profiler_state;
   bool has_profiler_state = false;
+  bool had_near_heap_limit_callback = false;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     if (g_runtime.platform != nullptr) {
       g_runtime.platform->ClearForegroundTaskTarget(env->isolate, env);
     }
@@ -2014,7 +2092,8 @@ static napi_status DestroyEnvInstance(napi_env env) {
     }
     unofficial_napi_internal::ResetErrorFormattingState(env);
     g_fatal_error_callbacks.erase(env->isolate);
-    g_near_heap_limit_callbacks.erase(env->isolate);
+    had_near_heap_limit_callback =
+        g_near_heap_limit_callbacks.erase(env->isolate) != 0;
     auto profiler_it = g_profiler_states.find(env);
     if (profiler_it != g_profiler_states.end()) {
       profiler_state = std::move(profiler_it->second);
@@ -2031,6 +2110,22 @@ static napi_status DestroyEnvInstance(napi_env env) {
     env->isolate->SetPromiseRejectCallback(nullptr);
     env->isolate->SetFatalErrorHandler(nullptr);
     // iwci patch (#972): the isolate keeps OOMErrorCallback until disposed.
+    // iwci patch (#1021): and gets room for its teardown. Disposing it ends
+    // an incremental marking with a full collection
+    // (`CppHeap::StartDetachingIsolate`), which reaches V8's heap limit when
+    // the budget stopped the isolate there: that ran out of memory in an
+    // isolate being disposed, where it cannot be confined, and aborted the
+    // runner. The budget's callback goes first: its data is this env, about
+    // to be freed.
+    if (had_near_heap_limit_callback) {
+      env->isolate->RemoveNearHeapLimitCallback(NearHeapLimitCallback, 0);
+    }
+    v8::HeapStatistics heap;
+    env->isolate->GetHeapStatistics(&heap);
+    env->isolate->AddNearHeapLimitCallback(
+        TeardownNearHeapLimitCallback,
+        reinterpret_cast<void*>(static_cast<uintptr_t>(
+            heap.heap_size_limit() + kTeardownHeapSlackMax)));
   }
   delete env;
   return napi_ok;
@@ -2050,7 +2145,7 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
   if (callback_or_null != nullptr) {
     bool install_provider_callback = false;
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       auto [it, inserted] =
           g_near_heap_limit_callbacks.try_emplace(env->isolate);
       it->second.callback = callback_or_null;
@@ -2071,7 +2166,7 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
 
   bool remove_provider_callback = false;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     remove_provider_callback =
         g_near_heap_limit_callbacks.erase(env->isolate) != 0;
   }
@@ -2161,7 +2256,7 @@ napi_status NAPI_CDECL unofficial_napi_create_env(
     return napi_generic_failure;
   }
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     g_hash_seeds[isolate] = GenerateHashSeed();
     g_tracking_allocators[allocator.get()] = allocator;
   }
@@ -2170,7 +2265,7 @@ napi_status NAPI_CDECL unofficial_napi_create_env(
   if (scope == nullptr) {
     DisposeIsolateAndWait(platform, isolate);
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       g_tracking_allocators.erase(allocator.get());
     }
     ReleaseRuntime();
@@ -2185,7 +2280,7 @@ napi_status NAPI_CDECL unofficial_napi_create_env(
     delete scope;
     DisposeIsolateAndWait(platform, isolate);
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       g_tracking_allocators.erase(allocator.get());
     }
     ReleaseRuntime();
@@ -2219,6 +2314,11 @@ napi_status ReleaseEnvScope(unofficial_napi_env_owner owner,
   napi_status status = napi_ok;
   if (scope->env != nullptr && !lost) {
     status = DestroyEnvInstance(scope->env);
+  } else if (lost) {
+    // iwci patch (#1021): the host frees the budget's data once this
+    // returns, so its callback must not be reached from here on.
+    RuntimeLock lock;
+    g_near_heap_limit_callbacks.erase(scope->isolate);
   }
   scope->env = nullptr;
 
@@ -2235,7 +2335,7 @@ napi_status ReleaseEnvScope(unofficial_napi_env_owner owner,
     if (!lost) {
       EdgeV8Platform* platform = nullptr;
       {
-        std::lock_guard<std::mutex> lock(g_runtime_mu);
+        RuntimeLock lock;
         platform = g_runtime.platform.get();
       }
       DisposeIsolateAndWait(platform, isolate, shutdown_pump_handle);
@@ -2246,7 +2346,7 @@ napi_status ReleaseEnvScope(unofficial_napi_env_owner owner,
   }
   if (allocator != nullptr) {
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       g_tracking_allocators.erase(allocator.get());
     }
   }
@@ -2282,7 +2382,7 @@ napi_status NAPI_CDECL unofficial_napi_set_prepare_stack_trace_callback(
 
   bool has_prepare_stack_trace_callback = false;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     PrepareStackTraceState& state = g_prepare_stack_trace_callbacks[env];
     v8::Local<v8::Context> principal_context = env->context();
     const bool use_principal_callback =
@@ -2344,7 +2444,7 @@ bool PumpPlatformForegroundTasks(napi_env env) {
   if (env == nullptr || env->isolate == nullptr) return false;
   EdgeV8Platform* platform = nullptr;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     platform = g_runtime.platform.get();
   }
   return platform != nullptr &&
@@ -2410,7 +2510,7 @@ bool AdmitPlatformWork(napi_env env, bool has_runnable_work) {
   if (streak.env != env) streak = PlatformWaitStreak{env, 0};
   EdgeV8Platform* platform = nullptr;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     platform = g_runtime.platform.get();
   }
   if (platform == nullptr || !platform->HasPendingWork(env->isolate)) {
@@ -2626,7 +2726,7 @@ napi_status NAPI_CDECL unofficial_napi_set_promise_reject_callback(napi_env env,
   v8::Local<v8::Value> raw = napi_v8_unwrap_value(callback);
   if (!raw->IsFunction()) return napi_function_expected;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     g_env_by_isolate[env->isolate] = env;
     auto& slot = g_promise_reject_callbacks[env->isolate];
     slot.Reset();
@@ -2660,7 +2760,7 @@ napi_status NAPI_CDECL unofficial_napi_set_promise_hooks(napi_env env,
   const bool has_hooks = HasPromiseHooks(persistent_hooks);
 
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     g_env_by_isolate[env->isolate] = env;
 
     auto existing = g_promise_hooks.find(env->isolate);
@@ -2753,7 +2853,7 @@ napi_status NAPI_CDECL unofficial_napi_mark_promise_as_handled(
 
   v8::Local<v8::Function> callback;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     const auto cb_it = g_promise_reject_callbacks.find(isolate);
     if (cb_it == g_promise_reject_callbacks.end() || cb_it->second.IsEmpty()) {
       return napi_ok;
@@ -2991,7 +3091,7 @@ napi_status NAPI_CDECL unofficial_napi_get_hash_seed(napi_env env,
     return napi_invalid_arg;
   }
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto it = g_hash_seeds.find(env->isolate);
     if (it != g_hash_seeds.end()) {
       *hash_seed_out = it->second;
@@ -3035,7 +3135,7 @@ napi_status NAPI_CDECL unofficial_napi_get_heap_statistics(
   stats_out->external_memory = stats.external_memory();
   stats_out->array_buffer_memory = 0;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto it = g_tracking_allocators.find(env->isolate->GetArrayBufferAllocator());
     if (it != g_tracking_allocators.end() && it->second) {
       stats_out->array_buffer_memory = it->second->total_mem_usage();
@@ -3109,7 +3209,7 @@ napi_status NAPI_CDECL unofficial_napi_profile_start(
 
   if (kind == unofficial_napi_profile_heap) {
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       auto it = g_profiler_states.find(env);
       if (it != g_profiler_states.end() &&
           std::any_of(it->second.active_profiles.begin(),
@@ -3133,7 +3233,7 @@ napi_status NAPI_CDECL unofficial_napi_profile_start(
     }
     profile->kind = kind;
     {
-      std::lock_guard<std::mutex> lock(g_runtime_mu);
+      RuntimeLock lock;
       EnsureProfilerState(env).active_profiles.push_back(profile);
     }
     *profile_out = profile;
@@ -3142,7 +3242,7 @@ napi_status NAPI_CDECL unofficial_napi_profile_start(
 
   v8::CpuProfiler* cpu_profiler = nullptr;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     ProfilerState& state = EnsureProfilerState(env);
     if (state.cpu_profiler == nullptr) {
       state.cpu_profiler = v8::CpuProfiler::New(env->isolate);
@@ -3172,7 +3272,7 @@ napi_status NAPI_CDECL unofficial_napi_profile_start(
   profile->kind = kind;
   profile->provider_id = static_cast<uint32_t>(result.id);
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto it = g_profiler_states.find(env);
     if (it != g_profiler_states.end()) {
       it->second.active_profiles.push_back(profile);
@@ -3197,7 +3297,7 @@ napi_status NAPI_CDECL unofficial_napi_profile_stop(
   unofficial_napi_profile_kind kind = unofficial_napi_profile_cpu;
   uint32_t provider_id = 0;
   {
-    std::lock_guard<std::mutex> lock(g_runtime_mu);
+    RuntimeLock lock;
     auto it = g_profiler_states.find(env);
     if (it == g_profiler_states.end()) return napi_invalid_arg;
     auto active_it = std::find(it->second.active_profiles.begin(),

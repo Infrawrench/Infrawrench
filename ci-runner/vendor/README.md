@@ -337,6 +337,41 @@ had no isolate current (V8's own workers), beside `g_lost_isolates`, and
 them and restart before the losses add up (`../README.md`, "Deploying,
 draining and updating").
 
+**And: an isolate stopped at its limit is disposed with room to spare,
+and the handler never gives up on a lock (#1021).** The runner still
+aborted now and then under load ("Reached heap limit" or "Ineffective
+mark-compacts near heap limit", then "API fatal error handler returned
+after process out of memory"). Disposing an isolate ends an incremental
+marking with a full collection (`CppHeap::StartDetachingIsolate`, from
+`Isolate::Deinit`), and an isolate the budget stopped at its limit, the
+usual state of one being torn down after it ran out, met V8's limit
+there: by then the env's near-heap-limit callback found nothing to grant,
+and the isolate was being disposed, where it cannot be confined, so V8
+aborted the process. `v8/src/unofficial_napi.cc` now swaps the budget's
+callback for one that grants up to 128 MiB more, uncharged, in 32 MiB
+steps, when the env is released: no JavaScript runs after that, so the
+heap only has to finish collecting. The budget's callback also no longer
+outlives its data (its data was the env, freed before the disposal), and
+`src/env.rs` frees an env's heap tracker after the bridge releases the env
+when a store is dropped, as the guest's own release already did, so
+neither that callback nor the out-of-memory handler reads it freed.
+
+Two smaller changes on the same path. The isolate's handler looked up the
+embedder's callback under `g_runtime_mu`, but V8 can run out of memory in
+a thread that holds it, so it tried for a second and then returned. Every
+place that locks `g_runtime_mu` now goes through `RuntimeLock`, which marks
+the thread as holding it (`t_holds_runtime_mu`): the handler waits without
+a time limit when another thread holds it, which always lets go, and reads
+the maps as they are when this thread does, and parking then unlocks it,
+since the frame that took it never resumes. And an abandoned isolate stays
+confined after its env is released, which erases its host data, since
+another of its threads can still run out. The cases that still return (no
+isolate known on the thread, one the host does not budget, one being
+disposed, or a thread creating or disposing one) print which from the
+process-wide handler, the last thing before V8 aborts. In V8 13.6 that
+handler runs after the isolate's own one returns, so the one-second
+timeout alone never aborted the runner.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
