@@ -25,6 +25,7 @@ use virtual_fs::{
 pub use virtual_fs;
 
 pub mod archive;
+mod index;
 mod limit;
 pub use limit::WriteBudget;
 pub mod modes;
@@ -512,7 +513,10 @@ impl SnapshotBuilder {
     /// snapshot cannot change what the next job sees.
     pub fn freeze(self) -> Snapshot {
         Snapshot {
-            fs: Arc::new(ReadOnlyFs(self.fs)),
+            fs: Arc::new(ReadOnlyFs {
+                fs: self.fs,
+                index: index::Index::default(),
+            }),
             modes: Arc::new(self.modes.into_inner().unwrap_or_else(|e| e.into_inner())),
         }
     }
@@ -1180,15 +1184,20 @@ impl virtual_fs::FileOpener for JobOverlay {
 /// A frozen in-memory file system: every read is forwarded, every write is
 /// refused. The overlay never writes to its lower layer, so this is belt and
 /// braces against a bug there leaking one job's writes into the next.
+/// Lookups and listings are answered from an index of the directories
+/// (`index.rs`), which a frozen file system can keep.
 #[derive(Debug)]
-pub struct ReadOnlyFs(mem_fs::FileSystem);
+pub struct ReadOnlyFs {
+    fs: mem_fs::FileSystem,
+    index: index::Index,
+}
 
 impl FileSystem for ReadOnlyFs {
     fn readlink(&self, path: &Path) -> virtual_fs::Result<PathBuf> {
-        self.0.readlink(path)
+        self.fs.readlink(path)
     }
     fn read_dir(&self, path: &Path) -> virtual_fs::Result<virtual_fs::ReadDir> {
-        self.0.read_dir(path)
+        self.index.read_dir(&self.fs, path)
     }
     fn create_dir(&self, _: &Path) -> virtual_fs::Result<()> {
         Err(FsError::PermissionDenied)
@@ -1210,10 +1219,10 @@ impl FileSystem for ReadOnlyFs {
         Box::pin(async { Err(FsError::PermissionDenied) })
     }
     fn metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
-        self.0.metadata(path)
+        self.index.metadata(&self.fs, path)
     }
     fn symlink_metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
-        self.0.symlink_metadata(path)
+        self.index.metadata(&self.fs, path)
     }
     fn remove_file(&self, _: &Path) -> virtual_fs::Result<()> {
         Err(FsError::PermissionDenied)
@@ -1232,7 +1241,7 @@ impl virtual_fs::FileOpener for ReadOnlyFs {
         // The overlay opens the lower file with the guest's own flags and
         // copies it up on the first write, so a write-intent open has to
         // succeed here; it just never gets a handle that can write.
-        self.0
+        self.fs
             .new_open_options()
             .read(true)
             .write(false)
