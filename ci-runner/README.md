@@ -1641,6 +1641,27 @@ whole pipeline.
   every ten minutes, and at once when its anonymous memory beyond what jobs
   have reserved passes the reserve (`iwci serve: memory: ...`), and
   `/v1/capacity` reports the same numbers.
+- **One V8 heap space for every Node job (#1063).** Every `node` of every
+  job is an isolate of the runner's one V8, which compresses pointers into
+  a single 4 GiB cage: the JavaScript heaps of all jobs together have 4 GiB
+  of address space, whatever the job budget is. The bridge keeps an account
+  of 3.5 GiB of it on top of each job's `memory:`, charging each heap what
+  it has committed (reported after every garbage collection) and the room
+  its last growth was promised. A `node` starts only while 512 MiB of the
+  account stays free, and a heap that needs to grow past what is free waits
+  for others; a waiting job is busy, not stalled. While the account is
+  three quarters used, new heaps start small and grow in small steps. Room
+  given back goes to the largest waiting heap first, so one heap gets what
+  it needs to finish rather than each a little. A wait ends in vain after
+  two minutes in which no heap gave any room back, or at once for the
+  smallest heap when every live heap waits to grow (each holds its own, so
+  then one has to give up), as an out-of-memory note saying the shared
+  heap was full, not the job's `memory:`; such a job may pass when it runs
+  again. Before this, the heaps of a few busy test jobs together filled the
+  cage, and V8 failed inside a job well within its `memory:` ("young object
+  promotion failed", "CALL_AND_RETRY_LAST"), losing the isolate. The log
+  line and `/v1/capacity` say how much of the account is used. More
+  `--memory` does not buy more JavaScript heap.
 - **`--module-memory`** (or `IWCI_MODULE_MEMORY`, default `1GiB`) bounds
   the compiled modules kept in memory, counted as the size of their
   artifacts (their native code takes about a third again). Past it, a job
@@ -1803,12 +1824,20 @@ A request body (for `runs` and `prepare`):
   that is not backed by a file, jobs included) and `modules_resident` (the
   compiled modules in memory, counted as their artifacts' size). All in
   bytes. See [Limits](#limits).
+- **V8 heap space.** `v8_heap_space_total` and `v8_heap_space_used` are
+  what the Node jobs' V8 heaps may use together and what the account says
+  they use now (every heap's committed memory and promised growth, and lost
+  isolates' heaps), in bytes;
+  `v8_heap_space_waits` counts the times a `node` or a growing heap waited
+  for room since the process started, and `v8_heap_space_refusals` the
+  times it waited in vain. See [Limits](#limits).
 - **V8's out-of-memory losses.** `/v1/capacity` also says what V8 running
   out of memory where it cannot recover has cost the process since it
   started: `v8_lost_isolates` (isolates abandoned, with their memory, which
   no job's `memory:` counts any more), `v8_parked_threads` (threads parked
-  for good) and `v8_parked_worker_threads` (those of them that were V8's
-  worker threads, a pool every Node job shares). The vendored bridge keeps
+  for good), `v8_parked_worker_threads` (those of them that were V8's
+  worker threads, a pool every Node job shares) and `v8_lost_heap` (bytes
+  of the V8 heap space the abandoned isolates hold). The vendored bridge keeps
   each such out-of-memory to its job at that cost
   ([vendor/README.md](vendor/README.md)), and the server logs the counts
   whenever they grow and restarts itself once they are too high (see
@@ -2001,10 +2030,13 @@ make that safe to do while jobs run:
 - **Restarting after V8 runs out of memory.** Each out-of-memory the bridge
   keeps to its job costs the process a parked thread and an abandoned
   isolate for good. Once that has cost one of V8's worker threads, whose
-  pool is sized to `--cpus` and shared by every Node job, or
-  `--restart-after-lost-isolates` isolates (default 8; `0` for never), the
-  server drains and `exec`s its own binary with the same arguments, the
-  way an update does, and starts again with none lost.
+  pool is sized to `--cpus` and shared by every Node job,
+  `--restart-after-lost-isolates` isolates (default 8; `0` for never), or
+  lost isolates whose heaps hold a quarter of the V8 heap space every Node
+  job shares (see [Limits](#limits); those heaps are never freed, and the
+  space is all the JavaScript heap the process has), the server drains and
+  `exec`s its own binary with the same arguments, the way an update does,
+  and starts again with none lost.
 
 Releases are published with `iwci release <binary> --version <v>
 [--target x86_64-linux] [--channel stable]` (signing key from

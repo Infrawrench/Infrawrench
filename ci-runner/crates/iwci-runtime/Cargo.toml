@@ -42,6 +42,9 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 # here because their types appear in the traits this crate implements.
 wasmer-types = "=7.5.0"
 wasmer-config = "=0.705.0"
+# For `drain_stack_pool` (`release_idle`), which `wasmer` does not re-export.
+# Already in the tree, as vendor/wasmer-vm.
+wasmer-vm = "=7.5.0"
 # webc's annotations are CBOR values; rewriting a command's `wasi.env`
 # (see `command_env_as_defaults`) builds one.
 ciborium = "0.2"

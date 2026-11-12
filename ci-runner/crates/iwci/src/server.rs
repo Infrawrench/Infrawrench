@@ -209,12 +209,15 @@ impl Server {
         // runner itself holds.
         let own = me.anonymous.saturating_sub(reserved);
         let over = self.memory_reserve.is_some_and(|r| own > r);
+        let heap = iwci_runtime::v8_heap_space();
         let line = format!(
-            "iwci serve: memory: {} MiB resident ({} MiB anonymous), jobs reserve {} of {} MiB, compiled modules {} MiB, host {} MiB, runner reserve {} MiB{}",
+            "iwci serve: memory: {} MiB resident ({} MiB anonymous), jobs reserve {} of {} MiB, V8 heaps {} of {} MiB, compiled modules {} MiB, host {} MiB, runner reserve {} MiB{}",
             me.resident >> 20,
             me.anonymous >> 20,
             reserved >> 20,
             self.runner.memory.as_ref().map_or(0, |m| m.total()) >> 20,
+            heap.used >> 20,
+            heap.total >> 20,
             modules >> 20,
             self.memory_host.unwrap_or(0) >> 20,
             self.memory_reserve.unwrap_or(0) >> 20,
@@ -368,6 +371,7 @@ impl Server {
     fn capacity(&self) -> serde_json::Value {
         let slots = self.runner.slots.as_ref().expect("checked in new");
         let v8 = iwci_runtime::v8_losses();
+        let heap = iwci_runtime::v8_heap_space();
         let process = crate::memory::process_memory();
         json!({
             "version": lifecycle::VERSION,
@@ -390,6 +394,12 @@ impl Server {
             "v8_lost_isolates": v8.lost_isolates,
             "v8_parked_threads": v8.parked_threads,
             "v8_parked_worker_threads": v8.parked_worker_threads,
+            "v8_lost_heap": v8.lost_heap,
+            // The V8 heap space every Node job shares (#1063).
+            "v8_heap_space_total": heap.total,
+            "v8_heap_space_used": heap.used,
+            "v8_heap_space_waits": heap.waits,
+            "v8_heap_space_refusals": heap.refusals,
             "warm": self.warm.lock().unwrap().as_ref().map(|(at, w)| json!({
                 "finished_at": at,
                 "tools": w.warmed.len(),

@@ -209,11 +209,24 @@ impl LayerCache {
         builder.apply(&layer.entries).map_err(|e| e.to_string())?;
         // A cache that cannot be written is a slower next run, not a failed
         // one.
+        let mut kept = layer.clone();
         if let Some(dir) = &self.dir {
-            let _ = self.save(&dir.join(key_dir(&key)), &layer);
+            let dir = dir.join(key_dir(&key));
+            if self.save(&dir, &layer).is_ok() {
+                // What memory keeps is the copy just written, as views of
+                // its mapping, which the kernel can page out and reclaim.
+                // The install's own buffers are the process's anonymous
+                // memory, which nothing gives back while they are kept: an
+                // idle server held a monorepo's node_modules, 2.8 GB of
+                // it, after one cold run (#1063). They go with this run.
+                let path = dir.join(format!("{}.{UNPACKED}", layer.name));
+                if let Ok(Some(found)) = read_unpacked(&path, &|_| true) {
+                    kept = Arc::new(found.into_layer(layer.name.clone()));
+                }
+            }
         }
         let notes = layer.notes.clone();
-        self.remember(&key, layer);
+        self.remember(&key, kept);
         Ok((Outcome::Installed, notes))
     }
 
@@ -1039,6 +1052,58 @@ mod tests {
             b"lock v1default"
         );
         assert_eq!(runs.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Whether every file of the layers kept in memory for `key` is a view
+    /// of a mapped file, and how many files there are.
+    fn kept_mapped(cache: &LayerCache, key: &str) -> (bool, usize) {
+        let memory = cache.memory.lock().unwrap();
+        let files: Vec<bool> = memory.0[&format!("v{LAYOUT_VERSION}\0{key}")]
+            .iter()
+            .flat_map(|l| &l.entries)
+            .filter_map(|e| match e {
+                Entry::File { data, .. } => Some(data.is_mmapped()),
+                _ => None,
+            })
+            .collect();
+        (files.iter().all(|m| *m), files.len())
+    }
+
+    #[test]
+    fn a_fresh_install_is_kept_as_its_copy_on_disk() {
+        // #1063: the install's own buffers are anonymous memory, which an
+        // idle server kept for good; memory keeps the mapped copy instead.
+        let dir = temp_dir("mapped");
+        let runs = AtomicUsize::new(0);
+        let cache = LayerCache::new(Some(dir.clone()));
+        let first = checkout();
+        assert_eq!(
+            cache
+                .install(&first, "pnpm /app", install(&runs))
+                .unwrap()
+                .0,
+            Outcome::Installed
+        );
+        assert_eq!(kept_mapped(&cache, "pnpm /app"), (true, 1));
+        let second = checkout();
+        assert_eq!(
+            cache
+                .install(&second, "pnpm /app", install(&runs))
+                .unwrap()
+                .0,
+            Outcome::Memory
+        );
+        assert_eq!(
+            second.read("/app/node_modules/a/index.js").unwrap(),
+            b"lock v1default"
+        );
+        // Without a directory, memory is the only copy.
+        let cache = LayerCache::new(None);
+        cache
+            .install(&checkout(), "pnpm /app", install(&runs))
+            .unwrap();
+        assert_eq!(kept_mapped(&cache, "pnpm /app"), (false, 1));
         let _ = std::fs::remove_dir_all(dir);
     }
 

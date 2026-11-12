@@ -2965,6 +2965,7 @@ dependencies = [
  "wasmer-config",
  "wasmer-napi",
  "wasmer-types",
+ "wasmer-vm",
  "wasmer-wasix",
  "wat",
  "webc",

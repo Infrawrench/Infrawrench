@@ -80,6 +80,9 @@ pub struct V8Losses {
     /// `--cpus` ([`set_node_worker_threads`]), so each one leaves every
     /// later Node job's garbage collection and compilation fewer threads.
     pub parked_worker_threads: u64,
+    /// Bytes of the V8 heap space ([`V8HeapSpace`]) the abandoned isolates
+    /// hold, which no later job can have (#1063).
+    pub lost_heap: u64,
 }
 
 /// See [`V8Losses`]; all zero without the `node` feature.
@@ -91,10 +94,50 @@ pub fn v8_losses() -> V8Losses {
             lost_isolates: losses.lost_isolates,
             parked_threads: losses.parked_threads,
             parked_worker_threads: losses.parked_worker_threads,
+            lost_heap: wasmer_napi::heap_space().lost,
         }
     }
     #[cfg(not(feature = "node"))]
     V8Losses::default()
+}
+
+/// The V8 heap space every Node job of the process shares (#1063): the
+/// bridge's V8 puts every isolate's heap in one 4 GiB pointer-compression
+/// cage, so the heaps of all jobs together are held to an account of it as
+/// well as each job's to its `memory:`. A heap that does not fit waits for
+/// others, the largest heap first, and is refused or stopped only after two
+/// minutes in which no heap gave room back, or at once, if it is the
+/// smallest, when every live heap waits to grow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct V8HeapSpace {
+    /// What the isolates of the process may use together; 0 without the
+    /// `node` feature.
+    pub total: u64,
+    /// What they use now, as the account has it: each heap's committed
+    /// memory as it last reported and the growth it was last promised, and
+    /// the heaps of isolates lost to an out-of-memory, which stay until the
+    /// process ends.
+    pub used: u64,
+    /// Times an isolate waited for room, and of those, times it waited in
+    /// vain and its job was refused a `node` or stopped.
+    pub waits: u64,
+    pub refusals: u64,
+}
+
+/// See [`V8HeapSpace`].
+pub fn v8_heap_space() -> V8HeapSpace {
+    #[cfg(feature = "node")]
+    {
+        let space = wasmer_napi::heap_space();
+        V8HeapSpace {
+            total: space.capacity,
+            used: space.charged,
+            waits: space.waits,
+            refusals: space.refusals,
+        }
+    }
+    #[cfg(not(feature = "node"))]
+    V8HeapSpace::default()
 }
 
 /// What each of stdout and stderr keeps before truncating.
@@ -500,12 +543,18 @@ impl Runtime {
     }
 
     /// Lets go of what no job uses any more: parsed packages unused for a
-    /// couple of minutes, and an old generation of compiled modules whose
-    /// last job has ended. A server calls this now and then, so an idle
-    /// runner holds next to nothing.
+    /// couple of minutes, an old generation of compiled modules whose last
+    /// job has ended, and the Wasm stacks of threads that have ended. A
+    /// server calls this now and then, so an idle runner holds next to
+    /// nothing.
     pub fn release_idle(&self) {
         self.wasix.release_idle();
         self.store.release_idle();
+        // A thread that ends gives its cached Wasm stack (`WASIX_STACK`, 64
+        // MiB of address space, resident as deep as it was ever used) to
+        // wasmer's pool, which never shrinks; threads that are still alive
+        // keep their own. A stack is a fresh mapping away (#1063).
+        wasmer_vm::drain_stack_pool();
     }
 
     pub fn cache_stats(&self) -> CacheStats {

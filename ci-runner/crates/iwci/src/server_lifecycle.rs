@@ -139,13 +139,28 @@ static STOP: AtomicBool = AtomicBool::new(false);
 const V8_LOSSES_EVERY: Duration = Duration::from_secs(5);
 
 /// Why a server whose V8 has lost `losses` should restart, if it should:
-/// any V8 worker thread lost, or `restart_after` isolates (`None`: never).
-fn restart_reason(losses: &iwci_runtime::V8Losses, restart_after: Option<u64>) -> Option<String> {
+/// any V8 worker thread lost, `restart_after` isolates (`None`: never), or
+/// lost isolates holding a quarter of the V8 heap space every Node job
+/// shares, `heap_space` bytes (#1063): past that, the jobs' heaps wait on
+/// room that never comes back.
+fn restart_reason(
+    losses: &iwci_runtime::V8Losses,
+    restart_after: Option<u64>,
+    heap_space: u64,
+) -> Option<String> {
     let after = restart_after?;
     if losses.parked_worker_threads != 0 {
         return Some(format!(
             "out-of-memory parked {}, from the pool every job shares",
             count(losses.parked_worker_threads, "V8 worker thread")
+        ));
+    }
+    if heap_space != 0 && losses.lost_heap.saturating_mul(4) >= heap_space {
+        return Some(format!(
+            "out-of-memory lost {} holding {} MiB of the {} MiB V8 heap space every Node job shares",
+            count(losses.lost_isolates, "V8 isolate"),
+            losses.lost_heap >> 20,
+            heap_space >> 20
         ));
     }
     (losses.lost_isolates >= after).then(|| {
@@ -266,7 +281,8 @@ impl Server {
                         count(losses.parked_threads, "thread"),
                         losses.parked_worker_threads
                     );
-                    if let Some(reason) = restart_reason(&losses, restart_after) {
+                    let heap_space = iwci_runtime::v8_heap_space().total;
+                    if let Some(reason) = restart_reason(&losses, restart_after, heap_space) {
                         server.restarting.store(true, Ordering::SeqCst);
                         server.begin_drain(&reason);
                         server.wait_idle();
@@ -384,21 +400,35 @@ mod tests {
             lost_isolates,
             parked_threads: lost_isolates,
             parked_worker_threads,
+            lost_heap: lost_isolates * (100 << 20),
         };
-        assert_eq!(restart_reason(&losses(0, 0), Some(8)), None);
+        const SPACE: u64 = 3584 << 20;
+        assert_eq!(restart_reason(&losses(0, 0), Some(8), SPACE), None);
         // A job's own thread, parked: one isolate, below the threshold.
-        assert_eq!(restart_reason(&losses(7, 0), Some(8)), None);
+        assert_eq!(restart_reason(&losses(7, 0), Some(8), SPACE), None);
         assert_eq!(
-            restart_reason(&losses(8, 0), Some(8)).as_deref(),
+            restart_reason(&losses(8, 0), Some(8), SPACE).as_deref(),
             Some("out-of-memory lost 8 V8 isolates (--restart-after-lost-isolates 8)")
         );
         // One of V8's worker threads is gone for every job: at once.
         assert_eq!(
-            restart_reason(&losses(1, 1), Some(8)).as_deref(),
+            restart_reason(&losses(1, 1), Some(8), SPACE).as_deref(),
             Some("out-of-memory parked 1 V8 worker thread, from the pool every job shares")
         );
+        // Fewer isolates, but holding a quarter of the shared heap (#1063).
+        let big = iwci_runtime::V8Losses {
+            lost_heap: 900 << 20,
+            ..losses(2, 0)
+        };
+        assert_eq!(
+            restart_reason(&big, Some(8), SPACE).as_deref(),
+            Some(
+                "out-of-memory lost 2 V8 isolates holding 900 MiB of the 3584 MiB V8 heap space every Node job shares"
+            )
+        );
         // `--restart-after-lost-isolates 0`: never.
-        assert_eq!(restart_reason(&losses(100, 3), None), None);
+        assert_eq!(restart_reason(&losses(100, 3), None, SPACE), None);
+        assert_eq!(restart_reason(&big, None, SPACE), None);
     }
 
     #[test]

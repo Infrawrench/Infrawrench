@@ -391,6 +391,56 @@ absent, and the result is then a plain Uint8Array, which Edge.js turns into
 a Buffer itself). Reported as wasmerio/napi#146; drop the hunk with the
 release that fixes it.
 
+**And: every heap of the process shares one cage, and is held to it
+(#1063).** The bridge's V8 compresses pointers into one 4 GiB cage per
+isolate group and is built with a single group
+(`v8::IsolateGroup::CanCreateNewGroups()` returns false on both
+architectures), so every isolate of every job allocates its heap pages from
+the same 4 GiB, while each job's budget held only its own heaps. A few test
+jobs at once filled it: V8's page allocation failed inside an isolate well
+within its job's budget, which it treats as fatal ("MarkCompactCollector:
+young object promotion failed", "CALL_AND_RETRY_LAST"), so the isolate was
+lost (above) with its heap, which made the next loss likelier.
+`src/budget.rs` now keeps a process-wide account of the cage, `HeapSpace`,
+of 3.5 GiB (`DEFAULT_V8_HEAP_SPACE`: the cage less room for what the
+account does not see, such as the read-only space, pooled pages and growth
+since a heap last reported). Each budgeted isolate is charged there with
+the heap it has committed, which it reports after every garbage collection
+(`v8/src/unofficial_napi.cc` installs a GC epilogue callback with the
+near-heap-limit callback, removes it with that callback, and looks the
+host's data up the same way, so a lost isolate's is never read), plus the
+room each near-heap-limit grant promises until the heap grows into it or a
+full collection with no grant since shows it was not needed. Charging the
+limits instead, which is what would make overflow impossible, held a test
+pipeline to a quarter of the cage: the limits filled the space while the
+heaps used 850 MB of it, and `node`s and workers were refused. A new
+isolate is admitted only while 512 MiB of the space stays free
+(`HEAP_SPACE_GROWTH_ROOM`), and waits for that; a grant the budget has room
+for but the space does not waits too, inside the near-heap-limit callback
+on the isolate's own thread, which holds no lock another isolate takes.
+While the space is three quarters used, a new isolate starts from a 64 MiB
+old generation and V8's own young one, and grants come in the smallest
+step, so what a heap may grow into without asking stays near what it uses.
+Room given back goes to the largest waiting heap whose request fits, so one
+heap grows to where it can finish rather than each by a little. A wait goes
+on while heaps give room back and ends in vain after two minutes in which
+none did, at once for the smallest waiting heap when every live isolate
+waits to grow (each holds its own room, so one must give up for the rest
+to go on), or when the app is stopped. Waiting in vain refuses the isolate
+or stops the heap as the budget does, counted as `heap_space_full` so the
+embedder can say it was the shared space, not the job's memory;
+`set_heap_space_wait_hook` lets the embedder count the wait as the
+runtime's (the runner's stall check calls the job busy meanwhile). A lost
+isolate's heap is never freed, so it stays charged to the space, counted as
+`lost`, on which `iwci serve` restarts once it holds a quarter of the
+space. `heap_space()` reports the space, and `set_heap_space` lowers it for
+an embedder that runs fewer heaps. It is an account, not a guarantee: a
+heap still grows between reports and up to its limit without asking.
+Drop this with a V8 built with multiple cages
+(`v8_enable_pointer_compression_multiple_cages`, where
+`IsolateGroup::Create` gives each job a cage of its own) or without pointer
+compression.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
@@ -593,14 +643,29 @@ credentials among them. `src/syscalls/wasi/path_unlink_file.rs` now
 refuses a directory before it touches anything: wasmerio/wasmer#7076,
 merged to `main` after 0.705.0 and in no release yet.
 
+**Task threads end when idle (#1063).** `TokioTaskManager` runs every
+WASIX process and thread on a `rusty_pool` whose core size was its maximum,
+`max(200, 100 * cores)`. A pool below its core size makes a new thread for
+every task, idle threads or not, and core threads never end, so a runner
+reached the maximum within a busy hour and kept it: ci-2, idle, had 1,600
+of them, each with its stack and a cached 64 MiB Wasm stack. Past the
+maximum a task would have queued behind a busy thread, which a guest that
+waits for a thread it started cannot afford. `src/runtime/task_manager/tokio.rs`
+now has a pool of its own: a task goes to a thread that is waiting for one
+(taken under a lock, so two tasks never count on the same thread) or to a
+new thread, and a thread with nothing to do for a minute ends. Nothing
+upstream does this; the runner drains the Wasm stacks such threads leave
+(`release_idle`).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
 still classify as streams, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
 can be renamed, a guest's CPU clocks are its own, and a blocking accept
-or receive waits with no timeout of its own and still ends for a signal:
-delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
+or receive waits with no timeout of its own and still ends for a signal,
+and the task manager's idle threads end without queueing a task behind a
+busy one: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
 entry in `../Cargo.toml`, and check `builtins/test.sh`'s
 `background-passes` and `shebang-passes` (bash and bash-node),
 `shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
