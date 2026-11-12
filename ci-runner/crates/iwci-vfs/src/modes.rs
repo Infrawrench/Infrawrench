@@ -72,6 +72,23 @@ impl Modes {
         }
     }
 
+    /// Every path with a mode recorded, and that mode.
+    pub fn recorded(&self) -> Vec<(PathBuf, u32)> {
+        let own = self.own();
+        let mut out: Vec<(PathBuf, u32)> = self
+            .0
+            .base
+            .iter()
+            .filter(|(path, _)| !own.contains_key(*path))
+            .map(|(path, mode)| (path.clone(), *mode))
+            .collect();
+        out.extend(
+            own.iter()
+                .filter_map(|(path, mode)| mode.map(|mode| (path.clone(), mode))),
+        );
+        out
+    }
+
     /// Records `mode` (its [`MODE_BITS`]) for `path`.
     pub fn set(&self, path: &Path, mode: u32) {
         self.own()

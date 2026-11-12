@@ -1,0 +1,20 @@
+diff --git a/src/edge_environment.cc b/src/edge_environment.cc
+index a03e50a0..d47a6905 100644
+--- a/src/edge_environment.cc
++++ b/src/edge_environment.cc
+@@ -1368,7 +1368,14 @@ napi_status Environment::RequestInterrupt(InterruptCallback callback, void* data
+     return napi_generic_failure;
+   }
+ 
+-  return unofficial_napi_request_interrupt(env_, OnInterruptFromV8, this);
++  // The entry is queued and the loop has been woken, so it runs from the
++  // loop whatever the engine says. The engine's interrupt only runs it
++  // sooner, inside JavaScript that does not yield, and an engine that cannot
++  // do that (a host engine reached through N-API imports refuses it) must
++  // not turn a queued request into a failure: the caller would free the data
++  // the queue still holds, and the callback would then run on freed memory.
++  (void)unofficial_napi_request_interrupt(env_, OnInterruptFromV8, this);
++  return napi_ok;
+ }
+ 
+ size_t Environment::DrainInterrupts() {

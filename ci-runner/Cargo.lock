@@ -2964,6 +2964,7 @@ dependencies = [
  "wasmer-wasix",
  "wat",
  "webc",
+ "xxhash-rust",
 ]
 
 [[package]]

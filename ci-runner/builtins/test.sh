@@ -1044,6 +1044,124 @@ jobs:
       test "$(node -e 'process.stdout.write(require("child_process").execSync("echo child"))')" = child
       test "$(node -e 'require("child_process").spawn(process.execPath, ["-e", "console.log(process.stdout.isTTY)"], { stdio: "inherit" })')" = undefined
       test "$(node -e 'require("child_process").spawn(process.execPath, ["-e", "console.log(1 + 1)"]).stdout.pipe(process.stdout)')" = 2
+  # Node's `fs` reads and sets the runner's file modes (#959): Edge.js is
+  # built on a C library that asks /proc/iwci (wasix-libc-modes.patch).
+  modes-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/modes.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const mode = (st) => (st.mode & 0o7777).toString(8);
+      // The checkout: git's executable bit, and the default.
+      assert.equal(mode(fs.statSync("run.sh")), "755");
+      assert.equal(mode(fs.statSync("data.txt")), "644");
+      assert.equal(mode(fs.statSync(".")), "755");
+      fs.writeFileSync("/tmp/f", "secret");
+      assert.equal(mode(fs.statSync("/tmp/f")), "644");
+      fs.chmodSync("/tmp/f", 0o600);
+      assert.equal(mode(fs.statSync("/tmp/f")), "600");
+      assert.equal(mode(fs.lstatSync("/tmp/f")), "600");
+      // By descriptor: a file this process created, one the record has, and
+      // one with the default.
+      const fd = fs.openSync("/tmp/f", "r");
+      assert.equal(mode(fs.fstatSync(fd)), "600");
+      fs.closeSync(fd);
+      const run = fs.openSync("run.sh", "r");
+      assert.equal(mode(fs.fstatSync(run)), "755");
+      fs.closeSync(run);
+      const data = fs.openSync("data.txt", "r");
+      assert.equal(mode(fs.fstatSync(data)), "644");
+      fs.closeSync(data);
+      // Created with a mode, less the umask; set through a descriptor.
+      fs.writeFileSync("/tmp/g", "x", { mode: 0o600 });
+      assert.equal(mode(fs.statSync("/tmp/g")), "600");
+      fs.mkdirSync("/tmp/d", { mode: 0o700 });
+      assert.equal(mode(fs.statSync("/tmp/d")), "700");
+      const h = fs.openSync("/tmp/h", "w");
+      fs.fchmodSync(h, 0o640);
+      assert.equal(mode(fs.fstatSync(h)), "640");
+      fs.closeSync(h);
+      assert.equal(mode(fs.statSync("/tmp/h")), "640");
+      assert.equal(mode(fs.statSync(fs.mkdtempSync("/tmp/t-"))), "700");
+      // A copy keeps its source's mode; a symlink reads 777 by lstat.
+      fs.copyFileSync("run.sh", "/tmp/run2.sh");
+      assert.equal(mode(fs.statSync("/tmp/run2.sh")), "755");
+      process.umask(0o077);
+      fs.writeFileSync("/tmp/u", "x");
+      assert.equal(mode(fs.statSync("/tmp/u")), "600");
+      fs.symlinkSync("/tmp/f", "/tmp/l");
+      assert.equal(mode(fs.lstatSync("/tmp/l")), "777");
+      assert.equal(mode(fs.statSync("/tmp/l")), "600");
+      assert.throws(() => fs.chmodSync("/tmp/nope", 0o600), { code: "ENOENT" });
+      fs.accessSync("run.sh", fs.constants.X_OK);
+      console.log("modes ok");
+      JS
+      node /tmp/modes.js
+      # The shell's commands and Node's see the same record.
+      test "$(stat -c %a /tmp/f /tmp/h)" = "$(printf '600\n640')"
+      chmod 604 /tmp/f
+      test "$(node -p '(require("fs").statSync("/tmp/f").mode & 0o777).toString(8)')" = 604
+  # A parent asking a Worker about itself. Heap statistics and reports are
+  # run on the worker's loop; Edge.js freed the request when the engine
+  # would not also interrupt the worker's JavaScript for it, so `node`
+  # crashed, hung or got ERR_WORKER_NOT_RUNNING (#1006,
+  # edgejs-request-interrupt.patch). `cpuUsage()` still never settles
+  # (#1006), so it is only poked below.
+  worker-introspection-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 1m
+    run: |
+      cat > /tmp/ask.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      const assert = require("node:assert");
+      (async () => {
+        for (const body of ["setInterval(() => {}, 1000)", "const e = Date.now() + 1000; while (Date.now() < e) {} setInterval(() => {}, 1000)"]) {
+          const w = new Worker(body, { eval: true });
+          await new Promise((r) => w.once("online", r));
+          const heap = await w.getHeapStatistics();
+          assert.ok(heap.total_heap_size > 0);
+          assert.equal(process.report.getReport().workers.length, 1);
+          await w.terminate();
+        }
+        console.log("introspection ok");
+      })();
+      JS
+      test "$(node /tmp/ask.js)" = "introspection ok"
+  # The same calls, and event loop utilisation, while workers end by
+  # themselves (#938): each reads the worker's env, as the stop once did, now
+  # under the worker's mutex (edgejs-worker-env-readers.patch). A smoke test,
+  # since the window is narrow.
+  worker-readers-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    memory: 2GiB
+    timeout: 3m
+    run: |
+      cat > /tmp/readers.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      let done = 0;
+      const total = 200;
+      function one(i) {
+        const w = new Worker("setTimeout(() => {}, " + (i % 5) + ")", { eval: true });
+        const poke = () => {
+          w.getHeapStatistics().catch(() => {});
+          try { w.cpuUsage?.().catch(() => {}); } catch {}
+          try { w.performance.eventLoopUtilization(); } catch {}
+          if (i % 20 === 0) process.report.getReport();
+        };
+        w.on("online", poke);
+        const timer = setInterval(poke, 1);
+        w.on("exit", () => {
+          clearInterval(timer);
+          if (++done === total) console.log("readers ok");
+          else if (i + 4 < total) one(i + 4);
+        });
+      }
+      for (let i = 0; i < 4; i++) one(i);
+      JS
+      test "$(node /tmp/readers.js)" = "readers ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap

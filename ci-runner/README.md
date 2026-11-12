@@ -599,11 +599,28 @@ rest of its workers never stopped: about one tsdown bundle in 3,000 on
 x86. The request is now made under the mutex, and the worker clears the
 pointer under it before freeing anything, as Node's Worker does.
 
+24.0.7 adds three more. `edgejs-worker-env-readers.patch` (#938) does the
+same for the other places a parent reads a worker's env: a task queued on
+the worker (heap statistics, CPU use, profiles), a diagnostic report and
+`eventLoopUtilization()`. `edgejs-request-interrupt.patch` (#1006) makes
+those requests work at all: Edge.js queues each on the worker's loop and
+also asks the engine to interrupt the worker's JavaScript for it, which the
+bridge refuses from another thread, and it reported that as a failure with
+the request still queued, so the task was freed and then run (`node`
+crashed or hung) or the call failed. `worker.cpuUsage()` still never
+settles. `wasix-libc-modes.patch` (#959, `posix.o` and
+`fstat.o`) makes the C library ask the runner for file modes: `stat`,
+`lstat`, `fstatat` and `fstat` fill in the permission bits from
+`/proc/iwci`, `chmod`, `fchmod` and `fchmodat` set them, and `open` with
+`O_CREAT` and `mkdir` record the mode they were given, less the `umask`
+(see [File modes](#file-modes)).
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
 has its fix, and go back to pinning Wasmer's package once a release has
-all four.
+all the fixes (the modes patch speaks the runner's own protocol, so that
+needs a way for a release to ask the host).
 
 `builtins/*/build.sh` builds each into `dist/`, and `iwci publish` uploads
 it. Every package and source is pinned to a tag or a content hash. On
@@ -630,9 +647,15 @@ it through files the runner serves at `/proc/iwci`:
   inode and device numbers read 0, and the job's user has no name),
 - `mktemp` (GNU's options), whose file is `0600` and directory `0700`.
 
-`stat -c %a "$(mktemp)"` therefore prints `600`. Programs that call
-`chmod(2)` or `stat(2)` themselves do not see modes (see the known
-limitations).
+`stat -c %a "$(mktemp)"` therefore prints `600`. Node (`env:bash-node`
+24.0.7 on) sees the same modes: its C library reads and writes them through
+`/proc/iwci`, so `fs.statSync`, `fs.chmodSync`, `fs.writeFileSync(f, data,
+{ mode })`, `fs.mkdirSync`, `fs.mkdtempSync`, `fs.copyFileSync` and
+`process.umask` behave as on Linux, and `fs.fstatSync` reads what
+`fs.statSync` does. `fs.fchmodSync` works on a file the same `node` created
+or one that already has a mode recorded (the checkout's executables,
+anything `chmod`ed), and leaves any other as it was. Other programs see no
+modes (see the known limitations).
 
 ### Tools in a script
 
@@ -1357,12 +1380,12 @@ schedule once per runner. Its README has the routes; the short version:
 - **Runner-local caches** (git, downloads, installs, compiled modules)
   are not evicted yet and count against no owner; give the cache directory
   its own disk.
-- **File modes reach scripts, not programs.** The runner keeps a mode per
-  file (see [File modes](#file-modes)), but WASIX has no way to pass one to
-  a program, so only the `chmod`, `stat` and `mktemp` commands see them:
-  Node's `fs.chmod` still does nothing, `fs.statSync(f).mode` has no
-  permission bits, coreutils' `ls -l` shows every file as `rwxrwxrwx`, and
-  nothing enforces a mode. A `changes: commit` keeps each file's original
+- **File modes reach scripts and Node, not other programs.** The runner
+  keeps a mode per file (see [File modes](#file-modes)), but WASIX has no
+  way to pass one to a program, so only the `chmod`, `stat` and `mktemp`
+  commands and Node (whose C library is built here to ask) see them:
+  coreutils' `ls -l` shows every file as `rwxrwxrwx`, other WASIX programs
+  read no permission bits, and nothing enforces a mode. A `changes: commit` keeps each file's original
   mode (a new file is `100644`).
 - **Submodules** are skipped with a warning, and Cargo `git` dependencies
   are reported rather than vendored.

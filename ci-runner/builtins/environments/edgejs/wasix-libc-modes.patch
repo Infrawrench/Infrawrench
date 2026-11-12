@@ -1,0 +1,542 @@
+wasix-libc: permission bits from the host that keeps them
+(Infrawrench/Infrawrench#959).
+
+Against wasix-org/wasix-libc 67b2eccf (v2026-07-30.1). Ours, and not one for
+upstream as it stands: it reads a protocol of the Infrawrench CI runner.
+
+WASI has no file modes. `filestat` has no field for one, `chmod`, `fchmod`
+and `fchmodat` return 0 having done nothing, `umask` is a no-op and `stat`
+fills in only the file type, so every program built on this library reads
+permission bits of 0 and cannot set any. The runner keeps modes beside its
+file systems and serves them through control files in /proc/iwci (`mode/`
+by path, `ino/` by st_ino). With this patch:
+
+- `stat`, `lstat`, `fstatat` (relative to the working directory or with an
+  absolute path) and `fstat` fill in the permission bits of a regular file or
+  directory by asking for `ino/<st_ino>` after the real call. The host finds
+  a file it has a mode for without walking its path; any other file, most of
+  them, costs one failed open and gets the default for its type (0755 for a
+  directory or a file directly in /bin, /usr/bin or /usr/local/bin, 0644
+  otherwise). A symlink reads 0777 by `lstat`.
+- `chmod` and `fchmodat` record a mode by path (and now fail with ENOENT on
+  a missing path, as they should). `fchmod` goes by the path this process
+  created the file at, if it did, otherwise by st_ino, which only finds a
+  file the host already has a mode for.
+- `open` with O_CREAT and `mkdir` record their mode, less the umask, when it
+  is not the default, so `mkstemp` gives 0600 and `mkdtemp` 0700.
+- `umask` keeps a mask (022 to start) for those two.
+
+Without /proc/iwci (checked once per process) all of it behaves as before.
+Relative to a directory descriptor other than the working directory there is
+no path to give, so `fstatat` and `fchmodat` behave as before there too.
+
+diff --git a/libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.c b/libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.c
+index b8ffdb5..6dbbdac 100644
+--- a/libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.c
++++ b/libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.c
+@@ -9,6 +9,8 @@
+ 
+ #include "stat_impl.h"
+ 
++void __wasilibc_iwci_fill_fd_mode(__wasi_inode_t ino, struct stat *st);
++
+ int fstat(int fildes, struct stat *buf) {
+   __wasi_filestat_t internal_stat;
+   __wasi_errno_t error = __wasi_fd_filestat_get(fildes, &internal_stat);
+@@ -17,5 +19,7 @@ int fstat(int fildes, struct stat *buf) {
+     return -1;
+   }
+   to_public_stat(&internal_stat, buf);
++  // Its permission bits, from the host when it keeps them (posix.c).
++  __wasilibc_iwci_fill_fd_mode(internal_stat.ino, buf);
+   return 0;
+ }
+diff --git a/libc-bottom-half/sources/posix.c b/libc-bottom-half/sources/posix.c
+index 3c75a69..2b633ab 100644
+--- a/libc-bottom-half/sources/posix.c
++++ b/libc-bottom-half/sources/posix.c
+@@ -4,10 +4,13 @@
+ #include <errno.h>
+ #include <dirent.h>
+ #include <fcntl.h>
++#include <stdarg.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+ #include <utime.h>
++#include <wasi/api.h>
+ #include <wasi/libc.h>
+ #include <wasi/libc-find-relpath.h>
+ #include <wasi/libc-nocwd.h>
+@@ -44,10 +47,376 @@ static int find_relpath_alt(const char *path, char **relative) {
+     return fd;
+ }
+ 
++// File modes, kept by the host rather than the file system.
++//
++// WASI has no file modes: `filestat` has no field for one and nothing sets
++// one, so `stat` reported the file type alone and `chmod` did nothing. A
++// host that keeps modes beside its file systems (the Infrawrench CI runner)
++// serves them through control files under IWCI_MODES:
++//
++//   mode/<path>  read: the octal mode of the file at <path>, symlinks
++//                followed, or a line that is not a number when nothing is
++//                there; write an octal mode to set it
++//   ino/<n>      the same for the file whose st_ino is <n>, if the host has
++//                a mode recorded for it; no such file otherwise
++//
++// <path> is absolute, with `%` written `%25` and `/` written `%2F`. Reads go
++// by st_ino, which the real stat has just given: the host finds a recorded
++// file by it without walking the path, and a file it has no mode for (most
++// of them) costs one failed open. Such a file has the default for its type.
++// Without that directory the functions below behave as before: no
++// permission bits, and `chmod` succeeds having changed nothing. Nothing here
++// enforces a mode.
++#define IWCI_MODES "/proc/iwci/"
++
++// What a regular file or a directory nobody gave a mode has.
++#define IWCI_DEFAULT_FILE_MODE 0644
++#define IWCI_DEFAULT_DIR_MODE 0755
++
++// The process's file creation mask. WASI has none; this one only decides
++// the modes this file records for what `open` and `mkdir` create.
++static mode_t iwci_umask = 022;
++
++// 1 when the host serves modes, -1 when it does not, 0 before the first use.
++static int iwci_state = 0;
++
++static int iwci_present(void) {
++    int state = __atomic_load_n(&iwci_state, __ATOMIC_RELAXED);
++    if (state == 0) {
++        int saved_errno = errno;
++        struct stat st;
++        char *relative_path;
++        int dirfd = find_relpath_alt(IWCI_MODES "mode", &relative_path);
++        state = dirfd != -1 &&
++                __wasilibc_nocwd_fstatat(dirfd, relative_path, &st, 0) == 0 &&
++                S_ISDIR(st.st_mode) ? 1 : -1;
++        errno = saved_errno;
++        __atomic_store_n(&iwci_state, state, __ATOMIC_RELAXED);
++    }
++    return state > 0;
++}
++
++// The absolute path `path` names, with the working directory joined in, as
++// a malloc'd string, or NULL.
++static char *iwci_absolute(const char *path) {
++    char *relative = NULL;
++    size_t relative_len = 0;
++    const char *prefix;
++    int fd = __wasilibc_find_relpath_alloc(path, &prefix, &relative, &relative_len, 1);
++    if (fd == -1) {
++        free(relative);
++        return NULL;
++    }
++    // "/" + prefix + "/" + relative, the way chdir builds the working
++    // directory: no middle slash for an empty prefix, and "." is the
++    // directory itself.
++    size_t prefix_len = strlen(prefix);
++    int copy_relative = strcmp(relative, ".") != 0;
++    int mid = copy_relative && prefix[0] != 0;
++    size_t relative_copy = copy_relative ? strlen(relative) : 0;
++    char *out = malloc(1 + prefix_len + mid + relative_copy + 1);
++    if (out != NULL) {
++        out[0] = '/';
++        memcpy(out + 1, prefix, prefix_len);
++        if (mid)
++            out[1 + prefix_len] = '/';
++        memcpy(out + 1 + prefix_len + mid, relative, relative_copy);
++        out[1 + prefix_len + mid + relative_copy] = 0;
++    }
++    free(relative);
++    return out;
++}
++
++// IWCI_MODES "mode/" plus `path` (made absolute) encoded as one file name,
++// malloc'd, or NULL.
++static char *iwci_mode_file(const char *path) {
++    char *absolute = iwci_absolute(path);
++    if (absolute == NULL)
++        return NULL;
++    static const char prefix[] = IWCI_MODES "mode/";
++    size_t len = sizeof(prefix) - 1;
++    for (const char *p = absolute; *p; p++)
++        len += (*p == '%' || *p == '/') ? 3 : 1;
++    char *out = malloc(len + 1);
++    if (out != NULL) {
++        char *o = out;
++        memcpy(o, prefix, sizeof(prefix) - 1);
++        o += sizeof(prefix) - 1;
++        for (const char *p = absolute; *p; p++) {
++            if (*p == '%' || *p == '/') {
++                *o++ = '%';
++                *o++ = '2';
++                *o++ = *p == '%' ? '5' : 'F';
++            } else {
++                *o++ = *p;
++            }
++        }
++        *o = 0;
++    }
++    free(absolute);
++    return out;
++}
++
++// IWCI_MODES "ino/<ino>", in `buf`.
++static void iwci_ino_file(char buf[64], __wasi_inode_t ino) {
++    static const char prefix[] = IWCI_MODES "ino/";
++    char digits[24];
++    int n = 0;
++    do {
++        digits[n++] = '0' + (char)(ino % 10);
++        ino /= 10;
++    } while (ino != 0);
++    memcpy(buf, prefix, sizeof(prefix) - 1);
++    char *o = buf + sizeof(prefix) - 1;
++    while (n > 0)
++        *o++ = digits[--n];
++    *o = 0;
++}
++
++// Reads the mode a control file gives. 0 on success; -1 when there is no
++// such file or it does not name one. errno is left as it was.
++static int iwci_read_mode(const char *file, mode_t *mode) {
++    int saved_errno = errno;
++    int fd = __wasilibc_open_nomode(file, O_RDONLY);
++    if (fd == -1) {
++        errno = saved_errno;
++        return -1;
++    }
++    char text[32];
++    ssize_t n = read(fd, text, sizeof(text));
++    close(fd);
++    errno = saved_errno;
++    if (n <= 0 || text[0] < '0' || text[0] > '7')
++        return -1;
++    mode_t out = 0;
++    for (ssize_t i = 0; i < n && text[i] >= '0' && text[i] <= '7'; i++)
++        out = out * 8 + (mode_t)(text[i] - '0');
++    *mode = out & 07777;
++    return 0;
++}
++
++// Writes `mode` to a control file. 0 on success, -1 with errno set.
++static int iwci_write_mode(const char *file, mode_t mode) {
++    int fd = __wasilibc_open_nomode(file, O_WRONLY | O_TRUNC);
++    if (fd == -1)
++        return -1;
++    char text[8];
++    int n = 0;
++    char digits[6];
++    int d = 0;
++    mode &= 07777;
++    do {
++        digits[d++] = '0' + (char)(mode & 7);
++        mode >>= 3;
++    } while (mode != 0);
++    while (d > 0)
++        text[n++] = digits[--d];
++    text[n++] = '\n';
++    ssize_t written = write(fd, text, (size_t)n);
++    int saved_errno = errno;
++    close(fd);
++    if (written != n) {
++        errno = written < 0 ? saved_errno : EIO;
++        return -1;
++    }
++    return 0;
++}
++
++// Whether `path` is a file directly in a directory of commands, which the
++// host reports as 0755 when nobody gave it a mode. Absolute paths only: a
++// relative one is taken to be elsewhere.
++static int iwci_in_command_dir(const char *path) {
++    static const char *const dirs[] = {"/bin/", "/usr/bin/", "/usr/local/bin/"};
++    if (path == NULL || path[0] != '/')
++        return 0;
++    for (unsigned i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
++        size_t len = strlen(dirs[i]);
++        if (strncmp(path, dirs[i], len) == 0 && path[len] != 0 && strchr(path + len, '/') == NULL)
++            return 1;
++    }
++    return 0;
++}
++
++// Fills in the permission bits of what a stat found: by st_ino from the
++// host, or the default for its type. `path`, when there is one, only
++// decides that default. A symlink (lstat) is 0777; anything but a file or
++// directory is left as it was.
++static void iwci_fill_mode(const char *path, struct stat *st) {
++    if (S_ISLNK(st->st_mode)) {
++        st->st_mode |= 0777;
++        return;
++    }
++    if (!S_ISREG(st->st_mode) && !S_ISDIR(st->st_mode))
++        return;
++    if (!iwci_present())
++        return;
++    int saved_errno = errno;
++    char file[64];
++    iwci_ino_file(file, st->st_ino);
++    mode_t mode;
++    if (iwci_read_mode(file, &mode) != 0) {
++        if (S_ISDIR(st->st_mode))
++            mode = IWCI_DEFAULT_DIR_MODE;
++        else
++            mode = iwci_in_command_dir(path) ? 0755 : IWCI_DEFAULT_FILE_MODE;
++    }
++    st->st_mode |= mode;
++    errno = saved_errno;
++}
++
++// A small record of the files this process created, by st_ino, so that a
++// later `fchmod` on one can name it to the host, which may know nothing else
++// about it. Oldest entries go first.
++#define IWCI_CREATED 64
++static struct {
++    __wasi_inode_t ino;
++    char *path;
++} iwci_created[IWCI_CREATED];
++static unsigned iwci_created_next = 0;
++static volatile int iwci_created_lock = 0;
++
++static void iwci_created_take(void) {
++    while (__atomic_exchange_n(&iwci_created_lock, 1, __ATOMIC_ACQUIRE))
++        ;
++}
++
++static void iwci_created_give(void) {
++    __atomic_store_n(&iwci_created_lock, 0, __ATOMIC_RELEASE);
++}
++
++static void iwci_remember_created(int fd, const char *path) {
++    __wasi_filestat_t st;
++    if (__wasi_fd_filestat_get(fd, &st) != 0)
++        return;
++    char *absolute = iwci_absolute(path);
++    if (absolute == NULL)
++        return;
++    char *old = NULL;
++    iwci_created_take();
++    for (unsigned i = 0; i < IWCI_CREATED; i++) {
++        if (iwci_created[i].path != NULL && iwci_created[i].ino == st.ino) {
++            old = iwci_created[i].path;
++            iwci_created[i].path = absolute;
++            absolute = NULL;
++            break;
++        }
++    }
++    if (absolute != NULL) {
++        unsigned slot = iwci_created_next++ % IWCI_CREATED;
++        old = iwci_created[slot].path;
++        iwci_created[slot].ino = st.ino;
++        iwci_created[slot].path = absolute;
++    }
++    iwci_created_give();
++    free(old);
++}
++
++// The path this process created the file `ino` at, malloc'd, or NULL.
++static char *iwci_created_path(__wasi_inode_t ino) {
++    char *out = NULL;
++    iwci_created_take();
++    for (unsigned i = 0; i < IWCI_CREATED; i++) {
++        if (iwci_created[i].path != NULL && iwci_created[i].ino == ino) {
++            out = strdup(iwci_created[i].path);
++            break;
++        }
++    }
++    iwci_created_give();
++    return out;
++}
++
++// The control file for setting the mode of an open file: by the path this
++// process created it at, if it did, otherwise by its st_ino (which the host
++// finds only if it has a mode recorded for it). malloc'd, or NULL.
++static char *iwci_fd_file(__wasi_inode_t ino) {
++    char *path = iwci_created_path(ino);
++    if (path != NULL) {
++        char *file = iwci_mode_file(path);
++        free(path);
++        return file;
++    }
++    char *file = malloc(64);
++    if (file != NULL)
++        iwci_ino_file(file, ino);
++    return file;
++}
++
++// Fills in the permission bits of what fstat found (fstat.c).
++void __wasilibc_iwci_fill_fd_mode(__wasi_inode_t ino, struct stat *st) {
++    (void)ino;
++    iwci_fill_mode(NULL, st);
++}
++
++// Records `mode` for `path`, which must exist. 0 or -1 with errno set, as
++// chmod(2); `follow` 0 refuses a symlink, as Linux's lchmod does.
++static int iwci_chmod(const char *path, mode_t mode, int follow) {
++    char *relative_path;
++    int dirfd = find_relpath(path, &relative_path);
++    if (dirfd == -1) {
++        errno = ENOENT;
++        return -1;
++    }
++    struct stat st;
++    if (__wasilibc_nocwd_fstatat(dirfd, relative_path, &st, follow ? 0 : AT_SYMLINK_NOFOLLOW) != 0)
++        return -1;
++    if (!follow && S_ISLNK(st.st_mode)) {
++        errno = EOPNOTSUPP;
++        return -1;
++    }
++    if (!iwci_present())
++        return 0;
++    char *file = iwci_mode_file(path);
++    if (file == NULL) {
++        errno = ENOMEM;
++        return -1;
++    }
++    int r = iwci_write_mode(file, mode);
++    free(file);
++    return r;
++}
++
++// Records the mode `open` or `mkdir` gave what it created, when that is
++// not what the host reports for a file or directory nobody gave a mode.
++static void iwci_created_mode(const char *path, mode_t mode, mode_t usual) {
++    mode &= ~__atomic_load_n(&iwci_umask, __ATOMIC_RELAXED) & 07777;
++    if (mode == usual || !iwci_present())
++        return;
++    int saved_errno = errno;
++    char *file = iwci_mode_file(path);
++    if (file != NULL) {
++        (void)iwci_write_mode(file, mode);
++        free(file);
++    }
++    errno = saved_errno;
++}
++
+ int open(const char *path, int oflag, ...) {
+     // WASI libc's `openat` ignores the mode argument, so call a special
+     // entrypoint which avoids the varargs calling convention.
+-    return __wasilibc_open_nomode(path, oflag);
++    if ((oflag & O_CREAT) == 0)
++        return __wasilibc_open_nomode(path, oflag);
++
++    // The mode goes to the host, for a file this call creates.
++    va_list ap;
++    va_start(ap, oflag);
++    mode_t mode = va_arg(ap, mode_t);
++    va_end(ap);
++    int existed = 0;
++    if ((oflag & O_EXCL) == 0) {
++        char *relative_path;
++        int dirfd = find_relpath(path, &relative_path);
++        struct stat st;
++        int saved_errno = errno;
++        existed = dirfd != -1 &&
++                  __wasilibc_nocwd_fstatat(dirfd, relative_path, &st, 0) == 0;
++        errno = saved_errno;
++    }
++    int fd = __wasilibc_open_nomode(path, oflag);
++    if (fd != -1 && !existed && iwci_present()) {
++        iwci_created_mode(path, mode, IWCI_DEFAULT_FILE_MODE);
++        iwci_remember_created(fd, path);
++    }
++    return fd;
+ }
+ 
+ // See the documentation in libc.h
+@@ -104,7 +473,10 @@ int stat(const char *restrict path, struct stat *restrict buf) {
+         return -1;
+     }
+ 
+-    return __wasilibc_nocwd_fstatat(dirfd, relative_path, buf, 0);
++    int r = __wasilibc_nocwd_fstatat(dirfd, relative_path, buf, 0);
++    if (r == 0)
++        iwci_fill_mode(path, buf);
++    return r;
+ }
+ 
+ int lstat(const char *restrict path, struct stat *restrict buf) {
+@@ -117,7 +489,10 @@ int lstat(const char *restrict path, struct stat *restrict buf) {
+         return -1;
+     }
+ 
+-    return __wasilibc_nocwd_fstatat(dirfd, relative_path, buf, AT_SYMLINK_NOFOLLOW);
++    int r = __wasilibc_nocwd_fstatat(dirfd, relative_path, buf, AT_SYMLINK_NOFOLLOW);
++    if (r == 0)
++        iwci_fill_mode(path, buf);
++    return r;
+ }
+ 
+ int utime(const char *path, const struct utimbuf *times) {
+@@ -224,26 +599,48 @@ int mkdir(const char *path, mode_t mode) {
+         return -1;
+     }
+ 
+-    return __wasilibc_nocwd_mkdirat_nomode(dirfd, relative_path);
++    int r = __wasilibc_nocwd_mkdirat_nomode(dirfd, relative_path);
++    if (r == 0)
++        iwci_created_mode(path, mode, IWCI_DEFAULT_DIR_MODE);
++    return r;
+ }
+ 
+ mode_t umask(mode_t mode) {
+-    // WASI does not have the concept of umask
+-    return mode;
++    // WASI does not have the concept of umask; this one only decides what
++    // `open` and `mkdir` record for the host (see IWCI_MODES).
++    return __atomic_exchange_n(&iwci_umask, mode & 0777, __ATOMIC_RELAXED);
+ }
+ 
+ int chmod(const char *path, mode_t mode) {
+-    // WASI does not have the concept of mode/umask
+-    return 0;
++    return iwci_chmod(path, mode, 1);
+ }
+ 
+ int fchmod(int fd, mode_t mode) {
+-    // WASI does not have the concept of mode/umask
+-    return 0;
++    __wasi_filestat_t st;
++    __wasi_errno_t error = __wasi_fd_filestat_get(fd, &st);
++    if (error != 0) {
++        errno = error;
++        return -1;
++    }
++    if (!iwci_present())
++        return 0;
++    char *file = iwci_fd_file(st.ino);
++    if (file == NULL) {
++        errno = ENOMEM;
++        return -1;
++    }
++    int r = iwci_write_mode(file, mode);
++    free(file);
++    // A file the host cannot name keeps its mode, as before.
++    if (r != 0 && errno == ENOENT)
++        r = 0;
++    return r;
+ }
+ 
+ int fchmodat(int fd, const char *path, mode_t mode, int flag) {
+-    // WASI does not have the concept of mode/umask
++    if (fd == AT_FDCWD || path[0] == '/')
++        return iwci_chmod(path, mode, (flag & AT_SYMLINK_NOFOLLOW) == 0);
++    // Relative to another directory: there is no path to give the host.
+     return 0;
+ }
+ 
+@@ -374,7 +771,10 @@ __wasilibc_stat(const char *__restrict path, struct stat *__restrict st, int fla
+         return -1;
+     }
+ 
+-    return __wasilibc_nocwd_fstatat(dirfd, relative_path, st, flags);
++    int r = __wasilibc_nocwd_fstatat(dirfd, relative_path, st, flags);
++    if (r == 0)
++        iwci_fill_mode(path, st);
++    return r;
+ }
+ 
+ // Like `link`, but with `linkat`'s flags argument.

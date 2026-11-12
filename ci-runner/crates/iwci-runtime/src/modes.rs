@@ -9,14 +9,21 @@
 //!   job: reading `stat/<path>` or `lstat/<path>` gives its type, mode, size
 //!   and times, and writing an octal mode to `mode/<path>` sets it. `<path>`
 //!   is the absolute path with `%` written `%25` and `/` written `%2F`, so it
-//!   is one file name whatever the target is.
+//!   is one file name whatever the target is. `ino/<n>` is `mode/` for the
+//!   file with a recorded mode whose `st_ino` is `n` (see [`ino_of`]); one
+//!   with no mode recorded is not there, and has the default for its type.
+//!   Edge.js's C library asks by inode after every `stat`, which spares a
+//!   walk of the path for the files nobody gave a mode, nearly all of them,
+//!   and it is all `fstat` and `fchmod` have.
 //! - `chmod`, `stat` and `mktemp`, shell scripts in `modes/` that work
 //!   through those files, on the default `PATH` ahead of coreutils (whose
 //!   build has no `chmod` or `stat`, and whose `mktemp` cannot give its file
 //!   mode `0600`).
 //!
-//! A program that calls `chmod(2)` or `stat(2)` itself, Node's `fs`
-//! included, still sees no modes; that takes the C library.
+//! A program that calls `chmod(2)` or `stat(2)` itself sees modes only if
+//! its C library reads these files: `env:bash-node`'s Edge.js does
+//! (`builtins/environments/edgejs/wasix-libc-modes.patch`), the other
+//! packages, Wasmer's builds, do not.
 
 use std::io::{self, Cursor, Seek};
 use std::path::{Component, Path, PathBuf};
@@ -56,13 +63,16 @@ enum View {
     /// Write an octal mode to set it (symlinks followed, as `chmod` does);
     /// read to get it.
     Mode,
+    /// [`View::Mode`] by `st_ino` rather than path.
+    Ino,
 }
 
 impl View {
-    const ALL: [(&'static str, View); 3] = [
+    const ALL: [(&'static str, View); 4] = [
         ("stat", View::Stat),
         ("lstat", View::Lstat),
         ("mode", View::Mode),
+        ("ino", View::Ino),
     ];
 
     fn named(name: &str) -> Option<View> {
@@ -84,8 +94,9 @@ impl ModeControl {
     }
 
     /// Which view and which target path `path` (relative to the mount)
-    /// names, if it names a file.
-    fn target(path: &Path) -> Option<(View, PathBuf)> {
+    /// names, if it names a file. `ino/` is the mode view of the path found
+    /// by [`Self::by_ino`].
+    fn target(&self, path: &Path) -> Option<(View, PathBuf)> {
         let mut parts = path.components().filter(|c| *c != Component::RootDir);
         let view = match parts.next()? {
             Component::Normal(name) => View::named(name.to_str()?)?,
@@ -98,7 +109,22 @@ impl ModeControl {
         if parts.next().is_some() {
             return None;
         }
+        if view == View::Ino {
+            return Some((View::Mode, self.by_ino(name.parse().ok()?)?));
+        }
         Some((view, decode(name)?))
+    }
+
+    /// The path with a recorded mode whose `st_ino` is `ino`. Only recorded
+    /// paths can be found: a file nobody gave a mode has the default, which
+    /// the caller knows from its type, and the record is small (the
+    /// checkout's executables and what the job changed).
+    fn by_ino(&self, ino: u64) -> Option<PathBuf> {
+        self.modes
+            .recorded()
+            .into_iter()
+            .map(|(path, _)| path)
+            .find(|path| ino_of(path) == ino)
     }
 
     fn is_dir(path: &Path) -> bool {
@@ -173,6 +199,16 @@ fn decode(name: &str) -> Option<PathBuf> {
         }
     }
     Some(path)
+}
+
+/// The `st_ino` wasmer-wasix gives the file at `path` (absolute, no
+/// symlinks left): the 64-bit xxHash of the path as its file system was
+/// asked for it (`Inode::from_path`). The C library has an `st_ino` from
+/// `fstat` and no path, so this is how `ino/` finds the file. Tested end to
+/// end in `builtins/test.sh` (`bash-node/modes-passes`), since a change in
+/// how wasmer-wasix numbers inodes breaks it.
+pub(crate) fn ino_of(path: &Path) -> u64 {
+    xxhash_rust::xxh64::xxh64(path.as_os_str().as_encoded_bytes(), 0)
 }
 
 /// What a job sees of a path.
@@ -290,7 +326,7 @@ impl FileSystem for ModeControl {
     fn metadata(&self, path: &Path) -> virtual_fs::Result<Metadata> {
         if Self::is_dir(path) {
             Ok(dir_meta())
-        } else if Self::target(path).is_some() {
+        } else if self.target(path).is_some() {
             Ok(file_meta())
         } else {
             Err(FsError::EntryNotFound)
@@ -313,7 +349,7 @@ impl virtual_fs::FileOpener for ModeControl {
         path: &Path,
         conf: &OpenOptionsConfig,
     ) -> virtual_fs::Result<Box<dyn VirtualFile + Send + Sync + 'static>> {
-        let Some((view, target)) = Self::target(path) else {
+        let Some((view, target)) = self.target(path) else {
             return Err(if Self::is_dir(path) {
                 FsError::NotAFile
             } else {
@@ -545,5 +581,23 @@ mod tests {
         assert!(write(&fs, &format!("/mode/{}", encode("/app/nope")), "644").is_err());
         assert!(write(&fs, &run, "644").is_err());
         assert_eq!(job.modes().get(Path::new("/app/data.txt")), None);
+    }
+
+    #[test]
+    fn it_finds_a_recorded_file_by_its_inode_number() {
+        let (fs, job) = control();
+        let ino = |path: &str| format!("/ino/{}", ino_of(Path::new(path)));
+        assert!(fs.metadata(Path::new("/ino")).unwrap().is_dir());
+        assert_eq!(read(&fs, &ino("/app/run.sh")), "755\n");
+        write(&fs, &ino("/app/run.sh"), "700").unwrap();
+        assert_eq!(job.modes().get(Path::new("/app/run.sh")), Some(0o700));
+
+        // One nobody gave a mode cannot be found, and the caller uses the
+        // default for its type; nor can nonsense.
+        assert!(fs.metadata(Path::new(&ino("/app/data.txt"))).is_err());
+        assert!(write(&fs, &ino("/app/data.txt"), "600").is_err());
+        assert!(fs.metadata(Path::new("/ino/x")).is_err());
+        write(&fs, &format!("/mode/{}", encode("/app/data.txt")), "600").unwrap();
+        assert_eq!(read(&fs, &ino("/app/data.txt")), "600\n");
     }
 }
