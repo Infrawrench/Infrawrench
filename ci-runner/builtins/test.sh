@@ -1548,10 +1548,17 @@ for name in "$@"; do
     failed=1
     continue
   fi
-  # One line per job: its id, the status it had, and the status it needed.
-  while IFS=$'\t' read -r id status want reason; do
+  # One line per job: its id, the status it had, the status it needed,
+  # whether the runner saw it run out of memory, and why it ended.
+  while IFS=$'\t' read -r id status want oom reason; do
     reason_wanted="$(want_reason "$name/$id")"
-    if [[ "$status" == "$want" && "$reason" == *"$reason_wanted"* ]]; then
+    if [[ "$reason_wanted" == "ran out of its "* ]] &&
+      [[ "$status" != "$want" || "$reason" != "$reason_wanted" || "$oom" != true ]]; then
+      # A job there to run out of memory fails for that alone: not a
+      # timeout, a stall or an exit status that came after it.
+      echo "  FAIL $id: $status${reason:+ ($reason)}, out_of_memory $oom; expected failed ($reason_wanted), out_of_memory true"
+      failed=1
+    elif [[ "$status" == "$want" && "$reason" == *"$reason_wanted"* ]]; then
       echo "  ok   $id: $status${reason:+ ($reason)}"
     elif [[ "$status" == "$want" ]]; then
       echo "  FAIL $id: $status as expected, but because \"$reason\", not \"$reason_wanted\""
@@ -1563,6 +1570,7 @@ for name in "$@"; do
   done < <(jq -r '.pipelines[0].report.jobs[]
       | [.id, .status,
          (if (.id | endswith("-passes")) then "passed" else "failed" end),
+         (.execution.out_of_memory // false | tostring),
          (.reason // .message // "")]
       | @tsv' <<<"$out")
   # What some jobs' logs must say.
