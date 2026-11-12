@@ -55,8 +55,21 @@ pub(crate) fn fd_filestat_get_internal(
         return Err(Errno::Access);
     }
 
-    let guard = fd_entry.inode.stat.read().unwrap();
-    Ok(*guard.deref())
+    let mut stat = *fd_entry.inode.stat.read().unwrap();
+    // WASI has no file type for a pipe, so the C library's `fstat` gives one
+    // no type at all, and a program that asks what its standard streams are
+    // (libuv's `uv_guess_handle`, and so Node) takes a pipe for something it
+    // cannot read or write. A character device is what they treat as a
+    // stream. `isatty` asks `fd_fdstat_get`, which still says a pipe is none.
+    if stat.st_filetype == Filetype::Unknown
+        && matches!(
+            *fd_entry.inode.read(),
+            Kind::PipeRx { .. } | Kind::PipeTx { .. }
+        )
+    {
+        stat.st_filetype = Filetype::CharacterDevice;
+    }
+    Ok(stat)
 }
 
 /// ### `fd_filestat_get_old()`

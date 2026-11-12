@@ -240,6 +240,18 @@ jobs:
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
+  # Nothing in a job is a terminal (#1008): its stdin is empty, its output
+  # goes to the log, and a pipe, a file or /dev/null in their place is not
+  # one either. Every descriptor used to say it was.
+  no-terminal-passes:
+    using: env:bash@5
+    run: |
+      test ! -t 0 && test ! -t 1 && test ! -t 2
+      test "$(echo x | bash -c 'test -t 0 && echo tty || echo no')" = no
+      test "$(bash -c 'test -t 0 && echo tty || echo no' < /dev/null)" = no
+      test "$(bash -c 'test -t 1 && echo tty || echo no')" = no
+      bash -c 'test -t 1 && echo tty || echo no' > /tmp/t
+      test "$(cat /tmp/t)" = no
 YAML
       ;;
     tools)
@@ -666,6 +678,23 @@ jobs:
     run: |
       printf '#!/bin/no-such-interpreter\necho ran\n' > s
       node -e 'try { require("child_process").execFileSync("./s") } catch (e) { console.error(e.code); process.exit(e.code === "ENOENT" ? 1 : 2) }'
+  # No descriptor is a terminal (#1008), and Node still reads and writes
+  # each kind it gets instead: the job's stdin and log, pipes in both
+  # directions, a file, and a child's inherited and piped output.
+  no-terminal-passes:
+    using: env:bash-node@24
+    run: |
+      node -e 'process.exit(process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY ? 1 : 0)'
+      test "$(node -p 'require("tty").isatty(0) || require("tty").isatty(1)')" = false
+      test "$(node -e 'console.log("piped")' | cat)" = piped
+      test "$(node -e 'console.error("to stderr")' 2>&1 | cat)" = "to stderr"
+      test "$(echo in | node -e 'process.stdin.pipe(process.stdout)')" = in
+      test "$(node -e 'process.stdin.on("data", () => {}).on("end", () => console.log("ended"))')" = ended
+      node -e 'console.log("to a file")' > /tmp/out
+      test "$(cat /tmp/out)" = "to a file"
+      test "$(node -e 'process.stdout.write(require("child_process").execSync("echo child"))')" = child
+      test "$(node -e 'require("child_process").spawn(process.execPath, ["-e", "console.log(process.stdout.isTTY)"], { stdio: "inherit" })')" = undefined
+      test "$(node -e 'require("child_process").spawn(process.execPath, ["-e", "console.log(1 + 1)"]).stdout.pipe(process.stdout)')" = 2
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap
@@ -795,6 +824,19 @@ jobs:
   raise-fails:
     using: env:python@3.13
     run: python -c 'raise SystemExit("expected")'
+  # A script on stdin runs as a script (#1008): Python took the pipe for a
+  # terminal, printed its prompts and read a block line by line.
+  stdin-script-passes:
+    using: env:python@3.13
+    run: |
+      test "$(echo 'print(1 + 1)' | python)" = 2
+      python - > /tmp/out <<'PY'
+      def double(x):
+          return x * 2
+      print(double(21))
+      PY
+      test "$(cat /tmp/out)" = 42
+      test "$(python -c 'import os; print(os.isatty(0), os.isatty(1))' < /dev/null)" = "False False"
 YAML
       ;;
   esac

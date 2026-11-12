@@ -304,6 +304,109 @@
      }
  }
 +
+--- a/src/fs/mod.rs
++++ b/src/fs/mod.rs
+@@ -35,6 +35,7 @@
+ 
+ use crate::{
+     net::socket::InodeSocketKind,
++    os::WasiTtyState,
+     state::{Stderr, Stdin, Stdout},
+ };
+ use futures::{Future, future::BoxFuture};
+@@ -1838,32 +1839,17 @@
+         Ok(*guard.deref())
+     }
+ 
+-    pub fn fdstat(&self, fd: WasiFd) -> Result<Fdstat, Errno> {
++    /// The metadata of `fd`. `tty` is the runtime's terminal, if it has one.
++    ///
++    /// The C library's `isatty` answers from this: a character device that
++    /// cannot seek is a terminal. So a descriptor is reported as one only
++    /// when it is one of the standard streams the environment was built with
++    /// (under any number: `dup2`, `/dev/stdout`) and the terminal says that
++    /// stream is a terminal. Every other descriptor, including a pipe, a file
++    /// or `/dev/null` put in place of a standard stream, is what it refers
++    /// to; without a terminal, nothing is one.
++    pub fn fdstat(&self, fd: WasiFd, tty: Option<&WasiTtyState>) -> Result<Fdstat, Errno> {
+         match fd {
+-            __WASI_STDIN_FILENO => {
+-                return Ok(Fdstat {
+-                    fs_filetype: Filetype::CharacterDevice,
+-                    fs_flags: Fdflags::empty(),
+-                    fs_rights_base: STDIN_DEFAULT_RIGHTS,
+-                    fs_rights_inheriting: Rights::empty(),
+-                });
+-            }
+-            __WASI_STDOUT_FILENO => {
+-                return Ok(Fdstat {
+-                    fs_filetype: Filetype::CharacterDevice,
+-                    fs_flags: Fdflags::APPEND,
+-                    fs_rights_base: STDOUT_DEFAULT_RIGHTS,
+-                    fs_rights_inheriting: Rights::empty(),
+-                });
+-            }
+-            __WASI_STDERR_FILENO => {
+-                return Ok(Fdstat {
+-                    fs_filetype: Filetype::CharacterDevice,
+-                    fs_flags: Fdflags::APPEND,
+-                    fs_rights_base: STDERR_DEFAULT_RIGHTS,
+-                    fs_rights_inheriting: Rights::empty(),
+-                });
+-            }
+             VIRTUAL_ROOT_FD => {
+                 return Ok(Fdstat {
+                     fs_filetype: Filetype::Directory,
+@@ -1879,11 +1865,36 @@
+ 
+         let guard = fd.inode.read();
+         let deref = guard.deref();
++        if let Kind::File {
++            fd: Some(stream), ..
++        } = deref
++        {
++            let terminal = tty.is_some_and(|tty| match *stream {
++                __WASI_STDIN_FILENO => tty.stdin_tty,
++                __WASI_STDOUT_FILENO => tty.stdout_tty,
++                __WASI_STDERR_FILENO => tty.stderr_tty,
++                _ => false,
++            });
++            if terminal {
++                return Ok(Fdstat {
++                    fs_filetype: Filetype::CharacterDevice,
++                    fs_flags: fd.inner.flags,
++                    fs_rights_base: match *stream {
++                        __WASI_STDIN_FILENO => STDIN_DEFAULT_RIGHTS,
++                        __WASI_STDOUT_FILENO => STDOUT_DEFAULT_RIGHTS,
++                        _ => STDERR_DEFAULT_RIGHTS,
++                    },
++                    fs_rights_inheriting: Rights::empty(),
++                });
++            }
++        }
+         Ok(Fdstat {
+             fs_filetype: match deref {
+                 Kind::File { .. } => Filetype::RegularFile,
+                 Kind::Dir { .. } => Filetype::Directory,
+                 Kind::Symlink { .. } => Filetype::SymbolicLink,
++                // Only `sock_pair` makes these, and its filestat says the same.
++                Kind::DuplexPipe { .. } => Filetype::SocketStream,
+                 Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
+                     InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
+                     InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
+@@ -2182,7 +2193,11 @@
+             let new_fd_entry = Fd {
+                 inner: FdInner {
+                     offset: fd_entry.inner.offset.clone(),
+-                    rights: fd_entry.inner.rights_inheriting,
++                    // dup2 aliases an existing descriptor; it does not open a
++                    // child beneath it. Preserve the descriptor's active
++                    // rights just like clone_fd does. In particular, stdio's
++                    // inheriting rights are intentionally empty.
++                    rights: fd_entry.inner.rights,
+                     fd_flags: {
+                         let mut f = fd_entry.inner.fd_flags;
+                         f.set(Fdflagsext::CLOEXEC, false);
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -170,6 +170,12 @@
@@ -321,12 +424,10 @@
      BadHandle,
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
-@@ -855,6 +855,36 @@
-             res.unwrap_or_else(|e| e.as_exit_code().unwrap_or_else(|| Errno::Canceled.into()));
- 
+@@ -857,6 +857,36 @@
          Ok(Some((child.pid, code)))
-+    }
-+
+     }
+ 
 +    /// [`Self::join_any_child`] without waiting: a child that has already
 +    /// exited is joined, and `Ok(None)` means every child is still running.
 +    /// This is `waitpid(-1, ..., WNOHANG)`.
@@ -355,9 +456,11 @@
 +            return Ok(Some((child.pid, code)));
 +        }
 +        Ok(None)
-     }
- 
++    }
++
      /// Terminate the process and all its threads
+     pub fn terminate(&self, exit_code: ExitCode) {
+         let pid = self.pid;
 --- a/src/syscalls/mod.rs
 +++ b/src/syscalls/mod.rs
 @@ -1606,7 +1606,14 @@
@@ -376,6 +479,44 @@
          _ if err.is_not_found() => Errno::Noent,
          _ => Errno::Inval,
      }
+--- a/src/syscalls/wasi/fd_fdstat_get.rs
++++ b/src/syscalls/wasi/fd_fdstat_get.rs
+@@ -19,7 +19,8 @@
+ 
+     let env = ctx.data();
+     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+-    let stat = wasi_try_ok!(state.fs.fdstat(fd));
++    let tty = env.runtime.tty().map(|tty| tty.tty_get());
++    let stat = wasi_try_ok!(state.fs.fdstat(fd, tty.as_ref()));
+ 
+     let buf = buf_ptr.deref(&memory);
+ 
+--- a/src/syscalls/wasi/fd_filestat_get.rs
++++ b/src/syscalls/wasi/fd_filestat_get.rs
+@@ -55,8 +55,21 @@
+         return Err(Errno::Access);
+     }
+ 
+-    let guard = fd_entry.inode.stat.read().unwrap();
+-    Ok(*guard.deref())
++    let mut stat = *fd_entry.inode.stat.read().unwrap();
++    // WASI has no file type for a pipe, so the C library's `fstat` gives one
++    // no type at all, and a program that asks what its standard streams are
++    // (libuv's `uv_guess_handle`, and so Node) takes a pipe for something it
++    // cannot read or write. A character device is what they treat as a
++    // stream. `isatty` asks `fd_fdstat_get`, which still says a pipe is none.
++    if stat.st_filetype == Filetype::Unknown
++        && matches!(
++            *fd_entry.inode.read(),
++            Kind::PipeRx { .. } | Kind::PipeTx { .. }
++        )
++    {
++        stat.st_filetype = Filetype::CharacterDevice;
++    }
++    Ok(stat)
+ }
+ 
+ /// ### `fd_filestat_get_old()`
 --- a/src/syscalls/wasix/proc_exec4.rs
 +++ b/src/syscalls/wasix/proc_exec4.rs
 @@ -83,6 +83,12 @@
@@ -488,19 +629,19 @@
      // Convert relative paths into absolute paths
      if search_path == Bool::True && !name.contains('/') {
          let path = if let Some(path) = path {
-@@ -117,6 +123,12 @@
-             FindExecutableResult::NotFound => return Ok(Errno::Noent),
-         }
-     } else if name.starts_with("./") {
-+        *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
-+    }
-+
-+    // A caller that turned the PATH search off named a file, so resolve it
-+    // against the current directory.
-+    if search_path == Bool::False && !name.starts_with('/') {
+@@ -120,6 +126,12 @@
          *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
      }
  
++    // A caller that turned the PATH search off named a file, so resolve it
++    // against the current directory.
++    if search_path == Bool::False && !name.starts_with('/') {
++        *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
++    }
++
+     Span::current().record("full_path", name.as_str());
+ 
+     // Fork the environment which will copy all the open file handlers
 @@ -176,7 +188,7 @@
              let env = builder.take().unwrap();
  

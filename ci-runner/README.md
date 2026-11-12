@@ -453,7 +453,11 @@ WASIX a pipeline currently reports only its last command's status.
 A file that starts with `#!` runs its interpreter, from bash or from
 Node's `child_process` alike (`#!/bin/bash`, `#!/usr/bin/env node`), and a
 background command (`server &`) runs beside the rest of the script. Both
-come from a patched wasmer-wasix (`vendor/README.md`).
+come from a patched wasmer-wasix (`vendor/README.md`), as does this: no
+descriptor in a job is a terminal. Its stdin is empty and its output goes to
+the log, so `[ -t 1 ]` is false, a script piped to an interpreter runs as a
+script rather than an interactive session, and tools that colour or prompt
+only on a terminal do neither.
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -669,14 +673,10 @@ fetches beyond pip's own `--require-hashes`, and each job downloads its
 packages again. A verified pip installer is
 [#1015](https://github.com/Infrawrench/Infrawrench/issues/1015).
 
-`python -c` and `python - <<EOF` work, with two runner issues showing: an
-argument containing a newline arrives split at it
-([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)), so a
-multi-line `python -c` runs only its first line (put the code in a file);
-and every descriptor reads as a terminal
-([#1008](https://github.com/Infrawrench/Infrawrench/issues/1008)), so code
-read from standard input prints the interactive prompt as it runs, and
-tools print colour.
+`python -c`, `python - <<EOF` and a script piped to `python` work, with
+one runner issue showing: an argument containing a newline arrives split
+at it ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)), so
+a multi-line `python -c` runs only its first line (put the code in a file).
 
 ### Go and Rust
 

@@ -218,6 +218,74 @@ fn a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd() {
     }
 }
 
+/// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
+/// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
+/// one `fd_fdstat_get` gives stdin once that pipe is put in its place and
+/// gives one end of a socket pair, and the one `fd_filestat_get` gives
+/// stderr once it is moved to descriptor 9 (`E` if it is refused).
+const FILE_TYPES: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $fdstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_filestat_get" (func $filestat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_renumber" (func $renumber (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "fd_pipe" (func $pipe (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_pair" (func $sock_pair (param i32 i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (func $digit (param $at i32) (param $type i32)
+    (i32.store8 (local.get $at) (i32.add (i32.const 48) (local.get $type))))
+  (func $fdstat_type (param $fd i32) (param $at i32)
+    (if (call $fdstat (local.get $fd) (i32.const 64)) (then (unreachable)))
+    (call $digit (local.get $at) (i32.load8_u (i32.const 64))))
+  (func (export "_start")
+    (call $fdstat_type (i32.const 0) (i32.const 200))
+    (call $fdstat_type (i32.const 1) (i32.const 201))
+    (call $fdstat_type (i32.const 2) (i32.const 202))
+    ;; a pipe: read end at 16, write end at 20; filestat's type is at +16
+    (if (call $pipe (i32.const 16) (i32.const 20)) (then (unreachable)))
+    (if (call $filestat (i32.load (i32.const 16)) (i32.const 96)) (then (unreachable)))
+    (call $digit (i32.const 203) (i32.load8_u (i32.const 112)))
+    (if (call $renumber (i32.load (i32.const 16)) (i32.const 0)) (then (unreachable)))
+    (call $fdstat_type (i32.const 0) (i32.const 204))
+    ;; a socket pair (a stream): ends at 24 and 28
+    (if (call $sock_pair (i32.const 1) (i32.const 1) (i32.const 0) (i32.const 24) (i32.const 28))
+      (then (unreachable)))
+    (call $fdstat_type (i32.load (i32.const 24)) (i32.const 205))
+    ;; stderr moved by dup2 keeps the right to be stat'ed
+    (if (call $renumber (i32.const 2) (i32.const 9)) (then (unreachable)))
+    (if (call $filestat (i32.const 9) (i32.const 96))
+      (then (i32.store8 (i32.const 206) (i32.const 69)))
+      (else (call $digit (i32.const 206) (i32.load8_u (i32.const 112)))))
+    (i32.store (i32.const 0) (i32.const 200))
+    (i32.store (i32.const 4) (i32.const 7))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))))
+"#;
+
+/// Nothing a job has is a terminal (#1008): its stdin is empty and its
+/// output goes to the log. wasmer-wasix answered "character device" for
+/// descriptors 0 to 2 whatever they held, which is what the C library's
+/// `isatty` takes for a terminal, so `python` read a piped script as an
+/// interactive session and tools coloured the log. What libuv (and so Node)
+/// asks next must then be answered, or a child `node`'s output is dropped:
+/// `fstat` of a pipe says character device, a socket pair is a stream
+/// socket to `fd_fdstat_get` too (libc's `SO_TYPE`), and a descriptor
+/// moved by `dup2` can still be stat'ed (vendor/README.md).
+#[test]
+fn no_descriptor_is_a_terminal() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("types", FILE_TYPES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    // 4 is a regular file, 2 a character device, 0 unknown (what a pipe is
+    // to `fd_fdstat_get`) and 6 a stream socket.
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "4442062");
+}
+
 #[test]
 fn an_infinite_loop_is_stopped_by_the_timeout() {
     let rt = runtime();

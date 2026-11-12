@@ -19,7 +19,8 @@ pub fn fd_fdstat_get<M: MemorySize>(
 
     let env = ctx.data();
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
-    let stat = wasi_try_ok!(state.fs.fdstat(fd));
+    let tty = env.runtime.tty().map(|tty| tty.tty_get());
+    let stat = wasi_try_ok!(state.fs.fdstat(fd, tty.as_ref()));
 
     let buf = buf_ptr.deref(&memory);
 

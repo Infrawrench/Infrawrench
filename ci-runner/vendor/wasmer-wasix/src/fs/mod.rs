@@ -35,6 +35,7 @@ use std::{
 
 use crate::{
     net::socket::InodeSocketKind,
+    os::WasiTtyState,
     state::{Stderr, Stdin, Stdout},
 };
 use futures::{Future, future::BoxFuture};
@@ -1838,32 +1839,17 @@ impl WasiFs {
         Ok(*guard.deref())
     }
 
-    pub fn fdstat(&self, fd: WasiFd) -> Result<Fdstat, Errno> {
+    /// The metadata of `fd`. `tty` is the runtime's terminal, if it has one.
+    ///
+    /// The C library's `isatty` answers from this: a character device that
+    /// cannot seek is a terminal. So a descriptor is reported as one only
+    /// when it is one of the standard streams the environment was built with
+    /// (under any number: `dup2`, `/dev/stdout`) and the terminal says that
+    /// stream is a terminal. Every other descriptor, including a pipe, a file
+    /// or `/dev/null` put in place of a standard stream, is what it refers
+    /// to; without a terminal, nothing is one.
+    pub fn fdstat(&self, fd: WasiFd, tty: Option<&WasiTtyState>) -> Result<Fdstat, Errno> {
         match fd {
-            __WASI_STDIN_FILENO => {
-                return Ok(Fdstat {
-                    fs_filetype: Filetype::CharacterDevice,
-                    fs_flags: Fdflags::empty(),
-                    fs_rights_base: STDIN_DEFAULT_RIGHTS,
-                    fs_rights_inheriting: Rights::empty(),
-                });
-            }
-            __WASI_STDOUT_FILENO => {
-                return Ok(Fdstat {
-                    fs_filetype: Filetype::CharacterDevice,
-                    fs_flags: Fdflags::APPEND,
-                    fs_rights_base: STDOUT_DEFAULT_RIGHTS,
-                    fs_rights_inheriting: Rights::empty(),
-                });
-            }
-            __WASI_STDERR_FILENO => {
-                return Ok(Fdstat {
-                    fs_filetype: Filetype::CharacterDevice,
-                    fs_flags: Fdflags::APPEND,
-                    fs_rights_base: STDERR_DEFAULT_RIGHTS,
-                    fs_rights_inheriting: Rights::empty(),
-                });
-            }
             VIRTUAL_ROOT_FD => {
                 return Ok(Fdstat {
                     fs_filetype: Filetype::Directory,
@@ -1879,11 +1865,36 @@ impl WasiFs {
 
         let guard = fd.inode.read();
         let deref = guard.deref();
+        if let Kind::File {
+            fd: Some(stream), ..
+        } = deref
+        {
+            let terminal = tty.is_some_and(|tty| match *stream {
+                __WASI_STDIN_FILENO => tty.stdin_tty,
+                __WASI_STDOUT_FILENO => tty.stdout_tty,
+                __WASI_STDERR_FILENO => tty.stderr_tty,
+                _ => false,
+            });
+            if terminal {
+                return Ok(Fdstat {
+                    fs_filetype: Filetype::CharacterDevice,
+                    fs_flags: fd.inner.flags,
+                    fs_rights_base: match *stream {
+                        __WASI_STDIN_FILENO => STDIN_DEFAULT_RIGHTS,
+                        __WASI_STDOUT_FILENO => STDOUT_DEFAULT_RIGHTS,
+                        _ => STDERR_DEFAULT_RIGHTS,
+                    },
+                    fs_rights_inheriting: Rights::empty(),
+                });
+            }
+        }
         Ok(Fdstat {
             fs_filetype: match deref {
                 Kind::File { .. } => Filetype::RegularFile,
                 Kind::Dir { .. } => Filetype::Directory,
                 Kind::Symlink { .. } => Filetype::SymbolicLink,
+                // Only `sock_pair` makes these, and its filestat says the same.
+                Kind::DuplexPipe { .. } => Filetype::SocketStream,
                 Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
                     InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
                     InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
@@ -2182,7 +2193,11 @@ impl WasiFs {
             let new_fd_entry = Fd {
                 inner: FdInner {
                     offset: fd_entry.inner.offset.clone(),
-                    rights: fd_entry.inner.rights_inheriting,
+                    // dup2 aliases an existing descriptor; it does not open a
+                    // child beneath it. Preserve the descriptor's active
+                    // rights just like clone_fd does. In particular, stdio's
+                    // inheriting rights are intentionally empty.
+                    rights: fd_entry.inner.rights,
                     fd_flags: {
                         let mut f = fd_entry.inner.fd_flags;
                         f.set(Fdflagsext::CLOEXEC, false);

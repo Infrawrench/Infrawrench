@@ -397,11 +397,55 @@ returns as 0, as Linux does. Upstream main still blocks there (checked
 November 2026); wasmerio/wasmer#6982, open, fixes it. Drop the hunk with
 the release that has it.
 
+**Nothing is a terminal unless the runtime has one (#1008).** The C
+library's `isatty` asks `fd_fdstat_get` and takes a character device that
+cannot seek for a terminal, and `WasiFs::fdstat` answered exactly that for
+descriptors 0, 1 and 2 before looking at what they held. So in a job every
+standard stream was a terminal, and so was a pipe, a file or `/dev/null`
+put in its place: `echo 'print(1)' | python` started Python's interactive
+prompt and read the script line by line, and tools that colour or prompt
+only on a terminal did both into the log. `src/fs/mod.rs` now looks the
+descriptor up first, and answers "character device" only for one of the
+standard streams the environment was built with (under any number, after
+`dup2` or opened as `/dev/stdout`) and only when the runtime's terminal
+(`Runtime::tty`) says that stream is a terminal. The runner has none, so
+nothing in a job is one. Everything else is what it holds: the job's own
+stdin and output are files, a pipe is of unknown type.
+
+That alone would have broken Node. Edge.js's libuv, like Node's,
+classifies a standard stream that is not a terminal by `fstat` and, for a
+socket, `getsockname` and `getsockopt(SO_TYPE)`, and Node meets an answer
+it does not know with a stream that discards everything written to it (and
+an empty stdin). Three answers were wrong, all hidden while every stdio
+descriptor was a terminal, and each silenced a `node`:
+
+- WASI has no file type for a pipe, so `fstat` of one gave no type at all
+  (`node ... | cat`, `$(node -e ...)`). `src/syscalls/wasi/fd_filestat_get.rs`
+  reports a pipe as a character device, which libuv takes for a stream it
+  can read and write, as it does `/dev/null`; `isatty` still says it is not
+  a terminal, since `fd_fdstat_get` calls a pipe unknown.
+- A child's piped stdio is a socket pair. Its `fd_filestat_get` already said
+  stream socket (wasmerio/wasmer#6784), but the C library reads `SO_TYPE`
+  from `fd_fdstat_get`, which said unknown, so `getsockopt` failed. `fdstat`
+  now says stream socket for it too (`getsockname` already answers
+  `AF_LOCAL`), and libuv opens it as a pipe.
+- A child's inherited stdio is moved into place by `dup2`, which gave the
+  new descriptor the old one's _inheriting_ rights, empty for stdio, so the
+  child's `fstat` of its own stdout failed with `EACCES`. `dup2_at` keeps the
+  descriptor's rights, backported from wasmerio/wasmer 2fc27ff21 ("preserve
+  descriptor rights in dup2", on `main`, in no release yet).
+
+Upstream main still answers the first two as 0.705.0 does (checked
+November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
-#6982 (a non-blocking wait for any child): delete `vendor/wasmer-wasix*`, its
+#6982 (a non-blocking wait for any child), 2fc27ff21, and a standard stream
+that is not a terminal does not say it is one while pipes and socket pairs
+still classify as streams: delete `vendor/wasmer-wasix*`, its
 `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
-bash-node) and `shebang-missing-interpreter-fails`.
+bash-node), `shebang-missing-interpreter-fails` and `no-terminal-passes`
+(bash and bash-node), and `iwci-runtime`'s `no_descriptor_is_a_terminal`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
