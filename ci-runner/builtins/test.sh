@@ -9,6 +9,7 @@
 #
 #   builtins/test.sh                 gofmt, bash and tools (the default)
 #   builtins/test.sh typescript oxfmt bash-node python php
+#   builtins/test.sh go              every Go minor; go@1.25 for one
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list.
@@ -22,9 +23,10 @@
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`, and x86_64 Linux to build its
 # Edge.js, see environments/edgejs/build.sh). SKIP_BUILD=1 publishes what is
-# already in dist/ instead of building. python and php install packages
-# (from PyPI and Wasmer's wheel index, and from Packagist), so they need the
-# internet. Needs: git, jq, and
+# already in dist/ instead of building. python, php and go need the internet:
+# python and php install packages (from PyPI and Wasmer's wheel index, and
+# from Packagist), and go fetches its fixture's module and an HTTPS page.
+# Needs: git, jq, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -37,6 +39,20 @@ fi
 # A secret the bash pipeline reads, which must never show up in a report.
 export IWCI_SECRET_FIXTURE_TOKEN="fixture-secret-value-0451"
 
+# `go` is every Go minor the environments build.
+names=()
+for name in "$@"; do
+  if [[ "$name" == go ]]; then
+    read -ra minors <<<"$(sed -n 's/^GO_MINORS=(\(.*\))$/\1/p' "$here/environments/build.sh")"
+    for minor in "${minors[@]}"; do
+      names+=("go@$minor")
+    done
+  else
+    names+=("$name")
+  fi
+done
+set -- "${names[@]}"
+
 # Build each requested builtin once, then publish everything it produced.
 built_envs=false
 for name in "$@"; do
@@ -45,23 +61,27 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/$name/build.sh"
       dirs=("$dist"/builtin/"$name"/*)
       ;;
-    bash | bash-node | python | php)
+    bash | bash-node | python | php | go@*)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@*) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
       fi
-      dirs=("$dist"/environment/"$name"/*)
+      if [[ "$name" == go@* ]]; then
+        dirs=("$dist"/environment/go/"${name#go@}".*)
+      else
+        dirs=("$dist"/environment/"$name"/*)
+      fi
       ;;
     tools)
       # Uses what gofmt and bash published.
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, tools" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), tools" >&2
       exit 2
       ;;
   esac
@@ -145,6 +165,173 @@ final class GreeterTest extends TestCase
 }
 PHP
 done
+# A Go module with a dependency, which the Go installer puts in the module
+# cache before the job, and tests that need what a WASIX toolchain has to
+# get right: children's exit statuses and working directories, sockets that
+# close promptly, and names that resolve.
+mkdir -p "$repo"/gomod/{testdata,sub/testdata,cmd/fetch}
+cat >"$repo/gomod/go.mod" <<'EOF'
+module example.com/iwci
+
+go 1.23
+
+require github.com/google/uuid v1.6.0
+EOF
+cat >"$repo/gomod/go.sum" <<'EOF'
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+EOF
+cat >"$repo/gomod/main.go" <<'EOF'
+package main
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
+
+func main() {
+	fmt.Println(len(uuid.NewString()))
+}
+EOF
+cat >"$repo/gomod/main_test.go" <<'EOF'
+package main
+
+import (
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+func TestUUID(t *testing.T) {
+	if _, err := uuid.Parse(uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A test runs in its package's directory.
+func TestTestdata(t *testing.T) {
+	b, err := os.ReadFile("testdata/hello.txt")
+	if err != nil || string(b) != "root\n" {
+		t.Fatalf("%q, %v", b, err)
+	}
+}
+
+// A child's output, its exit status and its working directory.
+func TestExec(t *testing.T) {
+	out, err := exec.Command("bash", "-c", "echo hi").Output()
+	if err != nil || string(out) != "hi\n" {
+		t.Fatalf("output %q, %v", out, err)
+	}
+	var exit *exec.ExitError
+	if err := exec.Command("bash", "-c", "exit 3").Run(); !errors.As(err, &exit) || exit.ExitCode() != 3 {
+		t.Fatalf("exit status: %v", err)
+	}
+	cmd := exec.Command("bash", "-c", "pwd")
+	cmd.Dir = "/tmp"
+	if out, err := cmd.Output(); err != nil || string(out) != "/tmp\n" {
+		t.Fatalf("Dir: %q, %v", out, err)
+	}
+	// An argument and a variable with line feeds in them arrive whole.
+	cmd = exec.Command("bash", "-c", "printf '%s|%s' \"$1\" \"$MULTI\"", "bash", "a\nb")
+	cmd.Env = append(os.Environ(), "MULTI=c\nd")
+	if out, err := cmd.Output(); err != nil || string(out) != "a\nb|c\nd" {
+		t.Fatalf("line feeds: %q, %v", out, err)
+	}
+}
+
+// A round trip to a server on the job's loopback, and both ends closed:
+// closing used to wait out a 30 second timeout in the host, twice.
+func TestHTTPTest(t *testing.T) {
+	start := time.Now()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "pong")
+	}))
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	srv.Close()
+	if string(body) != "pong" {
+		t.Fatalf("body %q", body)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("took %v", d)
+	}
+	t.Logf("took %v", time.Since(start))
+}
+
+// A duplicate descriptor writes to the same file.
+func TestDup(t *testing.T) {
+	f, err := os.CreateTemp("", "dup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := syscall.Dup(int(f.Fd()))
+	if err != nil || fd == int(f.Fd()) {
+		t.Fatalf("Dup: %d, %v", fd, err)
+	}
+	os.NewFile(uintptr(fd), "dup").WriteString("dup")
+	if b, _ := os.ReadFile(f.Name()); string(b) != "dup" {
+		t.Fatalf("read %q", b)
+	}
+}
+
+func TestFail(t *testing.T) {
+	if os.Getenv("GO_FIXTURE_FAIL") != "" {
+		t.Fatal(strings.Repeat("expected ", 2))
+	}
+}
+EOF
+printf 'root\n' >"$repo/gomod/testdata/hello.txt"
+printf 'sub\n' >"$repo/gomod/sub/testdata/hello.txt"
+printf 'package sub\n\nfunc Name() string { return "sub" }\n' >"$repo/gomod/sub/sub.go"
+cat >"$repo/gomod/sub/sub_test.go" <<'EOF'
+package sub
+
+import (
+	"os"
+	"testing"
+)
+
+func TestTestdata(t *testing.T) {
+	if b, err := os.ReadFile("testdata/hello.txt"); err != nil || string(b) != "sub\n" {
+		t.Fatalf("%q, %v", b, err)
+	}
+}
+EOF
+cat >"$repo/gomod/cmd/fetch/main.go" <<'EOF'
+// Fetches a URL and prints the status: a name resolved, a connection out
+// of the job, and a certificate checked.
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+)
+
+func main() {
+	resp, err := http.Get(os.Args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	resp.Body.Close()
+	fmt.Println(resp.Status)
+}
+EOF
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
@@ -941,6 +1128,76 @@ jobs:
       node /tmp/many.js
 YAML
       ;;
+    go@*)
+      # The same jobs for every minor; `go` lines say which.
+      sed "s/@MINOR@/${1#go@}/g" <<'YAML'
+name: go-@MINOR@
+workspace:
+  deps:
+    - go: { dir: gomod }
+jobs:
+  toolchain-passes:
+    using: env:go@@MINOR@
+    run: |
+      go version
+      go version | grep -q '^go version go@MINOR@\.[0-9]* wasip1/wasm$'
+      test "$(go env GOROOT)" = /go
+      test "$(gofmt -l go)" = go/dirty/main.go
+  # The module's dependency comes from the installer's module cache, and
+  # the standard library from the environment's build cache: the first
+  # build compiles two packages, uuid and main, not `runtime` and the rest.
+  build-passes:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: |
+      go build -x -o /tmp/app . 2> /tmp/build.log
+      test "$(/tmp/app)" = 36
+      grep -c '/compile -o' /tmp/build.log
+      test "$(grep -c '/compile -o' /tmp/build.log)" = 2
+      # Linux binaries cross-compile, as anywhere.
+      GOOS=linux GOARCH=amd64 go build -o /tmp/app-linux .
+      head -c 4 /tmp/app-linux | grep -q ELF
+  test-passes:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: go test -v ./...
+  test-fails:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    env:
+      GO_FIXTURE_FAIL: "1"
+    run: go test -run TestFail .
+  vet-passes:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: go vet ./...
+  vet-fails:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: |
+      printf 'package main\n\nimport "fmt"\n\nfunc bad() { fmt.Printf("%%d\\n", "x") }\n' > bad.go
+      go vet .
+  build-error-fails:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: |
+      printf 'package main\n\nfunc broken( {\n' > broken.go
+      go build .
+  # DNS through the runner, a connection to the internet and a certificate
+  # checked against the environment's CA bundle.
+  https-passes:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: test "$(go run ./cmd/fetch https://proxy.golang.org/)" = "200 OK"
+YAML
+      ;;
     python)
       cat <<'YAML'
 name: python
@@ -1116,6 +1373,7 @@ want_reason() {
     bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | php/phpunit-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails) echo "timed out" ;;
+    go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;

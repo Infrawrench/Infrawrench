@@ -1,0 +1,170 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 22:55:46 -0500
+Subject: [PATCH 13/13] syscall: pass wasip1 children's arguments and
+ environment as arrays
+
+ForkExec joined argv and the environment with line feeds for
+proc_spawn2, which splits them again at line feeds, so an argument or an
+environment variable with a line feed in it reached the child as several:
+`bash -c` given a multi-line script ran its first line, and a test
+reading a PEM key from the environment got its first line. Use
+proc_spawn3, which takes both as arrays of C strings, as execve does.
+A nil ProcAttr is the zero one, as on Unix.
+---
+ src/syscall/exec_wasip1.go | 121 +++++++++++++++++++++----------------
+ 1 file changed, 69 insertions(+), 52 deletions(-)
+
+diff --git a/src/syscall/exec_wasip1.go b/src/syscall/exec_wasip1.go
+index 79016e9..ab05498 100644
+--- a/src/syscall/exec_wasip1.go
++++ b/src/syscall/exec_wasip1.go
+@@ -151,79 +151,96 @@ func proc_spawn2(
+ 	ret *int32,
+ ) Errno
+ 
++//go:wasmimport wasix_32v1 proc_spawn3
++//go:noescape
++func proc_spawn3(
++	name unsafe.Pointer,
++	nameLen uint32,
++	args unsafe.Pointer,
++	argsLen uint32,
++	envs unsafe.Pointer,
++	envsLen uint32,
++	fdOps unsafe.Pointer,
++	fdOpsLen uint32,
++	signalActions unsafe.Pointer,
++	signalActionsLen uint32,
++	searchPath uint32,
++	path unsafe.Pointer,
++	pathLen uint32,
++	ret unsafe.Pointer,
++) Errno
++
++// cStringArray lays ss out as proc_spawn3 reads a list: 32-bit pointers to
++// NUL-terminated strings. The strings must outlive the call.
++func cStringArray(ss []string) (ptrs []uint32, keep [][]byte, err error) {
++	// Never empty, so the list has an address even with no strings in it:
++	// a null pointer means "inherit" for the environment.
++	ptrs = make([]uint32, len(ss), len(ss)+1)
++	keep = make([][]byte, len(ss))
++	for i, s := range ss {
++		if bytealg.IndexByteString(s, 0) != -1 {
++			return nil, nil, EINVAL
++		}
++		b := make([]byte, len(s)+1)
++		copy(b, s)
++		keep[i] = b
++		ptrs[i] = uint32(uintptr(unsafe.Pointer(&b[0])))
++	}
++	return ptrs, keep, nil
++}
++
+ // Combination of fork and exec, careful to be thread safe.
++//
++// The arguments and the environment go to proc_spawn3 as arrays, as execve
++// takes them. proc_spawn2 takes each joined with line feeds and splits it
++// again, so an argument or variable with a line feed in it (a multi-line
++// script, a PEM key) arrived as several.
+ func ForkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error) {
+-	argv0p, err := BytePtrFromString(argv0)
+-	if err != nil {
+-		return 0, err
++	if attr == nil {
++		attr = &zeroProcAttr
+ 	}
+-	argvJoined := JoinStrings(argv, "\n")
+-	argvp, err := BytePtrFromString(argvJoined)
+-	if err != nil {
+-		return 0, err
++	name := []byte(argv0)
++	if len(name) == 0 {
++		return 0, ENOENT
+ 	}
+-	envvJoined := JoinStrings(attr.Env, "\n")
+-	envvp, err := BytePtrFromString(envvJoined)
++	args, keepArgs, err := cStringArray(argv)
+ 	if err != nil {
+ 		return 0, err
+ 	}
+-
+-	path := "/bin"
+-	pathp, err := BytePtrFromString(path)
++	envs, keepEnvs, err := cStringArray(attr.Env)
+ 	if err != nil {
+ 		return 0, err
+ 	}
++	path := []byte("/bin")
+ 
+-	// Build WASIX spawn file actions
+ 	fdops, keepAlive := buildSpawnFdOps(attr)
+-
+-	var fdopsPtr uintptr
++	var fdopsPtr unsafe.Pointer
+ 	if len(fdops) != 0 {
+-		fdopsPtr = uintptr(unsafe.Pointer(&fdops[0]))
++		fdopsPtr = unsafe.Pointer(&fdops[0])
+ 	}
+ 
+-	ret := make([]int32, 1)
+-
+-	// Write(1, []byte("proc_spawn2\n"))
+-	// Write(1, []byte("argv0: "+argv0))
+-	// Write(1, []byte("argvJoined: "+argvJoined))
+-	// Write(1, []byte(envvJoined))
+-	// Write(1, []byte(path))
+-	// Write(1, []byte("Files num "+itoa.Itoa(len(attr.Files))))
+-	// for i, file := range attr.Files {
+-	// 	Write(1, []byte("File: "+itoa.Itoa(int(file))+" at index "+itoa.Itoa(i)))
+-	// }
+-
++	var ret int32
+ 	runtime_BeforeExec()
+-	err = proc_spawn2(
+-		uintptr(unsafe.Pointer(argv0p)),
+-		int32(len(argv0)),
+-		uintptr(unsafe.Pointer(argvp)),
+-		int32(len(argvJoined)),
+-		uintptr(unsafe.Pointer(envvp)),
+-		int32(len(envvJoined)),
+-
+-		// IMPLEMENT THIS:
+-		fdopsPtr,
+-		int32(len(fdops)),
+-
+-		0,
+-		0,
+-		true,
+-
+-		uintptr(unsafe.Pointer(pathp)),
+-		int32(len(path)),
+-		&ret[0],
++	errno := proc_spawn3(
++		unsafe.Pointer(&name[0]), uint32(len(name)),
++		unsafe.Pointer(unsafe.SliceData(args)), uint32(len(args)),
++		unsafe.Pointer(unsafe.SliceData(envs)), uint32(len(envs)),
++		fdopsPtr, uint32(len(fdops)),
++		nil, 0,
++		1,
++		unsafe.Pointer(&path[0]), uint32(len(path)),
++		unsafe.Pointer(&ret),
+ 	)
+ 	runtime_AfterExec()
+-	// The paths the operations point at must outlive the call.
++	// What the lists and the operations point at must outlive the call.
++	runtime.KeepAlive(keepArgs)
++	runtime.KeepAlive(keepEnvs)
+ 	runtime.KeepAlive(keepAlive)
+ 
+-	if err == Errno(0) {
+-		return int(ret[0]), nil
++	if errno != 0 {
++		return 0, errno
+ 	}
+-	return 0, err
+-
++	return int(ret), nil
+ }
+ 
+ type wasiProcSpawnFdOpName uint8

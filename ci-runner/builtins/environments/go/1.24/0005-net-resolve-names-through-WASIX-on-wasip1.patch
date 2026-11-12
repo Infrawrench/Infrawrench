@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:18:44 -0500
+Subject: [PATCH 05/13] net: resolve names through WASIX on wasip1
+
+With no /etc/resolv.conf the pure Go resolver asked [::1]:53 over UDP,
+which a WASIX host need not offer (and a sandbox usually does not). Ask
+the runtime instead, through WASIX's `resolve`, which is what wasix-libc's
+getaddrinfo does.
+---
+ src/net/lookup_unix.go    | 24 ++++++++++++++++++++++++
+ src/net/lookup_wasix.go   | 23 +++++++++++++++++++++++
+ src/syscall/net_wasip1.go | 30 ++++++++++++++++++++++++++++++
+ 3 files changed, 77 insertions(+)
+ create mode 100644 src/net/lookup_wasix.go
+
+diff --git a/src/net/lookup_unix.go b/src/net/lookup_unix.go
+index 382a2d4..ed1c223 100644
+--- a/src/net/lookup_unix.go
++++ b/src/net/lookup_unix.go
+@@ -52,7 +52,18 @@ func lookupProtocol(_ context.Context, name string) (int, error) {
+ 	return lookupProtocolMap(name)
+ }
+ 
++// wasixLookupIP is set on wasip1 (iwci), where names resolve through the
++// runtime rather than a DNS server the program can reach.
++var wasixLookupIP func(host string) ([]IPAddr, error)
++
+ func (r *Resolver) lookupHost(ctx context.Context, host string) (addrs []string, err error) {
++	if wasixLookupIP != nil {
++		ips, err := wasixLookupIP(host)
++		for _, ip := range ips {
++			addrs = append(addrs, ip.String())
++		}
++		return addrs, err
++	}
+ 	order, conf := systemConf().hostLookupOrder(r, host)
+ 	if order == hostLookupCgo {
+ 		return cgoLookupHost(ctx, host)
+@@ -61,6 +72,19 @@ func (r *Resolver) lookupHost(ctx context.Context, host string) (addrs []string,
+ }
+ 
+ func (r *Resolver) lookupIP(ctx context.Context, network, host string) (addrs []IPAddr, err error) {
++	if wasixLookupIP != nil {
++		ips, err := wasixLookupIP(host)
++		for _, ip := range ips {
++			if (network == "ip4" && ip.IP.To4() == nil) || (network == "ip6" && ip.IP.To4() != nil) {
++				continue
++			}
++			addrs = append(addrs, ip)
++		}
++		if err == nil && len(addrs) == 0 {
++			err = &DNSError{Err: errNoSuchHost.Error(), Name: host, IsNotFound: true}
++		}
++		return addrs, err
++	}
+ 	order, conf := systemConf().hostLookupOrder(r, host)
+ 	if order == hostLookupCgo {
+ 		return cgoLookupIP(ctx, network, host)
+diff --git a/src/net/lookup_wasix.go b/src/net/lookup_wasix.go
+new file mode 100644
+index 0000000..41eb9f7
+--- /dev/null
++++ b/src/net/lookup_wasix.go
+@@ -0,0 +1,23 @@
++// Copyright 2025 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build wasip1
++
++package net
++
++import "syscall"
++
++func init() {
++	wasixLookupIP = func(host string) ([]IPAddr, error) {
++		raw, err := syscall.Resolve(host)
++		if err != nil {
++			return nil, &DNSError{Err: err.Error(), Name: host, IsNotFound: true}
++		}
++		ips := make([]IPAddr, 0, len(raw))
++		for _, b := range raw {
++			ips = append(ips, IPAddr{IP: IP(b)})
++		}
++		return ips, nil
++	}
++}
+diff --git a/src/syscall/net_wasip1.go b/src/syscall/net_wasip1.go
+index a5e45a3..ac85da3 100644
+--- a/src/syscall/net_wasip1.go
++++ b/src/syscall/net_wasip1.go
+@@ -981,3 +981,33 @@ func SetsockoptInet4Addr(fd, level, opt int, value [4]byte) (err error) {
+ 	// Write(1, []byte("Socket.SetsockoptInet4Addr\n"))
+ 	return SetsockoptInt(fd, level, opt, int(value[0])<<24|int(value[1])<<16|int(value[2])<<8|int(value[3]))
+ }
++
++//go:wasmimport wasix_32v1 resolve
++//go:noescape
++func resolve(host *byte, hostLen size, port uint32, addrs unsafe.Pointer, naddrs size, ret unsafe.Pointer) Errno
++
++// Resolve looks host up through the WASIX runtime (iwci) and returns each
++// address as 4 or 16 bytes.
++func Resolve(host string) ([][]byte, error) {
++	if host == "" {
++		return nil, EINVAL
++	}
++	const entry = 18 // __wasi_addr_ip_t: tag, pad, 16 bytes
++	var buf [32 * entry]byte
++	var n size
++	b := []byte(host)
++	if errno := resolve(&b[0], size(len(b)), 0, unsafe.Pointer(&buf[0]), 32, unsafe.Pointer(&n)); errno != 0 {
++		return nil, errno
++	}
++	var out [][]byte
++	for i := 0; i < int(n) && i < 32; i++ {
++		e := buf[i*entry : (i+1)*entry]
++		switch e[0] {
++		case AF_INET:
++			out = append(out, append([]byte(nil), e[2:6]...))
++		case AF_INET6:
++			out = append(out, append([]byte(nil), e[2:18]...))
++		}
++	}
++	return out, nil
++}

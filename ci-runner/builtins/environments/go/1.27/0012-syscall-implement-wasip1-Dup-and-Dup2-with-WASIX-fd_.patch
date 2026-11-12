@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:52:19 -0500
+Subject: [PATCH 12/13] syscall: implement wasip1 Dup and Dup2 with WASIX
+ fd_dup
+
+Dup and Dup2 imported `dup` and `dup2` from wasix_32v1, which has
+neither, so a program that used them could not be instantiated, and Dup
+returned the descriptor it was given. Dup is fd_dup; Dup2 is fd_dup and
+then fd_renumber onto the target, as wasix-libc's dup2 is.
+---
+ src/syscall/fs_wasip1.go | 33 ++++++++++++++++++++++-----------
+ 1 file changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/src/syscall/fs_wasip1.go b/src/syscall/fs_wasip1.go
+index 565086a2..f98a1949 100644
+--- a/src/syscall/fs_wasip1.go
++++ b/src/syscall/fs_wasip1.go
+@@ -1019,25 +1019,36 @@ func Seek(fd int, offset int64, whence int) (int64, error) {
+ 	return int64(newoffset), errnoErr(errno)
+ }
+ 
+-//go:wasmimport wasix_32v1 dup
++//go:wasmimport wasix_32v1 fd_dup
+ //go:noescape
+-func dup(fd int32) Errno
++func fd_dup(fd int32, newfd *int32) Errno
++
++//go:wasmimport wasi_snapshot_preview1 fd_renumber
++//go:noescape
++func fd_renumber(from int32, to int32) Errno
+ 
+ func Dup(fd int) (int, error) {
+-	errno := dup(int32(fd))
++	var newfd int32
++	errno := fd_dup(int32(fd), &newfd)
+ 	if errno != 0 {
+-		return 0, errnoErr(errno)
++		return -1, errnoErr(errno)
+ 	}
+-	return int(fd), nil
++	return int(newfd), nil
+ }
+ 
+-//go:wasmimport wasix_32v1 dup2
+-//go:noescape
+-func dup2(fd int32, newfd int32) Errno
+-
++// Dup2 is fd_dup and then fd_renumber, which moves the copy onto newfd
++// (closing what was there), as wasix-libc's dup2 does.
+ func Dup2(fd, newfd int) error {
+-	errno := dup2(int32(fd), int32(newfd))
+-	if errno != 0 {
++	if fd == newfd {
++		var st Stat_t
++		return Fstat(fd, &st)
++	}
++	tmp, err := Dup(fd)
++	if err != nil {
++		return err
++	}
++	if errno := fd_renumber(int32(tmp), int32(newfd)); errno != 0 {
++		Close(tmp)
+ 		return errnoErr(errno)
+ 	}
+ 	return nil

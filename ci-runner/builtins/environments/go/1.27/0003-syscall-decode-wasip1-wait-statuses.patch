@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:18:43 -0500
+Subject: [PATCH 03/13] syscall: decode wasip1 wait statuses
+
+Wait4 fills in a W_EXITCODE status, but WaitStatus's methods were still
+the wasip1 stubs (Exited false, ExitStatus 0), so every child exited 0 as
+far as os/exec could tell: `go test` printed FAIL for a failing test and
+then `ok`, and exited 0, and so did `go build` of a file that does not
+parse. Decode the status as Linux lays it out.
+---
+ src/syscall/syscall_wasip1.go | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/syscall/syscall_wasip1.go b/src/syscall/syscall_wasip1.go
+index 1df33e34..34b51699 100644
+--- a/src/syscall/syscall_wasip1.go
++++ b/src/syscall/syscall_wasip1.go
+@@ -297,10 +297,20 @@ const (
+ 
+ type WaitStatus uint32
+ 
+-func (w WaitStatus) Exited() bool       { return false }
+-func (w WaitStatus) ExitStatus() int    { return 0 }
+-func (w WaitStatus) Signaled() bool     { return false }
+-func (w WaitStatus) Signal() Signal     { return 0 }
++func (w WaitStatus) Exited() bool       { return w&0x7f == 0 }
++func (w WaitStatus) ExitStatus() int {
++	if w&0x7f != 0 {
++		return -1
++	}
++	return int(w>>8) & 0xff
++}
++func (w WaitStatus) Signaled() bool { return w&0x7f != 0 }
++func (w WaitStatus) Signal() Signal {
++	if w&0x7f == 0 {
++		return 0
++	}
++	return Signal(w & 0x7f)
++}
+ func (w WaitStatus) CoreDump() bool     { return false }
+ func (w WaitStatus) Stopped() bool      { return false }
+ func (w WaitStatus) Continued() bool    { return false }

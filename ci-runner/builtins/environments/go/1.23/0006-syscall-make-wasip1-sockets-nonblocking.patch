@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:20:05 -0500
+Subject: [PATCH 06/13] syscall: make wasip1 sockets nonblocking
+
+Socket dropped SOCK_NONBLOCK, which package net always asks for (WASIX
+takes no flags in the socket type), so every socket blocked in the host.
+A wasip1 program has one thread: a read or accept blocked there blocks
+every goroutine until data arrives or the runtime's 30 second socket
+timeout passes, and closing the socket from another goroutine cannot
+wake it. httptest.Server.Close and the end of each http.Get took exactly
+60 seconds. Apply it the way wasix-libc does, with fd_fdstat_set_flags,
+so sockets go through the netpoller and Close wakes their waiters.
+
+A nonblocking connect then answers EINPROGRESS, and package net reads
+the outcome from SO_ERROR, which returned 0 whatever happened: read it
+from WASIX's last-error socket option.
+---
+ src/syscall/net_wasip1.go | 25 +++++++++++++++++++++++--
+ 1 file changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/src/syscall/net_wasip1.go b/src/syscall/net_wasip1.go
+index 54a399e..7987991 100644
+--- a/src/syscall/net_wasip1.go
++++ b/src/syscall/net_wasip1.go
+@@ -36,6 +36,9 @@ const (
+ 	MSG_DONTWAIT = 0x0040
+ )
+ 
++// __WASI_SOCK_OPTION_LAST_ERROR: what SO_ERROR reads.
++const sockOptionLastError = 11
++
+ // Protocol families
+ const (
+ 	IPPROTO_IP   = 0
+@@ -499,6 +502,17 @@ func Socket(domain, typ, proto int) (ret_fd int, err error) {
+ 	if errno != Errno(0) {
+ 		return 0, errnoErr(errno)
+ 	}
++	// WASIX takes no flags in the socket type, so SOCK_NONBLOCK (which
++	// package net always asks for) is applied the way wasix-libc does it.
++	// A blocking socket blocks the whole program, which has one thread:
++	// a read waits in the host until data arrives or its 30 second
++	// timeout passes, and Close cannot wake it, so every goroutine waits.
++	if typ&SOCK_NONBLOCK != 0 {
++		if err := SetNonblock(int(fd), true); err != nil {
++			Close(int(fd))
++			return 0, err
++		}
++	}
+ 	return int(fd), nil
+ }
+ 
+@@ -791,8 +805,15 @@ func GetsockoptInt(fd, level, opt int) (value int, err error) {
+ 		return int(sz), nil
+ 
+ 	// ---------- Always-zero options ----------
+-	case SO_ERROR,
+-		SO_PROTOCOL:
++	// ---------- The pending error, from a nonblocking connect ----------
++	case SO_ERROR:
++		var errno int64
++		if e := sock_get_opt_size(int32(fd), sockOptionLastError, unsafe.Pointer(&errno)); e != Errno(0) {
++			return 0, errnoErr(e)
++		}
++		return int(errno), nil
++
++	case SO_PROTOCOL:
+ 		return 0, nil
+ 	}
+ 

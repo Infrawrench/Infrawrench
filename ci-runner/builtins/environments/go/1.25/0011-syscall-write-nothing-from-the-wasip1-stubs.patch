@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:52:03 -0500
+Subject: [PATCH 11/13] syscall: write nothing from the wasip1 stubs
+
+Syscall, Syscall6, RawSyscall, RawSyscall6, Sendfile and Umask wrote a
+debugging line to the program's standard output before returning, so a
+program calling syscall.Umask printed "Raw Umask" among its own output.
+---
+ src/syscall/syscall_wasip1.go | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/src/syscall/syscall_wasip1.go b/src/syscall/syscall_wasip1.go
+index 3df9d42..8d64fad 100644
+--- a/src/syscall/syscall_wasip1.go
++++ b/src/syscall/syscall_wasip1.go
+@@ -341,22 +341,18 @@ type SysProcAttr struct {
+ }
+ 
+ func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
+-	Write(1, []byte("\nRaw Syscall\n"))
+ 	return 0, 0, ENOSYS
+ }
+ 
+ func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
+-	Write(1, []byte("\nRaw Syscall6\n"))
+ 	return 0, 0, ENOSYS
+ }
+ 
+ func RawSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
+-	Write(1, []byte("\nRaw Syscall\n"))
+ 	return 0, 0, ENOSYS
+ }
+ 
+ func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
+-	Write(1, []byte("\nRaw Syscall6\n"))
+ 	return 0, 0, ENOSYS
+ }
+ 
+@@ -427,7 +423,6 @@ func Kill(pid int, signum Signal) error {
+ }
+ 
+ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error) {
+-	Write(1, []byte("Raw Sendfile\n"))
+ 	return 0, ENOSYS
+ }
+ 
+@@ -560,7 +555,6 @@ func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int,
+ }
+ 
+ func Umask(mask int) int {
+-	Write(1, []byte("Raw Umask\n"))
+ 	return 0
+ }
+ 

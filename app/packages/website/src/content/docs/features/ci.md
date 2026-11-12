@@ -50,12 +50,13 @@ Choosing accounts takes the `ci:write` permission; everyone in the organization 
 
 A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a bash script (`run:`) in an environment:
 
-| Environment                    | What it has                                                               |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| `env:bash@5`                   | bash, coreutils, sed, grep and findutils                                  |
-| `env:bash-node@24`             | the same, plus `node` (Node 24 compatible), `npm` and `pnpm`              |
-| `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                     |
-| `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer |
+| Environment                    | What it has                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| `env:bash@5`                   | bash, coreutils, sed, grep and findutils                                         |
+| `env:bash-node@24`             | the same, plus `node` (Node 24 compatible), `npm` and `pnpm`                     |
+| `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                            |
+| `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
+| `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
 
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not, and `python -m venv` is not available: packages install into the job's own copy of Python. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
@@ -68,6 +69,19 @@ jobs:
     run: |
       pip install -r requirements.txt
       pytest
+```
+
+In `env:go`, `go build`, `go vet`, `go test` and `go run` work, with your module's dependencies installed before the job from `go.sum` (`deps: [go]`). The standard library comes compiled, so a first build compiles only your own packages. Go programs run as WebAssembly here: cgo, the race detector and signals are not available, and a `go.mod` that asks for a newer Go than the environment's fails rather than downloading one, so pick the version your `go` line names or a newer one. Tests can listen on the job's own loopback and reach the internet.
+
+```yaml
+workspace:
+  deps: [go]
+jobs:
+  test:
+    using: env:go@1.27
+    run: |
+      go vet ./...
+      go test ./...
 ```
 
 ### Background services

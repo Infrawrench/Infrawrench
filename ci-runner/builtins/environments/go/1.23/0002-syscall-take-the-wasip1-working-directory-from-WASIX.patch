@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:18:43 -0500
+Subject: [PATCH 02/13] syscall: take the wasip1 working directory from WASIX
+
+The port stopped initialising `cwd` from $PWD (upstream's init did) and
+initialises it from nothing, so every relative path resolved against ""
+matched no preopen: `go version` printed `cannot determine current
+directory: stat .: Bad file number`. Getwd also passed getcwd's buffer
+length by value, where WASIX takes a pointer to it (in and out), so the
+runtime read a length from address 4096: `getwd: File name too long`.
+
+Pass the length by pointer, and set `cwd` from WASIX's getcwd, then $PWD,
+then "/".
+---
+ src/syscall/fs_wasip1.go | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/syscall/fs_wasip1.go b/src/syscall/fs_wasip1.go
+index df7ebf1..1b3d0ad 100644
+--- a/src/syscall/fs_wasip1.go
++++ b/src/syscall/fs_wasip1.go
+@@ -407,6 +407,14 @@ func init() {
+ 
+ 		registerPreopenedFd(preopenFd, string(dirNameBuf[:prestat.dir.prNameLen]))
+ 	}
++	// iwci: the process working directory, from WASIX first, then $PWD.
++	if wd, err := Getwd(); err == nil && isAbs(wd) {
++		cwd = wd
++	} else if pwd, ok := Getenv("PWD"); ok && isAbs(pwd) {
++		cwd = pwd
++	} else {
++		cwd = "/"
++	}
+ }
+ 
+ // Provided by package runtime.
+@@ -829,12 +837,12 @@ const ImplementsGetwd = true
+ 
+ //go:wasmimport wasix_32v1 getcwd
+ //go:noescape
+-func getcwd(buf unsafe.Pointer, size uint32) Errno
++func getcwd(buf unsafe.Pointer, size unsafe.Pointer) Errno
+ 
+ func Getwd() (string, error) {
+ 	buf := make([]byte, 4096)
+-
+-	errno := getcwd(unsafe.Pointer(&buf[0]), uint32(len(buf)))
++	n := uint32(len(buf))
++	errno := getcwd(unsafe.Pointer(&buf[0]), unsafe.Pointer(&n))
+ 	if errno != 0 {
+ 		return "", errnoErr(errno)
+ 	}

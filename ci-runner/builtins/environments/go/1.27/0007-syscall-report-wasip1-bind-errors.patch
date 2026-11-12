@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:20:05 -0500
+Subject: [PATCH 07/13] syscall: report wasip1 bind errors
+
+Bind dropped sock_bind's result and compared a nil error with Errno(0),
+so it always succeeded: listening on a port already in use "worked".
+---
+ src/syscall/net_wasip1.go | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/syscall/net_wasip1.go b/src/syscall/net_wasip1.go
+index dcecfe61..4055bfc3 100644
+--- a/src/syscall/net_wasip1.go
++++ b/src/syscall/net_wasip1.go
+@@ -589,10 +589,8 @@ func Bind(fd int, sa Sockaddr) error {
+ 	// Write(1, []byte("Sizeof(raw_sa): "+itoa.Itoa(int(size))+", Bytes: "+bytesToHexByteString(bytes)+"\n"))
+ 	debugPrintRawSockaddrWithPortAny(raw_sa)
+ 
+-	sock_bind(int32(fd), unsafe.Pointer(raw_sa))
+-
+-	if err != Errno(0) {
+-		return err
++	if errno := sock_bind(int32(fd), unsafe.Pointer(raw_sa)); errno != Errno(0) {
++		return errnoErr(errno)
+ 	}
+ 	return nil
+ }
