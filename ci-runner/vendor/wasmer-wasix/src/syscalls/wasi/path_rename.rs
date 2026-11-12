@@ -68,11 +68,11 @@ pub fn path_rename_internal(
     let mut moved_ephemeral_symlink = false;
 
     {
-        let source_fd = wasi_try_ok!(state.fs.get_fd(source_fd));
+        let source_fd = wasi_try_ok!(state.fs.get_path_base_fd(source_fd, source_path));
         if !source_fd.inner.rights.contains(Rights::PATH_RENAME_SOURCE) {
             return Ok(Errno::Access);
         }
-        let target_fd = wasi_try_ok!(state.fs.get_fd(target_fd));
+        let target_fd = wasi_try_ok!(state.fs.get_path_base_fd(target_fd, target_path));
         if !target_fd.inner.rights.contains(Rights::PATH_RENAME_TARGET) {
             return Ok(Errno::Access);
         }

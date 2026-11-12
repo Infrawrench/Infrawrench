@@ -576,6 +576,9 @@ pub struct WasiFs {
     pub root_inode: InodeGuard,
     pub has_unioned: Mutex<HashSet<PackageId>>,
     ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
+    /// Preopens the program has put something else in place of, by the
+    /// number they had (see `get_dir_fd`). Taken after `fd_map`.
+    displaced_preopens: RwLock<HashMap<WasiFd, Fd>>,
 
     // TODO: remove
     // using an atomic is a hack to enable customization after construction,
@@ -710,6 +713,7 @@ impl WasiFs {
             root_inode: self.root_inode.clone(),
             has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
             ephemeral_symlinks: self.ephemeral_symlinks.clone(),
+            displaced_preopens: RwLock::new(self.displaced_preopens.read().unwrap().clone()),
             init_preopens: self.init_preopens.clone(),
             init_vfs_preopens: self.init_vfs_preopens.clone(),
         }
@@ -736,6 +740,9 @@ impl WasiFs {
             let mut flush_targets = Vec::new();
             for fd in to_close {
                 let outcome = Self::close_fd_locked(&mut fd_map, fd);
+                if outcome.removed {
+                    self.restore_displaced_preopen_locked(&mut fd_map, fd);
+                }
                 if let Some(target) = outcome.flush_target {
                     flush_targets.push(target);
                 }
@@ -870,6 +877,7 @@ impl WasiFs {
             root_inode,
             has_unioned: Mutex::new(HashSet::new()),
             ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
+            displaced_preopens: RwLock::new(HashMap::new()),
             init_preopens: Default::default(),
             init_vfs_preopens: Default::default(),
         };
@@ -1097,7 +1105,7 @@ impl WasiFs {
 
     /// refresh size from filesystem
     pub fn filestat_resync_size(&self, fd: WasiFd) -> Result<Filesize, Errno> {
-        let inode = self.get_fd_inode(fd)?;
+        let inode = self.get_fd(fd)?.inode;
         let mut guard = inode.write();
         match guard.deref_mut() {
             Kind::File { handle, .. } => {
@@ -1759,7 +1767,13 @@ impl WasiFs {
         path: &str,
         follow_symlinks: bool,
     ) -> Result<InodeGuard, Errno> {
-        let base_inode = self.get_fd_inode(base)?;
+        // An absolute path resolves from the root whatever `base` is, so
+        // `base` need not be open: see `get_path_base_fd`.
+        let base_inode = if path.starts_with('/') {
+            self.root_inode.clone()
+        } else {
+            self.get_dir_fd(base)?.inode
+        };
         let mut symlink_count = 0;
         self.get_inode_at_path_inner(
             inodes,
@@ -1798,7 +1812,7 @@ impl WasiFs {
     ) -> Result<(InodeGuard, String), Errno> {
         let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
         if parent_dir.as_str().is_empty() {
-            return self.get_fd_inode(base).map(|v| (v, new_entity_name));
+            return self.get_dir_fd(base).map(|v| (v.inode, new_entity_name));
         }
         self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
             .map(|v| (v, new_entity_name))
@@ -1820,6 +1834,48 @@ impl WasiFs {
         }
     }
 
+    /// The descriptor a path call given `fd` and `path` works from, for its
+    /// rights. An absolute path resolves from the virtual root whatever `fd`
+    /// is (as `openat` ignores its `dirfd` for one), so it takes the root's
+    /// descriptor; a relative one takes `get_dir_fd(fd)`.
+    pub(crate) fn get_path_base_fd(&self, fd: WasiFd, path: &str) -> Result<Fd, Errno> {
+        if path.starts_with('/') {
+            Ok(Self::virtual_root_fd(self.root_inode.clone()))
+        } else {
+            self.get_dir_fd(fd)
+        }
+    }
+
+    /// The directory a path call given `fd` resolves a relative path from:
+    /// what is on `fd`, unless that is not a directory and a preopen used to
+    /// be there, in which case that preopen (#1019).
+    ///
+    /// A C library finds its preopens at start-up, on descriptors 3 and 4
+    /// here, and sends every path through the one it picked from then on
+    /// (as an absolute path in wasix-libc, relative to the preopen in older
+    /// ones and in wasi-libc). The program does not know: bash's `exec 3>&1`
+    /// is `dup2(1, 3)`. So `dup2_at` keeps a preopen it replaces, its paths
+    /// keep working, and closing what was put over it puts it back
+    /// (`restore_displaced_preopen_locked`).
+    pub(crate) fn get_dir_fd(&self, fd: WasiFd) -> Result<Fd, Errno> {
+        let current = self.get_fd(fd);
+        if let Ok(entry) = &current
+            && matches!(*entry.inode.read(), Kind::Dir { .. } | Kind::Root { .. })
+        {
+            return current;
+        }
+        match self.displaced_preopens.read().unwrap().get(&fd) {
+            Some(preopen) => Ok(preopen.clone()),
+            None => current,
+        }
+    }
+
+    /// Forgets the preopens `dup2_at` kept, with the descriptors they were
+    /// kept for.
+    pub(crate) fn clear_displaced_preopens(&self) {
+        self.displaced_preopens.write().unwrap().clear();
+    }
+
     pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
         // see `VIRTUAL_ROOT_FD` for details as to why this exists
         if fd == VIRTUAL_ROOT_FD {
@@ -1834,7 +1890,9 @@ impl WasiFs {
     }
 
     pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
-        let inode = self.get_fd_inode(fd)?;
+        // What is on `fd`: `get_fd_inode` answers the root for descriptor 3
+        // even when the program has put a file there.
+        let inode = self.get_fd(fd)?.inode;
         let guard = inode.stat.read().unwrap();
         Ok(*guard.deref())
     }
@@ -1849,22 +1907,36 @@ impl WasiFs {
     /// or `/dev/null` put in place of a standard stream, is what it refers
     /// to; without a terminal, nothing is one.
     pub fn fdstat(&self, fd: WasiFd, tty: Option<&WasiTtyState>) -> Result<Fdstat, Errno> {
-        match fd {
-            VIRTUAL_ROOT_FD => {
-                return Ok(Fdstat {
-                    fs_filetype: Filetype::Directory,
-                    fs_flags: Fdflags::empty(),
-                    // TODO: fix this
-                    fs_rights_base: ALL_RIGHTS,
-                    fs_rights_inheriting: ALL_RIGHTS,
-                });
-            }
-            _ => (),
+        let mut stat = self.fdstat_of(fd, tty)?;
+        // Over a preopen `dup2_at` kept, the rights a file opened through
+        // `fd` may have are the preopen's, since that is where `get_dir_fd`
+        // opens it: older C libraries (wasi-libc's, bash's) ask for them here
+        // before every open through their preopen, and a standard stream on
+        // it has none (#1019).
+        if stat.fs_filetype != Filetype::Directory
+            && let Some(preopen) = self.displaced_preopens.read().unwrap().get(&fd)
+        {
+            stat.fs_rights_inheriting = preopen.inner.rights_inheriting;
         }
+        Ok(stat)
+    }
+
+    fn fdstat_of(&self, fd: WasiFd, tty: Option<&WasiTtyState>) -> Result<Fdstat, Errno> {
         let fd = self.get_fd(fd)?;
 
         let guard = fd.inode.read();
         let deref = guard.deref();
+        // The virtual root, on descriptor 3 unless the program has put
+        // something else there.
+        if let Kind::Root { .. } = deref {
+            return Ok(Fdstat {
+                fs_filetype: Filetype::Directory,
+                fs_flags: Fdflags::empty(),
+                // TODO: fix this
+                fs_rights_base: ALL_RIGHTS,
+                fs_rights_inheriting: ALL_RIGHTS,
+            });
+        }
         if let Kind::File {
             fd: Some(stream), ..
         } = deref
@@ -1916,10 +1988,21 @@ impl WasiFs {
     }
 
     pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
+        // Descriptor 3 is the virtual root here even when the program has put
+        // something else on it (#1019). A child inherits that descriptor, and
+        // its C library looks for preopens from 3 up, stopping at the first
+        // that is not one: answering "not a preopen" would leave it none at
+        // all, and every path would fail. Its paths through 3 then resolve
+        // from the root (`get_dir_fd`).
         let inode = self.get_fd_inode(fd)?;
         //trace!("in prestat_fd {:?}", self.get_fd(fd)?);
 
-        if inode.is_preopened {
+        // Only a directory: the standard streams' inodes are marked preopened
+        // too, and a stream on 4 or 5 (`exec 5>&1`) answered here as a
+        // preopen whose name could not be read, which made every C library
+        // started after it exit with EX_OSERR (#1026).
+        let is_dir = matches!(*inode.read(), Kind::Dir { .. } | Kind::Root { .. });
+        if inode.is_preopened && is_dir {
             Ok(self.prestat_fd_inner(inode.deref()))
         } else {
             Err(Errno::Badf)
@@ -2182,12 +2265,18 @@ impl WasiFs {
                 return Ok(None);
             }
 
+            // A preopen is replaced like anything else (#1019): bash's
+            // `exec 3>&1` is `dup2(1, 3)`, and 3 and 4 are the preopens. The
+            // C library keeps sending paths through the number it found the
+            // preopen on, so keep it for those (`get_dir_fd`).
             if let Some(target_fd) = fd_map.get(dst)
                 && !target_fd.is_stdio
                 && target_fd.inode.is_preopened
             {
-                warn!("Refusing dup2({src}, {dst}) because FD {dst} is pre-opened");
-                return Err(Errno::Notsup);
+                self.displaced_preopens
+                    .write()
+                    .unwrap()
+                    .insert(dst, target_fd.clone());
             }
 
             let new_fd_entry = Fd {
@@ -2689,7 +2778,24 @@ impl WasiFs {
     /// Lock order: `fd_map` write, then inode read (never the reverse).
     pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
         let mut fd_map = self.fd_map.write().unwrap();
-        Self::close_fd_locked(&mut fd_map, fd)
+        let outcome = Self::close_fd_locked(&mut fd_map, fd);
+        if outcome.removed {
+            self.restore_displaced_preopen_locked(&mut fd_map, fd);
+        }
+        outcome
+    }
+
+    /// Puts back the preopen `dup2_at` kept for `fd`, now that what was put
+    /// over it is closed (#1019). A preopen cannot be closed (see
+    /// `close_fd_locked`), so it comes back as it was: `exec 4>&-` after
+    /// `exec 4>&1` leaves 4 the `/` preopen again, which the C library goes
+    /// on using and a child's finds again.
+    fn restore_displaced_preopen_locked(&self, fd_map: &mut FdList, fd: WasiFd) {
+        if let Some(preopen) = self.displaced_preopens.write().unwrap().remove(&fd)
+            && !fd_map.insert(true, fd, preopen)
+        {
+            panic!("Internal error: expected FD {fd} to be free after closing it");
+        }
     }
 
     /// Closes an open FD in an already write-locked fd map.

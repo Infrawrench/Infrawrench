@@ -218,6 +218,108 @@ fn a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd() {
     }
 }
 
+/// Puts stdout on descriptors 3 and 4, the two preopens, and writes `a`
+/// and `b` through them; reads `/work/in.txt` through 4 by its absolute path
+/// (as wasix-libc sends it) and its path relative to `/` (as older C
+/// libraries do), and creates `/work/out.txt` through 3; prints what
+/// `fd_fdstat_get` says 3 is now, and 1 if a file opened through it may be
+/// read (the rights older C libraries ask for before opening); closes both
+/// and reads the file through 4 and 3 again; then prints `fd_prestat_get`'s
+/// errno for 3, for 4, and for 5 once stdout is put there. Exits with a
+/// code from 10 up when a step fails.
+const LOW_FDS: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_renumber" (func $renumber (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $fdstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_prestat_get" (func $prestat_get (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/in.txt")
+  (data (i32.const 120) "/work/out.txt")
+  (data (i32.const 140) "abc")
+  (func $write (param $fd i32) (param $ptr i32) (param $len i32) (result i32)
+    (i32.store (i32.const 0) (local.get $ptr))
+    (i32.store (i32.const 4) (local.get $len))
+    (call $fd_write (local.get $fd) (i32.const 0) (i32.const 1) (i32.const 8)))
+  (func $digit (param $n i32)
+    (i32.store8 (i32.const 200) (i32.add (i32.const 48) (local.get $n)))
+    (drop (call $write (i32.const 1) (i32.const 200) (i32.const 1))))
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  ;; opens /work/in.txt through $dir, by its absolute path or (when
+  ;; $relative) as `work/in.txt`, and copies it to stdout
+  (func $cat_in (param $dir i32) (param $relative i32) (param $code i32)
+    (call $check (call $path_open (local.get $dir) (i32.const 0)
+      (i32.add (i32.const 100) (local.get $relative)) (i32.sub (i32.const 12) (local.get $relative))
+      (i32.const 0) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (local.get $code))
+    (i32.store (i32.const 32) (i32.const 300))
+    (i32.store (i32.const 36) (i32.const 64))
+    (call $check (call $fd_read (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40))
+      (i32.add (local.get $code) (i32.const 1)))
+    (drop (call $write (i32.const 1) (i32.const 300) (i32.load (i32.const 40))))
+    (drop (call $fd_close (i32.load (i32.const 24)))))
+  (func (export "_start")
+    (call $check (call $renumber (i32.const 1) (i32.const 3)) (i32.const 10))
+    (call $check (call $write (i32.const 3) (i32.const 140) (i32.const 1)) (i32.const 11))
+    (call $check (call $renumber (i32.const 1) (i32.const 4)) (i32.const 12))
+    (call $check (call $write (i32.const 4) (i32.const 141) (i32.const 1)) (i32.const 13))
+    (call $cat_in (i32.const 4) (i32.const 0) (i32.const 14))
+    (call $cat_in (i32.const 4) (i32.const 1) (i32.const 16))
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 13)
+      (i32.const 9) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 28)) (i32.const 18))
+    (call $check (call $write (i32.load (i32.const 28)) (i32.const 142) (i32.const 1)) (i32.const 19))
+    (call $check (call $fdstat (i32.const 3) (i32.const 64)) (i32.const 20))
+    (call $digit (i32.load8_u (i32.const 64)))
+    (call $digit (i64.ne (i64.and (i64.load (i32.const 80)) (i64.const 2)) (i64.const 0)))
+    (call $check (call $fd_close (i32.const 3)) (i32.const 21))
+    (call $check (call $fd_close (i32.const 4)) (i32.const 22))
+    (call $cat_in (i32.const 4) (i32.const 1) (i32.const 23))
+    (call $cat_in (i32.const 3) (i32.const 1) (i32.const 25))
+    (call $digit (call $prestat_get (i32.const 3) (i32.const 64)))
+    (call $digit (call $prestat_get (i32.const 4) (i32.const 64)))
+    (call $check (call $renumber (i32.const 1) (i32.const 5)) (i32.const 27))
+    (call $digit (call $prestat_get (i32.const 5) (i32.const 64)))))
+"#;
+
+/// A program can put its own descriptors on 3 and 4 (#1019), which are the
+/// virtual root and the job's `/` preopen: bash's `exec 3>&1` is
+/// `dup2(1, 3)`, which wasmer-wasix refused with `ENOTSUP` because 3 was a
+/// preopen. The C library found its preopens on those numbers at start-up
+/// and keeps sending paths through them, absolute or relative to `/`, so
+/// paths must still work once something else is there, or nothing is, and
+/// closing that puts the preopen back. 3 must still read as the root
+/// preopen to `fd_prestat_get`, which is how a child's C library finds its
+/// preopens, and a standard stream must not read as one anywhere, or the
+/// child's C library exits with EX_OSERR (#1026, `prestat_fd`).
+#[test]
+fn a_program_can_replace_the_preopens_and_keep_its_paths() {
+    let rt = runtime();
+    let job = snapshot(&[("/work/in.txt", "x")]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("low-fds", LOW_FDS),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    // `a` and `b` through 3 and 4; the file through 4 both ways; 3 is now a
+    // regular file (stdout) that opens files readable; the file through 4
+    // and 3 once closed; then 3 and 4 preopens again (errno 0) and stdout on
+    // 5 not one (8, EBADF).
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "abxx41xx008");
+    assert_eq!(
+        job.changes("/"),
+        vec![Change::Added {
+            path: "/work/out.txt".into(),
+            bytes: b"c".to_vec()
+        }]
+    );
+}
+
 /// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
 /// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
 /// one `fd_fdstat_get` gives stdin once that pipe is put in its place and
@@ -1042,6 +1144,31 @@ fn a_program_bash_runs_gets_an_argument_with_a_line_feed_whole() {
     assert_eq!(
         String::from_utf8_lossy(&outcome.stdout),
         "a\nb|c|p\nq|",
+        "{stderr:?}"
+    );
+}
+
+/// A bash script can put its own descriptors on 3 and 4 (#1019), which
+/// were the preopens and refused with "Not supported", and its paths, and
+/// the programs it starts, keep working after it has and once it closes
+/// them again.
+#[test]
+fn a_bash_script_can_use_descriptors_3_and_4() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[("/work/README", "readme\n")]).fork();
+    let script = "exec 3>&1 4< README\necho three >&3\nread -r line <&4\necho \"$line\"\n\
+        cat README\nexec 3>&- 4<&-\necho done > out.txt\ncat out.txt\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "three\nreadme\nreadme\ndone\n",
         "{stderr:?}"
     );
 }

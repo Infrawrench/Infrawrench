@@ -438,14 +438,50 @@ descriptor was a terminal, and each silenced a `node`:
 Upstream main still answers the first two as 0.705.0 does (checked
 November 2026).
 
+**A program can use descriptors 3 and 4 (#1019).** They are the preopens,
+the virtual root and the job's `/`, and `dup2_at` refused to replace one
+with `ENOTSUP`, so bash's `exec 3>&1` (`dup2(1, 3)`) and `exec 4< file`
+failed with "Not supported" while 5 and up worked. Letting it is not
+enough on its own: a C library finds its preopens once, at start-up, by
+asking `fd_prestat_get` from 3 up until one is not a preopen, and sends
+every path through the one it picked from then on, as an absolute path
+(wasix-libc) or relative to the preopen after asking `fd_fdstat_get` for
+the rights to open with (older wasix-libc, bash's, and wasi-libc). The
+program does not know. So in `src/fs/mod.rs`:
+
+- `dup2_at` replaces a preopen and keeps it aside for its number;
+  closing what was put there puts the preopen back
+  (`restore_displaced_preopen_locked`), as a preopen cannot be closed.
+- Path calls take their directory from `get_path_base_fd`: an absolute
+  path resolves from the virtual root whatever the descriptor is (as
+  `openat` ignores `dirfd` for one; resolution already did, only the rights
+  check and the lookup of the descriptor did not), and a relative one
+  from the preopen kept aside when what is on the descriptor is not a
+  directory. `fd_fdstat_get` of such a descriptor gives the preopen's
+  inheriting rights, which the older libraries open with.
+- `fd_prestat_get` answers only for a directory. The standard streams'
+  inodes are marked preopened, so a stream on 4, or on 5 with the
+  original two in place (`exec 5>&1`, which already worked), read as a
+  preopen whose name could not be read, and every C library started
+  after it exited with `EX_OSERR` (71) before `main` (#1026). Descriptor 3 keeps
+  answering as the root even when the program has put something else on
+  it, since a child inherits that and finds its preopens from there.
+- `fd_fdstat_get` and `fd_filestat_get` describe what is on 3, rather
+  than the virtual root whatever it holds.
+
+Upstream main still refuses the `dup2` (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
-#6982 (a non-blocking wait for any child), 2fc27ff21, and a standard stream
+#6982 (a non-blocking wait for any child), 2fc27ff21, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
-still classify as streams: delete `vendor/wasmer-wasix*`, its
-`[patch.crates-io]` entry in `../Cargo.toml`, and check
+still classify as streams, and a program can put its own descriptors on
+the preopens' numbers and keep its paths: delete `vendor/wasmer-wasix*`,
+its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
-bash-node), `shebang-missing-interpreter-fails` and `no-terminal-passes`
-(bash and bash-node), and `iwci-runtime`'s `no_descriptor_is_a_terminal`.
+bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
+(bash and bash-node) and `low-fds-passes`, and `iwci-runtime`'s
+`no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`
+and `a_bash_script_can_use_descriptors_3_and_4`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

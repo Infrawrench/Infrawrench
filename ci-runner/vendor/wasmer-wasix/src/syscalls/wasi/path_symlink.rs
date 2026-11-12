@@ -62,7 +62,7 @@ pub fn path_symlink_internal(
     let env = ctx.data();
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
-    let base_fd = state.fs.get_fd(fd)?;
+    let base_fd = state.fs.get_path_base_fd(fd, new_path)?;
     if !base_fd.inner.rights.contains(Rights::PATH_SYMLINK) {
         return Err(Errno::Access);
     }
