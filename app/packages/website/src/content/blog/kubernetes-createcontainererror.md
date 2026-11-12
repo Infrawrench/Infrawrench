@@ -16,7 +16,7 @@ The two names are close, and they point at different layers:
 - **CreateContainerConfigError** comes from the kubelet before it asks the runtime for anything. It means the kubelet could not build the container's configuration, usually because a ConfigMap, Secret or key is missing. The [CreateContainerConfigError guide](/blog/kubernetes-createcontainerconfigerror) covers that case.
 - **CreateContainerError** comes back from the container runtime (containerd or CRI-O) when the kubelet asks it to create the container. The configuration was built, and the runtime rejected it or failed while handling it.
 
-If the container is created but fails when it starts, for example because the command does not exist inside the image, you will usually see RunContainerError or a container that exits straight away instead. That is a start problem, and the [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff) is the better route.
+If the container is created but fails when it starts, for example because the command does not exist inside the image, you will usually see RunContainerError, or StartError with exit code 128, instead. That is a start problem, and the [RunContainerError guide](/blog/kubernetes-runcontainererror) covers it.
 
 ## Step 1: Confirm the waiting reason and message
 

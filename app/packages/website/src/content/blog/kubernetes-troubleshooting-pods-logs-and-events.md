@@ -21,6 +21,7 @@ If you already know the status or error you are looking at, jump straight to its
 - ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
 - CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
 - CreateContainerError: [missing commands, name conflicts and runtime failures](/blog/kubernetes-createcontainererror)
+- RunContainerError, or StartError with exit code 128: [commands that will not start](/blog/kubernetes-runcontainererror)
 - PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
 - StatefulSet pod waiting on the one before it: [StatefulSet pod stuck](/blog/kubernetes-statefulset-pod-stuck)
 
