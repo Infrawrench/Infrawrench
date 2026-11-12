@@ -523,7 +523,7 @@ Environments:
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                     |
-| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, one connection, in memory), for `services:` (see [PostgreSQL](#postgresql))                                                      |
+| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))          |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -1209,17 +1209,17 @@ jobs:
     services:
       postgres:
         using: env:postgres@18
-        run: pglite
+        run: pglite-server
         ready: { port: 5432 }
     run: |
       pip install 'psycopg[binary]'
-      pytest   # connects to postgres:5432 as user postgres, one connection
+      pytest   # connects to postgres:5432, any user and database
 ```
 
 | Key     | Meaning                                                                                                                                                                                                               |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `using` | Required. `env:<name>@<version>`, with `run:`, or a `builtin:` or `repo:` tool, with `args:`.                                                                                                                         |
-| `run`   | For an environment: a bash script that starts the service (`pglite`, `node server.js`), with `set -euo pipefail`. It starts in the job's `cwd`.                                                                       |
+| `run`   | For an environment: a bash script that starts the service (`pglite-server`, `node server.js`), with `set -euo pipefail`. It starts in the job's `cwd`.                                                                |
 | `args`  | For a tool: its arguments, as a job's.                                                                                                                                                                                |
 | `env`   | Its environment variables, over the runner's (`CI`, `HOME`, `IWCI_COMMIT`, `IWCI_JOB`, ...). Nothing of the job's `env:`. `${{ secrets.<name> }}` works here as in a job's.                                           |
 | `ready` | When the job may start: `{ port: 5432 }`, `{ log: "<regex>" }` or `{ command: "<script>" }`, each with an optional `timeout` (default `60s`, at most the job's). Without `ready`, as soon as the service has started. |
@@ -1300,16 +1300,74 @@ api-tests:
 #### PostgreSQL
 
 `env:postgres@18` is [`wasmer/pglite`](https://wasmer.io/wasmer/pglite)
-0.2.0, PostgreSQL 18.4 compiled for WASIX, beside the tools of `env:bash@5`.
-`pglite` starts it on port 5432 with the database `postgres` and the user
-`postgres`, no password, the data in memory, and `plpgsql` and
-`dict_snowball` for extensions. It is one backend, so it serves **one
-connection** and exits when that client disconnects: a test suite has to
-share a single connection, and a readiness probe that connected would end
-it, which is why `ready: { port: 5432 }` never connects. Its log line,
-`OLIPHAUNT_WASIX_SOCKET_READY 5432`, works as `ready: { log: ... }` too.
-PostgreSQL with many connections needs `fork` with memory shared between
-processes, which WASIX does not have.
+0.2.0, PostgreSQL 18.4 compiled for WASIX, and `pglite-server` in front of
+it, beside the tools of `env:bash@5`. The data is in memory, and the
+extensions are `plpgsql`, `dict_snowball` and a `pgcrypto` (below).
+
+```yaml
+services:
+  postgres:
+    using: env:postgres@18
+    run: pglite-server
+    ready: { port: 5432 }
+env:
+  DATABASE_URL: postgres://app:app@localhost:5432/app
+```
+
+pglite is PostgreSQL's single-user backend behind a socket of its own: one
+session, which serves one connection and exits when that client
+disconnects. `pglite-server` starts it, keeps that one connection, and
+serves PostgreSQL clients on port 5432 (`-port`), as many as connect, so
+connection pools, migration tools and test suites that open several
+connections work. It prints `pglite-server: ready on port 5432` once they
+can.
+
+Every connection gets the one session in turn, **a transaction at a
+time**: from a client's first statement until the session is idle outside
+a transaction block with nothing of that client's outstanding, nobody else
+runs (an extended-protocol exchange runs whole to its `Sync` too). That is
+transaction pooling over one backend, and it is what a test that needs
+real concurrency should know:
+
+- **Transactions never overlap.** A second one waits until the first has
+  committed or rolled back, so it never meets the first one's row locks.
+  Claims with `FOR UPDATE SKIP LOCKED` from several connections still take
+  each row exactly once, but because they run one after another, not
+  because one skipped what another held. A test that holds a lock in one
+  connection to watch another skip it cannot pass here.
+- **A wait on a transaction that is doing nothing fails** with SQLSTATE
+  `55P03` after 15 seconds (`-wait 30s` to change it), naming the
+  connection that holds the session. Code that opens a transaction and,
+  inside it, waits for a statement on another connection would otherwise
+  wait forever; on a real server it would not wait at all. A transaction
+  that is running a statement is never given up on.
+- **Session state is shared**: `SET`, session advisory locks (the one
+  session holds them all, so `pg_advisory_lock` never blocks), `LISTEN`,
+  temporary tables. Prepared statements are not: each connection's
+  protocol-level statements are its own, and its SQL `PREPARE`s are
+  deallocated when it disconnects. A connection that disconnects inside a
+  transaction has it rolled back. Once no connection that has used the
+  session is left, the session is reset (`DISCARD ALL`), so the next client
+  starts from a clean one.
+- **Any user, database and password are accepted**, and every client gets
+  the database `postgres` as the user `postgres` (`current_user` and
+  `current_database()` say so). No TLS; a cancel request does nothing (a
+  statement runs to its end).
+
+`pgcrypto` here is a stand-in, since pglite is built without OpenSSL:
+`CREATE EXTENSION pgcrypto` installs `digest`, `hmac` and
+`gen_random_bytes`, with pgcrypto's signatures and results, for `md5`,
+`sha224`, `sha256`, `sha384` and `sha512` (PostgreSQL's own hash
+functions). The rest of pgcrypto (`crypt`, `gen_salt`, `sha1`, the PGP and
+raw encryption functions) is missing, so calling it fails as an undefined
+function. `gen_random_uuid()` is PostgreSQL's own.
+
+`pglite` alone is still there: one connection, ended when that client
+disconnects (`ready: { port: 5432 }` never connects, so a readiness check
+does not use it up; its log line `OLIPHAUNT_WASIX_SOCKET_READY 5432` works
+as `ready: { log: ... }`). PostgreSQL with backends that really run at the
+same time needs `fork` with memory shared between processes, which WASIX
+does not have: a forked WASIX process gets a copy of its parent's memory.
 
 What else is and is not available:
 

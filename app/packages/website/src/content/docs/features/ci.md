@@ -96,7 +96,7 @@ jobs:
     services:
       postgres:
         using: env:postgres@18
-        run: pglite
+        run: pglite-server
         ready: { port: 5432 }
     run: |
       pip install 'psycopg[binary]'
@@ -110,7 +110,15 @@ jobs:
 - A service's output is in the job's log, each line after `[service <name>]`, with secrets hidden like the rest of the log.
 - `workspace.services` gives every job of the pipeline the same services. A job's own `services:` add to them, and `services: false` turns them off for that job.
 
-`env:postgres@18` is PostgreSQL 18.4. It runs in memory and accepts **one connection**, as user `postgres` with database `postgres` and no password, and stops when that connection closes, so a test suite has to share one connection. The `port` check never connects, so it does not use that connection up. There is no MySQL, MariaDB or Redis build for WebAssembly. SQLite needs no server and is available in `env:python@3.13` and the PHP environments.
+`env:postgres@18` is PostgreSQL 18.4, in memory. `pglite-server` serves it on port 5432 to as many connections as a job opens, so connection pools, migration tools and test suites work. Any user, database and password are accepted, and every connection gets the database `postgres` as the user `postgres`. `CREATE EXTENSION pgcrypto` gives `digest`, `hmac` and `gen_random_bytes` (md5 and SHA-2), but not `crypt` or the encryption functions.
+
+It is one PostgreSQL session that connections take turns on, **one transaction at a time**:
+
+- Transactions never run at the same time. A second one waits for the first to commit or roll back, so it never sees the first one's row locks. Claiming rows with `FOR UPDATE SKIP LOCKED` from several connections still takes each row once, but a test that holds a lock in one connection to watch another skip it cannot pass.
+- A statement that waits on another connection's open transaction while that transaction does nothing fails after 15 seconds with error `55P03`, instead of waiting forever. `run: pglite-server -wait 30s` changes the limit.
+- `SET`, advisory locks and `LISTEN` are shared by all connections. Prepared statements are each connection's own, and a connection that closes inside a transaction has it rolled back.
+
+`run: pglite` starts PostgreSQL without `pglite-server`: it accepts one connection and stops when that connection closes. There is no MySQL, MariaDB or Redis build for WebAssembly. SQLite needs no server and is available in `env:python@3.13` and the PHP environments.
 
 A script can also start a server itself with `&`. Anything still running when the script ends is stopped. Two commands wait until it is ready, so a job need not guess with `sleep`:
 

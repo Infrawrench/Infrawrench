@@ -1738,6 +1738,128 @@ jobs:
     using: env:python@3.13
     services: false
     run: test "$(ls /proc/iwci/tcp)" = ""
+  # pglite-server: many connections over pglite's one backend, a
+  # transaction at a time. Connections open together, a pool, transactions
+  # from several threads claiming rows with SKIP LOCKED (each row once),
+  # one transaction waiting for another to end rather than running inside
+  # it, a wait on an idle transaction failing with 55P03 instead of
+  # hanging, a disconnect rolling back, a connection's prepared statements
+  # its own, the session reset once everyone has left, and pgcrypto.
+  connections-passes:
+    using: env:python@3.13
+    timeout: 10m
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite-server -wait 2s
+        ready: { port: 5432 }
+    run: |
+      pip install 'psycopg[binary]' psycopg-pool
+      python - <<'PY'
+      import threading, time
+      import psycopg, psycopg_pool
+      url = "postgres://app:secret@postgres:5432/app"
+
+      # Alone: the session reset when the last connection left.
+      with psycopg.connect(url, autocommit=True) as c:
+          c.execute("set search_path = nowhere")
+      with psycopg.connect(url, autocommit=True) as c:
+          assert c.execute("show search_path").fetchone()[0] == '"$user", public'
+          assert c.execute("select version()").fetchone()[0].startswith("PostgreSQL 18")
+          c.execute("create extension if not exists pgcrypto")
+          c.execute("create extension if not exists pgcrypto")
+          sha, mac, n = c.execute("select encode(digest('abc', 'sha256'), 'hex'),"
+              " encode(hmac('what do ya want for nothing?', 'Jefe', 'sha256'), 'hex'),"
+              " length(gen_random_bytes(40))").fetchone()
+          assert sha == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", sha
+          assert mac == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", mac  # RFC 4231 case 2
+          assert n == 40
+          c.execute("create table jobs (id int primary key, owner int, claims int not null default 0)")
+          c.execute("insert into jobs (id) select generate_series(1, 400)")
+
+      def threads(n, target):
+          ts = [threading.Thread(target=target, args=(i,)) for i in range(n)]
+          for t in ts: t.start()
+          for t in ts: t.join()
+
+      # Eight connections open together, each claiming rows in transactions.
+      conns = [psycopg.connect(url) for _ in range(8)]
+      claimed = [[] for _ in conns]
+      def worker(i):
+          while True:
+              with conns[i].transaction():
+                  ids = [r[0] for r in conns[i].execute(
+                      "select id from jobs where owner is null order by id limit 7 for update skip locked")]
+                  if not ids:
+                      return
+                  conns[i].execute("update jobs set owner = %s, claims = claims + 1 where id = any(%s)", (i, ids))
+              claimed[i] += ids
+      threads(8, worker)
+      every = sum(claimed, [])
+      assert sorted(every) == list(range(1, 401)), len(every)
+      assert conns[0].execute("select count(*) from jobs where claims <> 1").fetchone()[0] == 0
+      for c in conns:
+          c.close()
+
+      # The poller's claim, one statement, from sixteen connections at once.
+      with psycopg.connect(url, autocommit=True) as c:
+          c.execute("update jobs set owner = null, claims = 0")
+      got = []
+      def claim(i):
+          with psycopg.connect(url, autocommit=True) as c:
+              got.extend(r[0] for r in c.execute(
+                  "update jobs set owner = %s, claims = claims + 1 where id in"
+                  " (select id from jobs where owner is null order by id limit 25 for update skip locked)"
+                  " returning id", (i,)))
+      threads(16, claim)
+      assert sorted(got) == list(range(1, 401)), len(got)
+
+      # A pool, with server-side prepared statements of each connection's own.
+      pool = psycopg_pool.ConnectionPool(url, min_size=4, max_size=4, open=True)
+      def pooled(i):
+          with pool.connection() as c:
+              for _ in range(3):
+                  assert c.execute("select %s::int * 2", (i,), prepare=True).fetchone()[0] == i * 2
+      threads(48, pooled)
+      pool.close()
+
+      # One transaction waits for another to end; it never runs inside it.
+      a, b = psycopg.connect(url), psycopg.connect(url, autocommit=True)
+      a.execute("select id from jobs where id = 1 for update")
+      a.execute("update jobs set owner = 99 where id = 1")
+      seen = []
+      t = threading.Thread(target=lambda: seen.extend(b.execute(
+          "select id from jobs where id = 1 and owner <> 99 for update skip locked").fetchall()))
+      t.start()
+      time.sleep(0.5)
+      assert t.is_alive(), "ran inside another transaction"
+      a.commit()
+      t.join()
+      assert seen == [], seen
+
+      # Waiting on a transaction that does nothing gives up, with 55P03.
+      a.execute("select 1")
+      start = time.time()
+      try:
+          b.execute("select 1")
+          raise AssertionError("waited on an idle transaction without giving up")
+      except psycopg.errors.LockNotAvailable as e:
+          assert "connection" in str(e) and time.time() - start < 10, e
+      a.rollback()
+      assert b.execute("select 2").fetchone()[0] == 2
+
+      # A disconnect rolls its transaction back.
+      a.execute("insert into jobs (id) values (1000)")
+      a.close()
+      assert b.execute("select count(*) from jobs where id = 1000").fetchone()[0] == 0
+
+      # A SQL-level PREPARE is the connection's, gone when it disconnects.
+      for _ in range(2):
+          with psycopg.connect(url, autocommit=True) as c:
+              c.execute("prepare q as select 1")
+      b.close()
+      print("ok")
+      PY
 YAML
       ;;
     php)
