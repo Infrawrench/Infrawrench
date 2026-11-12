@@ -236,6 +236,7 @@ export const SenderSignatureResourceType = rt({
 export const WebhookResourceType = rt({
   name: "Webhook",
   id: "postmark-webhook",
+  apiDocsUrl: "https://postmarkapp.com/developer/api/webhooks-api#create-a-webhook",
   description:
     "A webhook on a message stream: which events Postmark posts (deliveries, bounces, spam complaints, opens, clicks, subscription changes), where, and with what auth. Shows the last 24 hours of delivery attempts.",
   fields: [

@@ -244,6 +244,8 @@ export const SloResourceType = rt({
 export const SyntheticMonitorResourceType = rt({
   name: "Synthetic Monitor",
   id: "synthetic-monitor",
+  apiDocsUrl:
+    "https://docs.dynatrace.com/docs/dynatrace-api/environment-api/synthetic/synthetic-monitors/post-a-monitor",
   description:
     "An HTTP or browser monitor run from Dynatrace synthetic locations. Create HTTP monitors, turn monitors off and on, delete them, and chart availability.",
   fields: [

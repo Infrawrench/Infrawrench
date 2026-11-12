@@ -59,6 +59,7 @@ export const WorkspaceResourceType = rt({
 export const ServiceResourceType = rt({
   name: "Service",
   id: "service",
+  apiDocsUrl: "https://api-docs.render.com/reference/create-service",
   description:
     "A Render service: web service, private service, background worker, cron job or static site",
   fields: [

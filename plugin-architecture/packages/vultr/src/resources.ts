@@ -272,6 +272,7 @@ export const BackupResourceType = rt({
 export const KubernetesClusterResourceType = rt({
   name: "Kubernetes Cluster",
   id: "kubernetes-cluster",
+  apiDocsUrl: "https://www.vultr.com/api/#tag/kubernetes/operation/create-kubernetes-cluster",
   description: "A Vultr Kubernetes Engine (VKE) cluster",
   fields: [
     f("label", "Label"),

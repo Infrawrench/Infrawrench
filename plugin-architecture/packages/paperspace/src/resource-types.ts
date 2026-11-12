@@ -270,6 +270,8 @@ export const DeploymentResourceType = rt({
 export const ContainerRegistryResourceType = rt({
   name: "Container Registry",
   id: "container-registry",
+  apiDocsUrl:
+    "https://docs.digitalocean.com/reference/paperspace/api-reference/container-registries/#containerRegistries-create",
   description: "Credentials deployments use to pull private container images",
   fields: [
     f("name", "Name"),

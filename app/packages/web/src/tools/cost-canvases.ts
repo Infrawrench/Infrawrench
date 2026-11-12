@@ -124,6 +124,7 @@ export function costCanvasTools(): ToolDefinition[] {
         spec: costCanvasSpecSchema,
       },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       async requiresApproval(input, auth) {
         // Creating, or filling an empty canvas, replaces nothing.

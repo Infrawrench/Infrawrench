@@ -4,6 +4,7 @@ export const IAMUserResourceType = rt({
   name: "IAM User",
   pinnable: false,
   id: "iam-user",
+  apiDocsUrl: "https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreateUser.html",
   description: "An AWS Identity and Access Management user",
   fields: [
     f("userName", "User Name"),

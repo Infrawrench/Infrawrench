@@ -105,6 +105,7 @@ export function networkCostTools(): ToolDefinition[] {
           .describe("Cost query language text, or null to clear."),
       },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const { accountId, billedQuery } = input as {

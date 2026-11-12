@@ -138,6 +138,7 @@ export const EnvironmentResourceType = rt({
 export const ServiceResourceType = rt({
   name: "Service",
   id: "service",
+  apiDocsUrl: "https://docs.railway.com/integrations/api/manage-services#create-a-service",
   description: "A Railway service as deployed in one environment",
   parentTypeId: "environment",
   showInSidebar: true,
@@ -422,6 +423,7 @@ export const DomainResourceType = rt({
 export const TcpProxyResourceType = rt({
   name: "TCP Proxy",
   id: "tcp-proxy",
+  apiDocsUrl: "https://docs.railway.com/integrations/api/api-cookbook#tcp-proxies",
   description: "A public TCP endpoint forwarding to a port inside a Railway service",
   parentTypeId: "service",
   fields: [

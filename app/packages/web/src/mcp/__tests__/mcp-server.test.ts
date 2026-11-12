@@ -80,6 +80,21 @@ describe("MCP server org scoping", () => {
     expect(listResources?.inputSchema.required ?? []).not.toContain("org_id");
   });
 
+  it("annotates every tool, including the MCP-only ones", async () => {
+    const client = await connect();
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === "list_resources")?.annotations).toEqual({
+      title: "List resources",
+      readOnlyHint: true,
+      openWorldHint: false,
+    });
+    expect(tools.find((t) => t.name === "list_organizations")?.annotations).toMatchObject({
+      readOnlyHint: true,
+      openWorldHint: false,
+    });
+    for (const tool of tools) expect(tool.annotations?.title, tool.name).toBeTruthy();
+  });
+
   it("registers list_organizations and marks the default org", async () => {
     vi.mocked(middleware.listUserOrganizations).mockResolvedValue([
       { id: "org_default", displayName: "Acme", role: "owner" },

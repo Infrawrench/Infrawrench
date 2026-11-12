@@ -4,6 +4,7 @@ export const IAMRoleResourceType = rt({
   name: "IAM Role",
   pinnable: false,
   id: "iam-role",
+  apiDocsUrl: "https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreateRole.html",
   description: "An AWS Identity and Access Management role",
   fields: [
     f("roleName", "Role Name"),

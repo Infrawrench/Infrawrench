@@ -329,6 +329,7 @@ export const ProjectVariableResourceType = rt({
 export const GroupVariableResourceType = rt({
   name: "Group Variable",
   id: "group-variable",
+  apiDocsUrl: "https://docs.gitlab.com/api/group_level_variables/#create-a-group-variable",
   parentTypeId: "group",
   description:
     "A group CI/CD variable, inherited by every project in the group: type, environment scope and whether it is protected, masked, hidden or raw. Create one, replace its value or settings, or delete it.",
@@ -601,6 +602,7 @@ const hookPosture = (prefix: string) => [
 export const ProjectWebhookResourceType = rt({
   name: "Project Webhook",
   id: "project-webhook",
+  apiDocsUrl: "https://docs.gitlab.com/api/project_webhooks/#add-a-webhook-to-a-project",
   parentTypeId: "project",
   description:
     "A project webhook: URL, the events it sends, branch filter, TLS verification and whether GitLab has disabled it after failures. Create, edit, send a test push event or delete it.",

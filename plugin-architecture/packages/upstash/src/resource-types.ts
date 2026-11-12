@@ -78,6 +78,7 @@ const AccountType = rt({
 const RedisType = rt({
   name: "Redis Database",
   id: T.redis,
+  apiDocsUrl: "https://upstash.com/docs/devops/developer-api/redis/create_database_global",
   description:
     "A serverless Upstash Redis database, with its read regions, plan, budget and backups",
   fields: [
@@ -183,6 +184,7 @@ const RedisType = rt({
 const VectorType = rt({
   name: "Vector Index",
   id: T.vector,
+  apiDocsUrl: "https://upstash.com/docs/devops/developer-api/vector/create_index",
   description:
     "An Upstash Vector index (dense, sparse or hybrid) with its REST endpoint and tokens",
   fields: [
@@ -226,6 +228,7 @@ const VectorType = rt({
 const SearchType = rt({
   name: "Search Index",
   id: T.search,
+  apiDocsUrl: "https://upstash.com/docs/api-reference/search/create-search-index",
   description: "An Upstash Search index with its REST endpoint and tokens",
   fields: [
     f("name", "Name", { description: "Renames the index." }),

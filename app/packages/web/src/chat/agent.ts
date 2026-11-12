@@ -11,8 +11,6 @@
  * to SSE for the browser.
  */
 import { v4 as uuidv4 } from "uuid";
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { db } from "../db/client";
 import {
@@ -22,6 +20,7 @@ import {
   chatPendingSecretRequests,
 } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
+import { toolInputJsonSchema } from "../tools/json-schema";
 import { authorizeToolCall, runToolHandler, toolsOfferedTo } from "../tools/permissions";
 import { needsApproval } from "../tools/approval";
 import { okText, type ToolAuthContext, type ToolDefinition, type ToolResult } from "../tools/types";
@@ -345,27 +344,12 @@ async function approvalSummaryFor(
 }
 
 function toolToProvider(t: Omit<ToolDefinition, "handler">): ProviderTool {
-  // Both providers take JSON Schema (draft 2020-12) for tool input. We convert
-  // from the Zod shapes that MCP also uses. Must NOT use the openApi3 target:
-  // OpenAPI 3.0 is a different dialect (boolean exclusiveMinimum/
-  // exclusiveMaximum, nullable) that the API rejects with "JSON schema is
-  // invalid". The default draft-07 output is 2020-12-compatible for the
-  // constructs Zod emits. $refStrategy none keeps every schema inline.
-  const schema = zodToJsonSchema(z.object(t.inputSchema), { $refStrategy: "none" }) as {
-    type?: string;
-    properties?: Record<string, unknown>;
-    required?: string[];
-  };
-  const properties = schema.properties ?? {};
-  const required = schema.required ?? [];
+  // Both providers take JSON Schema (draft 2020-12) for tool input, converted
+  // from the same Zod shapes MCP uses; see `toolInputJsonSchema`.
   return {
     name: t.name,
     description: t.description,
-    inputSchema: {
-      type: "object",
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-    },
+    inputSchema: toolInputJsonSchema(t.inputSchema),
   };
 }
 

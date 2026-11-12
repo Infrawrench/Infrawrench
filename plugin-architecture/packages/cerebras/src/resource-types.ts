@@ -34,6 +34,7 @@ export const CerebrasModelType = rt({
 export const CerebrasBatchType = rt({
   name: "Batch",
   id: "cerebras-batch",
+  apiDocsUrl: "https://inference-docs.cerebras.ai/api-reference/batch/create-batch",
   plural: "Batches",
   description:
     "An asynchronous batch of chat completions processed within 24 hours (Private Preview)",

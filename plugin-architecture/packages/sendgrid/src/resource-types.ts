@@ -320,6 +320,7 @@ export const eventFieldKey = (event: string) =>
 export const EventWebhookResourceType = rt({
   name: "Event Webhook",
   id: "sendgrid-event-webhook",
+  apiDocsUrl: "https://www.twilio.com/docs/sendgrid/api-reference/webhooks/create-an-event-webhook",
   description:
     "An Event Webhook: which delivery and engagement events SendGrid posts, and where. Enable or disable it, change its events, send a test event, or create and delete webhooks.",
   fields: [
@@ -350,6 +351,8 @@ export const EventWebhookResourceType = rt({
 export const InboundParseResourceType = rt({
   name: "Inbound Parse",
   id: "sendgrid-inbound-parse",
+  apiDocsUrl:
+    "https://www.twilio.com/docs/sendgrid/api-reference/settings-inbound-parse/create-a-parse-setting",
   description:
     "An Inbound Parse hostname: mail to it is parsed and posted to your URL. Needs an MX record to mx.sendgrid.net.",
   fields: [

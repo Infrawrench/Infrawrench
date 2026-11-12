@@ -141,6 +141,7 @@ export function virtualTagTools(): ToolDefinition[] {
         "array). The key must stay the same. Re-queues processing. Audit-logged.",
       inputSchema: { virtualTagId: z.string(), ...virtualTagInputSchema.shape },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");

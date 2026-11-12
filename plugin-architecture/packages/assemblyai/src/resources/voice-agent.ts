@@ -82,6 +82,8 @@ export const AgentSessionResourceType = rt({
 export const WebhookSubscriptionResourceType = rt({
   name: "Webhook Subscription",
   id: "webhook-subscription",
+  apiDocsUrl:
+    "https://www.assemblyai.com/docs/voice-agents/voice-agent-api/api-spec/create-webhook-subscription",
   description:
     "Delivers voice agent session and call events to an HTTPS endpoint, for every agent or just one",
   fields: [

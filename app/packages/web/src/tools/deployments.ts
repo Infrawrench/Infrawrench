@@ -123,6 +123,7 @@ export function deploymentTools(): ToolDefinition[] {
         "an Infrafile; plan_deployment says so if it doesn't.",
       inputSchema: {},
       risk: "read",
+      openWorld: true,
       permission: "deployments:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "deployments:read");
@@ -171,6 +172,7 @@ export function deploymentTools(): ToolDefinition[] {
       // `deployments:plan` permission is the orthogonal axis, sitting between
       // read and write because a plan executes code but ships nothing.
       risk: "destructive",
+      openWorld: true,
       permission: "deployments:plan",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "deployments:plan");
@@ -242,6 +244,7 @@ export function deploymentTools(): ToolDefinition[] {
           ),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "deployments:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "deployments:write");

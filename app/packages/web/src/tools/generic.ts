@@ -700,6 +700,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("The parent's resource type id, if known; skips a lookup"),
       },
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { accountId, resourceId } = input as { accountId: string; resourceId: string };
@@ -811,6 +812,7 @@ export function genericTools(): ToolDefinition[] {
         parentResourceId: parentResourceIdField,
       },
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, parentResourceId } = input as {
@@ -848,6 +850,7 @@ export function genericTools(): ToolDefinition[] {
         "Fetch a single resource's full state: non-secret fields and resolved outputs. Use get_resource_outputs to fetch sensitive outputs explicitly.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
@@ -907,6 +910,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("Output keys to resolve. Defaults to every output declared on the type."),
       },
       risk: "read",
+      openWorld: true,
       permission: "secrets:read",
       // A secret in the model's context is one prompt injection away from a
       // URL or an image, so resolving one is a decision for the user. Keys the
@@ -1021,6 +1025,7 @@ export function genericTools(): ToolDefinition[] {
       description: "Fetch dashboard-style key/value stats for a resource (when supported).",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
@@ -1058,6 +1063,7 @@ export function genericTools(): ToolDefinition[] {
         endMs: z.number().int().optional(),
       },
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const {
@@ -1107,6 +1113,7 @@ export function genericTools(): ToolDefinition[] {
         "Plain-text describe summary for a resource (status, events, related objects), kubectl-describe style. Only available for plugins that implement it.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
@@ -1152,6 +1159,7 @@ export function genericTools(): ToolDefinition[] {
           ),
       },
       risk: "write",
+      openWorld: true,
       permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, parentResourceId, sshKeyId } = input as {
@@ -1245,6 +1253,7 @@ export function genericTools(): ToolDefinition[] {
         "`unchecked` list; so the confirmation is an informed one.",
       inputSchema: resourceTargetSchema,
       risk: "destructive",
+      openWorld: true,
       permission: "resources:delete",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
@@ -1311,6 +1320,7 @@ export function genericTools(): ToolDefinition[] {
         actionId: z.string(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, actionId } =
@@ -1369,6 +1379,7 @@ export function genericTools(): ToolDefinition[] {
         "Read the full manifest (YAML/JSON) for a resource. Edits go through apply_manifest.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      openWorld: true,
       permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceId, parentResourceId } = input as {
@@ -1400,6 +1411,7 @@ export function genericTools(): ToolDefinition[] {
         manifest: z.string(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, manifest } =
@@ -1450,6 +1462,7 @@ export function genericTools(): ToolDefinition[] {
         pluginId: z.string(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:write",
       handler: async (input, auth) => {
         const {

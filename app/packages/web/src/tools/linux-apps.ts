@@ -95,6 +95,7 @@ export function linuxAppTools(): ToolDefinition[] {
         "List the graphical applications installed on a resource's host, as launchable {id, name}. The host provides the applications; Infrawrench brings the display.",
       inputSchema: { ...targetShape },
       risk: "read",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username } = input as {
@@ -134,6 +135,8 @@ export function linuxAppTools(): ToolDefinition[] {
           ),
       },
       risk: "write",
+      openWorld: true,
+      overwrites: true,
       requiresApproval: async (input) => isNonBlankString(input["exec"]),
       permission: PERMISSION,
       handler: async (input, auth) => {
@@ -180,6 +183,7 @@ export function linuxAppTools(): ToolDefinition[] {
         "List the windows currently open in the resource's app session, with their ids and titles.",
       inputSchema: { ...targetShape },
       risk: "read",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username } = input as {
@@ -216,6 +220,7 @@ export function linuxAppTools(): ToolDefinition[] {
         windowId: z.number().int().describe("Window id from launch_app or list_app_windows."),
       },
       risk: "read",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId } = input as {
@@ -250,6 +255,7 @@ export function linuxAppTools(): ToolDefinition[] {
         windowId: z.number().int().describe("Window id from launch_app or list_app_windows."),
       },
       risk: "read",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId } = input as {
@@ -287,6 +293,8 @@ export function linuxAppTools(): ToolDefinition[] {
         doubleClick: z.boolean().optional(),
       },
       risk: "write",
+      openWorld: true,
+      overwrites: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, x, y, button, doubleClick } = input as {
@@ -328,6 +336,7 @@ export function linuxAppTools(): ToolDefinition[] {
       },
       // Typing into a terminal app is running a command.
       risk: "destructive",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, text } = input as {
@@ -361,6 +370,7 @@ export function linuxAppTools(): ToolDefinition[] {
       },
       // Enter in a terminal app submits whatever was typed.
       risk: "destructive",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, keys } = input as {
@@ -396,6 +406,7 @@ export function linuxAppTools(): ToolDefinition[] {
         horizontal: z.boolean().optional(),
       },
       risk: "write",
+      openWorld: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, x, y, notches, horizontal } = input as {
@@ -435,6 +446,8 @@ export function linuxAppTools(): ToolDefinition[] {
         endSession: z.boolean().optional().describe("Close everything and end the host session."),
       },
       risk: "write",
+      openWorld: true,
+      overwrites: true,
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, endSession } = input as {

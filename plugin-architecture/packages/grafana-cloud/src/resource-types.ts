@@ -39,6 +39,8 @@ export const OrganizationResourceType = rt({
 export const StackResourceType = rt({
   name: "Stack",
   id: "stack",
+  apiDocsUrl:
+    "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api/#create-stack",
   description:
     "A Grafana Cloud stack: a hosted Grafana with metrics, logs, traces and profiles backends in one region. Create, rename, relabel, restart or delete it, and chart active series, ingest and discarded samples. Connect it with a service account token to list dashboards, alert rules, contact points and data sources; add a Synthetic Monitoring token to list checks.",
   fields: [

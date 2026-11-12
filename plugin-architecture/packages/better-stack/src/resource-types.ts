@@ -28,6 +28,7 @@ const MONITOR_TYPES = [
 export const MonitorResourceType = rt({
   name: "Monitor",
   id: "monitor",
+  apiDocsUrl: "https://betterstack.com/docs/uptime/api/create-a-new-monitor/",
   description:
     "A Better Stack Uptime monitor: an HTTP, keyword, ping, port, DNS or Playwright check run from up to four regions. Pause or resume it, edit what it checks and how often, and chart response times per region.",
   fields: [
@@ -151,6 +152,7 @@ export const HeartbeatGroupResourceType = rt({
 export const StatusPageResourceType = rt({
   name: "Status Page",
   id: "status-page",
+  apiDocsUrl: "https://betterstack.com/docs/uptime/api/create-a-new-status-page/",
   description:
     "A public (or password-protected) status page. Edit its company name, subdomain, custom domain, time zone, history length and whether it is published, and manage its sections and the monitors it shows.",
   fields: [
@@ -298,6 +300,7 @@ export const OnCallCalendarResourceType = rt({
 export const IncidentResourceType = rt({
   name: "Incident",
   id: "incident",
+  apiDocsUrl: "https://betterstack.com/docs/uptime/api/create-a-new-incident/",
   description:
     "An incident from a monitor, heartbeat, integration or opened by hand in the last 30 days. Acknowledge, resolve or delete it, or open one yourself.",
   fields: [

@@ -874,6 +874,13 @@ export interface ResourceTypeDefinition {
   displayName: string;
   pluralDisplayName: string;
   description: string;
+  /**
+   * The provider's API reference for the call that creates this type (an
+   * `https://` page, deep-linked to the endpoint where the provider has one).
+   * The type's generated MCP and chat create tool cites it in its description,
+   * so a model can check field semantics against the provider's own docs.
+   */
+  apiDocsUrl?: string;
   fields: FieldDefinition[];
   outputs: ResourceOutput[];
   /**

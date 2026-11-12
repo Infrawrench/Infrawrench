@@ -222,6 +222,7 @@ export const WorkspaceResourceType = rt({
 export const RunResourceType = rt({
   name: "Run",
   id: "run",
+  apiDocsUrl: "https://developer.hashicorp.com/terraform/cloud-docs/api-docs/run#create-a-run",
   parentTypeId: "workspace",
   showInSidebar: true,
   description:

@@ -241,6 +241,7 @@ export function costReportTools(): ToolDefinition[] {
         "Audit-logged.",
       inputSchema: { reportId: z.string(), ...costReportInputSchema.shape },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
@@ -278,6 +279,7 @@ export function costReportTools(): ToolDefinition[] {
         "appears in the list; its id, dashboards and numbers are untouched. Audit-logged.",
       inputSchema: { reportId: z.string(), folder: z.string().nullable() },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
@@ -360,6 +362,7 @@ export function costReportTools(): ToolDefinition[] {
         folder: z.string().nullable(),
       },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");

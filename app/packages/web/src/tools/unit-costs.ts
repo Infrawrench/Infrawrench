@@ -280,6 +280,7 @@ export function unitCostTools(): ToolDefinition[] {
         ...businessMetricInputSchema.shape,
       },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
@@ -336,6 +337,7 @@ export function unitCostTools(): ToolDefinition[] {
           .max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
       },
       risk: "write",
+      overwrites: true,
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
@@ -535,6 +537,7 @@ export function unitCostTools(): ToolDefinition[] {
         enabled: z.boolean().optional(),
       },
       risk: "write",
+      overwrites: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const denied = await denyUnlessImporterWrite(auth);
@@ -582,6 +585,7 @@ export function unitCostTools(): ToolDefinition[] {
         to: isoDay.optional(),
       },
       risk: "write",
+      overwrites: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const denied = await denyUnlessImporterWrite(auth);

@@ -215,6 +215,7 @@ export const NotifierResourceType = rt({
 export const DashboardResourceType = rt({
   name: "Dashboard",
   id: "dashboard",
+  apiDocsUrl: "https://axiom.co/docs/restapi/endpoints/createDashboard",
   description:
     "An Axiom dashboard of APL and MPL charts. Rename it or change its description, create an empty one, open it in Axiom, or delete it.",
   fields: [
@@ -281,6 +282,7 @@ export const StarredQueryResourceType = rt({
 export const AnnotationResourceType = rt({
   name: "Annotation",
   id: "annotation",
+  apiDocsUrl: "https://axiom.co/docs/restapi/endpoints/createAnnotation",
   description:
     "An annotation: a deploy or other event Axiom marks on the charts of the datasets it names. Add one by hand, or edit its title, description and link.",
   fields: [

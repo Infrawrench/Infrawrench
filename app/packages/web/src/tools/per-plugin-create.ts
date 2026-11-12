@@ -70,6 +70,17 @@ function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTyp
   return shape;
 }
 
+/**
+ * The type's description, then the provider's API reference for the create
+ * call when the type declares one (`ResourceTypeDefinition.apiDocsUrl`).
+ */
+function withApiDocs(description: string, provider: string, apiDocsUrl: string | undefined) {
+  if (!apiDocsUrl) return description;
+  const text = description.trim();
+  const sentence = text === "" || /[.!?]$/.test(text) ? text : `${text}.`;
+  return `${sentence} ${provider} API reference: ${apiDocsUrl}`.trim();
+}
+
 export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
   const plugins = await loadPlugins();
   const out: ToolDefinition[] = [];
@@ -88,7 +99,7 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
         description:
           `Create a new ${type.displayName} via the ${loaded.plugin.manifest.displayName} plugin. ` +
           `Pass the connected accountId plus the type's fields. ` +
-          (type.description ?? ""),
+          withApiDocs(type.description ?? "", loaded.plugin.manifest.displayName, type.apiDocsUrl),
         inputSchema: inputSchemaForType(type),
         risk: "write",
         permission: "resources:write",

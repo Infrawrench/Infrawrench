@@ -4,6 +4,7 @@ export const NetlifyBuildHookResourceType = rt({
   name: "Build Hook",
   pinnable: false,
   id: "netlify-build-hook",
+  apiDocsUrl: "https://open-api.netlify.com/#tag/buildHook/operation/createSiteBuildHook",
   description: "A build hook that triggers deploys via a unique URL",
   fields: [
     f("title", "Title"),

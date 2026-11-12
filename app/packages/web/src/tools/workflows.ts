@@ -235,6 +235,7 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Secret description and secure-prompt guidance."),
       },
       risk: "write",
+      overwrites: true,
       permission: "secrets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "secrets:write");
@@ -596,6 +597,7 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
+      overwrites: true,
       // Saved source runs unattended once a trigger fires (a cron within the
       // minute), so anything that changes what runs or when it runs waits for
       // approval exactly like run_workflow. Name, description, metrics, and
@@ -728,6 +730,7 @@ export function workflowTools(): ToolDefinition[] {
       // arbitrary user code that can, so it gets the same confirmation as
       // invoke_action / apply_manifest.
       risk: "destructive",
+      openWorld: true,
       permission: "workflows:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "workflows:write");

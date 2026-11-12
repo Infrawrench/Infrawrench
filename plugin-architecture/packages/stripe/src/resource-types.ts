@@ -107,6 +107,7 @@ export const ConnectedAccountResourceType = rt({
 export const WebhookEndpointResourceType = rt({
   name: "Webhook Endpoint",
   id: WEBHOOK_ENDPOINT,
+  apiDocsUrl: "https://docs.stripe.com/api/webhook_endpoints/create",
   description:
     "A URL Stripe posts events to. Create one with an event picker, change its URL, description and events, enable or disable it, or delete it. The signing secret is kept as a sensitive output when the endpoint is created here, because Stripe only returns it once.",
   fields: [
@@ -212,6 +213,7 @@ export const EventDestinationResourceType = rt({
 export const ProductResourceType = rt({
   name: "Product",
   id: PRODUCT,
+  apiDocsUrl: "https://docs.stripe.com/api/products/create",
   description:
     "Something you sell. Create, edit, archive and unarchive it; its prices are listed underneath. A product that has prices cannot be deleted, only archived.",
   fields: [

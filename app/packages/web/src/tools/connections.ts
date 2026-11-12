@@ -127,6 +127,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "read",
+      openWorld: true,
       requiresApproval: (input, auth) => sqlQueryNeedsApproval(input, auth.organizationId),
       permission: "resources:execute",
       handler: async (input, auth) => {
@@ -188,6 +189,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, sql, params, resourceId, resourceTypeId, pluginId, parentResourceId } =
@@ -274,6 +276,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "read",
+      openWorld: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, resourceId, pluginId, parentResourceId } = input as {
@@ -315,6 +318,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, command, args, pluginId, parentResourceId } = input as {
@@ -363,6 +367,7 @@ export function connectionTools(): ToolDefinition[] {
         params: z.record(z.string(), z.unknown()).optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, op, params } = input as {
@@ -402,15 +407,23 @@ export function connectionTools(): ToolDefinition[] {
       name: "ssh_exec",
       title: "Run SSH command",
       description:
-        "Execute a single command on a remote host via SSH. Returns stdout. For plugins that natively expose SSH (Fly machines, Hetzner servers), the plugin's getSshConfig is used and no key id is needed. Otherwise pass sshKeyId (see list_ssh_keys) + sshHost + sshUsername. Audit-logged.",
+        "Execute a single command on a remote host via SSH. Returns stdout. For plugins that natively expose SSH (Fly machines, Hetzner servers), the plugin's getSshConfig is used and no key id is needed. Otherwise pass sshKeyId (see list_ssh_keys) + sshHost + sshUsername. The host's key must be trusted first (see trust_ssh_host and https://infrawrench.com/docs/team-and-billing/ssh-host-keys/); the command runs as `ssh` would run it (https://man.openbsd.org/ssh.1). Audit-logged.",
       inputSchema: {
-        accountId: z.string(),
-        command: z.string(),
-        sshKeyId: z.string().optional(),
-        sshHost: z.string().optional(),
-        sshUsername: z.string().optional(),
+        accountId: z
+          .string()
+          .describe("Connected account the host belongs to (see list_accounts)."),
+        command: z.string().describe("One shell command, run by the remote user's login shell."),
+        sshKeyId: z
+          .string()
+          .optional()
+          .describe(
+            "Organization SSH key id (see list_ssh_keys). Omit for plugins with native SSH.",
+          ),
+        sshHost: z.string().optional().describe("Hostname or IP, when using sshKeyId."),
+        sshUsername: z.string().optional().describe("Remote user, when using sshKeyId."),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "resources:execute",
       // `sshHost` is whatever the caller types, so pinning the account to one
       // provider does not pin where the command runs.
@@ -507,6 +520,7 @@ export function connectionTools(): ToolDefinition[] {
         prefix: z.string(),
       },
       risk: "read",
+      openWorld: true,
       permission: "storage:read",
       handler: async (input, auth) => {
         const { accountId, bucket, prefix } = input as {
@@ -532,6 +546,7 @@ export function connectionTools(): ToolDefinition[] {
         key: z.string(),
       },
       risk: "write",
+      openWorld: true,
       permission: "storage:write",
       handler: async (input, auth) => {
         const { accountId, bucket, key } = input as {
@@ -566,6 +581,7 @@ export function connectionTools(): ToolDefinition[] {
         key: z.string(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "storage:write",
       handler: async (input, auth) => {
         const { accountId, bucket, key } = input as {
@@ -602,6 +618,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "read",
+      openWorld: true,
       permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
@@ -638,6 +655,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, versionId, parentResourceId } =
@@ -691,6 +709,7 @@ export function connectionTools(): ToolDefinition[] {
       // A new version becomes the secret's active value: every consumer that
       // reads "latest" picks it up, so a bad rotation is a production outage.
       risk: "destructive",
+      openWorld: true,
       permission: "secrets:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, value, parentResourceId } =
@@ -743,6 +762,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "secrets:write",
       handler: async (input, auth) => {
         const {
@@ -804,6 +824,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      openWorld: true,
       permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, formatId, parentResourceId } =

@@ -59,6 +59,7 @@ export const ClusterResourceType = rt({
 export const MountResourceType = rt({
   name: "Secrets Engine",
   id: "vault-mount",
+  apiDocsUrl: "https://developer.hashicorp.com/vault/api-docs/system/mounts#enable-secrets-engine",
   description:
     "A mounted secrets engine (KV, PKI, Transit, database, cloud credentials…): type, version, lease TTLs and visibility. Enable a new engine, tune it, or disable it (which deletes its data).",
   fields: [
@@ -99,6 +100,7 @@ export const MountResourceType = rt({
 export const KvSecretResourceType = rt({
   name: "KV Secret",
   id: "vault-kv-secret",
+  apiDocsUrl: "https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2#create-update-secret",
   parentTypeId: "vault-mount",
   showInSidebar: true,
   pinnable: false,
@@ -141,6 +143,7 @@ export const KvSecretResourceType = rt({
 export const AuthMethodResourceType = rt({
   name: "Auth Method",
   id: "vault-auth-method",
+  apiDocsUrl: "https://developer.hashicorp.com/vault/api-docs/system/auth#enable-auth-method",
   description:
     "An enabled auth method (AppRole, OIDC, Kubernetes, userpass, LDAP, cloud IAM…): its path, type, token TTLs and token type. Enable one, tune it, or disable it (which revokes every token it issued).",
   fields: [
@@ -336,6 +339,7 @@ export const TokenResourceType = rt({
 export const AuditDeviceResourceType = rt({
   name: "Audit Device",
   id: "vault-audit-device",
+  apiDocsUrl: "https://developer.hashicorp.com/vault/api-docs/system/audit#enable-audit-device",
   description:
     "An audit device (file, syslog or socket) Vault writes every request and response to. Enable one or disable it.",
   fields: [

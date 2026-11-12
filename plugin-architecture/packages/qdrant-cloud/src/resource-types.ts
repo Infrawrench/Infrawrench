@@ -42,6 +42,7 @@ export const REBALANCE_STRATEGIES = [
 export const ClusterResourceType = rt({
   name: "Cluster",
   id: "cluster",
+  apiDocsUrl: "https://qdrant.tech/documentation/cloud-api/",
   description: "A Qdrant database cluster in Qdrant Cloud (managed or hybrid)",
   fields: [
     f("name", "Name", {

@@ -242,6 +242,8 @@ export const ApiKeyResourceType = rt({
 export const WebhookResourceType = rt({
   name: "Domain Webhook",
   id: "mailgun-webhook",
+  apiDocsUrl:
+    "https://documentation.mailgun.com/docs/mailgun/api-reference/send/mailgun/domain-webhooks/post-v4-domains--domain--webhooks",
   description:
     "A URL Mailgun posts a domain's events to (delivered, opened, clicked, failures, complaints, unsubscribes). Change its events, or create and delete webhooks.",
   fields: [

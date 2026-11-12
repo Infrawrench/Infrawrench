@@ -12,6 +12,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MistralBatchJobResourceType = rt({
   name: "Batch Job",
   id: "mistral-batch-job",
+  apiDocsUrl:
+    "https://docs.mistral.ai/api/endpoint/batch#operation-jobs_api_routes_batch_create_batch_job",
   description: "An asynchronous batch inference job on the Mistral platform",
   fields: [
     f("jobId", "Job ID"),

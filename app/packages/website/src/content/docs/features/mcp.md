@@ -133,6 +133,8 @@ Every tool call that changes something (`create_resource`, `delete_resource`, `i
 
 Agent credentials (`iwa_`) are limited to their permissions on every tool, and an agent only sees the tools it can use. An agent created by a [connected platform](./agent-links.md) may also be limited to some providers. Its calls must then name a provider (a plugin, account or resource) it's allowed to use.
 
+Every tool declares MCP annotations: `readOnlyHint` on tools that only read, `destructiveHint` on tools that delete, overwrite or run commands, and `openWorldHint` on tools that reach your provider accounts, hosts or GitHub rather than only Infrawrench's own data. Clients that read them can skip prompts for reads and always ask before destructive calls.
+
 The protocol has no confirmation step for destructive actions. That's up to your client. Claude Desktop and Cursor ask permission before each tool call by default, and we recommend keeping those prompts on, at least for tools that make changes.
 
 `write_workflow_secret` only handles metadata over MCP. It has no value argument, so a password can't leak into model context or client logs. It creates or updates the named secret. Set its value in Infrawrench's workflow editor or the secure in-chat password prompt, then use the returned id with `write_workflow`.

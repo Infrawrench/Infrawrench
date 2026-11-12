@@ -259,6 +259,7 @@ export const ContextVariableResourceType = rt({
 export const PolicyResourceType = rt({
   name: "Policy",
   id: "policy",
+  apiDocsUrl: "https://docs.spacelift.io/integrations/api#view-the-graphql-schema",
   description:
     "A Rego policy (plan, approval, trigger, push, login and more). Edit its body in the Policy tab, its name, description and labels under Edit, attach it to a stack or detach it, create or delete one.",
   fields: [

@@ -223,6 +223,7 @@ export const PrivateLocationResourceType = rt({
 export const DashboardResourceType = rt({
   name: "Dashboard",
   id: "dashboard",
+  apiDocsUrl: "https://www.checklyhq.com/docs/api-reference/dashboards/create-a-dashboard",
   description:
     "A public or private Checkly dashboard showing the checks with its tags. Edit its header, description, subdomain, custom domain, tags and refresh rate.",
   fields: [

@@ -43,6 +43,8 @@ export const TenancyResourceType = rt({
 
 export const CompartmentResourceType = rt({
   id: "compartment",
+  apiDocsUrl:
+    "https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/Compartment/CreateCompartment",
   name: "Compartment",
   description:
     "An OCI compartment: the folder every resource, policy and budget is scoped to. Compartments nest up to six levels deep.",

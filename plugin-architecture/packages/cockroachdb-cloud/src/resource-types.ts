@@ -51,6 +51,7 @@ export const OrganizationType = rt({
 export const FolderType = rt({
   name: "Folder",
   id: "crdb-folder",
+  apiDocsUrl: "https://docs.cockroachlabs.com/docs/api/cloud/v1/folders/create-a-folder",
   description: "A folder that groups clusters (and other folders) for access control",
   fields: [
     f("name", "Name"),

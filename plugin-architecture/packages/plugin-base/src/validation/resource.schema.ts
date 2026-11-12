@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
-import { Int, NonEmpty, Positive, PositiveInt, Url, rule } from "./primitives.js";
+import { Int, NonEmpty, Positive, PositiveInt, Url, httpsUrl, rule } from "./primitives.js";
 
 export const fieldDefinitionSchema = Schema.Struct({
   key: NonEmpty,
@@ -556,6 +556,7 @@ export const resourceTypeDefinitionSchema = Schema.Struct({
   displayName: NonEmpty,
   pluralDisplayName: NonEmpty,
   description: NonEmpty,
+  apiDocsUrl: Schema.optional(httpsUrl("apiDocsUrl must be an https:// URL")),
   fields: Schema.Array(fieldDefinitionSchema),
   outputs: Schema.Array(resourceOutputSchema),
   dependsOn: Schema.optional(

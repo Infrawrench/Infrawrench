@@ -679,7 +679,8 @@ export function costTools(): ToolDefinition[] {
         "effective date or the ECB publication used, which is earlier than `date` over a " +
         "weekend or holiday) and a plain-English `explanation`. `rate: null` means no rate " +
         "applies and that currency's spend is shown unconverted. Quote the source and date " +
-        "whenever you state a converted amount.",
+        "whenever you state a converted amount. The automatic rates are the ECB's euro " +
+        "reference rates: https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
       inputSchema: {
         from: z.string().regex(/^[A-Za-z]{3}$/, "expected a three-letter currency code"),
         to: z
@@ -871,6 +872,7 @@ export function costTools(): ToolDefinition[] {
         "Alert history is kept. Audit-logged.",
       inputSchema: { budgetId: z.string(), ...budgetInputSchema.shape },
       risk: "write",
+      overwrites: true,
       permission: "budgets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:write");

@@ -356,6 +356,7 @@ export const BranchType = rt({
 export const FunctionType = rt({
   name: "Edge Function",
   id: "supabase-function",
+  apiDocsUrl: "https://supabase.com/docs/reference/api/v1-deploy-a-function",
   description: "A Supabase Edge Function: a Deno function served at /functions/v1/{slug}",
   fields: [
     f("name", "Name"),

@@ -101,6 +101,7 @@ export const SessionResourceType = rt({
 export const PlaybookResourceType = rt({
   name: "Playbook",
   id: "playbook",
+  apiDocsUrl: "https://docs.devin.ai/api-reference/v3/playbooks/post-organizations-playbooks",
   description:
     "A reusable Devin playbook: the instructions a session follows, the macro that invokes it and the structured output it produces. Create, edit or delete one, see how many sessions ran it and how many of their pull requests merged, and chart both.",
   fields: [
@@ -133,6 +134,7 @@ export const PlaybookResourceType = rt({
 export const KnowledgeNoteResourceType = rt({
   name: "Knowledge Note",
   id: "knowledge-note",
+  apiDocsUrl: "https://docs.devin.ai/api-reference/v3/notes/post-organizations-knowledge-notes",
   description:
     "A piece of Devin knowledge: context Devin recalls when its trigger matches what it is working on. Create, edit, enable, disable or delete a note.",
   fields: [

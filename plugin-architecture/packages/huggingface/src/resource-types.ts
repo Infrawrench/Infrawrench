@@ -10,6 +10,7 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 export const InferenceEndpointType = rt({
   name: "Inference Endpoint",
   id: "hf-inference-endpoint",
+  apiDocsUrl: "https://huggingface.co/docs/inference-endpoints/api_reference",
   description:
     "A dedicated Hugging Face Inference Endpoint: a model served on reserved CPU, GPU or Inferentia compute with autoscaling",
   fields: [

@@ -331,6 +331,7 @@ export const SniEndpointResourceType = rt({
 export const LogDrainResourceType = rt({
   name: "Log Drain",
   id: "log-drain",
+  apiDocsUrl: "https://devcenter.heroku.com/articles/platform-api-reference#log-drain-create",
   description: "A syslog or HTTPS endpoint receiving an app's logs",
   parentTypeId: "app",
   fields: [

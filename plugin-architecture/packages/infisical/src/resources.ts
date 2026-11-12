@@ -80,6 +80,7 @@ export const EnvironmentResourceType = rt({
 export const FolderResourceType = rt({
   name: "Folder",
   id: "folder",
+  apiDocsUrl: "https://infisical.com/docs/api-reference/endpoints/folders/create",
   description:
     "A secrets folder inside an environment. Folders nest, and syncs and imports point at a folder path.",
   parentTypeId: "environment",
@@ -102,6 +103,7 @@ export const FolderResourceType = rt({
 export const SecretResourceType = rt({
   name: "Secret",
   id: "secret",
+  apiDocsUrl: "https://infisical.com/docs/api-reference/endpoints/secrets/create",
   description:
     "A shared secret in an environment and folder. Values are never synced into the inventory; they are fetched on demand as a sensitive output.",
   parentTypeId: "environment",

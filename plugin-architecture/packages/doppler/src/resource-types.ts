@@ -271,6 +271,7 @@ export const SyncResourceType = rt({
 export const WebhookResourceType = rt({
   name: "Webhook",
   id: "doppler-webhook",
+  apiDocsUrl: "https://docs.doppler.com/reference/webhooks-add",
   parentTypeId: "doppler-project",
   pinnable: false,
   description:

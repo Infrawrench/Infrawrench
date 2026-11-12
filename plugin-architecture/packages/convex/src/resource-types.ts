@@ -313,6 +313,7 @@ export const CustomDomainType = rt({
 export const LogStreamType = rt({
   name: "Log Stream",
   id: "convex-log-stream",
+  apiDocsUrl: "https://docs.convex.dev/deployment-api/create-log-stream",
   description:
     "A deployment log stream (Datadog, Axiom, Sentry, PostHog, a webhook) or an S3 table export",
   fields: [

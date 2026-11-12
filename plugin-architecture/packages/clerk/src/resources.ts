@@ -334,6 +334,7 @@ export const BlocklistIdentifierResourceType = rt({
 export const InvitationResourceType = rt({
   name: "Invitation",
   id: "invitation",
+  apiDocsUrl: "https://clerk.com/docs/reference/backend-api/tag/invitations/POST/invitations",
   description: "A pending invitation to sign up to the application.",
   fields: [
     f("email", "Email", { editable: false }),
@@ -352,6 +353,7 @@ export const InvitationResourceType = rt({
 export const RedirectUrlResourceType = rt({
   name: "Redirect URL",
   id: "redirect-url",
+  apiDocsUrl: "https://clerk.com/docs/reference/backend-api/tag/redirect-urls/POST/redirect_urls",
   description: "A whitelisted redirect URL for native and mobile OAuth flows.",
   fields: [
     f("url", "URL", { editable: false }),

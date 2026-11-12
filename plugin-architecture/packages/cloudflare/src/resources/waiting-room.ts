@@ -4,6 +4,7 @@ export const WaitingRoomResourceType = rt({
   name: "Waiting Room",
   pinnable: false,
   id: "waiting-room",
+  apiDocsUrl: "https://developers.cloudflare.com/api/resources/waiting_rooms/methods/create/",
   description: "A Cloudflare Waiting Room for managing traffic surges",
   fields: [
     f("name", "Name"),

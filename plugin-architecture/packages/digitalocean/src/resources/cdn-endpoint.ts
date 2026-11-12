@@ -7,6 +7,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const CdnEndpointResourceType = rt({
   name: "CDN Endpoint",
   id: "cdn-endpoint",
+  apiDocsUrl:
+    "https://docs.digitalocean.com/reference/api/reference/cdn-endpoints/#cdn_create_endpoint",
   description: "A DigitalOcean Spaces CDN endpoint.",
   fields: [
     f("origin", "Origin", {

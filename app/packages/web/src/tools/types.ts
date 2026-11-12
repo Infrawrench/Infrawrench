@@ -72,6 +72,22 @@ export interface ToolDefinition {
   inputSchema: Record<string, ZodTypeAny>;
   risk: ToolRisk;
   /**
+   * True when a call reaches a system outside Infrawrench itself: a connected
+   * provider account, a host over SSH, a GitHub repository. Tools that only
+   * read or write Infrawrench's own data (costs, budgets, reports) leave it
+   * unset. Becomes the MCP `openWorldHint` (see `./annotations`); the
+   * generated per-plugin create tools get it from `pluginId`.
+   */
+  openWorld?: boolean;
+  /**
+   * True on a `write` tool that changes or replaces something that already
+   * exists (a full-replace update, a move, a save over earlier source, input
+   * into a running app) rather than only adding. Becomes the MCP
+   * `destructiveHint`; `destructive` tools have it regardless. Annotation-only:
+   * the chat approval gate still keys off `risk` and `requiresApproval`.
+   */
+  overwrites?: boolean;
+  /**
    * Per-call escalation for a tool whose risk depends on its input or its
    * target. When it resolves true the chat surface queues the call for
    * approval exactly as it would a `destructive` tool; a throw is treated as

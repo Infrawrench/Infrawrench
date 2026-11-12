@@ -3,6 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const BatchResourceType = rt({
   name: "Batch Job",
   id: "batch",
+  apiDocsUrl: "https://docs.together.ai/reference/batch-create",
   description: "An asynchronous batch job over an uploaded JSONL request file",
   fields: [
     f("batchId", "Batch ID"),

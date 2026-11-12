@@ -152,6 +152,7 @@ export function customGraphTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
+      overwrites: true,
       // Graph source can run `resource.ssh(cmd)` with the saving user's
       // permissions every time a dashboard renders it, so saving source waits
       // for approval. Renaming or redescribing stays auto-run.

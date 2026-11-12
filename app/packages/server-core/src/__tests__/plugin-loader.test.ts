@@ -129,6 +129,25 @@ describe("accountRoot declarations", () => {
 });
 
 /**
+ * `apiDocsUrl` is quoted into the type's MCP create tool description, which
+ * the connector directory reads, so it must be an absolute https link and
+ * only means something on a type that can be created.
+ */
+describe("apiDocsUrl declarations", () => {
+  it("are https links on creatable types", async () => {
+    const loaded = await loader.loadPlugins();
+    for (const { plugin } of loaded) {
+      for (const rt of plugin.resourceTypes) {
+        if (rt.apiDocsUrl === undefined) continue;
+        const where = `${plugin.manifest.id}/${rt.id}`;
+        expect(new URL(rt.apiDocsUrl).protocol, where).toBe("https:");
+        expect(rt.supportsCreate, `${where} has apiDocsUrl but no create`).toBe(true);
+      }
+    }
+  });
+});
+
+/**
  * `dependsOn.targetTypeId` / `targetPluginId` are plain strings: nothing in
  * the type system checks that they name a type that exists. A typo doesn't
  * fail to compile, it just silently produces no edge on the dependency graph,

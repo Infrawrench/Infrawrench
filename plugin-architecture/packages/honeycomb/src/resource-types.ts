@@ -372,6 +372,7 @@ export const BurnAlertResourceType = rt({
 export const BoardResourceType = rt({
   name: "Board",
   id: "board",
+  apiDocsUrl: "https://docs.honeycomb.io/api/boards/createboard",
   description:
     "A Honeycomb board: a collection of saved queries, SLOs and text panels. Rename it or change its description, create an empty one, manage its saved views, or delete it.",
   fields: [
@@ -417,6 +418,7 @@ export const BoardViewResourceType = rt({
 export const MarkerResourceType = rt({
   name: "Marker",
   id: "marker",
+  apiDocsUrl: "https://docs.honeycomb.io/api/markers/createmarker",
   description:
     "A marker: a deploy, feature flag change or other event drawn on Honeycomb's graphs. Add one by hand, or edit its message, type and link.",
   fields: [
@@ -499,6 +501,7 @@ export const SavedQueryResourceType = rt({
 export const RecipientResourceType = rt({
   name: "Recipient",
   id: "recipient",
+  apiDocsUrl: "https://docs.honeycomb.io/api/recipients/createrecipient",
   description:
     "Where triggers and burn alerts send notifications: an email address, Slack channel, PagerDuty service, Microsoft Teams workflow or webhook. Recipients are shared by every environment on the team.",
   fields: [

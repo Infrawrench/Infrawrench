@@ -213,6 +213,7 @@ export const BucketResourceType = rt({
 
 export const LifecycleRuleResourceType = rt({
   id: "lifecycle-rule",
+  apiDocsUrl: "https://www.backblaze.com/apidocs/b2-update-bucket",
   name: "Lifecycle Rule",
   description:
     "Hides and deletes file versions by age for files whose names start with a prefix, and cancels abandoned large-file uploads.",

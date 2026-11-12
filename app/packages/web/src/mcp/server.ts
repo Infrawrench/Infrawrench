@@ -1,8 +1,9 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import { z, type ZodTypeAny } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
+import { toolAnnotations } from "../tools/annotations";
+import { toolInputJsonSchema } from "../tools/json-schema";
 import {
   authorizeToolCall,
   runToolHandler,
@@ -38,22 +39,12 @@ const ORG_ID_PARAM = z
  * Converts a registry tool's Zod shape (Zod 3, shared with the chat agent) to
  * the Standard Schema the v2 SDK's `registerTool` takes. The SDK is pinned to
  * Zod 4, so the shape cannot be handed over directly; instead it goes through
- * JSON Schema: the same conversion, with the same trimming, that
- * `toolToProvider` in src/chat/agent.ts does for the Anthropic API. The SDK's
- * built-in validator then enforces it on 2026-era and legacy calls alike.
+ * JSON Schema: the same conversion the chat agent sends the model APIs
+ * (`toolInputJsonSchema`). The SDK's built-in validator then enforces it on
+ * 2026-era and legacy calls alike.
  */
 function toInputSchema(shape: Record<string, ZodTypeAny>) {
-  const schema = zodToJsonSchema(z.object(shape), { $refStrategy: "none" }) as {
-    properties?: Record<string, unknown>;
-    required?: string[];
-  };
-  const properties = schema.properties ?? {};
-  const required = schema.required ?? [];
-  return fromJsonSchema<Record<string, unknown>>({
-    type: "object",
-    properties,
-    ...(required.length > 0 ? { required } : {}),
-  } as JsonSchemaType);
+  return fromJsonSchema<Record<string, unknown>>(toolInputJsonSchema(shape) as JsonSchemaType);
 }
 
 /**
@@ -123,6 +114,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     "list_organizations",
     {
       title: "List organizations",
+      annotations: toolAnnotations({ title: "List organizations", risk: "read" }),
       description:
         "Lists the organizations you belong to, with the id to pass as `org_id` on any " +
         "other tool. The entry marked `default: true` is used when `org_id` is omitted.",
@@ -153,6 +145,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
       "trial_workspace_status",
       {
         title: "Trial workspace status",
+        annotations: toolAnnotations({ title: "Trial workspace status", risk: "read" }),
         description:
           "How long this trial workspace has left before it is deleted, and whether a person " +
           "has claimed it yet. Check this before doing substantial work, and tell the user " +
@@ -204,6 +197,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
       tool.name,
       {
         title: tool.title,
+        annotations: toolAnnotations(tool),
         description: tool.description,
         inputSchema: toInputSchema({ ...tool.inputSchema, org_id: ORG_ID_PARAM }),
         ...(viewMeta ? { _meta: viewMeta } : {}),

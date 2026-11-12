@@ -618,6 +618,7 @@ export const ObjectStorageResourceType = rt({
   name: "Object Storage",
   plural: "Object Storage Services",
   id: "object-storage",
+  apiDocsUrl: "https://developers.upcloud.com/1.3/21-managed-object-storage/#create-service",
   description: "An UpCloud Managed Object Storage service (S3-compatible)",
   fields: [
     f("name", "Name"),

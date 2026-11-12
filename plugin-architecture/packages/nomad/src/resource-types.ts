@@ -223,6 +223,7 @@ export const DeploymentResourceType = rt({
 export const VariableResourceType = rt({
   name: "Variable",
   id: "nomad-variable",
+  apiDocsUrl: "https://developer.hashicorp.com/nomad/api-docs/variables/variables#create-variable",
   description:
     "A Nomad variable: an encrypted set of key-value items at a path, readable by jobs through templates. The Items tab reveals and edits them; create or delete a variable.",
   fields: [

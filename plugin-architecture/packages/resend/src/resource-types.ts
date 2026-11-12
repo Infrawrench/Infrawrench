@@ -176,6 +176,7 @@ export const ApiKeyResourceType = rt({
 export const WebhookResourceType = rt({
   name: "Webhook",
   id: WEBHOOK,
+  apiDocsUrl: "https://resend.com/docs/api-reference/webhooks/create-webhook",
   description:
     "An endpoint Resend posts email, contact, domain and suppression events to. Create it with an event picker, change its URL and events, enable or disable it, rotate its signing secret, and see recent deliveries with their attempts; replay a failed one from the list.",
   fields: [

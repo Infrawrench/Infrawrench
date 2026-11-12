@@ -143,6 +143,7 @@ export function githubIssueTools(): ToolDefinition[] {
         monthlyCost: z.object({ amount: z.number(), currency: z.string().length(3) }).optional(),
       },
       risk: "write",
+      openWorld: true,
       permission: "github-issues:write",
       handler: async (input, auth) => {
         const i = input as unknown as Parameters<typeof fileFindingToGithub>[1];
@@ -167,6 +168,7 @@ export function githubIssueTools(): ToolDefinition[] {
         "orphan: remove the resource block), or the reason the change is not mechanical.",
       inputSchema: pullRequestInput,
       risk: "read",
+      openWorld: true,
       permission: "github-issues:write",
       handler: async (input, auth) => {
         try {
@@ -190,6 +192,7 @@ export function githubIssueTools(): ToolDefinition[] {
         "pull requests. Never merged automatically; a person reviews it.",
       inputSchema: pullRequestInput,
       risk: "write",
+      openWorld: true,
       permission: "github-issues:write",
       handler: async (input, auth) => {
         try {

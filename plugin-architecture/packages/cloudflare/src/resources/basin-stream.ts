@@ -3,6 +3,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const BasinStreamResourceType = rt({
   name: "Basin Stream",
   id: "basin-stream",
+  apiDocsUrl:
+    "https://developers.cloudflare.com/api/resources/pipelines/subresources/streams/methods/create/",
   description:
     "A Cloudflare Basin Pipelines stream: a durable buffer that ingests events over HTTP or a Worker binding",
   fields: [

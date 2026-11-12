@@ -38,6 +38,7 @@ export const VoyageModelType = rt({
 export const VoyageBatchType = rt({
   name: "Batch",
   id: "voyage-batch",
+  apiDocsUrl: "https://docs.voyageai.com/reference/create-batch",
   plural: "Batches",
   description:
     "An asynchronous embedding or rerank batch processed within 12 hours at a 33% discount",

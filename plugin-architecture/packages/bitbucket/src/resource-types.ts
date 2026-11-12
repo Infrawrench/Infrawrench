@@ -317,6 +317,8 @@ const webhookPosture = (id: string) => [
 export const RepositoryWebhookResourceType = rt({
   name: "Repository Webhook",
   id: "repository-webhook",
+  apiDocsUrl:
+    "https://developer.atlassian.com/cloud/bitbucket/rest/api-group-repositories/#api-repositories-workspace-repo-slug-hooks-post",
   parentTypeId: "repository",
   description:
     "A repository webhook: URL, events, whether it is active and whether deliveries are signed. Create, edit, activate or deactivate, or delete it.",
@@ -333,6 +335,8 @@ export const RepositoryWebhookResourceType = rt({
 export const WorkspaceWebhookResourceType = rt({
   name: "Workspace Webhook",
   id: "workspace-webhook",
+  apiDocsUrl:
+    "https://developer.atlassian.com/cloud/bitbucket/rest/api-group-workspaces/#api-workspaces-workspace-hooks-post",
   parentTypeId: "workspace",
   description:
     "A workspace webhook, fired for events in every repository of the workspace. Create, edit, activate or deactivate, or delete it.",

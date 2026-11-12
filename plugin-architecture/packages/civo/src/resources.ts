@@ -717,6 +717,7 @@ export const DnsRecordResourceType = rt({
 export const ObjectStoreResourceType = rt({
   name: "Object Store",
   id: "object-store",
+  apiDocsUrl: "https://www.civo.com/api/object-stores#create-an-object-store",
   description: "A Civo Object Store (an S3-compatible bucket)",
   fields: [
     f("name", "Name", { editable: false }),

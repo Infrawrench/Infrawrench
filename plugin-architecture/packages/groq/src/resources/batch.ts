@@ -9,6 +9,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const GroqBatchResourceType = rt({
   name: "Batch",
   id: "groq-batch",
+  apiDocsUrl: "https://console.groq.com/docs/api-reference#batches-create",
   description: "An asynchronous batch inference job on GroqCloud",
   plural: "Batches",
   fields: [

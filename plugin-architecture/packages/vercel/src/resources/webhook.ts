@@ -4,6 +4,7 @@ export const VercelWebhookResourceType = rt({
   name: "Webhook",
   pinnable: false,
   id: "vercel-webhook",
+  apiDocsUrl: "https://vercel.com/docs/rest-api/reference/endpoints/webhooks/creates-a-webhook",
   description: "An account webhook that POSTs deployment, project, and domain events to a URL",
   fields: [
     f("url", "URL"),

@@ -3,6 +3,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const BasinSinkResourceType = rt({
   name: "Basin Sink",
   id: "basin-sink",
+  apiDocsUrl:
+    "https://developers.cloudflare.com/api/resources/pipelines/subresources/sinks/methods/create/",
   description:
     "A Cloudflare Basin Pipelines sink: where a pipeline writes, either a Basin Catalog (Iceberg) table or files in R2",
   fields: [

@@ -323,6 +323,7 @@ export const ElasticIpResourceType = rt({
 export const SksClusterResourceType = rt({
   name: "SKS Cluster",
   id: "sks-cluster",
+  apiDocsUrl: "https://openapi-v2.exoscale.com/operation/operation-create-sks-cluster",
   description: "An Exoscale Scalable Kubernetes Service cluster",
   fields: [
     f("name", "Name"),
@@ -640,6 +641,7 @@ export const DnsRecordResourceType = rt({
 export const BucketResourceType = rt({
   name: "SOS Bucket",
   id: "bucket",
+  apiDocsUrl: "https://community.exoscale.com/product/storage/object-storage/how-to/awscli/",
   description: "An Exoscale Simple Object Storage bucket",
   fields: [
     f("name", "Name", { editable: false }),

@@ -4,6 +4,7 @@ export const PsWebhookResourceType = rt({
   name: "Webhook",
   pinnable: false,
   id: "ps-webhook",
+  apiDocsUrl: "https://planetscale.com/docs/api/reference/create_webhook",
   description: "A PlanetScale database webhook delivering branch, deploy, and backup events",
   fields: [
     f("url", "URL"),

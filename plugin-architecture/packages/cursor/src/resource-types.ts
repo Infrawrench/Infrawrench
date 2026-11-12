@@ -240,6 +240,7 @@ export const DirectoryGroupResourceType = rt({
 export const RepoBlocklistResourceType = rt({
   name: "Repository Blocklist",
   id: "repo-blocklist",
+  apiDocsUrl: "https://cursor.com/docs/account/teams/admin-api#upsert-repo-blocklists",
   description:
     "Glob patterns of files Cursor will not index or send to models for a repository (for example .env files or a secrets directory). Create, edit the patterns, or delete.",
   fields: [

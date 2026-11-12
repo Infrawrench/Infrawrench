@@ -3,6 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const FolderResourceType = rt({
   name: "Folder",
   id: "folder",
+  apiDocsUrl: "https://cloudinary.com/documentation/admin_api_folders#create_folder",
   description: "An organizational folder in the Cloudinary media library",
   fields: [
     f("name", "Name", { editable: false }),

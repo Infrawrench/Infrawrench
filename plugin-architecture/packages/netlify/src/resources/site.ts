@@ -3,6 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const NetlifySiteResourceType = rt({
   name: "Site",
   id: "netlify-site",
+  apiDocsUrl: "https://open-api.netlify.com/#tag/site/operation/createSite",
   description:
     "A Netlify project (formerly site): static hosting with CI/CD, serverless functions, and edge network",
   fields: [
