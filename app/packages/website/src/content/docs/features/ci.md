@@ -46,6 +46,27 @@ Each job has its own check too, named after its pipeline and the event (**Test /
 
 Choosing accounts takes the `ci:write` permission; everyone in the organization can see runs (`ci:read`). See [Roles and permissions](../team-and-billing/roles-and-permissions.md).
 
+## Environments
+
+A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a bash script (`run:`) in an environment:
+
+| Environment        | What it has                                                  |
+| ------------------ | ------------------------------------------------------------ |
+| `env:bash@5`       | bash, coreutils, sed, grep and findutils                     |
+| `env:bash-node@24` | the same, plus `node` (Node 24 compatible), `npm` and `pnpm` |
+| `env:python@3.13`  | the same as `env:bash@5`, plus Python 3.13 with `pip`        |
+
+In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not, and `python -m venv` is not available: packages install into the job's own copy of Python. pip downloads while the job runs, so leave the job's network on (no `network: false`).
+
+```yaml
+jobs:
+  test:
+    using: env:python@3.13
+    run: |
+      pip install -r requirements.txt
+      pytest
+```
+
 ## Monorepos: a job per package
 
 In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:

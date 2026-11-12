@@ -8,7 +8,7 @@
 # is not formatted, tsc reports the type error).
 #
 #   builtins/test.sh                 gofmt, bash and tools (the default)
-#   builtins/test.sh typescript oxfmt bash-node
+#   builtins/test.sh typescript oxfmt bash-node python
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list.
@@ -22,8 +22,9 @@
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`, and x86_64 Linux to build its
 # Edge.js, see environments/edgejs/build.sh). SKIP_BUILD=1 publishes what is
-# already in dist/ instead of building. Needs: git, jq, and whatever the
-# named build scripts need.
+# already in dist/ instead of building. python installs packages from PyPI
+# and Wasmer's wheel index, so it needs the internet. Needs: git, jq, and
+# whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -43,11 +44,11 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/$name/build.sh"
       dirs=("$dist"/builtin/"$name"/*)
       ;;
-    bash | bash-node)
+    bash | bash-node | python)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          [[ "$env" == bash || "$env" == bash-node ]] && envs+=("$env")
+          case "$env" in bash | bash-node | python) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -59,7 +60,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, tools" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, tools" >&2
       exit 2
       ;;
   esac
@@ -69,7 +70,7 @@ done
 # The fixture repository: one directory per tool, each with something that
 # passes and something that must fail.
 repo="$SCRATCH/repo"
-mkdir -p "$repo"/go/{clean,dirty} "$repo"/ts/{ok,bad} "$repo"/js/{clean,dirty}
+mkdir -p "$repo"/go/{clean,dirty} "$repo"/ts/{ok,bad} "$repo"/js/{clean,dirty} "$repo"/py/{ok,bad}
 printf 'package main\n\nfunc main() {\n\tprintln(1)\n}\n' >"$repo/go/clean/main.go"
 printf 'package main\nfunc main(){\nprintln( 1 )}\n' >"$repo/go/dirty/main.go"
 for dir in ok bad; do
@@ -80,6 +81,13 @@ printf 'export const n: number = 1;\n' >"$repo/ts/ok/a.ts"
 printf "export const n: number = 'one';\n" >"$repo/ts/bad/a.ts"
 printf 'export const a = { b: 1 };\n' >"$repo/js/clean/a.js"
 printf 'export const a={b:1}\n' >"$repo/js/dirty/a.js"
+for dir in ok bad; do
+  printf 'def add(a, b):\n    return a + b\n' >"$repo/py/$dir/calc.py"
+done
+printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n' >"$repo/py/ok/test_calc.py"
+printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 6\n' >"$repo/py/bad/test_calc.py"
+# A repository's own addopts, which the environment's must not replace.
+printf '[pytest]\naddopts = -ra\n' >"$repo/py/ok/pytest.ini"
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
@@ -715,6 +723,53 @@ jobs:
       node /tmp/many.js
 YAML
       ;;
+    python)
+      cat <<'YAML'
+name: python
+jobs:
+  python-passes:
+    using: env:python@3.13
+    run: |
+      test "$(python --version)" = "Python 3.13.15"
+      test "$(python3 -c 'import sys; print(sys.version_info[:2])')" = "(3, 13)"
+      python -c 'import json, sqlite3, ssl, zlib; print(ssl.OPENSSL_VERSION)'
+  # A pure Python package and its dependencies from PyPI.
+  pip-passes:
+    using: env:python@3.13
+    timeout: 10m
+    run: |
+      pip install requests
+      python -c 'import requests; print(requests.__version__)'
+  # A compiled extension: a `wasix_wasm32` wheel from Wasmer's index, which
+  # pip only picks with the environment's defaults (build.sh).
+  wheel-passes:
+    using: env:python@3.13
+    timeout: 10m
+    run: |
+      pip install numpy
+      pip show numpy | grep -q '^Version: .*+wasix'
+      test "$(python -c 'import numpy; print(int(numpy.arange(5).sum()))')" = 10
+  # pytest's console script on PATH, with the repository's own addopts
+  # (`-ra`) kept beside the environment's.
+  pytest-passes:
+    using: env:python@3.13
+    cwd: /app/py/ok
+    timeout: 10m
+    run: |
+      pip install pytest
+      pytest
+  pytest-fails:
+    using: env:python@3.13
+    cwd: /app/py/bad
+    timeout: 10m
+    run: |
+      pip install pytest
+      pytest
+  raise-fails:
+    using: env:python@3.13
+    run: python -c 'raise SystemExit("expected")'
+YAML
+      ;;
   esac
 }
 
@@ -723,7 +778,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash/stat-missing-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/stat-missing-fails | python/pytest-fails | python/raise-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;

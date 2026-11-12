@@ -445,6 +445,7 @@ Environments:
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `bash@5`       | `wasmer/bash` 1.0.25 (GNU bash 5.1), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 |
 | `bash-node@24` | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                      |
+| `python@3.13`  | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                  |
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
@@ -610,6 +611,72 @@ and default environment come with it. Two kinds cannot be commands and are
 refused when the job starts: tools that use the tsc-host ABI
 (`builtin:typescript`, which reads files through its own host interface;
 run it as a job of its own) and tools whose manifest has default arguments.
+
+### Python
+
+`env:python@3.13` is CPython 3.13.15 built for WASIX, with pip, beside the
+tools of `env:bash@5`. It is Wasmer's `python/python` 3.13.20 (the package's
+version is Wasmer's own), which loads compiled extension modules at run
+time. `python`, `python3` and `pip` are commands, and the console scripts
+pip installs (`pytest`) are on `PATH`.
+
+```yaml
+test:
+  using: env:python@3.13
+  run: |
+    pip install -r requirements.txt
+    pytest
+```
+
+What `pip install` can install:
+
+- **Pure Python packages** from PyPI, wheels and source distributions
+  alike (`requests`, `pytest`, `docopt` from its sdist).
+- **Packages with compiled code that Wasmer's WASIX wheel index has**
+  (`https://python-registry.wasix.org/simple/`, about 220 projects with
+  `wasix_wasm32` wheels: numpy, pandas, scipy, pydantic-core,
+  cryptography, lxml, psycopg-binary, grpcio, duckdb, ...). pip looks there
+  as well as on PyPI.
+
+What it cannot:
+
+- **Build native code from source.** A job has no C compiler, so a package
+  with a C, C++ or Rust extension that the WASIX index lacks fails to
+  install.
+- **Make a virtual environment.** `python -m venv` fails (it cannot copy
+  the interpreter, which lives inside the package). Packages install into
+  the interpreter itself, which is the job's own copy; to keep a set apart,
+  `pip install --target <dir>` and `PYTHONPATH=<dir>`.
+
+pip and the tools it installs need these defaults, which the environment
+sets and a job's `env:` can override:
+
+| Variable                        | Value                                       | Why                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_PYTHON_HOST_PLATFORM`         | `wasix-wasm32`                              | The interpreter reports its platform as `wasi_0_0_0_wasm32`, under which pip takes none of the `wasix_wasm32` wheels and tries to build numpy and the like from source. |
+| `PIP_EXTRA_INDEX_URL`           | `https://python-registry.wasix.org/simple/` | The WASIX wheel index, next to PyPI.                                                                                                                                    |
+| `PIP_PREFER_BINARY`             | `1`                                         | Otherwise pip takes a newer sdist on PyPI over the index's wheel of the previous release, and fails to build it.                                                        |
+| `PIP_BREAK_SYSTEM_PACKAGES`     | `1`                                         | The interpreter is marked externally managed; installing into it is what a job wants.                                                                                   |
+| `PIP_ROOT_USER_ACTION`          | `ignore`                                    | A job runs as root, which pip warns about on every install.                                                                                                             |
+| `PIP_DISABLE_PIP_VERSION_CHECK` | `1`                                         | No request to PyPI for pip's own newest version.                                                                                                                        |
+| `PYTEST_ADDOPTS`                | `-p no:faulthandler`                        | pytest's faulthandler plugin cannot start ("Value too large for data type"). pytest adds this to a repository's own `addopts`; a job that sets its own must keep it.    |
+
+pip downloads when the job runs, over the job's [network](#networking), so
+a job that installs packages must not set `network: false`. Unlike the
+pnpm, Go and Cargo installers (`workspace.deps`), which fetch before the
+job and check every file against the lockfile, nothing checks what pip
+fetches beyond pip's own `--require-hashes`, and each job downloads its
+packages again. A verified pip installer is
+[#1015](https://github.com/Infrawrench/Infrawrench/issues/1015).
+
+`python -c` and `python - <<EOF` work, with two runner issues showing: an
+argument containing a newline arrives split at it
+([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)), so a
+multi-line `python -c` runs only its first line (put the code in a file);
+and every descriptor reads as a terminal
+([#1008](https://github.com/Infrawrench/Infrawrench/issues/1008)), so code
+read from standard input prints the interactive prompt as it runs, and
+tools print colour.
 
 ### Go and Rust
 
@@ -1142,6 +1209,7 @@ repository that has something to pass and something to fail for each tool.
 cargo build -p iwci
 bash builtins/test.sh                        # gofmt and bash
 bash builtins/test.sh typescript oxfmt       # needs their toolchains
+bash builtins/test.sh python                 # needs the internet (pip)
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 
@@ -1151,9 +1219,10 @@ fail; a tool that will not resolve or start is an error and fails the test.
 
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
-which each need a large toolchain, on changes to the builtins, the runtime
-or the store, and nightly, because those builds resolve crates and a WASIX
-toolchain that this repository does not pin byte for byte. The Node job
+which each need a large toolchain, and python, whose tests install from the
+internet, on changes to the builtins, the runtime or the store, and
+nightly, because those builds resolve crates and a WASIX toolchain that
+this repository does not pin byte for byte. The Node job
 runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the
 `node` feature on ARM64 on every change, so the second architecture cannot
 break unnoticed.
