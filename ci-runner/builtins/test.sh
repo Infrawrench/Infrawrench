@@ -309,6 +309,21 @@ jobs:
       test "$(bash -c 'test -t 1 && echo tty || echo no')" = no
       bash -c 'test -t 1 && echo tty || echo no' > /tmp/t
       test "$(cat /tmp/t)" = no
+  # An argument with a line feed in it reaches the program whole (#1003):
+  # bash's exec joined the arguments with line feeds and WASIX split them
+  # there again, so this printed `a|b|c|`. Through a second bash, through
+  # coreutils' `env` (bash's exec, then env's spawn) and through `exec`.
+  newline-args-passes:
+    using: env:bash@5
+    run: |
+      test "$(bash -c 'printf "%s|" "$@"' _ "a
+      b" c)" = "$(printf 'a\nb|c|')"
+      test "$(env printf '%s|' "p
+      q" r)" = "$(printf 'p\nq|r|')"
+      test "$(exec printf '%s|' "x
+      " "")" = "$(printf 'x\n||')"
+      test "$(bash -c 'echo "$1"
+      echo two' _ one)" = "$(printf 'one\ntwo')"
 YAML
       ;;
     tools)
@@ -729,6 +744,18 @@ jobs:
       test "$(node -e 'require("child_process").execFileSync("./n.js",["a","b"],{stdio:"inherit"})')" = "a b"
       test "$(PATH="$PWD:$PATH" node -e 'require("child_process").execFileSync("s",["c"],{stdio:"inherit"})')" = "hi c"
       test "$(./n.js d)" = d
+  # A multi-line `node -e` runs every line, and an argument with a line
+  # feed in it reaches the program whole, from bash and from Node (#1003):
+  # `node -e` ran only its first line, the rest becoming arguments.
+  newline-args-passes:
+    using: env:bash-node@24
+    run: |
+      test "$(node -e 'const a = 6
+      const b = 7
+      console.log(a * b)')" = 42
+      test "$(node -p 'JSON.stringify(process.argv.slice(1))' 'a
+      b' c)" = '["a\nb","c"]'
+      test "$(node -e 'process.stdout.write(require("child_process").execFileSync("bash", ["-c", "printf \"%s|\" \"$@\"", "_", "x\ny", "z"]))')" = "$(printf 'x\ny|z|')"
   # An interpreter that is not there is ENOENT, as on Linux.
   shebang-missing-interpreter-fails:
     using: env:bash-node@24
@@ -894,6 +921,15 @@ jobs:
       PY
       test "$(cat /tmp/out)" = 42
       test "$(python -c 'import os; print(os.isatty(0), os.isatty(1))' < /dev/null)" = "False False"
+  # A multi-line `python -c` runs every line, and an argument with a line
+  # feed in it reaches a subprocess whole (#1003).
+  newline-args-passes:
+    using: env:python@3.13
+    run: |
+      test "$(python -c 'a = 6
+      b = 7
+      print(a * b)')" = 42
+      test "$(python -c 'import subprocess, sys; sys.stdout.write(subprocess.run(["printf", "%s|", "x\ny", "z"], capture_output=True, text=True).stdout)')" = "$(printf 'x\ny|z|')"
 YAML
       ;;
     php)
@@ -969,6 +1005,14 @@ jobs:
     run: |
       printf '<?php echo (;' > /tmp/bad.php
       php -l /tmp/bad.php
+  # A multi-line `php -r` runs every line (#1003): bash starts php-cli's
+  # `php`, which starts phpix, and the code used to arrive split.
+  newline-args-passes:
+    using: env:php@8.5
+    run: |
+      test "$(php -r '$a = 6;
+      $b = 7;
+      echo $a * $b;')" = 42
 YAML
       ;;
   esac

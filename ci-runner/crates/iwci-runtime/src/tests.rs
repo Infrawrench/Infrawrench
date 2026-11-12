@@ -919,7 +919,7 @@ fn gofmt_lists_and_rewrites_a_badly_formatted_file() {
 }
 
 /// The packages of an environment `builtins/environments/build.sh` built
-/// (a directory with its `build.json`, such as `dist/environment/bash/5.1.16`),
+/// (a directory with its `build.json`, such as `dist/environment/bash/5.1.17`),
 /// or a directory holding just `bash.webc` and `coreutils.webc`.
 fn webc_packages() -> Option<Vec<WebcPackage>> {
     let dir = fixture(
@@ -1020,6 +1020,29 @@ echo unreachable
         compiled,
         "{:?}",
         rt.cache_stats()
+    );
+}
+
+/// An argument with a line feed in it reaches a program bash runs whole
+/// (#1003): bash's exec joined the arguments with line feeds and WASIX
+/// split them there again, so a second bash got `a`, `b` and `c`.
+#[test]
+fn a_program_bash_runs_gets_an_argument_with_a_line_feed_whole() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[("/work/README", "readme\n")]).fork();
+    let script = "bash -c 'printf \"%s|\" \"$@\"' _ \"a\nb\" c\nenv printf '%s|' \"p\nq\"\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "a\nb|c|p\nq|",
+        "{stderr:?}"
     );
 }
 

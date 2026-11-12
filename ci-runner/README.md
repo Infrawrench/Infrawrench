@@ -443,10 +443,17 @@ Environments:
 
 | Environment            | Packages                                                                                                                                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                                               |
+| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                                      |
 | `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                    |
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
+
+An environment's major and minor version follow the runtime it carries
+(Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
+CPython 3.13. Its patch number is the environment's own revision, not the
+runtime's: `bash-node` 24.0.5 is not Node 24.0.5, and `python` 3.13.16 and
+`php` 8.4.28 carry the same interpreters as 3.13.15 and 8.4.27 with a
+changed bash. Each table entry names the runtime release inside.
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
@@ -459,6 +466,23 @@ descriptor in a job is a terminal. Its stdin is empty and its output goes to
 the log, so `[ -t 1 ]` is false, a script piped to an interpreter runs as a
 script rather than an interactive session, and tools that colour or prompt
 only on a terminal do neither.
+
+An argument with a line feed in it reaches the program whole, so a
+multi-line `node -e`, `python -c` or `bash -c` runs every line
+([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)). bash
+starts every program by forking and calling `execve`, and the C library
+Wasmer's bash 1.0.25 is linked with joined the arguments into one string
+with a line feed after each, for WASIX's `proc_exec3` to split again. No
+`wasmer/bash` release is built on a C library with `proc_exec4`, which takes
+the list as a list, and rebuilding bash on one would change its fork,
+signals and job control with it, so `builtins/environments/bash/build.sh`
+changes that one call in Wasmer's module (nine bytes, each site checked
+before it is changed, and the result pinned by hash) and repackages it.
+That was `bash` 5.1.17, `bash-node` 24.0.5, `python` 3.13.16 and `php`
+8.1.35, 8.2.36, 8.3.37, 8.4.28 and 8.5.13 (each the same PHP as before). The
+package keeps Wasmer's version, 1.0.25, because Edge.js and Python depend on
+`wasmer/bash@^1.0.25`. Drop the script once a `wasmer/bash` release calls
+`proc_exec4`.
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -674,10 +698,8 @@ fetches beyond pip's own `--require-hashes`, and each job downloads its
 packages again. A verified pip installer is
 [#1015](https://github.com/Infrawrench/Infrawrench/issues/1015).
 
-`python -c`, `python - <<EOF` and a script piped to `python` work, with
-one runner issue showing: an argument containing a newline arrives split
-at it ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)), so
-a multi-line `python -c` runs only its first line (put the code in a file).
+`python -c` (multi-line included), `python - <<EOF` and a script piped to
+`python` work.
 
 ### PHP
 
@@ -729,9 +751,6 @@ What still differs from php-cli:
 - Composer has no `unzip`, `7z` or `git`: it unpacks archives with the
   zip extension (and says so), and a package it would have to clone from
   source does not install.
-- A multi-line `php -r` runs only its first line
-  ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)); put
-  the code in a file.
 
 The environment sets `PATH` (php-cli first), `COMPOSER_ALLOW_SUPERUSER=1`
 (a job runs as root, which Composer warns about on every command) and
