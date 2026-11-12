@@ -1653,6 +1653,39 @@ jobs:
       port2.postMessage({ keyed: { 200: 1, a: 2 }, p: shared, q: shared, cycle });
       JS
       test "$(node /tmp/clone.js)" = "clone ok"
+  # A child's exit is seen while a timer is pending (#1065). WASIX sends no
+  # SIGCHLD, so libuv asks after each poll, and a child's output ends before
+  # its exit can be read: with a timer pending, the poll after the end of
+  # its output slept until the timer, and `spawnSync` with a timeout
+  # returned when the timeout ran out. edgejs-child-exit-poll.patch.
+  child-exit-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 2m
+    run: |
+      cat > /tmp/exit.js <<'JS'
+      const { spawn, spawnSync } = require("node:child_process");
+      const assert = require("node:assert");
+      // The child's output ends a second before it exits, as when a process
+      // closes its stdio first.
+      const child = ["-e", "require('node:fs').closeSync(1); require('node:fs').closeSync(2); setTimeout(() => process.exit(0), 1000)"];
+      let t0 = Date.now();
+      const r = spawnSync(process.execPath, child, { timeout: 20000 });
+      const sync = Date.now() - t0;
+      assert.equal(r.status, 0);
+      assert.ok(sync < 10000, `spawnSync took ${sync} ms`);
+      // A timer pending in the parent must not hold back `exit` either.
+      const pending = setTimeout(() => {}, 30000);
+      t0 = Date.now();
+      spawn(process.execPath, child).on("exit", (code) => {
+        const async = Date.now() - t0;
+        clearTimeout(pending);
+        assert.equal(code, 0);
+        assert.ok(async < 10000, `exit took ${async} ms`);
+        console.log("child exit ok");
+      });
+      JS
+      test "$(node /tmp/exit.js)" = "child exit ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap

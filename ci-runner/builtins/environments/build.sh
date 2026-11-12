@@ -139,7 +139,7 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.7 2970282f6f050a5c45f6decb27a433ea88972f0c8c9936ac663defa8fd84eade"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.8 19953de49cb01d2754a37852c1313ddad2b250ab48f47da14406891410452b35"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -274,7 +274,10 @@ for env in "$@"; do
       # 24.0.10: and `fs.open` with numeric flags 0 opens read-only (#1045),
       #          and `structuredClone` and `postMessage` keep integer-like
       #          keys, shared references and cycles (#1048).
-      build_env bash-node 24.0.10 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.11: and a child's exit is seen within 100 ms with a timer
+      #          pending, so `spawnSync` with a timeout no longer runs to
+      #          it (#1065).
+      build_env bash-node 24.0.11 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
