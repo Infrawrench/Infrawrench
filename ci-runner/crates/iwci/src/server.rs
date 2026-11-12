@@ -52,6 +52,12 @@ const RETRY_AFTER_SECS: u64 = 10;
 /// Finished runs kept in memory for `GET /v1/runs/{id}`; older ones are
 /// read back from the store with `?owner=`.
 const KEEP_FINISHED: usize = 1000;
+/// How long a finished run keeps its report and log in memory. Past it the
+/// report is read back from the store (the run's own owner names it), and
+/// the log is gone, as it is on any other runner. A full Test pipeline's
+/// report and log are about 20 MiB, which the last thousand runs held for
+/// good (#1066).
+const KEEP_REPORT_SECS: u64 = 5 * 60;
 /// The current [`UsageRecord::schema`].
 pub const USAGE_SCHEMA: u32 = 2;
 
@@ -98,6 +104,34 @@ struct RunEntry {
     result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Its report is in the store, under `runs/<owner>/<id>.json`.
+    #[serde(skip)]
+    stored: bool,
+    /// Its report was let go of ([`KEEP_REPORT_SECS`]): read the store's.
+    #[serde(skip)]
+    forgotten: bool,
+}
+
+/// Lets go of the report and log of every run that finished at least
+/// [`KEEP_REPORT_SECS`] before `now`. A report that could not be stored
+/// stays, since nothing else has it.
+fn forget_finished(
+    runs: &mut HashMap<String, RunEntry>,
+    logs: &mut HashMap<String, Arc<LogHub>>,
+    now: u64,
+) {
+    for (id, entry) in runs.iter_mut() {
+        let Some(finished_at) = entry.finished_at else {
+            continue;
+        };
+        if now < finished_at.saturating_add(KEEP_REPORT_SECS) {
+            continue;
+        }
+        logs.remove(id);
+        if entry.stored && entry.result.take().is_some() {
+            entry.forgotten = true;
+        }
+    }
 }
 
 /// One run's line in the bill, stored at
@@ -231,7 +265,8 @@ impl Server {
     }
 
     /// Every half minute, lets go of what no job uses (parsed packages,
-    /// an old generation of compiled modules, the allocator's free memory),
+    /// an old generation of compiled modules, finished runs' reports and
+    /// logs, the allocator's free memory),
     /// then logs the process's memory against the job budget every ten
     /// minutes, and at once (at most once a minute) when the anonymous
     /// memory beyond what jobs have reserved passes `--memory-reserve`, so
@@ -244,6 +279,7 @@ impl Server {
                 let mut quiet = 0u32;
                 let mut was_over = false;
                 loop {
+                    server.forget_finished();
                     server.runner.runtime.release_idle();
                     crate::memory::return_free_memory();
                     if let Some((line, over)) = server.memory_line() {
@@ -551,6 +587,8 @@ impl Server {
             finished_at: None,
             result: None,
             error: None,
+            stored: false,
+            forgotten: false,
         };
         self.remember(entry);
         let hub = Arc::new(LogHub::default());
@@ -670,7 +708,7 @@ impl Server {
         ) {
             problems.push(format!("could not store the usage record: {e}"));
         }
-        let entry = RunEntry {
+        let mut entry = RunEntry {
             id: id.to_string(),
             owner: owner.as_str().to_string(),
             repo: req.repo.clone(),
@@ -683,15 +721,26 @@ impl Server {
                 (None, false) => Some(problems.join("; ")),
                 (None, true) => None,
             },
+            stored: false,
+            forgotten: false,
         };
         let report_key = format!("runs/{}/{id}.json", owner.as_str());
-        let _ = store.put(
-            &report_key,
-            &serde_json::to_vec(&entry).unwrap_or_default(),
-            "application/json",
-        );
+        entry.stored = store
+            .put(
+                &report_key,
+                &serde_json::to_vec(&entry).unwrap_or_default(),
+                "application/json",
+            )
+            .is_ok();
         self.remember(entry.clone());
         entry
+    }
+
+    /// See [`forget_finished`].
+    fn forget_finished(&self) {
+        let mut runs = self.runs.lock().unwrap();
+        let mut logs = self.logs.lock().unwrap();
+        forget_finished(&mut runs, &mut logs, now_secs());
     }
 
     fn remember(&self, entry: RunEntry) {
@@ -714,25 +763,18 @@ impl Server {
     }
 
     fn run_status(&self, id: &str, owner: Option<&String>) -> Response<std::io::Cursor<Vec<u8>>> {
+        let mut forgotten_owner = None;
         if let Some(entry) = self.runs.lock().unwrap().get(id) {
-            let mut value = serde_json::to_value(entry).unwrap_or_default();
-            // A running run's jobs so far; a finished one has its report.
-            if entry.state == "running"
-                && let Some(hub) = self.logs.lock().unwrap().get(id)
-                && let Some(map) = value.as_object_mut()
-            {
-                let progress = hub.state.lock().unwrap().progress.clone();
-                map.insert(
-                    "progress".into(),
-                    serde_json::to_value(progress).unwrap_or_default(),
-                );
+            if entry.forgotten {
+                forgotten_owner = Some(entry.owner.clone());
+            } else {
+                return self.entry_status(id, entry);
             }
-            return json_response(200, &value);
         }
         // Not on this runner, or long finished: the store has every
         // report, under its owner.
         let (Some(owner), true) = (
-            owner,
+            forgotten_owner.as_ref().or(owner),
             id.chars().all(|c| c.is_ascii_hexdigit()) && id.len() == 32,
         ) else {
             return error(404, "no such run here; pass ?owner= to look in the store");
@@ -752,6 +794,23 @@ impl Server {
             Ok(None) => error(404, "no such run"),
             Err(e) => error(502, format!("store: {e}")),
         }
+    }
+
+    /// A run this runner still has in memory.
+    fn entry_status(&self, id: &str, entry: &RunEntry) -> Response<std::io::Cursor<Vec<u8>>> {
+        let mut value = serde_json::to_value(entry).unwrap_or_default();
+        // A running run's jobs so far; a finished one has its report.
+        if entry.state == "running"
+            && let Some(hub) = self.logs.lock().unwrap().get(id)
+            && let Some(map) = value.as_object_mut()
+        {
+            let progress = hub.state.lock().unwrap().progress.clone();
+            map.insert(
+                "progress".into(),
+                serde_json::to_value(progress).unwrap_or_default(),
+            );
+        }
+        json_response(200, &value)
     }
 
     fn prepare(&self, req: &RunRequest) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -1135,6 +1194,69 @@ mod tests {
         assert_eq!(year_month(1_793_491_200), (2026, 11));
         assert_eq!(year_month(1_709_164_800), (2024, 2)); // 2024-02-29
         assert_eq!(year_month(951_782_400), (2000, 2)); // 2000-02-29
+    }
+
+    #[test]
+    fn a_finished_run_lets_go_of_its_report_and_log_once_stored() {
+        let entry = |id: &str, finished_at: Option<u64>, stored: bool| RunEntry {
+            id: id.into(),
+            owner: "github.com-acme".into(),
+            repo: "https://github.com/acme/web".into(),
+            state: if finished_at.is_some() {
+                "finished"
+            } else {
+                "running"
+            },
+            started_at: 1_000,
+            finished_at,
+            result: finished_at.map(|_| json!({ "passed": true, "output": "x".repeat(1 << 20) })),
+            error: None,
+            stored,
+            forgotten: false,
+        };
+        let mut runs: HashMap<String, RunEntry> = [
+            entry("old", Some(2_000), true),
+            entry("unstored", Some(2_000), false),
+            entry("recent", Some(2_000 + KEEP_REPORT_SECS), true),
+            entry("running", None, false),
+        ]
+        .into_iter()
+        .map(|e| (e.id.clone(), e))
+        .collect();
+        let mut logs: HashMap<String, Arc<LogHub>> = runs
+            .keys()
+            .map(|id| {
+                let hub = Arc::new(LogHub::default());
+                hub.push(&crate::schedule::LogEvent::Output {
+                    job: "test".into(),
+                    stream: "stdout",
+                    line: "y".repeat(1 << 20),
+                });
+                (id.clone(), hub)
+            })
+            .collect();
+        // A follower of a log that is let go of reads it to its end.
+        let follower = logs["old"].clone();
+
+        forget_finished(&mut runs, &mut logs, 2_000 + KEEP_REPORT_SECS - 1);
+        assert!(runs.values().all(|e| !e.forgotten), "too soon");
+        assert_eq!(logs.len(), 4);
+
+        forget_finished(&mut runs, &mut logs, 2_000 + KEEP_REPORT_SECS);
+        assert!(runs["old"].forgotten && runs["old"].result.is_none());
+        assert!(!logs.contains_key("old") && !logs.contains_key("unstored"));
+        // Nothing else has its report, so the runner keeps it.
+        assert!(!runs["unstored"].forgotten && runs["unstored"].result.is_some());
+        assert!(runs["recent"].result.is_some() && logs.contains_key("recent"));
+        assert!(logs.contains_key("running"));
+        assert_eq!(follower.state.lock().unwrap().frames.len(), 1);
+        // What a finished run still holds is its state, not its report.
+        let left = serde_json::to_vec(&runs["old"]).unwrap();
+        assert!(left.len() < 512, "{} bytes", left.len());
+
+        forget_finished(&mut runs, &mut logs, u64::MAX);
+        assert!(runs["recent"].forgotten);
+        assert_eq!(logs.keys().collect::<Vec<_>>(), ["running"]);
     }
 
     #[test]

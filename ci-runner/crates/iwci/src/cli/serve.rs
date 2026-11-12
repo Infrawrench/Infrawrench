@@ -57,6 +57,7 @@ const DEFAULT_UPDATE_EVERY_SECS: u64 = 300;
 const DEFAULT_RESTART_AFTER_LOST_ISOLATES: u64 = 8;
 
 pub fn serve(mut args: Args) -> Result<ExitCode, String> {
+    crate::memory::configure_allocator();
     // Loopback by default: exposing it is a decision, made with --listen.
     let listen = args
         .value("--listen")?
