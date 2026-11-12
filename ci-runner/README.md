@@ -1301,9 +1301,9 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
          [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
-         [--keep-installs-unpacked 24h] [--no-task-cache] \
+         [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 1GiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
-IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 4GiB]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -1393,7 +1393,29 @@ whole pipeline.
   asking for more than the whole budget is an error, not a hang. The reservation
   stands for the job's program and its files together. The frozen workspace
   snapshots are not counted: they are built once and shared. Default: no
-  budget.
+  budget for `iwci run`; see `--memory-reserve` for `iwci serve`.
+- **`--memory-reserve`** (or `IWCI_MEMORY_RESERVE`, `iwci serve` only,
+  default `4GiB`) is what the server keeps for itself outside the job
+  budget: the compiled modules and environments jobs are using, workspace
+  snapshots, logs. Jobs run inside the server's process, so the job budget
+  is held to the host's memory (or the service's cgroup `memory.max`, if
+  lower) less this reserve, and without `--memory` it is all of that. A
+  `--memory` larger than that is lowered, and the server says so when it
+  starts. It logs its resident and anonymous memory against the budget
+  every ten minutes, and at once when its anonymous memory beyond what jobs
+  have reserved passes the reserve (`iwci serve: memory: ...`), and
+  `/v1/capacity` reports the same numbers.
+- **`--module-memory`** (or `IWCI_MODULE_MEMORY`, default `1GiB`) bounds
+  the compiled modules kept in memory, counted as the size of their
+  artifacts (their native code takes about a third again). Past it, a job
+  that starts loads what it uses from the disk cache, which on ci-1 made a
+  `node`, `python3` or `php` job start 0.15 to 0.25 s later and a `go run`,
+  which loads several modules, about 0.45 s later. Wasmer frees a module's native code only with the engine it
+  was loaded into, so modules are kept by generation: a set of jobs shares
+  an engine, and once the modules loaded into it pass the limit, jobs that
+  start get a fresh one; the old one is freed when its last job ends. A
+  job never loses a module it is using. While an old generation still has
+  jobs, the current one is not retired again, so at most two are kept.
 - **A task cache lookup takes neither.** A `task-cache:` job holds a slot
   and its `memory:` only if it misses and runs (see
   [The task cache](#the-task-cache)).
@@ -1498,7 +1520,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved, and V8's out-of-memory losses (below).                                                                               |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved, the process's own memory (below), and V8's out-of-memory losses (below).                                             |
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
@@ -1535,6 +1557,14 @@ A request body (for `runs` and `prepare`):
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
+- **Memory.** `memory_total` and `memory_used` are the job budget and what
+  running jobs have reserved of it. Beside them, each `null` where it
+  cannot be read: `memory_host` (the host's memory, or the service's
+  cgroup limit), `memory_reserve` (`--memory-reserve`), `memory_resident`
+  and `memory_anonymous` (the process's resident memory and the part of it
+  that is not backed by a file, jobs included) and `modules_resident` (the
+  compiled modules in memory, counted as their artifacts' size). All in
+  bytes. See [Limits](#limits).
 - **V8's out-of-memory losses.** `/v1/capacity` also says what V8 running
   out of memory where it cannot recover has cost the process since it
   started: `v8_lost_isolates` (isolates abandoned, with their memory, which
@@ -1592,8 +1622,12 @@ when it starts, then again every `--warm-every` (default `10m`), so a job
 never waits on a cold tool: the newest release of each `major.minor`,
 which covers every pin a pipeline can write. Blobs stay in the disk cache
 in front of R2 (`<cache>/objects`) and compiled code in the module cache
-(`<cache>/modules-*`, and in memory); neither is ever evicted, so give the
-cache directory a persistent disk. Repository tools warm on first use.
+(`<cache>/modules-*`); neither is ever evicted, so give the cache directory
+a persistent disk. Warming does not keep anything in memory: a job loads
+the modules it uses from the disk cache, and they stay in memory within
+`--module-memory` (see [Limits](#limits)). Before #1035 every warmed
+module stayed in memory for the life of the process, 4.6 GB with the 16
+builtins and environments published then. Repository tools warm on first use.
 `/v1/capacity` reports the last round under `warm`. `--no-warm` turns it
 off.
 

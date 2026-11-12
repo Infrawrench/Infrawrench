@@ -4,7 +4,7 @@
 //! iwci run --repo https://github.com/org/repo --sha <commit> --repo-id <id>
 //!          [--branch main] [--event push|pull-request] [--base <sha>]
 //!          [--pipeline <file.yml>] [--cpus <n>] [--memory <size>] [--json]
-//!          [--stall-after 5m | --stall-after 0]
+//!          [--stall-after 5m | --stall-after 0] [--module-memory 1GiB]
 //!          [--default-branch main]
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
 //!          [--keep-installs-unpacked 24h] [--var NAME=value]...
@@ -44,6 +44,8 @@ pub(super) struct Limits {
     /// Stop a job after this long with no output and no CPU use; `None`
     /// leaves hung jobs to their timeout.
     pub stall_after: Option<Duration>,
+    /// Compiled modules kept in memory (`iwci_runtime::cache`).
+    pub module_memory: u64,
 }
 
 pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
@@ -105,6 +107,16 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
         ),
         None => Some(iwci_runtime::DEFAULT_STALL_AFTER),
     };
+    // Compiled modules past this are left on disk until a job loads them
+    // again (#1035).
+    let module_memory = match args
+        .value("--module-memory")?
+        .or_else(|| std::env::var("IWCI_MODULE_MEMORY").ok())
+    {
+        Some(text) => iwci_spec::parse_size(&text)
+            .ok_or_else(|| format!("--module-memory takes a size such as `1GiB`, not `{text}`"))?,
+        None => iwci_runtime::DEFAULT_MODULE_MEMORY,
+    };
     // Wasmer compiles modules on rayon's global pool; size it before the
     // first compile so `--cpus` holds there too.
     let _ = rayon::ThreadPoolBuilder::new()
@@ -115,6 +127,7 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
         jobs_per_cpu,
         memory,
         stall_after,
+        module_memory,
     })
 }
 
@@ -157,7 +170,8 @@ pub(super) fn open_runner(
     let runtime = iwci_runtime::Runtime::with_threads(cache.join("modules"), Some(limits.cpus))
         .map_err(|e| e.to_string())?
         .with_internet()
-        .with_stall_after(limits.stall_after);
+        .with_stall_after(limits.stall_after)
+        .with_module_memory(limits.module_memory);
     let slots = limits.cpus * limits.jobs_per_cpu;
     Ok(Runner {
         runtime: Arc::new(runtime),

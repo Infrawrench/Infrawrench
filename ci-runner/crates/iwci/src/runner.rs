@@ -628,8 +628,10 @@ impl Runner {
     /// no job pays for it: the newest release of each `major.minor` (which
     /// covers every pin a pipeline can write, `@1`, `@1.27` or `@1.27.3`
     /// of the newest patch). Blobs land in the store's disk cache and
-    /// compiled code in the module cache, on disk and in memory. A fresh
-    /// catalog each time, so a newly published version is seen.
+    /// compiled code in the module cache on disk, not in memory: a job
+    /// loads what it uses from there in tens of milliseconds, and the
+    /// memory of all of it together outgrew a 30 GiB runner (#1035). A
+    /// fresh catalog each time, so a newly published version is seen.
     /// Repository tools are left to their first use: there can be any
     /// number, and each belongs to one repository.
     pub fn warm_published(&self) -> WarmOutput {
@@ -677,7 +679,7 @@ impl Runner {
     }
 
     /// Compiles a resolved tool (or every command of an environment) into
-    /// the module cache, in memory and on disk; its bytes are already in the
+    /// the module cache on disk; its bytes are already in the
     /// store's disk cache by the time it resolves.
     pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
         match resolved {
