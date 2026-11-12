@@ -49,7 +49,25 @@ pub fn fd_read<M: MemorySize>(
         ctx = wasi_try_ok!(maybe_snapshot_once::<M>(ctx, SnapshotTrigger::FirstStdin)?);
     }
 
-    let res = fd_read_internal::<M>(&mut ctx, fd, fd_entry, iovs, iovs_len, offset, nread, true)?;
+    let is_socket = matches!(fd_entry.inode.read().deref(), Kind::Socket { .. });
+    let res = loop {
+        let res = fd_read_internal::<M>(
+            &mut ctx,
+            fd,
+            fd_entry.clone(),
+            iovs,
+            iovs_len,
+            offset,
+            nread,
+            true,
+        )?;
+        // A blocking read of a socket that a signal the program does not
+        // see interrupted starts over (`__sock_wait_restarts`).
+        if is_socket && matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
+            continue;
+        }
+        break res;
+    };
     fd_read_internal_handler(ctx, res, nread)
 }
 
@@ -236,11 +254,8 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                     drop(guard);
 
                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
-                    let timeout = socket
-                        .opt_time(TimeType::ReadTimeout)
-                        .ok()
-                        .flatten()
-                        .unwrap_or(Duration::from_secs(30));
+                    // No timeout unless the program set one (SO_RCVTIMEO).
+                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
 
                     let tasks = env.tasks().clone();
                     let res = __asyncify_light(
@@ -250,7 +265,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                         } else {
                             None
                         },
-                        async move {
+                        __sock_wait(env, async move {
                             let mut total_read = 0usize;
 
                             let iovs_arr =
@@ -263,22 +278,29 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                                     .access()
                                     .map_err(mem_error_to_wasi)?;
 
-                                let local_read = socket
+                                // Only the first buffer waits: once there is
+                                // data, the rest take what has already arrived.
+                                let local_read = match socket
                                     .recv(
                                         tasks.deref(),
                                         buf.as_mut_uninit(),
-                                        Some(timeout),
-                                        nonblocking,
+                                        timeout,
+                                        nonblocking || total_read > 0,
                                         false,
                                     )
-                                    .await?;
+                                    .await
+                                {
+                                    Ok(s) => s,
+                                    Err(_) if total_read > 0 => break,
+                                    Err(err) => return Err(err),
+                                };
                                 total_read += local_read;
                                 if total_read != buf.len() {
                                     break;
                                 }
                             }
                             Ok(total_read)
-                        },
+                        }),
                     );
                     let res = res?.map_err(|err| match err {
                         Errno::Timedout => Errno::Again,

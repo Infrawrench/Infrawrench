@@ -40,15 +40,21 @@ pub fn sock_recv<M: MemorySize>(
         let pid = ctx.data().pid();
         let tid = ctx.data().tid();
 
-        let res = sock_recv_internal::<M>(
-            &mut ctx,
-            sock,
-            ri_data,
-            ri_data_len,
-            ri_flags,
-            ro_data_len,
-            ro_flags,
-        )?;
+        let res = loop {
+            let res = sock_recv_internal::<M>(
+                &mut ctx,
+                sock,
+                ri_data,
+                ri_data_len,
+                ri_flags,
+                ro_data_len,
+                ro_flags,
+            )?;
+            if matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
+                continue;
+            }
+            break res;
+        };
 
         sock_recv_internal_handler(ctx, res, ro_data_len, ro_flags)
     }
@@ -119,7 +125,7 @@ pub(super) fn sock_recv_internal<M: MemorySize>(
         env,
         sock,
         Rights::SOCK_RECV,
-        |socket, fd| async move {
+        |socket, fd| __sock_wait(env, async move {
             let iovs_arr = ri_data
                 .slice(&memory, ri_data_len)
                 .map_err(mem_error_to_wasi)?;
@@ -134,18 +140,19 @@ pub(super) fn sock_recv_internal<M: MemorySize>(
                     .access()
                     .map_err(mem_error_to_wasi)?;
 
-                let nonblocking = nonblocking_flag || fd.inner.flags.contains(Fdflags::NONBLOCK);
-                let timeout = socket
-                    .opt_time(TimeType::ReadTimeout)
-                    .ok()
-                    .flatten()
-                    .unwrap_or(Duration::from_secs(30));
+                // Only the first buffer waits: once there is data, the
+                // rest take what has already arrived, as Linux returns.
+                let nonblocking = nonblocking_flag
+                    || fd.inner.flags.contains(Fdflags::NONBLOCK)
+                    || total_read > 0;
+                // No timeout unless the program set one (SO_RCVTIMEO).
+                let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
 
                 let local_read = match socket
                     .recv(
                         env.tasks().deref(),
                         buf.as_mut_uninit(),
-                        Some(timeout),
+                        timeout,
                         nonblocking,
                         peek,
                     )
@@ -161,7 +168,7 @@ pub(super) fn sock_recv_internal<M: MemorySize>(
                 }
             }
             Ok(total_read)
-        }
+        })
     ));
     Ok(Ok(data))
 }

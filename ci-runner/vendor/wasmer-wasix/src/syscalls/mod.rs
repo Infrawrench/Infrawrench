@@ -687,6 +687,87 @@ where
     }
 }
 
+/// Waits for `work`, a socket accept or receive. Like Linux, these block
+/// with no time limit unless the program set one (`SO_RCVTIMEO`), so this
+/// ends the wait with `Errno::Intr` as soon as a signal is queued for the
+/// thread or the thread or its process is made to finish: that is what
+/// still stops a program blocked there. The syscall then asks
+/// `__sock_wait_restarts` whether to start the call over.
+pub(crate) async fn __sock_wait<T>(
+    env: &WasiEnv,
+    work: impl Future<Output = Result<T, Errno>>,
+) -> Result<T, Errno> {
+    tokio::select! {
+        biased;
+        res = work => res,
+        _ = SignalQueued { thread: &env.thread, waker: None } => Err(Errno::Intr),
+        _ = env.thread.join() => Err(Errno::Intr),
+        _ = env.process.finished.await_termination() => Err(Errno::Intr),
+    }
+}
+
+/// Ready once a signal is queued for the thread, which it leaves queued.
+/// Unlike `WasiThread::wait_for_signal` it takes its waker back when it is
+/// dropped: every blocking call brings a new one, and the thread would
+/// otherwise keep them all until its next signal.
+struct SignalQueued<'a> {
+    thread: &'a WasiThread,
+    waker: Option<Waker>,
+}
+
+impl Future for SignalQueued<'_> {
+    type Output = ();
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        let thread = self.thread;
+        let mut signals = thread.signals().lock().unwrap();
+        if !signals.0.is_empty() {
+            return Poll::Ready(());
+        }
+        if !signals.1.iter().any(|w| w.will_wake(cx.waker())) {
+            signals.1.push(cx.waker().clone());
+        }
+        drop(signals);
+        self.waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+}
+
+impl Drop for SignalQueued<'_> {
+    fn drop(&mut self) {
+        if let Some(waker) = self.waker.take() {
+            let mut signals = self.thread.signals().lock().unwrap();
+            signals.1.retain(|w| !w.will_wake(&waker));
+        }
+    }
+}
+
+/// After `__sock_wait` ended a socket call with `Errno::Intr`: does the
+/// dynamic-linking work another thread is waiting on, runs the signal
+/// handlers (or exits, for a fatal signal or a thread made to finish), and
+/// says whether to start the call over. The program sees `EINTR` only for a
+/// signal its own handler ran on this thread, as on Linux for a handler
+/// without `SA_RESTART`; the linker's wakeups and a signal that is ignored
+/// here or handled on another thread leave the call waiting.
+pub(crate) fn __sock_wait_restarts(
+    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+) -> Result<bool, WasiError> {
+    let env = ctx.data();
+    let handled_here = env.try_inner().is_some_and(|inner| {
+        let handles = inner.main_module_instance_handles();
+        handles.signal_set && handles.signal.is_some()
+    });
+    let delivered = {
+        let signals = env.thread.signals().lock().unwrap();
+        signals.0.iter().any(|sig| *sig != Signal::Sigwakeup)
+    };
+    WasiEnv::do_pending_link_operations(ctx, false)?;
+    let _ = WasiEnv::process_signals_and_exit(ctx)?;
+    // A signal still queued is one nothing here takes, and would end the
+    // next wait as soon as it started.
+    let stuck = !ctx.data().thread.signals().lock().unwrap().0.is_empty();
+    Ok(!(delivered && handled_here) && !stuck)
+}
+
 /// Performs an immutable operation on the socket while running in an asynchronous runtime
 /// This has built in signal support
 pub(crate) fn __sock_actor<T, F>(

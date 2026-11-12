@@ -26,18 +26,17 @@ pub fn sock_accept<M: MemorySize>(
 
     ctx = wasi_try_ok!(maybe_snapshot::<M>(ctx)?);
 
-    let env = ctx.data();
-    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
-
     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
 
-    let (fd, _, _) = wasi_try_ok!(sock_accept_internal(
-        env,
+    let (fd, _, _) = wasi_try_ok!(sock_accept_restarting(
+        &mut ctx,
         sock,
         fd_flags,
-        nonblocking,
-        None
+        nonblocking
     )?);
+
+    let env = ctx.data();
+    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
     wasi_try_mem_ok!(ro_fd.write(&memory, fd));
 
@@ -67,18 +66,17 @@ pub fn sock_accept_v2<M: MemorySize>(
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
 
-    let env = ctx.data();
-    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
-
     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
 
-    let (fd, local_addr, peer_addr) = wasi_try_ok!(sock_accept_internal(
-        env,
+    let (fd, local_addr, peer_addr) = wasi_try_ok!(sock_accept_restarting(
+        &mut ctx,
         sock,
         fd_flags,
-        nonblocking,
-        None
+        nonblocking
     )?);
+
+    let env = ctx.data();
+    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
     #[cfg(feature = "journal")]
     if ctx.data().enable_journal {
@@ -110,6 +108,22 @@ pub fn sock_accept_v2<M: MemorySize>(
     Ok(Errno::Success)
 }
 
+/// `sock_accept_internal`, started over after a wait that a signal the
+/// program does not see ended (`__sock_wait_restarts`).
+fn sock_accept_restarting(
+    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+    sock: WasiFd,
+    fd_flags: Fdflags,
+    nonblocking: bool,
+) -> Result<Result<(WasiFd, SocketAddr, SocketAddr), Errno>, WasiError> {
+    loop {
+        match sock_accept_internal(ctx.data(), sock, fd_flags, nonblocking, None)? {
+            Err(Errno::Intr) if __sock_wait_restarts(ctx)? => continue,
+            res => return Ok(res),
+        }
+    }
+}
+
 pub(crate) fn sock_accept_internal(
     env: &WasiEnv,
     sock: WasiFd,
@@ -130,14 +144,11 @@ pub(crate) fn sock_accept_internal(
                 fd_flags.set(Fdflags::NONBLOCK, true);
                 nonblocking = true;
             }
-            let timeout = socket
-                .opt_time(TimeType::AcceptTimeout)
-                .ok()
-                .flatten()
-                .unwrap_or(Duration::from_secs(30));
+            // No timeout unless the program set one: an accept waits for
+            // its client, however long that takes.
+            let timeout = socket.opt_time(TimeType::AcceptTimeout).ok().flatten();
             let local_addr = socket.addr_local()?;
-            socket
-                .accept(tasks.deref(), nonblocking, Some(timeout))
+            __sock_wait(env, socket.accept(tasks.deref(), nonblocking, timeout))
                 .await
                 .map(|a| (a.0, local_addr, a.1, fd_flags))
         },

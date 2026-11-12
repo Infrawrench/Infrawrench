@@ -549,19 +549,56 @@ it started on its host thread, and its process's summed over the threads
 it ran on. Upstream has no such hook (checked November 2026); drop the
 hunk when a release keeps per-guest CPU time itself.
 
+**A blocking accept or receive waits as long as it takes (#1046).**
+`sock_accept`, `sock_recv`, `sock_recv_from` and `fd_read` of a socket
+used the socket's timeout option and, when the program had set none,
+30 seconds, after which they failed with `ETIMEDOUT` (`listen` also wrote
+that default into the listener as if the program had set it). On Linux
+they wait until a client or data comes. So a server that waited longer
+than that for its first client gave up: pglite as a service exited
+("could not accept new connection: Operation timed out") when the job
+installed packages before connecting, and a connection idle for 30 s
+between queries was dropped the same way. These now take no timeout
+unless the program set one (`SO_RCVTIMEO`, or WASIX's accept timeout);
+the 30 s defaults for bind, connect and sends are unchanged.
+
+A wait that can last forever has to end when the program is stopped, and
+these waited in the host with no ear for signals: a SIGTERM or SIGKILL
+reached them only when the 30 s ran out. `__sock_wait`
+(`src/syscalls/mod.rs`) now also ends the wait, with `EINTR`, when a
+signal is queued for the thread or the thread or its process is made to
+finish (the runner's timeout, stall check and service teardown signal
+and then terminate), and `__sock_wait_restarts` decides what the program
+sees: it does the dynamic linker's pending work (another thread's
+`dlopen` waits for every thread with a `Sigwakeup`), runs the signal
+handlers or exits, and returns `EINTR` only for a signal the program's
+own handler ran on this thread, as Linux does for a handler without
+`SA_RESTART`; otherwise the call starts over. With no time limit, a
+`readv` whose first buffer fills exactly no longer waits for data for the
+next one: only the first buffer waits, the rest take what has arrived (it
+used to sit out the 30 s before returning the first buffer's bytes).
+Upstream main still defaults to 30 s (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
 still classify as streams, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
-can be renamed, and a guest's CPU clocks are its own: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
+can be renamed, a guest's CPU clocks are its own, and a blocking accept
+or receive waits with no timeout of its own and still ends for a signal:
+delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
 entry in `../Cargo.toml`, and check `builtins/test.sh`'s
 `background-passes` and `shebang-passes` (bash and bash-node),
 `shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
-bash-node), `low-fds-passes`, `rename-passes` (bash and bash-node) and
-`bash-node/cpu-time-passes`, and `iwci-runtime`'s
-`no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`
-and `a_bash_script_can_use_descriptors_3_and_4`.
+bash-node), `low-fds-passes`, `rename-passes` (bash and bash-node),
+`bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
+`python/idle-server-passes`, `python/idle-server-timeout-fails` and
+`postgres/idle-client-passes`, and `iwci-runtime`'s
+`no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`,
+`a_bash_script_can_use_descriptors_3_and_4`,
+`a_blocking_accept_or_recv_is_stopped_by_the_timeout`,
+`an_accept_timeout_the_program_sets_still_applies` and
+`a_service_blocked_in_accept_takes_its_sigterm`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
