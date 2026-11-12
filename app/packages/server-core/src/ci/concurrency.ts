@@ -89,8 +89,13 @@ function newer(a: AdmissionRun, b: AdmissionRun): boolean {
     : a.id > b.id;
 }
 
-/** `created_at` in microseconds, exactly (it fits a double). */
-const createdAtMicros = sql<number>`floor(extract(epoch from ${ciRuns.createdAt}) * 1000000)::float8`;
+/**
+ * `created_at` in microseconds, exactly (it fits a double). Built when asked,
+ * not at import, so a module that mocks the schema can still import this one.
+ */
+function createdAtMicros() {
+  return sql<number>`floor(extract(epoch from ${ciRuns.createdAt}) * 1000000)::float8`;
+}
 
 const HOLDING = new Set(["queued", "running"]);
 
@@ -250,7 +255,7 @@ export async function admitRun(
   const applied = await db.transaction(async (tx): Promise<Applied> => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey(row)}, 0))`);
     const [found] = await tx
-      .select({ run: ciRuns, createdAtMicros })
+      .select({ run: ciRuns, createdAtMicros: createdAtMicros() })
       .from(ciRuns)
       .where(eq(ciRuns.id, row.id))
       .limit(1);
@@ -260,7 +265,7 @@ export async function admitRun(
     }
     const concurrency = entries ?? current.concurrency ?? [];
     const others = await tx
-      .select({ run: ciRuns, createdAtMicros })
+      .select({ run: ciRuns, createdAtMicros: createdAtMicros() })
       .from(ciRuns)
       .where(
         and(
