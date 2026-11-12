@@ -373,6 +373,8 @@ cp "$repo/php/bad/tests/GreeterTest.php" "$repo/php/locked/bad/"
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
+# A committed symlink, for renaming one the job did not make.
+ln -s data.txt "$repo/data-link"
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -570,6 +572,11 @@ jobs:
       test "$(cat link2)" = "fixture line" && test ! -L link
       ln -s go dirlink && mv dirlink go-link
       test -f go-link/clean/main.go
+      # A link that came with the checkout, and a dangling one (#1005).
+      mv data-link moved-link
+      test "$(readlink moved-link)" = data.txt && test ! -L data-link
+      ln -s nowhere dangling && mv dangling dangling2
+      test "$(readlink dangling2)" = nowhere
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
@@ -720,7 +727,8 @@ jobs:
     run: |
       node -e 'throw new Error("expected")'
   # `fs.renameSync` of a checked-out file and directory (#985), which threw
-  # ENOENT in a job that had not written them.
+  # ENOENT in a job that had not written them, and of a checked-out symlink
+  # (#1005), which WASIX could not find to move.
   rename-passes:
     using: env:bash-node@24
     run: |
@@ -728,10 +736,11 @@ jobs:
       const fs = require("node:fs");
       fs.renameSync("data.txt", "moved.txt");
       fs.renameSync("go/dirty", "go/renamed");
+      fs.renameSync("data-link", "node-link");
       const text = fs.readFileSync("moved.txt", "utf8").trim();
-      console.log(text, fs.existsSync("data.txt"), fs.readdirSync("go").sort().join(","));
+      console.log(text, fs.existsSync("data.txt"), fs.readdirSync("go").sort().join(","), fs.readlinkSync("node-link"));
       JS
-      test "$(node /tmp/rename.js)" = "fixture line false clean,renamed"
+      test "$(node /tmp/rename.js)" = "fixture line false clean,renamed data.txt"
   # Two isolates alive at once, each growing its heap well past where it
   # starts: two jobs' `node` once crashed the runner on a CPU with memory
   # protection keys, and a burst of allocation outran fixed heap grants and

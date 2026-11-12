@@ -79,11 +79,12 @@ pub fn path_rename_internal(
     }
 
     // this is to be sure the source file is fetched from the filesystem if needed
+    // (not following a symlink: rename moves the link, which may dangle)
     let source_inode = wasi_try_ok!(state.fs.get_inode_at_path(
         inodes,
         source_fd,
         source_path,
-        true
+        false
     ));
     // Create the destination inode if the file exists.
     let _ = state
@@ -168,7 +169,16 @@ pub fn path_rename_internal(
         let mut guard = source_parent_inode.write();
         match guard.deref_mut() {
             Kind::Dir { entries, .. } => {
-                wasi_try_ok!(entries.remove(&source_entry_name).ok_or(Errno::Noent))
+                match entries.remove(&source_entry_name) {
+                    Some(entry) => entry,
+                    // A symlink found in the backing file system is never
+                    // cached in its directory's entries (`BackingSymlink`);
+                    // the inode resolved above is that link.
+                    None if matches!(source_inode.read().deref(), Kind::Symlink { .. }) => {
+                        source_inode.clone()
+                    }
+                    None => return Ok(Errno::Noent),
+                }
             }
             Kind::Root { .. } => return Ok(Errno::Notcapable),
             Kind::Socket { .. }
@@ -300,7 +310,7 @@ pub fn path_rename_internal(
     // The target entry is created, one way or the other
     let target_inode = state
         .fs
-        .get_inode_at_path(inodes, target_fd, target_path, true)
+        .get_inode_at_path(inodes, target_fd, target_path, false)
         .expect("Expected target inode to exist, and it's too late to safely fail");
     *target_inode.name.write().unwrap() = target_entry_name.into();
     target_inode.stat.write().unwrap().st_size = source_size;

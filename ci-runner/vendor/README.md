@@ -526,15 +526,28 @@ program does not know. So in `src/fs/mod.rs`:
 
 Upstream main still refuses the `dup2` (checked November 2026).
 
+**A symlink the job did not make can be renamed (#1005).** `path_rename`
+resolved its source following symlinks, so a dangling link was `ENOENT`,
+and then took the source out of its parent's cached entries, where a link
+found in the backing file system never is (`get_inode_at_path_inner`
+resolves it as `BackingSymlink` and does not insert it): renaming pnpm's
+`node_modules/<name>`, or any link the checkout holds, was `ENOENT` too.
+The source is now resolved without following, a link missing from the
+cache is the inode just resolved, and the target is looked up afterwards
+without following as well (following a dangling link there would have hit
+the `expect`). Upstream main is unchanged (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
-still classify as streams, and a program can put its own descriptors on
-the preopens' numbers and keep its paths: delete `vendor/wasmer-wasix*`,
-its `[patch.crates-io]` entry in `../Cargo.toml`, and check
-`builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
-bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
-(bash and bash-node) and `low-fds-passes`, and `iwci-runtime`'s
+still classify as streams, a program can put its own descriptors on the
+preopens' numbers and keep its paths, and a backing or dangling symlink
+can be renamed: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
+entry in `../Cargo.toml`, and check `builtins/test.sh`'s
+`background-passes` and `shebang-passes` (bash and bash-node),
+`shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
+bash-node), `low-fds-passes` and `rename-passes` (bash and bash-node), and
+`iwci-runtime`'s
 `no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`
 and `a_bash_script_can_use_descriptors_3_and_4`.
 
