@@ -296,8 +296,8 @@ jobs:
       stat run.sh
   # Renaming what the checkout holds (#985): a job that had not written a
   # file yet could not rename it ("mv: No such file or directory"). Into
-  # another checked-out directory, keeping its mode, a whole directory, and
-  # a file of the job's own into a directory only the checkout has.
+  # another checked-out directory, keeping its mode, a whole directory, a
+  # file of the job's own into a directory only the checkout has, and links.
   rename-passes:
     using: env:bash@5
     run: |
@@ -312,6 +312,11 @@ jobs:
       echo mine > mine.txt
       mv mine.txt js/clean/mine.txt
       test "$(cat js/clean/mine.txt)" = mine
+      # A symlink the job made (#1004), to a file and to a directory.
+      ln -s moved.txt link && mv link link2
+      test "$(cat link2)" = "fixture line" && test ! -L link
+      ln -s go dirlink && mv dirlink go-link
+      test -f go-link/clean/main.go
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
