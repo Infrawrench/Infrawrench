@@ -547,6 +547,29 @@ jobs:
       touch "$key"
       test "$(stat -c %a "$key")" = 644
       stat run.sh
+  # Renaming what the checkout holds (#985): a job that had not written a
+  # file yet could not rename it ("mv: No such file or directory"). Into
+  # another checked-out directory, keeping its mode, a whole directory, a
+  # file of the job's own into a directory only the checkout has, and links.
+  rename-passes:
+    using: env:bash@5
+    run: |
+      mv data.txt moved.txt
+      test "$(cat moved.txt)" = "fixture line"
+      test ! -e data.txt
+      mv run.sh go/clean/run.sh
+      test "$(stat -c %a go/clean/run.sh)" = 755
+      mv go/dirty ts/was-dirty
+      test -f ts/was-dirty/main.go
+      test ! -e go/dirty
+      echo mine > mine.txt
+      mv mine.txt js/clean/mine.txt
+      test "$(cat js/clean/mine.txt)" = mine
+      # A symlink the job made (#1004), to a file and to a directory.
+      ln -s moved.txt link && mv link link2
+      test "$(cat link2)" = "fixture line" && test ! -L link
+      ln -s go dirlink && mv dirlink go-link
+      test -f go-link/clean/main.go
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
@@ -696,6 +719,19 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'throw new Error("expected")'
+  # `fs.renameSync` of a checked-out file and directory (#985), which threw
+  # ENOENT in a job that had not written them.
+  rename-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/rename.js <<'JS'
+      const fs = require("node:fs");
+      fs.renameSync("data.txt", "moved.txt");
+      fs.renameSync("go/dirty", "go/renamed");
+      const text = fs.readFileSync("moved.txt", "utf8").trim();
+      console.log(text, fs.existsSync("data.txt"), fs.readdirSync("go").sort().join(","));
+      JS
+      test "$(node /tmp/rename.js)" = "fixture line false clean,renamed"
   # Two isolates alive at once, each growing its heap well past where it
   # starts: two jobs' `node` once crashed the runner on a CPU with memory
   # protection keys, and a burst of allocation outran fixed heap grants and
