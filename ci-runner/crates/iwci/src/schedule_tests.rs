@@ -310,6 +310,7 @@ fn run_full(
         logs: None,
         slots: None,
         secrets,
+        skip_task_cache: false,
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -690,6 +691,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         logs: None,
         slots: None,
         secrets: BTreeMap::new(),
+        skip_task_cache: false,
     };
     run(
         plan,
@@ -974,6 +976,7 @@ fn runs_share_the_runners_slots() {
         logs: None,
         slots: Some(slots.clone()),
         secrets: BTreeMap::new(),
+        skip_task_cache: false,
     };
     // Two runs at once, each wanting four jobs in parallel: together they
     // never exceed the two slots.
@@ -1024,6 +1027,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         logs: Some(Arc::new(move |e| sink.lock().unwrap().push(e))),
         slots: None,
         secrets: BTreeMap::new(),
+        skip_task_cache: false,
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -1244,6 +1248,16 @@ fn run_cached_installs(
     caches: &Arc<MemoryCaches>,
     source: &'static str,
 ) -> (RunReport, Vec<String>, usize) {
+    run_cached_with(plan, caches, source, false)
+}
+
+/// [`run_cached_installs`], skipping the task cache's lookups when asked.
+fn run_cached_with(
+    plan: &Plan,
+    caches: &Arc<MemoryCaches>,
+    source: &'static str,
+    skip_task_cache: bool,
+) -> (RunReport, Vec<String>, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -1266,6 +1280,7 @@ fn run_cached_installs(
         logs: None,
         slots: None,
         secrets: BTreeMap::new(),
+        skip_task_cache,
     };
     let report = run(
         plan,
@@ -1333,6 +1348,45 @@ fn the_task_cache_skips_jobs_whose_inputs_have_not_changed() {
         ran.contains(&"lib".to_string()) && !ran.contains(&"check".to_string()),
         "{ran:?}"
     );
+}
+
+#[test]
+fn a_run_that_skips_the_task_cache_runs_every_job_and_still_saves() {
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    task-cache: { inputs: [src/**] }\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: { inputs: [docs/**] }\n",
+    );
+    let store = Arc::new(MemoryCaches::default());
+    let (first, _) = run_cached(&p, &store, "a");
+    assert!(first.passed(), "{:#?}", first.jobs);
+    assert_eq!(store.saved.lock().unwrap().len(), 2);
+
+    // Nothing changed, but this run does not read the task cache: both
+    // jobs run, and say why.
+    let (fresh, ran, _) = run_cached_with(&p, &store, "a", true);
+    assert!(fresh.passed(), "{:#?}", fresh.jobs);
+    assert_eq!(ran, ["lib", "check"]);
+    assert!(!cached(&fresh, "lib") && !cached(&fresh, "check"));
+    let lib = fresh.jobs.iter().find(|j| j.id == "lib").unwrap();
+    assert!(
+        lib.caches
+            .iter()
+            .any(|l| l.ends_with("not read, this run skips the task cache")),
+        "{:?}",
+        lib.caches
+    );
+    // Its passes are saved again under the same keys.
+    let saved = store.saved.lock().unwrap().clone();
+    assert_eq!(saved.len(), 4, "{saved:?}");
+    assert_eq!(
+        saved[0..2].iter().collect::<HashSet<_>>(),
+        saved[2..4].iter().collect::<HashSet<_>>()
+    );
+
+    // The next run that reads the task cache is cached again.
+    let (after, ran) = run_cached(&p, &store, "a");
+    assert!(after.passed(), "{:#?}", after.jobs);
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(cached(&after, "lib") && cached(&after, "check"));
 }
 
 #[test]
@@ -1500,6 +1554,7 @@ fn run_looked_up(
         logs: None,
         slots,
         secrets: BTreeMap::new(),
+        skip_task_cache: false,
     };
     let report = run(
         plan,

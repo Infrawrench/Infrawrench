@@ -10,6 +10,7 @@
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/prepare` | warms a runner for a request |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
+// | `DELETE /v1/storage/{owner}/{repo-id}` | clears a repository's caches, on any runner |
 // | `PUT /v1/schedules` | registers a repository's `on.schedule` pipelines |
 // | `GET /v1/schedules/{owner}` | an owner's registered schedules |
 // | `DELETE /v1/schedules/{owner}/{repo-id}` | stops a repository's scheduled runs |
@@ -223,6 +224,17 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     parts.length === 3
   ) {
     const response = await deps.pool.any(`${path}${url.search}`);
+    return response
+      ? new Response(response.body, { status: response.status, headers: response.headers })
+      : error(503, "no runner answered");
+  }
+
+  if (method === "DELETE" && parts[0] === "v1" && parts[1] === "storage" && parts.length === 4) {
+    // The store is shared, so any runner clears it for all of them.
+    if (!isId(third) || !isId(fourth)) {
+      return error(400, "the owner and repository id must match [A-Za-z0-9._-]{1,128}");
+    }
+    const response = await deps.pool.any(path, { method: "DELETE" });
     return response
       ? new Response(response.body, { status: response.status, headers: response.headers })
       : error(503, "no runner answered");

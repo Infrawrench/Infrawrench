@@ -191,6 +191,92 @@ pub fn storage_usage(
     Ok(usage)
 }
 
+/// What clearing a repository's caches removed.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Cleared {
+    pub owner: String,
+    #[serde(rename = "repo-id")]
+    pub repo_id: String,
+    /// Objects deleted: cache entries and the pointers `restore-keys` read.
+    pub deleted_objects: u64,
+    pub deleted_bytes: u64,
+    /// Of those, cache entries (`cache:` and `task-cache:` alike).
+    pub deleted_entries: u64,
+}
+
+/// How many deletes run at once when clearing: each is a round trip to the
+/// store, and a repository can hold thousands of entries.
+const CLEAR_THREADS: usize = 8;
+
+/// Deletes everything stored for one repository of `owner`: every branch's
+/// and pull request's `cache:` and `task-cache:` entries and their prefix
+/// pointers, which is what [`storage_usage`] counts for it. Nothing outside
+/// `caches/<owner>/<repo>/` is touched, so other repositories, other owners
+/// and the runners' own caches (git objects, installs, compiled modules)
+/// stay. A run saving while this runs may leave its entry behind.
+pub fn clear_repository(
+    store: &dyn ObjectStore,
+    owner: &RepoId,
+    repo: &RepoId,
+) -> Result<Cleared, String> {
+    // The trailing slash keeps `web` from matching `web-admin`.
+    let prefix = format!("caches/{}/{}/", owner.as_str(), repo.as_str());
+    let objects = store.list_detailed(&prefix).map_err(|e| e.to_string())?;
+    let mut cleared = Cleared {
+        owner: owner.as_str().to_string(),
+        repo_id: repo.as_str().to_string(),
+        ..Default::default()
+    };
+    let chunk = objects.len().div_ceil(CLEAR_THREADS).max(1);
+    let prefix = prefix.as_str();
+    let results: Vec<Result<Cleared, String>> = std::thread::scope(|threads| {
+        let handles: Vec<_> = objects
+            .chunks(chunk)
+            .map(|part| {
+                threads.spawn(move || {
+                    let mut done = Cleared::default();
+                    for object in part {
+                        debug_assert!(object.key.starts_with(prefix));
+                        store.delete(&object.key).map_err(|e| e.to_string())?;
+                        done.deleted_objects += 1;
+                        done.deleted_bytes += object.size;
+                        if object.key.ends_with(".zst") {
+                            done.deleted_entries += 1;
+                        }
+                    }
+                    Ok(done)
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap_or_else(|_| Err("a delete panicked".into())))
+            .collect()
+    });
+    let mut first_error = None;
+    for result in results {
+        match result {
+            Ok(done) => {
+                cleared.deleted_objects += done.deleted_objects;
+                cleared.deleted_bytes += done.deleted_bytes;
+                cleared.deleted_entries += done.deleted_entries;
+            }
+            Err(e) => {
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    match first_error {
+        // Some deletes may have landed; the next clear finishes the rest.
+        Some(e) => Err(format!(
+            "{e} (deleted {} of {} objects first)",
+            cleared.deleted_objects,
+            objects.len()
+        )),
+        None => Ok(cleared),
+    }
+}
+
 /// The owner a repository's usage belongs to: `github.com-<org>` for
 /// `https://github.com/<org>/<repo>` (also `git@github.com:<org>/...`),
 /// lowercased so `Infrawrench` and `infrawrench` are one owner. `None`
@@ -543,6 +629,77 @@ mod tests {
                 .used_bytes,
             0
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn clearing_a_repository_removes_only_its_caches() {
+        let (store, dir) = store();
+        let acme = RepoId::new("github.com-acme").unwrap();
+        let other = RepoId::new("github.com-other").unwrap();
+        let caches = |owner: &RepoId, repo: &str, branch: &str, event: Event| {
+            StoreCaches::new(
+                store.clone(),
+                owner,
+                &RepoId::new(repo).unwrap(),
+                branch,
+                "main",
+                event,
+                None,
+            )
+        };
+        // `web` on two branches and a pull request, with prefix pointers.
+        caches(&acme, "web", "main", Event::Push)
+            .save("deps-1", &["deps-".into()], &entries("main"))
+            .unwrap();
+        caches(&acme, "web", "feature", Event::Push)
+            .save("deps-2", &["deps-".into()], &entries("feature"))
+            .unwrap();
+        caches(&acme, "web", "pull/3", Event::PullRequest)
+            .save("deps-3", &[], &entries("pr"))
+            .unwrap();
+        // A repository whose name starts with `web`, and another owner's `web`.
+        caches(&acme, "web-admin", "main", Event::Push)
+            .save("deps-1", &[], &entries("admin"))
+            .unwrap();
+        caches(&other, "web", "main", Event::Push)
+            .save("deps-1", &[], &entries("theirs"))
+            .unwrap();
+        // Something outside `caches/` entirely.
+        store
+            .put("usage/github.com-acme/x.json", b"{}", "application/json")
+            .unwrap();
+
+        let before = storage_usage(store.as_ref(), &acme, None).unwrap();
+        let web = before.repos["web"].clone();
+        assert_eq!(web.entries, 3);
+
+        let cleared =
+            clear_repository(store.as_ref(), &acme, &RepoId::new("web").unwrap()).unwrap();
+        assert_eq!(cleared.deleted_entries, 3);
+        assert_eq!(cleared.deleted_objects, 5, "three entries and two pointers");
+        assert_eq!(cleared.deleted_bytes, web.bytes);
+
+        let after = storage_usage(store.as_ref(), &acme, None).unwrap();
+        assert!(!after.repos.contains_key("web"), "{after:?}");
+        assert_eq!(after.repos["web-admin"].entries, 1);
+        assert!(
+            caches(&acme, "web", "main", Event::Push)
+                .restore("deps-1", &["deps-".into()], 1 << 20)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            caches(&other, "web", "main", Event::Push)
+                .restore("deps-1", &[], 1 << 20)
+                .unwrap()
+                .is_some()
+        );
+        assert!(store.get("usage/github.com-acme/x.json").unwrap().is_some());
+
+        // Clearing again finds nothing, and is not an error.
+        let again = clear_repository(store.as_ref(), &acme, &RepoId::new("web").unwrap()).unwrap();
+        assert_eq!((again.deleted_objects, again.deleted_bytes), (0, 0));
         let _ = std::fs::remove_dir_all(dir);
     }
 

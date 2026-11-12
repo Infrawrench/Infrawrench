@@ -419,6 +419,10 @@ pub struct Options {
     /// The run's secrets, for `env:` values that read
     /// `${{ secrets.<name> }}`, and masked wherever a job's output goes.
     pub secrets: BTreeMap<String, String>,
+    /// Run every `task-cache:` job instead of replaying an entry: its key
+    /// is still computed and a pass still saves under it, so the next run
+    /// that reads the task cache benefits.
+    pub skip_task_cache: bool,
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -1299,6 +1303,17 @@ fn look_up(
     let (Some(key), Some(store)) = (key, &options.caches) else {
         return Looked::Run(Lookup::default());
     };
+    if options.skip_task_cache {
+        // Runs, and saves under the key as a miss would.
+        let line = format!(
+            "task cache `{}`: not read, this run skips the task cache",
+            short_key(&key)
+        );
+        return Looked::Run(Lookup {
+            key: Some(key),
+            lines: vec![line],
+        });
+    }
     let mut lines = Vec::new();
     match store.restore(&key, &[], plan.scratch_bytes + MAX_TASK_LOG) {
         Ok(Some(hit)) => {
