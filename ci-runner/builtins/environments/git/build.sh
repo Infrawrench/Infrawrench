@@ -162,10 +162,12 @@ else
 fi
 mkdir -p "$work/dl"
 
-# download <url> <sha256> <file>: fetched once, checked every time.
+# download <url> <sha256> <file>: fetched once, checked every time. Every
+# failure is retried: kernel.org's mirror has cut a transfer short with an
+# HTTP/2 PROTOCOL_ERROR, which curl does not count as transient.
 download() {
   local url="$1" sha="$2" file="$work/dl/$3"
-  [[ -f "$file" ]] || curl -fsSL --retry 3 -o "$file" "$url"
+  [[ -f "$file" ]] || curl -fsSL --retry 5 --retry-all-errors -o "$file" "$url"
   if ! echo "$sha  $file" | sha256sum -c --status -; then
     echo "error: $url hashed to $(sha256sum "$file" | cut -d' ' -f1), expected $sha" >&2
     rm -f "$file"
