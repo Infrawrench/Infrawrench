@@ -24,8 +24,6 @@
 # optional dependencies, so the root package.json lists it.
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
-# - The tests of the package the `test` job below leaves out (plugingen): it
-#   needs a host tool a job does not have.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
 name: Test
@@ -79,9 +77,10 @@ jobs:
   # depends on. The runner's installer writes no node_modules/.bin, so
   # `vitest` in the script runs as its entry point.
   #
-  # This package's tests stay on GitHub Actions, whose Vitest job runs
-  # exactly this list: a package taken off it goes back on there.
-  # - tests that run what a job does not have: plugingen (git).
+  # Every package's: plugingen's run real git, which every environment has
+  # (ci-runner/README.md, "Git"). A package taken off this job goes back on
+  # GitHub Actions, in a Vitest job of test.yml's that runs exactly the
+  # packages left out here.
   #
   # Native code with no WebAssembly build in the same package, and what the
   # runner's Node does not do yet:
@@ -102,7 +101,6 @@ jobs:
     name: Test ${{ package.name }}
     packages:
       scripts: { test: "*vitest run*" }
-      only: ["!plugingen"]
     needs: [prep, bundle, "^bundle"]
     using: env:bash-node@24
     env:
