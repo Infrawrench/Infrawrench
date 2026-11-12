@@ -87,11 +87,9 @@ jobs:
   # - node-preload.cjs, beside this file, hands a package that lists
   #   `@rollup/wasm-node` or `esbuild-wasm` that build in place of Rollup's
   #   or esbuild's, which Vite 6 (web's and desktop's Vitest) loads before
-  #   it reads the package's config; answers for node-pty, which tests
-  #   import without opening a terminal (stubs/); and stands in for
-  #   Edge.js's `structuredClone`, which drops integer-like keys (#1048),
-  #   and its recursive `fs.rmSync`, which removes nothing (#1049).
-  #   bastion-agent's bundle test picks `esbuild-wasm` itself.
+  #   it reads the package's config; and answers for node-pty, which tests
+  #   import without opening a terminal (stubs/). bastion-agent's bundle
+  #   test picks `esbuild-wasm` itself.
   # - libsql's addon: turso's test mocks the client it never makes, and
   #   server-core, poller, web and desktop swap it for the client's
   #   addon-free entry in their vitest.config.ts.
