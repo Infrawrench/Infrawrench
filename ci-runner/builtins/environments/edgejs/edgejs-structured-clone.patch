@@ -1,0 +1,409 @@
+diff --git a/lib/internal/worker/js_transferable.js b/lib/internal/worker/js_transferable.js
+index 6acc0a3b..d72c5ac3 100644
+--- a/lib/internal/worker/js_transferable.js
++++ b/lib/internal/worker/js_transferable.js
+@@ -1,8 +1,28 @@
+ 'use strict';
+ const {
++  ArrayIsArray,
++  ArrayPrototype,
++  ArrayPrototypePop,
++  ArrayPrototypePush,
++  DatePrototype,
+   Error,
++  MapPrototype,
++  MapPrototypeForEach,
++  ObjectGetOwnPropertyDescriptor,
++  ObjectGetPrototypeOf,
++  ObjectKeys,
++  ObjectPrototype,
++  RegExpPrototype,
++  SafeSet,
++  SetPrototype,
++  SetPrototypeForEach,
+   StringPrototypeSplit,
+ } = primordials;
++const {
++  isArrayBuffer,
++  isArrayBufferView,
++  isProxy,
++} = require('internal/util/types');
+ const {
+   codes: {
+     ERR_MISSING_ARGS,
+@@ -109,6 +129,67 @@ webidl.converters.StructuredSerializeOptions = webidl
+     ],
+   );
+ 
++/**
++ * Whether V8's serializer alone clones `value` as Node's structuredClone
++ * would: it holds only primitives, plain objects, arrays, maps, sets, dates,
++ * regular expressions and buffers, no getters, proxies or objects marked
++ * with a transfer mode. The native clone copies everything else through
++ * N-API first, to stand in for host objects and transferables, which is
++ * slow and runs out of handles on a large value.
++ * @param {any} value
++ * @returns {boolean}
++ */
++function isPlainCloneData(value) {
++  const stack = [];
++  const add = (item) => {
++    if (typeof item === 'object' && item !== null) {
++      ArrayPrototypePush(stack, item);
++      return true;
++    }
++    return typeof item !== 'symbol' && typeof item !== 'function';
++  };
++  if (!add(value)) return false;
++  const seen = new SafeSet();
++  let plain = true;
++  const addEntry = (item, key) => {
++    if (!add(key) || !add(item)) plain = false;
++  };
++  const addItem = (item) => {
++    if (!add(item)) plain = false;
++  };
++  while (stack.length > 0 && plain) {
++    const object = ArrayPrototypePop(stack);
++    if (seen.has(object)) continue;
++    seen.add(object);
++    if (isProxy(object) || object[transfer_mode_private_symbol] !== undefined) {
++      return false;
++    }
++    if (isArrayBuffer(object) || isArrayBufferView(object)) continue;
++    const proto = ObjectGetPrototypeOf(object);
++    if (proto === DatePrototype || proto === RegExpPrototype) continue;
++    if (proto === MapPrototype) {
++      MapPrototypeForEach(object, addEntry);
++      continue;
++    }
++    if (proto === SetPrototype) {
++      SetPrototypeForEach(object, addItem);
++      continue;
++    }
++    if (proto !== ObjectPrototype && proto !== null &&
++        (proto !== ArrayPrototype || !ArrayIsArray(object))) {
++      return false;
++    }
++    const keys = ObjectKeys(object);
++    for (let i = 0; i < keys.length; i++) {
++      const descriptor = ObjectGetOwnPropertyDescriptor(object, keys[i]);
++      // A getter is read by the clone itself, once, as Node's does.
++      if (descriptor === undefined || !('value' in descriptor)) return false;
++      if (!add(descriptor.value)) return false;
++    }
++  }
++  return plain;
++}
++
+ function structuredClone(value, options) {
+   if (arguments.length === 0) {
+     throw new ERR_MISSING_ARGS('The value argument must be specified');
+@@ -123,6 +204,9 @@ function structuredClone(value, options) {
+     },
+   );
+ 
++  if (idlOptions.transfer.length === 0 && isPlainCloneData(value)) {
++    return nativeStructuredClone(value, idlOptions, true);
++  }
+   const serializedData = nativeStructuredClone(value, idlOptions);
+   return serializedData;
+ }
+diff --git a/src/internal_binding/binding_messaging.cc b/src/internal_binding/binding_messaging.cc
+index 5393724d..b18c2ec2 100644
+--- a/src/internal_binding/binding_messaging.cc
++++ b/src/internal_binding/binding_messaging.cc
+@@ -1041,19 +1041,80 @@ napi_value RestoreTransferredPortsInValue(napi_env env,
+                                           ReceivedTransferredPortState* state,
+                                           std::vector<ValueTransformPair>* seen_pairs);
+ 
++// The keys the structured clone algorithm copies from an object: its own
++// enumerable string-keyed properties, array indices included, which is
++// what V8's ValueSerializer reads. The walks here took own non-index
++// properties instead, so `{ "200": 1 }` lost its key, and non-enumerable
++// properties came through as enumerable ones.
++napi_status GetStructuredCloneKeys(napi_env env, napi_value value, napi_value* keys_out) {
++  return napi_get_all_property_names(env,
++                                     value,
++                                     napi_key_own_only,
++                                     static_cast<napi_key_filter>(napi_key_enumerable | napi_key_skip_symbols),
++                                     napi_key_numbers_to_strings,
++                                     keys_out);
++}
++
++// The copies one preparation has made so far, by source (a JS Map): an
++// object reached twice is copied once, so the clone keeps the reference
++// shared, and a cycle ends instead of recursing until the stack runs out.
++struct CloneCopies {
++  napi_value map = nullptr;
++  napi_value get = nullptr;
++  napi_value set = nullptr;
++};
++
++bool InitCloneCopies(napi_env env, CloneCopies* copies) {
++  copies->map = CreateGlobalInstance(env, "Map");
++  if (copies->map == nullptr) return false;
++  copies->get = GetNamed(env, copies->map, "get");
++  copies->set = GetNamed(env, copies->map, "set");
++  return IsFunction(env, copies->get) && IsFunction(env, copies->set);
++}
++
++napi_value FindCloneCopy(napi_env env, const CloneCopies* copies, napi_value source) {
++  if (copies == nullptr || copies->map == nullptr) return nullptr;
++  napi_value argv[1] = {source};
++  napi_value out = nullptr;
++  if (napi_call_function(env, copies->map, copies->get, 1, argv, &out) != napi_ok) {
++    ClearPendingException(env);
++    return nullptr;
++  }
++  return out == nullptr || IsNullOrUndefinedValue(env, out) ? nullptr : out;
++}
++
++void AddCloneCopy(napi_env env, const CloneCopies* copies, napi_value source, napi_value copy) {
++  if (copies == nullptr || copies->map == nullptr) return;
++  napi_value argv[2] = {source, copy};
++  napi_value ignored = nullptr;
++  if (napi_call_function(env, copies->map, copies->set, 2, argv, &ignored) != napi_ok) {
++    ClearPendingException(env);
++  }
++}
++
++napi_value PrepareStructuredCloneValue(napi_env env,
++                                       napi_value value,
++                                       bool allow_host_object_transfer,
++                                       const CloneCopies* copies);
++napi_value CreateVisitedSet(napi_env env);
++bool VisitedSetHas(napi_env env, napi_value visited, napi_value value);
++void VisitedSetAdd(napi_env env, napi_value visited, napi_value value);
++
+ napi_value CloneArrayEntriesForStructuredClone(napi_env env,
+                                                napi_value array,
+-                                               bool allow_host_object_transfer) {
++                                               bool allow_host_object_transfer,
++                                               const CloneCopies* copies = nullptr) {
+   uint32_t length = 0;
+   if (napi_get_array_length(env, array, &length) != napi_ok) return nullptr;
+ 
+   napi_value out = nullptr;
+   if (napi_create_array_with_length(env, length, &out) != napi_ok || out == nullptr) return nullptr;
++  AddCloneCopy(env, copies, array, out);
+ 
+   for (uint32_t i = 0; i < length; ++i) {
+     napi_value item = nullptr;
+     if (napi_get_element(env, array, i, &item) != napi_ok) return nullptr;
+-    napi_value cloned = PrepareTransferableDataForStructuredClone(env, item, allow_host_object_transfer);
++    napi_value cloned = PrepareStructuredCloneValue(env, item, allow_host_object_transfer, copies);
+     if (cloned == nullptr) return nullptr;
+     if (napi_set_element(env, out, i, cloned) != napi_ok) return nullptr;
+   }
+@@ -1062,22 +1123,24 @@ napi_value CloneArrayEntriesForStructuredClone(napi_env env,
+ 
+ napi_value CloneObjectPropertiesForStructuredClone(napi_env env,
+                                                    napi_value object,
+-                                                   bool allow_host_object_transfer) {
++                                                   bool allow_host_object_transfer,
++                                                   const CloneCopies* copies = nullptr) {
+   napi_value keys = nullptr;
+-  if (napi_get_property_names(env, object, &keys) != napi_ok || keys == nullptr) return nullptr;
++  if (GetStructuredCloneKeys(env, object, &keys) != napi_ok || keys == nullptr) return nullptr;
+ 
+   uint32_t length = 0;
+   if (napi_get_array_length(env, keys, &length) != napi_ok) return nullptr;
+ 
+   napi_value out = nullptr;
+   if (napi_create_object(env, &out) != napi_ok || out == nullptr) return nullptr;
++  AddCloneCopy(env, copies, object, out);
+ 
+   for (uint32_t i = 0; i < length; ++i) {
+     napi_value key = nullptr;
+     if (napi_get_element(env, keys, i, &key) != napi_ok || key == nullptr) return nullptr;
+     napi_value item = nullptr;
+     if (napi_get_property(env, object, key, &item) != napi_ok) return nullptr;
+-    napi_value cloned = PrepareTransferableDataForStructuredClone(env, item, allow_host_object_transfer);
++    napi_value cloned = PrepareStructuredCloneValue(env, item, allow_host_object_transfer, copies);
+     if (cloned == nullptr) return nullptr;
+     if (napi_set_property(env, out, key, cloned) != napi_ok) return nullptr;
+   }
+@@ -1088,6 +1151,15 @@ napi_value CloneObjectPropertiesForStructuredClone(napi_env env,
+ napi_value PrepareTransferableDataForStructuredClone(napi_env env,
+                                                      napi_value value,
+                                                      bool allow_host_object_transfer) {
++  CloneCopies copies;
++  if (!InitCloneCopies(env, &copies)) return nullptr;
++  return PrepareStructuredCloneValue(env, value, allow_host_object_transfer, &copies);
++}
++
++napi_value PrepareStructuredCloneValue(napi_env env,
++                                       napi_value value,
++                                       bool allow_host_object_transfer,
++                                       const CloneCopies* copies) {
+   if (value == nullptr || IsNullOrUndefinedValue(env, value) || IsStructuredClonePassThroughValue(env, value)) {
+     return value;
+   }
+@@ -1113,12 +1185,16 @@ napi_value PrepareTransferableDataForStructuredClone(napi_env env,
+ 
+   bool is_array = false;
+   if (napi_is_array(env, value, &is_array) == napi_ok && is_array) {
+-    return CloneArrayEntriesForStructuredClone(env, value, allow_host_object_transfer);
++    napi_value copy = FindCloneCopy(env, copies, value);
++    if (copy != nullptr) return copy;
++    return CloneArrayEntriesForStructuredClone(env, value, allow_host_object_transfer, copies);
+   }
+   if (!IsPlainObjectContainer(env, value)) {
+     return value;
+   }
+-  return CloneObjectPropertiesForStructuredClone(env, value, allow_host_object_transfer);
++  napi_value copy = FindCloneCopy(env, copies, value);
++  if (copy != nullptr) return copy;
++  return CloneObjectPropertiesForStructuredClone(env, value, allow_host_object_transfer, copies);
+ }
+ 
+ napi_value CreateBlobHandleFromCloneData(napi_env env, napi_value blob_data) {
+@@ -1237,7 +1313,14 @@ napi_value CreateCryptoKeyObjectFromCloneData(napi_env env, napi_value data) {
+   return EdgeCryptoCreateKeyObjectFromCloneData(env, data);
+ }
+ 
++napi_value RestoreStructuredCloneValue(napi_env env, napi_value value, napi_value visited);
++
+ napi_value RestoreTransferableDataAfterStructuredClone(napi_env env, napi_value value) {
++  // A clone can share objects and hold cycles; each is restored once.
++  return RestoreStructuredCloneValue(env, value, CreateVisitedSet(env));
++}
++
++napi_value RestoreStructuredCloneValue(napi_env env, napi_value value, napi_value visited) {
+   if (value == nullptr || IsNullOrUndefinedValue(env, value) || IsStructuredClonePassThroughValue(env, value)) {
+     return value;
+   }
+@@ -1245,7 +1328,7 @@ napi_value RestoreTransferableDataAfterStructuredClone(napi_env env, napi_value
+   napi_value transferable_data = nullptr;
+   napi_value deserialize_info = nullptr;
+   if (IsJSTransferableCloneMarker(env, value, &transferable_data, &deserialize_info)) {
+-    napi_value restored_data = RestoreTransferableDataAfterStructuredClone(env, transferable_data);
++    napi_value restored_data = RestoreStructuredCloneValue(env, transferable_data, visited);
+     if (restored_data == nullptr) return nullptr;
+     return DeserializeJSTransferableCloneMarker(env, restored_data, deserialize_info);
+   }
+@@ -1279,21 +1362,25 @@ napi_value RestoreTransferableDataAfterStructuredClone(napi_env env, napi_value
+ 
+   bool is_array = false;
+   if (napi_is_array(env, value, &is_array) == napi_ok && is_array) {
++    if (VisitedSetHas(env, visited, value)) return value;
++    VisitedSetAdd(env, visited, value);
+     uint32_t length = 0;
+     if (napi_get_array_length(env, value, &length) != napi_ok) return nullptr;
+     for (uint32_t i = 0; i < length; ++i) {
+       napi_value item = nullptr;
+       if (napi_get_element(env, value, i, &item) != napi_ok) return nullptr;
+-      napi_value restored = RestoreTransferableDataAfterStructuredClone(env, item);
++      napi_value restored = RestoreStructuredCloneValue(env, item, visited);
+       if (restored == nullptr || napi_set_element(env, value, i, restored) != napi_ok) return nullptr;
+     }
+     return value;
+   }
+ 
+   if (!IsPlainObjectContainer(env, value)) return value;
++  if (VisitedSetHas(env, visited, value)) return value;
++  VisitedSetAdd(env, visited, value);
+ 
+   napi_value keys = nullptr;
+-  if (napi_get_property_names(env, value, &keys) != napi_ok || keys == nullptr) return nullptr;
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok || keys == nullptr) return nullptr;
+ 
+   uint32_t length = 0;
+   if (napi_get_array_length(env, keys, &length) != napi_ok) return nullptr;
+@@ -1302,7 +1389,7 @@ napi_value RestoreTransferableDataAfterStructuredClone(napi_env env, napi_value
+     if (napi_get_element(env, keys, i, &key) != napi_ok || key == nullptr) return nullptr;
+     napi_value item = nullptr;
+     if (napi_get_property(env, value, key, &item) != napi_ok) return nullptr;
+-    napi_value restored = RestoreTransferableDataAfterStructuredClone(env, item);
++    napi_value restored = RestoreStructuredCloneValue(env, item, visited);
+     if (restored == nullptr || napi_set_property(env, value, key, restored) != napi_ok) return nullptr;
+   }
+   return value;
+@@ -1710,7 +1797,7 @@ napi_value TransformTransferredValuesForQueue(
+   if (seen_pairs != nullptr) seen_pairs->push_back({value, out});
+ 
+   napi_value keys = nullptr;
+-  if (EdgeGetOwnNonIndexProperties(env, value, napi_key_all_properties, &keys) != napi_ok ||
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok ||
+       keys == nullptr) {
+     return out;
+   }
+@@ -2223,7 +2310,7 @@ bool ValueContainsMarkedUncloneable(napi_env env, napi_value value, napi_value v
+   }
+ 
+   napi_value keys = nullptr;
+-  if (EdgeGetOwnNonIndexProperties(env, value, napi_key_all_properties, &keys) != napi_ok ||
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok ||
+       keys == nullptr) {
+     return false;
+   }
+@@ -2312,7 +2399,7 @@ bool ValueRequiresMessagePortTransfer(napi_env env,
+   }
+ 
+   napi_value keys = nullptr;
+-  if (EdgeGetOwnNonIndexProperties(env, value, napi_key_all_properties, &keys) != napi_ok ||
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok ||
+       keys == nullptr) {
+     return false;
+   }
+@@ -3191,7 +3278,7 @@ napi_value TransformTransferredPortsForQueue(
+   if (seen_pairs != nullptr) seen_pairs->push_back({value, out});
+ 
+   napi_value keys = nullptr;
+-  if (EdgeGetOwnNonIndexProperties(env, value, napi_key_all_properties, &keys) != napi_ok ||
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok ||
+       keys == nullptr) {
+     return out;
+   }
+@@ -3393,7 +3480,7 @@ napi_value RestoreTransferredPortsInValue(napi_env env,
+   }
+ 
+   napi_value keys = nullptr;
+-  if (EdgeGetOwnNonIndexProperties(env, value, napi_key_all_properties, &keys) != napi_ok ||
++  if (GetStructuredCloneKeys(env, value, &keys) != napi_ok ||
+       keys == nullptr) {
+     return value;
+   }
+@@ -4208,12 +4295,39 @@ napi_value SetDeserializerCreateObjectFunctionCallback(napi_env env, napi_callba
+   return Undefined(env);
+ }
+ 
++// structuredClone of a value js_transferable.js found to hold only data V8's
++// serializer clones by itself (no host object, transferable, port, getter or
++// proxy, and nothing to transfer): V8 clones it alone, as Node's does. The
++// walks above copy every object through N-API calls first, which costs
++// handles and time with every object, and enough of them fail the clone.
++napi_value CloneValueDirectly(napi_env env, napi_value value) {
++  napi_value cloned = nullptr;
++  if (unofficial_napi_structured_clone(env, value, nullptr, &cloned) != napi_ok || cloned == nullptr) {
++    bool has_pending = false;
++    if (napi_is_exception_pending(env, &has_pending) == napi_ok && has_pending) {
++      return ReadPendingCloneErrorMessage(env, value);
++    }
++    std::string message = DescribeCloneFailureValue(env, value);
++    napi_value err = CreateDataCloneError(
++        env, message.empty() ? "The object could not be cloned." : message.c_str());
++    if (err != nullptr) napi_throw(env, err);
++    return nullptr;
++  }
++  return cloned;
++}
++
+ napi_value StructuredCloneCallback(napi_env env, napi_callback_info info) {
+-  size_t argc = 2;
+-  napi_value argv[2] = {nullptr, nullptr};
++  size_t argc = 3;
++  napi_value argv[3] = {nullptr, nullptr, nullptr};
+   if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok) return nullptr;
+   if (argc < 1 || argv[0] == nullptr) return Undefined(env);
+ 
++  bool plain_data = false;
++  if (argc >= 3 && argv[2] != nullptr &&
++      napi_get_value_bool(env, argv[2], &plain_data) == napi_ok && plain_data) {
++    return CloneValueDirectly(env, argv[0]);
++  }
++
+   if (!EnsureNoMissingTransferredMessagePorts(env, argv[0], argc >= 2 ? argv[1] : nullptr)) {
+     return nullptr;
+   }
