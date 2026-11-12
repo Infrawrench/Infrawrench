@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:25:53 -0500
+Subject: [PATCH 09/13] net: build the wasip1 file tests against newPollFD
+
+The port moved wasip1 off fd_fake.go, so file_wasip1_test.go's calls to
+newFD(net, sysfd) no longer compile, and `go vet net` (and `go vet std`)
+failed on them. Build the descriptors with newPollFD, which file_wasip1.go
+itself uses.
+---
+ src/net/file_wasip1_test.go | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/net/file_wasip1_test.go b/src/net/file_wasip1_test.go
+index 4f42590..e1bf706 100644
+--- a/src/net/file_wasip1_test.go
++++ b/src/net/file_wasip1_test.go
+@@ -7,6 +7,7 @@
+ package net
+ 
+ import (
++	"internal/poll"
+ 	"syscall"
+ 	"testing"
+ )
+@@ -77,7 +78,7 @@ func TestWasip1FileListenNet(t *testing.T) {
+ }
+ 
+ func TestWasip1NewFileListener(t *testing.T) {
+-	if l, ok := newFileListener(newFD("tcp", -1)).(*TCPListener); !ok {
++	if l, ok := newFileListener(newPollFD("tcp", poll.FD{Sysfd: -1})).(*TCPListener); !ok {
+ 		t.Errorf("newFileListener: tcp listener type mismatch: %T", l)
+ 	} else {
+ 		testIsTCPAddr(t, "Addr", l.Addr())
+@@ -85,13 +86,13 @@ func TestWasip1NewFileListener(t *testing.T) {
+ }
+ 
+ func TestWasip1NewFileConn(t *testing.T) {
+-	if c, ok := newFileConn(newFD("tcp", -1)).(*TCPConn); !ok {
++	if c, ok := newFileConn(newPollFD("tcp", poll.FD{Sysfd: -1})).(*TCPConn); !ok {
+ 		t.Errorf("newFileConn: tcp conn type mismatch: %T", c)
+ 	} else {
+ 		testIsTCPAddr(t, "LocalAddr", c.LocalAddr())
+ 		testIsTCPAddr(t, "RemoteAddr", c.RemoteAddr())
+ 	}
+-	if c, ok := newFileConn(newFD("udp", -1)).(*UDPConn); !ok {
++	if c, ok := newFileConn(newPollFD("udp", poll.FD{Sysfd: -1})).(*UDPConn); !ok {
+ 		t.Errorf("newFileConn: udp conn type mismatch: %T", c)
+ 	} else {
+ 		testIsUDPAddr(t, "LocalAddr", c.LocalAddr())

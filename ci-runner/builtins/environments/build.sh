@@ -8,6 +8,7 @@
 #   env:python     the same as env:bash plus CPython with pip
 #   env:php        the same as env:bash plus PHP (Wasmer's phpix), Composer
 #                  and a `php` that behaves like php-cli (php-cli/build.sh)
+#   env:go         the same as env:bash plus a Go toolchain (five minors)
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -37,6 +38,11 @@
 #   environments/build.sh python       the same
 #   environments/build.sh php          every PHP version (Linux, x86_64 or
 #                                      ARM64, to build php-cli)
+#   environments/build.sh go           every Go minor: builds each with
+#                                      go/build.sh (Linux, x86_64 or arm64),
+#                                      or uses its webcs already in
+#                                      dist/package/go/
+#   environments/build.sh go@1.25      just that minor
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
@@ -112,6 +118,36 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.4 db3d944ce796cfa271eb718634759d6bebffe85b5ad805c7424a77684d831df5"
+# Go, built by go/build.sh <minor> as two packages: the toolchain, and the
+# standard library's build cache (together over the store's per-file limit).
+# The environment's version is the Go release's.
+go_pkgs() {
+  case "$1" in
+    1.23) echo "1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
+    1.24) echo "1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
+    1.25) echo "1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
+    1.26) echo "1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
+    1.27) echo "1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
+    *) return 1 ;;
+  esac
+}
+GO_MINORS=(1.23 1.24 1.25 1.26 1.27)
+# What the toolchain needs from the job's environment (README.md, "Go"):
+#   PATH  the default plus where `go install` puts programs.
+#   GOROOT  the toolchain's tree in the package; the wasm `go` cannot find
+#     it from where it runs.
+#   GOCACHE  where the package's build cache is. Writes go to the job's
+#     own copy of it.
+#   GOTOOLCHAIN  never download a toolchain: none on the module proxy runs
+#     here, and a `go` line newer than the toolchain should say so.
+#   SSL_CERT_FILE  the package's CA certificates; Go's wasip1 port looks in
+#     no default place.
+GO_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/go/bin",
+    "GOROOT": "/go",
+    "GOPATH": "/root/go",
+    "GOCACHE": "/root/.cache/go-build",
+    "GOTOOLCHAIN": "local",
+    "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt"'
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4" build="${5:-$3}"
@@ -127,6 +163,11 @@ fetch() {
     # Ours: built here unless a build (or CI's cache of one) is in place.
     local built="$dist/package/$ours/$build/$ours.webc"
     [[ -f "$built" ]] || bash "$here/environments/$ours/build.sh" >&2
+    cp "$built" "$file"
+  elif [[ "$name" == iwci/go* ]]; then
+    # Ours too: go/build.sh <minor> makes both of a minor's packages.
+    local built="$dist/package/go/$version/${name#iwci/}.webc"
+    [[ -f "$built" ]] || bash "$here/environments/go/build.sh" "$(cut -d. -f1-2 <<<"$version")" >&2
     cp "$built" "$file"
   else
     # Once per run: environments share most of their packages.
@@ -177,7 +218,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php
+  set -- bash bash-node python php go
 fi
 for env in "$@"; do
   case "$env" in
@@ -196,6 +237,19 @@ for env in "$@"; do
       # 24.0.6: and so does sed's `e` command (#1022).
       build_env bash-node 24.0.6 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
+      ;;
+    go | go@*)
+      minors=("${GO_MINORS[@]}")
+      [[ "$env" == go ]] || minors=("${env#go@}")
+      for minor in "${minors[@]}"; do
+        if ! pkgs="$(go_pkgs "$minor")"; then
+          echo "error: no Go $minor; know ${GO_MINORS[*]}" >&2
+          exit 2
+        fi
+        read -r version go_sha cache_sha <<<"$pkgs"
+        build_env go "${version%-iwci.*}" "GNU bash 5.1, coreutils, sed, grep, findutils and Go ${version%-iwci.*} (go, gofmt)" \
+          "$GO_ENV" "${TOOLS[@]}" "iwci/go $version $go_sha" "iwci/go-std-cache $version $cache_sha"
+      done
       ;;
     python)
       # 3.13.16: bash passes an argument with a line feed in it whole (#1003).
@@ -218,7 +272,7 @@ for env in "$@"; do
       done
       ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python and php" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php and go (or go@<minor>)" >&2
       exit 2
       ;;
   esac

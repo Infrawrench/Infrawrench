@@ -447,6 +447,7 @@ Environments:
 | `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                    |
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
+| `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                     |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -783,16 +784,110 @@ curl built into it report development versions (OpenSSL 3.2.0-dev, curl
 pin, but what is inside them can only be checked by running it. Composer's
 phar is pinned by the SHA-256 getcomposer.org publishes.
 
-### Go and Rust
+### Go
 
-Go and Rust are supported the way every language is here: their dependency
-installers make a commit's modules and crates available offline, and any
+`env:go@1.23` to `env:go@1.27` are the five newest Go minor releases
+(1.23.12, 1.24.13, 1.25.14, 1.26.11 and 1.27.4), each a whole toolchain
+running as WASIX programs beside the tools of `env:bash@5`. `go` and
+`gofmt` are commands, and `go build`, `go vet`, `go test`, `go run` and
+`go install` work, with the module's dependencies from the Go installer:
+
+```yaml
+workspace:
+  deps: [go]
+jobs:
+  test:
+    using: env:go@1.27
+    run: |
+      go vet ./...
+      go test ./...
+```
+
+Upstream Go's `wasip1` port cannot host itself: `go build` runs `compile`
+and `link` as child processes, and `wasip1` has none, nor real sockets.
+wasix-org/go's `wasix` branch (Wasmer's `golang/go` 1.25.5-wasix-1) keeps
+`GOOS=wasip1` and gives `syscall`, `os/exec` and `net` WASIX's processes and
+sockets, but it is one release and, as published, does not run.
+`builtins/environments/go/build.sh <minor>` builds each minor from go.dev's
+release archive with a patch series in `builtins/environments/go/<minor>/`:
+that branch's change ported to the release, then one patch per fix, each
+written as a commit whose message says what it fixes:
+
+| Patch                                 | Fixes                                                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| take the working directory from WASIX | Relative paths resolved against nothing (`go version`: "cannot determine current directory"); `getcwd`'s length is passed by pointer.    |
+| decode wait statuses                  | Every child exited 0, so a failing `go test` or a `go build` that did not compile exited 0.                                              |
+| socket addresses as pointers          | `Listener.Addr()` was nil, and `httptest.NewServer` panicked.                                                                            |
+| resolve names through WASIX           | Lookups went to `[::1]:53` over UDP.                                                                                                     |
+| nonblocking sockets                   | Sockets blocked in the host, which blocks every goroutine: closing a connection took 60 s, so each `http.Get` and `httptest` server did. |
+| report bind errors                    | Listening on a port in use succeeded.                                                                                                    |
+| a NUL byte, not `string(0)`           | `go vet std` failed.                                                                                                                     |
+| the file tests against `newPollFD`    | `go vet net` failed on the branch's own test file.                                                                                       |
+| children in their `Dir`               | `exec.Cmd.Dir` was ignored, so a test read its parent package's `testdata`; `os.Chdir` did not move where children start.                |
+| nothing written from the stubs        | `syscall.Umask` and friends printed debugging lines into the program's output.                                                           |
+| `Dup` and `Dup2` with `fd_dup`        | A program using them could not start (it imported calls WASIX does not have).                                                            |
+| arguments and environment as arrays   | An argument or variable with a line feed in it (a multi-line script, a PEM key) reached a child as several.                              |
+
+Each minor's build has, besides the toolchain:
+
+- **The standard library already compiled and vetted**, as entries of
+  `GOCACHE`. A job's first `go build` compiles only the module's own
+  packages: on one CPU, 1.5 s for a small module with one dependency,
+  where compiling the standard library first takes 42 s. `go vet` of it
+  takes 0.9 s and `go test` 2.7 s.
+- **Mozilla's CA certificates**, for HTTPS.
+
+Two packages make up each environment, the toolchain and the cache, since
+together they are over the store's 256 MiB limit for one file, which is
+also why `src/` has no tests or `testdata`. The build is reproducible and
+pinned by hash like Edge.js's. The first job to use a minor on a runner
+also waits for Wasmer to compile the toolchain's programs (`compile` alone
+is 40 MB of wasm): about 30 s, once, after which the compiled code is in
+the runner's module cache. `iwci serve` compiles `go` and `gofmt` ahead of
+time, but not `compile`, `link` and `vet`, which are files in `GOROOT`
+rather than package commands.
+
+The environment sets these, and a job's `env:` can override them:
+
+| Variable        | Value                                       | Why                                                                                                       |
+| --------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `PATH`          | `/usr/local/bin:/usr/bin:/bin:/root/go/bin` | The default, plus where `go install` puts programs.                                                       |
+| `GOROOT`        | `/go`                                       | The toolchain's tree in the package; the wasm `go` cannot find it from its own path.                      |
+| `GOPATH`        | `/root/go`                                  | The module cache the Go installer fills is `/root/go/pkg/mod`.                                            |
+| `GOCACHE`       | `/root/.cache/go-build`                     | Where the compiled standard library is. What a job adds goes into its own copy.                           |
+| `GOTOOLCHAIN`   | `local`                                     | No toolchain on the module proxy runs here; a `go` line newer than the environment's Go fails, saying so. |
+| `SSL_CERT_FILE` | `/etc/ssl/certs/ca-certificates.crt`        | The package's certificates; Go's `wasip1` port looks in no default place.                                 |
+
+What to know:
+
+- **Programs are WebAssembly.** `go build` makes `GOOS=wasip1` programs,
+  which `go run`, `go test` and the job's script run like any other
+  command. `GOOS=linux GOARCH=amd64 go build` cross-compiles a Linux
+  binary as it would anywhere, but the job cannot run it.
+- **Pick the minor the `go` line asks for**, or a newer one: a `go.mod`
+  that asks for a newer Go fails rather than fetching a toolchain.
+- **Networking is the job's**: a test can listen on the loopback and
+  connect to itself, and reach the internet unless the job sets
+  `network: false`. Names resolve through the runner.
+- **Not there**: cgo (`CGO_ENABLED=0`), `-race`, `os/signal`,
+  `syscall.Kill` and file modes, and anything built on
+  `golang.org/x/sys/unix` without a fallback for `wasip1`. The tools that
+  read binaries and profiles (`go tool pprof`, `trace`, `objdump`, `nm`,
+  `addr2line`) are not built; from 1.25 `go tool` builds one when it is
+  run.
+- **One thread per program.** A Go program here runs its goroutines on one
+  thread, and the go command waits for each compile before it starts the
+  next, so a build uses one CPU.
+- Each process has at most 4 GiB of memory (wasm32).
+
+### Rust
+
+Rust is supported the way every language without an environment is here:
+the Cargo installer makes a commit's crates available offline, and any
 tool compiled to `wasm32-wasip1` or WASIX runs as a builtin or a `repo:`
-tool. What does not run yet is the compilers themselves. `go build` and
-`go test` need `cmd/compile` and `cmd/link` as subprocesses of the `go`
-command, and `cargo test` needs rustc, which has no WebAssembly build that
-can host itself. WASIX's process spawning is the path to the Go toolchain;
-for now, jobs that must compile Go or Rust belong on a conventional runner.
+tool. `cargo test` needs rustc, which has no WebAssembly build that can
+host itself, so jobs that must compile Rust belong on a conventional
+runner.
 
 ## Job caches
 
@@ -1374,6 +1469,7 @@ cargo build -p iwci
 bash builtins/test.sh                        # gofmt and bash
 bash builtins/test.sh typescript oxfmt       # needs their toolchains
 bash builtins/test.sh python php             # need the internet (pip, Composer)
+bash builtins/test.sh go                     # every minor; go@1.27 for one
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 
@@ -1383,8 +1479,9 @@ fail; a tool that will not resolve or start is an error and fails the test.
 
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
-which each need a large toolchain, and python and php, whose tests install
-from the internet, on changes to the builtins, the runtime or the store, and
+which each need a large toolchain, python and php, whose tests install
+from the internet, and each Go minor, on x86_64 and on ARM64, on changes to
+the builtins, the runtime or the store, and
 nightly, because those builds resolve crates and a WASIX toolchain that
 this repository does not pin byte for byte. The Node job
 runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the

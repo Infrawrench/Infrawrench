@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: iwci <ci@example.com>
+Date: Wed, 11 Nov 2026 21:33:54 -0500
+Subject: [PATCH 10/13] syscall: start wasip1 children in their Dir, and in the
+ directory Chdir set
+
+ForkExec ignored ProcAttr.Dir (the chdir file action was commented out),
+so exec.Cmd.Dir did nothing: `go test` runs each test binary in its
+package's directory, and a test reading testdata/ read the parent's. The
+file action's struct also did not match __wasi_proc_spawn_fd_op_t: on
+GOARCH=wasm a uintptr is 64 bits, where the C struct's pointer is 32, and
+the path and its length were the wrong way round. Lay it out as the C one
+(checked at compile time) and send Dir, made absolute, as a chdir action.
+
+Chdir only moved the Go side's notion of the working directory, so a
+child started after it began where the program had, not where it went:
+move WASIX's too.
+---
+ src/syscall/exec_wasip1.go | 74 +++++++++++++++++++-------------------
+ src/syscall/fs_wasip1.go   |  8 +++++
+ 2 files changed, 46 insertions(+), 36 deletions(-)
+
+diff --git a/src/syscall/exec_wasip1.go b/src/syscall/exec_wasip1.go
+index e69523a..79016e9 100644
+--- a/src/syscall/exec_wasip1.go
++++ b/src/syscall/exec_wasip1.go
+@@ -10,6 +10,7 @@ package syscall
+ 
+ import (
+ 	"internal/bytealg"
++	"runtime"
+ 	"sync"
+ 	"unsafe"
+ )
+@@ -175,7 +176,6 @@ func ForkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error)
+ 
+ 	// Build WASIX spawn file actions
+ 	fdops, keepAlive := buildSpawnFdOps(attr)
+-	_ = keepAlive // keep referenced until after proc_spawn2 returns
+ 
+ 	var fdopsPtr uintptr
+ 	if len(fdops) != 0 {
+@@ -216,6 +216,8 @@ func ForkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error)
+ 		&ret[0],
+ 	)
+ 	runtime_AfterExec()
++	// The paths the operations point at must outlive the call.
++	runtime.KeepAlive(keepAlive)
+ 
+ 	if err == Errno(0) {
+ 		return int(ret[0]), nil
+@@ -245,28 +247,29 @@ type wasiFdFlagsExt uint8
+ type wasiRights uint64
+ type wasiFd uint32
+ 
+-// This struct must match your __wasi_proc_spawn_fd_op_t ABI.
+-// If your actual ABI differs, adjust field sizes/order accordingly.
++// __wasi_proc_spawn_fd_op_t: 56 bytes, aligned to 8. A pointer into linear
++// memory is 32 bits, where a uintptr on GOARCH=wasm is 64.
+ type wasiProcSpawnFdOp struct {
+-	Cmd wasiProcSpawnFdOpName
+-	_   [3]byte // padding so the next uint32 is aligned
+-
+-	Fd    wasiFd
+-	SrcFd wasiFd
+-
+-	PathLen uint32
+-	Path    uintptr // pointer in wasm32 linear memory
+-
+-	OFlags    wasiOFlags
+-	FdFlags   wasiFdFlags
+-	FdFlagsEx wasiFdFlagsExt
+-	_2        byte // padding
+-	DirFlags  wasiLookupFlags
+-
+-	FSRightsBase       wasiRights
+-	FSRightsInheriting wasiRights
++	Cmd                wasiProcSpawnFdOpName // offset 0
++	_                  [3]byte
++	Fd                 wasiFd          // 4
++	SrcFd              wasiFd          // 8
++	Path               uint32          // 12
++	PathLen            uint32          // 16
++	DirFlags           wasiLookupFlags // 20
++	OFlags             wasiOFlags      // 24
++	_                  [6]byte
++	FSRightsBase       wasiRights     // 32
++	FSRightsInheriting wasiRights     // 40
++	FdFlags            wasiFdFlags    // 48
++	FdFlagsEx          uint16         // 50, __wasi_fdflagsext_t
++	_                  [4]byte
+ }
+ 
++// The layout is the C one, or this does not compile.
++var _ [56 - unsafe.Sizeof(wasiProcSpawnFdOp{})]byte
++var _ [unsafe.Sizeof(wasiProcSpawnFdOp{}) - 56]byte
++
+ const invalidFD = ^uintptr(0)
+ 
+ func buildSpawnFdOps(attr *ProcAttr) (ops []wasiProcSpawnFdOp, keepAlive [][]byte) {
+@@ -290,22 +293,21 @@ func buildSpawnFdOps(attr *ProcAttr) (ops []wasiProcSpawnFdOp, keepAlive [][]byt
+ 		})
+ 	}
+ 
+-	// Optional chdir via file_actions (matches your C FDOP_CHDIR path behavior)
+-	// if attr.Dir != "" {
+-	// 	b := []byte(attr.Dir) // not NUL-terminated; length is explicit
+-	// 	keepAlive = append(keepAlive, b)
+-
+-	// 	var p uintptr
+-	// 	if len(b) != 0 {
+-	// 		p = uintptr(unsafe.Pointer(&b[0]))
+-	// 	}
+-
+-	// 	ops = append(ops, wasiProcSpawnFdOp{
+-	// 		Cmd:     wasiProcSpawnFdOpChdir,
+-	// 		PathLen: uint32(len(b)),
+-	// 		Path:    p,
+-	// 	})
+-	// }
++	// The child's working directory: attr.Dir, made absolute against this
++	// process's own, which the runtime only learns of through Chdir.
++	if attr.Dir != "" {
++		dir := attr.Dir
++		if !isAbs(dir) {
++			dir = joinPath(cwd, dir)
++		}
++		b := []byte(dir)
++		keepAlive = append(keepAlive, b)
++		ops = append(ops, wasiProcSpawnFdOp{
++			Cmd:     wasiProcSpawnFdOpChdir,
++			Path:    uint32(uintptr(unsafe.Pointer(&b[0]))),
++			PathLen: uint32(len(b)),
++		})
++	}
+ 
+ 	return ops, keepAlive
+ }
+diff --git a/src/syscall/fs_wasip1.go b/src/syscall/fs_wasip1.go
+index 20534aa..fa38f1d 100644
+--- a/src/syscall/fs_wasip1.go
++++ b/src/syscall/fs_wasip1.go
+@@ -903,10 +903,18 @@ func Chdir(path string) error {
+ 	if stat.Filetype != FILETYPE_DIRECTORY {
+ 		return ENOTDIR
+ 	}
++	// The runtime's working directory too: a child starts in it.
++	if errno := wasixChdir(unsafe.StringData(path), size(len(path))); errno != 0 {
++		return errnoErr(errno)
++	}
+ 	cwd = path
+ 	return nil
+ }
+ 
++//go:wasmimport wasix_32v1 chdir
++//go:noescape
++func wasixChdir(path *byte, pathLen size) Errno
++
+ func Readlink(path string, buf []byte) (n int, err error) {
+ 	if path == "" {
+ 		return 0, EINVAL
