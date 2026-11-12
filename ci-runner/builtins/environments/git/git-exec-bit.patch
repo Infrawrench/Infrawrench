@@ -1,0 +1,29 @@
+diff --git a/run-command.c b/run-command.c
+index fecce5a..23b9096 100644
+--- a/run-command.c
++++ b/run-command.c
+@@ -169,6 +169,24 @@ int is_executable(const char *name)
+ 		close(fd);
+ 	}
+ }
++#elif defined(EXEC_BIT_UNRELIABLE)
++	/*
++	 * Some files have no mode the platform can report (a package's own
++	 * files on WASIX read as 0644), so one without the bit can still be
++	 * run when it is a script or a WebAssembly module, as the platform
++	 * runs either.
++	 */
++	if (!(st.st_mode & S_IXUSR)) {
++		char buf[4] = { 0 };
++		int fd = open(name, O_RDONLY);
++		if (fd >= 0) {
++			ssize_t n = read_in_full(fd, buf, sizeof(buf));
++			if ((n >= 2 && buf[0] == '#' && buf[1] == '!') ||
++			    (n == 4 && !memcmp(buf, "\0asm", 4)))
++				st.st_mode |= S_IXUSR;
++			close(fd);
++		}
++	}
+ #endif
+ 	return st.st_mode & S_IXUSR;
+ }

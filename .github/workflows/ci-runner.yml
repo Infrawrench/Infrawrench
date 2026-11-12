@@ -58,7 +58,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
@@ -114,6 +114,17 @@ jobs:
         with:
           go-version: "1.27.3"
           cache: false
+
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). The build
+      # is reproducible and environments/build.sh checks the package against
+      # the hash it pins, so a cached one is as good as a fresh one. One per
+      # architecture, so each architecture's build is checked against the pin.
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
 
       # Downloads are checked against the content hashes pinned in the
       # scripts, so a changed upstream package fails here. Only bash:

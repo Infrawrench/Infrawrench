@@ -516,21 +516,23 @@ Builtins:
 
 Environments:
 
-| Environment            | Packages                                                                                                                                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                   |
-| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                    |
-| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
-| `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
-| `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                     |
-| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))          |
+| Environment            | Packages                                                                                                                                                                                                                               |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)) |
+| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                                                         |
+| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                                                     |
+| `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
+| `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
+| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
 CPython 3.13. Its patch number is the environment's own revision, not the
 runtime's: `bash-node` 24.0.5 is not Node 24.0.5, and `python` 3.13.16 and
 `php` 8.4.28 carry the same interpreters as 3.13.15 and 8.4.27 with a
-changed bash. Each table entry names the runtime release inside.
+changed bash. `go` 1.27.5 likewise holds Go 1.27.4: Go's environments
+carried the Go release's own number until Git came in. Each table entry
+names the runtime release inside.
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
@@ -574,6 +576,11 @@ same way (fourteen bytes, through `patch-module.sh`, which both scripts
 share). That was `bash` 5.1.18, `bash-node` 24.0.6, `python` 3.13.17 and
 `php` 8.1.36, 8.2.37, 8.3.38, 8.4.29 and 8.5.14. Drop it once a `wasmer/sed`
 release calls `proc_spawn3`.
+
+Git came into every environment in `bash` 5.1.19, `bash-node` 24.0.9,
+`python` 3.13.18, `php` 8.1.37, 8.2.38, 8.3.39, 8.4.30 and 8.5.15, `go`
+1.23.13, 1.24.14, 1.25.15, 1.26.12 and 1.27.5 (each the same Go as before)
+and `postgres` 18.4.2 (see [Git](#git)).
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -785,6 +792,75 @@ refused when the job starts: tools that use the tsc-host ABI
 (`builtin:typescript`, which reads files through its own host interface;
 run it as a job of its own) and tools whose manifest has default arguments.
 
+### Git
+
+Every environment has Git 2.56.1 on `PATH`, built for WASIX from its
+release by `builtins/environments/git/build.sh`: the real `git`, so
+scripts get its exact behaviour and output, with its built-in commands,
+the subcommands that are shell scripts (`git submodule`, `git merge -s
+octopus`, `git mergetool`, `git filter-branch`, ...) and `git init`'s
+templates.
+
+```yaml
+release-notes:
+  using: env:bash@5
+  env: { GIT_AUTHOR_NAME: ci, GIT_AUTHOR_EMAIL: ci@example.com }
+  run: |
+    git clone --depth=50 https://github.com/example/project.git /tmp/p
+    git -C /tmp/p log --oneline v1.2.0..HEAD
+```
+
+What works:
+
+- **Repositories a job makes or clones**: everything local (`init`, `add`,
+  `commit`, `diff`, `log`, `status`, `show`, `rev-parse`, `ls-files`,
+  `config`, `checkout`, `switch`, `branch`, `tag`, `merge`, `rebase`,
+  `stash`, `worktree`, the plumbing), hooks, and Git run from Node's
+  `child_process`, Python's `subprocess` or PHP.
+- **Remotes**: a path or `file://` (fetch, push, `--depth`, a hook on the
+  receiving end), and HTTP and HTTPS (`git-remote-https`, on libcurl 8.23.0
+  and OpenSSL 3.5.9), over the job's [network](#networking), so not with
+  `network: false`. Certificates are checked against Mozilla's CA bundle in
+  the package (`/usr/share/git-core/ca-certificates.crt`); `GIT_SSL_CAINFO`
+  names another. A token goes in the URL
+  (`https://x-access-token:${TOKEN}@github.com/...`) or a credential helper
+  such as `store` (with `HOME` set).
+
+What to know:
+
+- **The checkout is not a repository.** The runner writes the commit's
+  tree into the job's file system without a `.git`, so `git log` or `git
+describe` in `/app` fails; clone what a job needs to inspect.
+- **No identity and no `HOME`.** A commit needs `user.name` and
+  `user.email` (`-c`, `GIT_AUTHOR_*` and `GIT_COMMITTER_*`, or `git config`
+  in the repository), and `git config --global` needs `HOME` set, which a
+  job's environment does not have.
+- **`core.filemode` starts false** in a repository `git init` makes, so
+  `git add` records new files as `100644` until it is set true (`git config
+core.filemode true`): Git decides it by changing the mode of
+  `.git/config`, which it renamed into place, and a mode set on a renamed
+  file is not read back yet
+  ([#1054](https://github.com/Infrawrench/Infrawrench/issues/1054)).
+  Checkouts get their modes, executables included.
+- **A status of 80 or more reads as 79** to the script that ran Git
+  ([#1053](https://github.com/Infrawrench/Infrawrench/issues/1053)), so a
+  fatal error (128) is 79 in `$?`; it is still a failure, and a job whose
+  last command is Git ends with Git's own status.
+- **No hard links.** `link()` fails, as on a file system without them, so
+  Git renames object files into place and a clone from a path copies
+  ([#1052](https://github.com/Infrawrench/Infrawrench/issues/1052)).
+- **Not built**: the Perl and Python commands (`send-email`, `svn`, `p4`,
+  `cvsimport`, ...), `git daemon`, `git http-backend`, `git imap-send`,
+  `git shell`, the dumb HTTP protocol, the `ssh://` transport (there is
+  no `ssh`), translations (messages are English) and `scalar`.
+
+Git starts its own subcommands, hooks and the other end of a local remote
+as child processes. It does that by forking, and the C library it is built
+on (Edge.js's, with exception handling) has no `fork()`, so one patch
+starts them with `posix_spawn()` instead; `build.sh` lists the three
+patches and why. The package is 9 MB: Git's module is 3.6 MB and
+`git-remote-https`'s, with OpenSSL, 4 MB.
+
 ### Python
 
 `env:python@3.13` is CPython 3.13.15 built for WASIX, with pip, beside the
@@ -964,9 +1040,9 @@ What still differs from php-cli:
 - A fatal error (an uncaught exception) exits with 79, not 255.
 - `mail()` fails: sendmail has no backend.
 - A repository's own `auto_prepend_file` is replaced by the environment's.
-- Composer has no `unzip`, `7z` or `git`: it unpacks archives with the
-  zip extension (and says so), and a package it would have to clone from
-  source does not install.
+- Composer has no `unzip` or `7z`: it unpacks archives with the zip
+  extension (and says so). [Git](#git) is there, but a package installed
+  from source, which needs it, has not been tried.
 
 The environment sets `PATH` (php-cli first), `COMPOSER_ALLOW_SUPERUSER=1`
 (a job runs as root, which Composer warns about on every command) and
@@ -1905,6 +1981,11 @@ cargo build -p iwci --features node && bash builtins/test.sh bash-node
 A job whose key ends in `-passes` must pass and one ending in `-fails` must
 fail; a tool that will not resolve or start is an error and fails the test.
 `SKIP_BUILD=1` reuses what is already in `dist/`.
+
+Every environment carries Git, which `builtins/environments/git/build.sh`
+builds from source (two or three minutes); a build already in
+`dist/package/git/` is used as it is, and CI keeps one per architecture in
+its cache, keyed by that directory.
 
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,

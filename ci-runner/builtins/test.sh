@@ -664,6 +664,121 @@ jobs:
       " "")" = "$(printf 'x\n||')"
       test "$(bash -c 'echo "$1"
       echo two' _ one)" = "$(printf 'one\ntwo')"
+  # Git (environments/git/build.sh): a repository's everyday commands, a
+  # file mode it records, and the subcommands that are shell scripts.
+  git-passes:
+    using: env:bash@5
+    env:
+      GIT_AUTHOR_NAME: t
+      GIT_AUTHOR_EMAIL: t@example.test
+      GIT_COMMITTER_NAME: t
+      GIT_COMMITTER_EMAIL: t@example.test
+    run: |
+      git --version | grep -q '^git version 2\.'
+      cd "$(mktemp -d)"
+      git init -q -b main
+      # `git init` finds modes untrustworthy, because a file renamed into
+      # place (.git/config) reads its old mode (#1054).
+      git config core.filemode true
+      echo one > a.txt
+      printf '#!/bin/sh\necho ran\n' > run.sh
+      chmod 755 run.sh
+      git add a.txt run.sh
+      git commit -qm first
+      test "$(git ls-files -s run.sh | cut -c1-6)" = 100755
+      test "$(git log --format=%s)" = first
+      echo two >> a.txt
+      test "$(git status --porcelain)" = " M a.txt"
+      git diff | grep -q '^+two$'
+      git commit -qam second
+      test "$(git rev-list --count HEAD)" = 2
+      test "$(git show HEAD:a.txt)" = "$(printf 'one\ntwo')"
+      git tag -a v1 -m v1
+      test "$(git describe)" = v1
+      git checkout -qb side HEAD~1
+      echo b > b.txt
+      git add b.txt
+      git commit -qm side
+      git checkout -qb other HEAD~1
+      echo c > c.txt
+      git add c.txt
+      git commit -qm other
+      git checkout -q main
+      # Two branches at once: the octopus strategy is a shell script.
+      git merge -q -m octopus side other
+      test "$(git log -1 --format=%p | wc -w)" = 3
+      test "$(git branch --list | wc -l)" = 3
+      git config set --local x.y z
+      test "$(git config get x.y)" = z
+      git submodule status
+      git stash list
+  # A `file://` remote, the way plugingen's watcher uses one: a push, a
+  # commit built with plumbing on a throwaway index, a hook that refuses and
+  # one that runs git, a shallow fetch and clone, and a clone from a path.
+  git-remote-passes:
+    using: env:bash@5
+    run: |
+      git() { command git -c user.name=t -c user.email=t@example.test -c init.defaultBranch=main "$@"; }
+      base="$(mktemp -d)"
+      remote="$base/remote.git"
+      work="$base/work"
+      git init -q --bare "$remote"
+      git init -q "$work"
+      cd "$work"
+      git remote add origin "file://$remote"
+      echo old > gen.ts
+      git add gen.ts
+      git commit -qm add
+      git push -q origin main
+      head="$(git rev-parse HEAD)"
+      export GIT_INDEX_FILE="$base/index"
+      git read-tree "$head"
+      blob="$(printf 'new\n' | git hash-object -w --stdin)"
+      git update-index --add --cacheinfo "100644,$blob,gen.ts"
+      commit="$(git commit-tree "$(git write-tree)" -p "$head" -m subject)"
+      unset GIT_INDEX_FILE
+      git push -q --force origin "$commit:refs/heads/topic"
+      test "$(git status --porcelain)" = ""
+      test "$(cat gen.ts)" = old
+      git ls-remote --heads origin refs/heads/topic | grep -q "^$commit"
+      git fetch -q --no-tags --depth=1 origin +refs/heads/topic:refs/watch/topic
+      test "$(git show refs/watch/topic:gen.ts)" = new
+      test "$(git -C "$remote" rev-parse topic^)" = "$head"
+      test "$(git -C "$remote" rev-list --count main..topic)" = 1
+      printf '#!/bin/sh\necho "no thanks" >&2\nexit 1\n' > "$remote/hooks/pre-receive"
+      chmod 755 "$remote/hooks/pre-receive"
+      if git push origin "$commit:refs/heads/refused" 2> err; then exit 1; fi
+      grep -q "no thanks" err
+      grep -q "pre-receive hook declined" err
+      printf '#!/bin/sh\nread -r old new ref\necho "got $ref $(git rev-parse "$new^")" >&2\n' > "$remote/hooks/pre-receive"
+      git push origin "$commit:refs/heads/taken" 2> err
+      grep -q "got refs/heads/taken $head" err
+      git clone -q --depth=1 "file://$remote" "$base/shallow"
+      test "$(git -C "$base/shallow" rev-list --count HEAD)" = 1
+      git clone -q "$remote" "$base/copy"
+      test "$(git -C "$base/copy" log --format=%s)" = add
+  # And over HTTPS, through git-remote-https (libcurl and OpenSSL, with the
+  # package's CA certificates).
+  git-https-passes:
+    using: env:bash@5
+    timeout: 5m
+    run: |
+      git ls-remote https://github.com/octocat/Hello-World.git HEAD | grep -q 'HEAD$'
+      git clone -q --depth=1 https://github.com/octocat/Hello-World.git hello
+      test "$(git -C hello rev-list --count HEAD)" = 1
+      test -s hello/README
+  # A failing git command fails the script with git's status.
+  git-diff-fails:
+    using: env:bash@5
+    run: |
+      git init -q -b main /tmp/r
+      cd /tmp/r
+      echo x > f
+      git add f
+      git diff --cached --exit-code --quiet
+  git-fatal-fails:
+    using: env:bash@5
+    run: git rev-parse --verify no-such-ref
 YAML
       ;;
     tools)
@@ -1554,6 +1669,45 @@ jobs:
       const a = []; for (;;) a.push({ y: Math.random() });
       JS
       node /tmp/wh.js
+  # Git from Node, as a test suite runs it (plugingen's): synchronously
+  # with a working directory, and asynchronously with standard input.
+  git-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/git.mjs <<'JS'
+      import { execFileSync, spawn } from "node:child_process";
+      import fs from "node:fs";
+      import os from "node:os";
+      import path from "node:path";
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "git-"));
+      const git = (...args) =>
+        execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], {
+          cwd: dir,
+          encoding: "utf8",
+        }).trim();
+      git("init", "-q", "-b", "main");
+      fs.writeFileSync(path.join(dir, "a.txt"), "one\n");
+      git("add", "a.txt");
+      git("commit", "-qm", "first");
+      const blob = await new Promise((resolve, reject) => {
+        const child = spawn("git", ["hash-object", "-w", "--stdin"], { cwd: dir });
+        let out = "";
+        child.stdout.on("data", (chunk) => (out += chunk));
+        child.on("error", reject);
+        child.on("close", (code) => (code === 0 ? resolve(out.trim()) : reject(new Error(`exit ${code}`))));
+        child.stdin.end("two\n");
+      });
+      if (git("cat-file", "-p", blob) !== "two") throw new Error("blob");
+      if (git("log", "--format=%s") !== "first") throw new Error("log");
+      try {
+        git("rev-parse", "--verify", "-q", "nothing");
+        throw new Error("rev-parse succeeded");
+      } catch (error) {
+        if (error.status !== 1) throw error;
+      }
+      console.log("ok");
+      JS
+      test "$(node /tmp/git.mjs)" = ok
 YAML
       ;;
     go@*)
@@ -1624,6 +1778,12 @@ jobs:
     cwd: /app/gomod
     timeout: 10m
     run: test "$(go run ./cmd/fetch https://proxy.golang.org/)" = "200 OK"
+  # Git is on PATH here too.
+  git-passes:
+    using: env:go@@MINOR@
+    run: |
+      git init -q -b main /tmp/r
+      git -C /tmp/r status --short --branch | grep -q '^## No commits yet on main$'
 YAML
       ;;
     python)
@@ -1764,6 +1924,12 @@ jobs:
         run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
         ready: { port: 7002 }
     run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
+  # Git is on PATH here too, and Python can run it.
+  git-passes:
+    using: env:python@3.13
+    run: |
+      git init -q -b main /tmp/r
+      python -c 'import subprocess; print(subprocess.run(["git", "-C", "/tmp/r", "status", "--short", "--branch"], check=True, capture_output=True, text=True).stdout)' | grep -q '^## No commits yet on main$'
 YAML
       ;;
     postgres)
@@ -1979,6 +2145,10 @@ jobs:
       b.close()
       print("ok")
       PY
+  # Git is on PATH here too.
+  git-passes:
+    using: env:postgres@18
+    run: git --version
 YAML
       ;;
     php)
@@ -2084,6 +2254,12 @@ jobs:
       test "$(php -r '$a = 6;
       $b = 7;
       echo $a * $b;')" = 42
+  # Git is on PATH here too, for PHP and for scripts.
+  git-passes:
+    using: env:php@8.5
+    run: |
+      git --version
+      test "$(php -r 'echo trim(shell_exec("git --version"));')" = "$(git --version)"
 YAML
       ;;
   esac
@@ -2094,7 +2270,8 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/git-fatal-fails) echo "exited with 128" ;;
+    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
