@@ -1,8 +1,4 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { utils, type ParsedKey } from "ssh2";
 
 import {
@@ -13,32 +9,16 @@ import {
   signSshData,
 } from "../ssh-signing.js";
 import { generateEd25519OpenSshKeyPair } from "../openssh-keys.js";
+import { generateOpenSshKey, type OpenSshKeyFiles } from "./openssh-test-keys.js";
 
 const { parseKey } = utils;
 
-let tmpDir: string;
-const fixtures: Record<"ed" | "rsa" | "ec256", { priv: string; pub: string }> = {
+// Generated at runtime in the files `ssh-keygen` writes (./openssh-test-keys.ts).
+const fixtures: Record<"ed" | "rsa" | "ec256", OpenSshKeyFiles> = {
   ed: { priv: "", pub: "" },
   rsa: { priv: "", pub: "" },
   ec256: { priv: "", pub: "" },
 };
-
-function keygen(type: string, file: string, extra: string[] = []): { priv: string; pub: string } {
-  const p = path.join(tmpDir, file);
-  execFileSync("ssh-keygen", [
-    "-t",
-    type,
-    "-f",
-    p,
-    "-N",
-    "",
-    "-q",
-    "-C",
-    "test@infrawrench",
-    ...extra,
-  ]);
-  return { priv: fs.readFileSync(p, "utf8"), pub: fs.readFileSync(`${p}.pub`, "utf8") };
-}
 
 function parsePub(pub: string): ParsedKey {
   const k = parseKey(pub);
@@ -47,10 +27,9 @@ function parsePub(pub: string): ParsedKey {
 }
 
 beforeAll(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssh-signing-test-"));
-  fixtures.ed = keygen("ed25519", "ed");
-  fixtures.rsa = keygen("rsa", "rsa", ["-b", "2048"]);
-  fixtures.ec256 = keygen("ecdsa", "ec256", ["-b", "256"]);
+  fixtures.ed = generateOpenSshKey("ed25519");
+  fixtures.rsa = generateOpenSshKey("rsa");
+  fixtures.ec256 = generateOpenSshKey("ecdsa-256");
 });
 
 describe("algorithm vocabulary", () => {

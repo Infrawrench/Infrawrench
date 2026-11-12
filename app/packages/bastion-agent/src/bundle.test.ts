@@ -2,10 +2,17 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 
 const here = new URL("..", import.meta.url).pathname;
+
+/*
+ * esbuild's native binary has no WebAssembly build in the same package. Where Node itself is
+ * WebAssembly (Infrawrench CI's runner) the bundle is made by `esbuild-wasm`, the same esbuild
+ * compiled to WebAssembly, with the same API and output.
+ */
+const { build } =
+  (process.platform as string) === "wasi" ? await import("esbuild-wasm") : await import("esbuild");
 
 /** The `--banner:js` an image or a local build uses. */
 function bannerIn(file: string): string {

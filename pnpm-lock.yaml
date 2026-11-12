@@ -111,6 +111,9 @@ importers:
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+      esbuild-wasm:
+        specifier: ^0.25.12
+        version: 0.25.12
       tsx:
         specifier: ^4.23.11
         version: 4.23.11
@@ -701,6 +704,9 @@ importers:
       '@infrawrench/ui':
         specifier: workspace:*
         version: link:../ui
+      '@rollup/wasm-node':
+        specifier: 4.62.4
+        version: 4.62.4
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -755,6 +761,9 @@ importers:
       electron-vite:
         specifier: ^3.1.0
         version: 3.1.0(supports-color@10.2.2)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+      esbuild-wasm:
+        specifier: ^0.25.12
+        version: 0.25.12
       gt-react:
         specifier: ^11.1.6
         version: 11.1.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1971,6 +1980,9 @@ importers:
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
+      '@rollup/wasm-node':
+        specifier: 4.62.4
+        version: 4.62.4
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2013,6 +2025,9 @@ importers:
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+      esbuild-wasm:
+        specifier: ^0.25.12
+        version: 0.25.12
       gt:
         specifier: ^2.16.4
         version: 2.16.4(@babel/core@7.29.7(supports-color@10.2.2))(@types/react@19.2.18)(supports-color@10.2.2)
@@ -2039,7 +2054,7 @@ importers:
     dependencies:
       '@astrojs/cloudflare':
         specifier: ^14.2.0
-        version: 14.2.0(@types/node@26.2.0)(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0))(yaml@2.9.0)
+        version: 14.2.0(@types/node@26.2.0)(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0))(yaml@2.9.0)
       '@astrojs/markdown-remark':
         specifier: ^7.2.2
         version: 7.2.2(supports-color@10.2.2)
@@ -2051,10 +2066,10 @@ importers:
         version: 4.3.3(vite@8.3.5(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
       astro:
         specifier: ~7.2.10
-        version: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
+        version: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
       lucide-astro:
         specifier: ^0.556.0
-        version: 0.556.0(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+        version: 0.556.0(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -2068,6 +2083,15 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20260808.1
         version: 5.20260808.1
+      '@emnapi/core':
+        specifier: 1.11.2
+        version: 1.11.2
+      '@emnapi/runtime':
+        specifier: 1.11.2
+        version: 1.11.2
+      lightningcss-wasm:
+        specifier: 1.32.0
+        version: 1.32.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -9608,6 +9632,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@rollup/wasm-node@4.62.4':
+    resolution: {integrity: sha512-GJFM5d4k5dSoY/oyILsKArplGvkss1DOURyXsl6IEM/X9RV3bQwqu9GY6tYfA97ZwIejfAguHa9fo1pGOQcyDg==}
+    engines: {node: '>=18.0.0', npm: '>=8.0.0'}
+    hasBin: true
+
   '@scalar/helpers@0.16.4':
     resolution: {integrity: sha512-9eILWzUcAkHEuYMMvijpSIy69t+Vkq+NudLB/7lgARFTWqXfQpIxW1L3VH7ogKyRie5+E4CNZ3PSvlw6IIfLGw==}
     engines: {node: '>=22'}
@@ -12415,6 +12444,11 @@ packages:
   es6-error@4.1.1:
     resolution: {integrity: sha512-Um/+FxMr9CISWh0bi5Zv0iOD+4cFh5qLeks1qhAopKVAJw3drgKbKySikp7wGhDL0HPeaja0P5ULZrxLkniUVg==}
 
+  esbuild-wasm@0.25.12:
+    resolution: {integrity: sha512-rZqkjL3Y6FwLpSHzLnaEy8Ps6veCNo1kZa9EOfJvmWtBq5dJH4iVjfmOO6Mlkv9B0tt9WFPFmb/VxlgJOnueNg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   esbuild@0.25.12:
     resolution: {integrity: sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==}
     engines: {node: '>=18'}
@@ -13918,6 +13952,12 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [musl]
+
+  lightningcss-wasm@1.32.0:
+    resolution: {integrity: sha512-SteAkCtRuSCDYPGHKhLV/dDs5Bk+7I4QUxWxfk4xwsTI1rQk8MQyYtpGcd3NECsUGzK0q2/KqoVS+YHCqKHUTQ==}
+    engines: {node: '>= 12.0.0'}
+    bundledDependencies:
+      - napi-wasm
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution: {integrity: sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==}
@@ -17889,12 +17929,12 @@ snapshots:
       - prettier
       - prettier-plugin-astro
 
-  '@astrojs/cloudflare@14.2.0(@types/node@26.2.0)(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0))(yaml@2.9.0)':
+  '@astrojs/cloudflare@14.2.0(@types/node@26.2.0)(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0))(yaml@2.9.0)':
     dependencies:
       '@astrojs/internal-helpers': 0.10.2
       '@astrojs/underscore-redirects': 1.0.3
       '@cloudflare/vite-plugin': 1.51.1(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0))
-      astro: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
+      astro: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
       piccolore: 0.1.3
       vite: 8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
       wrangler: 4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0)
@@ -17935,9 +17975,9 @@ snapshots:
   '@astrojs/compiler-binding-linux-x64-musl@0.4.1':
     optional: true
 
-  '@astrojs/compiler-binding-wasm32-wasi@0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
+  '@astrojs/compiler-binding-wasm32-wasi@0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     dependencies:
-      '@napi-rs/wasm-runtime': 1.2.4(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)
+      '@napi-rs/wasm-runtime': 1.2.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -17949,7 +17989,7 @@ snapshots:
   '@astrojs/compiler-binding-win32-x64-msvc@0.4.1':
     optional: true
 
-  '@astrojs/compiler-binding@0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
+  '@astrojs/compiler-binding@0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     optionalDependencies:
       '@astrojs/compiler-binding-android-arm64': 0.4.1
       '@astrojs/compiler-binding-darwin-arm64': 0.4.1
@@ -17958,16 +17998,16 @@ snapshots:
       '@astrojs/compiler-binding-linux-arm64-musl': 0.4.1
       '@astrojs/compiler-binding-linux-x64-gnu': 0.4.1
       '@astrojs/compiler-binding-linux-x64-musl': 0.4.1
-      '@astrojs/compiler-binding-wasm32-wasi': 0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)
+      '@astrojs/compiler-binding-wasm32-wasi': 0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
       '@astrojs/compiler-binding-win32-arm64-msvc': 0.4.1
       '@astrojs/compiler-binding-win32-x64-msvc': 0.4.1
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  '@astrojs/compiler-rs@0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
+  '@astrojs/compiler-rs@0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     dependencies:
-      '@astrojs/compiler-binding': 0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)
+      '@astrojs/compiler-binding': 0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -20050,7 +20090,6 @@ snapshots:
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
@@ -20071,7 +20110,6 @@ snapshots:
   '@emnapi/runtime@1.11.2':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/runtime@1.11.3':
     dependencies:
@@ -20091,7 +20129,6 @@ snapshots:
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/wasi-threads@2.2.0':
     dependencies:
@@ -21631,13 +21668,6 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
-    dependencies:
-      '@emnapi/core': 2.0.0-beta.2
-      '@emnapi/runtime': 2.0.0-beta.2
-      '@tybys/wasm-util': 0.10.3
-    optional: true
-
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:
       '@emnapi/core': 2.0.0-beta.2
@@ -22837,6 +22867,13 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
+
+  '@rollup/wasm-node@4.62.4':
+    dependencies:
+      '@types/estree': 1.0.9
+    optionalDependencies:
+      '@napi-rs/lzma-linux-x64-gnu': 1.5.1
+      fsevents: 2.3.3
 
   '@scalar/helpers@0.16.4': {}
 
@@ -24550,9 +24587,9 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0):
+  astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0):
     dependencies:
-      '@astrojs/compiler-rs': 0.4.1(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)
+      '@astrojs/compiler-rs': 0.4.1(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
       '@astrojs/internal-helpers': 0.11.0
       '@astrojs/markdown-satteri': 0.4.0
       '@astrojs/telemetry': 3.3.3
@@ -25928,6 +25965,8 @@ snapshots:
 
   es6-error@4.1.1:
     optional: true
+
+  esbuild-wasm@0.25.12: {}
 
   esbuild@0.25.12:
     optionalDependencies:
@@ -27808,6 +27847,8 @@ snapshots:
   lightningcss-linux-x64-musl@1.33.0:
     optional: true
 
+  lightningcss-wasm@1.32.0: {}
+
   lightningcss-win32-arm64-msvc@1.32.0:
     optional: true
 
@@ -27923,9 +27964,9 @@ snapshots:
 
   lru.min@1.1.4: {}
 
-  lucide-astro@0.556.0(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)):
+  lucide-astro@0.556.0(astro@7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)):
     dependencies:
-      astro: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
+      astro: 7.2.10(@astrojs/markdown-remark@7.2.2(supports-color@10.2.2))(@azure/identity@4.13.3(supports-color@10.2.2))(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.2.0)(ioredis@5.11.1(supports-color@10.2.2))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0)
 
   lz-string@1.5.0: {}
 

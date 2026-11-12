@@ -43,7 +43,14 @@
         "scripts/**/*.mjs"
       ],
       "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "scripts/**/*.mjs"],
-      "ignoreDependencies": ["tailwindcss", "@kubernetes/client-node", "cloudflare", "dockerode"]
+      "ignoreDependencies": [
+        "tailwindcss",
+        "@kubernetes/client-node",
+        "cloudflare",
+        "dockerode",
+        "@rollup/wasm-node",
+        "esbuild-wasm"
+      ]
     },
     "app/packages/desktop": {
       "entry": [
@@ -63,7 +70,9 @@
       "ignoreDependencies": [
         "tailwindcss",
         "electron-builder",
-        "@jitl/quickjs-ng-wasmfile-release-asyncify"
+        "@jitl/quickjs-ng-wasmfile-release-asyncify",
+        "@rollup/wasm-node",
+        "esbuild-wasm"
       ]
     },
     "app/packages/mobile": {
@@ -126,7 +135,7 @@
       "project": ["src/**/*.ts"]
     },
     "app/packages/website": {
-      "ignoreDependencies": ["cloudflare"]
+      "ignoreDependencies": ["cloudflare", "@emnapi/core", "@emnapi/runtime", "lightningcss-wasm"]
     },
     "plugingen": {
       "entry": ["src/cli.ts", "src/**/*.test.ts"],

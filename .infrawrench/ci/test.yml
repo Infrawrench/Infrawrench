@@ -24,9 +24,8 @@
 # optional dependencies, so the root package.json lists it.
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
-# - The website's `astro check`.
-# - The tests of the five packages the `test` job below leaves out: they
-#   need native code or a host tool a job does not have.
+# - The tests of the package the `test` job below leaves out (plugingen): it
+#   needs a host tool a job does not have.
 # - Database migrations and database tests: they need Postgres and
 #   ClickHouse services, which a job cannot start.
 name: Test
@@ -80,35 +79,39 @@ jobs:
   # depends on. The runner's installer writes no node_modules/.bin, so
   # `vitest` in the script runs as its entry point.
   #
-  # These packages' tests stay on GitHub Actions, whose Vitest job runs
+  # This package's tests stay on GitHub Actions, whose Vitest job runs
   # exactly this list: a package taken off it goes back on there.
-  # - native code with no WebAssembly build the package can load: web and
-  #   desktop (their Vitest runs on Vite 6, which loads Rollup's native
-  #   binary; Rollup's WebAssembly build is another package) and
-  #   bastion-agent (one test bundles the agent with esbuild, whose
-  #   WebAssembly build is another package too);
-  # - tests that run what a job does not have: ssh-tunnel-core
-  #   (ssh-keygen) and plugingen (git).
+  # - tests that run what a job does not have: plugingen (git).
   #
-  # libsql's native addon has no WebAssembly build either: turso's test
-  # mocks the client it never makes, and server-core and poller swap it for
-  # the client's addon-free entry in their vitest.config.ts.
+  # Native code with no WebAssembly build in the same package, and what the
+  # runner's Node does not do yet:
+  # - node-preload.cjs, beside this file, hands a package that lists
+  #   `@rollup/wasm-node` or `esbuild-wasm` that build in place of Rollup's
+  #   or esbuild's, which Vite 6 (web's and desktop's Vitest) loads before
+  #   it reads the package's config; answers for node-pty, which tests
+  #   import without opening a terminal (stubs/); and stands in for
+  #   Edge.js's `structuredClone`, which drops integer-like keys (#1048),
+  #   and its recursive `fs.rmSync`, which removes nothing (#1049).
+  #   bastion-agent's bundle test picks `esbuild-wasm` itself.
+  # - libsql's addon: turso's test mocks the client it never makes, and
+  #   server-core, poller, web and desktop swap it for the client's
+  #   addon-free entry in their vitest.config.ts.
+  # - Electron, whose install script never runs here: desktop's
+  #   vitest.config.ts gives `require("electron")` a path to answer with.
   test:
     name: Test ${{ package.name }}
     packages:
       scripts: { test: "*vitest run*" }
-      only:
-        - "!app/packages/web"
-        - "!app/packages/desktop"
-        - "!app/packages/bastion-agent"
-        - "!plugin-architecture/packages/ssh-tunnel-core"
-        - "!plugingen"
+      only: ["!plugingen"]
     needs: [prep, bundle, "^bundle"]
     using: env:bash-node@24
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     run: |
       script="$(node -p 'require("./package.json").scripts.test')"
       eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=2}"
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache:
+      root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
     memory: 6GiB
     # server-core and ui take five to nine minutes each on a busy runner.
     timeout: 30m
@@ -178,9 +181,8 @@ jobs:
     memory: 6GiB
     timeout: 30m
 
-  # The packages that pin TypeScript 6 (mobile, plugingen) run their own
-  # compiler, which is JavaScript, under Node. The website's `astro check`
-  # is still on GitHub Actions: it has not been tried here.
+  # The packages that pin TypeScript 6 (mobile, plugingen, website) run
+  # their own compiler, which is JavaScript, under Node.
   mobile:
     name: Typecheck mobile (TypeScript 6)
     needs: [prep, build]
@@ -202,6 +204,29 @@ jobs:
     run: node node_modules/typescript/bin/tsc6 --noEmit
     task-cache: { inputs: [plugingen/**] }
     memory: 4GiB
+    timeout: 20m
+
+  # `astro check`: `astro sync` writes the content collections' types into
+  # .astro/, then @astrojs/check runs the website's TypeScript over the
+  # .astro and .ts files. The only workspace package it reads is
+  # analytics, which ships its source. Loading astro.config.mjs loads the
+  # Cloudflare adapter and so workerd, which has no WebAssembly build and is
+  # never started here, and Tailwind's Lightning CSS, whose WebAssembly
+  # build the website lists: node-preload.cjs answers for both. Astro keeps its
+  # telemetry settings under HOME, which a job's environment does not set.
+  website:
+    name: Typecheck website (astro check)
+    using: env:bash-node@24
+    cwd: /app/app/packages/website
+    env:
+      HOME: /tmp
+      ASTRO_TELEMETRY_DISABLED: "1"
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+    run: node node_modules/astro/bin/astro.mjs check
+    task-cache:
+      inputs: [app/packages/website/**, app/packages/analytics/**]
+      root-inputs: [.infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
+    memory: 6GiB
     timeout: 20m
 
   # Both are plain Node scripts over the sources and catalogs. They read

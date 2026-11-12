@@ -6,14 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-# Prettier, TypeScript, the translation checks and most packages' tests run
-# on Infrawrench CI (.infrawrench/ci/test.yml). What is left here is what
-# that pipeline cannot run yet.
+# Prettier, TypeScript, the translation checks and every package's tests but
+# plugingen's run on Infrawrench CI (.infrawrench/ci/test.yml). What is left
+# here is what that pipeline cannot run yet.
 jobs:
-  # The tests that need native code with no WebAssembly build (web, desktop,
-  # bastion-agent) or a host tool (ssh-tunnel-core, plugingen):
-  # exactly the packages `.infrawrench/ci/test.yml`'s `test` job leaves out,
-  # each with its reason there. Keep the two lists in step.
+  # The tests that need a host tool (plugingen: git): exactly the packages
+  # `.infrawrench/ci/test.yml`'s `test` job leaves out, each with its reason
+  # there. Keep the two lists in step.
   vitest:
     name: Vitest
     runs-on: ubuntu-24.04-arm
@@ -38,43 +37,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Copy env.production.ts to env.ts for desktop package
-        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
-
-      - run: >-
-          pnpm exec turbo run test
-          --filter=./app/packages/web
-          --filter=./app/packages/desktop
-          --filter=./app/packages/bastion-agent
-          --filter=./plugin-architecture/packages/ssh-tunnel-core
-          --filter=./plugingen
-
-  # The website's `astro check`; every other package's typecheck runs on
-  # Infrawrench CI.
-  typescript:
-    name: TypeScript (website)
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            .turbo
-            node_modules
-          key: ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 24
-
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm exec turbo run typecheck --filter=@infrawrench/website
+      - run: pnpm exec turbo run test --filter=./plugingen
 
   migrations:
     name: Database migrations

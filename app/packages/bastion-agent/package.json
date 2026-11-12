@@ -20,6 +20,7 @@
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.10",
     "esbuild": "^0.25.12",
+    "esbuild-wasm": "^0.25.12",
     "tsx": "^4.23.11",
     "typescript": "catalog:",
     "vitest": "^4.1.10"
