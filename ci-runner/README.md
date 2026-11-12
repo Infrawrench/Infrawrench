@@ -728,6 +728,24 @@ EDGE_BUILTINS_CACHE_RECORD=1`) writes that file, in its own job.
 ms to 41 to 43 ms, and a `node` that loads `child_process`, `stream`,
 `crypto` and `worker_threads` from 60 to 68 ms to 45 to 52 ms.
 
+24.0.10 adds two. `edgejs-open-flags.patch` (#1045) opens numeric flags
+that name no access mode read-only, as Node's `O_RDONLY` of 0 does
+everywhere else: WASI's `O_RDONLY` is a bit of its own and the C library
+refused `fs.open(path, 0)` with `EINVAL`, so Go's WebAssembly runtime
+(esbuild-wasm) could open nothing. Other hard-coded Linux values, such as
+`O_CREAT` as `0x40`, still mean something else here; `fs.constants` has
+the right ones. `edgejs-structured-clone.patch` (#1048) makes
+`structuredClone` and `postMessage` keep integer-like keys (`{ "200": ...
+}`, an OpenAPI document's responses), shared references and cycles, and
+leave non-enumerable properties behind. Edge.js copies a value through
+N-API before V8 serializes it, to stand in for host objects and
+transferables, and that copy took each object's own non-index properties
+and copied an object every time it met it. `structuredClone` of plain data
+(objects, arrays, maps, sets, dates, buffers, with no getters, proxies or
+transferables) now skips the copy and goes to V8's serializer alone, as
+Node's does; a document of a few thousand objects used to run out of N-API
+handles in the copy (`DataCloneError`).
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

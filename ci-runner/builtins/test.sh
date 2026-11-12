@@ -1568,6 +1568,91 @@ jobs:
       }, 500);
       JS
       test "$(node /tmp/cpu.js)" = "cpu time ok"
+  # Numeric open flags with no access mode open read-only, as Node's
+  # O_RDONLY is 0 (#1045). WASI's O_RDONLY is a bit of its own, and the C
+  # library refused them with EINVAL, so Go's WebAssembly runtime (which
+  # esbuild-wasm is) could open nothing. edgejs-open-flags.patch.
+  open-flags-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      cat > /tmp/open.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const { O_CREAT, O_WRONLY, O_TRUNC } = fs.constants;
+      fs.closeSync(fs.openSync("data.txt", 0));
+      assert.equal(fs.readFileSync("data.txt", { flag: 0, encoding: "utf8" }), "fixture line\n");
+      assert.equal(fs.readFileSync("data.txt", { flag: 0 }).toString(), "fixture line\n");
+      fs.closeSync(fs.openSync("/tmp/made", O_CREAT));
+      assert.ok(fs.existsSync("/tmp/made"));
+      const fd = fs.openSync("/tmp/w", O_CREAT | O_WRONLY | O_TRUNC);
+      fs.writeSync(fd, "w");
+      fs.closeSync(fd);
+      assert.equal(fs.readFileSync("/tmp/w", "utf8"), "w");
+      fs.open("data.txt", 0, 0, (err, fd) => {
+        assert.ifError(err);
+        fs.closeSync(fd);
+        fs.promises.open("data.txt", 0).then(async (handle) => {
+          assert.equal(await handle.readFile("utf8"), "fixture line\n");
+          await handle.close();
+          console.log("open flags ok");
+        });
+      });
+      JS
+      test "$(node /tmp/open.js)" = "open flags ok"
+  # `structuredClone` and `postMessage` keep integer-like keys (an OpenAPI
+  # document's responses), shared references and cycles, and leave
+  # non-enumerable properties behind (#1048); a document of tens of
+  # thousands of objects clones, which the native copy could not.
+  # edgejs-structured-clone.patch.
+  structured-clone-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 2m
+    run: |
+      cat > /tmp/clone.js <<'JS'
+      const assert = require("node:assert");
+      const v8 = require("node:v8");
+      const viaV8 = (value) => v8.deserialize(v8.serialize(value));
+      const doc = { paths: {} };
+      for (let i = 0; i < 5000; i++) {
+        doc.paths["/p" + i] = { get: { responses: { 200: { d: i }, 404: { d: -i } } } };
+      }
+      const values = [
+        { 200: 1, a: 2 },
+        { 0: "x" },
+        { 4294967294: 2, 4294967295: 1 },
+        [1, { 7: 2 }],
+        new Map([[1, { 5: 5 }]]),
+        Object.assign(Object.create(null), { 3: "n" }),
+        doc,
+      ];
+      for (const value of values) assert.deepStrictEqual(structuredClone(value), viaV8(value));
+      const shared = { s: 1 };
+      const both = structuredClone({ p: shared, q: shared });
+      assert.ok(both.p === both.q);
+      const cycle = { n: 1 };
+      cycle.self = cycle;
+      const cycled = structuredClone(cycle);
+      assert.ok(cycled.self === cycled);
+      assert.deepStrictEqual(Object.keys(structuredClone(Object.defineProperty({ v: 1 }, "h", { value: 2 }))), ["v"]);
+      // With a Blob in it, the value takes the native copy.
+      const withBlob = structuredClone({ 200: new Blob(["hi"]), p: shared, q: shared, cycle });
+      assert.ok(withBlob[200] instanceof Blob && withBlob.p === withBlob.q);
+      assert.ok(withBlob.cycle.self === withBlob.cycle);
+      const { port1, port2 } = new MessageChannel();
+      port1.once("message", (data) => {
+        assert.deepStrictEqual(data.keyed, { 200: 1, a: 2 });
+        assert.ok(data.p === data.q && data.cycle.self === data.cycle);
+        port1.close();
+        withBlob[200].text().then((text) => {
+          assert.equal(text, "hi");
+          console.log("clone ok");
+        });
+      });
+      port2.postMessage({ keyed: { 200: 1, a: 2 }, p: shared, q: shared, cycle });
+      JS
+      test "$(node /tmp/clone.js)" = "clone ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap

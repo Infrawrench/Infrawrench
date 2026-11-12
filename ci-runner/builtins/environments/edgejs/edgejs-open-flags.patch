@@ -1,0 +1,19 @@
+diff --git a/lib/internal/fs/utils.js b/lib/internal/fs/utils.js
+index 957f6517..9356ad8a 100644
+--- a/lib/internal/fs/utils.js
++++ b/lib/internal/fs/utils.js
+@@ -593,6 +593,14 @@ function getStatFsFromBinding(stats) {
+ function stringToFlags(flags, name = 'flags') {
+   if (typeof flags === 'number') {
+     validateInt32(flags, name);
++    // Node's O_RDONLY is 0 on every platform, so numeric flags that name no
++    // access mode open read-only there, and programs count on it (Go's
++    // WebAssembly runtime opens every file it reads with 0). WASI's
++    // O_RDONLY is a bit of its own, and the C library refuses flags without
++    // one with EINVAL, so give them the read-only bit here.
++    if (O_RDONLY !== 0 && (flags & (O_RDONLY | O_WRONLY | O_RDWR)) === 0) {
++      return flags | O_RDONLY;
++    }
+     return flags;
+   }
+ 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, and with five fixes to
+# and file modes and CPU time read from the runner, and with seven fixes to
 # Edge.js itself and its built-ins code cache turned on.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
@@ -42,7 +42,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And six patches to Edge.js's own source, applied to its checkout:
+# And eight patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -108,6 +108,30 @@
 #     worker counting from its own start (a host other than the runner may
 #     give the clock of a host thread that ran something else first). Ours.
 #
+#   edgejs-open-flags.patch (#1045). Node's O_RDONLY is 0 on every platform,
+#     so `fs.open(path, 0)` opens read-only there and programs count on it:
+#     Go's WebAssembly runtime (esbuild-wasm) opens every file it reads that
+#     way. Edge.js's constants are WASI's, where O_RDONLY is a bit of its
+#     own, and the C library refuses flags with no access mode (EINVAL).
+#     Numeric flags with none now get O_RDONLY where Node turns flags into
+#     the platform's (`stringToFlags`). Other hard-coded Linux values
+#     (O_CREAT as 0x40) still mean something else here. Ours.
+#
+#   edgejs-structured-clone.patch (#1048). `structuredClone` and
+#     `postMessage` copy a value through N-API before V8 serializes it, to
+#     stand in for host objects and transferables, and the copy took each
+#     object's own non-index properties: `{ "200": 1 }` came out as `{}`
+#     (an OpenAPI document lost every response), non-enumerable properties
+#     came out enumerable, and an object reached twice was copied twice, so a
+#     shared reference was not and a cycle never ended. The copies now take
+#     what V8's serializer reads (own enumerable string keys, indices
+#     included), each object once. And `structuredClone` of plain data
+#     (objects, arrays, maps, sets, dates, buffers; no getters, proxies or
+#     transferables), which is nearly every call, goes to V8's serializer
+#     alone, as Node's does: the copy costs N-API handles per object, and a
+#     document of a few thousand objects ran out of them (DataCloneError).
+#     Ours; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -157,10 +181,10 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Our build of 0.2.5. A changed build is a new number after `iwci.`:
 # 1 had the first patch alone, 2 both C library patches, 3 adds the first
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
-# the built-ins cache and CPU time.
-VERSION="0.2.5-iwci.6"
+# the built-ins cache and CPU time, 7 open flags and structured clone.
+VERSION="0.2.5-iwci.7"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
