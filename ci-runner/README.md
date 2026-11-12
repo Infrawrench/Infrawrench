@@ -443,7 +443,7 @@ Environments:
 
 | Environment            | Packages                                                                                                                                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0, `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                                      |
+| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1                                   |
 | `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                    |
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
@@ -486,6 +486,17 @@ That was `bash` 5.1.17, `bash-node` 24.0.5, `python` 3.13.16 and `php`
 package keeps Wasmer's version, 1.0.25, because Edge.js and Python depend on
 `wasmer/bash@^1.0.25`. Drop the script once a `wasmer/bash` release calls
 `proc_exec4`.
+
+sed's `e` command and the `e` flag of `s///` had the same bug in another
+call ([#1022](https://github.com/Infrawrench/Infrawrench/issues/1022)):
+they run the command with `popen`, and the C library in Wasmer's sed 4.9.0
+starts `sh -c` with `posix_spawn` through the line-feed-joined
+`proc_spawn2`, so a command with a line feed in it ran only up to it.
+`builtins/environments/sed/build.sh` changes that call to `proc_spawn3` the
+same way (fourteen bytes, through `patch-module.sh`, which both scripts
+share). That was `bash` 5.1.18, `bash-node` 24.0.6, `python` 3.13.17 and
+`php` 8.1.36, 8.2.37, 8.3.38, 8.4.29 and 8.5.14. Drop it once a `wasmer/sed`
+release calls `proc_spawn3`.
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through

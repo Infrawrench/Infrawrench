@@ -1885,3 +1885,30 @@ fn bench_process_starts_during_a_compile() {
     again.prepare(&big).unwrap();
     println!("load from disk: {:.0} ms", ms(started.elapsed()));
 }
+
+/// A command sed's `e` runs reaches the shell whole (#1022): sed's
+/// `posix_spawn` joined `sh -c`'s arguments with line feeds and WASIX split
+/// them there again, so the shell got the command up to its first line feed.
+#[test]
+fn a_command_sed_runs_gets_its_line_feeds() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[("/work/cmd.txt", "printf '%s|' 'a\nb'\n")]).fork();
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            "sed 'N;s/^//e' cmd.txt\n",
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "a\nb|\n",
+        "{stderr:?}"
+    );
+}
