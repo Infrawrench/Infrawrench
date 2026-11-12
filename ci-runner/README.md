@@ -889,7 +889,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved.                                                                                                                      |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved, and V8's out-of-memory losses (below).                                                                               |
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
@@ -924,6 +924,16 @@ A request body (for `runs` and `prepare`):
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
+- **V8's out-of-memory losses.** `/v1/capacity` also says what V8 running
+  out of memory where it cannot recover has cost the process since it
+  started: `v8_lost_isolates` (isolates abandoned, with their memory, which
+  no job's `memory:` counts any more), `v8_parked_threads` (threads parked
+  for good) and `v8_parked_worker_threads` (those of them that were V8's
+  worker threads, a pool every Node job shares). The vendored bridge keeps
+  each such out-of-memory to its job at that cost
+  ([vendor/README.md](vendor/README.md)), and the server logs the counts
+  whenever they grow and restarts itself once they are too high (see
+  [Deploying, draining and updating](#deploying-draining-and-updating)).
 - **Logs.** For each pipeline, `pipeline-started` (its jobs: `key`, `name`,
   `needs` and the `ids` their entries report under, or `null` while a matrix
   waits on another job), then `job-started`, `output` (one line, with its
@@ -1055,6 +1065,13 @@ make that safe to do while jobs run:
   and sha256 and that it reports the right version, drains, and `exec`s it
   with the same arguments. The process id stays the same, nothing is
   killed, and pointing the channel back at an older version rolls back.
+- **Restarting after V8 runs out of memory.** Each out-of-memory the bridge
+  keeps to its job costs the process a parked thread and an abandoned
+  isolate for good. Once that has cost one of V8's worker threads, whose
+  pool is sized to `--cpus` and shared by every Node job, or
+  `--restart-after-lost-isolates` isolates (default 8; `0` for never), the
+  server drains and `exec`s its own binary with the same arguments, the
+  way an update does, and starts again with none lost.
 
 Releases are published with `iwci release <binary> --version <v>
 [--target x86_64-linux] [--channel stable]` (signing key from

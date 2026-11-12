@@ -11,7 +11,7 @@
 //! | Route | Does |
 //! |-------|------|
 //! | `GET /healthz` | `200 ok`, unauthenticated, for load balancers |
-//! | `GET /v1/capacity` | slots, memory and active runs |
+//! | `GET /v1/capacity` | slots, memory, active runs, and what V8 out-of-memory has cost the process |
 //! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting |
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
@@ -58,6 +58,9 @@ pub struct Server {
     draining: std::sync::atomic::AtomicBool,
     /// Why it is draining, for `/v1/capacity`.
     drain_reason: Mutex<Option<String>>,
+    /// Set when it drains to restart itself (`watch_v8_losses`), so a
+    /// failed update does not take it out of draining.
+    restarting: std::sync::atomic::AtomicBool,
     key: Vec<u8>,
     runs: Mutex<HashMap<String, RunEntry>>,
     logs: Mutex<HashMap<String, Arc<LogHub>>>,
@@ -167,6 +170,7 @@ impl Server {
             warm: Mutex::default(),
             draining: std::sync::atomic::AtomicBool::new(false),
             drain_reason: Mutex::default(),
+            restarting: std::sync::atomic::AtomicBool::new(false),
             key: key.into_bytes(),
             runs: Mutex::default(),
             logs: Mutex::default(),
@@ -274,6 +278,7 @@ impl Server {
 
     fn capacity(&self) -> serde_json::Value {
         let slots = self.runner.slots.as_ref().expect("checked in new");
+        let v8 = iwci_runtime::v8_losses();
         json!({
             "version": lifecycle::VERSION,
             "draining": self.draining.load(Ordering::SeqCst),
@@ -285,6 +290,10 @@ impl Server {
             "runs_active": self.active.load(Ordering::SeqCst),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
             "memory_used": self.runner.memory.as_ref().map(|m| m.used()),
+            // What V8 out-of-memory has cost this process (#990).
+            "v8_lost_isolates": v8.lost_isolates,
+            "v8_parked_threads": v8.parked_threads,
+            "v8_parked_worker_threads": v8.parked_worker_threads,
             "warm": self.warm.lock().unwrap().as_ref().map(|(at, w)| json!({
                 "finished_at": at,
                 "tools": w.warmed.len(),

@@ -28,6 +28,9 @@ usage:
                                          install not used for that long
   iwci serve [--listen <addr>] [options]  run pipelines over HTTP (key: IWCI_SERVER_KEY)
                                          [--jobs-per-cpu 4] [--storage-quota 10GiB]
+                                         [--restart-after-lost-isolates 8] drain and
+                                         restart after V8 out-of-memory cost that many
+                                         isolates or any V8 worker thread; 0 for never
   iwci publish <dist-dir>...             upload builtins/*/build.sh output
   iwci release <binary> --version <v>    publish iwci itself [--channel stable]
   iwci release-status --version <v>      whether that release is done: published,

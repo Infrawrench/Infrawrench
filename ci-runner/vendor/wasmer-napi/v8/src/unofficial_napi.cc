@@ -146,6 +146,11 @@ std::unordered_map<v8::Isolate*, const void*>& g_oom_host_data =
 // Isolates abandoned by a parked thread: never disposed.
 std::unordered_set<v8::Isolate*>& g_lost_isolates =
     *new std::unordered_set<v8::Isolate*>();
+// iwci patch (#990): the threads parked for good, and how many of those were
+// V8's own worker threads (no isolate current), which its pool never gets
+// back. For `snapi_bridge_out_of_memory_losses`.
+uint64_t g_parked_threads = 0;
+uint64_t g_parked_worker_threads = 0;
 // Isolates being disposed. Dispose joins the isolate's background work under
 // `g_isolate_lifecycle_mu`, which every isolate creation takes, so a thread
 // parked for one of these would stop Node in every job for good: there the
@@ -757,6 +762,8 @@ void ConfineOutOfMemory(v8::Isolate* isolate,
       return;
     }
     g_lost_isolates.insert(isolate);
+    g_parked_threads += 1;
+    if (v8::Isolate::TryGetCurrent() == nullptr) g_parked_worker_threads += 1;
     // Under the lock: env release erases the data under it before the host
     // frees it.
     napi_host_isolate_out_of_memory(it->second);
@@ -1871,6 +1878,18 @@ void NapiV8ApplyPromiseHooksToContext(napi_env env, v8::Local<v8::Context> conte
 }
 
 extern "C" {
+
+// iwci patch (#990): what confining V8's out-of-memory has cost the process
+// so far (see `g_oom_mu`): isolates abandoned, threads parked, and how many
+// of those were V8 worker threads. Host-only; never called by a guest.
+void snapi_bridge_out_of_memory_losses(uint64_t* lost_isolates,
+                                       uint64_t* parked_threads,
+                                       uint64_t* parked_worker_threads) {
+  std::lock_guard<std::mutex> lock(g_oom_mu);
+  if (lost_isolates != nullptr) *lost_isolates = g_lost_isolates.size();
+  if (parked_threads != nullptr) *parked_threads = g_parked_threads;
+  if (parked_worker_threads != nullptr) *parked_worker_threads = g_parked_worker_threads;
+}
 
 napi_status NAPI_CDECL unofficial_napi_configure_runtime(
     const unofficial_napi_runtime_options* options) {

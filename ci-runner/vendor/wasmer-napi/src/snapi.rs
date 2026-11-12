@@ -60,6 +60,12 @@ unsafe extern "C" {
         exit: unsafe extern "C" fn(*mut core::ffi::c_void),
         release: unsafe extern "C" fn(*mut core::ffi::c_void),
     );
+    // iwci patch (#990)
+    pub fn snapi_bridge_out_of_memory_losses(
+        lost_isolates: *mut u64,
+        parked_threads: *mut u64,
+        parked_worker_threads: *mut u64,
+    );
     pub fn snapi_bridge_unofficial_configure_runtime(
         engine_flags: *const std::ffi::c_char,
         engine_flags_length: u32,

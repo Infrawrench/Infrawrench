@@ -113,6 +113,35 @@ pub fn set_worker_task_hooks(hooks: WorkerTaskHooks) {
     };
 }
 
+/// iwci patch (#990): what confining V8's fatal out-of-memory to one isolate
+/// (#972) has cost this process since it started. Each confinement parks the
+/// thread that ran out for good and abandons its isolate, never disposed;
+/// none of it comes back until the process ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutOfMemoryLosses {
+    /// Isolates abandoned, with their heaps.
+    pub lost_isolates: u64,
+    /// Threads parked for good: an app's own, or a V8 worker thread.
+    pub parked_threads: u64,
+    /// Of those, V8 worker threads: the shared pool (sized by
+    /// [`set_v8_worker_threads`]) is one thread short for each.
+    pub parked_worker_threads: u64,
+}
+
+/// See [`OutOfMemoryLosses`].
+pub fn out_of_memory_losses() -> OutOfMemoryLosses {
+    let mut losses = OutOfMemoryLosses::default();
+    // Safety: the callee writes three u64s under its own lock.
+    unsafe {
+        snapi::snapi_bridge_out_of_memory_losses(
+            &mut losses.lost_isolates,
+            &mut losses.parked_threads,
+            &mut losses.parked_worker_threads,
+        )
+    };
+    losses
+}
+
 /// The V8 platform already exists, so its worker pool can no longer be resized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkerThreadsAlreadyFixed;

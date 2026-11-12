@@ -6,6 +6,7 @@
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
 //!     [--warm-every 10m | --no-warm] [--keep-installs-unpacked 24h]
 //!     [--update-channel stable [--update-every 5m]]
+//!     [--restart-after-lost-isolates 8 | --restart-after-lost-isolates 0]
 //! ```
 //!
 //! SIGTERM and SIGINT drain (no new runs, running ones finish) and then
@@ -19,6 +20,11 @@
 //!
 //! Cached installs not used for `--keep-installs-unpacked` are packed in
 //! the background, once at start and then every ten minutes.
+//!
+//! V8 running out of memory where it cannot recover costs the process a
+//! parked thread and an abandoned isolate each time (#990), so the server
+//! drains and `exec`s itself once that has cost one of V8's worker threads
+//! or `--restart-after-lost-isolates` isolates (default 8; `0` never).
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -39,6 +45,11 @@ const COMPACT_EVERY_SECS: u64 = 600;
 
 /// How often a server checks its release channel.
 const DEFAULT_UPDATE_EVERY_SECS: u64 = 300;
+
+/// How many V8 isolates a server lets out-of-memory cost it before it
+/// restarts (#990). Each is a parked thread and an isolate's memory, which
+/// no job's `memory:` counts any more.
+const DEFAULT_RESTART_AFTER_LOST_ISOLATES: u64 = 8;
 
 pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     // Loopback by default: exposing it is a decision, made with --listen.
@@ -68,6 +79,18 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
                 format!("--update-every takes a duration of at least 30s, not `{text}`")
             })?,
     };
+    let restart_after = match args.value("--restart-after-lost-isolates")? {
+        None => Some(DEFAULT_RESTART_AFTER_LOST_ISOLATES),
+        Some(text) => match text.parse::<u64>() {
+            Ok(0) => None,
+            Ok(n) => Some(n),
+            Err(_) => {
+                return Err(format!(
+                    "--restart-after-lost-isolates takes a count, or 0 for never, not `{text}`"
+                ));
+            }
+        },
+    };
     let release_key = match &update_channel {
         Some(_) => Some(crate::server::lifecycle::verifying_key(
             &std::env::var("IWCI_RELEASE_PUBLIC_KEY").map_err(|_| {
@@ -88,6 +111,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
         );
         server.keep_updated(channel, key, std::time::Duration::from_secs(update_every));
     }
+    server.watch_v8_losses(restart_after);
     if !no_warm {
         server.keep_warm(std::time::Duration::from_secs(warm_every));
     }

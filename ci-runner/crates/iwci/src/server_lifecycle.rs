@@ -135,6 +135,36 @@ pub fn generate_keypair() -> Result<(String, String), String> {
 
 static STOP: AtomicBool = AtomicBool::new(false);
 
+/// How often a server looks at what V8 out-of-memory has cost it.
+const V8_LOSSES_EVERY: Duration = Duration::from_secs(5);
+
+/// Why a server whose V8 has lost `losses` should restart, if it should:
+/// any V8 worker thread lost, or `restart_after` isolates (`None`: never).
+fn restart_reason(losses: &iwci_runtime::V8Losses, restart_after: Option<u64>) -> Option<String> {
+    let after = restart_after?;
+    if losses.parked_worker_threads != 0 {
+        return Some(format!(
+            "out-of-memory parked {}, from the pool every job shares",
+            count(losses.parked_worker_threads, "V8 worker thread")
+        ));
+    }
+    (losses.lost_isolates >= after).then(|| {
+        format!(
+            "out-of-memory lost {} (--restart-after-lost-isolates {after})",
+            count(losses.lost_isolates, "V8 isolate")
+        )
+    })
+}
+
+/// `1 thread`, `2 threads`.
+fn count(n: u64, what: &str) -> String {
+    if n == 1 {
+        format!("1 {what}")
+    } else {
+        format!("{n} {what}s")
+    }
+}
+
 impl Server {
     /// Stops admitting runs. Idempotent; the first reason is kept.
     pub(crate) fn begin_drain(&self, reason: &str) {
@@ -194,8 +224,11 @@ impl Server {
                                 Err(e) => {
                                     eprintln!("iwci serve: the update to {version} failed: {e}; carrying on as {VERSION}");
                                     let _ = std::fs::remove_file(&path);
-                                    server.draining.store(false, Ordering::SeqCst);
-                                    *server.drain_reason.lock().unwrap() = None;
+                                    // Unless it is restarting anyway.
+                                    if !server.restarting.load(Ordering::SeqCst) {
+                                        server.draining.store(false, Ordering::SeqCst);
+                                        *server.drain_reason.lock().unwrap() = None;
+                                    }
                                 }
                                 Ok(never) => match never {},
                             }
@@ -206,6 +239,51 @@ impl Server {
                 }
             })
             .expect("spawning the update thread");
+    }
+
+    /// Watches what V8 running out of memory has cost this process (#990)
+    /// and logs it as it grows. Each time the bridge confines one to its job
+    /// it parks a thread for good and abandons the isolate, so with
+    /// `restart_after` set the server drains and `exec`s itself, as an update
+    /// does, once that has cost one of V8's worker threads (the pool every
+    /// Node job shares) or `restart_after` isolates.
+    pub fn watch_v8_losses(self: &Arc<Self>, restart_after: Option<u64>) {
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-v8-losses".into())
+            .spawn(move || {
+                let mut seen = iwci_runtime::V8Losses::default();
+                loop {
+                    std::thread::sleep(V8_LOSSES_EVERY);
+                    let losses = iwci_runtime::v8_losses();
+                    if losses == seen {
+                        continue;
+                    }
+                    seen = losses;
+                    eprintln!(
+                        "iwci serve: V8 ran out of memory where it cannot recover, kept to its jobs; since this process started that has cost {} and {} parked for good ({} of them V8 worker threads)",
+                        count(losses.lost_isolates, "isolate"),
+                        count(losses.parked_threads, "thread"),
+                        losses.parked_worker_threads
+                    );
+                    if let Some(reason) = restart_reason(&losses, restart_after) {
+                        server.restarting.store(true, Ordering::SeqCst);
+                        server.begin_drain(&reason);
+                        server.wait_idle();
+                        let exe = std::env::current_exe().map_err(|e| e.to_string());
+                        eprintln!("iwci serve: restarting: {reason}");
+                        let err = match exe.and_then(|exe| exec(&exe)) {
+                            Err(e) => e,
+                            Ok(never) => match never {},
+                        };
+                        // Its own binary failed to start: exit instead, and
+                        // let the service manager start it again.
+                        eprintln!("iwci serve: restarting failed: {err}; exiting");
+                        std::process::exit(1);
+                    }
+                }
+            })
+            .expect("spawning the V8 watch thread");
     }
 
     /// The channel's release, downloaded, verified and ready to run, when it
@@ -281,11 +359,16 @@ fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// arguments and environment. Listening sockets close on exec (Rust opens
 /// them close-on-exec), and the new process binds again at once.
 fn replace_and_exec(new: &Path) -> Result<std::convert::Infallible, String> {
-    use std::os::unix::process::CommandExt;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     std::fs::rename(new, &exe).map_err(|e| format!("replacing {}: {e}", exe.display()))?;
     eprintln!("iwci serve: restarting as the new release");
-    let err = std::process::Command::new(&exe)
+    exec(&exe)
+}
+
+/// Becomes `exe` with this process's arguments and environment.
+fn exec(exe: &Path) -> Result<std::convert::Infallible, String> {
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(exe)
         .args(std::env::args_os().skip(1))
         .exec();
     Err(format!("exec {}: {err}", exe.display()))
@@ -294,6 +377,29 @@ fn replace_and_exec(new: &Path) -> Result<std::convert::Infallible, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_restarts_for_any_lost_v8_worker_or_enough_lost_isolates() {
+        let losses = |lost_isolates, parked_worker_threads| iwci_runtime::V8Losses {
+            lost_isolates,
+            parked_threads: lost_isolates,
+            parked_worker_threads,
+        };
+        assert_eq!(restart_reason(&losses(0, 0), Some(8)), None);
+        // A job's own thread, parked: one isolate, below the threshold.
+        assert_eq!(restart_reason(&losses(7, 0), Some(8)), None);
+        assert_eq!(
+            restart_reason(&losses(8, 0), Some(8)).as_deref(),
+            Some("out-of-memory lost 8 V8 isolates (--restart-after-lost-isolates 8)")
+        );
+        // One of V8's worker threads is gone for every job: at once.
+        assert_eq!(
+            restart_reason(&losses(1, 1), Some(8)).as_deref(),
+            Some("out-of-memory parked 1 V8 worker thread, from the pool every job shares")
+        );
+        // `--restart-after-lost-isolates 0`: never.
+        assert_eq!(restart_reason(&losses(100, 3), None), None);
+    }
 
     #[test]
     fn a_release_verifies_only_with_its_key_and_unchanged() {

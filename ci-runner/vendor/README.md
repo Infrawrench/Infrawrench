@@ -301,6 +301,16 @@ memory (#964). Nothing upstream does any of this. `builtins/test.sh
 bash-node`'s `heap-*-fails` run beside the other jobs and must fail as out
 of memory with the runner still there.
 
+**And: what that costs, counted (#990).** A parked thread and an abandoned
+isolate are lost until the process ends, and a parked V8 worker thread
+leaves the pool every job shares one thread short.
+`v8/src/unofficial_napi.cc` counts the threads it parks, and which of them
+had no isolate current (V8's own workers), beside `g_lost_isolates`, and
+`out_of_memory_losses` (`src/lib.rs`, through
+`snapi_bridge_out_of_memory_losses`) reads them, so `iwci serve` can report
+them and restart before the losses add up (`../README.md`, "Deploying,
+draining and updating").
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
