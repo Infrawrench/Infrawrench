@@ -31,7 +31,9 @@ use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use sha2::Digest;
-use virtual_fs::{FileSystem, MountFileSystem, NullFile, RootFileSystemBuilder, TmpFileSystem};
+use virtual_fs::{
+    FileSystem, MountFileSystem, NullFile, RootFileSystemBuilder, TmpFileSystem, VirtualFile,
+};
 use wasmer::sys::NativeEngineExt;
 use wasmer::{Engine, Interrupter, Module};
 use wasmer_config::package::{PackageHash, PackageId};
@@ -40,6 +42,7 @@ use wasmer_wasix::bin_factory::{
 };
 use wasmer_wasix::http::DynHttpClient;
 use wasmer_wasix::os::TtyBridge;
+use wasmer_wasix::os::task::TaskJoinHandle;
 use wasmer_wasix::runtime::module_cache::ModuleCache;
 use wasmer_wasix::runtime::module_cache::progress::ModuleLoadProgressReporter;
 use wasmer_wasix::runtime::package_loader::{PackageLoader, load_package_tree};
@@ -50,9 +53,12 @@ use wasmer_wasix::runtime::task_manager::VirtualTaskManager;
 use wasmer_wasix::runtime::{InstantiationState, ModuleInput, PluggableRuntime, TaintReason};
 use wasmer_wasix::virtual_net::DynVirtualNetworking;
 use wasmer_wasix::wasmer_wasix_types::wasi::{ExitCode, Signal};
-use wasmer_wasix::{Runtime as WasixRuntime, SpawnError, WasiEnvBuilder, WasiProcessId};
+use wasmer_wasix::{
+    Runtime as WasixRuntime, SpawnError, WasiControlPlane, WasiEnvBuilder, WasiProcessId,
+};
 use webc::Container;
 
+use crate::background::Services;
 use crate::cache::{ModuleStore, WasixCache, WasmHash};
 use crate::capture::Capture;
 use crate::limits::LimitingTunables;
@@ -79,6 +85,9 @@ const MAX_TASKS: usize = 512;
 
 /// How often the kill is repeated while a timed-out job unwinds.
 const KILL_POLL: Duration = Duration::from_millis(50);
+
+/// How often a job's services are checked for having exited while it runs.
+const SERVICE_POLL: Duration = Duration::from_millis(250);
 
 /// How often a Node job is checked for having been stopped for memory
 /// (#972): its JavaScript is over then, and one of its threads may never
@@ -168,6 +177,7 @@ impl JobRuntime {
         >,
         internet: bool,
         cpu: Arc<CpuMeter>,
+        services: &[String],
     ) -> Self {
         crate::signals::install();
         // The shared threads, with the job's tasks counted by its meter
@@ -176,7 +186,8 @@ impl JobRuntime {
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
         // public internet when the runtime offers it.
-        let network = crate::network::JobNetwork::new(shared.outside.clone().filter(|_| internet));
+        let network = crate::network::JobNetwork::new(shared.outside.clone().filter(|_| internet))
+            .with_services(services);
         let listeners = network.listeners();
         inner.set_networking_implementation(network);
         inner.http_client = None;
@@ -200,7 +211,7 @@ impl JobRuntime {
 #[cfg(test)]
 impl JobRuntime {
     pub(crate) fn for_tests(shared: &WasixShared, engine: Engine) -> Self {
-        Self::new(shared, engine, None, None, false, Arc::default())
+        Self::new(shared, engine, None, None, false, Arc::default(), &[])
     }
 }
 
@@ -612,12 +623,22 @@ pub(crate) fn job_engine(
 
 fn check_nul(inv: &Invocation) -> Result<()> {
     let has_nul = |s: &str| s.contains('\0');
+    let bad_env = |env: &[(String, String)]| {
+        env.iter()
+            .any(|(k, v)| has_nul(k) || has_nul(v) || k.contains('='))
+    };
+    let bad_service = |service: &crate::Service| {
+        bad_env(&service.env)
+            || match &service.program {
+                crate::ServiceProgram::Command { args, .. } => args.iter().any(|a| has_nul(a)),
+                crate::ServiceProgram::Script { script, .. } => has_nul(script),
+            }
+            || matches!(&service.ready, crate::Ready::Command(s) if has_nul(s))
+    };
     if has_nul(&inv.cwd)
         || inv.args.iter().any(|a| has_nul(a))
-        || inv
-            .env
-            .iter()
-            .any(|(k, v)| has_nul(k) || has_nul(v) || k.contains('='))
+        || bad_env(&inv.env)
+        || inv.services.iter().any(bad_service)
     {
         return Err(Error::InvalidInput(
             "cwd, args and env must not contain NUL bytes, and env names no '='".into(),
@@ -645,11 +666,158 @@ pub(crate) struct Caps {
     pub(crate) stall_after: Option<Duration>,
 }
 
+/// Starts the process trees of one job on its runtime: its first process,
+/// each of its services and a service's readiness probe (background.rs).
+/// Each tree gets its own control plane and root file system, over the
+/// job's files.
+pub(crate) struct Starter<'a> {
+    pub(crate) shared: &'a WasixShared,
+    pub(crate) tokio: &'a tokio::runtime::Runtime,
+    pub(crate) runtime: &'a Arc<dyn WasixRuntime + Send + Sync>,
+    pub(crate) fs: &'a crate::DynFs,
+    pub(crate) scratch: Option<&'a crate::DynFs>,
+    pub(crate) modes: &'a iwci_vfs::Modes,
+    pub(crate) listeners: &'a crate::network::Listeners,
+    /// The job has Node hooks (`NodeHooks`).
+    pub(crate) node: bool,
+}
+
+/// What a [`Process`] runs.
+pub(crate) enum Program {
+    /// A WASI or WASIX module with `_start`, already compiled.
+    Module(Module),
+    /// The command `name` of one of `uses`, every one of whose commands is
+    /// on the process's `PATH`.
+    Command {
+        uses: Vec<BinaryPackage>,
+        name: String,
+    },
+}
+
+/// The first process of one tree.
+pub(crate) struct Process<'a> {
+    /// `argv[0]`.
+    pub(crate) name: &'a str,
+    pub(crate) program: Program,
+    /// After `argv[0]`.
+    pub(crate) args: Vec<String>,
+    pub(crate) env: Vec<(String, String)>,
+    pub(crate) cwd: &'a str,
+    /// `tools:` on `PATH`; a `Command` gets the mode and service commands
+    /// there as well.
+    pub(crate) commands: &'a [crate::PathCommand],
+    pub(crate) stdout: Box<dyn VirtualFile + Send + Sync + 'static>,
+    pub(crate) stderr: Box<dyn VirtualFile + Send + Sync + 'static>,
+}
+
+impl Starter<'_> {
+    /// Starts `process` and returns its handle and its control plane.
+    pub(crate) fn start(&self, process: Process<'_>) -> Result<(TaskJoinHandle, WasiControlPlane)> {
+        let shell = matches!(process.program, Program::Command { .. });
+        let mut builder = WasiEnvBuilder::new(process.name);
+        builder.add_args(process.args.iter());
+        builder.add_envs(process.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // Go's wasip1 port takes its working directory from `$PWD`, not from
+        // WASI, and treats a missing one as `/`: gofmt given `.` then walks
+        // the whole file system. A shell would have set it, so set it to the
+        // cwd.
+        if !process.env.iter().any(|(k, _)| k == "PWD") {
+            builder.add_env("PWD", process.cwd);
+        }
+        builder.set_runtime(self.runtime.clone());
+        // An environment's `node` gets the runner's support files.
+        builder.set_mount_fs(job_root(
+            self.fs.clone(),
+            self.scratch.cloned(),
+            process.commands,
+            self.node && shell,
+            shell,
+            self.modes,
+            self.listeners,
+        )?);
+        // WASIX programs ask the runtime for their working directory. Plain
+        // WASI ones built on wasi-libc cannot be given one: their cwd is
+        // always `/`, and a preopen of the cwd named `.` either changes
+        // nothing or sends every absolute path into the cwd (#906, and the
+        // test `a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd`).
+        // `$PWD` is how they learn it.
+        builder.set_current_dir(process.cwd);
+        builder
+            .add_preopen_dir("/")
+            .map_err(|e| Error::Setup(e.to_string()))?;
+        builder.set_stdin(Box::new(NullFile::default()));
+        builder.set_stdout(process.stdout);
+        builder.set_stderr(process.stderr);
+        builder.capabilities_mut().threading.max_threads = Some(MAX_TASKS);
+        // V8 must run on a real thread stack. With asynchronous threading,
+        // wasm (and the N-API calls it makes into V8) runs on coroutine
+        // stacks, and V8, whose isolate takes its stack bounds from where it
+        // was created, segfaults the first time it unwinds an exception.
+        // wasmer-napi's own runner turns it off for N-API modules the same
+        // way. It is set in the tree's control plane, so it covers bash and
+        // every `node` it spawns.
+        if self.node {
+            builder
+                .capabilities_mut()
+                .threading
+                .enable_asynchronous_threading = false;
+        }
+        if let Program::Command { uses, .. } = &process.program {
+            for package in uses {
+                builder.add_webc(package.clone());
+            }
+        }
+        let env = builder.build().map_err(|e| Error::Setup(e.to_string()))?;
+        let control_plane = env.control_plane.clone();
+        let handle = match process.program {
+            Program::Module(module) => spawn_exec_module(module, env, self.runtime),
+            Program::Command { uses, name } => {
+                let package = uses
+                    .iter()
+                    .find(|p| p.get_command(&name).is_some())
+                    .cloned()
+                    .ok_or_else(|| {
+                        Error::Setup(format!("no package in the environment provides `{name}`"))
+                    })?;
+                self.tokio
+                    .block_on(spawn_exec(package, &name, env, self.runtime))
+            }
+        }
+        .map_err(|e| Error::Setup(e.to_string()))?;
+        Ok((handle, control_plane))
+    }
+
+    /// `packages` loaded for a tree of their own (a service's), with their
+    /// commands' default environment under `env` (see
+    /// `command_env_as_defaults`). They are resolved against each other,
+    /// as for a job that uses them, and share its cache.
+    pub(crate) fn load(
+        &self,
+        packages: &[WebcPackage],
+        env: &[(String, String)],
+    ) -> Result<Vec<BinaryPackage>> {
+        let set = PackageSet::new(self.shared, packages)?;
+        let loader = JobRuntime::new(
+            self.shared,
+            self.shared.store.engine().clone(),
+            Some(&set),
+            None,
+            false,
+            Arc::default(),
+            &[],
+        );
+        let loader: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(loader);
+        let uses = binary_packages(self.shared, &set, &loader, self.tokio)?;
+        let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).chain(["PWD"]).collect();
+        Ok(command_env_as_defaults(uses, &keys))
+    }
+}
+
 pub(crate) fn run(
     shared: &WasixShared,
     tokio: &tokio::runtime::Runtime,
     entry: Entry<'_>,
-    program: &str,
+    program_name: &str,
     inv: Invocation,
     caps: Caps,
     node: Option<&crate::node::NodeHooks>,
@@ -669,6 +837,7 @@ pub(crate) fn run(
     // This thread works for the job too: it loads the job's packages and
     // modules and starts its first process, then waits for it.
     let _driving = cpu.enter();
+    let service_names: Vec<String> = inv.services.iter().map(|s| s.name.clone()).collect();
     let runtime = JobRuntime::new(
         shared,
         engine,
@@ -676,6 +845,7 @@ pub(crate) fn run(
         node,
         inv.internet,
         cpu.clone(),
+        &service_names,
     );
     let control = runtime.control.clone();
     let listeners = runtime.listeners.clone();
@@ -705,82 +875,78 @@ pub(crate) fn run(
         .with_sink(inv.log.clone(), crate::Stream::Stderr)
         .counting(written.clone());
 
-    let mut builder = WasiEnvBuilder::new(program);
-    builder.add_args(inv.args.iter());
-    builder.add_envs(env.iter().map(|(k, v)| (k.clone(), v.clone())));
-    // Go's wasip1 port takes its working directory from `$PWD`, not from
-    // WASI, and treats a missing one as `/`: gofmt given `.` then walks the
-    // whole file system. A shell would have set it, so set it to the cwd.
-    if !env.iter().any(|(k, _)| k == "PWD") {
-        builder.add_env("PWD", inv.cwd.clone());
-    }
-    builder.set_runtime(runtime.clone());
-    builder.set_mount_fs(job_root(
-        inv.fs.clone(),
-        inv.scratch.clone(),
-        &inv.commands,
-        node_support,
-        matches!(entry, Entry::Command { .. }),
-        &inv.modes,
-        &listeners,
-    )?);
-    // WASIX programs ask the runtime for their working directory. Plain WASI
-    // ones built on wasi-libc cannot be given one: their cwd is always `/`,
-    // and a preopen of the cwd named `.` either changes nothing or sends
-    // every absolute path into the cwd (#906, and the test
-    // `a_command_sees_only_the_root_preopen_and_its_cwd_as_pwd`). `$PWD` is
-    // how they learn it.
-    builder.set_current_dir(&inv.cwd);
-    builder
-        .add_preopen_dir("/")
-        .map_err(|e| Error::Setup(e.to_string()))?;
-    builder.set_stdin(Box::new(NullFile::default()));
-    builder.set_stdout(stdout.file());
-    builder.set_stderr(stderr.file());
-    builder.capabilities_mut().threading.max_threads = Some(MAX_TASKS);
-    // V8 must run on a real thread stack. With asynchronous threading, wasm
-    // (and the N-API calls it makes into V8) runs on coroutine stacks, and
-    // V8, whose isolate takes its stack bounds from where it was created,
-    // segfaults the first time it unwinds an exception. wasmer-napi's
-    // own runner turns it off for N-API modules the same way. It is set in
-    // the job's control plane, so it covers bash and every `node` it spawns.
-    if node.is_some() {
-        builder
-            .capabilities_mut()
-            .threading
-            .enable_asynchronous_threading = false;
-    }
-    for package in &uses {
-        builder.add_webc(package.clone());
-    }
-    let env = builder.build().map_err(|e| Error::Setup(e.to_string()))?;
-    let control_plane = env.control_plane.clone();
-
-    let mut handle = match entry {
-        Entry::Module(module) => spawn_exec_module(module, env, &runtime),
-        Entry::Command { name, .. } => {
-            let package = uses
-                .iter()
-                .find(|p| p.get_command(name).is_some())
-                .cloned()
-                .ok_or_else(|| {
-                    Error::Setup(format!("no package in the environment provides `{name}`"))
-                })?;
-            tokio.block_on(spawn_exec(package, name, env, &runtime))
-        }
-    }
-    .map_err(|e| Error::Setup(e.to_string()))?;
-
-    let deadline = started + inv.limits.timeout;
-    let kill = || {
+    let starter = Starter {
+        shared,
+        tokio,
+        runtime: &runtime,
+        fs: &inv.fs,
+        scratch: inv.scratch.as_ref(),
+        modes: &inv.modes,
+        listeners: &listeners,
+        node: node.is_some(),
+    };
+    let interrupt = || {
         #[cfg(feature = "node")]
         if let Some(node) = node {
             node.terminate();
         }
         control.interrupt_all();
+    };
+
+    // The job's services first, each ready before the job starts
+    // (background.rs).
+    let deadline = started + inv.limits.timeout;
+    let mut services = Services::start(&starter, &inv.services, &stderr, &inv.cwd)?;
+    if let Err(failure) = services.wait_ready(&starter, deadline) {
+        services.stop(&interrupt);
+        stderr.push(format!("iwci: {failure}\n").as_bytes());
+        let out = stdout.take();
+        let err = stderr.take();
+        return Ok(Outcome {
+            exit_code: 1,
+            stdout: out.bytes,
+            stderr: err.bytes,
+            truncated: out.truncated || err.truncated,
+            duration: started.elapsed(),
+            timed_out: false,
+            stalled_after: None,
+            out_of_memory: hit_memory.load(Ordering::Acquire),
+            error: None,
+            service_failure: Some(failure),
+        });
+    }
+
+    let program = match entry {
+        Entry::Module(module) => Program::Module(module),
+        Entry::Command { name, .. } => Program::Command {
+            uses,
+            name: name.to_string(),
+        },
+    };
+    let started_job = starter.start(Process {
+        name: program_name,
+        program,
+        args: inv.args.clone(),
+        env,
+        cwd: &inv.cwd,
+        commands: &inv.commands,
+        stdout: stdout.file(),
+        stderr: stderr.file(),
+    });
+    let (mut handle, control_plane) = match started_job {
+        Ok(started) => started,
+        Err(e) => {
+            services.stop(&interrupt);
+            return Err(e);
+        }
+    };
+
+    let kill = || {
+        interrupt();
         for_each_process(&control_plane, |process| {
             process.signal_process(Signal::Sigkill)
         });
+        services.kill();
     };
     let (result, stopped) = tokio.block_on(async {
         let mut finished = Box::pin(handle.wait_finished());
@@ -796,10 +962,14 @@ pub(crate) fn run(
             if node.is_some() {
                 wake = wake.min(Instant::now() + MEMORY_POLL);
             }
+            if !services.is_empty() {
+                wake = wake.min(Instant::now() + SERVICE_POLL);
+            }
             let wake = tokio::time::Instant::from_std(wake);
             if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
                 return (Some(result), None);
             }
+            services.report_exits(&stderr);
             if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
                 break Stop::OutOfMemory;
             }
@@ -837,6 +1007,13 @@ pub(crate) fn run(
         let result = tokio::time::timeout(KILL_POLL, &mut finished).await.ok();
         (result, Some(stopped))
     });
+    // The job is over, so are its services; what they printed last is
+    // still theirs to say. The signals that stops them are not the job's.
+    services.report_exits(&stderr);
+    if !services.is_empty() {
+        control.signals.close();
+        services.stop(&interrupt);
+    }
     let timed_out = stopped == Some(Stop::Timeout);
     let stalled = stopped == Some(Stop::Stalled);
 
@@ -917,6 +1094,7 @@ pub(crate) fn run(
         stalled_after: caps.stall_after.filter(|_| stalled),
         out_of_memory,
         error: if stopped.is_some() { None } else { error },
+        service_failure: None,
     })
 }
 
@@ -946,6 +1124,7 @@ pub(crate) fn prepare(
         None,
         false,
         Arc::default(),
+        &[],
     );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
     for package in binary_packages(shared, &set, &runtime, tokio)? {
@@ -964,7 +1143,7 @@ pub(crate) fn prepare(
 
 /// Calls `f` on every process of the job. Process ids are handed out from 1
 /// upwards and never reused within a control plane, which is per job.
-fn for_each_process(
+pub(crate) fn for_each_process(
     control_plane: &wasmer_wasix::WasiControlPlane,
     mut f: impl FnMut(wasmer_wasix::WasiProcess),
 ) {

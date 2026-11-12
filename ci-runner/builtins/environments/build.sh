@@ -9,6 +9,8 @@
 #   env:php        the same as env:bash plus PHP (Wasmer's phpix), Composer
 #                  and a `php` that behaves like php-cli (php-cli/build.sh)
 #   env:go         the same as env:bash plus a Go toolchain (five minors)
+#   env:postgres   the same as env:bash plus PostgreSQL (Wasmer's pglite),
+#                  for a job's `services:`
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -43,6 +45,7 @@
 #                                      or uses its webcs already in
 #                                      dist/package/go/
 #   environments/build.sh go@1.25      just that minor
+#   environments/build.sh postgres     the same as bash
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
@@ -71,6 +74,11 @@ PHP84_PKG="phpix/phpix-84-64bit 0.3.1 87544a1e1f2aa90d51a8e03f7c488688a13c76e60b
 PHP85_PKG="phpix/phpix-85-64bit 0.3.1 b7e965aad52225c843d0b2540e060f097bd431adcdf228de387c395f435dc074"
 SENDMAIL_PKG="sendmail/sendmail 0.1.10 95e52a98e0e684c681c128a07a8031ed284cb5bea71b73a74a44d037a5288d13"
 ICU_DATA_PKG="wasmer/icu-data 78.3.0 6e27d8c3828d52fb7ad66afb8438d4c18dde7f5b8dffae7069bc1fd989076c20"
+# PostgreSQL 18.4 compiled for WASIX, with its wire protocol on a socket of
+# its own (5432). One backend, so one client connection, after which it
+# exits; the database is in memory. A service (`services:`), not a job's
+# own environment: README.md, "Services".
+PGLITE_PKG="wasmer/pglite 0.2.0 4dd0b5db74b06ecf899f19fae460fd775fbb7a6a93663541786efacd633c7a10"
 # python/python's version is Wasmer's, not the interpreter's: 3.13.20 holds
 # CPython 3.13.15, which named the environment's first version. Its prefix is
 # a Nix store path inside the package, where pip puts console scripts
@@ -218,7 +226,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php go
+  set -- bash bash-node python php go postgres
 fi
 for env in "$@"; do
   case "$env" in
@@ -271,8 +279,13 @@ for env in "$@"; do
           "$PHP_ENV" "${TOOLS[@]}" "$package" "$SENDMAIL_PKG" "$ICU_DATA_PKG" "$PHP_CLI_PKG"
       done
       ;;
+    postgres)
+      # Its version is PostgreSQL's, as python's is CPython's.
+      build_env postgres 18.4.0 "GNU bash 5.1, coreutils, sed, grep, findutils and PostgreSQL 18.4 (Wasmer's pglite: one connection, in memory)" \
+        "" "${TOOLS[@]}" "$PGLITE_PKG"
+      ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php and go (or go@<minor>)" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>) and postgres" >&2
       exit 2
       ;;
   esac

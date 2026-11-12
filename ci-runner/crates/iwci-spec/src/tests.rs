@@ -1316,3 +1316,235 @@ fn a_package_dependency_cycle_is_reported() {
     .to_string();
     assert!(errs.contains("forms a cycle"), "{errs}");
 }
+
+#[test]
+fn services_are_planned_with_their_readiness_and_secrets_as_names() {
+    let plan = parse(
+        r#"name: x
+jobs:
+  test:
+    using: env:python@3.13
+    matrix: [a, b]
+    run: pytest
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        env:
+          PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MODE: ${{ matrix }}
+        ready: { log: "SOCKET_READY [0-9]+", timeout: 2m }
+      api:
+        using: env:bash-node@24
+        run: node server.js ${{ matrix }}
+        ready: { port: 3000 }
+      probe:
+        using: env:bash@5
+        run: ./serve.sh
+        ready: { command: "test -e /tmp/up" }
+      tool:
+        using: builtin:server@1
+        args: "--port 9000 --name 'a b'"
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let job = plan.job("test[b]").unwrap();
+    let names: Vec<_> = job.services.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["postgres", "api", "probe", "tool"]);
+    let pg = &job.services[0];
+    assert_eq!(
+        pg.tool,
+        ToolRef::Env {
+            name: "postgres".into(),
+            version: "18".into()
+        }
+    );
+    assert_eq!(
+        pg.action,
+        Action::Script {
+            script: "pglite".into()
+        }
+    );
+    assert_eq!(pg.env, vec![("MODE".to_string(), "b".to_string())]);
+    assert_eq!(pg.secret_env.len(), 1);
+    assert_eq!(
+        pg.secret_env[0].parts,
+        vec![SecretPart::Secret("DB_PASSWORD".into())]
+    );
+    assert_eq!(
+        pg.ready,
+        Readiness {
+            check: ReadyCheck::Log {
+                pattern: "SOCKET_READY [0-9]+".into()
+            },
+            timeout: std::time::Duration::from_secs(120),
+        }
+    );
+    // A secret never reaches the plan as it is reported.
+    let json = serde_json::to_string(&plan.job("test[a]").unwrap()).unwrap();
+    assert!(
+        json.contains("DB_PASSWORD") && json.contains("\"services\""),
+        "{json}"
+    );
+
+    assert_eq!(
+        job.services[1].action,
+        Action::Script {
+            script: "node server.js b".into()
+        }
+    );
+    assert_eq!(job.services[1].ready.check, ReadyCheck::Port { port: 3000 });
+    assert_eq!(
+        job.services[1].ready.timeout.as_secs(),
+        DEFAULT_READY_TIMEOUT_SECS
+    );
+    assert_eq!(
+        job.services[2].ready.check,
+        ReadyCheck::Command {
+            script: "test -e /tmp/up".into()
+        }
+    );
+    assert_eq!(
+        job.services[3].action,
+        Action::Args {
+            args: vec![
+                "--port".into(),
+                "9000".into(),
+                "--name".into(),
+                "a b".into()
+            ]
+        }
+    );
+    assert_eq!(job.services[3].ready.check, ReadyCheck::Started);
+}
+
+#[test]
+fn workspace_services_reach_every_job_unless_it_says_otherwise() {
+    let plan = parse(
+        r#"name: x
+workspace:
+  services:
+    db: { using: env:postgres@18, run: pglite, ready: { port: 5432 } }
+    cache: { using: env:bash@5, run: ./cache.sh }
+jobs:
+  plain: { using: env:bash@5, run: "true" }
+  own:
+    using: env:bash@5
+    run: "true"
+    services:
+      db: { using: env:postgres@18, run: "pglite --x", ready: { port: 5433 } }
+      extra: { using: builtin:x@1 }
+  none: { using: builtin:t@1, services: false }
+  kept: { using: builtin:t@1, services: true }
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let names = |id: &str| -> Vec<String> {
+        plan.job(id)
+            .unwrap()
+            .services
+            .iter()
+            .map(|s| s.name.clone())
+            .collect()
+    };
+    assert_eq!(names("plain"), ["db", "cache"]);
+    // The job's own `db` takes the workspace's place; its others follow.
+    assert_eq!(names("own"), ["db", "cache", "extra"]);
+    assert_eq!(
+        plan.job("own").unwrap().services[0].ready.check,
+        ReadyCheck::Port { port: 5433 }
+    );
+    assert!(names("none").is_empty());
+    assert_eq!(names("kept"), ["db", "cache"]);
+    // A job without services serialises as it did before they existed.
+    let json = serde_json::to_string(plan.job("none").unwrap()).unwrap();
+    assert!(!json.contains("services"), "{json}");
+}
+
+#[test]
+fn bad_services_are_reported() {
+    let job = |services: &str| {
+        format!(
+            "name: x\njobs:\n  a:\n    using: env:bash@5\n    run: x\n    services:\n{services}"
+        )
+    };
+    for (services, needle) in [
+        (
+            "      Db: { using: env:bash@5, run: x }\n",
+            "service names use",
+        ),
+        (
+            "      localhost: { using: env:bash@5, run: x }\n",
+            "already names",
+        ),
+        (
+            "      db: { using: postgres, run: x }\n",
+            "is not a tool reference",
+        ),
+        (
+            "      db: { using: env:postgres@18 }\n",
+            "give the service a `run:`",
+        ),
+        (
+            "      db: { using: env:postgres@18, run: x, args: [a] }\n",
+            "takes a `run:` script, not `args:`",
+        ),
+        (
+            "      db: { using: builtin:x@1, run: x }\n",
+            "is a tool; give it `args:`",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, env: { IWCI_X: y } }\n",
+            "set by the runner",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { port: 1, log: x } }\n",
+            "give one of `port`, `log` or `command`",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { port: 0 } }\n",
+            "between 1 and 65535",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { log: '(' } }\n",
+            "is not a regular expression",
+        ),
+        (
+            "      db: { using: builtin:x@1, ready: { command: 'true' } }\n",
+            "needs `using: env:...`",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { port: 1, timeout: 2h } }\n",
+            "no longer than the job's timeout",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { port: 1, timeout: soon } }\n",
+            "is not a duration",
+        ),
+        (
+            "      db: { using: env:bash@5, run: 'echo ${{ secrets.X }}' }\n",
+            "secrets can only be used in `env:` values",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, zzz: 1 }\n",
+            "unknown field `zzz`",
+        ),
+        (
+            "      db: { using: env:bash@5, run: x, ready: { zzz: 1 } }\n",
+            "unknown field `zzz`",
+        ),
+    ] {
+        assert_error(&job(services), needle);
+    }
+    let many: String = (0..=MAX_SERVICES)
+        .map(|i| format!("      s{i}: {{ using: builtin:x@1 }}\n"))
+        .collect();
+    assert_error(&job(&many), "the limit is 8");
+    // A service's secret could change what a job does, as the job's own can.
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: env:bash@5\n    run: 'true'\n    task-cache: true\n    services:\n      db: { using: env:bash@5, run: x, env: { T: '${{ secrets.T }}' } }\n",
+        "services read secrets cannot be task-cached",
+    );
+}

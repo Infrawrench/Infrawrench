@@ -361,6 +361,47 @@ pub struct PlannedJob {
     /// it reads has changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_cache: Option<TaskCacheSpec>,
+    /// `services:` (with `workspace.services`), in the order they start.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<PlannedService>,
+}
+
+/// A program the runner starts in the job's isolate before the job, and
+/// stops when the job ends.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlannedService {
+    /// Its key, which also resolves to the job's loopback.
+    pub name: String,
+    /// An `env:` (with a script) or a tool (with arguments).
+    pub tool: ToolRef,
+    pub action: Action,
+    pub env: Vec<(String, String)>,
+    /// `env:` values that read secrets, filled in when the job starts.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub secret_env: Vec<SecretEnv>,
+    pub ready: Readiness,
+}
+
+/// When a service counts as ready, and how long the job waits for that.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Readiness {
+    pub check: ReadyCheck,
+    #[serde(with = "duration_secs")]
+    pub timeout: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ReadyCheck {
+    /// As soon as it has started.
+    Started,
+    /// Something in the job listens on this port of the loopback. Nothing
+    /// connects to find out.
+    Port { port: u16 },
+    /// A line of its output matches this regular expression.
+    Log { pattern: String },
+    /// This script, run in the service's environment, exits 0.
+    Command { script: String },
 }
 
 /// An `env:` value with secrets in it: text (already substituted) and

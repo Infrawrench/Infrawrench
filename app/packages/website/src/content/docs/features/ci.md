@@ -57,6 +57,7 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                            |
 | `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
+| `env:postgres@18`              | the same as `env:bash@5`, plus PostgreSQL 18.4, for a job's `services:`          |
 
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not, and `python -m venv` is not available: packages install into the job's own copy of Python. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
@@ -86,7 +87,32 @@ jobs:
 
 ### Background services
 
-A job can start a server in the background with `&` and test against it on `127.0.0.1`. Each job has a network of its own, so ports never clash between jobs, and anything still running when the script ends is stopped. Two commands wait until a service is ready, so a job need not guess with `sleep`:
+`services:` starts programs a job's tests need, such as a database or your own API server, before the job runs, and stops them when it ends. Each runs inside the job, on the job's private network, so its name works as a host name (`postgres:5432`) and its ports never clash with another job's:
+
+```yaml
+jobs:
+  test:
+    using: env:python@3.13
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        ready: { port: 5432 }
+    run: |
+      pip install 'psycopg[binary]'
+      pytest
+```
+
+- `using` is an environment with a `run:` script that starts the service, or a built-in tool with `args:`.
+- `env` sets the service's variables, and can read secrets (`${{ secrets.DB_PASSWORD }}`). A service does not see the job's own `env:`.
+- `ready` says when the job may start: `{ port: 5432 }` once something listens on that port, `{ log: "listening on" }` once a line of the service's output matches the pattern, or `{ command: "..." }` once that script, run in the service's environment, succeeds. Each waits up to 60 seconds (`timeout: 2m` for longer). Without `ready`, the job starts as soon as the service has.
+- A service that stops before it is ready, or is not ready in time, fails the job without running it, and the job's reason names the service.
+- A service's output is in the job's log, each line after `[service <name>]`, with secrets hidden like the rest of the log.
+- `workspace.services` gives every job of the pipeline the same services. A job's own `services:` add to them, and `services: false` turns them off for that job.
+
+`env:postgres@18` is PostgreSQL 18.4. It runs in memory and accepts **one connection**, as user `postgres` with database `postgres` and no password, and stops when that connection closes, so a test suite has to share one connection. The `port` check never connects, so it does not use that connection up. There is no MySQL, MariaDB or Redis build for WebAssembly. SQLite needs no server and is available in `env:python@3.13` and the PHP environments.
+
+A script can also start a server itself with `&`. Anything still running when the script ends is stopped. Two commands wait until it is ready, so a job need not guess with `sleep`:
 
 - `wait-for-port 3000` waits until something in the job listens on port 3000. It never connects to find out, which matters for a server that serves a single client and then exits.
 - `wait-for-log server.log 'listening on'` waits until a line of the file matches the pattern.
@@ -102,8 +128,6 @@ jobs:
       wait-for-port 3000
       npm test
 ```
-
-No environment includes a database server yet, and there is no MySQL, MariaDB or Redis build for WebAssembly. SQLite needs no server and is available in `env:python@3.13` and the PHP environments.
 
 ## Monorepos: a job per package
 

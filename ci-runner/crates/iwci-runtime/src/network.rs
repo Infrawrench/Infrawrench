@@ -17,7 +17,9 @@
 //! one, which means the loopback), and a connection only goes to a loopback
 //! address something in the job is listening on. Anything else is refused,
 //! exactly as an unreachable network or a closed port would be. `localhost`
-//! resolves to the loopback. A listener on `::` takes IPv4 connections too,
+//! resolves to the loopback, and so does the name of each of the job's
+//! services (`postgres`), as a service's host name does on other CI
+//! runners; nothing on the host is asked or changed. A listener on `::` takes IPv4 connections too,
 //! as a dual-stack socket does: that is where Node listens when it is given
 //! no host, and its tests then connect to `127.0.0.1`.
 //!
@@ -112,6 +114,8 @@ pub(crate) struct JobNetwork {
     listening: Arc<Mutex<Listening>>,
     /// The public internet, when the runtime offers it.
     outside: Option<Outside>,
+    /// The job's services' names, which resolve to the IPv4 loopback.
+    services: Arc<[String]>,
 }
 
 /// What the job is listening on.
@@ -138,6 +142,15 @@ impl JobNetwork {
             outside,
             ..Self::default()
         }
+    }
+
+    /// Answers each of `names` (a job's services) with `127.0.0.1`, where
+    /// they listen. IPv4 only, as a service's own address is on other CI
+    /// runners: a client that tried `::1` first would find nothing there
+    /// when the service listens on `127.0.0.1`.
+    pub(crate) fn with_services(mut self, names: &[String]) -> Self {
+        self.services = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+        self
     }
 
     fn register(
@@ -388,6 +401,13 @@ impl VirtualNetworking for JobNetwork {
         let host = host.trim_end_matches('.');
         if host.eq_ignore_ascii_case("localhost") {
             return Ok(vec![Ipv4Addr::LOCALHOST.into(), Ipv6Addr::LOCALHOST.into()]);
+        }
+        if self
+            .services
+            .iter()
+            .any(|name| host.eq_ignore_ascii_case(name))
+        {
+            return Ok(vec![Ipv4Addr::LOCALHOST.into()]);
         }
         match host
             .trim_start_matches('[')
@@ -791,6 +811,24 @@ mod tests {
             assert!(block_on(net.resolve(name, None, None)).is_err(), "{name}");
         }
         assert!(block_on(net.bind_udp(addr("127.0.0.1:0"), false, false)).is_err());
+    }
+
+    #[test]
+    fn a_services_name_resolves_to_the_loopback_and_nothing_else_changes() {
+        let net = JobNetwork::new(None).with_services(&["postgres".into(), "api-1".into()]);
+        for name in ["postgres", "POSTGRES.", "api-1"] {
+            assert_eq!(
+                block_on(net.resolve(name, None, None)).unwrap(),
+                vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+                "{name}"
+            );
+        }
+        // Only the names themselves: not a domain under them, nor another.
+        for name in ["postgres.example.com", "api", "redis"] {
+            assert!(block_on(net.resolve(name, None, None)).is_err(), "{name}");
+        }
+        // A job without services resolves none of those names.
+        assert!(block_on(JobNetwork::new(None).resolve("postgres", None, None)).is_err());
     }
 
     #[test]

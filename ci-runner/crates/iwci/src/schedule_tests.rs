@@ -67,10 +67,39 @@ impl Executor<String> for FakeExecutor {
         &self,
         tool: &String,
         path_tools: &[Arc<String>],
+        services: &[ServiceRun<'_, String>],
         _action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
         self.order.lock().unwrap().push(inv.job.id.clone());
+        // Each service under `<job>/<service>`, in both maps.
+        for run in services {
+            let key = format!("{}/{}", inv.job.id, run.service.name);
+            self.seen_env
+                .lock()
+                .unwrap()
+                .insert(key.clone(), run.env.clone());
+            self.seen_tools
+                .lock()
+                .unwrap()
+                .insert(key, vec![run.tool.to_string()]);
+        }
+        // What the runtime reports for a service that never became ready:
+        // the job did not start. It prints the service's environment, as a
+        // service's own log lines might.
+        if let Some(run) = services.iter().find(|s| s.tool.contains(":unready@")) {
+            let env: Vec<String> = run.env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            return Ok(Execution {
+                exit_code: 1,
+                stderr: format!("[service {}] {}\n", run.service.name, env.join(" ")),
+                service_failure: Some(format!(
+                    "service `{}` was not ready after 1s: {}",
+                    run.service.name,
+                    env.join(" ")
+                )),
+                ..Default::default()
+            });
+        }
         self.seen_tools.lock().unwrap().insert(
             inv.job.id.clone(),
             path_tools.iter().map(|t| t.to_string()).collect(),
@@ -626,6 +655,7 @@ impl Executor<String> for Gated {
         &self,
         tool: &String,
         path_tools: &[Arc<String>],
+        services: &[ServiceRun<'_, String>],
         action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
@@ -639,7 +669,7 @@ impl Executor<String> for Gated {
             drop(open);
             return Ok(Execution::default());
         }
-        self.inner.execute(tool, path_tools, action, inv)
+        self.inner.execute(tool, path_tools, services, action, inv)
     }
 }
 
@@ -968,6 +998,7 @@ fn logs_stream_lines_and_job_events_in_order() {
             &self,
             _tool: &String,
             _path_tools: &[Arc<String>],
+            _services: &[ServiceRun<'_, String>],
             _action: &Action,
             inv: Invocation<'_>,
         ) -> Result<Execution, String> {
@@ -1677,4 +1708,102 @@ fn a_checkout_that_fails_errors_every_task_cached_job_without_a_lookup() {
     }
     assert!(ran(&exec).is_empty());
     assert!(store.asked.lock().unwrap().is_empty());
+}
+
+#[test]
+fn services_get_their_own_env_and_secrets_and_a_failed_one_fails_the_job_masked() {
+    let p = plan(
+        r#"name: x
+jobs:
+  a:
+    using: builtin:ok@1
+    env: { JOB_ONLY: "1" }
+    services:
+      db:
+        using: env:postgres@18
+        run: pglite
+        env:
+          PASSWORD: ${{ secrets.DB_PASSWORD }}
+          GONE: ${{ secrets.NOPE }}
+  b:
+    using: builtin:ok@1
+    services:
+      db:
+        using: builtin:unready@1
+        env: { PASSWORD: "${{ secrets.DB_PASSWORD }}" }
+"#,
+    );
+    let secrets = BTreeMap::from([("DB_PASSWORD".to_string(), "s3cret-pass".to_string())]);
+    let (report, exec, _, _) = run_full(&p, None, false, None, None, secrets);
+
+    let seen = exec.seen_env.lock().unwrap();
+    let env = &seen["a/db"];
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+    assert_eq!(get("PASSWORD"), Some("s3cret-pass"));
+    assert_eq!(get("GONE"), Some(""));
+    // The runner's variables, but nothing of the job's.
+    assert_eq!(get("IWCI"), Some("1"));
+    assert_eq!(get("IWCI_JOB"), Some("a"));
+    assert_eq!(get("JOB_ONLY"), None);
+    assert_eq!(get("IWCI_OUTPUT"), None);
+    assert_eq!(
+        exec.seen_tools.lock().unwrap()["a/db"],
+        vec!["env:postgres@18".to_string()]
+    );
+    let a = report.jobs.iter().find(|j| j.id == "a").unwrap();
+    assert_eq!(a.status, Status::Passed);
+    assert!(
+        a.notes
+            .iter()
+            .any(|n| n.contains("service `db`") && n.contains("`GONE`")),
+        "{:?}",
+        a.notes
+    );
+
+    // A service that is never ready fails the job, naming it, and the
+    // secret in its environment is masked in the reason and the log.
+    match status(&report, "b") {
+        Status::Failed { reason } => {
+            assert!(reason.starts_with("service `db` was not ready"), "{reason}");
+            assert!(reason.contains("PASSWORD=***"), "{reason}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let b = report.jobs.iter().find(|j| j.id == "b").unwrap();
+    let execution = b.execution.as_ref().unwrap();
+    assert!(execution.stderr.contains("[service db] "), "{execution:?}");
+    assert!(
+        !serde_json::to_string(&report)
+            .unwrap()
+            .contains("s3cret-pass"),
+        "a secret reached the report: {}",
+        serde_json::to_string(&report).unwrap()
+    );
+}
+
+#[test]
+fn a_service_is_part_of_a_task_cache_key() {
+    let job = |services: &str| {
+        plan(&format!(
+            "name: x\njobs:\n  a:\n    using: builtin:ok@1\n    task-cache: true\n{services}"
+        ))
+    };
+    let key = |p: &Plan| {
+        let ws = &p.workspaces[0];
+        let snapshot = SnapshotBuilder::new();
+        snapshot
+            .write(
+                format!("{}/src/a.ts", ws.clone.as_ref().unwrap().into),
+                b"a",
+            )
+            .unwrap();
+        task_cache_key(p.job("a").unwrap(), p, &snapshot.freeze(), &[]).unwrap()
+    };
+    let none = job("");
+    let with = job("    services: { db: { using: env:postgres@18, run: pglite } }\n");
+    let other = job("    services: { db: { using: env:postgres@18, run: 'pglite -x' } }\n");
+    assert_ne!(key(&none), key(&with));
+    assert_ne!(key(&with), key(&other));
+    // A job without services keeps the key it had before they existed.
+    assert_eq!(key(&none), key(&job("    services: false\n")));
 }

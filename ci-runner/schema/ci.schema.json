@@ -43,13 +43,17 @@
     "workspace": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The clone and dependencies every job starts from. Built once per commit and shared.",
+      "description": "The clone and dependencies every job starts from, built once per commit and shared, and the services every job starts with.",
       "properties": {
         "clone": {
           "$ref": "#/$defs/clone"
         },
         "deps": {
           "$ref": "#/$defs/deps"
+        },
+        "services": {
+          "$ref": "#/$defs/services",
+          "description": "Services every job starts with. A job's own `services:` adds to them (one of the same name takes its place), and `services: false` turns them off for that job."
         }
       }
     },
@@ -394,6 +398,17 @@
             }
           ],
           "description": "Skip the job when nothing it reads has changed since a run that passed, handing on that run's artifacts, outputs and log. The key covers the job's definition, its input files, the lockfiles and the artifacts it is handed, so a change upstream reaches every job after it. Not for jobs that read secrets or commit."
+        },
+        "services": {
+          "description": "Background services the runner starts in the job's isolate, on its loopback, before the job, and stops when it ends: added to workspace.services (one of the same name takes its place), or false for none.",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/services"
+            }
+          ]
         }
       }
     },
@@ -486,6 +501,95 @@
             "minLength": 1
           },
           "description": "Globs relative to the clone that the job reads too, such as `tsconfig.base.json`."
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+        "not": {
+          "const": "localhost"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/service"
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["using"],
+      "description": "A program that runs beside the job, in its isolate and on its loopback. Its name resolves to 127.0.0.1 inside the job, and its output is in the job's log, each line after `[service <name>]`.",
+      "properties": {
+        "using": {
+          "type": "string",
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
+          "description": "env:<name>@<version> with a `run:` script that starts the service (env:postgres@18 is PostgreSQL), or a builtin: or repo: tool with `args:`."
+        },
+        "run": {
+          "type": "string",
+          "description": "A bash script that starts the service, for an `env:` service, such as `pglite` or `node server.js`. It starts in the job's working directory."
+        },
+        "args": {
+          "description": "Arguments for a tool service: a list, or one line split like a shell splits words (no expansion).",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "env": {
+          "type": "object",
+          "description": "The service's environment variables. ${{ secrets.<name> }} works here, and is masked in the log.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "not": {
+              "pattern": "^IWCI_"
+            }
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ready": {
+          "$ref": "#/$defs/ready"
+        }
+      }
+    },
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "When the job may start: one of `port`, `log` or `command`. Without one, as soon as the service has started. The job fails, naming the service, if it is not ready in time or exits first.",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Something in the job listens on this port of the loopback. Nothing connects to find out, so a service that takes one client (pglite) keeps it for the job."
+        },
+        "log": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A regular expression (Rust's regex syntax) that a line of the service's output matches."
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A bash script run in the service's environment until it exits 0. Only for `env:` services."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^([0-9]+[smh])+$",
+          "default": "60s",
+          "description": "How long to wait, at most the job's timeout."
         }
       }
     }

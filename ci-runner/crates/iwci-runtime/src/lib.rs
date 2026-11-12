@@ -18,6 +18,7 @@
 //! and capped stdout and stderr, and no network and no host file system:
 //! see the `wasix` module for how each is enforced.
 
+mod background;
 mod cache;
 mod capture;
 mod limits;
@@ -228,10 +229,71 @@ pub struct Invocation {
     /// The modes of the job's files (`JobFs::modes`), which a script reads
     /// and sets with `stat`, `chmod` and `mktemp` (`modes.rs`).
     pub modes: iwci_vfs::Modes,
+    /// Programs started in the job's isolate before it, in this order, and
+    /// stopped when it ends (`background.rs`). The job starts once every
+    /// one is ready.
+    pub services: Vec<Service>,
 }
 
 /// Where [`Invocation::scratch`] is mounted.
 pub const SCRATCH_MOUNT: &str = "/tmp/workflow";
+
+/// A program that runs beside a job (`services:`): in its isolate, on its
+/// loopback and over its files, from before the job starts until it ends.
+/// Its output goes to the job's stderr, each line after `[service <name>]`.
+#[derive(Clone)]
+pub struct Service {
+    /// Also a name the job's resolver answers with the loopback.
+    pub name: String,
+    pub program: ServiceProgram,
+    /// Its whole environment: nothing of the job's is added.
+    pub env: Vec<(String, String)>,
+    pub ready: Ready,
+    /// How long the job waits for `ready`, within its own timeout.
+    pub ready_timeout: Duration,
+}
+
+impl std::fmt::Debug for Service {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Service")
+            .field("name", &self.name)
+            .field("ready", &self.ready)
+            .field("ready_timeout", &self.ready_timeout)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone)]
+pub enum ServiceProgram {
+    /// A WASI or WASIX command module, with these arguments.
+    Command {
+        module: WasmModule,
+        args: Vec<String>,
+    },
+    /// A script `entry` (a shell one of `packages` provides, `bash`) runs,
+    /// as a job's `run:` does.
+    Script {
+        packages: Vec<WebcPackage>,
+        entry: String,
+        script: String,
+    },
+}
+
+/// When a service is ready for the job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ready {
+    /// Once it has started.
+    Started,
+    /// Something in the job listens on this port of the loopback (IPv4 or
+    /// IPv6). Nothing connects to find out.
+    Port(u16),
+    /// A line of its output, on either stream, matches this regular
+    /// expression.
+    Log(String),
+    /// This script, run by the service's environment's shell with the
+    /// service's environment, exits 0. A `Script` service's only.
+    Command(String),
+}
 
 /// A WASI or WASIX command module a script runs by `name` (`tools:`). The
 /// shell finds it on `PATH` as a file and wasmer-wasix runs it like any
@@ -299,6 +361,9 @@ pub struct Outcome {
     pub out_of_memory: bool,
     /// The trap, when the program crashed rather than exiting.
     pub error: Option<String>,
+    /// Why the job never started: a service exited, or was not ready in
+    /// time. Its exit code is 1 then.
+    pub service_failure: Option<String>,
 }
 
 impl Outcome {
@@ -307,6 +372,7 @@ impl Outcome {
             && !self.timed_out
             && self.stalled_after.is_none()
             && self.error.is_none()
+            && self.service_failure.is_none()
     }
 }
 
@@ -416,6 +482,16 @@ impl Runtime {
     /// `_start` with `inv`.
     pub fn run_command(&self, module: &WasmModule, inv: Invocation) -> Result<Outcome> {
         let compiled = self.store.get(module.sha256, &module.bytes)?;
+        // A tool job has no Node of its own, but a service in an
+        // environment may run one.
+        #[cfg(feature = "node")]
+        let node = inv
+            .services
+            .iter()
+            .any(|s| matches!(s.program, ServiceProgram::Script { .. }))
+            .then(|| node::NodeHooks::new(inv.limits.memory_bytes));
+        #[cfg(not(feature = "node"))]
+        let node: Option<node::NodeHooks> = None;
         wasix::run(
             &self.wasix,
             &self.tokio,
@@ -426,7 +502,7 @@ impl Runtime {
                 output_bytes: self.output_cap,
                 stall_after: self.stall_after,
             },
-            None,
+            node.as_ref(),
         )
     }
 
@@ -461,21 +537,11 @@ impl Runtime {
         script: &str,
         mut inv: Invocation,
     ) -> Result<Outcome> {
-        let prelude = if entry == "bash" {
-            "set -euo pipefail"
-        } else {
-            "set -eu"
-        };
-        let mut args = vec![
-            "-c".to_string(),
-            format!("{prelude}\n{script}"),
-            entry.to_string(),
-        ];
+        let mut args = script_args(entry, script);
         args.append(&mut inv.args);
         inv.args = args;
         if !inv.env.iter().any(|(k, _)| k == "PATH") {
-            inv.env
-                .push(("PATH".into(), "/usr/local/bin:/usr/bin:/bin".into()));
+            inv.env.push(("PATH".into(), DEFAULT_PATH.into()));
         }
         #[cfg(feature = "node")]
         let node = Some(node::NodeHooks::new(inv.limits.memory_bytes));
@@ -497,6 +563,24 @@ impl Runtime {
             node.as_ref(),
         )
     }
+}
+
+/// `PATH` for a script whose environment does not set one.
+pub(crate) const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+
+/// The arguments that make `entry` (a shell) run `script` strictly: bash
+/// with `set -euo pipefail` first, any other shell `set -eu`.
+pub(crate) fn script_args(entry: &str, script: &str) -> Vec<String> {
+    let prelude = if entry == "bash" {
+        "set -euo pipefail"
+    } else {
+        "set -eu"
+    };
+    vec![
+        "-c".to_string(),
+        format!("{prelude}\n{script}"),
+        entry.to_string(),
+    ]
 }
 
 #[allow(dead_code)]
