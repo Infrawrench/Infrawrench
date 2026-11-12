@@ -577,6 +577,50 @@ jobs:
       test "$(readlink moved-link)" = data.txt && test ! -L data-link
       ln -s nowhere dangling && mv dangling dangling2
       test "$(readlink dangling2)" = nowhere
+  # A file has one name (#1052): `link()` fails with EPERM, as on a file
+  # system without hard links, and leaves nothing behind. It succeeded with
+  # a second name only WASIX's cache knew, after which removing the first
+  # name removed nothing. A failed link onto a deleted checkout file leaves
+  # it deleted.
+  links-passes:
+    using: env:bash@5
+    run: |
+      echo hi > f
+      if ln f g 2> err; then exit 1; fi
+      # EPERM, which this coreutils' ln prints as "Permission denied".
+      grep -Eq 'Operation not permitted|Permission denied' err
+      test ! -e g
+      rm f
+      test ! -e f
+      test -z "$(ls -A | grep -x -e f -e g)"
+      if ln data.txt data2.txt 2> /dev/null; then exit 1; fi
+      rm data.txt
+      if ln run.sh data.txt 2> /dev/null; then exit 1; fi
+      test ! -e data.txt && test ! -e data2.txt
+  # `rmdir` of a directory nothing had looked at yet (#1057): a checked-out
+  # one with entries was "No such file or directory", not "Directory not
+  # empty", and so was a file. `rm -rf` of checked-out trees removes them.
+  rmdir-passes:
+    using: env:bash@5
+    run: |
+      if rmdir go/clean 2> err; then exit 1; fi
+      grep -q 'Directory not empty' err
+      test -f go/clean/main.go
+      if rmdir data.txt 2> err; then exit 1; fi
+      grep -q 'Not a directory' err
+      if rmdir nothing 2> err; then exit 1; fi
+      grep -q 'No such file or directory' err
+      mkdir -p /tmp/z/a
+      if rmdir /tmp/z 2> err; then exit 1; fi
+      grep -q 'Directory not empty' err
+      rmdir /tmp/z/a /tmp/z
+      test ! -e /tmp/z
+      rm go/clean/main.go
+      rmdir go/clean
+      test ! -e go/clean
+      rm -rf go ts
+      test ! -e go && test ! -e ts
+      mkdir go && test -z "$(ls -A go)"
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
@@ -677,9 +721,9 @@ jobs:
       git --version | grep -q '^git version 2\.'
       cd "$(mktemp -d)"
       git init -q -b main
-      # `git init` finds modes untrustworthy, because a file renamed into
-      # place (.git/config) reads its old mode (#1054).
-      git config core.filemode true
+      # `git init` trusts modes: it changes the mode of .git/config, which
+      # it renamed into place, and reads it back (#1054).
+      test "$(git config core.filemode)" = true
       echo one > a.txt
       printf '#!/bin/sh\necho ran\n' > run.sh
       chmod 755 run.sh
@@ -903,6 +947,115 @@ jobs:
       JS
       test "$(node /tmp/rm.js)" = "rm ok"
       test ! -e go
+  # `fs.linkSync` fails with EPERM and leaves one name (#1052): it used to
+  # succeed, and `unlinkSync` of either name then removed nothing.
+  links-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/links.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      fs.writeFileSync("/tmp/n1", "x");
+      assert.throws(() => fs.linkSync("/tmp/n1", "/tmp/n2"), { code: "EPERM" });
+      assert.equal(fs.existsSync("/tmp/n2"), false);
+      fs.unlinkSync("/tmp/n1");
+      assert.deepStrictEqual(fs.readdirSync("/tmp").filter((n) => /^n[12]$/.test(n)), []);
+      assert.throws(() => fs.linkSync("data.txt", "data2.txt"), { code: "EPERM" });
+      assert.throws(() => fs.linkSync("data.txt", "run.sh"), { code: "EEXIST" });
+      fs.unlinkSync("data.txt");
+      assert.equal(fs.existsSync("data.txt"), false);
+      console.log("links ok");
+      JS
+      test "$(node /tmp/links.js)" = "links ok"
+      test ! -e /tmp/n1 && test ! -e data.txt && test ! -e data2.txt
+  # `fs.rmdirSync` of a populated checkout directory says ENOTEMPTY (#1057).
+  # It said ENOENT for any directory nothing had looked at, so a recursive
+  # delete that calls `rmdir` first and recurses on ENOTEMPTY, as
+  # hand-written ones do, took the tree for gone and left it.
+  rmdir-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/rmdir.js <<'JS'
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const assert = require("node:assert");
+      assert.throws(() => fs.rmdirSync("go/dirty"), { code: "ENOTEMPTY" });
+      assert.ok(fs.existsSync("go/dirty/main.go"));
+      assert.throws(() => fs.rmdirSync("data.txt"), { code: "ENOTDIR" });
+      assert.throws(() => fs.rmdirSync("nothing"), { code: "ENOENT" });
+      fs.mkdirSync("/tmp/z/a", { recursive: true });
+      assert.throws(() => fs.rmdirSync("/tmp/z"), { code: "ENOTEMPTY" });
+      const remove = (dir) => {
+        try {
+          fs.rmdirSync(dir);
+        } catch (e) {
+          if (e.code === "ENOENT") return;
+          if (e.code !== "ENOTEMPTY") throw e;
+          for (const name of fs.readdirSync(dir)) {
+            const child = path.join(dir, name);
+            if (fs.lstatSync(child).isDirectory()) remove(child);
+            else fs.unlinkSync(child);
+          }
+          fs.rmdirSync(dir);
+        }
+      };
+      remove("ts");
+      remove("/tmp/z");
+      assert.equal(fs.existsSync("ts"), false);
+      assert.equal(fs.existsSync("/tmp/z"), false);
+      console.log("rmdir ok");
+      JS
+      test "$(node /tmp/rmdir.js)" = "rmdir ok"
+      test ! -e ts
+  # A mode set on a file renamed into place reads back (#1054). Node's C
+  # library reads modes by `st_ino`, and a renamed file kept the number of
+  # its old path, so this read 644: an atomic write (a temporary file
+  # renamed over the target) lost its `chmod`, and so did Git's.
+  renamed-modes-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/renamed.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const mode = (st) => (st.mode & 0o7777).toString(8);
+      fs.writeFileSync("/tmp/b", "x");
+      fs.renameSync("/tmp/b", "/tmp/c");
+      fs.chmodSync("/tmp/c", 0o755);
+      assert.equal(mode(fs.statSync("/tmp/c")), "755");
+      // Over a file that was there.
+      fs.writeFileSync("/tmp/t", "old");
+      assert.equal(mode(fs.statSync("/tmp/t")), "644");
+      fs.writeFileSync("/tmp/t.new", "new");
+      fs.renameSync("/tmp/t.new", "/tmp/t");
+      fs.chmodSync("/tmp/t", 0o750);
+      assert.equal(mode(fs.statSync("/tmp/t")), "750");
+      // By a descriptor opened before the rename.
+      const fd = fs.openSync("/tmp/o", "w");
+      fs.renameSync("/tmp/o", "/tmp/p");
+      fs.chmodSync("/tmp/p", 0o711);
+      assert.equal(mode(fs.fstatSync(fd)), "711");
+      fs.closeSync(fd);
+      // In a directory renamed after its file was looked up.
+      fs.mkdirSync("/tmp/d");
+      fs.writeFileSync("/tmp/d/f", "x");
+      assert.equal(mode(fs.statSync("/tmp/d/f")), "644");
+      fs.renameSync("/tmp/d", "/tmp/e");
+      fs.chmodSync("/tmp/e/f", 0o700);
+      assert.equal(mode(fs.statSync("/tmp/e/f")), "700");
+      fs.chmodSync("/tmp/e", 0o750);
+      assert.equal(mode(fs.statSync("/tmp/e")), "750");
+      // A checked-out executable keeps its mode under its new name, and a
+      // new file at an old name starts from the default.
+      fs.renameSync("run.sh", "run2.sh");
+      assert.equal(mode(fs.statSync("run2.sh")), "755");
+      fs.writeFileSync("run.sh", "y");
+      assert.equal(mode(fs.statSync("run.sh")), "644");
+      fs.writeFileSync("/tmp/b", "y");
+      assert.equal(mode(fs.statSync("/tmp/b")), "644");
+      console.log("renamed modes ok");
+      JS
+      test "$(node /tmp/renamed.js)" = "renamed modes ok"
+      test "$(stat -c %a /tmp/c /tmp/e/f run2.sh)" = "$(printf '755\n700\n755')"
   # Two isolates alive at once, each growing its heap well past where it
   # starts: two jobs' `node` once crashed the runner on a CPU with memory
   # protection keys, and a burst of allocation outran fixed heap grants and

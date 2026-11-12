@@ -127,19 +127,36 @@ pub(crate) fn path_link_internal(
                     return Err(Errno::Exist);
                 }
 
-                Some((
+                (
                     source_path.clone(),
                     crate::fs::PosixPath::from_path(target_parent_path)
                         .join(&crate::fs::PosixPath::new(&new_entry_name))
                         .into_path_buf(),
-                ))
+                )
             }
-            (_, Kind::Dir { entries, .. }) => {
+            (
+                _,
+                Kind::Dir {
+                    path: target_parent_path,
+                    entries,
+                    ..
+                },
+            ) => {
                 if entries.contains_key(&new_entry_name) {
                     return Err(Errno::Exist);
                 }
-
-                None
+                // Only a file can be given a second name in the backing
+                // file system. A name only this cache knew is one removing
+                // the first name cannot reach, and a directory or symlink
+                // is not linked anyway: refuse, as Linux refuses a
+                // directory and a file system without links refuses all.
+                let target_path = crate::fs::PosixPath::from_path(target_parent_path)
+                    .join(&crate::fs::PosixPath::new(&new_entry_name))
+                    .into_path_buf();
+                if state.fs.root_fs.symlink_metadata(&target_path).is_ok() {
+                    return Err(Errno::Exist);
+                }
+                return Err(Errno::Perm);
             }
             (_, Kind::Root { .. }) => return Err(Errno::Inval),
             (
@@ -157,7 +174,8 @@ pub(crate) fn path_link_internal(
         }
     };
 
-    let target_inode = if let Some((source_path, target_path)) = materialized_paths {
+    let (source_path, target_path) = materialized_paths;
+    let target_inode = {
         match state.fs.root_fs.symlink_metadata(&target_path) {
             Ok(_) => return Err(Errno::Exist),
             Err(virtual_fs::FsError::EntryNotFound) => {}
@@ -182,16 +200,15 @@ pub(crate) fn path_link_internal(
                     }
                 }
             }
-            Err(virtual_fs::FsError::Unsupported) => {
-                // Some virtual filesystems cannot materialize hard links in
-                // their backing store. Preserve the old WASIX behavior there
-                // by linking the target directory entry to the same inode.
-                source_inode.clone()
-            }
+            // A file system that cannot make the link has no hard links:
+            // `link()` fails with EPERM, as Linux's does on one, and the
+            // program falls back to copying or renaming. Pointing a second
+            // cached entry at the same inode instead gave a name that
+            // existed only in this cache, and removing the first name then
+            // removed nothing (only the last link removes the file).
+            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Perm),
             Err(err) => return Err(fs_error_into_wasi_err(err)),
         }
-    } else {
-        source_inode.clone()
     };
 
     {

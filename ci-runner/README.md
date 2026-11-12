@@ -907,20 +907,15 @@ describe` in `/app` fails; clone what a job needs to inspect.
   `user.email` (`-c`, `GIT_AUTHOR_*` and `GIT_COMMITTER_*`, or `git config`
   in the repository), and `git config --global` needs `HOME` set, which a
   job's environment does not have.
-- **`core.filemode` starts false** in a repository `git init` makes, so
-  `git add` records new files as `100644` until it is set true (`git config
-core.filemode true`): Git decides it by changing the mode of
-  `.git/config`, which it renamed into place, and a mode set on a renamed
-  file is not read back yet
-  ([#1054](https://github.com/Infrawrench/Infrawrench/issues/1054)).
-  Checkouts get their modes, executables included.
+- **File modes are Git's to record**: `git init` sets `core.filemode`
+  true, so `git add` records a file made executable as `100755`, and
+  checkouts get their modes, executables included.
 - **A status of 80 or more reads as 79** to the script that ran Git
   ([#1053](https://github.com/Infrawrench/Infrawrench/issues/1053)), so a
   fatal error (128) is 79 in `$?`; it is still a failure, and a job whose
   last command is Git ends with Git's own status.
-- **No hard links.** `link()` fails, as on a file system without them, so
-  Git renames object files into place and a clone from a path copies
-  ([#1052](https://github.com/Infrawrench/Infrawrench/issues/1052)).
+- **No hard links** (see the known limitations), so Git renames object
+  files into place and a clone from a path copies.
 - **Not built**: the Perl and Python commands (`send-email`, `svn`, `p4`,
   `cvsimport`, ...), `git daemon`, `git http-backend`, `git imap-send`,
   `git shell`, the dumb HTTP protocol, the `ssh://` transport (there is
@@ -2000,6 +1995,12 @@ schedule once per runner. Its README has the routes; the short version:
   coreutils' `ls -l` shows every file as `rwxrwxrwx`, other WASIX programs
   read no permission bits, and nothing enforces a mode. A `changes: commit` keeps each file's original
   mode (a new file is `100644`).
+- **No hard links.** `link()` fails with `EPERM` ("Operation not
+  permitted"), as on a file system without them, and leaves nothing
+  behind: `ln f g` fails, and a program that falls back when it cannot
+  link copies or renames instead, as Git does
+  ([#1052](https://github.com/Infrawrench/Infrawrench/issues/1052)).
+  Symbolic links work.
 - **Submodules** are skipped with a warning, and Cargo `git` dependencies
   are reported rather than vendored.
 - **Pushing** the commit a `changes: commit` job makes is left to the

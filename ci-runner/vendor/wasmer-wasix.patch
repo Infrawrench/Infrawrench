@@ -1303,6 +1303,17 @@
  
      if !root_dir.inner.rights.contains(Rights::PATH_FILESTAT_GET) {
          return Err(Errno::Access);
+@@ -79,7 +79,9 @@
+         flags & __WASI_LOOKUP_SYMLINK_FOLLOW != 0,
+     )?;
+ 
+-    let st_ino = file_inode.ino().as_u64();
++    // The number the inode reports, which a rename moves to the new path's
++    // (`path_rename`'s `renumber`); `fstat` reports the same one.
++    let st_ino = file_inode.stat.read().unwrap().st_ino;
+     let mut stat = if file_inode.is_preopened {
+         *file_inode.stat.read().unwrap().deref()
+     } else {
 --- a/src/syscalls/wasi/path_filestat_set_times.rs
 +++ b/src/syscalls/wasi/path_filestat_set_times.rs
 @@ -79,7 +79,7 @@
@@ -1327,6 +1338,82 @@
  
      if !source_fd.inner.rights.contains(Rights::PATH_LINK_SOURCE)
          || !target_fd.inner.rights.contains(Rights::PATH_LINK_TARGET)
+@@ -127,19 +127,36 @@
+                     return Err(Errno::Exist);
+                 }
+ 
+-                Some((
++                (
+                     source_path.clone(),
+                     crate::fs::PosixPath::from_path(target_parent_path)
+                         .join(&crate::fs::PosixPath::new(&new_entry_name))
+                         .into_path_buf(),
+-                ))
++                )
+             }
+-            (_, Kind::Dir { entries, .. }) => {
++            (
++                _,
++                Kind::Dir {
++                    path: target_parent_path,
++                    entries,
++                    ..
++                },
++            ) => {
+                 if entries.contains_key(&new_entry_name) {
+                     return Err(Errno::Exist);
+                 }
+-
+-                None
++                // Only a file can be given a second name in the backing
++                // file system. A name only this cache knew is one removing
++                // the first name cannot reach, and a directory or symlink
++                // is not linked anyway: refuse, as Linux refuses a
++                // directory and a file system without links refuses all.
++                let target_path = crate::fs::PosixPath::from_path(target_parent_path)
++                    .join(&crate::fs::PosixPath::new(&new_entry_name))
++                    .into_path_buf();
++                if state.fs.root_fs.symlink_metadata(&target_path).is_ok() {
++                    return Err(Errno::Exist);
++                }
++                return Err(Errno::Perm);
+             }
+             (_, Kind::Root { .. }) => return Err(Errno::Inval),
+             (
+@@ -157,7 +174,8 @@
+         }
+     };
+ 
+-    let target_inode = if let Some((source_path, target_path)) = materialized_paths {
++    let (source_path, target_path) = materialized_paths;
++    let target_inode = {
+         match state.fs.root_fs.symlink_metadata(&target_path) {
+             Ok(_) => return Err(Errno::Exist),
+             Err(virtual_fs::FsError::EntryNotFound) => {}
+@@ -182,16 +200,15 @@
+                     }
+                 }
+             }
+-            Err(virtual_fs::FsError::Unsupported) => {
+-                // Some virtual filesystems cannot materialize hard links in
+-                // their backing store. Preserve the old WASIX behavior there
+-                // by linking the target directory entry to the same inode.
+-                source_inode.clone()
+-            }
++            // A file system that cannot make the link has no hard links:
++            // `link()` fails with EPERM, as Linux's does on one, and the
++            // program falls back to copying or renaming. Pointing a second
++            // cached entry at the same inode instead gave a name that
++            // existed only in this cache, and removing the first name then
++            // removed nothing (only the last link removes the file).
++            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Perm),
+             Err(err) => return Err(fs_error_into_wasi_err(err)),
+         }
+-    } else {
+-        source_inode.clone()
+     };
+ 
+     {
 --- a/src/syscalls/wasi/path_readlink.rs
 +++ b/src/syscalls/wasi/path_readlink.rs
 @@ -32,11 +32,11 @@
@@ -1355,6 +1442,25 @@
      Span::current().record("path", path_str.as_str());
  
      wasi_try_ok!(path_remove_directory_internal(
+@@ -48,6 +48,18 @@
+     let env = ctx.data();
+     let (memory, state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+ 
++    // Look the directory up first, which caches it in its parent's entries:
++    // only what something looked up is there, so `rmdir` of a directory
++    // nothing had looked at yet (one from the backing file system) found
++    // no entry and answered ENOENT, whether or not it was empty. Whether it
++    // is empty is then the file system's to say (`fs_remove_dir`), since
++    // its cached entries are only the ones looked up. A symlink is not
++    // followed: it is not a directory to remove.
++    let inode = state.fs.get_inode_at_path(inodes, fd, path, false)?;
++    if matches!(inode.read().deref(), Kind::Symlink { .. }) {
++        return Err(Errno::Notdir);
++    }
++
+     let (parent_inode, dir_name) =
+         state
+             .fs
 --- a/src/syscalls/wasi/path_rename.rs
 +++ b/src/syscalls/wasi/path_rename.rs
 @@ -68,22 +68,23 @@
@@ -1402,7 +1508,15 @@
              }
              Kind::Root { .. } => return Ok(Errno::Notcapable),
              Kind::Socket { .. }
-@@ -300,7 +310,7 @@
+@@ -210,6 +220,7 @@
+                     let mut guard = source_entry.write();
+                     if let Kind::File { path, .. } = guard.deref_mut() {
+                         *path = target_guest_path.clone();
++                        renumber(&source_entry, path);
+                     } else {
+                         unreachable!()
+                     }
+@@ -300,7 +311,7 @@
      // The target entry is created, one way or the other
      let target_inode = state
          .fs
@@ -1411,6 +1525,38 @@
          .expect("Expected target inode to exist, and it's too late to safely fail");
      *target_inode.name.write().unwrap() = target_entry_name.into();
      target_inode.stat.write().unwrap().st_size = source_size;
+@@ -323,10 +334,12 @@
+     match guard.deref_mut() {
+         Kind::File { path, .. } => {
+             *path = adjust_path(path, source_dir_path, target_dir_path);
++            renumber(inode, path);
+             return;
+         }
+         Kind::Dir { path, entries, .. } => {
+             *path = adjust_path(path, source_dir_path, target_dir_path);
++            renumber(inode, path);
+             children = entries.values().cloned().collect::<Vec<_>>();
+         }
+         _ => return,
+@@ -338,6 +351,18 @@
+     }
+ }
+ 
++/// Gives a moved file or directory the inode number of its new path, as a
++/// lookup of that path would number it (`Inode::from_path`). Inode numbers
++/// are hashes of paths here, and an embedder that keeps something per path
++/// finds it again from a `st_ino` that way (the runner's file modes, which
++/// its C library reads by `st_ino`); with the old number, a mode set on a
++/// file renamed into place was not found. Only the reported number moves:
++/// the inode's identity (`InodeGuard::ino`) stays what it was.
++fn renumber(inode: &InodeGuard, path: &Path) {
++    inode.stat.write().unwrap().st_ino =
++        crate::fs::Inode::from_path(path.to_string_lossy().as_ref()).as_u64();
++}
++
+ fn adjust_path(path: &Path, source_dir_path: &Path, target_dir_path: &Path) -> PathBuf {
+     let path = crate::fs::PosixPath::from_path(path);
+     let source_dir_path = crate::fs::PosixPath::from_path(source_dir_path);
 --- a/src/syscalls/wasi/path_symlink.rs
 +++ b/src/syscalls/wasi/path_symlink.rs
 @@ -62,7 +62,7 @@

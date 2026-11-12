@@ -657,6 +657,45 @@ new thread, and a thread with nothing to do for a minute ends. Nothing
 upstream does this; the runner drains the Wasm stacks such threads leave
 (`release_idle`).
 
+**No hard links unless the file system makes one (#1052).** `path_link`
+asks the backing file system for the link and, when that answers
+`Unsupported`, pointed a second cached directory entry at the same inode.
+That name existed only in WASIX's cache: the file system, the runner's
+views of it and `JobFs::changes` never saw it, and as unlinking removes
+the file only when its last link goes, `rm` of the first name removed
+nothing, so both names stayed for good. A Git push over `file://` lost
+objects that way. None of a job's file systems can make a link, so
+`src/syscalls/wasi/path_link.rs` now answers `EPERM` for `Unsupported`, as
+Linux does on a file system without hard links, and for a directory or
+symlink, which only that cache could have linked (`EEXIST` still comes
+first for a name that is there). Programs fall back to copying or
+renaming. Upstream main keeps the cached link (checked November 2026).
+
+**A renamed file has its new path's inode number (#1054).** Inode numbers
+are hashes of paths (`Inode::from_path`), and `path_rename` moved the
+cached inode to its new name with the number of its old path. The runner
+finds a file's mode by that number (`iwci-runtime/src/modes.rs`
+`ino_of`, read by the C library after every `stat`), so a mode set on a
+file renamed into place read back as the default: `git init` renames
+`.git/config` into place, probes it with `chmod`, and set
+`core.filemode=false`. `path_rename` now gives the moved inode, and
+everything under a moved directory, the number of its new path (`stat`
+and `fstat` both report `stat.st_ino`, which `path_filestat_get` used to
+take from the inode's identity instead), which is also the number a
+lookup of that path makes. Unlike Linux, a rename therefore changes
+`st_ino`. Runner specific: upstream has no use for it.
+
+**`rmdir` looks the directory up (#1057).** `path_remove_directory` took
+the directory from its parent's cached entries, where only what something
+looked up is, and answered `ENOENT` when it was not there: `rmdir` of a
+checked-out directory nothing had looked at failed with "No such file or
+directory" whether or not it was empty, and so did one of a file. A
+recursive delete that tries `rmdir` first and recurses on `ENOTEMPTY`
+took a populated tree for gone. `src/syscalls/wasi/path_remove_directory.rs`
+now resolves the path first (without following a symlink, which is
+`ENOTDIR`), and the file system decides whether the directory is empty.
+Upstream main has the same lookup (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -664,22 +703,29 @@ still classify as streams, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
 can be renamed, a guest's CPU clocks are its own, and a blocking accept
 or receive waits with no timeout of its own and still ends for a signal,
-and the task manager's idle threads end without queueing a task behind a
-busy one: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
-entry in `../Cargo.toml`, and check `builtins/test.sh`'s
-`background-passes` and `shebang-passes` (bash and bash-node),
-`shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
-bash-node), `low-fds-passes`, `rename-passes` (bash and bash-node),
+the task manager's idle threads end without queueing a task behind a
+busy one, a link the file system cannot make fails and `rmdir` finds a
+directory nothing looked up, and once the runner finds a renamed file's
+mode without its new path's inode number: delete `vendor/wasmer-wasix*`,
+its `[patch.crates-io]` entry in `../Cargo.toml`, and check
+`builtins/test.sh`'s `background-passes` and `shebang-passes` (bash and
+bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
+(bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
+and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
-`bash-node/rm-recursive-passes`, `python/idle-server-passes`,
-`python/idle-server-timeout-fails` and `postgres/idle-client-passes`, and
-`iwci-runtime`'s `no_descriptor_is_a_terminal`,
+`bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
+`python/idle-server-passes`, `python/idle-server-timeout-fails` and
+`postgres/idle-client-passes`, and `iwci-runtime`'s
+`no_descriptor_is_a_terminal`,
 `a_program_can_replace_the_preopens_and_keep_its_paths`,
 `a_bash_script_can_use_descriptors_3_and_4`,
 `a_blocking_accept_or_recv_is_stopped_by_the_timeout`,
 `an_accept_timeout_the_program_sets_still_applies`,
-`a_service_blocked_in_accept_takes_its_sigterm` and
-`unlinking_a_directory_fails_and_leaves_it_removable`.
+`a_service_blocked_in_accept_takes_its_sigterm`,
+`unlinking_a_directory_fails_and_leaves_it_removable`,
+`removing_a_directory_nothing_looked_up_says_what_it_is`,
+`a_hard_link_is_refused_and_leaves_one_name` and
+`a_renamed_file_has_the_inode_number_of_its_new_path`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
