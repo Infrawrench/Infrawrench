@@ -25,6 +25,9 @@
 #
 # - Database migrations: `db:migrate` twice against a fresh database, the
 #   second run proving it a no-op.
+# - Editor extensions (once .github/workflows/editor-extensions.yml): the
+#   VS Code extension's .vsix and the Raycast extension's tarball, kept as
+#   the run's downloads.
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
 # - Database tests: they need a ClickHouse service.
@@ -333,5 +336,72 @@ jobs:
         - app/packages/web/package.json
         - app/packages/web/src/db/migrations/**
         - .infrawrench/ci/node-preload.cjs
+    memory: 3GiB
+    timeout: 20m
+
+  # The editor extensions, packaged for people to install by hand or submit
+  # (KNOWLEDGE.md, "Editor extensions"): the VS Code extension's .vsix and
+  # the Raycast extension's `ray build` output. Their typecheck and tests are
+  # `check` and `test`. A job that keeps downloads cannot be task-cached, so
+  # `paths:` skips them when nothing they package changed. Each bundles
+  # client-core's JavaScript, which `^bundle` hands them, with esbuild, whose
+  # native binary cannot run here: each package lists the matching
+  # esbuild-wasm, which node-preload.cjs hands them in its place.
+  vscode:
+    name: Package the VS Code extension
+    packages: { only: [app/packages/vscode] }
+    paths: &extension-paths
+      - app/packages/vscode/**
+      - app/packages/raycast/**
+      - app/packages/client-core/**
+      - plugin-architecture/packages/plugin-base/**
+      - pnpm-lock.yaml
+      - .infrawrench/ci/test.yml
+      - .infrawrench/ci/node-preload.cjs
+    deps:
+      - pnpm:
+          only: [app/packages/vscode]
+    needs: ["^bundle"]
+    using: env:bash-node@24
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+    # The package script (esbuild, then `vsce package` on a staged copy in
+    # out/stage), and the .vsix moved out of out/ to leave the stage behind.
+    run: |
+      eval "$(node -p 'require("./package.json").scripts.package')"
+      mkdir vsix
+      mv out/*.vsix vsix/
+    downloads: [vsix]
+    memory: 3GiB
+    timeout: 20m
+
+  # `ray build -e dist` ends by running ./node_modules/.bin/tsc --noEmit,
+  # which the runner's installer does not write and tsc-rs could not run
+  # here: `--skip-types` (one of ray's own flags) leaves that check to
+  # `check`, which runs the same `tsc --noEmit` on the package. `ray` is an
+  # oclif command line, which asks the user database for the login shell
+  # when SHELL is unset, and the isolate has none (#1077), so SHELL is set.
+  # The environment has no tar: the package's own node-tar writes the
+  # tarball, from a list of the files, because Node cannot list a directory
+  # ray moved into dist/ once ray removes the directory it built in (#1079).
+  raycast:
+    name: Package the Raycast extension
+    packages: { only: [app/packages/raycast] }
+    paths: *extension-paths
+    deps:
+      - pnpm:
+          only: [app/packages/raycast]
+    needs: ["^bundle"]
+    using: env:bash-node@24
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      SHELL: /bin/bash
+    run: |
+      script="$(node -p 'require("./package.json").scripts.build')"
+      eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
+      files="$(cd dist && find . -type f)"
+      # shellcheck disable=SC2086 # one file per word; none has a space
+      node -e 'require("tar").c({ gzip: true, sync: true, file: "infrawrench-raycast.tgz", cwd: "dist" }, process.argv.slice(1))' $files
+    downloads: [infrawrench-raycast.tgz]
     memory: 3GiB
     timeout: 20m
