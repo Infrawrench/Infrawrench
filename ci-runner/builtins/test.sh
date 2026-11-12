@@ -545,6 +545,16 @@ jobs:
     run: |
       echo waiting
       node -e 'setTimeout(() => {}, 2 ** 31 - 1)'
+  # A hung `node` whose event loop still wakes: a timer every 50 ms, which
+  # costs a guest about 5 ms of CPU a second. That is not work, and it once
+  # kept a hung Vitest from ever being stopped (#986).
+  idle-timer-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 3m
+    run: |
+      echo waiting
+      node -e 'setInterval(() => {}, 50)'
   # Silent work is not a hang: 25s of computing that prints only at the
   # end, longer than the stall window, must pass. It waits for the jobs
   # that churn threads: a core spinning beside them makes the guest's
@@ -717,6 +727,7 @@ want_reason() {
     bash-node/spin-fails) echo "timed out" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
+    bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/heap-objects-fails | bash-node/workers-refused-fails) echo "ran out of its 512 MiB of memory" ;;
     bash-node/heap-strings-fails) echo "ran out of its 1024 MiB of memory" ;;
     *) echo "" ;;

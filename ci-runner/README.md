@@ -801,10 +801,14 @@ whole pipeline.
   so does a module being compiled, for every job at once: a compile holds
   the engine all jobs share, so the others wait for it. So a silent
   compile or test run keeps using CPU and is never stopped, and a process
-  waiting on a wake-up that never comes (#938) is. Waiting is not work: a
-  job that only sleeps or waits on the network in silence for that long
-  is stopped too, so print something now and then. Measured on Linux
-  only; elsewhere jobs wait for their timeout. tsc jobs are not watched.
+  waiting on a wake-up that never comes (#938) is. Under 2% of one core
+  over the window (six seconds in five minutes) counts as none: a hung
+  program's timers still wake it, and each wake-up costs a guest about a
+  quarter of a millisecond, so a hung Vitest used a third of a percent
+  (#986). Waiting is not work: a job that only sleeps or waits on the
+  network in silence for that long is stopped too, so print something now
+  and then. Measured on Linux only; elsewhere jobs wait for their timeout.
+  tsc jobs are not watched.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without

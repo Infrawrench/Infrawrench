@@ -519,13 +519,29 @@ impl<F: Future + Unpin> Future for Counted<F> {
     }
 }
 
+/// A job that uses less than one core's `1 / IDLE_SHARE` over a window is
+/// idle: 2%, six seconds in the default five minutes.
+///
+/// Idle is not free in a guest. Each wake-up of a waiting thread (a timer
+/// firing, a timed `Atomics.wait` running out) costs about a quarter of a
+/// millisecond of CPU in the runner, against tens of microseconds natively:
+/// measured on ci-1, a `node` with a 100 ms `setInterval` and nothing else
+/// used 2.6 ms of CPU a second, 50 ms 5.4 ms and 20 ms 13 ms. A hung Vitest
+/// (#986: its workers refused for want of memory, its reporter's timer and
+/// a worker thread's timed atomic wait still ticking) used 3.3 ms a second,
+/// right at the 1-in-300 this used to be (one second in five minutes),
+/// so it was stopped after five minutes, or ten, or held its slot until its
+/// timeout, depending on how each window's wake-ups fell. Work is a core,
+/// or most of one, and stays fifty times over this.
+const IDLE_SHARE: u32 = 50;
+
 /// Decides when a job has stalled, from samples of its output and CPU time.
 #[derive(Debug)]
 pub(crate) struct StallWatch {
     after: Duration,
-    /// CPU time below which a window counts as idle: a sliver of one core,
-    /// so an idle event loop's timer wake-ups do not keep a hung job alive
-    /// but any real work does.
+    /// CPU time below which a window counts as idle: a sliver of one core
+    /// ([`IDLE_SHARE`]), so an idle event loop's timer wake-ups do not keep
+    /// a hung job alive but any real work does.
     min_cpu: Duration,
     since: Instant,
     output: u64,
@@ -543,7 +559,7 @@ impl StallWatch {
     ) -> Option<Self> {
         Some(Self {
             after,
-            min_cpu: (after / 300).max(Duration::from_millis(10)),
+            min_cpu: (after / IDLE_SHARE).max(Duration::from_millis(10)),
             since: now,
             output,
             cpu: cpu?,
@@ -614,6 +630,28 @@ mod tests {
             assert!(!watch.stalled(t0 + MIN * minute as u32, 0, Some(cpu), false));
         }
         assert!(watch.stalled(t0 + 5 * MIN, 0, Some(Duration::from_millis(500)), false));
+    }
+
+    #[test]
+    fn an_idle_event_loops_wake_ups_do_not_count_as_work() {
+        // #986: a hung Vitest, its timers and a timed atomic wait still
+        // waking it, at about 3.5 ms of CPU a second: just over a second in
+        // five minutes, which once kept it alive window after window.
+        let t0 = Instant::now();
+        let mut watch = StallWatch::new(5 * MIN, t0, 0, Some(Duration::ZERO)).unwrap();
+        let idle = |seconds: u64| Some(Duration::from_micros(3_500 * seconds));
+        for minute in 1..5 {
+            assert!(!watch.stalled(t0 + MIN * minute, 0, idle(60 * u64::from(minute)), false));
+        }
+        assert!(watch.stalled(t0 + 5 * MIN, 0, idle(300), false));
+
+        // A job computing at a tenth of a core is working.
+        let t0 = Instant::now();
+        let mut watch = StallWatch::new(5 * MIN, t0, 0, Some(Duration::ZERO)).unwrap();
+        for minute in 1..20u32 {
+            let cpu = Duration::from_secs(6 * u64::from(minute));
+            assert!(!watch.stalled(t0 + MIN * minute, 0, Some(cpu), false));
+        }
     }
 
     #[test]
