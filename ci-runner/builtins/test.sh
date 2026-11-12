@@ -1241,12 +1241,15 @@ jobs:
       test "$(stat -c %a /tmp/f /tmp/h)" = "$(printf '600\n640')"
       chmod 604 /tmp/f
       test "$(node -p '(require("fs").statSync("/tmp/f").mode & 0o777).toString(8)')" = 604
-  # A parent asking a Worker about itself. Heap statistics and reports are
-  # run on the worker's loop; Edge.js freed the request when the engine
-  # would not also interrupt the worker's JavaScript for it, so `node`
-  # crashed, hung or got ERR_WORKER_NOT_RUNNING (#1006,
-  # edgejs-request-interrupt.patch). `cpuUsage()` still never settles
-  # (#1006), so it is only poked below.
+  # A parent asking a Worker about itself. Heap statistics, CPU use and
+  # reports are run on the worker's loop; Edge.js freed the request when the
+  # engine would not also interrupt the worker's JavaScript for it, so
+  # `node` crashed, hung or got ERR_WORKER_NOT_RUNNING (#1006,
+  # edgejs-request-interrupt.patch). `cpuUsage()` then still never settled:
+  # libuv's thread CPU time is not there on WASIX, and the failure never
+  # reached the promise (edgejs-worker-cpu-usage.patch). It counts from the
+  # worker's start: a worker that spun for a second has used some of it (all
+  # of it on a quiet host) and nothing like what a reused host thread had.
   worker-introspection-passes:
     using: env:bash-node@24
     needs: [node-passes]
@@ -1262,6 +1265,12 @@ jobs:
           const heap = await w.getHeapStatistics();
           assert.ok(heap.total_heap_size > 0);
           assert.equal(process.report.getReport().workers.length, 1);
+          const cpu = await w.cpuUsage();
+          assert.ok(Number.isInteger(cpu.user) && Number.isInteger(cpu.system), JSON.stringify(cpu));
+          assert.ok(cpu.user < 30e6, JSON.stringify(cpu));
+          if (body.startsWith("const e")) assert.ok(cpu.user > 50e3, JSON.stringify(cpu));
+          const since = await w.cpuUsage(cpu);
+          assert.ok(since.user >= 0 && since.user < 30e6, JSON.stringify(since));
           await w.terminate();
         }
         console.log("introspection ok");
@@ -1326,6 +1335,63 @@ jobs:
       console.log("cached data ok");
       JS
       for i in 1 2 3; do test "$(node /tmp/cache.js)" = "cached data ok"; done
+  # Edge.js's built-ins come from a code cache the runner made with its own
+  # V8 (#996, iwci-runtime/src/builtins.rs), not from source, in `node`,
+  # in worker threads and in ES modules; the job can read the file but not
+  # change it, and a cache a job records for itself stays in its own files.
+  builtins-cache-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 2m
+    run: |
+      cache=/usr/local/lib/iwci/node/edge.builtins
+      test -s "$cache"
+      if echo x 2>/dev/null >"$cache"; then echo "the cache is writable" >&2; exit 1; fi
+      # Found for each built-in (`hit`), and taken by V8 (no `rejected`).
+      count() { grep -c "^\[edge-bytecode-cache\] builtin-$1" || true; }
+      out="$(EDGE_BYTECODE_CACHE_TRACE=1 node -e 0 2>&1)"
+      test "$(count hit <<<"$out")" -gt 20
+      test "$(count miss <<<"$out")$(count rejected <<<"$out")" = 00
+      out="$(EDGE_BYTECODE_CACHE_TRACE=1 node -e 'new (require("node:worker_threads").Worker)("0", { eval: true })' 2>&1)"
+      test "$(count miss <<<"$out")$(count rejected <<<"$out")" = 00
+      printf 'import "node:fs";\n' >/tmp/m.mjs
+      out="$(EDGE_BYTECODE_CACHE_TRACE=1 node /tmp/m.mjs 2>&1)"
+      test "$(count miss <<<"$out")$(count rejected <<<"$out")" = 00
+      # A job's own recording writes its own file, and leaves the runner's.
+      before="$(sha256sum <"$cache")"
+      EDGE_BUILTINS_CACHE=/tmp/mine EDGE_BUILTINS_CACHE_RECORD=1 node -e 'require("node:http2")'
+      test -s /tmp/mine
+      test "$(sha256sum <"$cache")" = "$before"
+  # CPU time is CPU time (#1038): the C library read the monotonic clock
+  # (days, and a sleep counted as work), and the host's clocks would be the
+  # whole runner's. Now `process.cpuUsage()` starts near zero, grows with
+  # work and not with sleep, and `process.threadCpuUsage()` works.
+  # wasix-libc-getrusage.patch, and the runner's clocks (stall.rs
+  # `guest_cpu`). bash and coreutils keep Wasmer's own C library, so the
+  # shell's `time` and `times` are still wrong.
+  cpu-time-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 1m
+    run: |
+      cat > /tmp/cpu.js <<'JS'
+      const assert = require("node:assert");
+      const show = (x) => JSON.stringify(x);
+      const start = process.cpuUsage();
+      assert.ok(start.user > 0 && start.user < 30e6, show(start));
+      const spinUntil = Date.now() + 500;
+      while (Date.now() < spinUntil) {}
+      const spun = process.cpuUsage(start);
+      assert.ok(spun.user > 20e3 && spun.user < 30e6, show(spun));
+      const thread = process.threadCpuUsage();
+      assert.ok(thread.user > 20e3 && thread.user <= process.cpuUsage().user, show(thread));
+      setTimeout(() => {
+        const slept = process.cpuUsage(start);
+        assert.ok(slept.user - spun.user < 250e3, show({ spun, slept }));
+        console.log("cpu time ok");
+      }, 500);
+      JS
+      test "$(node /tmp/cpu.js)" = "cpu time ok"
   # A `node` that another `node` forks gets the first isolate's old
   # generation; a Worker keeps the small start. Forks once started from
   # 64 MiB like workers, where a test file's working set never grew the heap

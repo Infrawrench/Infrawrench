@@ -640,7 +640,18 @@
          let Some(fd_ref) = fd_map.get(fd) else {
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -170,6 +170,12 @@
+@@ -118,7 +118,9 @@
+         ALL_RIGHTS, WasiEnv, WasiEnvBuilder, WasiEnvInit, WasiFunctionEnv,
+         WasiModuleInstanceHandles, WasiModuleTreeHandles, WasiStateCreationError,
+     },
+-    syscalls::{journal::wait_for_snapshot, rewind, rewind_ext, types, unwind},
++    syscalls::{
++        CpuClocks, journal::wait_for_snapshot, rewind, rewind_ext, set_cpu_clocks, types, unwind,
++    },
+     utils::is_wasix_module,
+     utils::{
+         WasiVersion, get_wasi_version, get_wasi_versions, is_wasi_module,
+@@ -170,6 +172,12 @@
      /// Invalid ABI
      #[error("Wasmer process has an invalid ABI")]
      InvalidABI,
@@ -655,10 +666,12 @@
      BadHandle,
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
-@@ -857,6 +857,36 @@
-         Ok(Some((child.pid, code)))
-     }
+@@ -855,6 +855,36 @@
+             res.unwrap_or_else(|e| e.as_exit_code().unwrap_or_else(|| Errno::Canceled.into()));
  
+         Ok(Some((child.pid, code)))
++    }
++
 +    /// [`Self::join_any_child`] without waiting: a child that has already
 +    /// exited is joined, and `Ok(None)` means every child is still running.
 +    /// This is `waitpid(-1, ..., WNOHANG)`.
@@ -687,11 +700,9 @@
 +            return Ok(Some((child.pid, code)));
 +        }
 +        Ok(None)
-+    }
-+
+     }
+ 
      /// Terminate the process and all its threads
-     pub fn terminate(&self, exit_code: ExitCode) {
-         let pid = self.pid;
 --- a/src/state/env.rs
 +++ b/src/state/env.rs
 @@ -317,6 +317,7 @@
@@ -720,6 +731,47 @@
          _ if err.is_not_found() => Errno::Noent,
          _ => Errno::Inval,
      }
+--- a/src/syscalls/unix/mod.rs
++++ b/src/syscalls/unix/mod.rs
+@@ -33,10 +33,38 @@
+     Ok(t_out)
+ }
+ 
++/// What a guest's CPU clocks read, when the embedder says (iwci patch,
++/// #1038): `Some(nanoseconds)` for the process or the thread asking, on the
++/// thread that runs it, or `None` for the host's clock as before.
++pub type CpuClocks = fn(thread: bool) -> Option<u64>;
++
++static CPU_CLOCKS: std::sync::OnceLock<CpuClocks> = std::sync::OnceLock::new();
++
++/// Answers `CLOCK_PROCESS_CPUTIME_ID` and `CLOCK_THREAD_CPUTIME_ID` with
++/// `clocks` from now on, for every guest (iwci patch, #1038). The host's
++/// clocks are the whole host process's CPU time, every guest's together,
++/// and the CPU time of whichever host thread runs the guest thread, work it
++/// did for others before included; an embedder that runs guests of
++/// different users in one process knows better. Set once; later calls are
++/// ignored.
++pub fn set_cpu_clocks(clocks: CpuClocks) {
++    let _ = CPU_CLOCKS.set(clocks);
++}
++
+ pub fn platform_clock_time_get(
+     clock_id: Snapshot0Clockid,
+     precision: Timestamp,
+ ) -> Result<i64, Errno> {
++    let thread = match clock_id {
++        Snapshot0Clockid::ProcessCputimeId => Some(false),
++        Snapshot0Clockid::ThreadCputimeId => Some(true),
++        _ => None,
++    };
++    if let (Some(thread), Some(clocks)) = (thread, CPU_CLOCKS.get())
++        && let Some(nanos) = clocks(thread)
++    {
++        return Ok(i64::try_from(nanos).unwrap_or(i64::MAX));
++    }
+     let unix_clock_id = match clock_id {
+         Snapshot0Clockid::Monotonic => CLOCK_MONOTONIC,
+         Snapshot0Clockid::ProcessCputimeId => CLOCK_PROCESS_CPUTIME_ID,
 --- a/src/syscalls/wasi/fd_fdstat_get.rs
 +++ b/src/syscalls/wasi/fd_fdstat_get.rs
 @@ -19,7 +19,8 @@
@@ -1038,19 +1090,19 @@
      // Convert relative paths into absolute paths
      if search_path == Bool::True && !name.contains('/') {
          let path = if let Some(path) = path {
-@@ -120,6 +126,12 @@
-         *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
-     }
- 
-+    // A caller that turned the PATH search off named a file, so resolve it
-+    // against the current directory.
-+    if search_path == Bool::False && !name.starts_with('/') {
+@@ -117,6 +123,12 @@
+             FindExecutableResult::NotFound => return Ok(Errno::Noent),
+         }
+     } else if name.starts_with("./") {
 +        *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
 +    }
 +
-     Span::current().record("full_path", name.as_str());
++    // A caller that turned the PATH search off named a file, so resolve it
++    // against the current directory.
++    if search_path == Bool::False && !name.starts_with('/') {
+         *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
+     }
  
-     // Fork the environment which will copy all the open file handlers
 @@ -176,7 +188,7 @@
              let env = builder.take().unwrap();
  

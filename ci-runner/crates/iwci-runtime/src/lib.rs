@@ -19,6 +19,7 @@
 //! see the `wasix` module for how each is enforced.
 
 mod background;
+mod builtins;
 mod cache;
 mod capture;
 mod limits;
@@ -529,6 +530,7 @@ impl Runtime {
                 stall_after: self.stall_after,
             },
             node.as_ref(),
+            None,
         )
     }
 
@@ -574,10 +576,22 @@ impl Runtime {
         let node = Some(node::NodeHooks::new(inv.limits.memory_bytes));
         #[cfg(not(feature = "node"))]
         let node: Option<node::NodeHooks> = None;
+        // Made before the first job of the environment in this process,
+        // which waits for it, as do any that start meanwhile.
+        let generation = self.store.generation();
+        let builtins = node.as_ref().and_then(|_| {
+            wasix::builtins(
+                &self.wasix,
+                &self.tokio,
+                &generation,
+                packages,
+                self.output_cap,
+            )
+        });
         wasix::run(
             &self.wasix,
             &self.tokio,
-            &self.store.generation(),
+            &generation,
             wasix::Entry::Command {
                 packages,
                 name: entry,
@@ -589,6 +603,7 @@ impl Runtime {
                 stall_after: self.stall_after,
             },
             node.as_ref(),
+            builtins,
         )
     }
 }

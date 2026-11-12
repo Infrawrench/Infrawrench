@@ -114,16 +114,22 @@ pub(crate) struct WasixShared {
     /// The host network jobs reach the public internet through, when
     /// offered (`Runtime::with_internet`).
     pub(crate) outside: Option<crate::network::Outside>,
+    /// Edge.js's built-ins cache for each environment (builtins.rs).
+    #[cfg_attr(not(feature = "node"), allow(dead_code))]
+    pub(crate) builtins: crate::builtins::Builtins,
 }
 
 impl WasixShared {
     pub(crate) fn new(store: Arc<ModuleStore>, tasks: Arc<dyn VirtualTaskManager>) -> Self {
+        // A guest's CPU clocks are its own, not the host's (#1038).
+        wasmer_wasix::set_cpu_clocks(crate::stall::guest_cpu);
         Self {
             store,
             tasks,
             packages: Recent::default(),
             containers: Recent::default(),
             outside: None,
+            builtins: Default::default(),
         }
     }
 
@@ -445,6 +451,14 @@ impl PackageSet {
         })
     }
 
+    /// Whether a package of the set has a command called `name`.
+    #[cfg_attr(not(feature = "node"), allow(dead_code))]
+    fn has_command(&self, name: &str) -> bool {
+        self.order
+            .iter()
+            .any(|(_, c)| c.manifest().commands.contains_key(name))
+    }
+
     fn digests(&self) -> Vec<WebcHash> {
         let mut digests: Vec<WebcHash> = self.order.iter().map(|(h, _)| *h).collect();
         digests.sort();
@@ -541,7 +555,8 @@ pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 
 /// The files under [`NODE_SUPPORT_DIR`]: a working `node:wasi` for
 /// Edge.js, whose own has no binding behind it, and the preload that fills
-/// its other gaps (see `node/README.md`).
+/// its other gaps (see `node/README.md`). Its built-ins cache goes beside
+/// them when there is one (builtins.rs).
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
     ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
@@ -572,11 +587,13 @@ pub(crate) fn node_options(env: &[(String, String)]) -> String {
 /// mount but the job's
 /// own (which does it itself) is wrapped so that removing or renaming a file
 /// moves its mode in `modes`.
+#[allow(clippy::too_many_arguments)]
 fn job_root(
     fs: crate::DynFs,
     scratch: Option<crate::DynFs>,
     commands: &[crate::PathCommand],
     node_support: bool,
+    builtins: Option<&bytes::Bytes>,
     shell: bool,
     modes: &iwci_vfs::Modes,
     listeners: &crate::network::Listeners,
@@ -628,6 +645,15 @@ fn job_root(
         let dir = TmpFileSystem::new();
         for (name, bytes) in NODE_SUPPORT {
             write_command(&dir, name, bytes)?;
+        }
+        // Read only, and the same bytes for every job.
+        if let Some(builtins) = builtins {
+            dir.new_open_options_ext()
+                .insert_ro_file(
+                    &Path::new("/").join(crate::builtins::FILE),
+                    shared_buffer::OwnedBuffer::from_bytes(builtins.clone()),
+                )
+                .map_err(|e| Error::Setup(format!("writing Edge.js's built-ins cache: {e}")))?;
         }
         mounts.push((
             NODE_SUPPORT_DIR,
@@ -740,6 +766,52 @@ pub(crate) struct Caps {
     pub(crate) stall_after: Option<Duration>,
 }
 
+/// Edge.js's built-ins cache for a job of `packages` with Node hooks
+/// (builtins.rs): made before the first job of the environment this process
+/// runs, by a job of its own. `None` for an environment without `node`.
+#[cfg_attr(not(feature = "node"), allow(unused_variables))]
+pub(crate) fn builtins(
+    shared: &WasixShared,
+    tokio: &tokio::runtime::Runtime,
+    generation: &Generation,
+    packages: &[WebcPackage],
+    output_bytes: usize,
+) -> Option<bytes::Bytes> {
+    #[cfg(feature = "node")]
+    {
+        let set = PackageSet::new(shared, packages, true).ok()?;
+        if !set.has_command("node") {
+            return None;
+        }
+        shared.builtins.get_or_make(set.digests(), || {
+            crate::builtins::make(|script, mut inv| {
+                inv.args = crate::script_args("bash", script);
+                inv.env.push(("PATH".into(), crate::DEFAULT_PATH.into()));
+                let node = crate::node::NodeHooks::new(inv.limits.memory_bytes);
+                run(
+                    shared,
+                    tokio,
+                    generation,
+                    Entry::Command {
+                        packages,
+                        name: "bash",
+                    },
+                    "bash",
+                    inv,
+                    Caps {
+                        output_bytes,
+                        stall_after: Some(Duration::from_secs(30)),
+                    },
+                    Some(&node),
+                    None,
+                )
+            })
+        })
+    }
+    #[cfg(not(feature = "node"))]
+    None
+}
+
 /// Starts the process trees of one job on its runtime: its first process,
 /// each of its services and a service's readiness probe (background.rs).
 /// Each tree gets its own control plane and root file system, over the
@@ -756,6 +828,8 @@ pub(crate) struct Starter<'a> {
     pub(crate) listeners: &'a crate::network::Listeners,
     /// The job has Node hooks (`NodeHooks`).
     pub(crate) node: bool,
+    /// Edge.js's built-ins cache, for its `node`s (builtins.rs).
+    pub(crate) builtins: Option<&'a bytes::Bytes>,
 }
 
 /// What a [`Process`] runs.
@@ -807,6 +881,7 @@ impl Starter<'_> {
             self.scratch.cloned(),
             process.commands,
             self.node && shell,
+            self.builtins,
             shell,
             self.modes,
             self.listeners,
@@ -900,6 +975,7 @@ pub(crate) fn run(
     inv: Invocation,
     caps: Caps,
     node: Option<&crate::node::NodeHooks>,
+    builtins: Option<bytes::Bytes>,
 ) -> Result<Outcome> {
     check_nul(&inv)?;
     let started = Instant::now();
@@ -965,6 +1041,7 @@ pub(crate) fn run(
         modes: &inv.modes,
         listeners: &listeners,
         node: node.is_some(),
+        builtins: builtins.as_ref(),
     };
     let interrupt = || {
         #[cfg(feature = "node")]

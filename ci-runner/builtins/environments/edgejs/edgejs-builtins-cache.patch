@@ -1,0 +1,115 @@
+diff --git a/src/edge_builtin_bytecode.cc b/src/edge_builtin_bytecode.cc
+index 4032ed5e..91b7dc22 100644
+--- a/src/edge_builtin_bytecode.cc
++++ b/src/edge_builtin_bytecode.cc
+@@ -1,6 +1,7 @@
+ #include "edge_builtin_bytecode.h"
+ 
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <map>
+ #include <mutex>
+@@ -144,7 +145,21 @@ void EnsureLoadedLocked(Store& store) {
+ }  // namespace
+ 
+ std::string BuiltinCacheFilePath() {
++  const char* path = std::getenv("EDGE_BUILTINS_CACHE");
++  if (path != nullptr && path[0] != '\0') return path;
++#if defined(__wasi__) && !defined(EDGE_BUNDLED_NAPI_V8) && !defined(EDGE_NAPI_QUICKJS)
++  return "/usr/local/lib/iwci/node/edge.builtins";
++#else
+   return EdgeGetProcessExecPath() + ".builtins" + edge_bytecode_cache::SidecarSuffix();
++#endif
++}
++
++bool Recording() {
++  static const bool recording = [] {
++    const char* value = std::getenv("EDGE_BUILTINS_CACHE_RECORD");
++    return value != nullptr && value[0] != '\0' && std::strcmp(value, "0") != 0;
++  }();
++  return recording;
+ }
+ 
+ bool TryGet(Kind kind, std::string_view id, std::string_view source_utf8, PayloadView* out) {
+@@ -177,7 +192,7 @@ void Record(Kind kind,
+             std::string_view source_utf8,
+             const uint8_t* payload,
+             size_t payload_size) {
+-  if (!edge_bytecode_cache::BuiltinsCacheEnabled()) return;
++  if (!edge_bytecode_cache::BuiltinsCacheEnabled() || !Recording()) return;
+   if (payload == nullptr || payload_size == 0) return;
+ 
+   Store& store = GetStore();
+diff --git a/src/edge_builtin_bytecode.h b/src/edge_builtin_bytecode.h
+index 217da6f8..6bf0481b 100644
+--- a/src/edge_builtin_bytecode.h
++++ b/src/edge_builtin_bytecode.h
+@@ -40,9 +40,18 @@ struct PayloadView {
+   size_t size = 0;
+ };
+ 
+-// Cache file path: process executable path + ".builtins" + engine suffix.
++// Cache file path: EDGE_BUILTINS_CACHE when set; otherwise, in the WASIX
++// build, the one the iwci runner provides each job with, made by its own V8
++// (V8 accepts only a cache its own build and flags wrote), and elsewhere the
++// process executable path + ".builtins" + engine suffix.
+ std::string BuiltinCacheFilePath();
+ 
++// iwci: whether built-ins compiled without a cache entry are serialized and
++// written to the file at exit. Only when EDGE_BUILTINS_CACHE_RECORD is set,
++// which is how the runner makes its file: a `node` never writes it
++// otherwise, and a miss costs nothing but the compile.
++bool Recording();
++
+ // Looks up (kind, id) in the consolidated cache, validating the entry was
+ // compiled from exactly source_utf8. Loads the file lazily on first call
+ // (one read, validated in place). False on miss/disabled; never throws.
+diff --git a/src/edge_bytecode_cache.cc b/src/edge_bytecode_cache.cc
+index 408f29ff..fc28a70c 100644
+--- a/src/edge_bytecode_cache.cc
++++ b/src/edge_bytecode_cache.cc
+@@ -66,6 +66,12 @@ const std::string& EngineCacheTag() {
+     return std::string("v8-") + EDGE_EMBEDDED_V8_VERSION;
+ #elif defined(EDGE_NAPI_QUICKJS) && defined(EDGE_EMBEDDED_QUICKJS_VERSION)
+     return std::string("qjs-ng-") + EDGE_EMBEDDED_QUICKJS_VERSION;
++#elif defined(__wasi__)
++    // iwci: the engine is the host's, imported through N-API, so there is no
++    // version to name here. The payloads check themselves (V8 rejects one
++    // another version, other flags or another snapshot wrote), and only the
++    // built-ins cache uses this tag: user sidecars stay off (Enabled()).
++    return std::string("napi-imports");
+ #else
+     return std::string();
+ #endif
+@@ -150,7 +156,11 @@ bool BuiltinsCacheEnabled() {
+ }
+ 
+ bool Enabled() {
++#if !defined(EDGE_BUNDLED_NAPI_V8) && !defined(EDGE_NAPI_QUICKJS)
++  return false;  // iwci: see EngineCacheTag()
++#else
+   return !EngineCacheTag().empty() && EffectiveOverride() == 1;
++#endif
+ }
+ 
+ bool TraceEnabled() {
+diff --git a/src/edge_module_loader.cc b/src/edge_module_loader.cc
+index 388dfa64..ae474081 100644
+--- a/src/edge_module_loader.cc
++++ b/src/edge_module_loader.cc
+@@ -1086,7 +1086,13 @@ static EdgeBytecode AcquireBuiltinBytecode(napi_env env,
+     }
+     return bytecode;
+   }
+-  if (!has_cache || cache_rejected) {
++  // iwci: an entry the engine refused (another engine's, or other flags)
++  // was compiled from source after all; the trace says so, since TryGet
++  // reported a hit.
++  if (has_cache && cache_rejected && edge_bytecode_cache::TraceEnabled()) {
++    std::fprintf(stderr, "[edge-bytecode-cache] builtin-rejected %s\n", id.c_str());
++  }
++  if ((!has_cache || cache_rejected) && edge_builtin_bytecode::Recording()) {
+     napi_value buffer = nullptr;
+     if (bytecode.Serialize(&buffer) == napi_ok && buffer != nullptr) {
+       EdgeBufferLease bytes;

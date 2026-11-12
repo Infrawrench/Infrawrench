@@ -537,17 +537,29 @@ cache is the inode just resolved, and the target is looked up afterwards
 without following as well (following a dangling link there would have hit
 the `expect`). Upstream main is unchanged (checked November 2026).
 
+**A guest's CPU clocks are its own (#1038).** `clock_time_get` answered
+`CLOCK_PROCESS_CPUTIME_ID` and `CLOCK_THREAD_CPUTIME_ID` with the host's
+clocks: the runner's whole CPU time, every job's together, which no job
+should see, and the time of whichever pooled host thread runs the guest
+thread, its earlier tenants' work included. `src/syscalls/unix/mod.rs`
+now asks an embedder's hook first (`set_cpu_clocks`), which the runtime
+crate answers from the same per-thread clocks its stall check reads
+(`iwci-runtime/src/stall.rs` `guest_cpu`): a guest thread's CPU time since
+it started on its host thread, and its process's summed over the threads
+it ran on. Upstream has no such hook (checked November 2026); drop the
+hunk when a release keeps per-guest CPU time itself.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
 still classify as streams, a program can put its own descriptors on the
-preopens' numbers and keep its paths, and a backing or dangling symlink
-can be renamed: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
+preopens' numbers and keep its paths, a backing or dangling symlink
+can be renamed, and a guest's CPU clocks are its own: delete `vendor/wasmer-wasix*`, its `[patch.crates-io]`
 entry in `../Cargo.toml`, and check `builtins/test.sh`'s
 `background-passes` and `shebang-passes` (bash and bash-node),
 `shebang-missing-interpreter-fails`, `no-terminal-passes` (bash and
-bash-node), `low-fds-passes` and `rename-passes` (bash and bash-node), and
-`iwci-runtime`'s
+bash-node), `low-fds-passes`, `rename-passes` (bash and bash-node) and
+`bash-node/cpu-time-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`, `a_program_can_replace_the_preopens_and_keep_its_paths`
 and `a_bash_script_can_use_descriptors_3_and_4`.
 

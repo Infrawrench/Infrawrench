@@ -1,0 +1,123 @@
+diff --git a/src/edge_process.cc b/src/edge_process.cc
+index 203e43e7..1a462548 100644
+--- a/src/edge_process.cc
++++ b/src/edge_process.cc
+@@ -4552,7 +4552,22 @@ napi_value ProcessMethodsThreadCpuUsageBufferCallback(napi_env env, napi_callbac
+   double* values = nullptr;
+   if (!GetFloat64ArrayData(env, argv[0], 2, &output, &values)) return nullptr;
+   uv_rusage_t rusage;
++#if defined(__wasi__)
++  // As a worker's cpuUsage() does (binding_worker.cc): libuv's
++  // uv_getrusage_thread is UV_ENOTSUP on WASIX, which has the thread's CPU
++  // clock instead (all of it user time).
++  __wasi_timestamp_t thread_ns = 0;
++  const int rc = __wasi_clock_time_get(__WASI_CLOCKID_THREAD_CPUTIME_ID, 1, &thread_ns) ==
++                         __WASI_ERRNO_SUCCESS
++                     ? 0
++                     : UV_ENOTSUP;
++  rusage = uv_rusage_t{};
++  rusage.ru_utime.tv_sec = static_cast<decltype(rusage.ru_utime.tv_sec)>(thread_ns / 1000000000u);
++  rusage.ru_utime.tv_usec =
++      static_cast<decltype(rusage.ru_utime.tv_usec)>((thread_ns % 1000000000u) / 1000u);
++#else
+   const int rc = uv_getrusage_thread(&rusage);
++#endif
+   if (rc != 0) {
+ #if defined(__sun)
+     ThrowErrorWithCode(env, "ERR_OPERATION_FAILED", "Operation failed: threadCpuUsage is not available on SunOS");
+diff --git a/src/internal_binding/binding_worker.cc b/src/internal_binding/binding_worker.cc
+index 95bc5260..4c3ea892 100644
+--- a/src/internal_binding/binding_worker.cc
++++ b/src/internal_binding/binding_worker.cc
+@@ -19,6 +19,9 @@
+ #include <vector>
+ 
+ #include <uv.h>
++#if defined(__wasi__)
++#include <wasi/api.h>
++#endif
+ 
+ #include "internal_binding/helpers.h"
+ #include "unofficial_napi.h"
+@@ -86,6 +89,10 @@ struct WorkerThreadData {
+   std::unordered_map<uint32_t, unofficial_napi_profile> cpu_profiles;
+   uint32_t next_cpu_profile_id = 1;
+   unofficial_napi_profile heap_profile = nullptr;
++#if defined(__wasi__)
++  // The thread's CPU clock when it started (see ThreadCpuTime).
++  uint64_t cpu_start_ns = 0;
++#endif
+ };
+ 
+ struct Worker {
+@@ -770,6 +777,22 @@ void CompleteWorkerTaskOnWorkerThread(WorkerTask* task) {
+   }
+ }
+ 
++#if defined(__wasi__)
++// The CPU time this thread has used, in nanoseconds. libuv's
++// uv_getrusage_thread asks getrusage(RUSAGE_THREAD), which the WASIX C
++// library does not have (UV_ENOTSUP), but WASIX has the thread's CPU clock.
++// That clock is the host thread's the guest thread runs on, which may have
++// run other work before this worker, so a worker counts from its start.
++bool ThreadCpuTime(uint64_t* ns) {
++  __wasi_timestamp_t now = 0;
++  if (__wasi_clock_time_get(__WASI_CLOCKID_THREAD_CPUTIME_ID, 1, &now) != __WASI_ERRNO_SUCCESS) {
++    return false;
++  }
++  *ns = static_cast<uint64_t>(now);
++  return true;
++}
++#endif
++
+ void SetTaskError(WorkerTask* task, const char* code, const std::string& message) {
+   if (task == nullptr) return;
+   task->success = false;
+@@ -788,11 +811,25 @@ void OnWorkerTaskInterrupt(napi_env worker_env, void* data) {
+ 
+   switch (task->type) {
+     case WorkerTaskType::kCpuUsage: {
++#if defined(__wasi__)
++      uint64_t now = 0;
++      if (!ThreadCpuTime(&now)) {
++        SetTaskError(task, "ERR_WORKER_OPERATION_FAILED", uv_strerror(UV_ENOTSUP));
++        break;
++      }
++      const uint64_t used = now > thread_data->cpu_start_ns ? now - thread_data->cpu_start_ns : 0;
++      task->cpu_usage = uv_rusage_t{};
++      task->cpu_usage.ru_utime.tv_sec = static_cast<decltype(task->cpu_usage.ru_utime.tv_sec)>(used / 1000000000u);
++      task->cpu_usage.ru_utime.tv_usec =
++          static_cast<decltype(task->cpu_usage.ru_utime.tv_usec)>((used % 1000000000u) / 1000u);
++      task->found = true;
++#else
+       const int rc = uv_getrusage_thread(&task->cpu_usage);
+       task->found = (rc == 0);
+       if (rc != 0) {
+         SetTaskError(task, "ERR_WORKER_OPERATION_FAILED", uv_strerror(rc));
+       }
++#endif
+       break;
+     }
+     case WorkerTaskType::kGetHeapStatistics: {
+@@ -995,6 +1032,11 @@ void OnWorkerCompletionAsync(uv_async_t* handle) {
+       }
+     }
+ 
++    // A task that failed has no result, and a null argument fails the whole
++    // call: `ondone` never ran, and the caller's promise never settled.
++    for (napi_value& arg : argv) {
++      if (arg == nullptr) arg = Undefined(wrap->env);
++    }
+     napi_value ignored = nullptr;
+     (void)EdgeMakeCallback(wrap->env, taker, ondone, argc, argv, &ignored);
+   }
+@@ -1197,6 +1239,9 @@ void WorkerThreadMain(Worker* wrap, uintptr_t stack_top) {
+   napi_env worker_env = nullptr;
+   unofficial_napi_env_owner worker_owner = nullptr;
+   uv_loop_t* worker_loop = nullptr;
++#if defined(__wasi__)
++  if (thread_data != nullptr) (void)ThreadCpuTime(&thread_data->cpu_start_ns);
++#endif
+   if (wrap != nullptr) {
+     wrap->stack_base = stack_top > (wrap->thread_stack_size - kWorkerStackBufferSize)
+                            ? stack_top - (wrap->thread_stack_size - kWorkerStackBufferSize)

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes read from the runner, and with four fixes to Edge.js itself.
+# and file modes and CPU time read from the runner, and with five fixes to
+# Edge.js itself and its built-ins code cache turned on.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
 # rebuild of that module. Each is one patch here and one or two objects of
@@ -33,7 +34,15 @@
 #     /proc/iwci it all behaves as before. Ours, and specific to the runner;
 #     the patch says why each call does what it does.
 #
-# And four patches to Edge.js's own source, applied to its checkout:
+#   wasix-libc-getrusage.patch (getrusage.o, #1038). `getrusage` gave the
+#     monotonic clock (wall-clock time since the host started, with its
+#     microseconds wrong) as both user and system time, so
+#     `process.cpuUsage()` read days and counted sleeping as work. It now
+#     reads WASIX's process CPU clock, which the runner answers for the
+#     guest process itself (vendor/README.md, wasmer-wasix), as user time.
+#     Ours; drafted for wasix-libc.
+#
+# And six patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -77,6 +86,27 @@
 #     the task, the worker then ran the callback on freed memory (`node`
 #     crashed or hung) or the call failed (`ERR_WORKER_NOT_RUNNING`). A
 #     queued request now succeeds whatever the engine says. Ours.
+#
+#   edgejs-builtins-cache.patch (#996). Edge.js keeps V8's code cache for
+#     its built-in modules in one file, which saves compiling them from
+#     source at every start, but only a build with the engine compiled in
+#     turns it on. This one reads the file the runner gives each job
+#     (/usr/local/lib/iwci/node/edge.builtins, or EDGE_BUILTINS_CACHE), and
+#     writes one only when EDGE_BUILTINS_CACHE_RECORD is set, which is how
+#     the runner makes it with its own V8 (`iwci-runtime/src/builtins.rs`):
+#     V8 takes only a cache its own build and flags wrote, so one made here
+#     would never be used. A job's `node` never writes it. Ours, specific to
+#     the runner.
+#
+#   edgejs-worker-cpu-usage.patch (#1006, #1038). `worker.cpuUsage()` never
+#     settled. libuv reads a thread's CPU time with getrusage(RUSAGE_THREAD),
+#     which its WASIX build is compiled without (UV_ENOTSUP), and the failure
+#     reached the parent with a null second argument, which made the call to
+#     its callback fail, so no task that failed was ever answered. Arguments
+#     a task has no value for are now `undefined`, and on WASIX a worker, and
+#     `process.threadCpuUsage()`, read the thread's CPU clock instead, a
+#     worker counting from its own start (a host other than the runner may
+#     give the clock of a host thread that ran something else first). Ours.
 #
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
@@ -126,10 +156,11 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Our build of 0.2.5. A changed build is a new number after `iwci.`:
 # 1 had the first patch alone, 2 both C library patches, 3 adds the first
-# Edge.js one, 4 the second, 5 the modes patch and the third and fourth.
-VERSION="0.2.5-iwci.5"
+# Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
+# the built-ins cache and CPU time.
+VERSION="0.2.5-iwci.6"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
@@ -154,6 +185,7 @@ LIBC_PATCHES=(
   "wasix-libc-145.patch libc-bottom-half/sources/chdir.o !make_absolute_buf"
   "wasix-libc-thread-exit.patch libc-top-half/musl/src/thread/pthread_create.o exit_woken"
   "wasix-libc-modes.patch libc-bottom-half/sources/posix.o __wasilibc_iwci_fill_fd_mode libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.o __wasilibc_iwci_fill_fd_mode"
+  "wasix-libc-getrusage.patch libc-top-half/musl/src/misc/getrusage.o __wasilibc_iwci_rusage"
 )
 SYSROOT_URL="https://github.com/wasix-org/wasix-libc/releases/download/v2026-07-30.1/sysroot-exnref-eh.tar.gz"
 SYSROOT_SHA256="40c2ebbf3487ab72c0d0359b1643f3e6ae7c51adfe2237ab86492ecb6494a47d"

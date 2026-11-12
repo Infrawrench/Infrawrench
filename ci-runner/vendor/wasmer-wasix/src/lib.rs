@@ -118,7 +118,9 @@ pub use crate::{
         ALL_RIGHTS, WasiEnv, WasiEnvBuilder, WasiEnvInit, WasiFunctionEnv,
         WasiModuleInstanceHandles, WasiModuleTreeHandles, WasiStateCreationError,
     },
-    syscalls::{journal::wait_for_snapshot, rewind, rewind_ext, types, unwind},
+    syscalls::{
+        CpuClocks, journal::wait_for_snapshot, rewind, rewind_ext, set_cpu_clocks, types, unwind,
+    },
     utils::is_wasix_module,
     utils::{
         WasiVersion, get_wasi_version, get_wasi_versions, is_wasi_module,
