@@ -4,6 +4,7 @@
 // | Route | Does |
 // |-------|------|
 // | `GET /healthz` | `200 ok`, unauthenticated |
+// | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots, and the pool's total |
 // | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most free slots |
@@ -18,6 +19,7 @@
 // | `PUT`, `DELETE /v1/orgs/{owner}[/repos/{repo-id}]/secrets/{name}` | sets (`{ "value": ... }`) or removes one |
 // | `GET`, `PUT`, `DELETE` the same under `/vars` | variables, values included |
 
+import { serveDownload, type Downloads } from "./artifacts";
 import { authorised } from "./auth";
 import { anyDue } from "./cron";
 import { identify, isId } from "./identity";
@@ -49,6 +51,8 @@ export interface Deps {
   proxyKey: string;
   /** Unix seconds; injectable so tests control time. */
   now: () => number;
+  /** The runners' bucket and the key download links are signed with. */
+  downloads?: Downloads;
 }
 
 /** Bodies are a run request, maybe with a pipeline file: small. */
@@ -160,6 +164,11 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   const method = request.method;
 
   if (method === "GET" && path === "/healthz") return new Response("ok");
+  // A download is fetched by a browser, with a link the app signed instead
+  // of the proxy's key.
+  if (parts[0] === "v1" && parts[1] === "artifacts") {
+    return serveDownload(request, url, parts.slice(2), deps.downloads, deps.now());
+  }
   if (!(await authorised(request, deps.proxyKey))) return error(401, "missing or wrong bearer key");
 
   if (method === "GET" && path === "/v1/capacity") {

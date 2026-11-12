@@ -218,6 +218,11 @@ pub struct Job {
     /// file system of every job that needs it, directly or through others.
     #[serde(default)]
     pub artifacts: Vec<String>,
+    /// Files kept for people to download after the run, in the object
+    /// store, for `retention`. A list of paths, or the paths with options.
+    /// See [`Downloads`].
+    #[serde(default)]
+    pub downloads: Option<DownloadsField>,
     /// One job per workspace package: `true` for every package, or a
     /// filter. See [`crate::packages`].
     #[serde(default)]
@@ -231,6 +236,49 @@ pub struct Job {
     #[serde(default)]
     pub services: Option<Services>,
 }
+
+/// `downloads: [dist/app.tar.gz]`, or
+/// `downloads: { paths: [...], retention: 7d, when: always }`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Downloads {
+    /// Relative to the clone, or absolute; a directory keeps every file
+    /// the job wrote under it.
+    pub paths: Vec<String>,
+    /// How long they are kept, such as `7d` or `12h`. Default `30d`.
+    #[serde(default)]
+    pub retention: Option<String>,
+    /// `success` (the default), `failure` or `always`: which outcomes of
+    /// the job keep them.
+    #[serde(default)]
+    pub when: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for DownloadsField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        if value.is_sequence() {
+            serde_yaml_ng::from_value(value)
+                .map(|paths| {
+                    DownloadsField(Downloads {
+                        paths,
+                        ..Default::default()
+                    })
+                })
+                .map_err(serde::de::Error::custom)
+        } else {
+            serde_yaml_ng::from_value(value)
+                .map(DownloadsField)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
+/// [`Downloads`] as a job writes it: the list form or the full one.
+/// Deserialised by hand, like [`OneOrMany`], so a mistake inside the
+/// mapping is reported as itself.
+#[derive(Debug, Clone)]
+pub struct DownloadsField(pub Downloads);
 
 /// `packages: true`, or which packages a job runs in.
 #[derive(Debug, Clone)]

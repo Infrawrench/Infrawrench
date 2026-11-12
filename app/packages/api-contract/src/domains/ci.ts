@@ -39,10 +39,38 @@ export const CiJobSummarySchema = Schema.Struct({
 /** The run's live log: the runner's events as `event:` / `data:` frames. */
 const RunLogStream = Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/event-stream" }));
 
+export const CiDownloadSchema = Schema.Struct({
+  path: Schema.String.annotate({
+    description: "Where the job left it: relative to the clone when it is under it, else absolute.",
+  }),
+  size: Schema.Number,
+  sha256: Schema.String.annotate({
+    description: "Of the stored bytes; for a text file, after masking.",
+  }),
+  contentType: Schema.String,
+  expiresAt: IsoDateTime.annotate({ description: "When it stops being served and is deleted." }),
+  masked: Schema.Boolean.annotate({
+    description:
+      "A text file, with the run's secrets masked. `false` for a binary file, which is stored as the job left it.",
+  }),
+}).annotate({ identifier: "CiDownload" });
+
+export const CiDownloadLinkSchema = Schema.Struct({
+  url: Schema.String.annotate({
+    description: "Served by the CI proxy as an attachment; needs no other credential.",
+  }),
+  expiresAt: IsoDateTime,
+}).annotate({ identifier: "CiDownloadLink" });
+
 export const CiJobOutputSchema = Schema.Struct({
   ...CiJobSummarySchema.fields,
   stdout: Schema.String,
   stderr: Schema.String,
+  downloads: Schema.optionalKey(
+    Schema.Array(CiDownloadSchema).annotate({
+      description: "The files the job kept with `downloads:`. Absent when it kept none.",
+    }),
+  ),
 }).annotate({ identifier: "CiJobOutput" });
 
 export const CiRunSchema = Schema.Struct({
@@ -216,6 +244,26 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:read")
       .annotate(OpenApi.Summary, "A running CI run's log, streamed as SSE")
       .annotate(OpenApi.Exclude, true),
+    HttpApiEndpoint.get("downloadLink", "/runs/:runId/download", {
+      params: RunParams,
+      query: {
+        job: documentedAs(Schema.String).annotate({
+          description: "The job's id, as the run's `jobs` list it.",
+        }),
+        path: documentedAs(Schema.String).annotate({
+          description: "The file's `path`, as the job's `downloads` list it.",
+        }),
+      },
+      success: CiDownloadLinkSchema,
+      error: [NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "A short-lived link to a file a job kept for download")
+      .annotate(
+        OpenApi.Description,
+        "The link is signed for this one file for 15 minutes (less when the file expires sooner) and is served by the CI proxy, not this API.",
+      )
+      .annotate(SuccessDescription, "The link"),
     HttpApiEndpoint.post("approveRun", "/runs/:runId/approve", {
       params: RunParams,
       success: Ok,
@@ -323,7 +371,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
       error: NotFound,
     })
       .annotate(RequiredPermission, "ci:read")
-      .annotate(OpenApi.Summary, "CI usage in a month: runs, compute and cache storage")
+      .annotate(
+        OpenApi.Summary,
+        "CI usage in a month: runs, compute and storage (caches and downloads)",
+      )
       .annotate(SuccessDescription, "Usage"),
   )
   .prefix("/api/org/:orgId/ci")

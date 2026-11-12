@@ -327,6 +327,11 @@ app_env = {
   # must subscribe to "Push" and "Pull request", with "Checks: write".
   CI_PROXY_URL = "https://ci-proxy.example.com"
   CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
+  # Optional: signs the links a CI run's downloads (`downloads:`) are fetched
+  # from, straight from the proxy. The same value as the proxy's
+  # ARTIFACT_SIGNING_KEY Worker secret (`openssl rand -base64 32`). Without it
+  # runs list their downloads but cannot hand out a link to one.
+  CI_ARTIFACT_SIGNING_KEY = "<the proxy's ARTIFACT_SIGNING_KEY>"
   # Optional: billing CI. Each meter reports its unit (decimals allowed) and
   # its price carries the unit price; an unset pair goes unbilled.
   INFRAWRENCH_STRIPE_CI_VCPU_METER_EVENT    = "ci_vcpu_seconds"

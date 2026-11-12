@@ -8,28 +8,32 @@ once-a-minute Cron Trigger. It is not wired into the app yet.
 
 Runners stay stateless: reports, billing records and caches are in their
 shared object store, so the proxy keeps nothing about a run. Its only state
-is the schedule registry in D1.
+is the schedule registry in D1, and where its sweep of expired downloads
+has got to. It also serves jobs' downloads straight from the runners' R2
+bucket (below).
 
 ## Routes
 
-Every route but `/healthz` needs `Authorization: Bearer <PROXY_KEY>`.
+Every route but `/healthz` and `/v1/artifacts/...` needs
+`Authorization: Bearer <PROXY_KEY>`.
 
-| Route                                            | Does                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `GET /healthz`                                   | `200 ok`, unauthenticated.                                                     |
-| `GET`, `PUT /v1/runners`                         | The runners runs go to (below).                                                |
-| `GET /v1/capacity`                               | Each runner's slots and whether it answered, and the pool's totals.            |
-| `POST /v1/runs[?wait=true]`                      | A run on the runner with the most free slots. `429` only when every runner is. |
-| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`    | From the runner that has the run. Logs stream through as Server-Sent Events.   |
-| `POST /v1/prepare`                               | Warms a runner for a request, placed like a run.                               |
-| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`   | From any runner that answers; they all read the same store.                    |
-| `DELETE /v1/storage/{owner}/{repo-id}`           | Clears one repository's caches, on any runner that answers.                    |
-| `PUT /v1/schedules`                              | Registers a repository's scheduled pipelines (below).                          |
-| `GET /v1/schedules/{owner}`                      | An owner's registered repositories, their crons and the last refresh's error.  |
-| `DELETE /v1/schedules/{owner}/{repo-id}`         | Stops a repository's scheduled runs.                                           |
-| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets` | Secret names and when each was set; never values.                              |
-| `PUT`, `DELETE .../secrets/{name}`               | Sets (`{ "value": "..." }`) or removes a secret.                               |
-| `GET`, `PUT`, `DELETE .../vars[/{name}]`         | The same for variables, whose values are listed.                               |
+| Route                                                                 | Does                                                                              |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /healthz`                                                        | `200 ok`, unauthenticated.                                                        |
+| `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | A job's download, for a link the app signed (below); no bearer key.               |
+| `GET`, `PUT /v1/runners`                                              | The runners runs go to (below).                                                   |
+| `GET /v1/capacity`                                                    | Each runner's slots and whether it answered, and the pool's totals.               |
+| `POST /v1/runs[?wait=true]`                                           | A run on the runner with the most free slots. `429` only when every runner is.    |
+| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                         | From the runner that has the run. Logs stream through as Server-Sent Events.      |
+| `POST /v1/prepare`                                                    | Warms a runner for a request, placed like a run.                                  |
+| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                        | From any runner that answers; they all read the same store.                       |
+| `DELETE /v1/storage/{owner}/{repo-id}`                                | Clears one repository's caches (never its downloads), on any runner that answers. |
+| `PUT /v1/schedules`                                                   | Registers a repository's scheduled pipelines (below).                             |
+| `GET /v1/schedules/{owner}`                                           | An owner's registered repositories, their crons and the last refresh's error.     |
+| `DELETE /v1/schedules/{owner}/{repo-id}`                              | Stops a repository's scheduled runs.                                              |
+| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets`                      | Secret names and when each was set; never values.                                 |
+| `PUT`, `DELETE .../secrets/{name}`                                    | Sets (`{ "value": "..." }`) or removes a secret.                                  |
+| `GET`, `PUT`, `DELETE .../vars[/{name}]`                              | The same for variables, whose values are listed.                                  |
 
 Request bodies are the runner's (`ci-runner/README.md`, "HTTP API"). A run id
 is the runner's id prefixed with the runner's name (`ci-1.<32 hex>`), which
@@ -98,6 +102,39 @@ Every minute it:
 A minute in which every runner is full is recorded as `no-capacity` and not
 retried; the next due minute fires normally.
 
+## Downloads
+
+A job's `downloads:` (`ci-runner/README.md`, "Downloads") are objects in the
+runners' bucket, `artifacts/<owner>/<repo-id>/<run>/<expires>-<id>`, bound
+to this Worker as `ARTIFACTS`. The proxy serves them to browsers and deletes
+them once they expire; nothing about them passes through a runner or the
+app's servers, and nothing in the bucket is public.
+
+- **Links.** The app (`server-core/src/ci/downloads.ts`), after checking
+  that the person may read the run, signs a link with HMAC-SHA-256 under the
+  Worker secret `ARTIFACT_SIGNING_KEY` (its own `CI_ARTIFACT_SIGNING_KEY`,
+  the same value) over the owner, repository, run, object, file name (`n`)
+  and expiry (`e`). The proxy answers `403` for a signature that does not
+  match, which is what a link moved to another owner, repository, run or
+  file, a changed name or a later expiry all are; `410` once the link or the
+  file has expired; and `403` for a link signed for more than a day. The app
+  signs for 15 minutes. `src/__tests__/artifacts.test.ts` and server-core's
+  `downloads.test.ts` check the same vector.
+- **Serving.** The object streams from R2 with its content type,
+  `Content-Disposition: attachment` (with the file's name),
+  `X-Content-Type-Options: nosniff`, a `sandbox` CSP and `no-store`. One
+  `bytes=` range is answered with `206`; several are served whole. `HEAD`
+  answers the headers only.
+- **Sweeping.** Each Cron Trigger also lists up to three pages (3,000 keys)
+  of `artifacts/` from where the last tick stopped (the cursor is in D1,
+  `download_sweep`) and deletes the keys whose expiry has passed, which it
+  reads from the key itself. After a pass reaches the end it rests an hour.
+  A sweep that fails is logged and never holds up the schedules. The proxy
+  does this, rather than the runners, for the same reason it fires
+  schedules: a Cron Trigger runs once for the whole pool.
+- Without `ARTIFACTS` or `ARTIFACT_SIGNING_KEY`, download routes answer
+  `503` and nothing is swept; runs still keep their downloads.
+
 ## Billing
 
 The runners write a usage record per run to the store
@@ -114,11 +151,16 @@ pnpm --filter @infrawrench/ci-proxy exec wrangler d1 migrations apply infrawrenc
 pnpm --filter @infrawrench/ci-proxy exec wrangler secret put PROXY_KEY
 pnpm --filter @infrawrench/ci-proxy exec wrangler secret put RUNNER_KEY   # the runners' IWCI_SERVER_KEY
 head -c 32 /dev/urandom | base64 | pnpm --filter @infrawrench/ci-proxy exec wrangler secret put SECRETS_KEY
+# downloads: the same value goes in the app's CI_ARTIFACT_SIGNING_KEY
+head -c 32 /dev/urandom | base64 | tee /dev/stderr | pnpm --filter @infrawrench/ci-proxy exec wrangler secret put ARTIFACT_SIGNING_KEY
+# `r2_buckets` in wrangler.jsonc binds ARTIFACTS to the runners' bucket
+# (IWCI_R2_BUCKET, infrawrench-ci-runners); it must exist in the same account
 # set RUNNERS in wrangler.jsonc to the runners' base URLs, then:
 pnpm --filter @infrawrench/ci-proxy deploy
 ```
 
-For local development, put `PROXY_KEY`, `RUNNER_KEY` and `SECRETS_KEY` in `.dev.vars`
+For local development, put `PROXY_KEY`, `RUNNER_KEY`, `SECRETS_KEY` and
+`ARTIFACT_SIGNING_KEY` in `.dev.vars`
 (gitignored), apply the migrations with `--local`, and run
 `wrangler dev --test-scheduled`; `GET /__scheduled?cron=*+*+*+*+*` then
 fires a tick.
@@ -126,5 +168,5 @@ fires a tick.
 ## Checks
 
 `pnpm --filter @infrawrench/ci-proxy typecheck` and `... test`. The tests
-drive the routes and the tick against fake runners and an in-memory store,
-with no network.
+drive the routes, the tick and the sweep against fake runners, an in-memory
+store and an in-memory bucket, with no network.

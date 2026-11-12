@@ -113,6 +113,10 @@ function client() {
       deletedBytes: 3 * 1024 ** 2,
     })),
     streamRunLogs: vi.fn(async function* (): AsyncIterable<CiLogEvent> {}),
+    downloadLink: vi.fn(async () => ({
+      url: "https://ci-proxy.example/v1/artifacts/o/r/run/1-x?n=report.html&e=1&s=x",
+      expiresAt: "2026-11-09T10:15:00.000Z",
+    })),
   };
 }
 
@@ -315,6 +319,65 @@ describe("CiPanel", () => {
     );
     await waitFor(() => expect(screen.getByText("3.00 MiB")).toBeTruthy());
     expect(screen.queryByRole("button", { name: /Clear the cache/ })).toBeNull();
+  });
+
+  it("lists a finished run's downloads and starts one from a signed link", async () => {
+    const c = client();
+    const built: CiJobOutput = {
+      ...output("build", "Build", [], "built"),
+      downloads: [
+        {
+          path: "dist/report.html",
+          size: 2048,
+          sha256: "c".repeat(64),
+          contentType: "text/html; charset=utf-8",
+          expiresAt: "2099-12-01T00:00:00.000Z",
+          masked: true,
+        },
+        {
+          path: "dist/app.tar.gz",
+          size: 10,
+          sha256: "d".repeat(64),
+          contentType: "application/gzip",
+          expiresAt: "2000-01-01T00:00:00.000Z",
+          masked: false,
+        },
+      ],
+    };
+    c.getRun.mockResolvedValue({ run, jobs: [built, output("lint", "Lint", [], "ok")] });
+    const onDownloadUrl = vi.fn();
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={run.id}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+        onDownloadUrl={onDownloadUrl}
+      />,
+    );
+    // The run's summary lists every job's files.
+    await waitFor(() => expect(screen.getByText("dist/report.html")).toBeTruthy());
+    expect(screen.getByText("dist/app.tar.gz")).toBeTruthy();
+    expect(screen.getByText("Expired")).toBeTruthy();
+    expect(screen.getByText("Binary: stored as the job left it")).toBeTruthy();
+    const buttons = screen.getAllByRole("button", { name: "Download" });
+    // An expired file cannot be fetched.
+    expect((buttons[1] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(buttons[0]!);
+    await waitFor(() =>
+      expect(onDownloadUrl).toHaveBeenCalledWith(
+        "https://ci-proxy.example/v1/artifacts/o/r/run/1-x?n=report.html&e=1&s=x",
+      ),
+    );
+    expect(c.downloadLink).toHaveBeenCalledWith(run.id, "build", "dist/report.html");
+
+    // A job's own output lists its files too; a failed link says why.
+    c.downloadLink.mockRejectedValueOnce(new Error("That download has expired."));
+    fireEvent.click(screen.getAllByRole("button", { name: /Build/ })[0]!);
+    await waitFor(() => expect(screen.getByText("built")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "Download" })[0]!);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("expired"));
   });
 
   it("follows a running run's live log, once", async () => {

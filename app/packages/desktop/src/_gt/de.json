@@ -23064,5 +23064,12 @@
   "98481b7582fb7b1b": "Wiederholung",
   "219dc58be6e38948": "Wiederholung von Lauf {id}",
   "4b8ce84c53e423f0": "Ohne den Task-Cache",
-  "97c6fa38f36f3b90": "Wiederholt als Lauf {id}"
+  "97c6fa38f36f3b90": "Wiederholt als Lauf {id}",
+  "082fba71a7baa437": "Der Download konnte nicht gestartet werden",
+  "ca8d4e67b9b9e9bd": "Downloads",
+  "8e8ac592168ac505": "Aufbewahrt bis {date}",
+  "37d378961905c076": "Binär: gespeichert, wie der Job sie hinterlassen hat",
+  "2261b5f8db5349f3": "Speicher in GiB-Stunden",
+  "b406a107b240ab78": "Speicher aktuell",
+  "1e508135da849895": "Abgerechnet als Rechenleistung und Speicher (Caches und Downloads) auf der Rechnung Ihres Tarifs."
 }

@@ -128,6 +128,13 @@ pub const DEFAULT_CLONE_INTO: &str = "/app";
 pub const MAX_CACHES: usize = 16;
 /// The most paths one job's `artifacts:` may list.
 pub const MAX_ARTIFACT_PATHS: usize = 64;
+/// The most paths one job's `downloads:` may list.
+pub const MAX_DOWNLOAD_PATHS: usize = 64;
+/// How long downloads are kept unless `retention:` says.
+pub const DEFAULT_DOWNLOAD_RETENTION_SECS: u64 = 30 * 86_400;
+/// The longest `retention:` a pipeline may ask for. A runner may hold
+/// downloads to less (`--download-max-retention`).
+pub const MAX_DOWNLOAD_RETENTION_SECS: u64 = 365 * 86_400;
 
 /// Fills in every `${{ hashFiles('glob', ...) }}` left in a cache key, with
 /// `hash` turning a list of globs (relative to the clone) into a digest.
@@ -329,6 +336,8 @@ struct JobStatic {
     changes: ChangePolicy,
     /// The services that passed their checks, substituted per entry.
     services: Vec<ServiceStatic>,
+    /// `downloads:`' retention and `when:`, when it has any.
+    downloads: Option<(u64, DownloadWhen)>,
 }
 
 /// A service's parts that do not depend on the matrix entry.
@@ -1174,6 +1183,10 @@ impl Validator<'_> {
             Some(raw::Services::Map(services)) => self.services(path, services, timeout),
             _ => Vec::new(),
         };
+        let downloads = job
+            .downloads
+            .as_ref()
+            .map(|d| self.downloads(path, &d.0, job, workspace));
         JobStatic {
             tool,
             tools,
@@ -1181,7 +1194,72 @@ impl Validator<'_> {
             memory,
             changes,
             services,
+            downloads,
         }
+    }
+
+    /// Checks a job's `downloads:` and returns its retention and `when:`.
+    fn downloads(
+        &mut self,
+        path: &str,
+        downloads: &raw::Downloads,
+        job: &raw::Job,
+        workspace: &WorkspaceSpec,
+    ) -> (u64, DownloadWhen) {
+        let at = format!("{path}.downloads");
+        if downloads.paths.is_empty()
+            || downloads.paths.len() > MAX_DOWNLOAD_PATHS
+            || downloads.paths.iter().any(|p| p.trim().is_empty())
+        {
+            self.error(
+                format!("{at}.paths"),
+                format!("needs 1 to {MAX_DOWNLOAD_PATHS} non-empty paths"),
+            );
+        }
+        if workspace.clone.is_none() && downloads.paths.iter().any(|p| !p.starts_with('/')) {
+            self.error(
+                format!("{at}.paths"),
+                "a job without a clone can only keep absolute paths",
+            );
+        }
+        let retention = match &downloads.retention {
+            None => DEFAULT_DOWNLOAD_RETENTION_SECS,
+            Some(r) => match units::parse_duration_secs(r) {
+                Some(s) if (3600..=MAX_DOWNLOAD_RETENTION_SECS).contains(&s) => s,
+                Some(_) => {
+                    self.error(format!("{at}.retention"), "must be between 1h and 365d");
+                    DEFAULT_DOWNLOAD_RETENTION_SECS
+                }
+                None => {
+                    self.error(
+                        format!("{at}.retention"),
+                        format!("`{r}` is not a duration; use e.g. `12h`, `7d` or `30d`"),
+                    );
+                    DEFAULT_DOWNLOAD_RETENTION_SECS
+                }
+            },
+        };
+        let when = match &downloads.when {
+            None => DownloadWhen::Success,
+            Some(w) => DownloadWhen::parse(w).unwrap_or_else(|| {
+                self.error(
+                    format!("{at}.when"),
+                    format!("is `success`, `failure` or `always`, not `{w}`"),
+                );
+                DownloadWhen::Success
+            }),
+        };
+        // A hit does not run the job, so it would have nothing to upload.
+        if matches!(
+            job.task_cache,
+            Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))
+        ) {
+            self.error(
+                format!("{path}.task-cache"),
+                "a job with `downloads:` cannot be task-cached: a hit does not run it, so it would have nothing to upload",
+            );
+        }
+        (retention, when)
     }
 
     /// Checks a job's services (`workspace.services` already merged in)
@@ -1513,6 +1591,14 @@ impl Validator<'_> {
                 .iter()
                 .filter_map(|p| guest_path("artifacts", p, "keep"))
                 .collect();
+            let download_paths: Vec<String> = job
+                .downloads
+                .as_ref()
+                .map(|d| d.0.paths.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|p| guest_path("downloads", p, "download"))
+                .collect();
             let caches: Vec<CacheSpec> = job
                 .cache
                 .as_ref()
@@ -1642,6 +1728,11 @@ impl Validator<'_> {
                     memory_bytes: st.memory,
                     caches,
                     artifacts,
+                    downloads: st.downloads.map(|(retention_secs, when)| DownloadSpec {
+                        paths: download_paths,
+                        retention_secs,
+                        when,
+                    }),
                     network: job.network.unwrap_or(true),
                     package: package.clone(),
                     task_cache,

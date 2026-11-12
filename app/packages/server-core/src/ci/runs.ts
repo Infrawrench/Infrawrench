@@ -21,6 +21,8 @@
 import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   CI_RETRYABLE_STATUSES,
+  type CiDownload,
+  type CiDownloadLink,
   type CiJobOutput,
   type CiJobSummary,
   type CiRun,
@@ -42,6 +44,7 @@ import {
 } from "./job-checks.js";
 import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
+import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
 
 type CiRunRow = typeof ciRuns.$inferSelect;
@@ -381,11 +384,19 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
           ? { needs: job.needs }
           : {}),
       };
-      out.push(
-        withOutput
-          ? { ...summary, stdout: job.execution?.stdout ?? "", stderr: job.execution?.stderr ?? "" }
-          : summary,
-      );
+      if (!withOutput) {
+        out.push(summary);
+        continue;
+      }
+      const downloads = (Array.isArray(job.downloads) ? job.downloads : [])
+        .map(toDownload)
+        .filter((d): d is CiDownload => d !== null);
+      out.push({
+        ...summary,
+        stdout: job.execution?.stdout ?? "",
+        stderr: job.execution?.stderr ?? "",
+        ...(downloads.length > 0 ? { downloads } : {}),
+      });
     }
   }
   return out;
@@ -709,6 +720,49 @@ export async function getRun(organizationId: string, id: string): Promise<CiRunD
     }
   }
   return { run: toWire(row, retries.get(row.id) ?? null), jobs };
+}
+
+/**
+ * A link to one file a job of a finished run kept with `downloads:`, signed
+ * for the CI proxy to serve. The run must be the organization's; the file
+ * must be in the run's report, as the runner wrote it.
+ */
+export async function getDownloadLink(
+  organizationId: string,
+  id: string,
+  jobId: string,
+  path: string,
+): Promise<CiDownloadLink> {
+  const [row] = await db
+    .select()
+    .from(ciRuns)
+    .where(and(eq(ciRuns.id, id), eq(ciRuns.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw new CiInputError("No such run.", 404);
+  if (!row.proxyRunId || (row.status !== "passed" && row.status !== "failed")) {
+    throw new CiInputError("The run has not finished.", 409);
+  }
+  const run = await proxyJson<ProxyRun>(
+    `/v1/runs/${encodeURIComponent(row.proxyRunId)}?owner=${encodeURIComponent(row.ownerKey)}`,
+  ).catch((err: unknown) => {
+    throw err instanceof CiProxyError && err.status === 404
+      ? new CiInputError("The runners no longer have this run's report.", 404)
+      : err;
+  });
+  const download = (run.result?.pipelines ?? [])
+    .flatMap((p) => p.report?.jobs ?? [])
+    .filter((j) => j.id === jobId)
+    .flatMap((j) => j.downloads ?? [])
+    .find((d) => d.path === path);
+  if (!download) throw new CiInputError("No such download in this run.", 404);
+  // The proxy's id is `<runner>.<run>`; the files are under the runner's.
+  const runnerRunId = run.result?.run_id ?? row.proxyRunId.slice(row.proxyRunId.indexOf(".") + 1);
+  try {
+    return downloadLink(row.ownerKey, row.repoKey, runnerRunId, download);
+  } catch (err) {
+    if (err instanceof DownloadLinkError) throw new CiInputError(err.message, err.status);
+    throw err;
+  }
 }
 
 /**

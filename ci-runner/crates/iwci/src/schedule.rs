@@ -358,6 +358,9 @@ pub struct JobReport {
     /// One line per `cache:` entry: what was restored and saved.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<String>,
+    /// The files it kept for people to download (`downloads:`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub downloads: Vec<DownloadedFile>,
     /// Things the job should know that are not failures, such as a secret
     /// it reads that the run does not have.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -423,6 +426,9 @@ pub struct Options {
     /// is still computed and a pass still saves under it, so the next run
     /// that reads the task cache benefits.
     pub skip_task_cache: bool,
+    /// Where `downloads:` are kept; `None` keeps none, and a job that
+    /// asks says so in its notes.
+    pub downloads: Option<Arc<dyn Downloads>>,
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -520,6 +526,55 @@ pub trait Caches: Send + Sync {
         restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
     ) -> Result<(), String>;
+}
+
+/// A file a job left under its `downloads:` paths, ready to keep: masked
+/// already when it is text.
+#[derive(Debug, Clone)]
+pub struct PendingDownload {
+    /// Relative to the clone when it is under it, else absolute.
+    pub path: String,
+    pub data: Vec<u8>,
+    /// Text (UTF-8 without a NUL byte), whose secrets were masked.
+    pub masked: bool,
+}
+
+/// One file a job kept for people to download, as its report lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct DownloadedFile {
+    /// Relative to the clone when it is under it, else absolute.
+    pub path: String,
+    pub size: u64,
+    /// Of the bytes stored, which for text are the masked ones.
+    pub sha256: String,
+    pub content_type: String,
+    /// Unix seconds after which it is no longer served, and is deleted.
+    pub expires_at: u64,
+    /// The object it is stored as.
+    pub key: String,
+    /// A text file, with the run's secrets masked; `false` for a binary
+    /// one, uploaded as it was.
+    pub masked: bool,
+}
+
+/// Where `downloads:` go. An implementation decides the keys (the run's
+/// owner, repository and id) and holds the uploads to its limits and the
+/// owner's storage quota.
+pub trait Downloads: Send + Sync {
+    /// Keeps `files` of job `job` for `retention_secs`. Returns what it
+    /// kept, and a line for each file it did not and why.
+    fn upload(
+        &self,
+        job: &str,
+        files: Vec<PendingDownload>,
+        retention_secs: u64,
+    ) -> (Vec<DownloadedFile>, Vec<String>);
+}
+
+/// Text, for masking: valid UTF-8 without a NUL byte. Anything else is
+/// uploaded as it is.
+pub fn is_text(data: &[u8]) -> bool {
+    !data.contains(&0) && std::str::from_utf8(data).is_ok()
 }
 
 /// `hashFiles()`: a digest of the files under the clone matching `globs`,
@@ -1253,6 +1308,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         commit: None,
         outputs: BTreeMap::new(),
         caches: Vec::new(),
+        downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: 0,
         duration_ms: 0,
@@ -1698,26 +1754,7 @@ fn run_job<T: Tools>(
         // `changes` walks a directory, so a path naming one file would find
         // nothing: read every change once (only what the job wrote lives in
         // its upper layer) and keep those at or under an artifact path.
-        let wanted: Vec<&std::path::Path> = job
-            .artifacts
-            .iter()
-            .map(|p| std::path::Path::new(p.as_str()))
-            .collect();
-        let written: HashSet<PathBuf> = fs
-            .changes("/")
-            .into_iter()
-            .filter_map(|c| match c {
-                Change::Added { path, .. } | Change::Modified { path, .. } => Some(path),
-                Change::Deleted { .. } => None,
-            })
-            .filter(|p| wanted.iter().any(|w| p.starts_with(w)))
-            .filter(|p| !restored.contains(p))
-            .collect();
-        let entries: Vec<Entry> = fs
-            .entries_under(&job.artifacts)
-            .into_iter()
-            .filter(|e| matches!(e, Entry::File { path, .. } if written.contains(path)))
-            .collect();
+        let entries = written_under(&fs, &job.artifacts, &restored);
         let files = entries
             .iter()
             .filter(|e| matches!(e, Entry::File { .. }))
@@ -1747,6 +1784,58 @@ fn run_job<T: Tools>(
                 bytes.div_ceil(1024)
             ));
             *kept = entries;
+        }
+    }
+
+    // Keep the job's downloads, when its outcome is one they are kept for.
+    // Text is masked here, before anything leaves the job: a download is
+    // one more way a job's text gets out.
+    let mut downloads = Vec::new();
+    if let Some(spec) = &job.downloads
+        && spec.when.keeps(status == Status::Passed)
+    {
+        let files: Vec<PendingDownload> = written_under(&fs, &spec.paths, &restored)
+            .into_iter()
+            .filter_map(|e| match e {
+                Entry::File { path, data } => Some((path, data)),
+                _ => None,
+            })
+            .map(|(path, data)| {
+                let shown = match &root {
+                    Some(root) => path
+                        .strip_prefix(root)
+                        .map_or_else(|_| path.display().to_string(), |p| p.display().to_string()),
+                    None => path.display().to_string(),
+                };
+                let text = is_text(&data);
+                let data = if text {
+                    let text = std::str::from_utf8(&data).expect("checked by is_text");
+                    shared.mask.mask(text).into_bytes()
+                } else {
+                    data.to_vec()
+                };
+                PendingDownload {
+                    path: shown,
+                    data,
+                    masked: text,
+                }
+            })
+            .collect();
+        if files.is_empty() {
+            notes.push("downloads: nothing under its `downloads:` paths".into());
+        } else if let Some(store) = &options.downloads {
+            let count = files.len();
+            let (kept, problems) = store.upload(&job.id, files, spec.retention_secs);
+            let bytes: u64 = kept.iter().map(|f| f.size).sum();
+            notes.push(format!(
+                "downloads: kept {} of {count} file(s), {} KiB",
+                kept.len(),
+                bytes.div_ceil(1024)
+            ));
+            notes.extend(problems.into_iter().map(|p| format!("downloads: {p}")));
+            downloads = kept;
+        } else {
+            notes.push("downloads: this runner keeps no downloads".into());
         }
     }
 
@@ -1828,6 +1917,7 @@ fn run_job<T: Tools>(
         commit,
         outputs: outputs.unwrap_or_default(),
         caches: cache_lines,
+        downloads,
         notes,
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(started.elapsed()),
@@ -1835,6 +1925,33 @@ fn run_job<T: Tools>(
         cached: false,
         needs: Vec::new(),
     }
+}
+
+/// The files a job wrote at or under `paths`: added or changed, not the
+/// checkout's own files there and not the ones it was handed. `changes`
+/// walks a directory, so a path naming one file would find nothing: read
+/// every change once (only what the job wrote lives in its upper layer)
+/// and keep those at or under a path. Parents are created when the files
+/// are written.
+fn written_under(fs: &JobFs, paths: &[String], restored: &HashSet<PathBuf>) -> Vec<Entry> {
+    let wanted: Vec<&std::path::Path> = paths
+        .iter()
+        .map(|p| std::path::Path::new(p.as_str()))
+        .collect();
+    let written: HashSet<PathBuf> = fs
+        .changes("/")
+        .into_iter()
+        .filter_map(|c| match c {
+            Change::Added { path, .. } | Change::Modified { path, .. } => Some(path),
+            Change::Deleted { .. } => None,
+        })
+        .filter(|p| wanted.iter().any(|w| p.starts_with(w)))
+        .filter(|p| !restored.contains(p))
+        .collect();
+    fs.entries_under(paths)
+        .into_iter()
+        .filter(|e| matches!(e, Entry::File { path, .. } if written.contains(path)))
+        .collect()
 }
 
 /// Where a task cache entry keeps the run it stands for, beside the
@@ -2081,6 +2198,7 @@ fn replay(
             .map(|(k, v)| (k, shared.mask.mask(&v)))
             .collect(),
         caches: vec![format!("task cache `{}`: hit", short_key(key))],
+        downloads: Vec::new(),
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
@@ -2216,6 +2334,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         commit: None,
         outputs: BTreeMap::new(),
         caches: Vec::new(),
+        downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
         duration_ms: millis(elapsed),

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.103.0",
+    "version": "1.104.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -62978,6 +62978,24 @@
           "rejected"
         ]
       },
+      "CiDownloadLink": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Served by the CI proxy as an attachment; needs no other credential."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
       "CiRunDetail": {
         "type": "object",
         "properties": {
@@ -63065,6 +63083,13 @@
           },
           "stderr": {
             "type": "string"
+          },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiDownload"
+            },
+            "description": "The files the job kept with `downloads:`. Absent when it kept none."
           }
         },
         "required": [
@@ -63076,6 +63101,55 @@
           "durationMs",
           "stdout",
           "stderr"
+        ],
+        "additionalProperties": false
+      },
+      "CiDownload": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Where the job left it: relative to the clone when it is under it, else absolute."
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              }
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "description": "Of the stored bytes; for a text file, after masking."
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "When it stops being served and is deleted.",
+            "format": "date-time"
+          },
+          "masked": {
+            "type": "boolean",
+            "description": "A text file, with the run's secrets masked. `false` for a binary file, which is stored as the job left it."
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "sha256",
+          "contentType",
+          "expiresAt",
+          "masked"
         ],
         "additionalProperties": false
       },
@@ -125998,6 +126072,94 @@
         "description": "_Requires permission: `ci:read`._"
       }
     },
+    "/api/org/{orgId}/ci/runs/{runId}/download": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "job",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The job's id, as the run's `jobs` list it."
+            },
+            "required": true
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The file's `path`, as the job's `downloads` list it."
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiDownloadLink"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The link is signed for this one file for 15 minutes (less when the file expires sooner) and is served by the CI proxy, not this API.\n\n_Requires permission: `ci:read`._",
+        "summary": "A short-lived link to a file a job kept for download",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiRunsRunIdDownload"
+      }
+    },
     "/api/org/{orgId}/ci/runs/{runId}/approve": {
       "post": {
         "tags": [
@@ -126718,7 +126880,7 @@
             }
           }
         },
-        "summary": "CI usage in a month: runs, compute and cache storage",
+        "summary": "CI usage in a month: runs, compute and storage (caches and downloads)",
         "x-required-permission": "ci:read",
         "operationId": "getOrgOrgIdCiUsage",
         "description": "_Requires permission: `ci:read`._"

@@ -5,6 +5,7 @@ import {
   type CiAccount,
   type CiCacheCleared,
   type CiCaches,
+  type CiDownloadLink,
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
@@ -63,6 +64,10 @@ export function createWebCiClient(orgId: string): CiClient {
         if (event) yield event;
       }
     },
+    downloadLink: (id, jobId, path) =>
+      apiGet<CiDownloadLink>(
+        `${base}/runs/${encodeURIComponent(id)}/download?${new URLSearchParams({ job: jobId, path })}`,
+      ),
     approveRun: async (id) => {
       await apiPost(`${base}/runs/${encodeURIComponent(id)}/approve`);
     },

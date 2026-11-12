@@ -23065,5 +23065,12 @@
   "98481b7582fb7b1b": "relance",
   "219dc58be6e38948": "Relance de l'exécution {id}",
   "4b8ce84c53e423f0": "Sans le cache de tâches",
-  "97c6fa38f36f3b90": "Relancée sous l'exécution {id}"
+  "97c6fa38f36f3b90": "Relancée sous l'exécution {id}",
+  "082fba71a7baa437": "Le téléchargement n'a pas pu démarrer",
+  "ca8d4e67b9b9e9bd": "Téléchargements",
+  "8e8ac592168ac505": "Conservé jusqu'au {date}",
+  "37d378961905c076": "Binaire : stocké tel que la tâche l'a laissé",
+  "2261b5f8db5349f3": "Stockage en Gio-heures",
+  "b406a107b240ab78": "Stockage actuel",
+  "1e508135da849895": "Facturé en calcul et en stockage (caches et téléchargements) sur la facture de votre forfait."
 }

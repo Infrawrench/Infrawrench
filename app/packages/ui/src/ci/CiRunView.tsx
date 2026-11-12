@@ -11,6 +11,7 @@ import {
   type CiLogEvent,
   type CiRun,
 } from "@infrawrench/client-core";
+import { CiDownloadList, type CiDownloadFn, type CiDownloadRow } from "./CiDownloads.js";
 import { CiRunGraph } from "./CiRunGraph.js";
 import { CiStatusIcon } from "./CiStatusIcon.js";
 import { formatDuration } from "./format.js";
@@ -304,12 +305,14 @@ function JobLog({
   live,
   truncated,
   now,
+  onDownload,
 }: {
   job: GraphJob;
   output: CiJobOutput | null;
   live: CiLiveRun | null;
   truncated: boolean;
   now: number;
+  onDownload: CiDownloadFn | undefined;
 }) {
   const gt = useGT();
   const liveJob = live?.jobs[ciLiveJobKey(job.pipeline, job.id)] ?? null;
@@ -332,6 +335,19 @@ function JobLog({
         <p className="border-b border-border px-4 py-2 text-xs text-on-surface-muted">
           {output.reason}
         </p>
+      ) : null}
+      {onDownload && output?.downloads?.length ? (
+        <div className="border-b border-border p-3">
+          <CiDownloadList
+            rows={output.downloads.map((file) => ({
+              jobId: output.id,
+              jobName: output.name,
+              file,
+            }))}
+            showJob={false}
+            onDownload={onDownload}
+          />
+        </div>
       ) : null}
       {truncated && lines ? (
         <p className="border-b border-border px-4 py-2 text-xs text-warning">
@@ -385,12 +401,15 @@ export function CiRunView({
   jobs,
   live,
   liveError,
+  onDownload,
 }: {
   run: CiRun;
   /** A finished run's jobs, with their output when it could be read. */
   jobs: readonly (CiJobOutput | CiJobSummary)[] | null;
   live: CiLiveRun | null;
   liveError: string | null;
+  /** Starts a download of a file a job kept; without it none are listed. */
+  onDownload?: CiDownloadFn | undefined;
 }) {
   const gt = useGT();
   const [selected, setSelected] = useState<Selection | null>(null);
@@ -416,6 +435,16 @@ export function CiRunView({
       ? ((jobs.find((j) => j.pipeline === selectedJob.pipeline && j.id === selectedJob.id) as
           CiJobOutput | undefined) ?? null)
       : null;
+  // Every job's downloads, for the run's summary.
+  const downloads = useMemo<CiDownloadRow[]>(
+    () =>
+      (jobs ?? []).flatMap((j) =>
+        "downloads" in j && j.downloads
+          ? j.downloads.map((file) => ({ jobId: j.id, jobName: j.name, file }))
+          : [],
+      ),
+    [jobs],
+  );
   const subtitle =
     run.event === "pull-request"
       ? gt("On: pull request #{number}", { number: String(run.pullNumber ?? "") })
@@ -442,23 +471,29 @@ export function CiRunView({
             live={live}
             truncated={live?.truncated ?? false}
             now={now}
+            onDownload={onDownload}
           />
         ) : pipelines.length === 0 ? (
           <p role="status" className="text-xs text-on-surface-faint">
             {running ? gt("Waiting for the runner to start the pipelines…") : gt("No jobs ran.")}
           </p>
         ) : (
-          pipelines.map((pipeline) => (
-            <CiRunGraph
-              key={pipeline.name}
-              title={pipeline.name}
-              subtitle={subtitle}
-              jobs={pipeline.jobs}
-              selected={selected?.pipeline === pipeline.name ? selected.id : null}
-              now={now}
-              onSelect={(job) => setSelected({ pipeline: job.pipeline, id: job.id })}
-            />
-          ))
+          <>
+            {pipelines.map((pipeline) => (
+              <CiRunGraph
+                key={pipeline.name}
+                title={pipeline.name}
+                subtitle={subtitle}
+                jobs={pipeline.jobs}
+                selected={selected?.pipeline === pipeline.name ? selected.id : null}
+                now={now}
+                onSelect={(job) => setSelected({ pipeline: job.pipeline, id: job.id })}
+              />
+            ))}
+            {onDownload ? (
+              <CiDownloadList rows={downloads} showJob onDownload={onDownload} />
+            ) : null}
+          </>
         )}
       </div>
     </div>

@@ -8,8 +8,9 @@
  *   charged its wall time at its share of a vCPU, as the runner reports).
  * - `INFRAWRENCH_STRIPE_CI_MEMORY_METER_EVENT`: GiB-seconds of memory
  *   reserved per run.
- * - `INFRAWRENCH_STRIPE_CI_STORAGE_METER_EVENT`: GiB-hours of cache storage,
- *   sampled from the runners once an hour per GitHub account.
+ * - `INFRAWRENCH_STRIPE_CI_STORAGE_METER_EVENT`: GiB-hours of storage (job
+ *   caches and unexpired downloads; the runners' `used_bytes`), sampled from
+ *   the runners once an hour per GitHub account.
  *
  * Unlike the build meter, nothing is fire-and-forget: the poller pass sends
  * what has not been sent yet (`usage_reported_at` / `reported_at` null),
@@ -161,7 +162,7 @@ function hourStart(at: Date): Date {
   return d;
 }
 
-/** Records this hour's cache storage for every GitHub account that runs CI. */
+/** Records this hour's storage (caches and downloads) for every GitHub account that runs CI. */
 export async function sampleStorage(): Promise<number> {
   if (!meter("STORAGE")) return 0;
   const hour = hourStart(new Date());

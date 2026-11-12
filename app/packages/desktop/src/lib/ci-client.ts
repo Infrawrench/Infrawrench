@@ -6,6 +6,7 @@ import {
   type CiAccount,
   type CiCacheCleared,
   type CiCaches,
+  type CiDownloadLink,
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
@@ -126,6 +127,8 @@ export function createDesktopCiClient(): CiClient {
     getRun: (runId): Promise<CiRunDetail> =>
       runRpc(ci().getRun({ params: { orgId: requireOrgId(), runId } })),
     streamRunLogs: (runId, signal) => streamRunLogs(requireOrgId(), runId, signal),
+    downloadLink: (runId, job, path): Promise<CiDownloadLink> =>
+      runRpc(ci().downloadLink({ params: { orgId: requireOrgId(), runId }, query: { job, path } })),
     approveRun: async (runId) => {
       await runRpc(ci().approveRun({ params: { orgId: requireOrgId(), runId } }));
     },

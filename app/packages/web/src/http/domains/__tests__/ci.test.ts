@@ -38,6 +38,7 @@ const mockReject = vi.fn();
 const mockDispatch = vi.fn();
 const mockOpenLogs = vi.fn();
 const mockRetry = vi.fn();
+const mockDownloadLink = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
   openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
   CiInputError: FakeCiInputError,
@@ -47,6 +48,7 @@ vi.mock("@infrawrench/server-core/ci/runs", () => ({
   rejectRun: (...a: unknown[]) => mockReject(...a),
   dispatchRun: (...a: unknown[]) => mockDispatch(...a),
   retryRun: (...a: unknown[]) => mockRetry(...a),
+  getDownloadLink: (...a: unknown[]) => mockDownloadLink(...a),
 }));
 const mockListCaches = vi.fn();
 const mockClearCache = vi.fn();
@@ -141,6 +143,36 @@ describe("CI routes", () => {
     );
     const finished = await app().request(`/runs/${RUN}/logs`);
     expect(finished.status).toBe(409);
+  });
+
+  it("hands out a download link under ci:read, and says why it cannot", async () => {
+    const link = {
+      url: "https://ci-proxy.example/v1/artifacts/o/r/run/1-x?n=a.txt&e=1&s=x",
+      expiresAt: "2026-11-12T10:15:00.000Z",
+    };
+    mockDownloadLink.mockResolvedValue(link);
+    const q = new URLSearchParams({ job: "build[app/web]", path: "dist/report é.html" });
+    const res = await app(["ci:read"]).request(`/runs/${RUN}/download?${q}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(link);
+    expect(mockDownloadLink).toHaveBeenCalledWith(
+      "org-1",
+      RUN,
+      "build[app/web]",
+      "dist/report é.html",
+    );
+
+    expect((await app([]).request(`/runs/${RUN}/download?${q}`)).status).toBe(403);
+    // Both are needed.
+    expect((await app().request(`/runs/${RUN}/download?job=a`)).status).toBe(400);
+    mockDownloadLink.mockRejectedValue(new FakeCiInputError("No such download in this run.", 404));
+    expect((await app().request(`/runs/${RUN}/download?${q}`)).status).toBe(404);
+    mockDownloadLink.mockRejectedValue(
+      new FakeCiInputError("Downloads are not set up on this server.", 409),
+    );
+    const unset = await app().request(`/runs/${RUN}/download?${q}`);
+    expect(unset.status).toBe(409);
+    expect(await unset.json()).toEqual({ error: "Downloads are not set up on this server." });
   });
 
   it("answers a decision on a run that is not waiting as 409", async () => {

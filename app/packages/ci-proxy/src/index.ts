@@ -3,10 +3,12 @@
 
 import type {
   D1Database,
+  R2Bucket,
   Request as WorkerRequest,
   ScheduledController,
 } from "@cloudflare/workers-types/index";
 import { handle, tick, type Deps } from "./app";
+import { D1SweepState, sweepDownloads, type ArtifactBucket } from "./artifacts";
 import { Pool, parseRunnerList } from "./pool";
 import { D1RunnerList } from "./runners";
 import { D1Store } from "./store";
@@ -22,6 +24,10 @@ export interface Env {
   RUNNER_KEY: string;
   /** 32 random bytes, base64: seals stored secrets (a secret; optional). */
   SECRETS_KEY?: string;
+  /** The runners' bucket, where jobs' downloads are (an R2 binding). */
+  ARTIFACTS?: R2Bucket;
+  /** Signs download links, shared with the app's CI_ARTIFACT_SIGNING_KEY (a secret). */
+  ARTIFACT_SIGNING_KEY?: string;
 }
 
 async function deps(env: Env): Promise<Deps> {
@@ -36,6 +42,17 @@ async function deps(env: Env): Promise<Deps> {
     secretsKey: await secretsKey(env.SECRETS_KEY),
     proxyKey: env.PROXY_KEY,
     now: () => Math.floor(Date.now() / 1000),
+    ...(env.ARTIFACTS
+      ? {
+          downloads: {
+            // The binding has more overloads than downloads use; the
+            // interface is the part of it they read.
+            bucket: env.ARTIFACTS as unknown as ArtifactBucket,
+            key: env.ARTIFACT_SIGNING_KEY ?? null,
+            sweep: new D1SweepState(env.DB),
+          },
+        }
+      : {}),
   };
 }
 
@@ -58,7 +75,23 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    const result = await tick(await deps(env), Math.floor(controller.scheduledTime / 1000));
+    const built = await deps(env);
+    const now = Math.floor(controller.scheduledTime / 1000);
+    // Schedules first; a sweep that fails never holds them up.
+    const result = await tick(built, now);
     console.log(JSON.stringify({ event: "tick", cron: controller.cron, ...result }));
+    if (built.downloads) {
+      try {
+        const swept = await sweepDownloads(built.downloads, now);
+        if (!swept.skipped) console.log(JSON.stringify({ event: "sweep", ...swept }));
+      } catch (e) {
+        console.error(
+          JSON.stringify({
+            event: "sweep-error",
+            message: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
+    }
   },
 };

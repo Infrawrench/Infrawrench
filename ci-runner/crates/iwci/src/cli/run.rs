@@ -9,6 +9,8 @@
 //!          [--store <dir>] [--cache <dir>] [--author "Name <email>"]
 //!          [--keep-installs-unpacked 24h] [--var NAME=value]...
 //!          [--no-task-cache]
+//!          [--download-max-file 256MiB] [--download-max-run 1GiB]
+//!          [--download-max-retention 90d]
 //! ```
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
@@ -22,11 +24,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 use super::{Args, style};
+use crate::adapters::downloads::DownloadLimits;
 use crate::runner::{PIPELINE_DIR, PipelineOutput, RunRequest, Runner};
 use crate::schedule::{self, RunReport, Status};
 
 #[derive(Serialize)]
 struct Output<'a> {
+    run_id: &'a str,
     commit: &'a str,
     pipelines: &'a [PipelineOutput],
 }
@@ -137,6 +141,7 @@ pub(super) fn open_runner(
     )?;
     let cache = super::cache_dir(args)?;
     let store = super::store::open(args, &cache)?;
+    let download_limits = download_limits(args)?;
     // How long a cached install stays unpacked on disk after its last use
     // before it is packed (`iwci_deps::cache`).
     let keep_unpacked = match args.value("--keep-installs-unpacked")? {
@@ -171,7 +176,37 @@ pub(super) fn open_runner(
             .map(|m| Arc::new(schedule::MemoryBudget::new(m))),
         author,
         default_storage_quota,
+        download_limits,
     })
+}
+
+/// What `downloads:` may keep on this runner.
+fn download_limits(args: &mut Args) -> Result<DownloadLimits, String> {
+    let mut limits = DownloadLimits::default();
+    let size = |flag: &str, text: String, max: u64| {
+        iwci_spec::parse_size(&text)
+            .filter(|&b| b > 0 && b <= max)
+            .ok_or_else(|| {
+                format!(
+                    "{flag} takes a size up to {} MiB, such as `100MiB`, not `{text}`",
+                    max >> 20
+                )
+            })
+    };
+    if let Some(text) = args.value("--download-max-file")? {
+        limits.max_file = size("--download-max-file", text, iwci_store::MAX_OBJECT_SIZE)?;
+    }
+    if let Some(text) = args.value("--download-max-run")? {
+        limits.max_run = size("--download-max-run", text, 1 << 40)?;
+    }
+    if let Some(text) = args.value("--download-max-retention")? {
+        limits.max_retention_secs = iwci_spec::parse_duration_secs(&text)
+            .filter(|s| (3600..=iwci_spec::MAX_DOWNLOAD_RETENTION_SECS).contains(s))
+            .ok_or_else(|| {
+                format!("--download-max-retention takes a duration from 1h to 365d, such as `90d`, not `{text}`")
+            })?;
+    }
+    Ok(limits)
 }
 
 pub fn run(mut args: Args) -> Result<ExitCode, String> {
@@ -234,6 +269,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
     runner.layers.compact();
     if json {
         let out = Output {
+            run_id: &output.run_id,
             commit: &output.commit,
             pipelines: &output.pipelines,
         };
@@ -308,6 +344,14 @@ fn print_report(report: &RunReport) {
         );
         for line in &job.caches {
             println!("       {}", style::dim(line));
+        }
+        for file in &job.downloads {
+            println!(
+                "       {} {} {}",
+                style::dim("download:"),
+                file.path,
+                style::dim(&format!("{} bytes, {}", file.size, file.key))
+            );
         }
         if let Some(commit) = &job.commit {
             println!("       {} {commit}", style::dim("committed its changes as"));

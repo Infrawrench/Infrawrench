@@ -1,4 +1,4 @@
-//! `90s`, `10m`, `1h30m` and `512MiB`, `4GiB`.
+//! `90s`, `10m`, `1h30m`, `7d` and `512MiB`, `4GiB`.
 
 pub(crate) fn parse_duration_secs(text: &str) -> Option<u64> {
     let mut total: u64 = 0;
@@ -13,6 +13,7 @@ pub(crate) fn parse_duration_secs(text: &str) -> Option<u64> {
             's' => 1,
             'm' => 60,
             'h' => 3600,
+            'd' => 86_400,
             _ => return None,
         };
         let n: u64 = digits.parse().ok()?;
