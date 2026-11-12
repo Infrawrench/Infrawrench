@@ -59,7 +59,7 @@ use wasmer_wasix::{
 use webc::Container;
 
 use crate::background::Services;
-use crate::cache::{ModuleStore, WasixCache, WasmHash};
+use crate::cache::{Generation, ModuleStore, WasixCache, WasmHash};
 use crate::capture::Capture;
 use crate::limits::LimitingTunables;
 use crate::stall::{CpuMeter, JobTasks, StallWatch};
@@ -105,10 +105,12 @@ pub(crate) struct WasixShared {
     pub(crate) tasks: Arc<dyn VirtualTaskManager>,
     /// Parsed packages, keyed by the webc digest and the digests of the set
     /// they were resolved against (a package's dependencies come from that
-    /// set).
-    packages: Mutex<HashMap<(WebcHash, Vec<WebcHash>), BinaryPackage>>,
-    /// Parsed containers by webc digest.
-    containers: Mutex<HashMap<WebcHash, (PackageSummary, Container)>>,
+    /// set). Only while a job uses them and for [`KEEP_PARSED`] after: they
+    /// hold the webc's bytes, and an environment can be hundreds of
+    /// megabytes (#1035).
+    packages: Recent<(WebcHash, Vec<WebcHash>), BinaryPackage>,
+    /// Parsed containers by webc digest, kept the same way.
+    containers: Recent<WebcHash, Parsed>,
     /// The host network jobs reach the public internet through, when
     /// offered (`Runtime::with_internet`).
     pub(crate) outside: Option<crate::network::Outside>,
@@ -119,10 +121,57 @@ impl WasixShared {
         Self {
             store,
             tasks,
-            packages: Mutex::default(),
-            containers: Mutex::default(),
+            packages: Recent::default(),
+            containers: Recent::default(),
             outside: None,
         }
+    }
+
+    /// Drops parsed packages no job has used for [`KEEP_PARSED`].
+    pub(crate) fn release_idle(&self) {
+        self.packages.expire();
+        self.containers.expire();
+    }
+}
+
+/// A parsed webc: its summary and container.
+type Parsed = (PackageSummary, Container);
+
+/// How long a parsed package stays in memory after the last job that used
+/// it, so the next job of a busy runner does not parse it again.
+pub(crate) const KEEP_PARSED: Duration = Duration::from_secs(120);
+
+/// Values kept while a job holds them (another reference than the map's)
+/// and for [`KEEP_PARSED`] after they were last used.
+struct Recent<K, V>(Mutex<HashMap<K, (Arc<V>, Instant)>>);
+
+impl<K, V> Default for Recent<K, V> {
+    fn default() -> Self {
+        Self(Mutex::default())
+    }
+}
+
+impl<K: Eq + std::hash::Hash, V> Recent<K, V> {
+    fn map(&self) -> std::sync::MutexGuard<'_, HashMap<K, (Arc<V>, Instant)>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn get(&self, key: &K) -> Option<Arc<V>> {
+        let mut map = self.map();
+        let (value, used) = map.get_mut(key)?;
+        *used = Instant::now();
+        Some(value.clone())
+    }
+
+    fn insert(&self, key: K, value: &Arc<V>) {
+        self.expire();
+        self.map().insert(key, (value.clone(), Instant::now()));
+    }
+
+    fn expire(&self) {
+        self.map().retain(|_, (value, used)| {
+            Arc::strong_count(value) > 1 || used.elapsed() < KEEP_PARSED
+        });
     }
 }
 
@@ -163,13 +212,17 @@ pub(crate) struct JobRuntime {
     control: Arc<JobControl>,
     /// The module store, to say when a module is being loaded (stall.rs).
     modules: Arc<ModuleStore>,
+    /// The generation every module of the job is loaded into (cache.rs).
+    generation: Generation,
     /// What the job listens on, for `wait-for-port` (services.rs).
     listeners: crate::network::Listeners,
 }
 
 impl JobRuntime {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         shared: &WasixShared,
+        generation: &Generation,
         engine: Engine,
         packages: Option<&PackageSet>,
         #[cfg_attr(not(feature = "node"), allow(unused_variables))] node: Option<
@@ -191,7 +244,7 @@ impl JobRuntime {
         let listeners = network.listeners();
         inner.set_networking_implementation(network);
         inner.http_client = None;
-        inner.set_module_cache(WasixCache(shared.store.clone()));
+        inner.set_module_cache(WasixCache(shared.store.clone(), generation.clone()));
         let packages = packages.cloned().unwrap_or_default();
         inner.set_source(packages.source.clone());
         inner.set_package_loader(packages);
@@ -203,6 +256,7 @@ impl JobRuntime {
             inner,
             control: Arc::default(),
             modules: shared.store.clone(),
+            generation: generation.clone(),
             listeners,
         }
     }
@@ -211,7 +265,17 @@ impl JobRuntime {
 #[cfg(test)]
 impl JobRuntime {
     pub(crate) fn for_tests(shared: &WasixShared, engine: Engine) -> Self {
-        Self::new(shared, engine, None, None, false, Arc::default(), &[])
+        let generation = shared.store.generation();
+        Self::new(
+            shared,
+            &generation,
+            engine,
+            None,
+            None,
+            false,
+            Arc::default(),
+            &[],
+        )
     }
 }
 
@@ -265,10 +329,12 @@ impl WasixRuntime for JobRuntime {
                     .as_bytes()
                     .try_into()
                     .map_err(|_| SpawnError::Other("a module hash that is not a sha256".into()))?;
-                self.modules.get(key, input.wasm()).map_err(|e| match e {
-                    Error::Compile(error) => SpawnError::CompileError { module_hash, error },
-                    other => SpawnError::Other(Box::new(other)),
-                })
+                self.modules
+                    .get(&self.generation, key, input.wasm())
+                    .map_err(|e| match e {
+                        Error::Compile(error) => SpawnError::CompileError { module_hash, error },
+                        other => SpawnError::Other(Box::new(other)),
+                    })
             });
         }
         let load = self.inner.resolve_module(input, engine, on_progress);
@@ -345,24 +411,37 @@ pub(crate) struct PackageSet {
     source: InMemorySource,
     containers: Arc<HashMap<WebcHash, Container>>,
     order: Vec<(WebcHash, Container)>,
+    /// What this set holds in the shared caches, so another job using the
+    /// same packages meanwhile parses nothing again.
+    _parsed: Vec<Arc<Parsed>>,
+    binaries: Arc<Mutex<Vec<Arc<BinaryPackage>>>>,
+    /// Whether what it parses is kept for later jobs; warming parses every
+    /// environment and keeps none (#1035).
+    remember: bool,
 }
 
 impl PackageSet {
-    fn new(shared: &WasixShared, packages: &[WebcPackage]) -> Result<Self> {
+    fn new(shared: &WasixShared, packages: &[WebcPackage], remember: bool) -> Result<Self> {
         let mut source = InMemorySource::new();
         let mut containers = HashMap::new();
         let mut order = Vec::new();
+        let mut parsed = Vec::new();
         for package in packages {
-            let (summary, container) = parse_package(shared, package)?;
+            let held = parse_package(shared, package, remember)?;
+            let (summary, container) = &*held;
             let hash = summary.dist.webc_sha256;
-            source.add(summary);
+            source.add(summary.clone());
             containers.insert(hash, container.clone());
-            order.push((hash, container));
+            order.push((hash, container.clone()));
+            parsed.push(held);
         }
         Ok(Self {
             source,
             containers: Arc::new(containers),
             order,
+            _parsed: parsed,
+            binaries: Arc::default(),
+            remember,
         })
     }
 
@@ -397,21 +476,17 @@ impl PackageLoader for PackageSet {
     }
 }
 
-/// The summary and container of `package`, parsed once per runtime. The
-/// container borrows the caller's bytes rather than copying them, which
-/// matters for an 80 MB Edge.js.
+/// The summary and container of `package`, parsed once while any job uses
+/// it. The container borrows the caller's bytes rather than copying them,
+/// which matters for an 80 MB Edge.js.
 fn parse_package(
     shared: &WasixShared,
     package: &WebcPackage,
-) -> Result<(PackageSummary, Container)> {
+    remember: bool,
+) -> Result<Arc<Parsed>> {
     let hash = WebcHash::from_bytes(package.sha256);
-    if let Some(parsed) = shared
-        .containers
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(&hash)
-    {
-        return Ok(parsed.clone());
+    if let Some(parsed) = shared.containers.get(&hash) {
+        return Ok(parsed);
     }
     let bad = |reason: String| Error::Package {
         name: format!("{}@{}", package.name, package.version),
@@ -454,12 +529,11 @@ fn parse_package(
             webc_sha256: hash,
         },
     };
-    shared
-        .containers
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(hash, (summary.clone(), container.clone()));
-    Ok((summary, container))
+    let parsed = Arc::new((summary, container));
+    if remember {
+        shared.containers.insert(hash, &parsed);
+    }
+    Ok(parsed)
 }
 
 /// Where an environment job finds the runner's support files for Node.
@@ -672,6 +746,8 @@ pub(crate) struct Caps {
 /// job's files.
 pub(crate) struct Starter<'a> {
     pub(crate) shared: &'a WasixShared,
+    /// The job's generation, which its services load their modules into.
+    pub(crate) generation: &'a Generation,
     pub(crate) tokio: &'a tokio::runtime::Runtime,
     pub(crate) runtime: &'a Arc<dyn WasixRuntime + Send + Sync>,
     pub(crate) fs: &'a crate::DynFs,
@@ -796,10 +872,11 @@ impl Starter<'_> {
         packages: &[WebcPackage],
         env: &[(String, String)],
     ) -> Result<Vec<BinaryPackage>> {
-        let set = PackageSet::new(self.shared, packages)?;
+        let set = PackageSet::new(self.shared, packages, true)?;
         let loader = JobRuntime::new(
             self.shared,
-            self.shared.store.engine().clone(),
+            self.generation,
+            self.generation.engine().clone(),
             Some(&set),
             None,
             false,
@@ -813,9 +890,11 @@ impl Starter<'_> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run(
     shared: &WasixShared,
     tokio: &tokio::runtime::Runtime,
+    generation: &Generation,
     entry: Entry<'_>,
     program_name: &str,
     inv: Invocation,
@@ -827,11 +906,11 @@ pub(crate) fn run(
     let _enter = tokio.enter();
 
     let (engine, hit_memory) =
-        job_engine(shared.store.engine(), inv.limits.memory_bytes, WASIX_STACK);
+        job_engine(generation.engine(), inv.limits.memory_bytes, WASIX_STACK);
 
     let package_set = match &entry {
         Entry::Module(_) => None,
-        Entry::Command { packages, .. } => Some(PackageSet::new(shared, packages)?),
+        Entry::Command { packages, .. } => Some(PackageSet::new(shared, packages, true)?),
     };
     let cpu = Arc::new(CpuMeter::default());
     // This thread works for the job too: it loads the job's packages and
@@ -840,6 +919,7 @@ pub(crate) fn run(
     let service_names: Vec<String> = inv.services.iter().map(|s| s.name.clone()).collect();
     let runtime = JobRuntime::new(
         shared,
+        generation,
         engine,
         package_set.as_ref(),
         node,
@@ -877,6 +957,7 @@ pub(crate) fn run(
 
     let starter = Starter {
         shared,
+        generation,
         tokio,
         runtime: &runtime,
         fs: &inv.fs,
@@ -1108,18 +1189,21 @@ enum Stop {
     OutOfMemory,
 }
 
-/// Compiles every command of `packages` into the module cache, so the
-/// first script that spawns one does not spend its timeout compiling.
+/// Compiles every command of `packages` into the disk cache, so the first
+/// script that spawns one does not spend its timeout compiling. Nothing
+/// stays in memory: not the modules, nor the parsed packages.
 pub(crate) fn prepare(
     shared: &WasixShared,
     tokio: &tokio::runtime::Runtime,
     packages: &[WebcPackage],
 ) -> Result<()> {
     let _enter = tokio.enter();
-    let set = PackageSet::new(shared, packages)?;
+    let set = PackageSet::new(shared, packages, false)?;
+    let generation = shared.store.generation();
     let runtime = JobRuntime::new(
         shared,
-        shared.store.engine().clone(),
+        &generation,
+        generation.engine().clone(),
         Some(&set),
         None,
         false,
@@ -1130,8 +1214,17 @@ pub(crate) fn prepare(
     for package in binary_packages(shared, &set, &runtime, tokio)? {
         for command in &package.commands {
             let input = ModuleInput::Command(Cow::Borrowed(command));
-            tokio
-                .block_on(runtime.resolve_module(input, None, None))
+            let key: WasmHash = input
+                .hash()
+                .as_bytes()
+                .try_into()
+                .map_err(|_| Error::Package {
+                    name: format!("{} ({})", package.id, command.name()),
+                    reason: "a module hash that is not a sha256".into(),
+                })?;
+            shared
+                .store
+                .ensure_compiled(key, input.wasm())
                 .map_err(|e| Error::Package {
                     name: format!("{} ({})", package.id, command.name()),
                     reason: e.to_string(),
@@ -1236,30 +1329,28 @@ fn binary_packages(
     let mut out = Vec::new();
     for (hash, container) in &set.order {
         let key = (*hash, digests.clone());
-        let cached = shared
-            .packages
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&key)
-            .cloned();
-        let package = match cached {
+        let package = match shared.packages.get(&key) {
             Some(package) => package,
             None => {
-                let package = tokio
-                    .block_on(BinaryPackage::from_webc(container, runtime.as_ref()))
-                    .map_err(|e| Error::Package {
-                        name: hash.as_hex(),
-                        reason: format!("{e:#}"),
-                    })?;
-                shared
-                    .packages
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(key, package.clone());
+                let package = Arc::new(
+                    tokio
+                        .block_on(BinaryPackage::from_webc(container, runtime.as_ref()))
+                        .map_err(|e| Error::Package {
+                            name: hash.as_hex(),
+                            reason: format!("{e:#}"),
+                        })?,
+                );
+                if set.remember {
+                    shared.packages.insert(key, &package);
+                }
                 package
             }
         };
-        out.push(package);
+        out.push(BinaryPackage::clone(&package));
+        set.binaries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(package);
     }
     Ok(out)
 }

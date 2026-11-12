@@ -604,17 +604,12 @@ fn compiled_modules_are_cached_on_disk_and_tampering_forces_a_recompile() {
     first.prepare(&module).unwrap();
     first.prepare(&module).unwrap();
     assert_eq!(first.cache_stats().compiled, 1);
-    assert_eq!(first.cache_stats().from_memory, 1);
+    // Preparing fills the disk, not memory (#1035).
+    assert_eq!(first.cache_stats().resident_bytes, 0);
     drop(first);
 
     let second = Runtime::new(dir.clone()).unwrap();
     second.prepare(&module).unwrap();
-    assert_eq!(
-        second.cache_stats().from_disk,
-        1,
-        "{:?}",
-        second.cache_stats()
-    );
     assert_eq!(second.cache_stats().compiled, 0);
     // And the module loaded from disk runs.
     let job = snapshot(&[]).fork();
@@ -624,6 +619,12 @@ fn compiled_modules_are_cached_on_disk_and_tampering_forces_a_recompile() {
             .unwrap()
             .exit_code,
         3
+    );
+    assert_eq!(
+        second.cache_stats().from_disk,
+        1,
+        "{:?}",
+        second.cache_stats()
     );
     drop(second);
 
@@ -646,7 +647,8 @@ fn compiled_modules_are_cached_on_disk_and_tampering_forces_a_recompile() {
     // The recompile rewrote a good artifact.
     let fourth = Runtime::new(dir.clone()).unwrap();
     fourth.prepare(&module).unwrap();
-    assert_eq!(fourth.cache_stats().from_disk, 1);
+    let stats = fourth.cache_stats();
+    assert_eq!((stats.rejected, stats.compiled), (0, 0), "{stats:?}");
     drop(fourth);
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -678,7 +680,7 @@ fn find(dir: &Path, suffix: &str) -> PathBuf {
 #[test]
 fn jobs_get_a_private_loopback_and_nothing_else() {
     let rt = runtime();
-    let (engine, _) = wasix::job_engine(rt.store.engine(), 1 << 20, 1 << 20);
+    let (engine, _) = wasix::job_engine(rt.store.generation().engine(), 1 << 20, 1 << 20);
     let job = wasix::JobRuntime::for_tests(&rt.wasix, engine);
     use wasmer_wasix::Runtime as _;
     let net = job.networking();
@@ -1309,7 +1311,7 @@ fn killing_a_syscall_spinner_leaves_its_threads_whole() {
     use std::sync::atomic::AtomicBool;
     use wasmer::{Function, Instance, Store, imports};
 
-    let (engine, _) = crate::cache::new_engine();
+    let engine = crate::cache::build_engine();
     let wasm = wat::parse_str(
         r#"(module
   (import "host" "call" (func $call))

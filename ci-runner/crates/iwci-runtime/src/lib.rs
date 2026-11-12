@@ -39,7 +39,7 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
 
-pub use cache::CacheStats;
+pub use cache::{CacheStats, DEFAULT_MODULE_MEMORY};
 pub use iwci_vfs::DynFs;
 pub use stall::DEFAULT_STALL_AFTER;
 pub use tsc::TscOutcome;
@@ -407,8 +407,7 @@ impl Runtime {
     /// are not capped: a script waiting on its child would deadlock if they
     /// were.
     pub fn with_threads(cache_dir: PathBuf, threads: Option<usize>) -> Result<Self> {
-        let (engine, fingerprint) = cache::new_engine();
-        let store = Arc::new(cache::ModuleStore::new(engine, fingerprint, &cache_dir)?);
+        let store = Arc::new(cache::ModuleStore::new(cache::fingerprint(), &cache_dir)?);
         let mut builder = tokio::runtime::Builder::new_multi_thread();
         if let Some(threads) = threads {
             builder.worker_threads(threads.max(1));
@@ -461,17 +460,38 @@ impl Runtime {
         self
     }
 
-    /// Compiles `module` (or loads it from the cache) without running it, so
-    /// the first job that needs it starts at once.
-    pub fn prepare(&self, module: &WasmModule) -> Result<()> {
-        self.store.get(module.sha256, &module.bytes).map(drop)
+    /// Keeps about `bytes` of compiled modules in memory (default
+    /// [`DEFAULT_MODULE_MEMORY`], counted as the size of their artifacts):
+    /// past it, jobs that start get a fresh engine and load what they use
+    /// from the disk cache, and the old engine's code is freed when its last
+    /// job ends (see `cache.rs`).
+    pub fn with_module_memory(self, bytes: u64) -> Self {
+        self.store.set_limit(bytes);
+        self
     }
 
-    /// Compiles every command of an environment's packages (or loads them
-    /// from the cache), so a script's first `node` or `ls` starts at once
-    /// instead of spending the job's timeout in the compiler.
+    /// Compiles `module` into the disk cache, unless it is there already,
+    /// without loading it, so the first job that needs it loads it in tens
+    /// of milliseconds instead of compiling.
+    pub fn prepare(&self, module: &WasmModule) -> Result<()> {
+        self.store.ensure_compiled(module.sha256, &module.bytes)
+    }
+
+    /// Compiles every command of an environment's packages into the disk
+    /// cache, unless they are there already, so a script's first `node` or
+    /// `ls` loads at once instead of spending the job's timeout in the
+    /// compiler.
     pub fn prepare_environment(&self, packages: &[WebcPackage]) -> Result<()> {
         wasix::prepare(&self.wasix, &self.tokio, packages)
+    }
+
+    /// Lets go of what no job uses any more: parsed packages unused for a
+    /// couple of minutes, and an old generation of compiled modules whose
+    /// last job has ended. A server calls this now and then, so an idle
+    /// runner holds next to nothing.
+    pub fn release_idle(&self) {
+        self.wasix.release_idle();
+        self.store.release_idle();
     }
 
     pub fn cache_stats(&self) -> CacheStats {
@@ -481,7 +501,8 @@ impl Runtime {
     /// Runs a WASI (`wasi_snapshot_preview1`) or WASIX command module's
     /// `_start` with `inv`.
     pub fn run_command(&self, module: &WasmModule, inv: Invocation) -> Result<Outcome> {
-        let compiled = self.store.get(module.sha256, &module.bytes)?;
+        let generation = self.store.generation();
+        let compiled = self.store.get(&generation, module.sha256, &module.bytes)?;
         // A tool job has no Node of its own, but a service in an
         // environment may run one.
         #[cfg(feature = "node")]
@@ -495,6 +516,7 @@ impl Runtime {
         wasix::run(
             &self.wasix,
             &self.tokio,
+            &generation,
             wasix::Entry::Module(compiled),
             &module.name,
             inv,
@@ -515,9 +537,10 @@ impl Runtime {
         inv: Invocation,
         diagnostics_json: bool,
     ) -> Result<TscOutcome> {
-        let compiled = self.store.get(module.sha256, &module.bytes)?;
+        let generation = self.store.generation();
+        let compiled = self.store.get(&generation, module.sha256, &module.bytes)?;
         tsc::run(
-            self.store.engine(),
+            generation.engine(),
             &compiled,
             inv,
             diagnostics_json,
@@ -550,6 +573,7 @@ impl Runtime {
         wasix::run(
             &self.wasix,
             &self.tokio,
+            &self.store.generation(),
             wasix::Entry::Command {
                 packages,
                 name: entry,

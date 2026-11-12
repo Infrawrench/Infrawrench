@@ -393,7 +393,11 @@ fn start_one(
                     "a `ready: command` check runs in an environment, which a tool has not".into(),
                 ));
             }
-            let compiled = starter.shared.store.get(module.sha256, &module.bytes)?;
+            let compiled =
+                starter
+                    .shared
+                    .store
+                    .get(starter.generation, module.sha256, &module.bytes)?;
             (
                 module.name.clone(),
                 Program::Module(compiled),

@@ -3,6 +3,7 @@
 //! ```text
 //! IWCI_SERVER_KEY=<32+ chars> iwci serve [--listen 127.0.0.1:8547]
 //!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>] [--stall-after 5m]
+//!     [--memory-reserve 4GiB] [--module-memory 1GiB]
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
 //!     [--warm-every 10m | --no-warm] [--keep-installs-unpacked 24h]
 //!     [--update-channel stable [--update-every 5m]]
@@ -14,9 +15,13 @@
 //! release (`IWCI_RELEASE_PUBLIC_KEY`) the same way: drain, then `exec`
 //! the new binary in place. See `server_lifecycle.rs`.
 //!
-//! Every published builtin and environment is downloaded and compiled when
-//! the server starts and again every `--warm-every`, so jobs never wait on
-//! a cold tool.
+//! Every published builtin and environment is downloaded and compiled into
+//! the disk cache when the server starts and again every `--warm-every`,
+//! so jobs never wait on a cold tool.
+//!
+//! The job budget is `--memory`, held to the host's memory (or the
+//! service's cgroup limit) less `--memory-reserve`, which the runner keeps
+//! for itself; without `--memory`, all of that (see `crate::memory`).
 //!
 //! Cached installs not used for `--keep-installs-unpacked` are packed in
 //! the background, once at start and then every ten minutes.
@@ -58,7 +63,30 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
         .unwrap_or_else(|| "127.0.0.1:8547".to_string());
     let key = std::env::var("IWCI_SERVER_KEY")
         .map_err(|_| "set IWCI_SERVER_KEY to the key clients send as a bearer token")?;
-    let limits = limits(&mut args)?;
+    let mut limits = limits(&mut args)?;
+    let reserve = match args
+        .value("--memory-reserve")?
+        .or_else(|| std::env::var("IWCI_MEMORY_RESERVE").ok())
+    {
+        Some(text) => iwci_spec::parse_size(&text)
+            .ok_or_else(|| format!("--memory-reserve takes a size such as `4GiB`, not `{text}`"))?,
+        None => crate::memory::DEFAULT_RESERVE,
+    };
+    let host = crate::memory::host_memory();
+    let asked = limits.memory;
+    limits.memory = crate::memory::job_budget(asked, host, reserve)?;
+    if let (Some(host), Some(budget)) = (host, limits.memory) {
+        eprintln!(
+            "iwci serve: jobs may reserve {} MiB of the host's {} MiB, keeping {} MiB for the runner{}",
+            budget >> 20,
+            host >> 20,
+            reserve >> 20,
+            match asked {
+                Some(asked) if asked > budget => format!(" (--memory {} MiB lowered)", asked >> 20),
+                _ => String::new(),
+            }
+        );
+    }
     let quota = storage_quota(&mut args)?.unwrap_or(DEFAULT_STORAGE_QUOTA);
     let runner = open_runner(&mut args, &limits, true, Some(quota))?;
     let no_warm = args.flag("--no-warm");
@@ -102,7 +130,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     if !args.rest().is_empty() {
         return Err("unexpected arguments; see `iwci help`".into());
     }
-    let server = Arc::new(Server::new(runner, key)?);
+    let server = Arc::new(Server::new(runner, key)?.with_memory(host, reserve));
     server.stop_gracefully_on_signals()?;
     if let (Some(channel), Some(key)) = (update_channel, release_key) {
         eprintln!(
@@ -116,6 +144,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
         server.keep_warm(std::time::Duration::from_secs(warm_every));
     }
     server.keep_installs_compact(std::time::Duration::from_secs(COMPACT_EVERY_SECS));
+    server.watch_memory();
     server.serve(&listen)?;
     Ok(ExitCode::SUCCESS)
 }

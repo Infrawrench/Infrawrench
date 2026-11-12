@@ -11,7 +11,7 @@
 //! | Route | Does |
 //! |-------|------|
 //! | `GET /healthz` | `200 ok`, unauthenticated, for load balancers |
-//! | `GET /v1/capacity` | slots, memory, active runs, and what V8 out-of-memory has cost the process |
+//! | `GET /v1/capacity` | slots, memory (reserved by jobs, and the process's own), active runs, and what V8 out-of-memory has cost the process |
 //! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting |
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
@@ -67,7 +67,16 @@ pub struct Server {
     logs: Mutex<HashMap<String, Arc<LogHub>>>,
     order: Mutex<Vec<String>>,
     active: AtomicUsize,
+    /// The host's memory and what the runner keeps of it outside the job
+    /// budget, for `/v1/capacity` and the memory log (`crate::memory`).
+    memory_host: Option<u64>,
+    memory_reserve: Option<u64>,
 }
+
+/// How often the server checks its own memory, and how often it logs it
+/// when nothing is wrong.
+const MEMORY_CHECK_SECS: u64 = 30;
+const MEMORY_LOG_EVERY: u32 = 20;
 
 #[derive(Debug, Clone, Serialize)]
 struct RunEntry {
@@ -169,7 +178,74 @@ impl Server {
             logs: Mutex::default(),
             order: Mutex::default(),
             active: AtomicUsize::new(0),
+            memory_host: None,
+            memory_reserve: None,
         })
+    }
+
+    /// Says what the host has and what the runner keeps of it, for
+    /// `/v1/capacity` and [`Server::watch_memory`].
+    pub fn with_memory(mut self, host: Option<u64>, reserve: u64) -> Self {
+        self.memory_host = host;
+        self.memory_reserve = Some(reserve);
+        self
+    }
+
+    /// The process's memory against the job budget, as one log line.
+    fn memory_line(&self) -> Option<(String, bool)> {
+        let me = crate::memory::process_memory()?;
+        let reserved = self.runner.memory.as_ref().map_or(0, |m| m.used());
+        let modules = self.runner.runtime.cache_stats().resident_bytes;
+        // Jobs rarely use all they reserve, so this is the least the
+        // runner itself holds.
+        let own = me.anonymous.saturating_sub(reserved);
+        let over = self.memory_reserve.is_some_and(|r| own > r);
+        let line = format!(
+            "iwci serve: memory: {} MiB resident ({} MiB anonymous), jobs reserve {} of {} MiB, compiled modules {} MiB, host {} MiB, runner reserve {} MiB{}",
+            me.resident >> 20,
+            me.anonymous >> 20,
+            reserved >> 20,
+            self.runner.memory.as_ref().map_or(0, |m| m.total()) >> 20,
+            modules >> 20,
+            self.memory_host.unwrap_or(0) >> 20,
+            self.memory_reserve.unwrap_or(0) >> 20,
+            if over {
+                "; the runner's own memory is over its reserve"
+            } else {
+                ""
+            }
+        );
+        Some((line, over))
+    }
+
+    /// Every half minute, lets go of what no job uses (parsed packages,
+    /// an old generation of compiled modules, the allocator's free memory),
+    /// then logs the process's memory against the job budget every ten
+    /// minutes, and at once (at most once a minute) when the anonymous
+    /// memory beyond what jobs have reserved passes `--memory-reserve`, so
+    /// it is visible before the kernel acts (#1035).
+    pub fn watch_memory(self: &Arc<Self>) {
+        let server = self.clone();
+        std::thread::Builder::new()
+            .name("iwci-memory".into())
+            .spawn(move || {
+                let mut quiet = 0u32;
+                let mut was_over = false;
+                loop {
+                    server.runner.runtime.release_idle();
+                    crate::memory::return_free_memory();
+                    if let Some((line, over)) = server.memory_line() {
+                        if quiet == 0 || (over && !was_over) {
+                            eprintln!("{line}");
+                            quiet = if over { 2 } else { MEMORY_LOG_EVERY };
+                        }
+                        was_over = over;
+                    }
+                    quiet = quiet.saturating_sub(1);
+                    std::thread::sleep(std::time::Duration::from_secs(MEMORY_CHECK_SECS));
+                }
+            })
+            .expect("spawning the memory thread");
     }
 
     /// Serves until the process ends; one thread per request, because a
@@ -275,6 +351,7 @@ impl Server {
     fn capacity(&self) -> serde_json::Value {
         let slots = self.runner.slots.as_ref().expect("checked in new");
         let v8 = iwci_runtime::v8_losses();
+        let process = crate::memory::process_memory();
         json!({
             "version": lifecycle::VERSION,
             "draining": self.draining.load(Ordering::SeqCst),
@@ -286,6 +363,12 @@ impl Server {
             "runs_active": self.active.load(Ordering::SeqCst),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
             "memory_used": self.runner.memory.as_ref().map(|m| m.used()),
+            // The process's own memory against that (#1035).
+            "memory_host": self.memory_host,
+            "memory_reserve": self.memory_reserve,
+            "memory_resident": process.map(|p| p.resident),
+            "memory_anonymous": process.map(|p| p.anonymous),
+            "modules_resident": self.runner.runtime.cache_stats().resident_bytes,
             // What V8 out-of-memory has cost this process (#990).
             "v8_lost_isolates": v8.lost_isolates,
             "v8_parked_threads": v8.parked_threads,
