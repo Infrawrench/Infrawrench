@@ -1,17 +1,15 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { utils, type ParsedKey } from "ssh2";
 import type { Duplex } from "node:stream";
 
 import { InProcessAgent, buildInProcessAgent, type SignOutcome } from "../in-process-agent.js";
+import { generateOpenSshKey, type OpenSshKeyFiles } from "./openssh-test-keys.js";
 
 // NOTE: this suite deliberately does NOT mock ssh2; it exercises the real
-// OpenSSH agent-protocol framing against real parsed keys generated with
-// `ssh-keygen` at runtime. The sibling host-verifier suite mocks ssh2 instead;
-// vitest isolates modules per file so the two do not collide.
+// OpenSSH agent-protocol framing against real parsed keys, generated at
+// runtime in the files `ssh-keygen` writes (./openssh-test-keys.ts). The
+// sibling host-verifier suite mocks ssh2 instead; vitest isolates modules per
+// file so the two do not collide.
 
 const { parseKey } = utils;
 
@@ -74,7 +72,7 @@ async function roundTrip(agent: InProcessAgent, request: Buffer): Promise<Buffer
 }
 
 // ---- key generation ----
-let tmpDir: string;
+/** Each key's OpenSSH private key file. */
 const fixtures: Record<"ed" | "rsa" | "ec256" | "ec384" | "ec521", string> = {
   ed: "",
   rsa: "",
@@ -82,23 +80,7 @@ const fixtures: Record<"ed" | "rsa" | "ec256" | "ec384" | "ec521", string> = {
   ec384: "",
   ec521: "",
 };
-
-function keygen(type: string, file: string, extra: string[] = []): string {
-  const p = path.join(tmpDir, file);
-  execFileSync("ssh-keygen", [
-    "-t",
-    type,
-    "-f",
-    p,
-    "-N",
-    "",
-    "-q",
-    "-C",
-    "test@infrawrench",
-    ...extra,
-  ]);
-  return fs.readFileSync(p, "utf8");
-}
+let edFiles: OpenSshKeyFiles;
 
 function parsePriv(pem: string) {
   const k = parseKey(pem);
@@ -108,12 +90,12 @@ function parsePriv(pem: string) {
 }
 
 beforeAll(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssh-agent-test-"));
-  fixtures.ed = keygen("ed25519", "ed");
-  fixtures.rsa = keygen("rsa", "rsa", ["-b", "2048"]);
-  fixtures.ec256 = keygen("ecdsa", "ec256", ["-b", "256"]);
-  fixtures.ec384 = keygen("ecdsa", "ec384", ["-b", "384"]);
-  fixtures.ec521 = keygen("ecdsa", "ec521", ["-b", "521"]);
+  edFiles = generateOpenSshKey("ed25519");
+  fixtures.ed = edFiles.priv;
+  fixtures.rsa = generateOpenSshKey("rsa").priv;
+  fixtures.ec256 = generateOpenSshKey("ecdsa-256").priv;
+  fixtures.ec384 = generateOpenSshKey("ecdsa-384").priv;
+  fixtures.ec521 = generateOpenSshKey("ecdsa-521").priv;
 });
 
 describe("buildInProcessAgent", () => {
@@ -127,8 +109,7 @@ describe("buildInProcessAgent", () => {
   });
 
   it("returns null when there are no private keys (public key only)", () => {
-    const pub = fs.readFileSync(path.join(tmpDir, "ed.pub"), "utf8");
-    expect(buildInProcessAgent(pub)).toBeNull();
+    expect(buildInProcessAgent(edFiles.pub)).toBeNull();
   });
 
   it("builds an agent over a valid private key", () => {
@@ -409,7 +390,7 @@ describe("InProcessAgent.getStream — signRaw / key-type edge cases via fake Pa
 describe("findKey via string public key (toPublicSSH string branch)", () => {
   it("matches when the BaseAgent.sign pubKey is given as an OpenSSH string", () => {
     const k = parsePriv(fixtures.ed);
-    const pubString = fs.readFileSync(path.join(tmpDir, "ed.pub"), "utf8");
+    const pubString = edFiles.pub;
     const agent = new InProcessAgent([k]);
     const cb = vi.fn();
     // Deliberately passes the OpenSSH string form where the signature says

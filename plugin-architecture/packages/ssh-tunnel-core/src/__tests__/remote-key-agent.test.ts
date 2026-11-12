@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { utils, type ParsedKey } from "ssh2";
 import type { Duplex } from "node:stream";
 
 import { RemoteKeyAgent, buildRemoteKeyAgent, type RemoteKeyBackend } from "../remote-key-agent.js";
 import { signSshData, type SshSignAlgorithm } from "../ssh-signing.js";
+import { generateOpenSshKey, type OpenSshKeyFiles } from "./openssh-test-keys.js";
 
 // Like the in-process agent suite, this deliberately does NOT mock ssh2: the
 // backend signs with a real key via `signSshData` (exactly what the cloud
@@ -71,29 +68,12 @@ async function roundTrip(agent: RemoteKeyAgent, request: Buffer): Promise<Buffer
 }
 
 // ---- key generation ----
-let tmpDir: string;
-const fixtures: Record<"ed" | "rsa" | "ec256", { priv: string; pub: string }> = {
+// Generated at runtime in the files `ssh-keygen` writes (./openssh-test-keys.ts).
+const fixtures: Record<"ed" | "rsa" | "ec256", OpenSshKeyFiles> = {
   ed: { priv: "", pub: "" },
   rsa: { priv: "", pub: "" },
   ec256: { priv: "", pub: "" },
 };
-
-function keygen(type: string, file: string, extra: string[] = []): { priv: string; pub: string } {
-  const p = path.join(tmpDir, file);
-  execFileSync("ssh-keygen", [
-    "-t",
-    type,
-    "-f",
-    p,
-    "-N",
-    "",
-    "-q",
-    "-C",
-    "test@infrawrench",
-    ...extra,
-  ]);
-  return { priv: fs.readFileSync(p, "utf8"), pub: fs.readFileSync(`${p}.pub`, "utf8") };
-}
 
 function parsePub(pub: string): ParsedKey {
   const k = parseKey(pub);
@@ -102,7 +82,7 @@ function parsePub(pub: string): ParsedKey {
 }
 
 /** A backend that signs locally with a real key: what the cloud endpoint does. */
-function localBackend(fixture: { priv: string; pub: string }): RemoteKeyBackend & {
+function localBackend(fixture: OpenSshKeyFiles): RemoteKeyBackend & {
   signCalls: Array<{ data: Buffer; algorithm: SshSignAlgorithm }>;
 } {
   const signCalls: Array<{ data: Buffer; algorithm: SshSignAlgorithm }> = [];
@@ -117,10 +97,9 @@ function localBackend(fixture: { priv: string; pub: string }): RemoteKeyBackend 
 }
 
 beforeAll(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "remote-key-agent-test-"));
-  fixtures.ed = keygen("ed25519", "ed");
-  fixtures.rsa = keygen("rsa", "rsa", ["-b", "2048"]);
-  fixtures.ec256 = keygen("ecdsa", "ec256", ["-b", "256"]);
+  fixtures.ed = generateOpenSshKey("ed25519");
+  fixtures.rsa = generateOpenSshKey("rsa");
+  fixtures.ec256 = generateOpenSshKey("ecdsa-256");
 });
 
 describe("RemoteKeyAgent.getIdentities", () => {
