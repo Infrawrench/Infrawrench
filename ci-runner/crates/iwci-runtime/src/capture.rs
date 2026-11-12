@@ -93,16 +93,33 @@ impl Capture {
 
     /// A file handle that appends to this capture, for a WASI fd.
     pub(crate) fn file(&self) -> Box<dyn VirtualFile + Send + Sync + 'static> {
-        Box::new(CaptureFile(self.clone()))
+        sink_file(self.clone())
     }
+}
+
+/// Where a program's stdout or stderr goes: a capture, or a service's log
+/// (background.rs), which writes into one.
+pub(crate) trait Sink: std::fmt::Debug + Send + Sync + Unpin + 'static {
+    fn push(&self, data: &[u8]);
+}
+
+impl Sink for Capture {
+    fn push(&self, data: &[u8]) {
+        Capture::push(self, data);
+    }
+}
+
+/// A file handle that hands everything written to it to `sink`.
+pub(crate) fn sink_file(sink: impl Sink) -> Box<dyn VirtualFile + Send + Sync + 'static> {
+    Box::new(CaptureFile(sink))
 }
 
 /// Stdout or stderr as WASIX sees it: a write-only character stream. Every
 /// spawned subprocess inherits a handle to the same capture.
 #[derive(Debug)]
-struct CaptureFile(Capture);
+struct CaptureFile<S>(S);
 
-impl AsyncWrite for CaptureFile {
+impl<S: Sink> AsyncWrite for CaptureFile<S> {
     fn poll_write(
         self: Pin<&mut Self>,
         _: &mut Context<'_>,
@@ -121,7 +138,7 @@ impl AsyncWrite for CaptureFile {
     }
 }
 
-impl AsyncRead for CaptureFile {
+impl<S: Sink> AsyncRead for CaptureFile<S> {
     fn poll_read(
         self: Pin<&mut Self>,
         _: &mut Context<'_>,
@@ -132,7 +149,7 @@ impl AsyncRead for CaptureFile {
     }
 }
 
-impl AsyncSeek for CaptureFile {
+impl<S: Sink> AsyncSeek for CaptureFile<S> {
     fn start_seek(self: Pin<&mut Self>, _: SeekFrom) -> io::Result<()> {
         Err(io::Error::from(io::ErrorKind::Unsupported))
     }
@@ -142,7 +159,7 @@ impl AsyncSeek for CaptureFile {
     }
 }
 
-impl VirtualFile for CaptureFile {
+impl<S: Sink> VirtualFile for CaptureFile<S> {
     fn last_accessed(&self) -> u64 {
         0
     }

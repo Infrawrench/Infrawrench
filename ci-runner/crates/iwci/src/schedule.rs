@@ -25,8 +25,8 @@ use std::time::{Duration, Instant};
 
 use iwci_spec::expr::{self, Name};
 use iwci_spec::{
-    Action, ChangePolicy, JobResult, JobTemplate, NeedsValues, Plan, PlannedJob, ToolRef,
-    WorkspaceSpec,
+    Action, ChangePolicy, JobResult, JobTemplate, NeedsValues, Plan, PlannedJob, PlannedService,
+    ToolRef, WorkspaceSpec,
 };
 use iwci_vfs::{Change, Entry, JobFs, Snapshot, WriteBudget};
 use serde::Serialize;
@@ -99,6 +99,15 @@ pub struct Invocation<'a> {
     /// Receives output as it is written (`true` for stderr), when someone
     /// is following the run's logs.
     pub log: Option<OutputSink>,
+}
+
+/// One of a job's `services:`, its tool resolved and its environment built.
+pub struct ServiceRun<'a, T> {
+    pub service: &'a PlannedService,
+    pub tool: Arc<T>,
+    /// The runner's variables (`CI`, `HOME`, `IWCI_COMMIT`, ...), then the
+    /// service's own `env:`, secrets filled in. Nothing of the job's.
+    pub env: Vec<(String, String)>,
 }
 
 /// Called with each chunk of a job's output; `true` means stderr.
@@ -275,15 +284,21 @@ pub struct Execution {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stalled_after: Option<u64>,
     pub out_of_memory: bool,
+    /// Why the job never started: one of its services exited, or was not
+    /// ready in time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_failure: Option<String>,
 }
 
 pub trait Executor<T>: Send + Sync {
     /// Runs `action` with `tool`. `path_tools` are the job's `tools:`,
-    /// resolved, for an environment to offer as commands.
+    /// resolved, for an environment to offer as commands; `services` start
+    /// before it and stop after it.
     fn execute(
         &self,
         tool: &T,
         path_tools: &[Arc<T>],
+        services: &[ServiceRun<'_, T>],
         action: &Action,
         invocation: Invocation<'_>,
     ) -> Result<Execution, String>;
@@ -1349,6 +1364,19 @@ fn run_job<T: Tools>(
             Err(e) => return errored(job, format!("tools: {t}: {e}"), started.elapsed()),
         }
     }
+    let mut service_tools = Vec::with_capacity(job.services.len());
+    for service in &job.services {
+        match tools.resolve(&service.tool) {
+            Ok(resolved) => service_tools.push(resolved),
+            Err(e) => {
+                return errored(
+                    job,
+                    format!("services: {}: {}: {e}", service.name, service.tool),
+                    started.elapsed(),
+                );
+            }
+        }
+    }
 
     // The job's files live in memory, so its writes are held to its
     // `memory:` too (and to the runner's budget), or a job could write its
@@ -1464,6 +1492,33 @@ fn run_job<T: Tools>(
     }
     merge_env(&mut env, &secret_vars);
 
+    // A service gets the runner's variables and its own, never the job's:
+    // its secrets are its own `env:`'s, masked like the job's.
+    let mut services = Vec::with_capacity(job.services.len());
+    for (service, tool) in job.services.iter().zip(service_tools) {
+        let mut service_env = options.base_env.clone();
+        service_env.push(("IWCI_JOB".into(), job.id.clone()));
+        service_env.push(("IWCI_SCRATCH".into(), iwci_spec::SCRATCH_PATH.into()));
+        merge_env(&mut service_env, &service.env);
+        let mut secrets = Vec::new();
+        for entry in &service.secret_env {
+            let (value, missing) = entry.fill(|name| options.secrets.get(name).cloned());
+            for name in missing {
+                notes.push(format!(
+                    "secret `{name}` is not set for this run, so service `{}` has `{}` empty",
+                    service.name, entry.key
+                ));
+            }
+            secrets.push((entry.key.clone(), value));
+        }
+        merge_env(&mut service_env, &secrets);
+        services.push(ServiceRun {
+            service,
+            tool,
+            env: service_env,
+        });
+    }
+
     let line_sink = options.logs.as_ref().map(|logs| {
         logs(LogEvent::JobStarted {
             job: job.id.clone(),
@@ -1483,6 +1538,7 @@ fn run_job<T: Tools>(
     let executed = executor.execute(
         &tool,
         &path_tools,
+        &services,
         &job.action,
         Invocation {
             job,
@@ -1499,6 +1555,7 @@ fn run_job<T: Tools>(
         Ok(mut e) => {
             e.stdout = shared.mask.mask(&e.stdout);
             e.stderr = shared.mask.mask(&e.stderr);
+            e.service_failure = e.service_failure.map(|f| shared.mask.mask(&f));
             e
         }
         Err(e) => return errored(job, shared.mask.mask(&e), started.elapsed()),
@@ -1561,7 +1618,13 @@ fn run_job<T: Tools>(
             reason
         }
     };
-    let mut status = if execution.timed_out {
+    let mut status = if let Some(failure) = &execution.service_failure {
+        // The job never started; the failure (masked above) names the
+        // service.
+        Status::Failed {
+            reason: failure.clone(),
+        }
+    } else if execution.timed_out {
         Status::Failed {
             reason: and_memory(format!("timed out after {}s", job.timeout.as_secs())),
         }
@@ -1809,6 +1872,9 @@ fn task_cache_key(
         changes: &'a ChangePolicy,
         workspace: &'a WorkspaceSpec,
         inputs: &'a [String],
+        // Left out when empty, so a job without services keeps its key.
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        services: &'a [PlannedService],
     }
     let definition = Definition {
         tool: &job.tool,
@@ -1822,6 +1888,7 @@ fn task_cache_key(
         changes: &job.changes,
         workspace: ws,
         inputs: &spec.inputs,
+        services: &job.services,
     };
     let mut hash = sha2::Sha256::new();
     let add_file = |hash: &mut sha2::Sha256, label: &str, content: &[u8]| {
@@ -1989,6 +2056,7 @@ fn replay(
             timed_out: false,
             stalled_after: None,
             out_of_memory: false,
+            service_failure: None,
         }),
         changes: Vec::new(),
         commit: None,

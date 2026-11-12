@@ -73,6 +73,18 @@ fn schema_matches_the_structs() {
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    task-cache: { zzz: 1 }\n",
             "/$defs/taskCacheInputs",
         ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    services: { db: { zzz: 1 } }\n",
+            "/$defs/service",
+        ),
+        (
+            "name: x\nworkspace:\n  services: { db: { zzz: 1 } }\njobs: {}\n",
+            "/$defs/service",
+        ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    services: { db: { using: builtin:t@1, ready: { zzz: 1 } } }\n",
+            "/$defs/ready",
+        ),
     ];
     for (yaml, pointer) in cases {
         assert_eq!(

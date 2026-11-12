@@ -32,6 +32,7 @@ thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
 futures.workspace = true
+regex.workspace = true
 # getifaddrs, for the host's own addresses (network.rs). Already in the tree.
 libc = "0.2"
 # wasmer-wasix describes its syscalls and signal deliveries through `tracing`,

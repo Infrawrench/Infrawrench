@@ -94,7 +94,7 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `name`      | Required.                                                                                                                   |
 | `on`        | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push. |
-| `workspace` | `clone` and `deps` shared by every job unless it overrides them.                                                            |
+| `workspace` | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                      |
 | `scratch`   | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.            |
 | `jobs`      | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                        |
 
@@ -142,32 +142,34 @@ everything through.
 
 ### Jobs
 
-| Key          | Meaning                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`      | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                            |
-| `args`       | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                               |
-| `run`        | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                               |
-| `name`       | Display name. Defaults to the key plus the matrix values.                                                                                                                      |
-| `matrix`     | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries. |
-| `cwd`        | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                 |
-| `env`        | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                              |
-| `clone`      | Override `workspace.clone`, or `false` for an empty file system.                                                                                                               |
-| `deps`       | Override `workspace.deps`, or `false` to install nothing.                                                                                                                      |
-| `changes`    | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                      |
-| `needs`      | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.           |
-| `if`         | When the job runs, given how its `needs` went. See below.                                                                                                                      |
-| `outputs`    | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                    |
-| `paths`      | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                  |
-| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                 |
-| `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                 |
-| `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                 |
-| `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                 |
-| `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                          |
-| `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                   |
-| `packages`   | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                   |
-| `task-cache` | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                 |
+| Key          | Meaning                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `using`      | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                     |
+| `args`       | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                        |
+| `run`        | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                        |
+| `name`       | Display name. Defaults to the key plus the matrix values.                                                                                                                               |
+| `matrix`     | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.          |
+| `cwd`        | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                          |
+| `env`        | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                       |
+| `clone`      | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                        |
+| `deps`       | Override `workspace.deps`, or `false` to install nothing.                                                                                                                               |
+| `changes`    | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                               |
+| `needs`      | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                    |
+| `if`         | When the job runs, given how its `needs` went. See below.                                                                                                                               |
+| `outputs`    | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                             |
+| `paths`      | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                           |
+| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                          |
+| `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                          |
+| `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                          |
+| `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                          |
+| `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                   |
+| `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                            |
+| `packages`   | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                            |
+| `task-cache` | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                          |
+| `services`   | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services). |
 
-Expressions in `name`, `cwd`, `args`, `run` and `env`: `${{ matrix }}`,
+Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
+`args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
 `${{ matrix.<axis> }}`, `${{ needs.<job>.outputs.<name> }}`,
 `${{ needs.<job>.result }}`, `${{ commit.sha }}`, `${{ commit.short-sha }}`,
 `${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`, `${{ vars.<name> }}`,
@@ -187,8 +189,8 @@ with each run.
 - `${{ vars.<name> }}` works anywhere an expression does and is filled in
   when the file is parsed. A variable that is not set reads as empty.
   Variables are not secret.
-- `${{ secrets.<name> }}` only works in an `env:` value
-  (`TOKEN: ${{ secrets.NPM_TOKEN }}`, or inside text, `AUTH: "Bearer
+- `${{ secrets.<name> }}` only works in an `env:` value, a job's or a
+  service's (`TOKEN: ${{ secrets.NPM_TOKEN }}`, or inside text, `AUTH: "Bearer
 ${{ secrets.API_KEY }}"`). The parser keeps it as a name, so a secret is
   never part of a plan or a report; it is read when the job starts. One the
   run does not have is empty, and the job's report says so.
@@ -448,6 +450,7 @@ Environments:
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php)) |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                     |
+| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, one connection, in memory), for `services:` (see [PostgreSQL](#postgresql))                                                      |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -955,10 +958,81 @@ runtime's own tests never use it.
 
 ### Background services
 
-A job starts a service the way a shell script does, with `&`, on its own
-loopback, and the runner ends whatever is still running when the script
-finishes. Two commands on every environment's `PATH` wait for it to be
-ready, so a job need not guess with `sleep`:
+A job's `services:` are programs the runner starts before the job and
+stops when it ends: a database, or the job's own API server, for its tests.
+
+```yaml
+jobs:
+  db-tests:
+    using: env:python@3.13
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        ready: { port: 5432 }
+    run: |
+      pip install 'psycopg[binary]'
+      pytest   # connects to postgres:5432 as user postgres, one connection
+```
+
+| Key     | Meaning                                                                                                                                                                                                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `using` | Required. `env:<name>@<version>`, with `run:`, or a `builtin:` or `repo:` tool, with `args:`.                                                                                                                         |
+| `run`   | For an environment: a bash script that starts the service (`pglite`, `node server.js`), with `set -euo pipefail`. It starts in the job's `cwd`.                                                                       |
+| `args`  | For a tool: its arguments, as a job's.                                                                                                                                                                                |
+| `env`   | Its environment variables, over the runner's (`CI`, `HOME`, `IWCI_COMMIT`, `IWCI_JOB`, ...). Nothing of the job's `env:`. `${{ secrets.<name> }}` works here as in a job's.                                           |
+| `ready` | When the job may start: `{ port: 5432 }`, `{ log: "<regex>" }` or `{ command: "<script>" }`, each with an optional `timeout` (default `60s`, at most the job's). Without `ready`, as soon as the service has started. |
+
+`workspace.services` gives every job the same services. A job's own
+`services:` are added to them, one of the same name taking its place, and
+`services: false` turns them off for that job. Up to 8 per job.
+
+- **Where it runs.** In the job's isolate, never on the host: on the job's
+  own loopback (a service listening on `127.0.0.1:5432` is what the job
+  connects to, and nothing else can), over the job's files, so what it
+  writes counts as the job's (its changes and its `memory:`), with a
+  `/bin`, `/tmp` and `/dev` of its own and process ids of its own.
+- **Its name** resolves to `127.0.0.1` inside the job, so `postgres:5432`
+  works as on other CI systems; `localhost` and `127.0.0.1` work as well.
+  Nothing on the host is changed for it.
+- **Its output** goes to the job's stderr, each line after
+  `[service <name>] `, and is masked like everything else the job prints:
+  a secret in a service's `env:` shows as `***`.
+- **Ready.** `port` waits until something in the job listens on that port
+  of the loopback, from the runner's table of listeners: it never
+  connects, so a service that takes one client (pglite) still has its one
+  client for the job. `log` waits for a line of the service's output, on
+  either stream, to match a regular expression
+  ([Rust's `regex` syntax](https://docs.rs/regex/latest/regex/#syntax),
+  which reads like `grep -E` for ordinary patterns). `command` runs a
+  script in the service's environment, with its `env:`, every half second
+  until it exits 0 (each attempt has 10 s); only an `env:` service has one.
+  A service that exits first, or is not ready in time, fails the job
+  without running it, and the reason names it: ``service `postgres` exited
+with 3 before it was ready``, ``service `postgres` was not ready after
+60s: nothing listened on port 5432`` (a `command` check's last output is
+  in the log).
+- **While the job runs**, a service that exits is reported in the log
+  (``iwci: service `postgres` exited with 0 while the job ran``); whether
+  that fails the job is up to the job.
+- **Stopping.** When the job's script ends, passed, failed or timed out,
+  every process of every service gets SIGTERM, then SIGKILL two seconds
+  later, and is marked finished a second after that whatever it is doing:
+  a service never keeps a job running. A service's output and CPU time are
+  the job's, though, so a busy or chatty service keeps a hung job from
+  being stopped as stalled (see [Limits](#limits)) before its timeout.
+- **Memory.** Each of a service's processes is held to the job's
+  `memory:` as each of the job's own is, and a Node service's heaps share
+  the job's V8 budget.
+- A `task-cache:` job's key covers its services, and a job whose services
+  read secrets cannot be task-cached, as with its own `env:`.
+- `builtin:typescript` (the tsc-host ABI) has no network or processes, so
+  a job using it cannot have services, nor can it be one.
+
+A script can also start a service itself, with `&`, and the runner ends
+whatever is still running when the script finishes. Two commands on every
+environment's `PATH` wait for it to be ready, so a job need not guess with
+`sleep`:
 
 - `wait-for-port PORT [--host 127.0.0.1] [--timeout 30s]` returns once
   something in the job listens on the port (`--host` is `127.0.0.1`, `::1`
@@ -982,33 +1056,30 @@ api-tests:
     npm test
 ```
 
-Not connecting matters for services that take a single client.
-[`wasmer/pglite`](https://wasmer.io/wasmer/pglite) (PostgreSQL 18.4 for
-WASIX) serves one connection and exits when that client disconnects, so a
-readiness probe that connected would stop the database it was waiting for.
-Its log line is the clearest signal, and `wait-for-port 5432` is safe too:
+#### PostgreSQL
 
-```yaml
-db-tests:
-  using: env:python@3.13
-  run: |
-    pglite > pg.log 2>&1 &
-    wait-for-log pg.log 'OLIPHAUNT_WASIX_SOCKET_READY 5432'
-    pytest   # one connection, for the whole run
-```
+`env:postgres@18` is [`wasmer/pglite`](https://wasmer.io/wasmer/pglite)
+0.2.0, PostgreSQL 18.4 compiled for WASIX, beside the tools of `env:bash@5`.
+`pglite` starts it on port 5432 with the database `postgres` and the user
+`postgres`, no password, the data in memory, and `plpgsql` and
+`dict_snowball` for extensions. It is one backend, so it serves **one
+connection** and exits when that client disconnects: a test suite has to
+share a single connection, and a readiness probe that connected would end
+it, which is why `ready: { port: 5432 }` never connects. Its log line,
+`OLIPHAUNT_WASIX_SOCKET_READY 5432`, works as `ready: { log: ... }` too.
+PostgreSQL with many connections needs `fork` with memory shared between
+processes, which WASIX does not have.
 
-What is and is not available:
+What else is and is not available:
 
-- **No environment carries a database yet.** pglite runs as above once a
-  job has its package; it is one backend with one connection, in memory,
-  with `plpgsql`, so a test suite has to share a single connection.
-- **No real MySQL, MariaDB or Redis exists for WASIX**, nor for WASI.
-  A MySQL-compatible server (go-mysql-server, an in-memory engine that
-  speaks the MySQL protocol) runs, but it is not MySQL: no InnoDB
-  semantics, and partial isolation and dialect coverage.
+- **No real MySQL, MariaDB or Redis exists for WASIX**, nor for WASI. A
+  MySQL-compatible server (go-mysql-server, an in-memory engine that speaks
+  the MySQL protocol) runs, but no environment carries it, and it is not
+  MySQL: no InnoDB semantics, and partial isolation and dialect coverage.
 - **SQLite** needs no server: Python's `sqlite3` is in `env:python`.
-- **There is no `services:` key yet.** Services are started by the script,
-  so only `env:` jobs can have them.
+- **A service of your own** is a script in an environment, such as a Node
+  server in `env:bash-node@24`, or a WASI or WASIX program uploaded as a
+  `repo:` tool.
 
 ## The `iwci` command
 

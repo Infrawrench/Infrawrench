@@ -3,12 +3,13 @@
 use std::sync::Arc;
 
 use iwci_runtime::{
-    Invocation as RtInvocation, Limits, PathCommand, Runtime, WasmModule, WebcPackage,
+    Invocation as RtInvocation, Limits, PathCommand, Ready, Runtime, Service, ServiceProgram,
+    WasmModule, WebcPackage,
 };
-use iwci_spec::{Action, ToolRef};
+use iwci_spec::{Action, ReadyCheck, ToolRef};
 use iwci_store::{Abi, Catalog, RepoId, Resolved};
 
-use crate::schedule::{Execution, Executor, Invocation, Tools};
+use crate::schedule::{Execution, Executor, Invocation, ServiceRun, Tools};
 
 /// One per run: the catalog caches listings, manifests and blobs, so a
 /// matrix of twenty jobs lists R2 once.
@@ -48,6 +49,7 @@ impl Executor<Resolved> for RuntimeExecutor {
         &self,
         tool: &Resolved,
         path_tools: &[Arc<Resolved>],
+        services: &[ServiceRun<'_, Resolved>],
         action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
@@ -69,6 +71,10 @@ impl Executor<Resolved> for RuntimeExecutor {
             env.push((k, v));
         }
         let commands = path_commands(path_tools, inv.fs, &mut env)?;
+        let services = services
+            .iter()
+            .map(|s| service(s, inv.fs))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut invocation = RtInvocation {
             args: Vec::new(),
             env,
@@ -85,6 +91,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             commands,
             internet: inv.job.network,
             modes: inv.fs.modes(),
+            services,
         };
 
         let outcome = match (tool, action) {
@@ -110,6 +117,12 @@ impl Executor<Resolved> for RuntimeExecutor {
                     module.bytes.clone(),
                 );
                 match manifest.abi {
+                    Abi::TscHost if !invocation.services.is_empty() => {
+                        return Err(format!(
+                            "`{}` runs through the tsc host, which has no network or processes for services; start them for a job in an environment instead",
+                            manifest.name
+                        ));
+                    }
                     Abi::TscHost => {
                         let o = self
                             .runtime
@@ -122,6 +135,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             timed_out: o.timed_out,
                             stalled_after: None,
                             out_of_memory: o.out_of_memory,
+                            service_failure: None,
                         }
                     }
                     Abi::Wasi | Abi::Wasix => {
@@ -136,6 +150,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             timed_out: o.timed_out,
                             stalled_after: o.stalled_after.map(|d| d.as_secs()),
                             out_of_memory: o.out_of_memory,
+                            service_failure: o.service_failure,
                         }
                     }
                 }
@@ -146,21 +161,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                 },
                 Action::Script { script },
             ) => {
-                let webcs: Vec<WebcPackage> = manifest
-                    .packages
-                    .iter()
-                    .zip(packages)
-                    .map(|(pkg, blob)| {
-                        WebcPackage::new(
-                            pkg.name.clone(),
-                            pkg.version.to_string(),
-                            blob.bytes.clone(),
-                        )
-                    })
-                    .collect();
-                let entry = match manifest.entry {
-                    iwci_store::EnvEntry::Bash => "bash",
-                };
+                let (webcs, entry) = environment(manifest, packages);
                 let o = self
                     .runtime
                     .run_script(&webcs, entry, script, invocation)
@@ -172,6 +173,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                     timed_out: o.timed_out,
                     stalled_after: o.stalled_after.map(|d| d.as_secs()),
                     out_of_memory: o.out_of_memory,
+                    service_failure: o.service_failure,
                 }
             }
             // Validation pairs `env:` with `run:` and tools with `args:`, and
@@ -185,6 +187,111 @@ impl Executor<Resolved> for RuntimeExecutor {
         };
         Ok(outcome)
     }
+}
+
+/// An environment's packages, and the shell that runs its scripts.
+fn environment(
+    manifest: &iwci_store::EnvManifest,
+    packages: &[iwci_store::Blob],
+) -> (Vec<WebcPackage>, &'static str) {
+    let webcs = manifest
+        .packages
+        .iter()
+        .zip(packages)
+        .map(|(pkg, blob)| {
+            WebcPackage::new(
+                pkg.name.clone(),
+                pkg.version.to_string(),
+                blob.bytes.clone(),
+            )
+        })
+        .collect();
+    let entry = match manifest.entry {
+        iwci_store::EnvEntry::Bash => "bash",
+    };
+    (webcs, entry)
+}
+
+/// One of the job's `services:` for the runtime: an environment with its
+/// script, or a tool with its arguments, its manifest's default
+/// environment under its own.
+fn service(run: &ServiceRun<'_, Resolved>, fs: &iwci_vfs::JobFs) -> Result<Service, String> {
+    let planned = run.service;
+    let fail = |e: String| format!("service `{}`: {e}", planned.name);
+    let defaults = match run.tool.as_ref() {
+        Resolved::Tool { manifest, .. } => &manifest.env,
+        Resolved::Env { manifest, .. } => &manifest.env,
+    };
+    let mut env: Vec<(String, String)> = defaults
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    for (k, v) in &run.env {
+        env.retain(|(existing, _)| existing != k);
+        env.push((k.clone(), v.clone()));
+    }
+    let program = match (run.tool.as_ref(), &planned.action) {
+        (
+            Resolved::Tool {
+                manifest,
+                module,
+                files,
+                ..
+            },
+            Action::Args { args },
+        ) => {
+            if manifest.abi == Abi::TscHost {
+                return Err(fail(format!(
+                    "`{}` runs through the tsc host, so it cannot be a service",
+                    manifest.name
+                )));
+            }
+            for (path, blob) in files {
+                fs.write(path, &blob.bytes)
+                    .map_err(|e| fail(e.to_string()))?;
+            }
+            ServiceProgram::Command {
+                module: WasmModule::with_sha256(
+                    manifest.name.clone(),
+                    sha256_bytes(&module.sha256).map_err(fail)?,
+                    module.bytes.clone(),
+                ),
+                args: manifest.args.iter().chain(args).cloned().collect(),
+            }
+        }
+        (
+            Resolved::Env {
+                manifest, packages, ..
+            },
+            Action::Script { script },
+        ) => {
+            let (packages, entry) = environment(manifest, packages);
+            ServiceProgram::Script {
+                packages,
+                entry: entry.into(),
+                script: script.clone(),
+            }
+        }
+        // Validation pairs them, as for a job.
+        (Resolved::Tool { .. }, Action::Script { .. }) => {
+            return Err(fail("a tool cannot run a script".into()));
+        }
+        (Resolved::Env { .. }, Action::Args { .. }) => {
+            return Err(fail("an environment needs a `run:` script".into()));
+        }
+    };
+    Ok(Service {
+        name: planned.name.clone(),
+        program,
+        env,
+        ready: match &planned.ready.check {
+            ReadyCheck::Started => Ready::Started,
+            ReadyCheck::Port { port } => Ready::Port(*port),
+            ReadyCheck::Log { pattern } => Ready::Log(pattern.clone()),
+            ReadyCheck::Command { script } => Ready::Command(script.clone()),
+        },
+        ready_timeout: planned.ready.timeout,
+    })
 }
 
 /// The job's `tools:` as commands for its script: each tool's module,

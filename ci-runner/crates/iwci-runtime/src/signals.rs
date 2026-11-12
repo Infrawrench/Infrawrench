@@ -205,6 +205,9 @@ struct Log {
     signals: VecDeque<(Instant, Signalled)>,
     /// Syscall, errno, times, last time.
     unimplemented: Vec<(String, &'static str, u32, Instant)>,
+    /// The job's first process has ended: what happens after (its services
+    /// being stopped) is the runner's doing, not part of how it ended.
+    closed: bool,
 }
 
 /// One signal record.
@@ -275,8 +278,16 @@ impl SignalLog {
         });
     }
 
+    /// Records nothing more (see `Log::closed`).
+    pub(crate) fn close(&self) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
+    }
+
     fn signalled(&self, what: Signalled) {
         let mut log = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if log.closed {
+            return;
+        }
         if log.signals.len() == SIGNALS_KEPT {
             log.signals.pop_front();
         }
@@ -286,6 +297,9 @@ impl SignalLog {
     fn unimplemented(&self, syscall: &str, errno: &'static str) {
         let now = Instant::now();
         let mut log = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if log.closed {
+            return;
+        }
         if let Some(entry) = log
             .unimplemented
             .iter_mut()

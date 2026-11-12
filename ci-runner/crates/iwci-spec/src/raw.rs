@@ -57,6 +57,65 @@ pub struct Workspace {
     pub clone: Option<Clone>,
     #[serde(default)]
     pub deps: Option<Vec<Dep>>,
+    /// Background services every job starts with, unless it turns them off
+    /// (`services: false`) or names its own of the same name.
+    #[serde(default)]
+    pub services: Option<IndexMap<String, Service>>,
+}
+
+/// A job's `services:`: a map of name to service, or `false` for none of
+/// the workspace's either.
+#[derive(Debug, Clone)]
+pub enum Services {
+    /// `true` changes nothing; `false` drops `workspace.services`.
+    Enabled(bool),
+    Map(IndexMap<String, Service>),
+}
+
+impl<'de> Deserialize<'de> for Services {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bool_or(deserializer, Services::Enabled, Services::Map)
+    }
+}
+
+/// A program that runs beside the job, in its isolate and on its loopback,
+/// from before its `run:` until it ends.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Service {
+    /// `env:<name>@<version>` (with `run:`), or a `builtin:` or `repo:`
+    /// tool (with `args:`).
+    pub using: String,
+    /// A bash script, for an `env:` service.
+    #[serde(default)]
+    pub run: Option<String>,
+    /// Arguments, for a tool.
+    #[serde(default)]
+    pub args: Option<Args>,
+    /// Its environment variables; `${{ secrets.<name> }}` works here.
+    #[serde(default)]
+    pub env: IndexMap<String, String>,
+    /// When the job may start. Without it, as soon as the service starts.
+    #[serde(default)]
+    pub ready: Option<Ready>,
+}
+
+/// One way to tell a service is ready, and how long to wait for it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Ready {
+    /// Something in the job listens on this port of the loopback.
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// A line of its output matches this regular expression.
+    #[serde(default)]
+    pub log: Option<String>,
+    /// This script, run in the service's environment, exits 0.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Default `60s`.
+    #[serde(default)]
+    pub timeout: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -167,6 +226,10 @@ pub struct Job {
     /// passed, and hand on what that run kept. See [`TaskCache`].
     #[serde(default)]
     pub task_cache: Option<TaskCache>,
+    /// Background services started before the job and stopped after it,
+    /// over `workspace.services`. See [`Service`].
+    #[serde(default)]
+    pub services: Option<Services>,
 }
 
 /// `packages: true`, or which packages a job runs in.

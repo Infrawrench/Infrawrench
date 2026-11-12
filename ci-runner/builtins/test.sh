@@ -10,9 +10,11 @@
 #   builtins/test.sh                 gofmt, bash and tools (the default)
 #   builtins/test.sh typescript oxfmt bash-node python php
 #   builtins/test.sh go              every Go minor; go@1.25 for one
+#   builtins/test.sh python postgres
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
-# bash earlier in the same list.
+# bash earlier in the same list. `postgres` runs PostgreSQL as a service
+# (`services:`) for Python jobs, so it needs python in the same list.
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
@@ -61,11 +63,11 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/$name/build.sh"
       dirs=("$dist"/builtin/"$name"/*)
       ;;
-    bash | bash-node | python | php | go@*)
+    bash | bash-node | python | php | go@* | postgres)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php | go@*) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@* | postgres) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -81,7 +83,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), tools" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools" >&2
       exit 2
       ;;
   esac
@@ -593,6 +595,34 @@ jobs:
     run: |
       test "$(node -e 'console.log(6 * 7)')" = 42
       node --version
+  # A small Node HTTP server as a service: started before the job, ready
+  # once it listens, reached by its name, and stopped after the job.
+  node-service-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    services:
+      api:
+        using: env:bash-node@24
+        env: { WHO: api }
+        run: |
+          node -e '
+          require("http")
+            .createServer((req, res) => res.end("hello from " + process.env.WHO))
+            .listen(3000, "127.0.0.1", () => console.log("api listening on 3000"));
+          '
+        ready: { port: 3000 }
+    run: |
+      test "$(node -e 'fetch("http://api:3000/").then(r => r.text()).then(t => console.log(t))')" = "hello from api"
+      test "$(cat /proc/iwci/tcp/127.0.0.1:3000)" = listening
+  node-service-log-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    services:
+      api:
+        using: env:bash-node@24
+        run: node -e 'require("http").createServer((q, r) => r.end("ok")).listen(3001, () => console.log("ready on 3001"))'
+        ready: { log: "^ready on 3001$" }
+    run: test "$(node -e 'fetch("http://localhost:3001/").then(r => r.text()).then(console.log)')" = ok
   package-managers-passes:
     using: env:bash-node@24
     run: |
@@ -1279,6 +1309,78 @@ jobs:
       test "$(python -c 'import subprocess, sys; sys.stdout.write(subprocess.run(["printf", "%s|", "x\ny", "z"], capture_output=True, text=True).stdout)')" = "$(printf 'x\ny|z|')"
 YAML
       ;;
+    postgres)
+      cat <<'YAML'
+name: postgres
+workspace:
+  services:
+    postgres:
+      using: env:postgres@18
+      run: pglite
+      ready: { port: 5432 }
+jobs:
+  # PostgreSQL as a service of a Python job, queried with psycopg (a
+  # `wasix_wasm32` wheel of psycopg-binary from Wasmer's index). pglite
+  # serves one connection, so the job uses one. The port check never
+  # connects, so it does not use it up.
+  psycopg-passes:
+    using: env:python@3.13
+    timeout: 10m
+    run: |
+      pip install 'psycopg[binary]'
+      python - <<'PY'
+      import psycopg
+      with psycopg.connect("host=postgres port=5432 user=postgres dbname=postgres") as conn:
+          version = conn.execute("select version()").fetchone()[0]
+          print(version)
+          assert version.startswith("PostgreSQL 18"), version
+          conn.execute("create table t (n int)")
+          conn.execute("insert into t select generate_series(1, 1000)")
+          assert conn.execute("select sum(n) from t").fetchone()[0] == 500500
+      PY
+  # Ready by its log line, with a secret in its environment that its log
+  # prints: masked like the job's own output (the report is checked for it
+  # below).
+  log-ready-passes:
+    using: env:python@3.13
+    timeout: 10m
+    services:
+      postgres:
+        using: env:postgres@18
+        env: { TOKEN: "${{ secrets.FIXTURE_TOKEN }}" }
+        run: |
+          echo "starting with $TOKEN"
+          exec pglite
+        ready: { log: "OLIPHAUNT_WASIX_SOCKET_READY 5432" }
+    run: |
+      test "$(cat /proc/iwci/tcp/127.0.0.1:5432)" = listening
+      test -z "${TOKEN:-}"
+  # Not ready in time, and gone before it was ready: the job never runs,
+  # and the reason names the service.
+  not-ready-fails:
+    using: env:python@3.13
+    services:
+      postgres:
+        using: env:postgres@18
+        run: exec sleep 300
+        ready: { port: 5432, timeout: 2s }
+    run: touch ran
+  exits-early-fails:
+    using: env:python@3.13
+    services:
+      postgres:
+        using: env:postgres@18
+        run: echo bye; exit 3
+        ready: { command: "test -e /tmp/never" }
+    run: touch ran
+  # A service still running when the job ends is stopped, and the job
+  # passes; one that takes no service at all starts none.
+  no-services-passes:
+    using: env:python@3.13
+    services: false
+    run: test "$(ls /proc/iwci/tcp)" = ""
+YAML
+      ;;
     php)
       cat <<'YAML'
 name: php
@@ -1374,6 +1476,8 @@ want_reason() {
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
+    postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
+    postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;
@@ -1388,6 +1492,8 @@ want_stderr() {
   case "$1" in
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
+    postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
+    postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*V8 ran out of heap in an isolate" ;;

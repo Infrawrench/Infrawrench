@@ -78,6 +78,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         commands: Vec::new(),
         internet: false,
         modes: iwci_vfs::Modes::default(),
+        services: Vec::new(),
     }
 }
 
@@ -1911,4 +1912,451 @@ fn a_command_sed_runs_gets_its_line_feeds() {
         "a\nb|\n",
         "{stderr:?}"
     );
+}
+
+// Services (`background.rs`). The first tests use hand-written WASIX
+// modules, so they need nothing built; the bash and Node ones read an
+// environment like the tests above.
+
+/// A WASIX server: after `delay_ms` it listens on `127.0.0.1:port`, says so
+/// on stdout, and then sleeps for good, or spins without a single syscall
+/// (so only the watchdog can stop it) when `spin` is set.
+fn listener(port: u16, delay_ms: u64, spin: bool) -> WasmModule {
+    let msg = format!("listening on {port}\\n");
+    let len = msg.len() - 1;
+    let body = if spin {
+        ""
+    } else {
+        "(call $sleep (i64.const 50000000))"
+    };
+    // A relative timeout of 0 never returns from WASIX's `poll_oneoff`.
+    let delay = if delay_ms == 0 {
+        String::new()
+    } else {
+        format!("(call $sleep (i64.const {}))", delay_ms * 1_000_000)
+    };
+    let wat = format!(
+        r#"(module
+  (import "wasix_32v1" "sock_open" (func $open (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_bind" (func $bind (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_listen" (func $listen (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "poll_oneoff" (func $poll (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 300) "{msg}")
+  (func $sleep (param $ns i64)
+    ;; one relative clock subscription (see `sleeper`)
+    (i32.store8 (i32.const 8) (i32.const 0))
+    (i32.store (i32.const 16) (i32.const 1))
+    (i64.store (i32.const 24) (local.get $ns))
+    (drop (call $poll (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 128))))
+  (func (export "_start")
+    {delay}
+    ;; an IPv4 (1) stream (1) socket, its descriptor at 400
+    (if (call $open (i32.const 1) (i32.const 1) (i32.const 0) (i32.const 400))
+      (then (call $exit (i32.const 10))))
+    ;; __wasi_addr_port_t at 500: family, padding, port, 127.0.0.1
+    (i32.store8 (i32.const 500) (i32.const 1))
+    (i32.store16 (i32.const 502) (i32.const {port}))
+    (i32.store (i32.const 504) (i32.const 0x0100007f))
+    (if (call $bind (i32.load (i32.const 400)) (i32.const 500))
+      (then (call $exit (i32.const 11))))
+    (if (call $listen (i32.load (i32.const 400)) (i32.const 16))
+      (then (call $exit (i32.const 12))))
+    (i32.store (i32.const 220) (i32.const 300))
+    (i32.store (i32.const 224) (i32.const {len}))
+    (drop (call $fd_write (i32.const 1) (i32.const 220) (i32.const 1) (i32.const 232)))
+    (loop $l {body} (br $l))))"#,
+    );
+    wat_module("listener", &wat)
+}
+
+/// Says `bye` on stderr and exits 3.
+const QUITTER: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 300) "bye\n")
+  (func (export "_start")
+    (i32.store (i32.const 220) (i32.const 300))
+    (i32.store (i32.const 224) (i32.const 4))
+    (drop (call $fd_write (i32.const 2) (i32.const 220) (i32.const 1) (i32.const 232)))
+    (call $exit (i32.const 3))))
+"#;
+
+fn module_service(name: &str, module: WasmModule, ready: Ready, timeout: Duration) -> Service {
+    Service {
+        name: name.into(),
+        program: ServiceProgram::Command {
+            module,
+            args: Vec::new(),
+        },
+        env: Vec::new(),
+        ready,
+        ready_timeout: timeout,
+    }
+}
+
+fn script_service(
+    name: &str,
+    packages: &[WebcPackage],
+    script: &str,
+    env: &[(&str, &str)],
+    ready: Ready,
+) -> Service {
+    Service {
+        name: name.into(),
+        program: ServiceProgram::Script {
+            packages: packages.to_vec(),
+            entry: "bash".into(),
+            script: script.into(),
+        },
+        env: env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ready,
+        ready_timeout: Duration::from_secs(20),
+    }
+}
+
+#[test]
+fn a_job_starts_once_its_service_listens_on_its_port() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![module_service(
+        "web",
+        listener(4444, 300, false),
+        Ready::Port(4444),
+        Duration::from_secs(10),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    // HELLO ran (it exits 3 and writes out.txt) after the service was
+    // ready, and the service's output is in the job's stderr.
+    assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+    assert_eq!(outcome.service_failure, None);
+    assert!(
+        outcome.duration >= Duration::from_millis(300),
+        "{outcome:?}"
+    );
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.contains("[service web] listening on 4444\n"),
+        "{stderr:?}"
+    );
+    assert!(job.read("/work/out.txt").is_ok());
+    // The service, still running, was stopped promptly once the job ended.
+    assert!(outcome.duration < Duration::from_secs(4), "{outcome:?}");
+}
+
+#[test]
+fn a_service_that_is_never_ready_fails_the_job_in_its_time_without_running_it() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![module_service(
+        "db",
+        listener(4444, 0, false),
+        Ready::Port(5432),
+        Duration::from_secs(1),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert_eq!(outcome.exit_code, 1, "{outcome:?}");
+    assert!(!outcome.success());
+    assert_eq!(
+        outcome.service_failure.as_deref(),
+        Some("service `db` was not ready after 1s: nothing listened on port 5432")
+    );
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.ends_with(
+            "iwci: service `db` was not ready after 1s: nothing listened on port 5432\n"
+        ),
+        "{stderr:?}"
+    );
+    // The job never ran.
+    assert!(job.read("/work/out.txt").is_err());
+    assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
+
+    // The job's own timeout bounds the wait too.
+    let mut inv = invocation(snapshot(&[]).fork().as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(1);
+    inv.services = vec![module_service(
+        "db",
+        listener(4444, 0, false),
+        Ready::Port(5432),
+        Duration::from_secs(60),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert!(
+        outcome
+            .service_failure
+            .as_deref()
+            .is_some_and(|f| f.contains("when the job's timeout ran out")),
+        "{outcome:?}"
+    );
+    assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
+}
+
+#[test]
+fn a_service_that_exits_before_it_is_ready_fails_the_job() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![module_service(
+        "db",
+        wat_module("quitter", QUITTER),
+        Ready::Port(5432),
+        Duration::from_secs(30),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert_eq!(
+        outcome.service_failure.as_deref(),
+        Some("service `db` exited with 3 before it was ready"),
+        "{outcome:?}"
+    );
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(stderr.starts_with("[service db] bye\n"), "{stderr:?}");
+    assert!(job.read("/work/out.txt").is_err());
+    assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
+}
+
+#[test]
+fn a_service_that_ignores_its_stop_is_ended_and_never_holds_the_job() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    // It spins without a syscall once listening, so no signal reaches it;
+    // only the watchdog stops it.
+    inv.services = vec![module_service(
+        "spin",
+        listener(4445, 0, true),
+        Ready::Port(4445),
+        Duration::from_secs(10),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+    assert!(!outcome.timed_out, "{outcome:?}");
+    assert!(
+        outcome.duration < background::STOP_GRACE + Duration::from_secs(3),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn services_have_ports_of_the_jobs_loopback_and_a_service_failing_to_bind_says_so() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    // Two services on one port: the second cannot bind it, because both are
+    // on the job's one loopback.
+    inv.services = vec![
+        module_service(
+            "a",
+            listener(4446, 0, false),
+            Ready::Port(4446),
+            Duration::from_secs(10),
+        ),
+        module_service(
+            "b",
+            listener(4446, 200, false),
+            Ready::Port(4447),
+            Duration::from_secs(10),
+        ),
+    ];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert_eq!(
+        outcome.service_failure.as_deref(),
+        Some("service `b` exited with 11 before it was ready"),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn a_bash_service_is_ready_by_its_log_and_gets_its_own_env() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    // Compiled first, so the time below is the job's and its service's.
+    rt.prepare_environment(&packages).unwrap();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![script_service(
+        "db",
+        &packages,
+        // A partial line first, which is only checked once it is whole.
+        "sleep 0.3; printf 'secret is %s, ' \"$PASSWORD\"; echo \"greeting is ${GREETING-unset}\"; echo 'db ready on 5432' >&2; exec sleep 300",
+        &[("PASSWORD", "hunter2-value")],
+        Ready::Log("ready on [0-9]+$".into()),
+    )];
+    let outcome = rt
+        .run_script(&packages, "bash", "echo job ran", inv)
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{outcome:?} {stderr}");
+    assert_eq!(outcome.stdout, b"job ran\n");
+    // Its output is the job's, line by line (the scheduler masks it); the
+    // job's `env:` is not the service's.
+    assert!(
+        stderr.contains("[service db] secret is hunter2-value, greeting is unset\n"),
+        "{stderr:?}"
+    );
+    assert!(
+        stderr.contains("[service db] db ready on 5432\n"),
+        "{stderr:?}"
+    );
+    // `exec sleep 300` was stopped with the job, without waiting for it.
+    assert!(
+        outcome.duration < background::STOP_GRACE + Duration::from_secs(2),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn a_bash_service_is_ready_when_its_check_passes_and_shares_the_jobs_files() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![script_service(
+        "flag",
+        &packages,
+        "sleep 0.5; echo up > /work/flag; exec sleep 300",
+        &[],
+        Ready::Command("test -e /work/flag".into()),
+    )];
+    let outcome = rt
+        .run_script(&packages, "bash", "cat /work/flag", inv)
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert_eq!(outcome.stdout, b"up\n");
+
+    // A check that never passes fails the job with its last output.
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    let mut service = script_service(
+        "flag",
+        &packages,
+        "exec sleep 300",
+        &[],
+        Ready::Command("echo not yet; exit 4".into()),
+    );
+    service.ready_timeout = Duration::from_secs(2);
+    inv.services = vec![service];
+    let outcome = rt
+        .run_script(&packages, "bash", "echo job ran", inv)
+        .unwrap();
+    assert_eq!(
+        outcome.service_failure.as_deref(),
+        Some(
+            "service `flag` was not ready after 2s: its ready check never passed (the last one exited with 4)"
+        ),
+        "{outcome:?}"
+    );
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.contains("[service flag] ready check: not yet\n"),
+        "{stderr:?}"
+    );
+    assert!(outcome.stdout.is_empty(), "{outcome:?}");
+}
+
+#[test]
+fn a_service_that_exits_while_the_job_runs_is_reported() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let mut inv = invocation(snapshot(&[]).fork().as_dyn(), &[]);
+    inv.services = vec![script_service(
+        "flaky",
+        &packages,
+        "echo started; sleep 0.2; exit 7",
+        &[],
+        Ready::Started,
+    )];
+    let outcome = rt
+        .run_script(&packages, "bash", "sleep 1; echo done", inv)
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert!(
+        stderr.contains("[service flaky] started\n")
+            && stderr.contains("iwci: service `flaky` exited with 7 while the job ran\n"),
+        "{stderr:?}"
+    );
+}
+
+/// The `bash-node` environment `builtins/environments/build.sh` built, for
+/// the Node services below.
+#[cfg(feature = "node")]
+fn node_packages() -> Option<Vec<WebcPackage>> {
+    let dir = fixture(
+        "IWCI_TEST_NODE_WEBC_DIR",
+        "the bash-node environment's build directory",
+    )?;
+    let read = |file: &str| std::fs::read(dir.join(file)).unwrap();
+    let build: serde_json::Value = serde_json::from_slice(&read("build.json")).unwrap();
+    Some(
+        build["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                let field = |k: &str| p[k].as_str().unwrap();
+                WebcPackage::new(field("name"), field("version"), read(field("file")))
+            })
+            .collect(),
+    )
+}
+
+/// A small Node HTTP server as a service, ready by its port and by its log,
+/// reached from the job by the service's name.
+#[cfg(feature = "node")]
+#[test]
+fn a_node_server_is_a_service_the_job_reaches_by_name() {
+    let Some(packages) = node_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let server = r#"node -e '
+const http = require("http");
+http.createServer((req, res) => res.end("hello from " + process.env.WHO))
+  .listen(3000, "127.0.0.1", () => console.log("api listening on 3000"));
+'"#;
+    for ready in [Ready::Port(3000), Ready::Log("listening on 3000".into())] {
+        let job = snapshot(&[]).fork();
+        let mut inv = invocation(job.as_dyn(), &[]);
+        inv.limits.memory_bytes = 2 << 30;
+        inv.limits.timeout = Duration::from_secs(120);
+        let mut service =
+            script_service("api", &packages, server, &[("WHO", "api")], ready.clone());
+        service.ready_timeout = Duration::from_secs(60);
+        inv.services = vec![service];
+        let outcome = rt
+            .run_script(
+                &packages,
+                "bash",
+                r#"node -e 'fetch("http://api:3000/").then(r => r.text()).then(t => console.log(t))'"#,
+                inv,
+            )
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&outcome.stderr);
+        assert_eq!(outcome.exit_code, 0, "{ready:?}: {outcome:?} {stderr}");
+        assert_eq!(
+            String::from_utf8_lossy(&outcome.stdout),
+            "hello from api\n",
+            "{ready:?}: {stderr}"
+        );
+        assert!(
+            stderr.contains("[service api] api listening on 3000\n"),
+            "{stderr:?}"
+        );
+    }
 }

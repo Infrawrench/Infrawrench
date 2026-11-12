@@ -116,6 +116,10 @@ pub const DEFAULT_SCRATCH: u64 = 1 << 30;
 pub const SCRATCH_PATH: &str = "/tmp/workflow";
 /// The most `tools:` one job may list.
 pub const MAX_TOOLS: usize = 16;
+/// The most services one job may start.
+pub const MAX_SERVICES: usize = 8;
+/// How long a job waits for a service's `ready:` unless it says.
+pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 60;
 pub const MIN_MEMORY: u64 = 16 << 20;
 pub const MAX_MEMORY: u64 = 16 << 30;
 pub const DEFAULT_CLONE_INTO: &str = "/app";
@@ -165,6 +169,17 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
     })?;
     let mut expand_errors = Vec::new();
     let generated = packages::expand(&mut raw, &ctx.packages, &mut expand_errors);
+    // Each job carries the services it starts with from here on, so a job
+    // expanded later (a deferred matrix) needs nothing but itself.
+    let base_services = raw
+        .workspace
+        .as_ref()
+        .and_then(|w| w.services.clone())
+        .unwrap_or_default();
+    for job in raw.jobs.values_mut() {
+        let services = effective_services(&base_services, job.services.as_ref());
+        job.services = Some(raw::Services::Map(services));
+    }
     let decls: HashMap<String, JobDecl> = raw
         .jobs
         .iter()
@@ -189,6 +204,26 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         Ok(plan)
     } else {
         Err(SpecErrors(v.errors))
+    }
+}
+
+/// The services a job starts: `workspace.services`, with the job's own of
+/// the same name in their place and its others after them, or none at all
+/// for `services: false`.
+fn effective_services(
+    base: &indexmap::IndexMap<String, raw::Service>,
+    job: Option<&raw::Services>,
+) -> indexmap::IndexMap<String, raw::Service> {
+    match job {
+        None | Some(raw::Services::Enabled(true)) => base.clone(),
+        Some(raw::Services::Enabled(false)) => indexmap::IndexMap::new(),
+        Some(raw::Services::Map(own)) => {
+            let mut all = base.clone();
+            for (name, service) in own {
+                all.insert(name.clone(), service.clone());
+            }
+            all
+        }
     }
 }
 
@@ -292,6 +327,16 @@ struct JobStatic {
     timeout: u64,
     memory: u64,
     changes: ChangePolicy,
+    /// The services that passed their checks, substituted per entry.
+    services: Vec<ServiceStatic>,
+}
+
+/// A service's parts that do not depend on the matrix entry.
+struct ServiceStatic {
+    name: String,
+    raw: raw::Service,
+    tool: ToolRef,
+    timeout: u64,
 }
 
 /// The shape of a matrix, which decides how `${{ matrix }}` reads.
@@ -1070,13 +1115,20 @@ impl Validator<'_> {
                     "a job without a clone has no files to key its cache on",
                 );
             }
-            if job
-                .env
-                .values()
-                .any(|v| matches!(interp::secret_parts(v), Ok(Some(_))))
-            {
+            let reads_secret = |env: &indexmap::IndexMap<String, String>| {
+                env.values()
+                    .any(|v| matches!(interp::secret_parts(v), Ok(Some(_))))
+            };
+            if reads_secret(&job.env) {
                 // Its result could depend on a secret the key cannot hold.
                 self.error(&at, "a job that reads secrets cannot be task-cached");
+            } else if let Some(raw::Services::Map(services)) = &job.services
+                && services.values().any(|s| reads_secret(&s.env))
+            {
+                self.error(
+                    &at,
+                    "a job whose services read secrets cannot be task-cached",
+                );
             }
             if matches!(changes, ChangePolicy::Commit { .. }) {
                 self.error(&at, "a job that commits its changes cannot be task-cached");
@@ -1118,13 +1170,138 @@ impl Validator<'_> {
                 Err(e) => self.error(format!("{path}.tools"), e),
             }
         }
+        let services = match &job.services {
+            Some(raw::Services::Map(services)) => self.services(path, services, timeout),
+            _ => Vec::new(),
+        };
         JobStatic {
             tool,
             tools,
             timeout,
             memory,
             changes,
+            services,
         }
+    }
+
+    /// Checks a job's services (`workspace.services` already merged in)
+    /// and returns the ones that can be planned.
+    fn services(
+        &mut self,
+        path: &str,
+        services: &indexmap::IndexMap<String, raw::Service>,
+        job_timeout: u64,
+    ) -> Vec<ServiceStatic> {
+        if services.len() > MAX_SERVICES {
+            self.error(
+                format!("{path}.services"),
+                format!(
+                    "starts {} services; the limit is {MAX_SERVICES}",
+                    services.len()
+                ),
+            );
+        }
+        let mut out = Vec::new();
+        for (name, service) in services {
+            let at = format!("{path}.services.{name}");
+            let errors = self.errors.len();
+            if !is_name(name) {
+                self.error(
+                    &at,
+                    "service names use lowercase letters, digits, `-` and `_`, up to 64",
+                );
+            } else if name == "localhost" {
+                self.error(&at, "`localhost` already names the job's loopback");
+            }
+            let tool = match parse_tool(&service.using) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    self.error(format!("{at}.using"), e);
+                    None
+                }
+            };
+            match (&tool, &service.args, &service.run) {
+                (Some(t), _, None) if t.is_env() => self.error(
+                    &at,
+                    format!(
+                        "`{}` is an environment; give the service a `run:` script that starts it",
+                        service.using
+                    ),
+                ),
+                (Some(t), Some(_), _) if t.is_env() => self.error(
+                    format!("{at}.args"),
+                    "an environment service takes a `run:` script, not `args:`",
+                ),
+                (Some(t), _, Some(_)) if !t.is_env() => self.error(
+                    format!("{at}.run"),
+                    format!(
+                        "`{}` is a tool; give it `args:`, or use an `env:` environment for a script",
+                        service.using
+                    ),
+                ),
+                _ => {}
+            }
+            for k in service.env.keys() {
+                if !is_env_key(k) {
+                    self.error(
+                        format!("{at}.env.{k}"),
+                        "is not a valid environment variable name",
+                    );
+                } else if k.starts_with("IWCI_") {
+                    self.error(
+                        format!("{at}.env.{k}"),
+                        "`IWCI_` variables are set by the runner",
+                    );
+                }
+            }
+            let mut timeout = DEFAULT_READY_TIMEOUT_SECS.min(job_timeout);
+            if let Some(ready) = &service.ready {
+                let checks = [
+                    ready.port.is_some(),
+                    ready.log.is_some(),
+                    ready.command.is_some(),
+                ];
+                if checks.iter().filter(|c| **c).count() > 1 {
+                    self.error(
+                        format!("{at}.ready"),
+                        "give one of `port`, `log` or `command`",
+                    );
+                }
+                if ready.port == Some(0) {
+                    self.error(format!("{at}.ready.port"), "must be between 1 and 65535");
+                }
+                if ready.command.is_some() && tool.as_ref().is_some_and(|t| !t.is_env()) {
+                    self.error(
+                        format!("{at}.ready.command"),
+                        "runs in the service's environment, so the service needs `using: env:...`",
+                    );
+                }
+                if let Some(t) = &ready.timeout {
+                    match units::parse_duration_secs(t) {
+                        Some(s) if (1..=job_timeout).contains(&s) => timeout = s,
+                        Some(_) => self.error(
+                            format!("{at}.ready.timeout"),
+                            "must be at least 1s and no longer than the job's timeout",
+                        ),
+                        None => self.error(
+                            format!("{at}.ready.timeout"),
+                            format!("`{t}` is not a duration; use e.g. `30s` or `2m`"),
+                        ),
+                    }
+                }
+            }
+            if self.errors.len() == errors
+                && let Some(tool) = tool
+            {
+                out.push(ServiceStatic {
+                    name: name.clone(),
+                    raw: service.clone(),
+                    tool,
+                    timeout,
+                });
+            }
+        }
+        out
     }
 
     /// The job's expanded entries, and whether any of them read outputs
@@ -1210,44 +1387,93 @@ impl Validator<'_> {
                 (None, None) => format!("{key} ({})", values.join(", ")),
             };
             let cwd_raw = job.cwd.as_deref().map(|c| sub("cwd", c));
-            let action = match (&job.args, &job.run) {
-                (_, Some(script)) => Action::Script {
-                    script: sub("run", script),
-                },
-                (Some(raw::Args::List(list)), None) => Action::Args {
-                    args: list.iter().map(|a| sub("args", a)).collect(),
-                },
-                (Some(raw::Args::Line(line)), None) => {
-                    let line = sub("args", line);
-                    match shell::split(&line) {
-                        Ok(args) => Action::Args { args },
-                        Err(e) => {
-                            report("args", e);
-                            Action::Args { args: Vec::new() }
+            // `args:`/`run:` and `env:`, for the job and for each service
+            // (whose fields are under `services.<name>.`).
+            let action_of =
+                |at: &str, args: &Option<raw::Args>, run: &Option<String>| match (args, run) {
+                    (_, Some(script)) => Action::Script {
+                        script: sub(&format!("{at}run"), script),
+                    },
+                    (Some(raw::Args::List(list)), None) => Action::Args {
+                        args: list.iter().map(|a| sub(&format!("{at}args"), a)).collect(),
+                    },
+                    (Some(raw::Args::Line(line)), None) => {
+                        let line = sub(&format!("{at}args"), line);
+                        match shell::split(&line) {
+                            Ok(args) => Action::Args { args },
+                            Err(e) => {
+                                report(&format!("{at}args"), e);
+                                Action::Args { args: Vec::new() }
+                            }
                         }
                     }
+                    (None, None) => Action::Args { args: Vec::new() },
+                };
+            let env_of = |at: &str, vars: &indexmap::IndexMap<String, String>| {
+                let mut env: Vec<(String, String)> = Vec::new();
+                let mut secret_env: Vec<SecretEnv> = Vec::new();
+                for (k, v) in vars {
+                    let field = format!("{at}env.{k}");
+                    match interp::secret_parts(v) {
+                        Ok(None) => env.push((k.clone(), sub(&field, v))),
+                        Ok(Some(parts)) => secret_env.push(SecretEnv {
+                            key: k.clone(),
+                            parts: parts
+                                .into_iter()
+                                .map(|p| match p {
+                                    interp::RawPart::Text(t) => SecretPart::Text(sub(&field, &t)),
+                                    interp::RawPart::Secret(name) => SecretPart::Secret(name),
+                                })
+                                .collect(),
+                        }),
+                        Err(e) => report(&field, e),
+                    }
                 }
-                (None, None) => Action::Args { args: Vec::new() },
+                (env, secret_env)
             };
-            let mut env: Vec<(String, String)> = Vec::new();
-            let mut secret_env: Vec<SecretEnv> = Vec::new();
-            for (k, v) in &job.env {
-                let field = format!("env.{k}");
-                match interp::secret_parts(v) {
-                    Ok(None) => env.push((k.clone(), sub(&field, v))),
-                    Ok(Some(parts)) => secret_env.push(SecretEnv {
-                        key: k.clone(),
-                        parts: parts
-                            .into_iter()
-                            .map(|p| match p {
-                                interp::RawPart::Text(t) => SecretPart::Text(sub(&field, &t)),
-                                interp::RawPart::Secret(name) => SecretPart::Secret(name),
-                            })
-                            .collect(),
-                    }),
-                    Err(e) => report(&field, e),
-                }
-            }
+            let action = action_of("", &job.args, &job.run);
+            let (env, secret_env) = env_of("", &job.env);
+            let services: Vec<PlannedService> = st
+                .services
+                .iter()
+                .map(|s| {
+                    let at = format!("services.{}.", s.name);
+                    let (env, secret_env) = env_of(&at, &s.raw.env);
+                    let ready = s.raw.ready.clone().unwrap_or_default();
+                    let check = if let Some(port) = ready.port {
+                        ReadyCheck::Port { port }
+                    } else if let Some(pattern) = &ready.log {
+                        let pattern = sub(&format!("{at}ready.log"), pattern);
+                        if let Err(e) = regex::RegexBuilder::new(&pattern)
+                            .size_limit(1 << 20)
+                            .build()
+                        {
+                            report(
+                                &format!("{at}ready.log"),
+                                format!("is not a regular expression: {e}"),
+                            );
+                        }
+                        ReadyCheck::Log { pattern }
+                    } else if let Some(script) = &ready.command {
+                        ReadyCheck::Command {
+                            script: sub(&format!("{at}ready.command"), script),
+                        }
+                    } else {
+                        ReadyCheck::Started
+                    };
+                    PlannedService {
+                        name: s.name.clone(),
+                        tool: s.tool.clone(),
+                        action: action_of(&at, &s.raw.args, &s.raw.run),
+                        env,
+                        secret_env,
+                        ready: Readiness {
+                            check,
+                            timeout: std::time::Duration::from_secs(s.timeout),
+                        },
+                    }
+                })
+                .collect();
             let clone_root = workspace.clone.as_ref().map(|_| default_cwd.clone());
             // A `cache:` or `artifacts:` path: substituted, then relative to
             // the clone or absolute, without `..`, and never the runner's own.
@@ -1419,6 +1645,7 @@ impl Validator<'_> {
                     network: job.network.unwrap_or(true),
                     package: package.clone(),
                     task_cache,
+                    services,
                 });
             }
         }
