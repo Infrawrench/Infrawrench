@@ -11,10 +11,12 @@
 # (go/build.sh: Go's release archive for this host, checked against the
 # sha256 go.dev publishes, with go/1.27's series applied), whose `net` and
 # `os/exec` are WASIX's sockets and processes. Its tests run first, natively.
-# `-trimpath` and an empty build id keep this machine out of the module, and
-# every file of the package gets the same time stamp, so the package comes
-# out byte for byte the same on x86_64 and ARM64; environments/build.sh pins
-# its hash like any other package's.
+# `-trimpath`, no VCS stamp (inside a git checkout Go would record the
+# commit and whether the tree is clean) and an empty build id keep this
+# machine and checkout out of the module, and every file of the package gets
+# the same time stamp, so the package comes out byte for byte the same on
+# x86_64 and ARM64; environments/build.sh pins its hash like any other
+# package's.
 #
 #   environments/pglite-server/build.sh
 #     -> dist/package/pglite-server/<version>/pglite-server.webc
@@ -89,7 +91,7 @@ package="$work/package"
 mkdir -p "$package/modules"
 cp -R "$self/share" "$package/share"
 (cd "$self" && clean "$goroot/bin/go" test -count=1 ./...)
-(cd "$self" && clean GOOS=wasip1 GOARCH=wasm "$goroot/bin/go" build -trimpath -ldflags=-buildid= \
+(cd "$self" && clean GOOS=wasip1 GOARCH=wasm "$goroot/bin/go" build -trimpath -buildvcs=false -ldflags=-buildid= \
   -o "$package/modules/pglite-server" .)
 
 cat >"$package/wasmer.toml" <<TOML
@@ -118,4 +120,5 @@ find "$package" -exec touch -h -d "@$BUILT_ON" {} +
 out="$(out_dir package pglite-server "$VERSION")"
 WASMER_DIR="$work/wasmer-home" "$work/wasmer/bin/wasmer" package build --quiet -o "$out/pglite-server.webc" "$package"
 echo "built $out/pglite-server.webc"
+echo "  module  $(sha256sum "$package/modules/pglite-server" | cut -d' ' -f1)"
 echo "  package $(sha256sum "$out/pglite-server.webc" | cut -d' ' -f1)"
