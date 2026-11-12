@@ -1662,7 +1662,12 @@ whole pipeline.
   starts. It logs its resident and anonymous memory against the budget
   every ten minutes, and at once when its anonymous memory beyond what jobs
   have reserved passes the reserve (`iwci serve: memory: ...`), and
-  `/v1/capacity` reports the same numbers.
+  `/v1/capacity` reports the same numbers. Every half minute it lets go of
+  what no job uses: finished runs' reports and logs five minutes after they
+  end (the reports stay in the store), and the allocator's free memory. It
+  fixes glibc's allocator thresholds (a 2 MiB trim threshold) so that
+  includes the top of every thread's arena, which glibc's own adjustment
+  stops trimming after the first large block it frees (#1066).
 - **One V8 heap space for every Node job (#1063).** Every `node` of every
   job is an isolate of the runner's one V8, which compresses pointers into
   a single 4 GiB cage: the JavaScript heaps of all jobs together have 4 GiB
@@ -1870,7 +1875,10 @@ A request body (for `runs` and `prepare`):
   stream) and `job-finished` events; then `run-finished`. A finished job's
   report carries its `needs` too. A client that connects late
   gets the backlog first. Up to 8 MiB of output is kept per run; past that a
-  `truncated` event says so and job events still flow. A comment every 15 s
+  `truncated` event says so and job events still flow. A finished run's log
+  is kept for five minutes after it ends; its report is read from the store
+  after that, by `GET /v1/runs/{id}` on the runner that ran it or with
+  `?owner=` on any. A comment every 15 s
   keeps idle connections open through proxies.
 - **Billing.** Each run writes a record to
   `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`: the run, its jobs, and

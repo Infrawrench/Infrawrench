@@ -79,6 +79,36 @@ pub fn return_free_memory() {
     }
 }
 
+/// What a glibc arena may keep free at its top before a free gives it back.
+pub const TRIM_THRESHOLD: usize = 2 << 20;
+/// Allocations at least this large get a mapping of their own.
+pub const MMAP_THRESHOLD: usize = 32 << 20;
+
+/// Fixes glibc's allocator thresholds for a long-lived server, so that
+/// [`return_free_memory`] gives back what an idle server no longer uses
+/// (#1066).
+///
+/// glibc raises both thresholds as the process frees large mapped blocks,
+/// up to a 32 MiB mmap threshold and a trim threshold of twice that. A
+/// thread's arena is a series of 64 MiB heaps, so from then on no arena
+/// heap but the main one is ever trimmed, and `malloc_trim` trims only the
+/// main arena's top: each heap kept its top, the memory freed last in it,
+/// resident for good. After two full Test pipelines that was 1 GB of the
+/// server's 1.35 GB anonymous memory, in the tops of 64 arenas, holding the
+/// last jobs' file contents (a `node_modules` source text among them) as
+/// if it were live. Setting the thresholds turns their adjustment off: the
+/// mmap threshold stays where glibc's own took it, and a free that leaves
+/// more than [`TRIM_THRESHOLD`] at the top of any heap gives it back.
+pub fn configure_allocator() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: mallopt takes plain integers and sets the allocator's
+    // parameters under its own lock.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, MMAP_THRESHOLD as libc::c_int);
+        libc::mallopt(libc::M_TRIM_THRESHOLD, TRIM_THRESHOLD as libc::c_int);
+    }
+}
+
 /// A `Name:   1234 kB` field of a `/proc` file, in bytes.
 fn kib_field(text: &str, name: &str) -> Option<u64> {
     let rest = text.lines().find_map(|line| line.strip_prefix(name))?;
