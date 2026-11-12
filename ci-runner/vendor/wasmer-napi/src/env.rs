@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(all(target_arch = "wasm32", feature = "js"))]
 use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
@@ -317,8 +317,10 @@ impl NapiEnv {
         };
         #[cfg(all(target_arch = "wasm32", feature = "js"))]
         let role = IsolateRole::Worker;
+        // iwci patch (#1063): may wait for room in the process-wide V8 heap
+        // space, until the app is stopped.
         self.budget
-            .try_reserve_env_as(requested, self.max_envs, role)
+            .reserve_env_waiting(requested, self.max_envs, role, &self.host_stopped)
     }
 
     /// Register a successfully-created env, attach its heap charge, and — under
@@ -353,15 +355,12 @@ impl NapiEnv {
         }
 
         let tracker = if reservation.clamped {
-            let boxed = Box::into_raw(Box::new(EnvHeapCharge {
-                budget: Arc::clone(&self.budget),
-                env: env as usize,
-                host_stopped: Arc::clone(&self.host_stopped),
-                unwind_slack_available: std::sync::atomic::AtomicBool::new(true),
-                granted: AtomicU64::new(0),
-                stopped: std::sync::atomic::AtomicBool::new(false),
-                overdraft: AtomicU64::new(0),
-            }));
+            // iwci patch (#1063): with its account in the heap space.
+            let boxed = Box::into_raw(Box::new(EnvHeapCharge::new(
+                Arc::clone(&self.budget),
+                env as usize,
+                Arc::clone(&self.host_stopped),
+            )));
             // SAFETY: `env` is the isolate just created; `boxed` outlives the
             // callback (freed only at this env's teardown, below).
             unsafe {
@@ -547,7 +546,7 @@ impl NapiEnv {
         // Release the heap ceiling + any callback-granted growth + isolate slot
         // this env reserved.
         if let Some(handle) = self.env_heap_charges.remove(&env_id) {
-            let granted = if handle.tracker != 0 {
+            let (granted, space_charge, lost) = if handle.tracker != 0 {
                 // SAFETY: reclaim the box created in `commit_isolate`. iwci
                 // patch (#1021): both callers release the env first, which
                 // removes the near-heap-limit callback holding this pointer
@@ -555,12 +554,18 @@ impl NapiEnv {
                 // run inside garbage collections, the release's included),
                 // so nothing reads it any more.
                 let boxed = unsafe { Box::from_raw(handle.tracker as *mut EnvHeapCharge) };
-                boxed.granted.load(Ordering::Acquire)
+                (
+                    boxed.granted.load(Ordering::Acquire),
+                    boxed.space_charge.load(Ordering::Acquire),
+                    boxed.lost.load(Ordering::Acquire),
+                )
             } else {
-                0
+                (0, crate::budget::HEAP_SPACE_ADMIT_CHARGE, false)
             };
-            self.budget.uncharge(Pool::V8HeapReserved, granted);
-            self.budget.release_env(handle.ceiling);
+            // iwci patch (#1063): and its charge to the process-wide heap
+            // space, unless it was lost: a lost isolate's heap is never freed.
+            self.budget
+                .release_env_as(handle.ceiling + granted, space_charge, lost);
         }
         self.napi_envs.remove(&env_id);
         #[cfg(all(target_arch = "wasm32", feature = "js"))]

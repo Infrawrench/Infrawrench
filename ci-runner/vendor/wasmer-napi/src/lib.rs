@@ -23,6 +23,11 @@ pub use budget::{
     EnvRejected, HeapReservation, IsolateRole, MemoryExhaustion, NapiMemoryAccountant,
     OverBudget, Pool, RequestedHeap, ResourceBudget, ResourceUsage,
 };
+// iwci patch (#1063): the V8 heap space every isolate of the process shares.
+pub use budget::{
+    HeapSpaceUsage, HeapSpaceWaitHook, V8_HEAP_CAGE, heap_space, set_heap_space,
+    set_heap_space_wait_hook,
+};
 pub use ctx::{
     NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,
     NapiRuntimeHooks, NapiSession,

@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::{num::NonZeroUsize, pin::Pin, sync::Arc, time::Duration};
+use std::{pin::Pin, sync::Arc, time::Duration};
 
 use futures::{Future, future::BoxFuture};
 use tokio::runtime::{Handle, Runtime};
@@ -45,25 +45,133 @@ impl RuntimeOrHandle {
     }
 }
 
+/// iwci patch (#1063): the threads WASIX processes and threads run on. A
+/// task goes to a thread that has finished its last one, or to a new
+/// thread, never into a queue, so a task that waits for another one it
+/// started is never waiting behind it. A thread with nothing to do for
+/// [`ThreadPool::KEEP_ALIVE`] ends. `rusty_pool` with a core size of
+/// `max(200, 100 * cores)` kept every thread it ever made, and made a new
+/// one for each task until it had that many, idle ones or not: an idle
+/// runner on 16 cores held 1,600 of them, with their stacks, for good.
 #[derive(Clone)]
 pub struct ThreadPool {
-    inner: rusty_pool::ThreadPool,
+    shared: Arc<PoolShared>,
 }
 
-impl std::ops::Deref for ThreadPool {
-    type Target = rusty_pool::ThreadPool;
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+struct PoolShared {
+    name: String,
+    keep_alive: Duration,
+    /// Threads waiting for a task, the most recently idle last.
+    idle: Mutex<Vec<Arc<Handoff>>>,
+    threads: std::sync::atomic::AtomicUsize,
+}
+
+/// Where an idle thread is handed its next task.
+#[derive(Default)]
+struct Handoff {
+    job: Mutex<Option<Job>>,
+    ready: std::sync::Condvar,
+}
+
+impl ThreadPool {
+    /// How long a thread waits for another task before it ends.
+    pub const KEEP_ALIVE: Duration = Duration::from_secs(60);
+
+    pub fn new(name: impl Into<String>, keep_alive: Duration) -> Self {
+        Self {
+            shared: Arc::new(PoolShared {
+                name: name.into(),
+                keep_alive,
+                idle: Mutex::default(),
+                threads: Default::default(),
+            }),
+        }
+    }
+
+    /// Runs `job` on an idle thread, or on a new one if none is idle.
+    pub fn execute(&self, job: impl FnOnce() + Send + 'static) {
+        let job: Job = Box::new(job);
+        // Popped under the lock, so no other task is handed to it.
+        let idle = self.shared.idle.lock().unwrap().pop();
+        if let Some(handoff) = idle {
+            *handoff.job.lock().unwrap() = Some(job);
+            handoff.ready.notify_one();
+            return;
+        }
+        let shared = self.shared.clone();
+        shared
+            .threads
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        std::thread::Builder::new()
+            .name(self.shared.name.clone())
+            .spawn(move || work(shared, job))
+            .expect("spawning a task thread");
+    }
+
+    /// Threads alive, busy or idle.
+    pub fn threads(&self) -> usize {
+        self.shared
+            .threads
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Threads waiting for a task.
+    pub fn idle_threads(&self) -> usize {
+        self.shared.idle.lock().unwrap().len()
+    }
+}
+
+fn work(shared: Arc<PoolShared>, mut job: Job) {
+    struct Alive(Arc<PoolShared>);
+    impl Drop for Alive {
+        fn drop(&mut self) {
+            self.0
+                .threads
+                .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        }
+    }
+    let alive = Alive(shared);
+    let shared = &alive.0;
+    let handoff = Arc::new(Handoff::default());
+    loop {
+        job();
+        shared.idle.lock().unwrap().push(handoff.clone());
+        let deadline = std::time::Instant::now() + shared.keep_alive;
+        let mut slot = handoff.job.lock().unwrap();
+        job = loop {
+            if let Some(next) = slot.take() {
+                break next;
+            }
+            let now = std::time::Instant::now();
+            if now < deadline {
+                slot = handoff.ready.wait_timeout(slot, deadline - now).unwrap().0;
+                continue;
+            }
+            drop(slot);
+            {
+                let mut idle = shared.idle.lock().unwrap();
+                if let Some(at) = idle.iter().position(|h| Arc::ptr_eq(h, &handoff)) {
+                    idle.swap_remove(at);
+                    return;
+                }
+            }
+            // A task took this thread as it timed out: it is on its way.
+            slot = handoff.job.lock().unwrap();
+            while slot.is_none() {
+                slot = handoff.ready.wait(slot).unwrap();
+            }
+        };
     }
 }
 
 impl std::fmt::Debug for ThreadPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ThreadPool")
-            .field("name", &self.get_name())
-            .field("current_worker_count", &self.get_current_worker_count())
-            .field("idle_worker_count", &self.get_idle_worker_count())
+            .field("name", &self.shared.name)
+            .field("threads", &self.threads())
+            .field("idle_threads", &self.idle_threads())
             .finish()
     }
 }
@@ -80,20 +188,14 @@ impl TokioTaskManager {
     where
         I: Into<RuntimeOrHandle>,
     {
-        let concurrency = std::thread::available_parallelism()
-            .unwrap_or(NonZeroUsize::new(1).unwrap())
-            .get();
-        let max_threads = 200usize.max(concurrency * 100);
-
         Self {
             rt: rt.into(),
-            pool: Arc::new(ThreadPool {
-                inner: rusty_pool::Builder::new()
-                    .name("TokioTaskManager Thread Pool".to_string())
-                    .core_size(max_threads)
-                    .max_size(max_threads)
-                    .build(),
-            }),
+            // iwci patch (#1063): threads that end when idle; see
+            // `ThreadPool`.
+            pool: Arc::new(ThreadPool::new(
+                "TokioTaskManager Thread Pool",
+                ThreadPool::KEEP_ALIVE,
+            )),
         }
     }
 
@@ -327,5 +429,79 @@ impl Drop for SleepNow {
         if let Some(h) = self.abort_handle.as_ref() {
             h.abort()
         }
+    }
+}
+
+/// iwci patch (#1063).
+#[cfg(test)]
+mod pool_tests {
+    use super::ThreadPool;
+    use std::sync::{Arc, Barrier, mpsc};
+    use std::time::{Duration, Instant};
+
+    fn until(what: impl Fn() -> bool) {
+        let end = Instant::now() + Duration::from_secs(10);
+        while !what() {
+            assert!(Instant::now() < end, "timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn a_task_never_waits_behind_a_busy_thread() {
+        // Each task waits for all the others: a queue would hang.
+        let pool = ThreadPool::new("t", Duration::from_secs(60));
+        let n = 16;
+        let barrier = Arc::new(Barrier::new(n));
+        let (tx, rx) = mpsc::channel();
+        for _ in 0..n {
+            let (barrier, tx) = (barrier.clone(), tx.clone());
+            pool.execute(move || {
+                barrier.wait();
+                tx.send(()).unwrap();
+            });
+        }
+        for _ in 0..n {
+            rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        }
+        assert_eq!(pool.threads(), n);
+    }
+
+    #[test]
+    fn an_idle_thread_is_reused_and_ends_after_its_keep_alive() {
+        let pool = ThreadPool::new("t", Duration::from_millis(300));
+        let (tx, rx) = mpsc::channel();
+        for _ in 0..20 {
+            let tx = tx.clone();
+            pool.execute(move || tx.send(std::thread::current().id()).unwrap());
+            rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            until(|| pool.idle_threads() == 1);
+        }
+        assert_eq!(pool.threads(), 1);
+        until(|| pool.threads() == 0);
+        assert_eq!(pool.idle_threads(), 0);
+        // And the pool still runs tasks afterwards.
+        let tx2 = tx.clone();
+        pool.execute(move || tx2.send(std::thread::current().id()).unwrap());
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    }
+
+    #[test]
+    fn tasks_handed_to_threads_as_they_time_out_still_run() {
+        let pool = ThreadPool::new("t", Duration::from_millis(1));
+        let (tx, rx) = mpsc::channel();
+        for i in 0..2000 {
+            let tx = tx.clone();
+            pool.execute(move || tx.send(i).unwrap());
+            if i % 7 == 0 {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        let mut got: Vec<i32> = (0..2000)
+            .map(|_| rx.recv_timeout(Duration::from_secs(10)).unwrap())
+            .collect();
+        got.sort();
+        assert_eq!(got, (0..2000).collect::<Vec<_>>());
+        until(|| pool.threads() == 0);
     }
 }

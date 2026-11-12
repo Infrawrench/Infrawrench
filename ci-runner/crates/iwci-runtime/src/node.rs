@@ -52,6 +52,7 @@ mod imp {
                 heaps_lost: e.heaps_lost,
                 isolates_refused: e.isolates_refused,
                 buffers_refused: e.buffers_refused,
+                heap_space_full: e.heap_space_full,
             }
         }
     }
@@ -87,6 +88,10 @@ pub(crate) struct Exhaustion {
     pub(crate) isolates_refused: u64,
     /// `ArrayBuffer` and `Buffer` allocations refused.
     pub(crate) buffers_refused: u64,
+    /// Of the heaps stopped and `node`s refused, those the job's own
+    /// `memory:` had room for but the V8 heap space every job shares
+    /// (`v8_heap_space`) did not, for as long as they waited (#1063).
+    pub(crate) heap_space_full: u64,
 }
 
 impl Exhaustion {
@@ -98,7 +103,10 @@ impl Exhaustion {
     }
 
     pub(crate) fn any(&self) -> bool {
-        self.stops_the_job() || self.isolates_refused != 0 || self.buffers_refused != 0
+        self.stops_the_job()
+            || self.isolates_refused != 0
+            || self.buffers_refused != 0
+            || self.heap_space_full != 0
     }
 
     /// The note for the end of the job's stderr, or `None` when memory never
@@ -147,6 +155,13 @@ impl Exhaustion {
                 )
             ));
         }
+        if self.heap_space_full != 0 {
+            what.push(format!(
+                "{} within the job's `memory:`, but not within the {} MiB of V8 heap that every job on this runner shares, which stayed full while it waited; the job may pass when it runs again",
+                n(self.heap_space_full, "one of them was", "of them were"),
+                crate::v8_heap_space().total >> 20,
+            ));
+        }
         Some(format!(
             "iwci: the job ran out of its {} MiB of memory (`memory:`):\n{}\n  Give it more `memory:`, or have it start fewer `node`s and worker threads at once.\n",
             memory_bytes >> 20,
@@ -155,5 +170,33 @@ impl Exhaustion {
                 .collect::<Vec<_>>()
                 .join("\n")
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Exhaustion;
+
+    #[test]
+    fn a_heap_the_shared_v8_heap_could_not_hold_is_told_apart() {
+        let e = Exhaustion {
+            heaps_stopped: 1,
+            heap_space_full: 1,
+            ..Exhaustion::default()
+        };
+        assert!(e.stops_the_job());
+        let note = e.note(6 << 30).unwrap();
+        assert!(note.contains("ran out of its 6144 MiB of memory"), "{note}");
+        assert!(
+            note.contains("one of them was within the job's `memory:`, but not within the"),
+            "{note}"
+        );
+        let e = Exhaustion {
+            isolates_refused: 3,
+            heap_space_full: 3,
+            ..Exhaustion::default()
+        };
+        assert!(!e.stops_the_job() && e.any());
+        assert!(e.note(1 << 30).unwrap().contains("3 of them were within"));
     }
 }

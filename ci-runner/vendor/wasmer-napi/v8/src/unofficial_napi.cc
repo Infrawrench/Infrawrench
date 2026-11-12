@@ -519,6 +519,33 @@ size_t TeardownNearHeapLimitCallback(void* data,
   return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
 }
 
+// iwci patch (#1063): every isolate of the process allocates its heap from
+// one pointer-compression cage, which the host accounts for: a budgeted
+// isolate reports the heap it has committed after each garbage collection,
+// on its own thread, to the host data its near-heap-limit callback has.
+// Installed and removed with that callback; the data is looked up as that
+// callback does, so a lost isolate's, which the host frees, is never read.
+extern "C" __attribute__((weak)) void napi_host_heap_committed(
+    const void* /*data*/, size_t /*committed*/, int /*full*/) {}
+
+void HeapCommittedCallback(v8::Isolate* isolate,
+                           v8::GCType type,
+                           v8::GCCallbackFlags /*flags*/,
+                           void* /*env*/) {
+  void* data = nullptr;
+  {
+    RuntimeLock lock;
+    auto it = g_near_heap_limit_callbacks.find(isolate);
+    if (it != g_near_heap_limit_callbacks.end()) data = it->second.data;
+  }
+  if (data == nullptr) return;
+  v8::HeapStatistics heap;
+  isolate->GetHeapStatistics(&heap);
+  napi_host_heap_committed(
+      data, heap.total_heap_size(),
+      (type & v8::kGCTypeMarkSweepCompact) != 0 ? 1 : 0);
+}
+
 // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
 // context is installed, every V8 backing store is allocated inside the guest's
 // linear memory so guest and host share buffer bytes directly. `free` returns
@@ -2119,6 +2146,8 @@ static napi_status DestroyEnvInstance(napi_env env) {
     // to be freed.
     if (had_near_heap_limit_callback) {
       env->isolate->RemoveNearHeapLimitCallback(NearHeapLimitCallback, 0);
+      // iwci patch (#1063): installed with it, with this env, freed below.
+      env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
     }
     v8::HeapStatistics heap;
     env->isolate->GetHeapStatistics(&heap);
@@ -2160,6 +2189,9 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
     }
     if (install_provider_callback) {
       env->isolate->AddNearHeapLimitCallback(NearHeapLimitCallback, env);
+      // iwci patch (#1063): and the heap it has committed, after every
+      // collection.
+      env->isolate->AddGCEpilogueCallback(HeapCommittedCallback, env);
     }
     return napi_ok;
   }
@@ -2177,6 +2209,7 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
   if (remove_provider_callback) {
     env->isolate->RemoveNearHeapLimitCallback(
         NearHeapLimitCallback, restored_heap_limit);
+    env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
   }
   return napi_ok;
 }

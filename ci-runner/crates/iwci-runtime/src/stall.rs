@@ -34,7 +34,7 @@
 //! every thread of the job stands in, and the watchdog must not be what a
 //! job's threads wait on.
 //!
-//! Two kinds of work happen where no thread can be registered, and make
+//! Three kinds of work happen where no thread can be registered, and make
 //! the job *busy* instead; a busy job is never stalled:
 //!
 //! - **A task being set up**: wasmer-wasix creates the store and
@@ -48,6 +48,9 @@
 //!   see `cache::ModuleStore::compile`, so that wait is short now). So this
 //!   one is the runtime's, not the job's (`cache::Working`), and every job
 //!   is busy while it lasts.
+//! - **A `node` waiting for V8 heap space**, which every job's isolates
+//!   share (#1063): it waits for other jobs' heaps to end, which is their
+//!   work, not a hang of its own ([`node_hooks`]).
 //!
 //! What is deliberately not counted is waiting: a job blocked on the
 //! network, on a sleep or on a lock uses no CPU and prints nothing, and is
@@ -390,7 +393,15 @@ pub(crate) mod node_hooks {
                 exit,
                 release,
             });
+            wasmer_napi::set_heap_space_wait_hook(heap_space_wait);
         });
+    }
+
+    /// A job's `node` waiting for room in the V8 heap space every job
+    /// shares (#1063) waits for other jobs, not for itself, so the job is
+    /// busy meanwhile rather than stalled.
+    fn heap_space_wait() -> Box<dyn std::any::Any> {
+        Box::new(CpuMeter::current().map(|meter| meter.busy()))
     }
 
     /// The job the posting thread works for, as a token the task holds.
