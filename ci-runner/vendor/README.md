@@ -128,6 +128,32 @@ guest heap), and `src/budget.rs` gives the former the first isolate's
 64 MiB young generation where the 192 MiB default does not fit: 61
 mark-compacts over the same files. Workers keep the small start.
 
+**And: an env lookup takes no lock (#994).** Every bridge call checks the
+env pointer it is given against the env registry (`LookupEnvState`) before
+it touches it, and that check took `g_mu`, about a hundred times per Node
+`fs.statSync` (two per host call for the callback context, one or more for
+the call itself). Every Node job on the runner took that one lock in turn
+on every host call, a fifth of a `statSync` loop's cycles even with one job
+running. `src/napi_bridge_init.cc` now bumps an epoch (`g_envs_epoch`)
+under `g_mu` before every erase from the registry, and each thread
+remembers the last env it found there and the epoch it found it in: while
+the epoch has not moved, nothing has left the registry since, so the
+answer is the one the lock would give, and the lookup is an atomic load.
+Any erase sends every thread back to the locked lookup once, and an env
+freed and replaced at the same address is looked up afresh. The cache is
+two plain `thread_local`s of trivial types, so nothing is registered to run
+at thread exit (#968's crash was such a registration). wasmerio/napi main
+validates env handles per owning thread instead; drop this hunk with the
+`g_mu` rework above. Two smaller costs of the same path went with it:
+`snapi_bridge_swap_active_callback_ctx`, which every import that can run
+JavaScript calls on the way in and out, swaps with a load and a store
+instead of a locked exchange, whose full barrier was a tenth of the loop's
+cycles once the lookup stopped locking (only the env's own thread installs
+a context: it points into that thread's stack, and the save and restore
+around each call already assume no other thread swaps in between; upstream
+still exchanges), and `src/env.rs` hashes the guest's env ids, which every
+import resolves, with a multiplication instead of SipHash.
+
 **And: a guest heap keeps its memory mapped (#955).** The bridge allocates
 every `ArrayBuffer` backing store inside the guest's linear memory, through
 one `GuestHeap` per memory, found in a process-wide registry keyed by the
@@ -428,10 +454,41 @@ is the check: without this patch it failed ten runs in ten (aborts on a null
 pointer dereference, a segfault, `RefCell already borrowed`, deadlocks), and
 with it ten in ten pass.
 
+**And: a host call takes no process-wide lock on its way back (#994).**
+Every host function's return path asks `interrupt_registry::is_interrupted`
+whether its store was interrupted, and that took a write lock on the
+registry `DashMap`'s shard (`entry`), so every store's thread in the runner
+wrote the same few cache lines on every host call: 9% of a Node
+`fs.statSync` loop's cycles. A store's `interrupted` flag is now an
+`Arc<AtomicBool>` that its entry and each of its installations on its
+thread's stack share (`src/interrupt_registry/unix.rs`), and
+`is_interrupted` reads the flag from the calling thread's stack, which is
+where the returning host function's store is installed, falling back to a
+shared read of the map for a store installed elsewhere. `interrupt()` sets
+the flag under the shard lock as before and only then signals, so the
+return path above still sees every interrupt the handler leaves to it, and
+an uninstall that removes the entry still resets the flag for the store's
+next call. Reported upstream as wasmerio/wasmer#7161.
+
+**And: a shared memory's view takes no lock (#994).** Every host function
+that reads or writes guest memory makes a `MemoryView`, which asks the
+memory for its size and its definition, and for a shared memory, which
+every WASIX program has, each took the read lock of the one `RwLock` the
+program's threads share: 12% of a `statSync` loop's cycles. A `WasmMmap`
+never replaces its definition, so `VMSharedMemory` (`src/memory.rs`) keeps
+the pointer from when it was made and answers both from it without the
+lock, reading `current_length` as `MemoryView` already does beside it. A
+`grow` still takes the write lock, and a size read without the lock is no
+staler than one read under it, which nothing held once it returned.
+
 **Remove it** when a wasmer-vm release has the interrupt handler leave host
 code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
-of November 2026): delete `vendor/wasmer-vm*` and its `[patch.crates-io]`
-entry.
+of November 2026), reads the interrupted flag without a write lock
+(#7161) and answers a shared memory's size and definition without its
+lock: delete `vendor/wasmer-vm*` and its `[patch.crates-io]` entry. A
+release with only the first is still worth taking for the rest of this
+patch's sake; check a `statSync` loop (#994) against the patched build
+before dropping the other two.
 
 To regenerate after editing: `diff -u` the changed file against the crate
 from crates.io with `a/` and `b/` labels, as for wasmer-napi.
