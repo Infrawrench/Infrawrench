@@ -354,6 +354,18 @@ jobs:
       exec 5>&1
       test "$(cat lines | wc -l)" = 2
       ls / > /dev/null
+  # A command sed's `e` runs reaches the shell whole (#1022): sed's
+  # posix_spawn joined `sh -c`'s arguments with line feeds and WASIX split
+  # them there again, so this ran `printf "%s|" "a` and printed nothing.
+  sed-e-passes:
+    using: env:bash@5
+    run: |
+      printf '%s\n' 'printf "%s|" "a' 'b"' > cmd.txt
+      test "$(sed 'N;s/^//e' cmd.txt)" = "$(printf 'a\nb|')"
+      printf '%s\n' 'echo first' 'echo second' > two.txt
+      test "$(sed 'N;s/^//e' two.txt)" = "$(printf 'first\nsecond')"
+      test "$(echo 'echo one' | sed 's/^//e')" = one
+      test "$(echo x | sed '1e echo before')" = "$(printf 'before\nx')"
   # An argument with a line feed in it reaches the program whole (#1003):
   # bash's exec joined the arguments with line feeds and WASIX split them
   # there again, so this printed `a|b|c|`. Through a second bash, through

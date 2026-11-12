@@ -45,19 +45,18 @@
 # commands (sed, grep, coreutils, findutils, Edge.js) start programs with
 # `proc_spawn2`/`proc_spawn3`/`proc_exec4` on their own, and are unchanged.
 #
-# The module goes back into the published package with the Wasmer CLI, as
-# `edgejs/build.sh` does it, which records each file's hash for the runtime's
-# module cache. Drop this directory, and pin Wasmer's package again, once a
-# `wasmer/bash` release is built on a C library whose `execve` calls
-# `proc_exec4`.
+# The module goes back into the published package with the Wasmer CLI
+# (`patch-module.sh`, shared with `sed/build.sh`). Drop this directory, and
+# pin Wasmer's package again, once a `wasmer/bash` release is built on a C
+# library whose `execve` calls `proc_exec4`.
 #
-# Linux (x86_64 or arm64) or macOS on arm64: the Wasmer CLI's release
-# archives. The result goes to dist/package/bash/<version>/, and is the same
-# bytes on each: `environments/build.sh` pins its hash.
-#
-# Needs: bash, curl, tar, sha256sum or shasum, od, dd.
+# The result goes to dist/package/bash/<version>/, and is the same bytes on
+# every host `patch-module.sh` runs on: `environments/build.sh` pins its
+# hash. Needs what `patch-module.sh` needs.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
+# shellcheck source=builtins/environments/patch-module.sh
+source "$here/environments/patch-module.sh"
 
 # Our build of 1.0.25. A changed build is a new number after `iwci.`.
 VERSION="1.0.25-iwci.1"
@@ -80,102 +79,5 @@ PATCHES=(
   "0x40c7e 2008 2002"
 )
 
-WASMER_VERSION="v7.4.2"
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)
-    WASMER_ASSET="wasmer-linux-amd64.tar.gz"
-    WASMER_SHA256="07271f7ecf449135bbd44cfe9f38a65e54ab25f1564a9c6bd2d0d5cca5743963"
-    ;;
-  Linux-aarch64 | Linux-arm64)
-    WASMER_ASSET="wasmer-linux-aarch64.tar.gz"
-    WASMER_SHA256="558c522e57fea98416e63e1281b319e98946fa60325c2644ab6a900b3d618ea1"
-    ;;
-  Darwin-arm64)
-    WASMER_ASSET="wasmer-darwin-arm64.tar.gz"
-    WASMER_SHA256="c6b555b32619321bc6d0ce34f9119d34ada07e7a0b1d3588082c165e76e8536e"
-    ;;
-  *)
-    echo "error: no pinned Wasmer CLI for $(uname -s)-$(uname -m) (Linux x86_64 or arm64, macOS arm64)" >&2
-    exit 1
-    ;;
-esac
-
-work="${BASH_WORK:-$SCRATCH/bash}"
-mkdir -p "$work/dl"
-
-sha256() {
-  if command -v sha256sum >/dev/null; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
-}
-
-# download <url> <sha256> <file>: fetched once, checked every time.
-download() {
-  local url="$1" sha="$2" file="$work/dl/$3" actual
-  [[ -f "$file" ]] || curl -fsSL --retry 3 -o "$file" "$url"
-  actual="$(sha256 "$file")"
-  if [[ "$actual" != "$sha" ]]; then
-    echo "error: $url hashed to $actual, expected $sha" >&2
-    rm -f "$file"
-    exit 1
-  fi
-  printf '%s\n' "$file"
-}
-
-# bytes_at <file> <offset> <count>: those bytes as lowercase hex.
-bytes_at() {
-  od -An -v -tx1 -j "$(($2))" -N "$3" "$1" | tr -d ' \n'
-}
-
-# put_bytes <file> <offset> <hex>: overwrite in place.
-put_bytes() {
-  local hex="$3" escaped="" i
-  for ((i = 0; i < ${#hex}; i += 2)); do
-    escaped+="\\x${hex:i:2}"
-  done
-  # shellcheck disable=SC2059 # the format is the bytes, built just above
-  printf "$escaped" | dd of="$1" bs=1 seek="$(($2))" conv=notrunc status=none
-}
-
-wasmer="$work/wasmer"
-rm -rf "$wasmer"
-mkdir -p "$wasmer"
-tar -xzf "$(download "https://github.com/wasmerio/wasmer/releases/download/$WASMER_VERSION/$WASMER_ASSET" \
-  "$WASMER_SHA256" "$WASMER_ASSET")" -C "$wasmer"
-export WASMER_DIR="$work/wasmer-home"
-
-package="$work/package"
-rm -rf "$package"
-"$wasmer/bin/wasmer" package unpack --quiet -o "$package" \
-  "$(download "https://cdn.wasmer.io/webcimages/$WEBC_SHA256.webc" "$WEBC_SHA256" bash.webc)"
-module="$package/modules/bash"
-if [[ "$(sha256 "$module")" != "$MODULE_SHA256" ]]; then
-  echo "error: the published package's \`bash\` module is not the one expected" >&2
-  exit 1
-fi
-
-for entry in "${PATCHES[@]}"; do
-  read -r offset old new <<<"$entry"
-  if [[ "$(bytes_at "$module" "$offset" $((${#old} / 2)))" != "$old" ]]; then
-    echo "error: the module does not hold $old at $offset" >&2
-    exit 1
-  fi
-  put_bytes "$module" "$offset" "$new"
-done
-built="$(sha256 "$module")"
-if [[ "$built" != "$PATCHED_SHA256" ]]; then
-  echo "error: the patched module hashed to $built, expected $PATCHED_SHA256" >&2
-  exit 1
-fi
-
-# A webc records each file's modification time, which unpacking just set to
-# now.
-find "$package" -exec env TZ=UTC0 touch -h -t "$BUILT_ON" {} +
-out="$(out_dir package bash "$VERSION")"
-"$wasmer/bin/wasmer" package build --quiet -o "$out/bash.webc" "$package"
-
-echo "built $out/bash.webc"
-echo "  module  $built"
-echo "  package $(sha256 "$out/bash.webc")"
+patch_package "${BASH_WORK:-$SCRATCH/bash}" bash "$VERSION" "$WEBC_SHA256" "$MODULE_SHA256" \
+  "$PATCHED_SHA256" "$BUILT_ON" "${PATCHES[@]}"

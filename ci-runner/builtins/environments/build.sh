@@ -22,24 +22,25 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Three packages are not taken from the CDN as they are. `edgejs/build.sh`
+# Four packages are not taken from the CDN as they are. `edgejs/build.sh`
 # builds Wasmer's Edge.js 0.2.5 from source on a C library without the races
-# behind #937 and #967, which no Wasmer release has yet; `bash/build.sh`
-# changes the one call in Wasmer's bash 1.0.25 that split an argument at its
-# line feeds (#1003); and `php-cli/build.sh` packages env:php's own `php`
-# and Composer. Each result is pinned here by hash like the others, so a
-# build that comes out different fails.
+# behind #937 and #967, which no Wasmer release has yet; `bash/build.sh` and
+# `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
+# that split an argument at its line feeds (#1003, #1022); and
+# `php-cli/build.sh` packages env:php's own `php` and Composer. Each result
+# is pinned here by hash like the others, so a build that comes out
+# different fails.
 #
 #   environments/build.sh              all of them
 #   environments/build.sh bash         just this one (Linux, or macOS on
-#                                      arm64: bash/build.sh's Wasmer CLI)
+#                                      arm64: patch-module.sh's Wasmer CLI)
 #   environments/build.sh python       the same
 #   environments/build.sh php          every PHP version (Linux, x86_64 or
 #                                      ARM64, to build php-cli)
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
 #
-# Needs: curl, shasum, and what bash/build.sh needs; bash-node and php also
+# Needs: curl, shasum, and what patch-module.sh needs; bash-node and php also
 # what edgejs/build.sh and php-cli/build.sh need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
@@ -51,7 +52,9 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 # caches a package keys it by hash, so the two 1.0.25s never meet.
 BASH_PKG="wasmer/bash 1.0.25 d7dd2f6edadae959e6a808e5060f4e0dcdb129dbe4f8b862c8a5c2fec2aa7808 1.0.25-iwci.1"
 COREUTILS_PKG="wasmer/coreutils 1.0.27 35028c4e6b9fa8cccdffdcab2007d1df3af31b3f2b22fb890d022d7ae723bbd3"
-SED_PKG="wasmer/sed 4.9.0 3fc12256be87f6b8b7810d68d642359a6220f63b39a2ea6ef7a2bb6d79ec1393"
+# Built by sed/build.sh as 4.9.0-iwci.1, keeping Wasmer's version the same
+# way.
+SED_PKG="wasmer/sed 4.9.0 c7f3db6a65e504328156b688195eff14456412974f0a75d05fb8e5155d545539 4.9.0-iwci.1"
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
 PYTHON_PKG="python/python 3.13.20 a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
@@ -116,6 +119,7 @@ fetch() {
   local ours=""
   case "$name" in
     wasmer/bash) ours=bash ;;
+    wasmer/sed) ours="sed" ;;
     wasmer/edgejs) ours=edgejs ;;
     iwci/php-cli) ours="php-cli" ;;
   esac
@@ -180,7 +184,8 @@ for env in "$@"; do
     bash)
       # 5.1.17: an argument with a line feed in it reaches the program whole
       # (#1003).
-      build_env bash 5.1.17 "GNU bash 5.1 with coreutils, sed, grep and findutils" "" "${TOOLS[@]}"
+      # 5.1.18: and so does a command sed's `e` runs (#1022).
+      build_env bash 5.1.18 "GNU bash 5.1 with coreutils, sed, grep and findutils" "" "${TOOLS[@]}"
       ;;
     bash-node)
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
@@ -188,12 +193,14 @@ for env in "$@"; do
       # 24.0.3: and a stopped Worker runs none of its queued messages (#938).
       # 24.0.4: and stopping a Worker that is ending frees nothing in use (#938).
       # 24.0.5: and bash passes an argument with a line feed in it whole (#1003).
-      build_env bash-node 24.0.5 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.6: and so does sed's `e` command (#1022).
+      build_env bash-node 24.0.6 "GNU bash 5.1, coreutils, sed, grep, findutils and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     python)
       # 3.13.16: bash passes an argument with a line feed in it whole (#1003).
-      build_env python 3.13.16 "GNU bash 5.1, coreutils, sed, grep, findutils and CPython 3.13.15 with pip" \
+      # 3.13.17: and so does sed's `e` command (#1022).
+      build_env python 3.13.17 "GNU bash 5.1, coreutils, sed, grep, findutils and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     php)
@@ -202,8 +209,9 @@ for env in "$@"; do
       # environment's version, then PHP's, then the package.
       # +1 on each: bash passes an argument with a line feed in it whole
       # (#1003).
-      for pkg in "8.1.35 8.1.34 $PHP81_PKG" "8.2.36 8.2.35 $PHP82_PKG" "8.3.37 8.3.36 $PHP83_PKG" \
-        "8.4.28 8.4.27 $PHP84_PKG" "8.5.13 8.5.12 $PHP85_PKG"; do
+      # +2: and so does sed's `e` command (#1022).
+      for pkg in "8.1.36 8.1.34 $PHP81_PKG" "8.2.37 8.2.35 $PHP82_PKG" "8.3.38 8.3.36 $PHP83_PKG" \
+        "8.4.29 8.4.27 $PHP84_PKG" "8.5.14 8.5.12 $PHP85_PKG"; do
         read -r version php package <<<"$pkg"
         build_env php "$version" "GNU bash 5.1, coreutils, sed, grep, findutils, PHP $php (Wasmer's phpix) and Composer" \
           "$PHP_ENV" "${TOOLS[@]}" "$package" "$SENDMAIL_PKG" "$ICU_DATA_PKG" "$PHP_CLI_PKG"
