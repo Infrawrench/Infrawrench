@@ -29,20 +29,26 @@ pub fn sock_recv_from<M: MemorySize>(
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
 
-    sock_recv_from_internal(
-        ctx,
-        sock,
-        ri_data,
-        ri_data_len,
-        ri_flags,
-        ro_data_len,
-        ro_flags,
-        ro_addr,
-    )
+    loop {
+        let ret = sock_recv_from_internal(
+            &mut ctx,
+            sock,
+            ri_data,
+            ri_data_len,
+            ri_flags,
+            ro_data_len,
+            ro_flags,
+            ro_addr,
+        )?;
+        if ret == Errno::Intr && __sock_wait_restarts(&mut ctx)? {
+            continue;
+        }
+        return Ok(ret);
+    }
 }
 
 pub(super) fn sock_recv_from_internal<M: MemorySize>(
-    mut ctx: FunctionEnvMut<'_, WasiEnv>,
+    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
     sock: WasiFd,
     ri_data: WasmPtr<__wasi_iovec_t<M>, M>,
     ri_data_len: M::Offset,
@@ -58,7 +64,7 @@ pub(super) fn sock_recv_from_internal<M: MemorySize>(
     // Check rights first to preserve error precedence
     wasi_try_ok!(__sock_check_rights(env, sock, Rights::SOCK_RECV_FROM));
 
-    let memory = unsafe { env.memory_view(&ctx) };
+    let memory = unsafe { env.memory_view(ctx) };
     let iovs_arr = wasi_try_mem_ok!(ri_data.slice(&memory, ri_data_len));
 
     let max_size = wasi_try_ok!(checked_sock_recv_size::<M>(
@@ -77,20 +83,13 @@ pub(super) fn sock_recv_from_internal<M: MemorySize>(
                 |socket, fd| async move {
                     let nonblocking =
                         nonblocking_flag || fd.inner.flags.contains(Fdflags::NONBLOCK);
-                    let timeout = socket
-                        .opt_time(TimeType::ReadTimeout)
-                        .ok()
-                        .flatten()
-                        .unwrap_or(Duration::from_secs(30));
-                    socket
-                        .recv_from(
-                            env.tasks().deref(),
-                            writer,
-                            Some(timeout),
-                            nonblocking,
-                            peek,
-                        )
-                        .await
+                    // No timeout unless the program set one (SO_RCVTIMEO).
+                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
+                    __sock_wait(
+                        env,
+                        socket.recv_from(env.tasks().deref(), writer, timeout, nonblocking, peek),
+                    )
+                    .await
                 },
             ));
 
@@ -108,32 +107,25 @@ pub(super) fn sock_recv_from_internal<M: MemorySize>(
                 Rights::SOCK_RECV_FROM,
                 |socket, fd| async move {
                     let nonblocking = fd.inner.flags.contains(Fdflags::NONBLOCK);
-                    let timeout = socket
-                        .opt_time(TimeType::ReadTimeout)
-                        .ok()
-                        .flatten()
-                        .unwrap_or(Duration::from_secs(30));
+                    // No timeout unless the program set one (SO_RCVTIMEO).
+                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
 
                     let mut buf = Vec::with_capacity(max_size);
                     unsafe {
                         buf.set_len(max_size);
                     }
-                    socket
-                        .recv_from(
-                            env.tasks().deref(),
-                            &mut buf,
-                            Some(timeout),
-                            nonblocking,
-                            peek,
-                        )
-                        .await
-                        .map(|(amt, addr)| {
-                            unsafe {
-                                buf.set_len(amt);
-                            }
-                            let buf: Vec<u8> = unsafe { std::mem::transmute(buf) };
-                            (buf, addr)
-                        })
+                    __sock_wait(
+                        env,
+                        socket.recv_from(env.tasks().deref(), &mut buf, timeout, nonblocking, peek),
+                    )
+                    .await
+                    .map(|(amt, addr)| {
+                        unsafe {
+                            buf.set_len(amt);
+                        }
+                        let buf: Vec<u8> = unsafe { std::mem::transmute(buf) };
+                        (buf, addr)
+                    })
                 }
             ));
 

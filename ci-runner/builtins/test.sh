@@ -780,6 +780,20 @@ jobs:
       JS
       test "$(node /tmp/serve.js)" = rebound
       test "$(node /tmp/serve.js)" = rebound
+  # A server that waits longer than 30 s for its first client still serves
+  # it (#1046). The job prints while it waits, or the stall check here
+  # (15 s) would end it.
+  idle-server-passes:
+    using: env:bash-node@24
+    timeout: 3m
+    services:
+      echo:
+        using: env:bash-node@24
+        run: node -e 'require("net").createServer((c) => c.end("pong")).listen(3002, () => console.log("ready on 3002"))'
+        ready: { port: 3002 }
+    run: |
+      for ((i = 1; i <= 9; i++)); do sleep 5; echo "waited $((i * 5)) s"; done
+      test "$(node -e 'let d = ""; require("net").connect(3002, "echo").on("data", (b) => (d += b)).on("end", () => console.log(d))')" = pong
   # Edge.js has `node:wasi` without the binding behind it; the runner's
   # support files (iwci-runtime/node) make it work, which the wasm32-wasi
   # builds of native packages need (rolldown, and so Vite, Vitest and
@@ -1666,6 +1680,43 @@ jobs:
       b = 7
       print(a * b)')" = 42
       test "$(python -c 'import subprocess, sys; sys.stdout.write(subprocess.run(["printf", "%s|", "x\ny", "z"], capture_output=True, text=True).stdout)')" = "$(printf 'x\ny|z|')"
+  # A server started with `&` that waits longer than 30 s for its first
+  # client, and then longer than 30 s for that client's request, still
+  # answers (#1046): a blocking accept and recv gave up after 30 s.
+  idle-server-passes:
+    using: env:python@3.13
+    timeout: 5m
+    run: |
+      python - <<'PY' &
+      import socket
+      s = socket.create_server(("127.0.0.1", 7000))
+      c, _ = s.accept()
+      c.sendall(c.recv(16).upper())
+      PY
+      server=$!
+      sleep 45
+      python - <<'PY'
+      import socket, time
+      c = socket.create_connection(("127.0.0.1", 7000))
+      time.sleep(35)
+      c.sendall(b"ping")
+      assert c.recv(16) == b"PING"
+      PY
+      wait "$server"
+  # One whose client never comes is still ended by the job's timeout, and a
+  # service waiting for one by the job's end.
+  idle-server-timeout-fails:
+    using: env:python@3.13
+    timeout: 20s
+    run: python -c 'import socket; socket.create_server(("127.0.0.1", 7001)).accept()'
+  idle-service-passes:
+    using: env:python@3.13
+    services:
+      idle:
+        using: env:python@3.13
+        run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
+        ready: { port: 7002 }
+    run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
 YAML
       ;;
     postgres)
@@ -1696,6 +1747,27 @@ jobs:
           conn.execute("create table t (n int)")
           conn.execute("insert into t select generate_series(1, 1000)")
           assert conn.execute("select sum(n) from t").fetchone()[0] == 500500
+      PY
+  # pglite waiting longer than 30 s for its client, and then longer than
+  # 30 s between that client's queries (#1046): a blocking accept gave up
+  # after 30 s, and pglite exited with it.
+  idle-client-passes:
+    using: env:python@3.13
+    timeout: 10m
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        ready: { log: "OLIPHAUNT_WASIX_SOCKET_READY 5432" }
+    run: |
+      pip install 'psycopg[binary]'
+      sleep 45
+      python - <<'PY'
+      import time, psycopg
+      with psycopg.connect("host=postgres port=5432 user=postgres dbname=postgres") as conn:
+          assert conn.execute("select 1").fetchone()[0] == 1
+          time.sleep(35)
+          assert conn.execute("select 2").fetchone()[0] == 2
       PY
   # Ready by its log line, with a secret in its environment that its log
   # prints: masked like the job's own output (the report is checked for it
@@ -1977,7 +2049,7 @@ want_reason() {
     typescript/type-error-fails) echo "exited with 2" ;;
     bash/false-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
-    bash-node/spin-fails) echo "timed out" ;;
+    bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;

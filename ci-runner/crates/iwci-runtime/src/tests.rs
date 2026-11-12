@@ -2148,6 +2148,146 @@ fn a_service_that_ignores_its_stop_is_ended_and_never_holds_the_job() {
     );
 }
 
+/// How `blocker` waits once it listens on `127.0.0.1:port`.
+#[derive(Clone, Copy)]
+enum Block {
+    /// In `sock_accept` for a client nobody sends.
+    Accept,
+    /// In `sock_accept`, with an accept timeout of this many milliseconds
+    /// set on the socket before it binds.
+    AcceptWithin(u64),
+    /// In `sock_recv` on a connection it made to itself, for data nobody
+    /// sends.
+    Recv,
+}
+
+/// A WASIX program that blocks in a socket call (`Block`) and exits with
+/// the errno it returns. With `handler`, it registers a signal handler that
+/// exits with 100 plus the signal's number.
+fn blocker(port: u16, block: Block, handler: bool) -> WasmModule {
+    let handler = if handler {
+        r#"(call $callback_signal (i32.const 1000) (i32.const 9))"#
+    } else {
+        ""
+    };
+    // An OptionTimestamp at 700: tag 1 (some), nanoseconds at 708; 22 is
+    // `Sockoption::AcceptTimeout`.
+    let timeout = match block {
+        Block::AcceptWithin(ms) => format!(
+            r#"(i32.store8 (i32.const 700) (i32.const 1))
+    (i64.store (i32.const 708) (i64.const {}))
+    (if (call $set_time (i32.load (i32.const 400)) (i32.const 22) (i32.const 700))
+      (then (call $exit (i32.const 13))))"#,
+            ms * 1_000_000
+        ),
+        _ => String::new(),
+    };
+    let wait = match block {
+        Block::Accept | Block::AcceptWithin(_) => {
+            r#"(call $exit (call $accept (i32.load (i32.const 400)) (i32.const 0) (i32.const 408) (i32.const 600)))"#
+        }
+        Block::Recv => {
+            r#"(call $socket (i32.const 404))
+    (if (call $connect (i32.load (i32.const 404)) (i32.const 500))
+      (then (call $exit (i32.const 14))))
+    (if (call $accept (i32.load (i32.const 400)) (i32.const 0) (i32.const 408) (i32.const 600))
+      (then (call $exit (i32.const 15))))
+    ;; one 16-byte buffer at 900
+    (i32.store (i32.const 800) (i32.const 900))
+    (i32.store (i32.const 804) (i32.const 16))
+    (call $exit (call $recv (i32.load (i32.const 408)) (i32.const 800) (i32.const 1) (i32.const 0) (i32.const 820) (i32.const 824)))"#
+        }
+    };
+    let wat = format!(
+        r#"(module
+  (import "wasix_32v1" "sock_open" (func $open (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_bind" (func $bind (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_listen" (func $listen (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_accept" (func $accept (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_connect" (func $connect (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_recv" (func $recv (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_set_opt_time" (func $set_time (param i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "callback_signal" (func $callback_signal (param i32 i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 1000) "signalled")
+  (func (export "signalled") (param $sig i32)
+    (call $exit (i32.add (i32.const 100) (local.get $sig))))
+  ;; an IPv4 (1) stream (1) socket, its descriptor at $at
+  (func $socket (param $at i32)
+    (if (call $open (i32.const 1) (i32.const 1) (i32.const 0) (local.get $at))
+      (then (call $exit (i32.const 10)))))
+  (func (export "_start")
+    {handler}
+    (call $socket (i32.const 400))
+    ;; __wasi_addr_port_t at 500: family, padding, port, 127.0.0.1
+    (i32.store8 (i32.const 500) (i32.const 1))
+    (i32.store16 (i32.const 502) (i32.const {port}))
+    (i32.store (i32.const 504) (i32.const 0x0100007f))
+    {timeout}
+    (if (call $bind (i32.load (i32.const 400)) (i32.const 500))
+      (then (call $exit (i32.const 11))))
+    (if (call $listen (i32.load (i32.const 400)) (i32.const 16))
+      (then (call $exit (i32.const 12))))
+    {wait}))"#,
+    );
+    wat_module("blocker", &wat)
+}
+
+#[test]
+fn a_blocking_accept_or_recv_is_stopped_by_the_timeout() {
+    // An accept or a receive waits with no time limit (#1046), so it has
+    // to wake for the SIGKILL that ends the job. Before, it slept through
+    // it until wasmer's 30 s default ran out, so the job was only marked
+    // finished after the 5 s kill grace, its thread still blocked.
+    for block in [Block::Accept, Block::Recv] {
+        for handler in [false, true] {
+            let rt = runtime();
+            let job = snapshot(&[]).fork();
+            let mut inv = invocation(job.as_dyn(), &[]);
+            inv.limits.timeout = Duration::from_millis(300);
+            let outcome = rt.run_command(&blocker(4460, block, handler), inv).unwrap();
+            assert!(outcome.timed_out, "{outcome:?}");
+            assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
+            assert!(outcome.duration < Duration::from_secs(3), "{outcome:?}");
+        }
+    }
+}
+
+#[test]
+fn an_accept_timeout_the_program_sets_still_applies() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &blocker(4461, Block::AcceptWithin(200), false),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    // 73 is ETIMEDOUT.
+    assert_eq!(outcome.exit_code, 73, "{outcome:?}");
+    assert!(outcome.duration < Duration::from_secs(3), "{outcome:?}");
+}
+
+#[test]
+fn a_service_blocked_in_accept_takes_its_sigterm() {
+    // A service waiting for a client that never came is stopped by the
+    // SIGTERM that ends it, here through its own handler (exit 115),
+    // rather than sleeping through it until the SIGKILL after the grace.
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.services = vec![module_service(
+        "idle",
+        blocker(4462, Block::Accept, true),
+        Ready::Port(4462),
+        Duration::from_secs(10),
+    )];
+    let outcome = rt.run_command(&wat_module("hello", HELLO), inv).unwrap();
+    assert_eq!(outcome.exit_code, 3, "{outcome:?}");
+    assert!(outcome.duration < background::STOP_GRACE, "{outcome:?}");
+}
+
 #[test]
 fn services_have_ports_of_the_jobs_loopback_and_a_service_failing_to_bind_says_so() {
     let rt = runtime();

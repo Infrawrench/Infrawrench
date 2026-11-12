@@ -509,11 +509,10 @@ impl InodeSocket {
         net: &dyn VirtualNetworking,
         _backlog: usize,
     ) -> Result<Option<InodeSocket>, Errno> {
-        let timeout = self
-            .opt_time(TimeType::AcceptTimeout)
-            .ok()
-            .flatten()
-            .unwrap_or(Duration::from_secs(30));
+        // The listener keeps the accept timeout the program set, if any;
+        // the 30 s default bounds only the listen itself.
+        let accept_timeout = self.opt_time(TimeType::AcceptTimeout).ok().flatten();
+        let timeout = accept_timeout.unwrap_or(Duration::from_secs(30));
 
         let socket = {
             let mut inner = self.inner.protected.write().unwrap();
@@ -565,7 +564,7 @@ impl InodeSocket {
                 InodeSocketKind::BoundTcp { socket, .. } => {
                     return Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
                         socket: socket.listen().map_err(net_error_into_wasi_err)?,
-                        accept_timeout: Some(timeout),
+                        accept_timeout,
                     })));
                 }
                 InodeSocketKind::Icmp(_) => {
@@ -598,7 +597,7 @@ impl InodeSocket {
                 let socket = socket.map_err(net_error_into_wasi_err)?;
                 Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
                     socket,
-                    accept_timeout: Some(timeout),
+                    accept_timeout,
                 })))
             },
             _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)

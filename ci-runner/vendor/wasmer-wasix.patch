@@ -664,6 +664,42 @@
      /// Bad handle
      #[error("bad handle")]
      BadHandle,
+--- a/src/net/socket.rs
++++ b/src/net/socket.rs
+@@ -509,11 +509,10 @@
+         net: &dyn VirtualNetworking,
+         _backlog: usize,
+     ) -> Result<Option<InodeSocket>, Errno> {
+-        let timeout = self
+-            .opt_time(TimeType::AcceptTimeout)
+-            .ok()
+-            .flatten()
+-            .unwrap_or(Duration::from_secs(30));
++        // The listener keeps the accept timeout the program set, if any;
++        // the 30 s default bounds only the listen itself.
++        let accept_timeout = self.opt_time(TimeType::AcceptTimeout).ok().flatten();
++        let timeout = accept_timeout.unwrap_or(Duration::from_secs(30));
+ 
+         let socket = {
+             let mut inner = self.inner.protected.write().unwrap();
+@@ -565,7 +564,7 @@
+                 InodeSocketKind::BoundTcp { socket, .. } => {
+                     return Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
+                         socket: socket.listen().map_err(net_error_into_wasi_err)?,
+-                        accept_timeout: Some(timeout),
++                        accept_timeout,
+                     })));
+                 }
+                 InodeSocketKind::Icmp(_) => {
+@@ -598,7 +597,7 @@
+                 let socket = socket.map_err(net_error_into_wasi_err)?;
+                 Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
+                     socket,
+-                    accept_timeout: Some(timeout),
++                    accept_timeout,
+                 })))
+             },
+             _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
 @@ -855,6 +855,36 @@
@@ -715,7 +751,96 @@
              // We need to rebuild the basic file descriptors
 --- a/src/syscalls/mod.rs
 +++ b/src/syscalls/mod.rs
-@@ -1606,7 +1606,14 @@
+@@ -684,7 +684,88 @@
+             block_on(work)
+         }
+         _ => Err(Errno::Notsock),
++    }
++}
++
++/// Waits for `work`, a socket accept or receive. Like Linux, these block
++/// with no time limit unless the program set one (`SO_RCVTIMEO`), so this
++/// ends the wait with `Errno::Intr` as soon as a signal is queued for the
++/// thread or the thread or its process is made to finish: that is what
++/// still stops a program blocked there. The syscall then asks
++/// `__sock_wait_restarts` whether to start the call over.
++pub(crate) async fn __sock_wait<T>(
++    env: &WasiEnv,
++    work: impl Future<Output = Result<T, Errno>>,
++) -> Result<T, Errno> {
++    tokio::select! {
++        biased;
++        res = work => res,
++        _ = SignalQueued { thread: &env.thread, waker: None } => Err(Errno::Intr),
++        _ = env.thread.join() => Err(Errno::Intr),
++        _ = env.process.finished.await_termination() => Err(Errno::Intr),
++    }
++}
++
++/// Ready once a signal is queued for the thread, which it leaves queued.
++/// Unlike `WasiThread::wait_for_signal` it takes its waker back when it is
++/// dropped: every blocking call brings a new one, and the thread would
++/// otherwise keep them all until its next signal.
++struct SignalQueued<'a> {
++    thread: &'a WasiThread,
++    waker: Option<Waker>,
++}
++
++impl Future for SignalQueued<'_> {
++    type Output = ();
++    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
++        let thread = self.thread;
++        let mut signals = thread.signals().lock().unwrap();
++        if !signals.0.is_empty() {
++            return Poll::Ready(());
++        }
++        if !signals.1.iter().any(|w| w.will_wake(cx.waker())) {
++            signals.1.push(cx.waker().clone());
++        }
++        drop(signals);
++        self.waker = Some(cx.waker().clone());
++        Poll::Pending
++    }
++}
++
++impl Drop for SignalQueued<'_> {
++    fn drop(&mut self) {
++        if let Some(waker) = self.waker.take() {
++            let mut signals = self.thread.signals().lock().unwrap();
++            signals.1.retain(|w| !w.will_wake(&waker));
++        }
+     }
++}
++
++/// After `__sock_wait` ended a socket call with `Errno::Intr`: does the
++/// dynamic-linking work another thread is waiting on, runs the signal
++/// handlers (or exits, for a fatal signal or a thread made to finish), and
++/// says whether to start the call over. The program sees `EINTR` only for a
++/// signal its own handler ran on this thread, as on Linux for a handler
++/// without `SA_RESTART`; the linker's wakeups and a signal that is ignored
++/// here or handled on another thread leave the call waiting.
++pub(crate) fn __sock_wait_restarts(
++    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
++) -> Result<bool, WasiError> {
++    let env = ctx.data();
++    let handled_here = env.try_inner().is_some_and(|inner| {
++        let handles = inner.main_module_instance_handles();
++        handles.signal_set && handles.signal.is_some()
++    });
++    let delivered = {
++        let signals = env.thread.signals().lock().unwrap();
++        signals.0.iter().any(|sig| *sig != Signal::Sigwakeup)
++    };
++    WasiEnv::do_pending_link_operations(ctx, false)?;
++    let _ = WasiEnv::process_signals_and_exit(ctx)?;
++    // A signal still queued is one nothing here takes, and would end the
++    // next wait as soon as it started.
++    let stuck = !ctx.data().thread.signals().lock().unwrap().0.is_empty();
++    Ok(!(delivered && handled_here) && !stuck)
+ }
+ 
+ /// Performs an immutable operation on the socket while running in an asynchronous runtime
+@@ -1606,7 +1687,14 @@
  pub(crate) fn conv_spawn_err_to_errno(err: &SpawnError) -> Errno {
      match err {
          SpawnError::AccessDenied => Errno::Access,
@@ -810,6 +935,93 @@
  }
  
  /// ### `fd_filestat_get_old()`
+--- a/src/syscalls/wasi/fd_read.rs
++++ b/src/syscalls/wasi/fd_read.rs
+@@ -49,7 +49,25 @@
+         ctx = wasi_try_ok!(maybe_snapshot_once::<M>(ctx, SnapshotTrigger::FirstStdin)?);
+     }
+ 
+-    let res = fd_read_internal::<M>(&mut ctx, fd, fd_entry, iovs, iovs_len, offset, nread, true)?;
++    let is_socket = matches!(fd_entry.inode.read().deref(), Kind::Socket { .. });
++    let res = loop {
++        let res = fd_read_internal::<M>(
++            &mut ctx,
++            fd,
++            fd_entry.clone(),
++            iovs,
++            iovs_len,
++            offset,
++            nread,
++            true,
++        )?;
++        // A blocking read of a socket that a signal the program does not
++        // see interrupted starts over (`__sock_wait_restarts`).
++        if is_socket && matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
++            continue;
++        }
++        break res;
++    };
+     fd_read_internal_handler(ctx, res, nread)
+ }
+ 
+@@ -236,11 +254,8 @@
+                     drop(guard);
+ 
+                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
+-                    let timeout = socket
+-                        .opt_time(TimeType::ReadTimeout)
+-                        .ok()
+-                        .flatten()
+-                        .unwrap_or(Duration::from_secs(30));
++                    // No timeout unless the program set one (SO_RCVTIMEO).
++                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
+ 
+                     let tasks = env.tasks().clone();
+                     let res = __asyncify_light(
+@@ -250,7 +265,7 @@
+                         } else {
+                             None
+                         },
+-                        async move {
++                        __sock_wait(env, async move {
+                             let mut total_read = 0usize;
+ 
+                             let iovs_arr =
+@@ -263,22 +278,29 @@
+                                     .access()
+                                     .map_err(mem_error_to_wasi)?;
+ 
+-                                let local_read = socket
++                                // Only the first buffer waits: once there is
++                                // data, the rest take what has already arrived.
++                                let local_read = match socket
+                                     .recv(
+                                         tasks.deref(),
+                                         buf.as_mut_uninit(),
+-                                        Some(timeout),
+-                                        nonblocking,
++                                        timeout,
++                                        nonblocking || total_read > 0,
+                                         false,
+                                     )
+-                                    .await?;
++                                    .await
++                                {
++                                    Ok(s) => s,
++                                    Err(_) if total_read > 0 => break,
++                                    Err(err) => return Err(err),
++                                };
+                                 total_read += local_read;
+                                 if total_read != buf.len() {
+                                     break;
+                                 }
+                             }
+                             Ok(total_read)
+-                        },
++                        }),
+                     );
+                     let res = res?.map_err(|err| match err {
+                         Errno::Timedout => Errno::Again,
 --- a/src/syscalls/wasi/path_create_directory.rs
 +++ b/src/syscalls/wasi/path_create_directory.rs
 @@ -55,7 +55,7 @@
@@ -1123,3 +1335,301 @@
          }
      }
  }
+--- a/src/syscalls/wasix/sock_accept.rs
++++ b/src/syscalls/wasix/sock_accept.rs
+@@ -26,19 +26,18 @@
+ 
+     ctx = wasi_try_ok!(maybe_snapshot::<M>(ctx)?);
+ 
+-    let env = ctx.data();
+-    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+-
+     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
+ 
+-    let (fd, _, _) = wasi_try_ok!(sock_accept_internal(
+-        env,
++    let (fd, _, _) = wasi_try_ok!(sock_accept_restarting(
++        &mut ctx,
+         sock,
+         fd_flags,
+-        nonblocking,
+-        None
++        nonblocking
+     )?);
+ 
++    let env = ctx.data();
++    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
++
+     wasi_try_mem_ok!(ro_fd.write(&memory, fd));
+ 
+     Ok(Errno::Success)
+@@ -67,19 +66,18 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
+-    let env = ctx.data();
+-    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+-
+     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
+ 
+-    let (fd, local_addr, peer_addr) = wasi_try_ok!(sock_accept_internal(
+-        env,
++    let (fd, local_addr, peer_addr) = wasi_try_ok!(sock_accept_restarting(
++        &mut ctx,
+         sock,
+         fd_flags,
+-        nonblocking,
+-        None
++        nonblocking
+     )?);
+ 
++    let env = ctx.data();
++    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
++
+     #[cfg(feature = "journal")]
+     if ctx.data().enable_journal {
+         JournalEffector::save_sock_accepted(
+@@ -110,6 +108,22 @@
+     Ok(Errno::Success)
+ }
+ 
++/// `sock_accept_internal`, started over after a wait that a signal the
++/// program does not see ended (`__sock_wait_restarts`).
++fn sock_accept_restarting(
++    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
++    sock: WasiFd,
++    fd_flags: Fdflags,
++    nonblocking: bool,
++) -> Result<Result<(WasiFd, SocketAddr, SocketAddr), Errno>, WasiError> {
++    loop {
++        match sock_accept_internal(ctx.data(), sock, fd_flags, nonblocking, None)? {
++            Err(Errno::Intr) if __sock_wait_restarts(ctx)? => continue,
++            res => return Ok(res),
++        }
++    }
++}
++
+ pub(crate) fn sock_accept_internal(
+     env: &WasiEnv,
+     sock: WasiFd,
+@@ -130,14 +144,11 @@
+                 fd_flags.set(Fdflags::NONBLOCK, true);
+                 nonblocking = true;
+             }
+-            let timeout = socket
+-                .opt_time(TimeType::AcceptTimeout)
+-                .ok()
+-                .flatten()
+-                .unwrap_or(Duration::from_secs(30));
++            // No timeout unless the program set one: an accept waits for
++            // its client, however long that takes.
++            let timeout = socket.opt_time(TimeType::AcceptTimeout).ok().flatten();
+             let local_addr = socket.addr_local()?;
+-            socket
+-                .accept(tasks.deref(), nonblocking, Some(timeout))
++            __sock_wait(env, socket.accept(tasks.deref(), nonblocking, timeout))
+                 .await
+                 .map(|a| (a.0, local_addr, a.1, fd_flags))
+         },
+--- a/src/syscalls/wasix/sock_recv.rs
++++ b/src/syscalls/wasix/sock_recv.rs
+@@ -40,15 +40,21 @@
+         let pid = ctx.data().pid();
+         let tid = ctx.data().tid();
+ 
+-        let res = sock_recv_internal::<M>(
+-            &mut ctx,
+-            sock,
+-            ri_data,
+-            ri_data_len,
+-            ri_flags,
+-            ro_data_len,
+-            ro_flags,
+-        )?;
++        let res = loop {
++            let res = sock_recv_internal::<M>(
++                &mut ctx,
++                sock,
++                ri_data,
++                ri_data_len,
++                ri_flags,
++                ro_data_len,
++                ro_flags,
++            )?;
++            if matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
++                continue;
++            }
++            break res;
++        };
+ 
+         sock_recv_internal_handler(ctx, res, ro_data_len, ro_flags)
+     }
+@@ -119,7 +125,7 @@
+         env,
+         sock,
+         Rights::SOCK_RECV,
+-        |socket, fd| async move {
++        |socket, fd| __sock_wait(env, async move {
+             let iovs_arr = ri_data
+                 .slice(&memory, ri_data_len)
+                 .map_err(mem_error_to_wasi)?;
+@@ -134,18 +140,19 @@
+                     .access()
+                     .map_err(mem_error_to_wasi)?;
+ 
+-                let nonblocking = nonblocking_flag || fd.inner.flags.contains(Fdflags::NONBLOCK);
+-                let timeout = socket
+-                    .opt_time(TimeType::ReadTimeout)
+-                    .ok()
+-                    .flatten()
+-                    .unwrap_or(Duration::from_secs(30));
++                // Only the first buffer waits: once there is data, the
++                // rest take what has already arrived, as Linux returns.
++                let nonblocking = nonblocking_flag
++                    || fd.inner.flags.contains(Fdflags::NONBLOCK)
++                    || total_read > 0;
++                // No timeout unless the program set one (SO_RCVTIMEO).
++                let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
+ 
+                 let local_read = match socket
+                     .recv(
+                         env.tasks().deref(),
+                         buf.as_mut_uninit(),
+-                        Some(timeout),
++                        timeout,
+                         nonblocking,
+                         peek,
+                     )
+@@ -161,7 +168,7 @@
+                 }
+             }
+             Ok(total_read)
+-        }
++        })
+     ));
+     Ok(Ok(data))
+ }
+--- a/src/syscalls/wasix/sock_recv_from.rs
++++ b/src/syscalls/wasix/sock_recv_from.rs
+@@ -29,20 +29,26 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
+-    sock_recv_from_internal(
+-        ctx,
+-        sock,
+-        ri_data,
+-        ri_data_len,
+-        ri_flags,
+-        ro_data_len,
+-        ro_flags,
+-        ro_addr,
+-    )
++    loop {
++        let ret = sock_recv_from_internal(
++            &mut ctx,
++            sock,
++            ri_data,
++            ri_data_len,
++            ri_flags,
++            ro_data_len,
++            ro_flags,
++            ro_addr,
++        )?;
++        if ret == Errno::Intr && __sock_wait_restarts(&mut ctx)? {
++            continue;
++        }
++        return Ok(ret);
++    }
+ }
+ 
+ pub(super) fn sock_recv_from_internal<M: MemorySize>(
+-    mut ctx: FunctionEnvMut<'_, WasiEnv>,
++    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+     sock: WasiFd,
+     ri_data: WasmPtr<__wasi_iovec_t<M>, M>,
+     ri_data_len: M::Offset,
+@@ -58,7 +64,7 @@
+     // Check rights first to preserve error precedence
+     wasi_try_ok!(__sock_check_rights(env, sock, Rights::SOCK_RECV_FROM));
+ 
+-    let memory = unsafe { env.memory_view(&ctx) };
++    let memory = unsafe { env.memory_view(ctx) };
+     let iovs_arr = wasi_try_mem_ok!(ri_data.slice(&memory, ri_data_len));
+ 
+     let max_size = wasi_try_ok!(checked_sock_recv_size::<M>(
+@@ -77,20 +83,13 @@
+                 |socket, fd| async move {
+                     let nonblocking =
+                         nonblocking_flag || fd.inner.flags.contains(Fdflags::NONBLOCK);
+-                    let timeout = socket
+-                        .opt_time(TimeType::ReadTimeout)
+-                        .ok()
+-                        .flatten()
+-                        .unwrap_or(Duration::from_secs(30));
+-                    socket
+-                        .recv_from(
+-                            env.tasks().deref(),
+-                            writer,
+-                            Some(timeout),
+-                            nonblocking,
+-                            peek,
+-                        )
+-                        .await
++                    // No timeout unless the program set one (SO_RCVTIMEO).
++                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
++                    __sock_wait(
++                        env,
++                        socket.recv_from(env.tasks().deref(), writer, timeout, nonblocking, peek),
++                    )
++                    .await
+                 },
+             ));
+ 
+@@ -108,32 +107,25 @@
+                 Rights::SOCK_RECV_FROM,
+                 |socket, fd| async move {
+                     let nonblocking = fd.inner.flags.contains(Fdflags::NONBLOCK);
+-                    let timeout = socket
+-                        .opt_time(TimeType::ReadTimeout)
+-                        .ok()
+-                        .flatten()
+-                        .unwrap_or(Duration::from_secs(30));
++                    // No timeout unless the program set one (SO_RCVTIMEO).
++                    let timeout = socket.opt_time(TimeType::ReadTimeout).ok().flatten();
+ 
+                     let mut buf = Vec::with_capacity(max_size);
+                     unsafe {
+                         buf.set_len(max_size);
+                     }
+-                    socket
+-                        .recv_from(
+-                            env.tasks().deref(),
+-                            &mut buf,
+-                            Some(timeout),
+-                            nonblocking,
+-                            peek,
+-                        )
+-                        .await
+-                        .map(|(amt, addr)| {
+-                            unsafe {
+-                                buf.set_len(amt);
+-                            }
+-                            let buf: Vec<u8> = unsafe { std::mem::transmute(buf) };
+-                            (buf, addr)
+-                        })
++                    __sock_wait(
++                        env,
++                        socket.recv_from(env.tasks().deref(), &mut buf, timeout, nonblocking, peek),
++                    )
++                    .await
++                    .map(|(amt, addr)| {
++                        unsafe {
++                            buf.set_len(amt);
++                        }
++                        let buf: Vec<u8> = unsafe { std::mem::transmute(buf) };
++                        (buf, addr)
++                    })
+                 }
+             ));
+ 
