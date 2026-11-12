@@ -37,6 +37,7 @@ const mockApprove = vi.fn();
 const mockReject = vi.fn();
 const mockDispatch = vi.fn();
 const mockOpenLogs = vi.fn();
+const mockRetry = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
   openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
   CiInputError: FakeCiInputError,
@@ -45,6 +46,13 @@ vi.mock("@infrawrench/server-core/ci/runs", () => ({
   approveRun: (...a: unknown[]) => mockApprove(...a),
   rejectRun: (...a: unknown[]) => mockReject(...a),
   dispatchRun: (...a: unknown[]) => mockDispatch(...a),
+  retryRun: (...a: unknown[]) => mockRetry(...a),
+}));
+const mockListCaches = vi.fn();
+const mockClearCache = vi.fn();
+vi.mock("@infrawrench/server-core/ci/caches", () => ({
+  listCiCaches: (...a: unknown[]) => mockListCaches(...a),
+  clearCiCache: (...a: unknown[]) => mockClearCache(...a),
 }));
 const mockLogAudit = vi.fn();
 vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
@@ -171,6 +179,121 @@ describe("CI routes", () => {
     });
     expect(ok.status).toBe(200);
     expect(mockSetAccount).toHaveBeenLastCalledWith("org-1", 7, true, "user-1");
+  });
+
+  it("retries under ci:approve only, dispatching and auditing the new run", async () => {
+    const RETRY = "33333333-3333-4333-8333-333333333333";
+    const denied = await app(["ci:read", "ci:write"]).request(`/runs/${RUN}/retry`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(denied.status).toBe(403);
+    expect(mockRetry).not.toHaveBeenCalled();
+
+    mockRetry.mockResolvedValue({
+      id: RETRY,
+      repoFullName: "acme/web",
+      event: "push",
+      headRef: "main",
+      sha: "a".repeat(40),
+      pullNumber: null,
+      headRepoFullName: null,
+      fromFork: false,
+      actorLogin: "octo",
+      status: "queued",
+      statusReason: null,
+      createdAt: "2026-11-12T10:00:00.000Z",
+      startedAt: null,
+      finishedAt: null,
+      jobs: null,
+      vcpuSeconds: null,
+      memoryGibSeconds: null,
+      githubUrl: "https://github.com/acme/web/commit/" + "a".repeat(40),
+      retryOfRunId: RUN,
+      retriedAsRunId: null,
+      noTaskCache: true,
+    });
+    const ok = await app(["ci:approve"]).request(`/runs/${RUN}/retry`, {
+      method: "POST",
+      body: JSON.stringify({ noTaskCache: true }),
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ id: RETRY, retryOfRunId: RUN, noTaskCache: true });
+    expect(mockRetry).toHaveBeenCalledWith("org-1", RUN, "user-1", { noTaskCache: true });
+    await settle();
+    expect(mockDispatch).toHaveBeenCalledWith(RETRY);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ci.run.retry",
+        entityId: RETRY,
+        metadata: expect.objectContaining({ retryOf: RUN, noTaskCache: true }),
+      }),
+    );
+
+    // A run waiting for approval is approved, not retried.
+    mockRetry.mockRejectedValueOnce(
+      new FakeCiInputError("This run is waiting for approval; approve it instead.", 409),
+    );
+    mockDispatch.mockClear();
+    const waiting = await app().request(`/runs/${RUN}/retry`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(waiting.status).toBe(409);
+    await settle();
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("lists caches under ci:read and clears one under ci:write, audited", async () => {
+    mockListCaches.mockResolvedValue({
+      accounts: [
+        {
+          installationId: 7,
+          accountLogin: "acme",
+          usedBytes: 10,
+          quotaBytes: null,
+          repos: [{ repo: "web", bytes: 10, entries: 1 }],
+          error: null,
+        },
+      ],
+    });
+    const list = await app(["ci:read"]).request("/caches");
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({ accounts: [{ repos: [{ repo: "web" }] }] });
+
+    const denied = await app(["ci:read", "ci:approve"]).request("/caches/7/web", {
+      method: "DELETE",
+    });
+    expect(denied.status).toBe(403);
+    expect(mockClearCache).not.toHaveBeenCalled();
+
+    mockClearCache.mockResolvedValue({
+      installationId: 7,
+      repo: "web",
+      deletedEntries: 4,
+      deletedBytes: 2048,
+    });
+    const ok = await app(["ci:write"]).request("/caches/7/Web", { method: "DELETE" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      installationId: 7,
+      repo: "web",
+      deletedEntries: 4,
+      deletedBytes: 2048,
+    });
+    expect(mockClearCache).toHaveBeenCalledWith("org-1", 7, "Web");
+    await settle();
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ci.cache.clear",
+        entityId: "7/web",
+        metadata: expect.objectContaining({ repo: "web", deletedEntries: 4 }),
+      }),
+    );
+
+    mockClearCache.mockRejectedValueOnce(new FakeCiInputError("Not the org's", 404));
+    const missing = await app().request("/caches/8/web", { method: "DELETE" });
+    expect(missing.status).toBe(404);
   });
 
   it("answers the month's usage", async () => {

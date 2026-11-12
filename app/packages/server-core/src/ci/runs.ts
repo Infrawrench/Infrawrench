@@ -18,13 +18,14 @@
  * Dispatch claims the row first (one UPDATE that only one caller can win),
  * because both the webhook and the poller pass dispatch.
  */
-import { and, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
-import type {
-  CiJobOutput,
-  CiJobSummary,
-  CiRun,
-  CiRunDetail,
-  CiRunStatus,
+import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import {
+  CI_RETRYABLE_STATUSES,
+  type CiJobOutput,
+  type CiJobSummary,
+  type CiRun,
+  type CiRunDetail,
+  type CiRunStatus,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
@@ -60,7 +61,7 @@ const LOST_AFTER_MS = 2 * 60 * 60_000;
  */
 const GONE_AFTER_MS = 2 * 60_000;
 const GONE_REASON =
-  "The runner restarted while this run was going, and the run went with it. Push again to run it again.";
+  "The runner restarted while this run was going, and the run went with it. Retry it from the CI tab, or push again.";
 /** A fork's run nobody approved in this long is closed. */
 export const APPROVAL_EXPIRES_MS = 14 * 24 * 60 * 60_000;
 
@@ -214,6 +215,7 @@ export function dispatchBody(
     | "pullNumber"
     | "baseSha"
     | "fromFork"
+    | "noTaskCache"
   >,
   token: string,
 ): Record<string, unknown> {
@@ -236,6 +238,8 @@ export function dispatchBody(
     // own, so the proxy gives it none.
     if (!row.fromFork) body["trusted"] = true;
   }
+  // Only when asked: a runner before 0.3.8 refuses fields it does not know.
+  if (row.noTaskCache) body["no-task-cache"] = true;
   return body;
 }
 
@@ -542,7 +546,102 @@ export async function rejectRun(organizationId: string, id: string, userId: stri
   });
 }
 
-export function toWire(row: CiRunRow): CiRun {
+/**
+ * Why a run cannot be retried, or `null` when it can. Only a finished run
+ * is: one waiting for approval is approved instead (a retry is never a way
+ * around it), and a rejected one stays rejected.
+ */
+export function retryRefusal(row: Pick<CiRunRow, "status">): string | null {
+  if (CI_RETRYABLE_STATUSES.includes(row.status)) return null;
+  switch (row.status) {
+    case "awaiting_approval":
+      return "This run is waiting for approval; approve it instead.";
+    case "rejected":
+      return "A rejected run cannot be retried.";
+    default:
+      return "This run has not finished yet.";
+  }
+}
+
+/**
+ * Starts a run again: a new run of the same repository, commit, branch and
+ * event, linked to the one it retries, queued and dispatched like any other.
+ * With `noTaskCache` every `task-cache:` job runs. A fork's run stays a
+ * fork's (no secrets); its retry counts as approved by whoever asks, which
+ * takes the same permission as approving it. Two retries of a run at once
+ * are one: the second answers 409.
+ */
+export async function retryRun(
+  organizationId: string,
+  id: string,
+  userId: string,
+  opts: { noTaskCache: boolean },
+): Promise<CiRun> {
+  const original = await loadOwned(organizationId, id);
+  const refusal = retryRefusal(original);
+  if (refusal) throw new CiInputError(refusal, 409);
+  const [{ count } = { count: 0 }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(ciRuns)
+    .where(eq(ciRuns.retryOfRunId, original.id));
+  const now = new Date();
+  const [row] = await db
+    .insert(ciRuns)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId,
+      installationId: original.installationId,
+      repoFullName: original.repoFullName,
+      ownerKey: original.ownerKey,
+      repoKey: original.repoKey,
+      event: original.event,
+      branch: original.branch,
+      headRef: original.headRef,
+      defaultBranch: original.defaultBranch,
+      sha: original.sha,
+      baseSha: original.baseSha,
+      pullNumber: original.pullNumber,
+      headRepoFullName: original.headRepoFullName,
+      fromFork: original.fromFork,
+      actorLogin: original.actorLogin,
+      retryOfRunId: original.id,
+      noTaskCache: opts.noTaskCache,
+      status: "queued",
+      // One retry per count: a second click racing the first conflicts.
+      dedupeKey: `retry:${original.id}:${count + 1}`,
+      ...(original.fromFork ? { decidedByUserId: userId || null, decidedAt: now } : {}),
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (!row) throw new CiInputError("This run is already being retried.", 409);
+  return toWire(row);
+}
+
+async function loadOwned(organizationId: string, id: string): Promise<CiRunRow> {
+  const [row] = await db
+    .select()
+    .from(ciRuns)
+    .where(and(eq(ciRuns.id, id), eq(ciRuns.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw new CiInputError("No such run.", 404);
+  return row;
+}
+
+/** Each run's newest retry, by the id of the run it retries. */
+async function newestRetries(organizationId: string, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: ciRuns.id, retryOfRunId: ciRuns.retryOfRunId })
+    .from(ciRuns)
+    .where(and(eq(ciRuns.organizationId, organizationId), inArray(ciRuns.retryOfRunId, ids)))
+    .orderBy(ciRuns.createdAt);
+  const out = new Map<string, string>();
+  // Oldest first, so the newest wins.
+  for (const r of rows) if (r.retryOfRunId) out.set(r.retryOfRunId, r.id);
+  return out;
+}
+
+export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiRun {
   const githubUrl =
     row.pullNumber !== null
       ? `https://github.com/${row.repoFullName}/pull/${row.pullNumber}`
@@ -566,6 +665,9 @@ export function toWire(row: CiRunRow): CiRun {
     vcpuSeconds: row.vcpuSeconds,
     memoryGibSeconds: row.memoryGibSeconds,
     githubUrl,
+    retryOfRunId: row.retryOfRunId,
+    retriedAsRunId,
+    noTaskCache: row.noTaskCache,
   };
 }
 
@@ -584,17 +686,17 @@ export async function listRuns(
     )
     .orderBy(desc(ciRuns.createdAt))
     .limit(opts.limit);
-  return rows.map(toWire);
+  const retries = await newestRetries(
+    organizationId,
+    rows.map((r) => r.id),
+  );
+  return rows.map((r) => toWire(r, retries.get(r.id) ?? null));
 }
 
 /** A run and, once it has finished, each job's output from the runners. */
 export async function getRun(organizationId: string, id: string): Promise<CiRunDetail> {
-  const [row] = await db
-    .select()
-    .from(ciRuns)
-    .where(and(eq(ciRuns.id, id), eq(ciRuns.organizationId, organizationId)))
-    .limit(1);
-  if (!row) throw new CiInputError("No such run.", 404);
+  const row = await loadOwned(organizationId, id);
+  const retries = await newestRetries(organizationId, [row.id]);
   let jobs: CiJobOutput[] | null = null;
   if (row.proxyRunId && (row.status === "passed" || row.status === "failed")) {
     try {
@@ -606,7 +708,7 @@ export async function getRun(organizationId: string, id: string): Promise<CiRunD
       console.warn(`[ci] could not read the output of run ${row.id}:`, err);
     }
   }
-  return { run: toWire(row), jobs };
+  return { run: toWire(row, retries.get(row.id) ?? null), jobs };
 }
 
 /**

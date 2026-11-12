@@ -3,6 +3,8 @@ import {
   ciLogEvent,
   parseSseFrames,
   type CiAccount,
+  type CiCacheCleared,
+  type CiCaches,
   type CiLogEvent,
   type CiRun,
   type CiRunDetail,
@@ -67,6 +69,11 @@ export function createWebCiClient(orgId: string): CiClient {
     rejectRun: async (id) => {
       await apiPost(`${base}/runs/${encodeURIComponent(id)}/reject`);
     },
+    retryRun: (id, { noTaskCache }) =>
+      apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/retry`, { noTaskCache }),
+    listCaches: () => apiGet<CiCaches>(`${base}/caches`),
+    clearCache: (installationId, repo) =>
+      apiDelete<CiCacheCleared>(`${base}/caches/${installationId}/${encodeURIComponent(repo)}`),
     usage: () => apiGet<CiUsage>(`${base}/usage`),
     listRepos: async (installationId) => {
       const { repos } = await apiGet<{

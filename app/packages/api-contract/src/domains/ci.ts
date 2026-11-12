@@ -64,6 +64,20 @@ export const CiRunSchema = Schema.Struct({
   vcpuSeconds: Schema.NullOr(Schema.Number),
   memoryGibSeconds: Schema.NullOr(Schema.Number),
   githubUrl: Schema.String,
+  retryOfRunId: Schema.optionalKey(
+    Schema.NullOr(Schema.String).annotate({
+      description: "The run this one retries: the same repository, commit, branch and event.",
+    }),
+  ),
+  retriedAsRunId: Schema.optionalKey(
+    Schema.NullOr(Schema.String).annotate({ description: "The newest retry of this run." }),
+  ),
+  noTaskCache: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The run did not read the task cache: every `task-cache:` job ran, and saved its result again.",
+    }),
+  ),
 }).annotate({ identifier: "CiRun" });
 
 export const CiRunDetailSchema = Schema.Struct({
@@ -111,6 +125,34 @@ export const CiValuesSchema = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "CiValues" });
+
+export const CiRepoCacheSchema = Schema.Struct({
+  repo: Schema.String.annotate({ description: "The repository's name, lowercased." }),
+  bytes: Schema.Number,
+  entries: Schema.Int,
+}).annotate({ identifier: "CiRepoCache" });
+
+export const CiCachesSchema = Schema.Struct({
+  accounts: Schema.Array(
+    Schema.Struct({
+      installationId: Schema.Int,
+      accountLogin: Schema.String,
+      usedBytes: Schema.Number,
+      quotaBytes: Schema.NullOr(Schema.Number),
+      repos: Schema.Array(CiRepoCacheSchema),
+      error: Schema.NullOr(Schema.String).annotate({
+        description: "Why the runners could not say what this account stores, when they could not.",
+      }),
+    }).annotate({ identifier: "CiAccountCaches" }),
+  ),
+}).annotate({ identifier: "CiCaches" });
+
+export const CiCacheClearedSchema = Schema.Struct({
+  installationId: Schema.Int,
+  repo: Schema.String,
+  deletedEntries: Schema.Int,
+  deletedBytes: Schema.Number,
+}).annotate({ identifier: "CiCacheCleared" });
 
 const RunParams = { orgId: OrgId, runId: Uuid } as const;
 
@@ -194,6 +236,50 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:approve")
       .annotate(OpenApi.Summary, "Decline to run a fork's pull request commit")
       .annotate(SuccessDescription, "Rejected"),
+    HttpApiEndpoint.post("retryRun", "/runs/:runId/retry", {
+      params: RunParams,
+      payload: Schema.Struct({
+        noTaskCache: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "Run every `task-cache:` job instead of replaying a passing run's result. Results are saved again either way.",
+          }),
+        ),
+      }),
+      success: CiRunSchema,
+      error: [NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:approve")
+      .annotate(OpenApi.Summary, "Run a finished CI run again")
+      .annotate(
+        OpenApi.Description,
+        "Queues a new run of the same repository, commit, branch and event, linked to this one. A run waiting for approval is approved instead, and a fork's pull request still runs without secrets.",
+      )
+      .annotate(SuccessDescription, "The new run, queued"),
+    HttpApiEndpoint.get("listCaches", "/caches", {
+      params: OrgParams,
+      success: CiCachesSchema,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "The caches CI keeps for each repository")
+      .annotate(SuccessDescription, "Caches per account and repository"),
+    HttpApiEndpoint.delete("clearCache", "/caches/:installationId/:repo", {
+      params: {
+        orgId: OrgId,
+        installationId: Schema.NumberFromString.check(Schema.isInt()),
+        repo: Schema.String,
+      },
+      success: CiCacheClearedSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:write")
+      .annotate(OpenApi.Summary, "Clear a repository's CI caches")
+      .annotate(
+        OpenApi.Description,
+        "Deletes every branch's and pull request's `cache:` and `task-cache:` entries of one repository. The next run of each job starts cold and saves again.",
+      )
+      .annotate(SuccessDescription, "What was removed"),
     HttpApiEndpoint.get("listValues", "/values", {
       params: OrgParams,
       query: ValueScopeQuery,

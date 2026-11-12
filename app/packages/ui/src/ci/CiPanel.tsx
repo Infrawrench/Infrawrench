@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import {
+  CI_RETRYABLE_STATUSES,
   CI_RUN_STATUSES,
   type CiAccount,
   type CiJobOutput,
@@ -11,6 +12,7 @@ import {
   type CiUsage,
 } from "@infrawrench/client-core";
 import type { CiClient } from "./types.js";
+import { CiCachesCard } from "./CiCachesCard.js";
 import { CiValuesCard } from "./CiValuesCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
 import { formatDuration } from "./format.js";
@@ -20,9 +22,9 @@ export interface CiPanelProps {
   /** The run shown in detail, remembered by the tab; `null` for the list. */
   selectedRunId: string | null;
   onSelectRun: (id: string | null) => void;
-  /** `ci:write`: choose which GitHub accounts run CI. */
+  /** `ci:write`: choose which GitHub accounts run CI, set values, clear caches. */
   canWrite: boolean;
-  /** `ci:approve`: approve or reject forks' pull requests. */
+  /** `ci:approve`: approve or reject forks' pull requests, and retry runs. */
   canApprove: boolean;
   /**
    * Open a link (GitHub, the App install page). Desktop passes its
@@ -353,6 +355,74 @@ function ApprovalButtons({
   );
 }
 
+/** A run's id as people read it: its first eight characters. */
+const shortId = (id: string) => id.slice(0, 8);
+
+/**
+ * Retries a finished run: "Retry" lets the task cache stand in for jobs
+ * nothing changed for, "Retry without cache" runs every job. `compact` is
+ * the list's single button.
+ */
+function RetryButtons({
+  run,
+  client,
+  compact = false,
+  onRetried,
+}: {
+  run: CiRun;
+  client: CiClient;
+  compact?: boolean;
+  onRetried: (run: CiRun) => void;
+}) {
+  const gt = useGT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const retry = async (noTaskCache: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      onRetried(await client.retryRun(run.id, { noTaskCache }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Could not retry the run"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const button =
+    "rounded border border-border px-2 py-0.5 text-xs text-on-surface hover:bg-surface-sunken disabled:opacity-50";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void retry(false)}
+        title={gt("Run it again. Jobs whose inputs did not change come from the task cache.")}
+        className={button}
+      >
+        {gt("Retry")}
+      </button>
+      {compact ? null : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void retry(true)}
+          title={gt("Run every job again, without reading the task cache.")}
+          className={button}
+        >
+          {gt("Retry without cache")}
+        </button>
+      )}
+      {error ? (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function RunSource({ run }: { run: CiRun }) {
   const gt = useGT();
   if (run.pullNumber !== null) {
@@ -369,10 +439,47 @@ function RunSource({ run }: { run: CiRun }) {
               : gt("deleted fork")}
           </span>
         ) : null}
+        {run.retryOfRunId ? <RetryTag /> : null}
       </span>
     );
   }
-  return <span>{run.headRef}</span>;
+  return (
+    <span>
+      {run.headRef}
+      {run.retryOfRunId ? <RetryTag /> : null}
+    </span>
+  );
+}
+
+function RetryTag() {
+  const gt = useGT();
+  return (
+    <span className="ml-1 rounded bg-surface-sunken px-1 text-[10px] text-on-surface-faint">
+      {gt("retry")}
+    </span>
+  );
+}
+
+/** "Retry of run …" and "Retried as run …", each opening that run. */
+function RetryLinks({ run, onOpenRun }: { run: CiRun; onOpenRun: (id: string) => void }) {
+  const gt = useGT();
+  if (!run.retryOfRunId && !run.retriedAsRunId && !run.noTaskCache) return null;
+  const link = (id: string, label: string) => (
+    <button type="button" onClick={() => onOpenRun(id)} className="text-accent hover:underline">
+      {label}
+    </button>
+  );
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-muted">
+      {run.retryOfRunId
+        ? link(run.retryOfRunId, gt("Retry of run {id}", { id: shortId(run.retryOfRunId) }))
+        : null}
+      {run.noTaskCache ? <span>{gt("Without the task cache")}</span> : null}
+      {run.retriedAsRunId
+        ? link(run.retriedAsRunId, gt("Retried as run {id}", { id: shortId(run.retriedAsRunId) }))
+        : null}
+    </p>
+  );
 }
 
 function RunDetailView({
@@ -380,12 +487,14 @@ function RunDetailView({
   client,
   canApprove,
   onOpenUrl,
+  onOpenRun,
   onBack,
 }: {
   runId: string;
   client: CiClient;
   canApprove: boolean;
   onOpenUrl?: ((url: string) => void) | undefined;
+  onOpenRun: (id: string) => void;
   onBack: () => void;
 }) {
   const gt = useGT();
@@ -396,8 +505,15 @@ function RunDetailView({
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
+  // Another run opened in place (a retry, or the run it retries): show it
+  // loading rather than the last one's jobs.
+  useEffect(() => {
+    setDetail(null);
+  }, [runId]);
+
   useEffect(() => {
     let cancelled = false;
+    setError(null);
     client
       .getRun(runId)
       .then((d) => !cancelled && setDetail(d))
@@ -444,7 +560,13 @@ function RunDetailView({
             <ExternalLink href={run.githubUrl} onOpenUrl={onOpenUrl}>
               {gt("Open on GitHub")}
             </ExternalLink>
+            {canApprove && CI_RETRYABLE_STATUSES.includes(run.status) ? (
+              <div className="ml-auto">
+                <RetryButtons run={run} client={client} onRetried={(next) => onOpenRun(next.id)} />
+              </div>
+            ) : null}
           </div>
+          <RetryLinks run={run} onOpenRun={onOpenRun} />
           <p className="text-xs text-on-surface-muted">
             <RunSource run={run} />
             {run.statusReason ? <span className="ml-2">{run.statusReason}</span> : null}
@@ -592,6 +714,7 @@ export function CiPanel({
               client={client}
               canApprove={canApprove}
               onOpenUrl={onOpenUrl}
+              onOpenRun={onSelectRun}
               onBack={() => {
                 onSelectRun(null);
                 refresh();
@@ -608,6 +731,7 @@ export function CiPanel({
               />
               {canWrite ? <CiValuesCard client={client} accounts={status.accounts} /> : null}
               {usage ? <UsageCard usage={usage} /> : null}
+              <CiCachesCard client={client} canWrite={canWrite} />
 
               <section className="space-y-2" aria-labelledby="ci-runs">
                 <div className="flex items-center justify-between gap-2">
@@ -691,6 +815,10 @@ export function CiPanel({
                           <td className="py-1.5">
                             {run.status === "awaiting_approval" && canApprove ? (
                               <ApprovalButtons run={run} client={client} onDecided={refresh} />
+                            ) : (run.status === "failed" || run.status === "error") &&
+                              canApprove &&
+                              !run.retriedAsRunId ? (
+                              <RetryButtons run={run} client={client} compact onRetried={refresh} />
                             ) : null}
                           </td>
                         </tr>

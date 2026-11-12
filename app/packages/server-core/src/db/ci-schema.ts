@@ -7,6 +7,7 @@
  * satellite-schema convention.
  */
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   doublePrecision,
@@ -80,6 +81,12 @@ export const ciRuns = pgTable(
     fromFork: boolean("from_fork").notNull().default(false),
     /** Who opened the pull request or pushed. */
     actorLogin: text("actor_login"),
+    /** The run this one retries: same commit, branch and event. */
+    retryOfRunId: text("retry_of_run_id").references((): AnyPgColumn => ciRuns.id, {
+      onDelete: "set null",
+    }),
+    /** Run every `task-cache:` job rather than replay a passing run's entry. */
+    noTaskCache: boolean("no_task_cache").notNull().default(false),
     status: text("status").$type<CiRunStatus>().notNull(),
     /** Why a run errored or was rejected. */
     statusReason: text("status_reason"),
@@ -118,6 +125,7 @@ export const ciRuns = pgTable(
     dedupeIdx: uniqueIndex("ci_runs_dedupe_idx").on(t.dedupeKey),
     orgCreatedIdx: index("ci_runs_org_created_idx").on(t.organizationId, t.createdAt),
     statusIdx: index("ci_runs_status_idx").on(t.status, t.nextAttemptAt),
+    retryOfIdx: index("ci_runs_retry_of_idx").on(t.retryOfRunId),
   }),
 );
 

@@ -65,6 +65,12 @@ export interface CiRun {
   memoryGibSeconds: number | null;
   /** The commit or pull request on GitHub. */
   githubUrl: string;
+  /** The run this one retries, when it is a retry. */
+  retryOfRunId?: string | null;
+  /** The newest retry of this run, when it has been retried. */
+  retriedAsRunId?: string | null;
+  /** Run without reading the task cache: every `task-cache:` job ran. */
+  noTaskCache?: boolean;
 }
 
 export interface CiRunDetail {
@@ -103,6 +109,41 @@ export interface CiUsage {
   storageGibHours: number;
   /** Cache storage now, when the runners answered. */
   storageBytes: number | null;
+}
+
+/** The runs a retry can start from: finished ones. */
+export const CI_RETRYABLE_STATUSES: readonly CiRunStatus[] = ["passed", "failed", "error"];
+
+/** One repository's stored caches (`cache:` and `task-cache:` entries). */
+export interface CiRepoCache {
+  /** The repository's name, as the runner keys it (lowercase). */
+  repo: string;
+  bytes: number;
+  entries: number;
+}
+
+/** A connected GitHub account's stored caches, per repository. */
+export interface CiAccountCaches {
+  installationId: number;
+  accountLogin: string;
+  usedBytes: number;
+  /** The account's storage quota, across its repositories. */
+  quotaBytes: number | null;
+  repos: CiRepoCache[];
+  /** Why the runners could not say, when they could not. */
+  error: string | null;
+}
+
+export interface CiCaches {
+  accounts: CiAccountCaches[];
+}
+
+/** What clearing a repository's caches removed. */
+export interface CiCacheCleared {
+  installationId: number;
+  repo: string;
+  deletedEntries: number;
+  deletedBytes: number;
 }
 
 /** A secret's name: its value is write-only and never comes back. */

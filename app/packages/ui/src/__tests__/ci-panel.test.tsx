@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CiJobOutput, CiLogEvent, CiRun, CiStatus } from "@infrawrench/client-core";
 
@@ -13,6 +13,20 @@ vi.mock("gt-react", () => ({
 }));
 
 const { CiPanel } = await import("../ci/CiPanel.js");
+
+beforeAll(() => {
+  // jsdom doesn't implement <dialog> showModal/close.
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+  }
+});
 
 const status: CiStatus = {
   enabled: true,
@@ -45,6 +59,8 @@ const run: CiRun = {
   githubUrl: "https://github.com/acme/web/pull/4",
 };
 
+const RETRY_ID = "33333333-3333-4333-8333-333333333333";
+
 function client() {
   return {
     status: vi.fn(async () => status),
@@ -71,6 +87,31 @@ function client() {
     })),
     setValue: vi.fn(),
     deleteValue: vi.fn(),
+    retryRun: vi.fn(async (id: string, opts: { noTaskCache: boolean }) => ({
+      ...run,
+      id: RETRY_ID,
+      status: "queued" as const,
+      retryOfRunId: id,
+      noTaskCache: opts.noTaskCache,
+    })),
+    listCaches: vi.fn(async () => ({
+      accounts: [
+        {
+          installationId: 7,
+          accountLogin: "acme",
+          usedBytes: 3 * 1024 ** 2,
+          quotaBytes: 10 * 1024 ** 3,
+          repos: [{ repo: "web", bytes: 3 * 1024 ** 2, entries: 12 }],
+          error: null,
+        },
+      ],
+    })),
+    clearCache: vi.fn(async (installationId: number, repo: string) => ({
+      installationId,
+      repo,
+      deletedEntries: 12,
+      deletedBytes: 3 * 1024 ** 2,
+    })),
     streamRunLogs: vi.fn(async function* (): AsyncIterable<CiLogEvent> {}),
   };
 }
@@ -98,6 +139,7 @@ describe("CiPanel", () => {
     expect(c.status).toHaveBeenCalledTimes(1);
     expect(c.listRuns).toHaveBeenCalledTimes(1);
     expect(c.listValues).toHaveBeenCalledTimes(1);
+    expect(c.listCaches).toHaveBeenCalledTimes(1);
   });
 
   it("opens a run from anywhere on its row, but not from the approval buttons", async () => {
@@ -148,6 +190,131 @@ describe("CiPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Summary" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Test" })).toBeTruthy());
     expect(c.streamRunLogs).not.toHaveBeenCalled();
+  });
+
+  it("retries a finished run, with or without the task cache, and opens the retry", async () => {
+    const c = client();
+    c.getRun.mockResolvedValue({ run: { ...run, status: "failed" }, jobs: [] });
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={run.id} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Retry without cache" }));
+    await waitFor(() => expect(onSelectRun).toHaveBeenCalledWith(RETRY_ID));
+    expect(c.retryRun).toHaveBeenCalledWith(run.id, { noTaskCache: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(c.retryRun).toHaveBeenCalledTimes(2));
+    expect(c.retryRun).toHaveBeenLastCalledWith(run.id, { noTaskCache: false });
+  });
+
+  it("offers no retry without ci:approve, nor for a run waiting for approval", async () => {
+    const c = client();
+    c.getRun.mockResolvedValue({ run, jobs: [] });
+    const { unmount } = render(
+      <CiPanel
+        client={c}
+        selectedRunId={run.id}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove={false}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Open on GitHub")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    unmount();
+
+    c.getRun.mockResolvedValue({
+      run: { ...run, status: "awaiting_approval", fromFork: true },
+      jobs: null,
+    });
+    render(
+      <CiPanel client={c} selectedRunId={run.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry without cache" })).toBeNull();
+  });
+
+  it("links a retry and the run it retries", async () => {
+    const c = client();
+    c.getRun.mockResolvedValue({
+      run: {
+        ...run,
+        id: RETRY_ID,
+        retryOfRunId: run.id,
+        retriedAsRunId: "44444444-4444-4444-8444-444444444444",
+        noTaskCache: true,
+      },
+      jobs: [],
+    });
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={RETRY_ID} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Retry of run 11111111")).toBeTruthy());
+    expect(screen.getByText("Without the task cache")).toBeTruthy();
+    fireEvent.click(screen.getByText("Retry of run 11111111"));
+    expect(onSelectRun).toHaveBeenLastCalledWith(run.id);
+    fireEvent.click(screen.getByText("Retried as run 44444444"));
+    expect(onSelectRun).toHaveBeenLastCalledWith("44444444-4444-4444-8444-444444444444");
+  });
+
+  it("retries a failed run from the list without opening it", async () => {
+    const failed: CiRun = { ...run, status: "failed" };
+    const c = { ...client(), listRuns: vi.fn(async () => [failed]) };
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    // The list offers the one retry; without the cache is on the run's page.
+    expect(screen.queryByRole("button", { name: "Retry without cache" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(c.retryRun).toHaveBeenCalledWith(run.id, { noTaskCache: false }));
+    expect(onSelectRun).not.toHaveBeenCalled();
+    // The list reloads to show the new run.
+    await waitFor(() => expect(c.listRuns).toHaveBeenCalledTimes(2));
+  });
+
+  it("clears a repository's cache after confirming, and says what went", async () => {
+    const c = client();
+    render(<CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />);
+    const clear = await screen.findByRole("button", { name: "Clear the cache of acme/web" });
+    expect(screen.getByText("3.00 MiB")).toBeTruthy();
+    fireEvent.click(clear);
+    // The dialog says what it deletes before anything is.
+    expect(screen.getByText("Clear the cache of acme/web?")).toBeTruthy();
+    expect(screen.getByText(/This deletes 12 cache entries \(3.00 MiB\)/)).toBeTruthy();
+    expect(c.clearCache).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Clear the cache of acme/web?")).toBeNull();
+    expect(c.clearCache).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear the cache of acme/web" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear cache" }));
+    await waitFor(() =>
+      expect(screen.getByText("Cleared 12 cache entries (3.00 MiB) from acme/web.")).toBeTruthy(),
+    );
+    expect(c.clearCache).toHaveBeenCalledWith(7, "web");
+    // The list is read again after clearing.
+    await waitFor(() => expect(c.listCaches).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows caches without the clear button to members without ci:write", async () => {
+    const c = client();
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite={false}
+        canApprove
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("3.00 MiB")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Clear the cache/ })).toBeNull();
   });
 
   it("follows a running run's live log, once", async () => {

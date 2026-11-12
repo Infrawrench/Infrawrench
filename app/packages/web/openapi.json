@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.102.0",
+    "version": "1.103.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -62540,64 +62540,88 @@
         ],
         "additionalProperties": false
       },
-      "CiRunDetail": {
+      "CiCacheCleared": {
         "type": "object",
         "properties": {
-          "run": {
-            "$ref": "#/components/schemas/CiRun"
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           },
-          "jobs": {
+          "repo": {
+            "type": "string"
+          },
+          "deletedEntries": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "deletedBytes": {
             "anyOf": [
               {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CiJobOutput"
-                }
+                "type": "number"
               },
               {
-                "type": "null"
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
               }
             ]
           }
         },
         "required": [
-          "run",
-          "jobs"
+          "installationId",
+          "repo",
+          "deletedEntries",
+          "deletedBytes"
         ],
         "additionalProperties": false
       },
-      "CiJobOutput": {
+      "CiCaches": {
         "type": "object",
         "properties": {
-          "pipeline": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiAccountCaches"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "CiAccountCaches": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "accountLogin": {
             "type": "string"
           },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "passed",
-              "failed",
-              "skipped",
-              "error"
-            ]
-          },
-          "reason": {
+          "usedBytes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "number"
               },
               {
-                "type": "null"
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
               }
             ]
           },
-          "durationMs": {
+          "quotaBytes": {
             "anyOf": [
               {
                 "type": "number"
@@ -62615,29 +62639,66 @@
               }
             ]
           },
-          "needs": {
+          "repos": {
             "type": "array",
             "items": {
-              "type": "string"
-            },
-            "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
+              "$ref": "#/components/schemas/CiRepoCache"
+            }
           },
-          "stdout": {
-            "type": "string"
-          },
-          "stderr": {
-            "type": "string"
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the runners could not say what this account stores, when they could not."
           }
         },
         "required": [
-          "pipeline",
-          "id",
-          "name",
-          "status",
-          "reason",
-          "durationMs",
-          "stdout",
-          "stderr"
+          "installationId",
+          "accountLogin",
+          "usedBytes",
+          "quotaBytes",
+          "repos",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "CiRepoCache": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "The repository's name, lowercased."
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              }
+            ]
+          },
+          "entries": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "repo",
+          "bytes",
+          "entries"
         ],
         "additionalProperties": false
       },
@@ -62788,6 +62849,32 @@
           },
           "githubUrl": {
             "type": "string"
+          },
+          "retryOfRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run this one retries: the same repository, commit, branch and event."
+          },
+          "retriedAsRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest retry of this run."
+          },
+          "noTaskCache": {
+            "type": "boolean",
+            "description": "The run did not read the task cache: every `task-cache:` job ran, and saved its result again."
           }
         },
         "required": [
@@ -62890,6 +62977,107 @@
           "error",
           "rejected"
         ]
+      },
+      "CiRunDetail": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/CiRun"
+          },
+          "jobs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CiJobOutput"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "run",
+          "jobs"
+        ],
+        "additionalProperties": false
+      },
+      "CiJobOutput": {
+        "type": "object",
+        "properties": {
+          "pipeline": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "skipped",
+              "error"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "Infinity",
+                  "-Infinity",
+                  "NaN"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "needs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pipeline",
+          "id",
+          "name",
+          "status",
+          "reason",
+          "durationMs",
+          "stdout",
+          "stderr"
+        ],
+        "additionalProperties": false
       },
       "CiAccount": {
         "type": "object",
@@ -125948,6 +126136,225 @@
         "x-required-permission": "ci:approve",
         "operationId": "postOrgOrgIdCiRunsRunIdReject",
         "description": "_Requires permission: `ci:approve`._"
+      }
+    },
+    "/api/org/{orgId}/ci/runs/{runId}/retry": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new run, queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Queues a new run of the same repository, commit, branch and event, linked to this one. A run waiting for approval is approved instead, and a fork's pull request still runs without secrets.\n\n_Requires permission: `ci:approve`._",
+        "summary": "Run a finished CI run again",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "noTaskCache": {
+                    "type": "boolean",
+                    "description": "Run every `task-cache:` job instead of replaying a passing run's result. Results are saved again either way."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci:approve",
+        "operationId": "postOrgOrgIdCiRunsRunIdRetry"
+      }
+    },
+    "/api/org/{orgId}/ci/caches": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Caches per account and repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiCaches"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The caches CI keeps for each repository",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiCaches",
+        "description": "_Requires permission: `ci:read`._"
+      }
+    },
+    "/api/org/{orgId}/ci/caches/{installationId}/{repo}": {
+      "delete": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiCacheCleared"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Deletes every branch's and pull request's `cache:` and `task-cache:` entries of one repository. The next run of each job starts cold and saves again.\n\n_Requires permission: `ci:write`._",
+        "summary": "Clear a repository's CI caches",
+        "x-required-permission": "ci:write",
+        "operationId": "deleteOrgOrgIdCiCachesInstallationIdRepo"
       }
     },
     "/api/org/{orgId}/ci/values": {

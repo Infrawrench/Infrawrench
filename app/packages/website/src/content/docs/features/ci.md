@@ -173,6 +173,19 @@ A run is **Queued** while every runner is busy and starts as soon as one is free
 
 When a job fails because one of its processes was ended by a signal, or crashed, its output ends with a few lines starting `iwci:` that say what the runner saw: which signal it was and what sent it, or the crash itself. They are there to go in a bug report; your own commands' output is above them.
 
+### Retry a run
+
+A run that has finished (**Passed**, **Failed** or **Error**) can run again without a new push. Open it and choose:
+
+- **Retry** runs the same commit, branch and event again. Jobs with `task-cache:` whose inputs have not changed come back from the task cache, so a retry after a flaky failure reruns only what needs to run.
+- **Retry without cache** runs every job, reading nothing from the task cache. What passes is saved again, so the next run is cached as usual. Jobs still restore their `cache:` entries; to start those cold too, [clear the repository's caches](#caches) first.
+
+A failed run also has a **Retry** button in the runs table. The retry is a new run, marked **retry** in the table. Its page links back with **Retry of run …**, and the run it retries links to the newest retry with **Retried as run …**. On GitHub, the retry's check replaces the earlier one on the commit or pull request.
+
+Retrying takes the `ci:approve` permission, the same as approving a fork's pull request. A run waiting for approval is approved rather than retried, and a rejected one cannot be retried. A retry of a fork's pull request still runs without your secrets.
+
+<insert [A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry] here>
+
 ## Pull requests from forks
 
 A pull request from a fork runs code you have not reviewed, so it never runs on its own:
@@ -195,6 +208,16 @@ Under **Secrets and variables**, choose an account and a scope: **Every reposito
 Names are letters, digits and `_`, not starting with a digit. Managing them takes `ci:write`.
 
 <insert [The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below] here>
+
+## Caches
+
+The **Caches** card lists what each repository's jobs have saved, with `cache:` and `task-cache:`, across every branch and pull request: how many entries and how much space, largest first, under each GitHub account with its total against its storage quota.
+
+To start a repository from nothing, for example after a cache that keeps restoring something broken, choose **Clear cache** on its row. The dialog says how many entries and how much space go before anything is deleted. Clearing deletes that repository's entries for every branch and pull request, and the card then says what was removed. The next run of each job starts cold and saves its caches again. Other repositories keep theirs, and so does the runners' own copy of your dependencies, which is not counted as your storage.
+
+Everyone who can see runs can see the card; clearing a cache takes `ci:write` and is recorded in the [audit log](../team-and-billing/audit-log.md).
+
+<insert [The Caches card listing two repositories of the acme account with their entries and sizes, and the "Clear the cache of acme/web?" dialog open over it saying how many entries and how much space it deletes] here>
 
 ## Usage and billing
 

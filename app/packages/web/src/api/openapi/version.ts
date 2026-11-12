@@ -443,4 +443,11 @@
 // detail); `product` on a plugin's preflight capability; and
 // `POST /accounts/{id}/sync` and `sync-type` answer 400 for a costs-only
 // account. Additive.
-export const API_VERSION = "1.102.0";
+// 1.103.0: CI retries and caches. `POST /api/org/:orgId/ci/runs/:runId/retry`
+// (`ci:approve`, optional `noTaskCache`) queues a finished run again and
+// answers the new run; `CiRun` gains optional `retryOfRunId`,
+// `retriedAsRunId` and `noTaskCache`. `GET /api/org/:orgId/ci/caches`
+// (`ci:read`) lists each account's caches per repository, and
+// `DELETE /api/org/:orgId/ci/caches/:installationId/:repo` (`ci:write`)
+// clears one repository's. Additive.
+export const API_VERSION = "1.103.0";
