@@ -6,8 +6,8 @@
 // | `GET /healthz` | `200 ok`, unauthenticated |
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
-// | `GET /v1/capacity` | every runner's slots, and the pool's total |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most free slots |
+// | `GET /v1/capacity` | every runner's slots and job memory, and the pool's total slots |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most memory to spare per run |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `POST /v1/concurrency` | a request's pipelines and their concurrency groups, from any runner; runs nothing |
@@ -185,6 +185,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         slots_total: r.slotsTotal,
         slots_free: r.slotsFree,
         runs_active: r.runsActive,
+        memory_total: r.memoryTotal,
+        memory_used: r.memoryUsed,
+        memory_waiting: r.memoryWaiting,
       })),
       slots_total: up.reduce((n, r) => n + r.slotsTotal, 0),
       // A draining runner takes no new runs, so its free slots are not free.

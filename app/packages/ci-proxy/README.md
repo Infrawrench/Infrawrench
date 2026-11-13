@@ -2,7 +2,8 @@
 
 The one public front of the iwci runner pool (`ci-runner/`, `iwci serve`),
 as a Cloudflare Worker. It authenticates callers, places each run on the
-runner with the most free slots, sends status and log requests back to the
+runner with the most job memory to spare per run (below), sends status and
+log requests back to the
 runner that has the run, and fires `on.schedule` pipelines from a
 once-a-minute Cron Trigger. It is not wired into the app yet.
 
@@ -22,8 +23,8 @@ Every route but `/healthz` and `/v1/artifacts/...` needs
 | `GET /healthz`                                                        | `200 ok`, unauthenticated.                                                         |
 | `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | A job's download, for a link the app signed (below); no bearer key.                |
 | `GET`, `PUT /v1/runners`                                              | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                    | Each runner's slots and whether it answered, and the pool's totals.                |
-| `POST /v1/runs[?wait=true]`                                           | A run on the runner with the most free slots. `429` only when every runner is.     |
+| `GET /v1/capacity`                                                    | Each runner's slots, job memory and whether it answered, and the pool's totals.    |
+| `POST /v1/runs[?wait=true]`                                           | A run on the best placed runner (below). `429` only when every runner refuses.     |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                         | From the runner that has the run. Logs stream through as Server-Sent Events.       |
 | `POST /v1/runs/{id}/cancel`                                           | Cancels the run, or the pipelines the body names, on the runner that has it.       |
 | `POST /v1/concurrency`                                                | A request's pipelines and their concurrency groups, from any runner; runs nothing. |
@@ -51,6 +52,35 @@ after every change to the host list. While the table is empty, the
 by their position. `GET /v1/capacity` shows each runner's name, version and
 whether it is draining; a draining runner (stopping, or about to update
 itself) is never given a run, and its free slots do not count.
+
+## Placement
+
+A run (or a prepare) goes to the first runner in this order that takes it,
+from each runner's `/v1/capacity` at that moment (`byPlacement` in
+`src/pool.ts`). A runner's _room_ is its job memory budget less what
+running jobs hold and what jobs ready to start ask for:
+`memory_total - memory_used - memory_waiting`.
+
+1. Runners with room first, then any that report no memory budget, then
+   those with none (their admitted work already wants all of it).
+2. Among runners with room, the most room per run, counting the new one:
+   `room / (runs_active + 1)`. Among those without, the smallest backlog.
+3. Then the most free slots, the fewest active runs, and the name.
+
+Draining and unreachable runners are left out, and a runner that answers
+`429` is passed over for the next. Slots are a tiebreak only: a runner
+whose memory is reserved still has nearly every slot free, so placing by
+slots sent run after run to it while another runner sat idle, and a run
+cannot move once it has started (#1089). A runner from before
+`memory_waiting` leaves it out and counts as nothing waiting, which still
+ranks it by the memory its running jobs hold.
+
+When every runner is short of memory the run is still placed, on the one
+with the smallest backlog, rather than refused for the app to retry.
+Refusing would let it go to whichever runner frees up first, but the proxy
+cannot see what a run's jobs ask for, so it would also hold back runs small
+enough to start at once, and a schedule's fire that finds the pool full is
+skipped, not queued.
 
 ## Secrets and variables
 

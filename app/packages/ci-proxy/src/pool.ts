@@ -1,8 +1,9 @@
 // The runners behind the proxy. A run is placed on the runner with the
-// most free slots; a runner that answers 429, or that is draining before an
-// update or a stop, is passed over, and the caller only hears 429 when every
-// runner is full, draining or down. Run ids carry the runner's name
-// (`<name>.<id>`), so status and log requests go straight back to it.
+// most job memory to spare for each run it has (`byPlacement`, and the
+// README's "Placement"); a runner that answers 429, or that is draining
+// before an update or a stop, is passed over, and the caller only hears 429
+// when every runner is full, draining or down. Run ids carry the runner's
+// name (`<name>.<id>`), so status and log requests go straight back to it.
 //
 // The list comes from the `runners` table (`PUT /v1/runners`, which the
 // Terraform in `infra/terraform` keeps in step with the hosts it
@@ -25,6 +26,65 @@ export interface Capacity {
   slotsTotal: number;
   slotsFree: number;
   runsActive: number;
+  /** The runner's job memory budget, in bytes; `null` when it has none. */
+  memoryTotal: number | null;
+  /** What running jobs have reserved of it. */
+  memoryUsed: number | null;
+  /**
+   * What jobs ready to start but not started yet ask for. `null` from a
+   * runner older than the field, which then counts as nothing waiting.
+   */
+  memoryWaiting: number | null;
+}
+
+/**
+ * The job memory a runner could give a new run: its budget, less what
+ * running jobs hold and queued jobs ask for. Below zero when its admitted
+ * work already wants more than it has; `null` when it reports no budget.
+ */
+export function memoryRoom(c: Capacity): number | null {
+  if (c.memoryTotal === null || c.memoryUsed === null) return null;
+  return c.memoryTotal - c.memoryUsed - (c.memoryWaiting ?? 0);
+}
+
+/**
+ * Orders runners for a new run, best first:
+ *
+ * 1. Runners with job memory to spare come first, then any that report no
+ *    memory budget, then those whose memory is all spoken for (held by
+ *    running jobs or asked for by queued ones).
+ * 2. Among those with room, the most room per run, counting the new one:
+ *    `room / (runs_active + 1)`, what each run would get if they shared it.
+ *    Among those without, the smallest backlog.
+ * 3. Then the most free slots, the fewest active runs, and the name, so the
+ *    order is stable.
+ *
+ * Slots alone would send every run to the runner with the most of them
+ * while its memory is full (#1089): a run's jobs wait for memory, and a
+ * run cannot move once it starts.
+ */
+export function byPlacement(a: Capacity, b: Capacity): number {
+  const roomA = memoryRoom(a);
+  const roomB = memoryRoom(b);
+  const tier = (room: number | null) => (room === null ? 1 : room > 0 ? 0 : 2);
+  const tierA = tier(roomA);
+  const tierB = tier(roomB);
+  if (tierA !== tierB) return tierA - tierB;
+  if (roomA !== null && roomB !== null) {
+    const order =
+      tierA === 0 ? roomB / (b.runsActive + 1) - roomA / (a.runsActive + 1) : roomB - roomA;
+    if (order !== 0) return order;
+  }
+  return (
+    b.slotsFree - a.slotsFree ||
+    a.runsActive - b.runsActive ||
+    (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+  );
+}
+
+/** A non-negative byte count from a capacity body, or `null`. */
+function bytes(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 /** How long a runner gets to answer a capacity probe before it counts as down. */
@@ -104,6 +164,9 @@ export class Pool {
           slotsTotal: 0,
           slotsFree: 0,
           runsActive: 0,
+          memoryTotal: null,
+          memoryUsed: null,
+          memoryWaiting: null,
         };
         try {
           const res = await this.call(name, "/v1/capacity", {
@@ -114,6 +177,9 @@ export class Pool {
             slots_total?: number;
             slots_free?: number;
             runs_active?: number;
+            memory_total?: unknown;
+            memory_used?: unknown;
+            memory_waiting?: unknown;
             draining?: boolean;
             version?: string;
           };
@@ -126,6 +192,9 @@ export class Pool {
             slotsTotal: body.slots_total ?? 0,
             slotsFree: body.slots_free ?? 0,
             runsActive: body.runs_active ?? 0,
+            memoryTotal: bytes(body.memory_total),
+            memoryUsed: bytes(body.memory_used),
+            memoryWaiting: bytes(body.memory_waiting),
           };
         } catch {
           return down;
@@ -135,19 +204,12 @@ export class Pool {
   }
 
   /**
-   * Sends a slot-taking request (a run or a prepare) to the runner most
-   * likely to take it. Returns the runner it landed on, or `null` when none
-   * would.
+   * Sends a slot-taking request (a run or a prepare) to the runner best
+   * placed to start it (`byPlacement`), then the next if that one refuses.
+   * Returns the runner it landed on, or `null` when none would.
    */
   async place(path: string, body: string): Promise<{ runner: string; response: Response } | null> {
-    const order = (await this.capacity())
-      .filter((c) => c.up && !c.draining)
-      .sort(
-        (a, b) =>
-          b.slotsFree - a.slotsFree ||
-          a.runsActive - b.runsActive ||
-          (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-      );
+    const order = (await this.capacity()).filter((c) => c.up && !c.draining).sort(byPlacement);
     for (const runner of order) {
       let response: Response;
       try {
