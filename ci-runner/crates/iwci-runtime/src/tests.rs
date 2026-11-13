@@ -2479,6 +2479,79 @@ fn a_process_can_spawn_more_children_than_the_task_limit_one_by_one() {
     );
 }
 
+/// Every process a job's control plane has is found to be signalled,
+/// whatever its id (#1094). Ids come from one counter, thread ids included,
+/// and are never reused, and the runner used to probe ids 1 to
+/// `MAX_TASKS * 4`, stopping after 17 missing in a row: a process past id
+/// 2048, or after a run of 17 thread ids, was never signalled.
+#[test]
+fn every_process_of_a_control_plane_is_found_whatever_its_id() {
+    let plane = wasmer_wasix::WasiControlPlane::default();
+    let start = || {
+        plane
+            .new_process(wasmer_types::ModuleHash::random())
+            .unwrap()
+            .pid()
+    };
+    let first = start();
+    for _ in 0..20 {
+        plane.generate_id().unwrap();
+    }
+    let after_threads = start();
+    let mut pids = vec![first, after_threads];
+    for _ in 0..wasix::MAX_TASKS * 4 {
+        pids.push(start());
+    }
+    let mut found = Vec::new();
+    wasix::for_each_process(&plane, |process| found.push(process.pid()));
+    found.sort_by_key(|pid| pid.raw());
+    assert_eq!(found, pids);
+}
+
+/// A service that has started thousands of processes still has the one it
+/// starts next stopped with it (#1094). Its orphaned loop, with an id past
+/// 2048, was neither sent SIGTERM nor seen by the wait for the service's
+/// processes, so it was never interrupted either and kept writing `tick`
+/// after the job had ended. (Its parent subshell has exited and been
+/// waited for, so no signal reaches it through a parent.)
+#[test]
+fn a_service_process_started_after_thousands_of_others_is_stopped() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(300);
+    let children = wasix::MAX_TASKS * 4 + 100;
+    let mut service = script_service(
+        "spawner",
+        &packages,
+        &format!(
+            "seq {children} | sed 's/.*/true/e' > /dev/null\n\
+             ( (i=0; while :; do i=$((i + 1)); ((i % 1000)) || echo $i > /work/tick; done) & )\n\
+             until test -e /work/tick; do sleep 0.1; done\necho spawned\nsleep 600\n"
+        ),
+        &[],
+        Ready::Log("^spawned$".into()),
+    );
+    service.ready_timeout = Duration::from_secs(280);
+    inv.services = vec![service];
+    let outcome = rt
+        .run_script(&packages, "bash", "echo job ran", inv)
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    let tick = || job.read("/work/tick").unwrap_or_default();
+    let before = tick();
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(
+        String::from_utf8_lossy(&tick()),
+        String::from_utf8_lossy(&before),
+        "the service's orphaned loop ran on after the job: {stderr:?}"
+    );
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.

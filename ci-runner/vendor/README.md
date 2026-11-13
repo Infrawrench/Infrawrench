@@ -774,6 +774,17 @@ A builtin command (Wasmer's `/bin/wasmer`) keeps the old ownership, since
 its environment may be dropped before its task ends. Reported upstream as
 wasmerio/wasmer#7174; upstream main is unchanged (checked November 2026).
 
+**A control plane lists its processes (#1094).** `WasiControlPlane` had
+only `get_process(pid)`, so the runner found a job's processes, to signal
+them on a timeout, a cancel or a service's stop and to wait for them, by
+probing ids from 1 to 2048 and stopping after 17 missing in a row. Ids
+come from one counter that thread ids share, and are never reused or
+de-registered, so once #1082 let a job start thousands of processes, the
+ones past id 2048 (or after a run of threads) were never found: a
+service's orphaned loop ran on after its job. `src/os/task/control_plane.rs`
+now has `processes()`, every process in its map. Upstream main has the
+same map and still no way to list it (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -787,11 +798,13 @@ directory nothing looked up, a child's exit status reaches its parent
 unchanged, a directory's cookies hold while it changes, a moved
 directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
-(#7174), and once the runner finds a renamed file's mode without its new
-path's inode number: delete `vendor/wasmer-wasix*`,
+(#7174), a control plane lists its processes, and once the runner finds a
+renamed file's mode without its new path's inode number: delete
+`vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes`, `exit-status-passes`,
-`spawn-many-passes` (bash, bash-node and go) and
+`spawn-many-passes` (bash, bash-node and go),
+`bash/many-processes-checked-passes` and
 `shebang-passes` (bash and bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
 (bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
 and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
@@ -810,6 +823,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
 `a_process_can_spawn_more_children_than_the_task_limit_one_by_one`,
+`every_process_of_a_control_plane_is_found_whatever_its_id`,
+`a_service_process_started_after_thousands_of_others_is_stopped`,
 `removing_a_directory_nothing_looked_up_says_what_it_is`,
 `a_hard_link_is_refused_and_leaves_one_name`,
 `a_renamed_file_has_the_inode_number_of_its_new_path`,

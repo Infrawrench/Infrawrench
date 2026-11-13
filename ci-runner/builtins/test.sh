@@ -739,6 +739,29 @@ jobs:
   spawn-many-passes:
     using: env:bash@5
     run: test "$(seq 600 | sed 's/.*/echo x/e' | wc -l)" = 600
+  # Every process a service has is stopped with it, however many it
+  # started before (#1094): the runner looked for processes by id up to
+  # 2048, so the orphaned loop here, past that, ran on after the job.
+  many-processes-stopped-passes:
+    using: env:bash@5
+    services:
+      spawner:
+        using: env:bash@5
+        run: |
+          seq 2100 | sed 's/.*/true/e' > /dev/null
+          ( (i=0; while :; do i=$((i + 1)); ((i % 1000)) || echo "$i" > /tmp/workflow/spawner-tick; done) & )
+          until test -e /tmp/workflow/spawner-tick; do sleep 0.1; done
+          echo spawned
+          sleep 600
+        ready: { log: "^spawned$", timeout: 10m }
+    run: test -e /tmp/workflow/spawner-tick
+  many-processes-checked-passes:
+    using: env:bash@5
+    needs: [many-processes-stopped-passes]
+    run: |
+      before="$(cat /tmp/workflow/spawner-tick)"
+      sleep 3
+      test "$(cat /tmp/workflow/spawner-tick)" = "$before"
   # An argument with a line feed in it reaches the program whole (#1003):
   # bash's exec joined the arguments with line feeds and WASIX split them
   # there again, so this printed `a|b|c|`. Through a second bash, through
