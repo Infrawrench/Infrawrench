@@ -31,6 +31,22 @@ impl Tools for StoreTools {
             .map(Arc::new)
             .map_err(|e| e.to_string())
     }
+
+    fn env_caches(&self, tool: &Resolved) -> Vec<crate::env_cache::EnvCacheDecl> {
+        let Resolved::Env { manifest, .. } = tool else {
+            return Vec::new();
+        };
+        manifest
+            .caches
+            .iter()
+            .map(|c| crate::env_cache::EnvCacheDecl {
+                name: c.name.clone(),
+                path: c.path.clone(),
+                max_bytes: c.max_bytes,
+                environment: format!("{}@{}", manifest.name, manifest.version),
+            })
+            .collect()
+    }
 }
 
 pub struct RuntimeExecutor {

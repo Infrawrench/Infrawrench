@@ -39,7 +39,8 @@ use wasmer::sys::NativeEngineExt;
 use wasmer::{Engine, Interrupter, Module};
 use wasmer_config::package::{PackageHash, PackageId};
 use wasmer_wasix::bin_factory::{
-    BinaryPackage, BinaryPackageCommand, BinaryPackageMounts, spawn_exec, spawn_exec_module,
+    BinaryPackage, BinaryPackageCommand, BinaryPackageMount, BinaryPackageMounts, spawn_exec,
+    spawn_exec_module,
 };
 use wasmer_wasix::http::DynHttpClient;
 use wasmer_wasix::os::TtyBridge;
@@ -588,6 +589,13 @@ pub(crate) fn node_options(env: &[(String, String)]) -> String {
 /// mount but the job's
 /// own (which does it itself) is wrapped so that removing or renaming a file
 /// moves its mode in `modes`.
+///
+/// `own_dirs` is for a service: its `/tmp`, and the directories its
+/// packages mount, are its own and start empty. A job's are in the job's
+/// file system (`/tmp` there, and `package_dirs` over it), so what it
+/// writes there is the job's, as anywhere else: counted against its
+/// memory, and what `cache:`, `artifacts:` and an environment's caches
+/// read and restore (#1083).
 #[allow(clippy::too_many_arguments)]
 fn job_root(
     fs: crate::DynFs,
@@ -598,18 +606,55 @@ fn job_root(
     shell: bool,
     modes: &iwci_vfs::Modes,
     listeners: &crate::network::Listeners,
+    own_dirs: bool,
+    package_dirs: &[BinaryPackageMount],
 ) -> Result<MountFileSystem> {
     type Dyn = Arc<dyn FileSystem + Send + Sync>;
     let tracked =
         |fs: Dyn, at: &str| -> Dyn { Arc::new(iwci_vfs::TrackModes::new(fs, modes.clone(), at)) };
+    let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
+    // A package's directory over the job's file system: the package's
+    // files below, what the job writes above, at the same path of the
+    // job's file system, so it holds only what the job added or changed.
+    // wasmer-wasix would put a private, empty layer there instead.
+    let mut dirs: Vec<(String, String, Dyn)> = Vec::with_capacity(package_dirs.len());
+    for dir in package_dirs {
+        let (Some(at), Some(source)) = (dir.guest_path.to_str(), dir.source_path.to_str()) else {
+            continue;
+        };
+        iwci_vfs::create_dir_all(fs.as_ref(), &dir.guest_path).map_err(|e| {
+            Error::Setup(format!(
+                "creating {} in the job file system: {e}",
+                dir.guest_path.display()
+            ))
+        })?;
+        let upper = MountFileSystem::new();
+        upper
+            .mount_with_source(&dir.source_path, &dir.guest_path, fs.clone())
+            .map_err(mount_err)?;
+        let overlay: Dyn = Arc::new(OverlayFileSystem::new(
+            upper,
+            [ArcFileSystem::new(dir.fs.clone())],
+        ));
+        dirs.push((at.to_string(), source.to_string(), overlay));
+    }
     // (where, the path in the file system that appears there, what)
-    let mut mounts: Vec<(&str, &str, Dyn)> = vec![("/", "/", fs)];
+    let mut mounts: Vec<(&str, &str, Dyn)> = vec![("/", "/", fs.clone())];
     // /dev/null, /dev/zero, /dev/urandom and /dev/std{in,out,err} (which
-    // name the process's own descriptors), and an empty /tmp. Both mounts
-    // are given their own paths, so their paths are the guest's.
+    // name the process's own descriptors), and, for a service, an empty
+    // /tmp. Both mounts are given their own paths, so their paths are the
+    // guest's. A job's /tmp is the job's file system's.
     let system = tracked(Arc::new(RootFileSystemBuilder::default().build_tmp()), "/");
     mounts.push(("/dev", "/dev", system.clone()));
-    mounts.push(("/tmp", "/tmp", system));
+    if own_dirs {
+        mounts.push(("/tmp", "/tmp", system));
+    } else {
+        iwci_vfs::create_dir_all(fs.as_ref(), "/tmp")
+            .map_err(|e| Error::Setup(format!("creating /tmp in the job file system: {e}")))?;
+    }
+    for (at, source, overlay) in &dirs {
+        mounts.push((at, source, overlay.clone()));
+    }
     // wasmer-wasix writes every package command's wasm into /bin and
     // /usr/bin so a shell can find it on PATH.
     for dir in ["/bin", "/usr/bin"] {
@@ -663,7 +708,6 @@ fn job_root(
         ));
     }
 
-    let mount_err = |e| Error::Setup(format!("mounting the job file system: {e}"));
     let build = |mounts: &[(&str, &str, Dyn)]| -> Result<MountFileSystem> {
         let root = MountFileSystem::new();
         for (at, source, fs) in mounts {
@@ -764,6 +808,32 @@ fn with_user_database(packages: &[BinaryPackage]) -> Result<Vec<BinaryPackage>> 
         additional_host_mapped_directories: Vec::new(),
     });
     Ok(out)
+}
+
+/// Takes the directories `uses` mount (every `[fs]` entry but `/`) out of
+/// the packages, for `job_root` to mount over the job's file system; the
+/// packages keep their root layer, which wasmer-wasix stacks under `/` as
+/// before. Where two packages mount the same path, the first keeps it.
+fn take_package_dirs(uses: Vec<BinaryPackage>) -> (Vec<BinaryPackage>, Vec<BinaryPackageMount>) {
+    let mut dirs: Vec<BinaryPackageMount> = Vec::new();
+    let uses = uses
+        .into_iter()
+        .map(|mut package| {
+            if let Some(mounts) = package.package_mounts.take() {
+                for mount in &mounts.mounts {
+                    if !dirs.iter().any(|d| d.guest_path == mount.guest_path) {
+                        dirs.push(mount.clone());
+                    }
+                }
+                package.package_mounts = Some(Arc::new(BinaryPackageMounts {
+                    root_layer: mounts.root_layer.clone(),
+                    mounts: Vec::new(),
+                }));
+            }
+            package
+        })
+        .collect();
+    (uses, dirs)
 }
 
 /// Writes `bytes` as the executable file `/<name>` of `fs`.
@@ -937,6 +1007,9 @@ pub(crate) struct Process<'a> {
     pub(crate) commands: &'a [crate::PathCommand],
     pub(crate) stdout: Box<dyn VirtualFile + Send + Sync + 'static>,
     pub(crate) stderr: Box<dyn VirtualFile + Send + Sync + 'static>,
+    /// A service's tree: its `/tmp` and its packages' directories are its
+    /// own rather than the job's file system's (see `job_root`).
+    pub(crate) own_dirs: bool,
 }
 
 impl Starter<'_> {
@@ -954,6 +1027,18 @@ impl Starter<'_> {
             builder.add_env("PWD", process.cwd);
         }
         builder.set_runtime(self.runtime.clone());
+        let (program, package_dirs) = match process.program {
+            Program::Command { uses, name } => {
+                let uses = with_user_database(&uses)?;
+                if process.own_dirs {
+                    (Program::Command { uses, name }, Vec::new())
+                } else {
+                    let (uses, dirs) = take_package_dirs(uses);
+                    (Program::Command { uses, name }, dirs)
+                }
+            }
+            program => (program, Vec::new()),
+        };
         // An environment's `node` gets the runner's support files.
         builder.set_mount_fs(job_root(
             self.fs.clone(),
@@ -964,6 +1049,8 @@ impl Starter<'_> {
             shell,
             self.modes,
             self.listeners,
+            process.own_dirs,
+            &package_dirs,
         )?);
         // WASIX programs ask the runtime for their working directory. Plain
         // WASI ones built on wasi-libc cannot be given one: their cwd is
@@ -992,14 +1079,14 @@ impl Starter<'_> {
                 .threading
                 .enable_asynchronous_threading = false;
         }
-        if let Program::Command { uses, .. } = &process.program {
-            for package in with_user_database(uses)? {
-                builder.add_webc(package);
+        if let Program::Command { uses, .. } = &program {
+            for package in uses {
+                builder.add_webc(package.clone());
             }
         }
         let env = builder.build().map_err(|e| Error::Setup(e.to_string()))?;
         let control_plane = env.control_plane.clone();
-        let handle = match process.program {
+        let handle = match program {
             Program::Module(module) => spawn_exec_module(module, env, self.runtime),
             Program::Command { uses, name } => {
                 let package = uses
@@ -1173,6 +1260,7 @@ pub(crate) fn run(
         commands: &inv.commands,
         stdout: stdout.file(),
         stderr: stderr.file(),
+        own_dirs: false,
     });
     let (mut handle, control_plane) = match started_job {
         Ok(started) => started,
@@ -1597,5 +1685,108 @@ mod user_database_tests {
         let root = database.root_layer.as_ref().unwrap();
         assert_eq!(text(root.as_ref(), "/etc/passwd"), PASSWD);
         assert!(out[3].commands.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod job_root_tests {
+    use super::*;
+    use futures::executor::block_on;
+    use virtual_fs::{AsyncReadExt, AsyncWriteExt};
+
+    fn read(fs: &dyn FileSystem, path: &str) -> String {
+        let mut file = fs
+            .new_open_options()
+            .read(true)
+            .open(Path::new(path))
+            .unwrap();
+        let mut out = String::new();
+        block_on(file.read_to_string(&mut out)).unwrap();
+        out
+    }
+
+    fn write(fs: &dyn FileSystem, path: &str, text: &str) {
+        let mut file = fs
+            .new_open_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(Path::new(path))
+            .unwrap();
+        block_on(async {
+            file.write_all(text.as_bytes()).await?;
+            file.flush().await
+        })
+        .unwrap();
+    }
+
+    fn files(job: &iwci_vfs::JobFs, paths: &[&str]) -> Vec<String> {
+        let mut files: Vec<String> = job
+            .entries_under(paths)
+            .into_iter()
+            .filter_map(|e| match e {
+                iwci_vfs::Entry::File { path, .. } => Some(path.display().to_string()),
+                _ => None,
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    fn root(job: &iwci_vfs::JobFs, own_dirs: bool, dirs: &[BinaryPackageMount]) -> MountFileSystem {
+        job_root(
+            job.as_dyn(),
+            None,
+            &[],
+            false,
+            None,
+            false,
+            &job.modes(),
+            &crate::network::Listeners::default(),
+            own_dirs,
+            dirs,
+        )
+        .unwrap()
+    }
+
+    /// What a job writes in a directory its environment's packages mount,
+    /// and in `/tmp`, is in the job's file system, where `cache:` and the
+    /// environment's caches save it from and restore it to (#1083). The
+    /// package's own files are read through but never copied in. A
+    /// service's `/tmp` stays its own.
+    #[test]
+    fn a_jobs_package_dirs_and_tmp_are_in_its_file_system() {
+        let shipped = TmpFileSystem::new();
+        write(&shipped, "/std", "shipped");
+        let dirs = [BinaryPackageMount {
+            guest_path: "/root/.cache/go-build".into(),
+            fs: Arc::new(shipped),
+            source_path: "/".into(),
+        }];
+        let job = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+        // A restored cache entry, written before the job starts.
+        job.write("/root/.cache/go-build/restored", b"restored")
+            .unwrap();
+        let fs = root(&job, false, &dirs);
+        assert_eq!(read(&fs, "/root/.cache/go-build/std"), "shipped");
+        assert_eq!(read(&fs, "/root/.cache/go-build/restored"), "restored");
+        write(&fs, "/root/.cache/go-build/added", "added");
+        write(&fs, "/tmp/scratch", "tmp");
+        assert_eq!(
+            files(&job, &["/root/.cache/go-build", "/tmp"]),
+            vec![
+                "/root/.cache/go-build/added",
+                "/root/.cache/go-build/restored",
+                "/tmp/scratch",
+            ]
+        );
+        // A directory the job makes under its home, beside the package's.
+        fs.create_dir(Path::new("/root/other")).unwrap();
+
+        let service = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+        let fs = root(&service, true, &[]);
+        write(&fs, "/tmp/own", "own");
+        assert_eq!(read(&fs, "/tmp/own"), "own");
+        assert!(files(&service, &["/tmp"]).is_empty());
     }
 }

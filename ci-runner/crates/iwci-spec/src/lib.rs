@@ -1853,6 +1853,16 @@ impl Validator<'_> {
                         when,
                     }),
                     network: job.network.unwrap_or(true),
+                    env_cache: match &job.env_cache {
+                        None | Some(raw::EnvCache::Enabled(true)) => EnvCachePolicy::All,
+                        Some(raw::EnvCache::Enabled(false)) => EnvCachePolicy::Off,
+                        Some(raw::EnvCache::Each(each)) => EnvCachePolicy::Except(
+                            each.iter()
+                                .filter(|(_, on)| !**on)
+                                .map(|(name, _)| name.clone())
+                                .collect(),
+                        ),
+                    },
                     package: package.clone(),
                     task_cache,
                     services,

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use iwci_store::{
-    Abi, EnvDraft, EnvEntry, FileSource, Namespace, PackageSource, ToolDraft, Version,
+    Abi, EnvCache, EnvDraft, EnvEntry, FileSource, Namespace, PackageSource, ToolDraft, Version,
 };
 use serde::Deserialize;
 
@@ -34,6 +34,9 @@ struct Build {
     entry: Option<EnvEntry>,
     #[serde(default)]
     packages: Vec<BuildPackage>,
+    /// An environment's caches, as the manifest has them.
+    #[serde(default)]
+    caches: Vec<EnvCache>,
     #[serde(default)]
     description: Option<String>,
 }
@@ -132,6 +135,7 @@ pub fn publish(mut args: Args) -> Result<ExitCode, String> {
                         .collect::<Result<_, String>>()?,
                     entry: build.entry.ok_or("an environment needs `entry`")?,
                     env: build.env,
+                    caches: build.caches,
                     description: build.description,
                 };
                 iwci_store::publish_env(store.as_ref(), &draft).map(|(_, report)| report)

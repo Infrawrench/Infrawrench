@@ -250,6 +250,11 @@ pub struct Job {
     /// passes. One entry, or a list.
     #[serde(default)]
     pub cache: Option<OneOrMany<CacheEntry>>,
+    /// The caches the job's environment keeps on its own, such as Go's
+    /// build cache: `false` turns them all off, a map of their names to
+    /// `false` the ones it names. Default: all on.
+    #[serde(default)]
+    pub env_cache: Option<EnvCache>,
     /// Tools (`builtin:`, `repo:`) an `env:` job's script can run by name.
     #[serde(default)]
     pub tools: Vec<String>,
@@ -376,6 +381,19 @@ pub struct PackageFilter {
     /// selects packages whose script does not match or is missing.
     #[serde(default)]
     pub scripts: IndexMap<String, String>,
+}
+
+/// `env-cache: false`, or `env-cache: { go-build: false }`.
+#[derive(Debug, Clone)]
+pub enum EnvCache {
+    Enabled(bool),
+    Each(IndexMap<String, bool>),
+}
+
+impl<'de> Deserialize<'de> for EnvCache {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bool_or(deserializer, EnvCache::Enabled, EnvCache::Each)
+    }
 }
 
 /// `task-cache: true`, or what the job reads.

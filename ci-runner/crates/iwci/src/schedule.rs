@@ -90,6 +90,11 @@ impl LazyWorkspace<'_> {
 pub trait Tools: Send + Sync {
     type Tool: Send + Sync;
     fn resolve(&self, tool: &ToolRef) -> Result<Arc<Self::Tool>, String>;
+    /// The caches `tool`'s environment keeps on its own (its manifest's
+    /// `caches`); none for a tool.
+    fn env_caches(&self, _tool: &Self::Tool) -> Vec<crate::env_cache::EnvCacheDecl> {
+        Vec::new()
+    }
 }
 
 pub struct Invocation<'a> {
@@ -1619,6 +1624,25 @@ fn run_job<T: Tools>(
         }
         cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
     }
+    // The environment's own caches, which `env-cache:` can turn off.
+    let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
+        Some(store) => tools
+            .env_caches(&tool)
+            .into_iter()
+            .filter(|c| job.env_cache.keeps(&c.name))
+            .map(|c| {
+                crate::env_cache::restore(
+                    store.as_ref(),
+                    c,
+                    &job.id,
+                    &fs,
+                    job.memory_bytes,
+                    &mut cache_lines,
+                )
+            })
+            .collect(),
+        None => Vec::new(),
+    };
 
     let mut env = options.base_env.clone();
     env.push(("IWCI_JOB".into(), job.id.clone()));
@@ -1720,6 +1744,7 @@ fn run_job<T: Tools>(
         .caches
         .iter()
         .flat_map(|c| c.paths.iter().map(String::as_str))
+        .chain(env_caches.iter().map(|c| c.path()))
         .collect();
     let under_cache = |path: &std::path::Path| {
         cached
@@ -1955,6 +1980,9 @@ fn run_job<T: Tools>(
                 Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
             }
         }
+        for active in &env_caches {
+            crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines);
+        }
     }
 
     // Record a pass for the task cache: what it kept, its outputs and its
@@ -2015,17 +2043,21 @@ fn run_job<T: Tools>(
 /// The files a job wrote at or under `paths`: added or changed, not the
 /// checkout's own files there and not the ones it was handed. `changes`
 /// walks a directory, so a path naming one file would find nothing: read
-/// every change once (only what the job wrote lives in its upper layer)
-/// and keep those at or under a path. Parents are created when the files
-/// are written.
+/// the changes under each path's parent (only what the job wrote lives in
+/// its upper layer) and keep those at or under a path. Not every change
+/// from `/`: that would read the job's whole build cache too (#1083).
+/// Parents are created when the files are written.
 fn written_under(fs: &JobFs, paths: &[String], restored: &HashSet<PathBuf>) -> Vec<Entry> {
     let wanted: Vec<&std::path::Path> = paths
         .iter()
         .map(|p| std::path::Path::new(p.as_str()))
         .collect();
-    let written: HashSet<PathBuf> = fs
-        .changes("/")
-        .into_iter()
+    let mut roots: Vec<&std::path::Path> = wanted.iter().map(|w| w.parent().unwrap_or(w)).collect();
+    roots.sort();
+    roots.dedup();
+    let written: HashSet<PathBuf> = roots
+        .iter()
+        .flat_map(|root| fs.changes(root))
         .filter_map(|c| match c {
             Change::Added { path, .. } | Change::Modified { path, .. } => Some(path),
             Change::Deleted { .. } => None,

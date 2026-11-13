@@ -166,6 +166,7 @@ everything through.
 | `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                          |
 | `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                          |
 | `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                          |
+| `env-cache`  | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).      |
 | `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                          |
 | `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                   |
 | `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                            |
@@ -634,7 +635,9 @@ release calls `proc_spawn3`.
 Git came into every environment in `bash` 5.1.19, `bash-node` 24.0.9,
 `python` 3.13.18, `php` 8.1.37, 8.2.38, 8.3.39, 8.4.30 and 8.5.15, `go`
 1.23.13, 1.24.14, 1.25.15, 1.26.12 and 1.27.5 (each the same Go as before)
-and `postgres` 18.4.2 (see [Git](#git)).
+and `postgres` 18.4.2 (see [Git](#git)). Go's build cache is kept between
+runs from `go` 1.23.14, 1.24.15, 1.25.16, 1.26.13 and 1.27.6, the same Go
+again (see [Environment caches](#environment-caches)).
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -1258,6 +1261,12 @@ Each minor's build has, besides the toolchain:
   packages: on one CPU, 1.5 s for a small module with one dependency,
   where compiling the standard library first takes 42 s. `go vet` of it
   takes 0.9 s and `go test` 2.7 s.
+- **The rest of the build cache kept between runs**: what a job adds to
+  `GOCACHE` (its dependencies and its own packages, compiled, vetted and
+  tested) comes back on its next run, so a run compiles only what changed.
+  It is the environment's `go-build` cache (see
+  [Environment caches](#environment-caches)); `env-cache: false` turns it
+  off.
 - **Mozilla's CA certificates**, for HTTPS.
 
 Two packages make up each environment, the toolchain and the cache, since
@@ -1277,7 +1286,7 @@ The environment sets these, and a job's `env:` can override them:
 | `PATH`          | `/usr/local/bin:/usr/bin:/bin:/root/go/bin` | The default, plus where `go install` puts programs.                                                       |
 | `GOROOT`        | `/go`                                       | The toolchain's tree in the package; the wasm `go` cannot find it from its own path.                      |
 | `GOPATH`        | `/root/go`                                  | The module cache the Go installer fills is `/root/go/pkg/mod`.                                            |
-| `GOCACHE`       | `/root/.cache/go-build`                     | Where the compiled standard library is. What a job adds goes into its own copy.                           |
+| `GOCACHE`       | `/root/.cache/go-build`                     | Where the compiled standard library is. What a job adds is kept between runs (`go-build`).                |
 | `GOTOOLCHAIN`   | `local`                                     | No toolchain on the module proxy runs here; a `go` line newer than the environment's Go fails, saying so. |
 | `SSL_CERT_FILE` | `/etc/ssl/certs/ca-certificates.crt`        | The package's certificates; Go's `wasip1` port looks in no default place.                                 |
 
@@ -1325,8 +1334,9 @@ runner.
 
 ## Job caches
 
-A job can keep files between runs, for what the dependency installers do
-not cover (`.tsbuildinfo`, `.turbo`, Go's build cache, a downloaded fixture):
+A job can keep files between runs, for what the dependency installers and
+its environment's own caches do not cover (`.tsbuildinfo`, `.turbo`, a
+downloaded fixture):
 
 ```yaml
 jobs:
@@ -1334,7 +1344,7 @@ jobs:
     cache:
       key: tsc-${{ matrix }}-${{ hashFiles('pnpm-lock.yaml', 'app/packages/web/**/*.ts') }}
       restore-keys: ["tsc-${{ matrix }}-"]
-      paths: [app/packages/web/.tsbuildinfo, /root/.cache/go-build]
+      paths: [app/packages/web/.tsbuildinfo, /tmp/fixtures]
 ```
 
 - Before the job runs, the exact `key` is restored, or else the newest
@@ -1344,8 +1354,11 @@ jobs:
 - `hashFiles('glob', ...)` hashes the matching files (relative to the
   clone) as the commit has them, by path and content. It only works in
   `key` and `restore-keys`. In a `[...]` list, quote anything with `${{`.
-- `paths` are relative to the clone or absolute. Restored files belong to
-  the cache, not the repository: they never count as changes for
+- `paths` are relative to the clone or absolute: anywhere in the job's
+  file system, `/tmp` and an environment's directories (`/root/...`)
+  included. In an environment's directory only what the job added or
+  changed is saved, never the environment's own files. Restored files
+  belong to the cache, not the repository: they never count as changes for
   `changes: fail` or `changes: commit`.
 - Restored files count against the job's `memory:` like any other write.
 - **Scoped by branch, so a pull request cannot poison the default
@@ -1360,6 +1373,66 @@ jobs:
 
 Caches live in the object store beside the tools, so on R2 every runner
 shares them.
+
+### Environment caches
+
+An environment can keep a directory's additions between runs on its own,
+with no `cache:` entry: `env:go@*` keeps Go's build cache, so a job's
+second run compiles only the packages that changed. Each one works like a
+job cache that the environment wrote:
+
+- **Only what the job added.** An environment's directories are mounted
+  under the job's file system, not copied into it, so what a job writes
+  there is all the job's file system holds: the environment's own files
+  (Go's prebuilt standard library) are never saved, since every run has
+  them already.
+- **One per job and environment build.** The key is the repository (and
+  its scope, below), the job's id (matrix values included), the
+  environment's name and exact version, and the runner's architecture: a
+  different Go, or a V8 code cache from another machine, is never read.
+  Saving replaces it, so a job reads the newest save in its scope, or else
+  the default branch's.
+- **Scoped like job caches**, through the same store: a pull request reads
+  the default branch's cache and saves into a scope of its own, which
+  nothing on the default branch reads. These caches hold compiled code that
+  later builds link or run, so this matters more here, not less.
+- **Saved after a pass, and only when the job changed it.** A failed job
+  saves nothing, and a run that leaves the directory as it was restored
+  saves nothing either.
+- **Bounded.** A cache keeps at most its declared `max-bytes`, and never
+  more than a quarter of the job's `memory:` (restored files are in the
+  job's memory). Past that, only what that run wrote or changed is kept,
+  so a cache that has grown with entries no build reads any more starts
+  over from what the last build needed; a run that alone wrote more than
+  the limit saves nothing. Go never trims its own cache here (the
+  environment's entries are dated 2100), so this is the only bound.
+- **Counted against the owner's storage quota**, with the job caches.
+- Its lines are in the job's `caches`: ``env cache `go-build`: restored
+12345 KiB``, `miss`, `unchanged`, `saved ...`.
+
+`env-cache: false` turns them all off for a job; `env-cache: { go-build:
+false }` turns off the ones it names.
+
+An environment declares them in its `build.json` (which `iwci publish`
+turns into its manifest), beside `env`:
+
+```json
+"env": { "GOCACHE": "/root/.cache/go-build" },
+"caches": [
+  { "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1073741824 }
+]
+```
+
+`name` is what `env-cache:` and the report call it (`[a-z0-9][a-z0-9_-]*`),
+`path` an absolute directory, and `max-bytes` between 1 MiB and 4 GiB; up
+to 8 per environment, none inside another. The variable that tells the
+program to use the directory goes in `env`, as `GOCACHE` does. The
+directory may be one a package ships (Go's) or one nothing ships yet. In
+`builtins/environments/build.sh`, set `CACHES` for the `build_env` call (as
+`GO_CACHES` is for Go), and give the environment a new version: a
+published version never changes. A runner older than the `caches` field
+refuses such a manifest (manifests reject unknown fields), so publish the
+new versions only once every runner is on a release that has it.
 
 ## Networking
 
@@ -1753,7 +1826,8 @@ whole pipeline.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without
-that a job could write past any limit. A write over it is refused before
+that a job could write past any limit. That is every file it writes, in
+`/tmp` and in its environment's directories (`GOCACHE`) too. A write over it is refused before
 any of it lands, and the job's report says so.
 
 A Node job's V8 heaps, one per `node` and per worker thread, and the
@@ -2124,7 +2198,9 @@ the short version is that everything executable is content-addressed under
 live under their own prefixes, and a repository's uploaded tools live under
 `repos/<repo-id>/tools/`, which is the only place a `repo:` reference looks.
 Uploading is not implemented: the layout is the contract the upload API
-will write to. Job caches are under `caches/<owner>/<repo-id>/<scope>/`,
+will write to. Job caches, and environment caches (keyed
+`env-cache/<environment>@<version>/<arch>/<cache>/<job>`), are under
+`caches/<owner>/<repo-id>/<scope>/`,
 downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
 [Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
 `runs/<owner>/`, and releases of `iwci` itself under

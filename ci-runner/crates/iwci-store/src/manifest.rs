@@ -32,6 +32,11 @@ const MAX_ENV: usize = 256;
 const MAX_ENV_VALUE_LEN: usize = 32 * 1024;
 const MAX_DESCRIPTION_LEN: usize = 1024;
 const MAX_GUEST_PATH_LEN: usize = 4096;
+/// Most caches an environment may declare.
+pub const MAX_ENV_CACHES: usize = 8;
+/// The smallest and largest `max-bytes` of an environment's cache.
+pub const MIN_ENV_CACHE_BYTES: u64 = 1024 * 1024;
+pub const MAX_ENV_CACHE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 
 /// A reference to a blob by digest and size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +122,21 @@ pub enum EnvEntry {
     Bash,
 }
 
+/// A directory of an environment whose additions every job keeps between
+/// runs, such as Go's build cache: what a job writes there beyond what the
+/// packages ship is saved after it passes and restored before its next
+/// run (`iwci`'s schedule, "environment caches").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct EnvCache {
+    /// What a job's `env-cache:` and its report call it.
+    pub name: String,
+    /// Absolute, normalised guest path of the directory.
+    pub path: String,
+    /// The most one saved cache may hold, in bytes of file content.
+    pub max_bytes: u64,
+}
+
 /// `environments/<name>/<version>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +154,12 @@ pub struct EnvManifest {
     /// Environment variables set for the script.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+    /// Directories whose additions a job keeps between runs. A runner
+    /// older than the field rejects the manifest (`deny_unknown_fields`),
+    /// so a version that has them is published after every runner can
+    /// read them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caches: Vec<EnvCache>,
     /// Free text for humans.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -391,8 +417,48 @@ impl EnvManifest {
             ));
         }
         check_env("env", &self.env)?;
+        check_caches(&self.caches)?;
         check_description(&self.description)
     }
+}
+
+fn check_caches(caches: &[EnvCache]) -> Result<(), ManifestError> {
+    if caches.len() > MAX_ENV_CACHES {
+        return Err(invalid(
+            "caches",
+            format!("more than {MAX_ENV_CACHES} caches"),
+        ));
+    }
+    for (i, cache) in caches.iter().enumerate() {
+        let field = format!("caches[{i}]");
+        check_name(&format!("{field}.name"), &cache.name)?;
+        if !is_valid_guest_path(&cache.path) {
+            return Err(invalid(
+                format!("{field}.path"),
+                "must be an absolute, normalised guest path",
+            ));
+        }
+        if !(MIN_ENV_CACHE_BYTES..=MAX_ENV_CACHE_BYTES).contains(&cache.max_bytes) {
+            return Err(invalid(
+                format!("{field}.max-bytes"),
+                format!("must be between {MIN_ENV_CACHE_BYTES} and {MAX_ENV_CACHE_BYTES}"),
+            ));
+        }
+        for other in &caches[..i] {
+            if other.name == cache.name {
+                return Err(invalid(format!("{field}.name"), "listed twice"));
+            }
+            let within =
+                |a: &str, b: &str| a == b || a.strip_prefix(b).is_some_and(|r| r.starts_with('/'));
+            if within(&cache.path, &other.path) || within(&other.path, &cache.path) {
+                return Err(invalid(
+                    format!("{field}.path"),
+                    format!("overlaps the cache at {}", other.path),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -523,5 +589,71 @@ mod tests {
         }
         let empty = r#"{"schema":1,"name":"node","version":"22.0.0","entry":"bash","packages":[]}"#;
         assert!(EnvManifest::from_json(empty.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn environment_caches() {
+        let with = |caches: &str| {
+            format!(
+                r#"{{"schema":1,"name":"go","version":"1.27.6","entry":"bash",
+                   "packages":[{{"name":"wasmer/bash","version":"1.0.24","sha256":"{H}","size":5}}],
+                   "caches":[{caches}]}}"#
+            )
+        };
+        let go = r#"{"name":"go-build","path":"/root/.cache/go-build","max-bytes":1073741824}"#;
+        let m = EnvManifest::from_json(with(go).as_bytes()).unwrap();
+        assert_eq!(
+            m.caches,
+            vec![EnvCache {
+                name: "go-build".into(),
+                path: "/root/.cache/go-build".into(),
+                max_bytes: 1 << 30,
+            }]
+        );
+        assert_eq!(EnvManifest::from_json(&m.to_json()).unwrap(), m);
+        // Without caches the canonical form has no `caches` at all, so an
+        // environment published before the field reads back unchanged.
+        let none = EnvManifest {
+            caches: Vec::new(),
+            ..m.clone()
+        };
+        assert!(
+            !String::from_utf8(none.to_json())
+                .unwrap()
+                .contains("caches")
+        );
+        let other = r#"{"name":"other","path":"/root/other","max-bytes":1048576}"#;
+        let cases: Vec<(String, &str)> = vec![
+            (
+                r#"{"name":"Go","path":"/a","max-bytes":1048576}"#.into(),
+                "caches[0].name",
+            ),
+            (
+                r#"{"name":"go","path":"a","max-bytes":1048576}"#.into(),
+                "caches[0].path",
+            ),
+            (
+                r#"{"name":"go","path":"/a","max-bytes":1}"#.into(),
+                "caches[0].max-bytes",
+            ),
+            (
+                r#"{"name":"go","path":"/a","max-bytes":1048576,"x":1}"#.into(),
+                "unknown field",
+            ),
+            (format!("{go},{go}"), "listed twice"),
+            (
+                format!(
+                    r#"{go},{{"name":"inner","path":"/root/.cache/go-build/x","max-bytes":1048576}}"#
+                ),
+                "overlaps",
+            ),
+            ([other; 9].join(","), "more than 8"),
+        ];
+        for (caches, want) in &cases {
+            let err = EnvManifest::from_json(with(caches).as_bytes())
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(want), "{caches}: {err}");
+        }
     }
 }

@@ -371,6 +371,24 @@
             }
           ]
         },
+        "env-cache": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            }
+          ],
+          "default": true,
+          "description": "The caches an `env:` job's environment keeps on its own, such as Go's build cache (`go-build`): what the job adds to them is restored before its next run and saved after it passes, scoped like `cache`. `false` turns them all off for the job; `{ go-build: false }` turns off the ones it names."
+        },
         "tools": {
           "type": "array",
           "maxItems": 16,
@@ -499,7 +517,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "What to keep: paths relative to the clone, or absolute (such as /root/.cache/go-build)."
+          "description": "What to keep: paths relative to the clone, or absolute (such as /tmp/fixtures)."
         }
       }
     },

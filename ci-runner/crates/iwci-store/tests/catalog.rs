@@ -183,6 +183,7 @@ fn environments_resolve() {
         ],
         entry: EnvEntry::Bash,
         env: BTreeMap::from([("PATH".into(), "/bin".into())]),
+        caches: Vec::new(),
         description: Some("bash, coreutils".into()),
     };
     let (_, report) = publish_env(&*f.store, &draft).unwrap();

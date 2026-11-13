@@ -50,6 +50,18 @@ impl Tools for FakeTools {
             t => Ok(Arc::new(t.to_string())),
         }
     }
+    /// `envcache` tools have one environment cache, of 64 bytes at most.
+    fn env_caches(&self, tool: &String) -> Vec<crate::env_cache::EnvCacheDecl> {
+        if !tool.contains(":envcache") {
+            return Vec::new();
+        }
+        vec![crate::env_cache::EnvCacheDecl {
+            name: "build".into(),
+            path: "/root/.cache/build".into(),
+            max_bytes: 64,
+            environment: "fake@1.0.0".into(),
+        }]
+    }
 }
 
 /// Behaves by tool name: `fail` exits 1, `write` changes a file, `slow`
@@ -246,6 +258,38 @@ impl Executor<String> for FakeExecutor {
             blob.extend_from_slice(token.as_bytes());
             inv.fs.write("/app/out/blob.bin", &blob).unwrap();
             inv.fs.write("/tmp/core.txt", b"core").unwrap();
+        }
+        // `envcache` prints what its environment cache holds (`name=content`),
+        // then writes `$CACHE_FILE` (default `a`) there with
+        // `$CACHE_CONTENT` (default `built`).
+        if tool.contains(":envcache") {
+            let var = |name: &str, default: &str| {
+                inv.env
+                    .iter()
+                    .find(|(k, _)| k == name)
+                    .map_or(default.to_string(), |(_, v)| v.clone())
+            };
+            let mut held: Vec<String> = inv
+                .fs
+                .entries_under(&["/root/.cache/build"])
+                .into_iter()
+                .filter_map(|e| match e {
+                    iwci_vfs::Entry::File { path, data } => Some(format!(
+                        "{}={}",
+                        path.file_name().unwrap().to_string_lossy(),
+                        String::from_utf8_lossy(&data)
+                    )),
+                    _ => None,
+                })
+                .collect();
+            held.sort();
+            stdout.push_str(&held.join(","));
+            inv.fs
+                .write(
+                    format!("/root/.cache/build/{}", var("CACHE_FILE", "a")),
+                    var("CACHE_CONTENT", "built").as_bytes(),
+                )
+                .unwrap();
         }
         if tool.contains(":scratch-write@") {
             inv.scratch
@@ -987,6 +1031,154 @@ fn caches_restore_before_a_job_and_save_after_it_passes() {
     );
     run_with(&failing, None, false, None, Some(store.clone()));
     assert_eq!(store.saved.lock().unwrap().len(), 1);
+}
+
+/// Environment caches through the real store adapter: one cache per job
+/// and environment version, restored on the next run, saved only after a
+/// pass and only when the run changed it.
+fn env_cache_store(name: &str) -> (Arc<dyn iwci_store::ObjectStore>, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("iwci-env-cache-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    (Arc::new(iwci_store::LocalStore::new(&dir).unwrap()), dir)
+}
+
+fn env_caches_for(
+    store: &Arc<dyn iwci_store::ObjectStore>,
+    branch: &str,
+    event: iwci_spec::Event,
+) -> Arc<dyn Caches> {
+    Arc::new(crate::adapters::caches::StoreCaches::new(
+        store.clone(),
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        branch,
+        "main",
+        event,
+        None,
+    ))
+}
+
+fn env_cache_run(p: &Plan, caches: &Arc<dyn Caches>) -> (Status, String, Vec<String>) {
+    let (report, _, _, _) = run_with(p, None, false, None, Some(caches.clone()));
+    let job = &report.jobs[0];
+    let stdout = job
+        .execution
+        .as_ref()
+        .map(|e| e.stdout.clone())
+        .unwrap_or_default();
+    (job.status.clone(), stdout, job.caches.clone())
+}
+
+#[test]
+fn environment_caches_come_back_on_the_next_run() {
+    let (store, dir) = env_cache_store("next");
+    let main = env_caches_for(&store, "main", iwci_spec::Event::Push);
+    let p = plan("name: x\njobs:\n  g:\n    using: builtin:envcache@1\n    changes: fail\n");
+
+    let (status, held, lines) = env_cache_run(&p, &main);
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(held, "");
+    assert_eq!(
+        lines,
+        vec!["env cache `build`: miss", "env cache `build`: saved 1 KiB"]
+    );
+
+    // The next run starts with what the first one added, and saves
+    // nothing when it leaves it as it was.
+    let (status, held, lines) = env_cache_run(&p, &main);
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(held, "a=built");
+    assert_eq!(
+        lines,
+        vec![
+            "env cache `build`: restored 1 KiB",
+            "env cache `build`: unchanged"
+        ]
+    );
+
+    // A failing run saves nothing, even what it changed.
+    let failing = plan(
+        "name: x\njobs:\n  g:\n    using: builtin:envcache-fail@1\n    env: { CACHE_CONTENT: broken }\n",
+    );
+    let (status, held, lines) = env_cache_run(&failing, &main);
+    assert!(matches!(status, Status::Failed { .. }), "{status:?}");
+    assert_eq!(held, "a=built");
+    assert_eq!(lines, vec!["env cache `build`: restored 1 KiB"]);
+    let (_, held, _) = env_cache_run(&p, &main);
+    assert_eq!(held, "a=built");
+
+    // `env-cache: false`, or the cache's name to `false`, turns it off.
+    for off in ["false", "{ build: false }"] {
+        let p = plan(&format!(
+            "name: x\njobs:\n  g:\n    using: builtin:envcache@1\n    env-cache: {off}\n    env: {{ CACHE_CONTENT: off }}\n"
+        ));
+        let (status, held, lines) = env_cache_run(&p, &main);
+        assert_eq!(status, Status::Passed, "{lines:?}");
+        assert_eq!((held.as_str(), lines.len()), ("", 0), "{off}: {lines:?}");
+    }
+    let (_, held, _) = env_cache_run(&p, &main);
+    assert_eq!(held, "a=built");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_pull_request_never_writes_the_default_branchs_environment_cache() {
+    let (store, dir) = env_cache_store("pr");
+    let main = env_caches_for(&store, "main", iwci_spec::Event::Push);
+    let pr = env_caches_for(&store, "main", iwci_spec::Event::PullRequest);
+    let p = |content: &str| {
+        plan(&format!(
+            "name: x\njobs:\n  g:\n    using: builtin:envcache@1\n    env: {{ CACHE_CONTENT: {content} }}\n"
+        ))
+    };
+    env_cache_run(&p("trusted"), &main);
+
+    // The pull request starts from the default branch's cache and saves
+    // what it changed into its own scope...
+    let (status, held, lines) = env_cache_run(&p("poisoned"), &pr);
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(held, "a=trusted");
+    assert!(
+        lines[1].starts_with("env cache `build`: saved"),
+        "{lines:?}"
+    );
+    let (_, held, _) = env_cache_run(&p("poisoned"), &pr);
+    assert_eq!(held, "a=poisoned");
+
+    // ...which the default branch never reads.
+    let (_, held, _) = env_cache_run(&p("trusted"), &main);
+    assert_eq!(held, "a=trusted");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_environment_cache_past_its_size_keeps_only_what_the_last_run_wrote() {
+    let (store, dir) = env_cache_store("size");
+    let main = env_caches_for(&store, "main", iwci_spec::Event::Push);
+    let p = |file: &str, content: &str| {
+        plan(&format!(
+            "name: x\njobs:\n  g:\n    using: builtin:envcache@1\n    env: {{ CACHE_FILE: {file}, CACHE_CONTENT: {content} }}\n"
+        ))
+    };
+    let thirty = "x".repeat(30);
+    env_cache_run(&p("a", &thirty), &main);
+    let (_, held, _) = env_cache_run(&p("b", &thirty), &main);
+    assert_eq!(held, format!("a={thirty}"));
+    // a and b are 60 bytes together, within its 64.
+    let (_, held, lines) = env_cache_run(&p("c", &thirty), &main);
+    assert_eq!(held, format!("a={thirty},b={thirty}"));
+    // With c it held 90: only c, which that run wrote, was kept.
+    assert!(
+        lines[1].contains("only what this run wrote was kept"),
+        "{lines:?}"
+    );
+    let (_, held, _) = env_cache_run(&p("c", &thirty), &main);
+    assert_eq!(held, format!("c={thirty}"));
+    // One run that writes more than the whole cache may hold saves nothing.
+    let big = "y".repeat(70);
+    let (_, _, lines) = env_cache_run(&p("d", &big), &main);
+    assert!(lines[1].contains("not saved"), "{lines:?}");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

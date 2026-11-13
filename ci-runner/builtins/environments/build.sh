@@ -147,11 +147,11 @@ EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.10 b021d4095e8937888d9fa420b50a10c3d86fa1b3
 # number is now the environment's own revision, as with the others.
 go_pkgs() {
   case "$1" in
-    1.23) echo "1.23.13 1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
-    1.24) echo "1.24.14 1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
-    1.25) echo "1.25.15 1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
-    1.26) echo "1.26.12 1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
-    1.27) echo "1.27.5 1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
+    1.23) echo "1.23.14 1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
+    1.24) echo "1.24.15 1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
+    1.25) echo "1.25.16 1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
+    1.26) echo "1.26.13 1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
+    1.27) echo "1.27.6 1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
     *) return 1 ;;
   esac
 }
@@ -172,6 +172,12 @@ GO_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/go/bin",
     "GOCACHE": "/root/.cache/go-build",
     "GOTOOLCHAIN": "local",
     "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt"'
+# The environment's caches (README.md, "Environment caches"): what a job adds
+# to GOCACHE beside the standard library comes back on its next run. 1 GiB
+# at most, and never more than a quarter of the job's memory. The standard
+# library's entries are dated 2100 and so is its trim.txt, so Go never trims
+# here: past the limit the runner keeps only what the last run wrote.
+GO_CACHES='{ "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1073741824 }'
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4" build="${5:-$3}"
@@ -216,6 +222,8 @@ fetch() {
 # build_env <name> <version> <description> <env> <package lines...>
 # <env> is the manifest's default environment as JSON object members
 # (`"KEY": "value", ...`), or empty; a job's own `env:` wins over it.
+# $CACHES, when set, is the manifest's `caches` as JSON array items
+# (README.md, "Environment caches").
 build_env() {
   local name="$1" version="$2" description="$3" env="$4"
   shift 4
@@ -235,7 +243,8 @@ build_env() {
   "version": "$version",
   "entry": "bash",
   "packages": [$joined],
-  "env": { $env },
+  "env": { $env },${CACHES:+
+  "caches": [$CACHES],}
   "description": "$description"
 }
 JSON
@@ -293,8 +302,9 @@ for env in "$@"; do
           exit 2
         fi
         # Go's release plus one: and Git.
+        # Plus two: and a job keeps what it adds to its build cache (#1083).
         read -r env_version version go_sha cache_sha <<<"$pkgs"
-        build_env go "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Go ${version%-iwci.*} (go, gofmt)" \
+        CACHES="$GO_CACHES" build_env go "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Go ${version%-iwci.*} (go, gofmt)" \
           "$GO_ENV" "${TOOLS[@]}" "iwci/go $version $go_sha" "iwci/go-std-cache $version $cache_sha"
       done
       ;;

@@ -2895,4 +2895,41 @@ for name in "$@"; do
     jq '.pipelines[0].report.jobs[] | {id, status, reason, message, execution}' <<<"$out" >&2
   fi
 done
+
+# An environment's caches across runs (#1083): the same job run twice, and
+# Go's build cache comes back on the second, which compiles nothing (the
+# first compiles the module's two packages, as `build-passes` does).
+for name in "$@"; do
+  [[ "$name" == go@* ]] || continue
+  echo "== $name, its build cache on a second run"
+  for want in 2 0; do
+    file="$SCRATCH/$name-cache-$want.yml"
+    sed -e "s/@MINOR@/${name#go@}/g" -e "s/@WANT@/$want/g" >"$file" <<'YAML'
+name: go-cache-@MINOR@
+workspace:
+  deps:
+    - go: { dir: gomod }
+jobs:
+  build-cache:
+    using: env:go@@MINOR@
+    cwd: /app/gomod
+    timeout: 10m
+    run: |
+      go build -x -o /tmp/app . 2> /tmp/build.log
+      test "$(/tmp/app)" = 36
+      test "$(grep -c '/compile -o' /tmp/build.log || true)" = @WANT@
+YAML
+    out="$("$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
+      --store "$SCRATCH/store" --cache "$SCRATCH/cache")" || true
+    job_status="$(jq -r '.pipelines[0].report.jobs[0].status // "none"' <<<"$out")"
+    caches="$(jq -r '.pipelines[0].report.jobs[0].caches // [] | join("; ")' <<<"$out")"
+    if [[ "$job_status" == passed ]]; then
+      echo "  ok   $want compiles: $caches"
+    else
+      echo "  FAIL expected $want compiles: $job_status ($caches)"
+      jq '.pipelines[0].report.jobs[0] | {status, reason, message, execution}' <<<"$out" >&2
+      failed=1
+    fi
+  done
+done
 exit "$failed"

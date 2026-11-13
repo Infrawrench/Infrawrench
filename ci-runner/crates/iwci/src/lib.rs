@@ -2,6 +2,7 @@
 
 pub mod adapters;
 pub mod cli;
+pub mod env_cache;
 pub mod memory;
 pub mod runner;
 pub mod schedule;

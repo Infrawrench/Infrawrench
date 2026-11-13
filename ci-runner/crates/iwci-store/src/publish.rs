@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 use crate::error::Error;
 use crate::keys::{Namespace, blob_key, sha256_hex};
 use crate::manifest::{
-    Abi, BlobRef, EnvEntry, EnvManifest, EnvPackage, MAX_BLOB_SIZE, SCHEMA, ToolFile, ToolManifest,
+    Abi, BlobRef, EnvCache, EnvEntry, EnvManifest, EnvPackage, MAX_BLOB_SIZE, SCHEMA, ToolFile,
+    ToolManifest,
 };
 use crate::store::ObjectStore;
 use crate::version::Version;
@@ -72,6 +73,8 @@ pub struct EnvDraft {
     pub entry: EnvEntry,
     /// Script environment.
     pub env: BTreeMap<String, String>,
+    /// Directories whose additions a job keeps between runs.
+    pub caches: Vec<EnvCache>,
     /// Free text.
     pub description: Option<String>,
 }
@@ -191,6 +194,7 @@ pub fn publish_env(
         packages,
         entry: draft.entry,
         env: draft.env.clone(),
+        caches: draft.caches.clone(),
         description: draft.description.clone(),
     };
     let key = Namespace::Environment.manifest_key(&manifest.name, &manifest.version)?;

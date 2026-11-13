@@ -355,6 +355,7 @@ impl Probe {
                 commands: &[],
                 stdout: output.file(),
                 stderr: output.file(),
+                own_dirs: true,
             })?;
             self.attempt = Some(Attempt {
                 handle,
@@ -457,6 +458,7 @@ fn start_one(
         commands: &[],
         stdout: sink_file(LogStream(log.clone(), 0)),
         stderr: sink_file(LogStream(log.clone(), 1)),
+        own_dirs: true,
     })?;
     Ok(Running {
         name: service.name.clone(),
