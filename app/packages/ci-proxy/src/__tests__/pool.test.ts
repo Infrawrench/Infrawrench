@@ -21,6 +21,9 @@ function capacity(c: Partial<Capacity> & { name: string }): Capacity {
     memoryTotal: null,
     memoryUsed: null,
     memoryWaiting: null,
+    v8HeapSpaceTotal: null,
+    v8HeapSpaceUsed: null,
+    v8LostIsolates: null,
     ...c,
   };
 }
@@ -50,9 +53,8 @@ describe("byPlacement", () => {
     expect(order([reporting, ci1Idle])).toEqual(["ci-1", "ci-2"]);
   });
 
-  it("shares a runner's room among its runs, the new one included", () => {
-    // ci-2 has more room, but split three ways (two runs and the new one)
-    // it is less per run than ci-1's for two.
+  it("shares a runner's job memory among its runs, the new one included", () => {
+    // a: (24 + 12) / 2 / 2 = 9 GiB a run; b: (26 + 20) / 2 / 3 = 7.7 GiB.
     const a = capacity({ name: "a", runsActive: 1, memoryTotal: 24 * GiB, memoryUsed: 12 * GiB });
     const b = capacity({
       name: "b",
@@ -62,13 +64,45 @@ describe("byPlacement", () => {
       memoryTotal: 26 * GiB,
       memoryUsed: 6 * GiB,
     });
-    // a: 12 / 2 = 6 GiB a run; b: 20 / 3 = 6.7 GiB a run.
-    expect(order([a, b])).toEqual(["b", "a"]);
-    // A queued job's ask counts against room like a held reservation.
-    expect(order([a, { ...b, memoryWaiting: 6 * GiB }])).toEqual(["a", "b"]);
+    expect(order([b, a])).toEqual(["a", "b"]);
+    // With as many runs, what is free now decides: a's whole budget held
+    // gives (24 + 0) / 2 / 2 = 6 GiB a run against b's 7.7.
+    expect(order([{ ...a, runsActive: 2, memoryUsed: 24 * GiB }, b])).toEqual(["b", "a"]);
+    // A queued job's ask counts against room like a held reservation:
+    // 24 GiB waiting takes b to (26 - 4) / 2 / 3 = 3.7 GiB.
+    expect(
+      order([
+        { ...a, runsActive: 2, memoryUsed: 24 * GiB },
+        { ...b, memoryWaiting: 24 * GiB },
+      ]),
+    ).toEqual(["a", "b"]);
   });
 
-  it("ranks runners with no room below every other, by their backlog", () => {
+  it("ranks a sliver of free memory by the runs that share it (#1132)", () => {
+    // ci-1 and ci-2 at 16:33 UTC on 2026-11-13: ci-1 (2 runs) had none of
+    // its job memory free, ci-2 (4 runs) 2 GiB. ci-1: (24 + 0) / 2 / 3 = 4
+    // GiB a run; ci-2: (26 + 2) / 2 / 5 = 2.8.
+    const ci1 = capacity({
+      name: "ci-1",
+      runsActive: 2,
+      slotsFree: 30,
+      memoryTotal: 24 * GiB,
+      memoryUsed: 24 * GiB,
+      memoryWaiting: 0,
+    });
+    const ci2 = capacity({
+      name: "ci-2",
+      runsActive: 4,
+      slotsTotal: 64,
+      slotsFree: 60,
+      memoryTotal: 26 * GiB,
+      memoryUsed: 24 * GiB,
+      memoryWaiting: 0,
+    });
+    expect(order([ci2, ci1])).toEqual(["ci-1", "ci-2"]);
+  });
+
+  it("ranks runners that report no budget last, and a full pool by its backlog", () => {
     const full = capacity({
       name: "full",
       slotsTotal: 64,
@@ -85,6 +119,7 @@ describe("byPlacement", () => {
       memoryUsed: 24 * GiB,
       memoryWaiting: 30 * GiB,
     });
+    const busiest = { ...busier, name: "busiest", runsActive: 1, memoryWaiting: 40 * GiB };
     const unknown = capacity({ name: "unknown", slotsFree: 1, runsActive: 7 });
     const tight = capacity({
       name: "tight",
@@ -93,7 +128,43 @@ describe("byPlacement", () => {
       memoryTotal: 24 * GiB,
       memoryUsed: 23 * GiB,
     });
-    expect(order([busier, full, unknown, tight])).toEqual(["tight", "unknown", "full", "busier"]);
+    // full: (26 - 4) / 2 / 2 = 5.5 GiB a run; tight: (24 + 1) / 2 / 6 = 2.1;
+    // busier and busiest are owed more than their whole budget, so nothing,
+    // and the one with less waiting goes first.
+    expect(order([busiest, busier, full, unknown, tight])).toEqual([
+      "full",
+      "tight",
+      "busier",
+      "busiest",
+      "unknown",
+    ]);
+  });
+
+  it("weighs a runner by the V8 heap space its Node jobs share", () => {
+    const same = { runsActive: 1, memoryTotal: 24 * GiB, memoryUsed: 6 * GiB, memoryWaiting: 0 };
+    const roomy = capacity({
+      name: "roomy",
+      ...same,
+      v8HeapSpaceTotal: 3.5 * GiB,
+      v8HeapSpaceUsed: 0.5 * GiB,
+    });
+    const heapFull = capacity({
+      name: "heap-full",
+      ...same,
+      slotsTotal: 64,
+      slotsFree: 63,
+      v8HeapSpaceTotal: 3.5 * GiB,
+      v8HeapSpaceUsed: 3.5 * GiB,
+    });
+    expect(order([heapFull, roomy])).toEqual(["roomy", "heap-full"]);
+    // At worst it halves a runner's share: with one run instead of three,
+    // the full heap still wins.
+    expect(order([heapFull, { ...roomy, runsActive: 3 }])).toEqual(["heap-full", "roomy"]);
+    // Not reported counts as free.
+    expect(order([heapFull, { ...roomy, v8HeapSpaceTotal: null, v8HeapSpaceUsed: null }])).toEqual([
+      "roomy",
+      "heap-full",
+    ]);
   });
 
   it("falls back to slots, then active runs, then the name", () => {
@@ -117,6 +188,8 @@ describe("byPlacement", () => {
 /** Just enough of `iwci serve` for placement: capacity and taking a run. */
 class Runner {
   runs = 0;
+  draining = false;
+  v8: { total: number; used: number; lost: number } | null = null;
   constructor(
     readonly url: string,
     readonly slotsTotal: number,
@@ -136,7 +209,7 @@ class Runner {
       return json(401, {});
     if (path === "/v1/capacity")
       return json(200, {
-        draining: false,
+        draining: this.draining,
         version: "0.3.13",
         slots_total: this.slotsTotal,
         slots_free: this.slotsTotal - this.runs,
@@ -144,9 +217,16 @@ class Runner {
         memory_total: this.memory.total,
         memory_used: this.memory.used,
         ...(this.memory.waiting === undefined ? {} : { memory_waiting: this.memory.waiting }),
+        ...(this.v8 === null
+          ? {}
+          : {
+              v8_heap_space_total: this.v8.total,
+              v8_heap_space_used: this.v8.used,
+              v8_lost_isolates: this.v8.lost,
+            }),
       });
     if (path === "/v1/runs" && init.method === "POST") {
-      if (this.refuse) return json(429, { error: "at capacity" });
+      if (this.refuse || this.draining) return json(429, { error: "at capacity" });
       this.runs++;
       this.memory.used = Math.min(this.memory.total, this.memory.used + this.perRun.used);
       this.memory.waiting = (this.memory.waiting ?? 0) + this.perRun.waiting;
@@ -214,6 +294,60 @@ describe("placement", () => {
     expect(await run()).toBe("ci-2");
   });
 
+  it("spreads a burst over a runner with a sliver free and a full one with fewer runs (#1132)", async () => {
+    // 16:33 UTC on 2026-11-13. ci-1 had two runs and all 24 GiB of its job
+    // memory reserved; ci-2 had four, 24 of its 26 GiB reserved and nothing
+    // ready to start (its runs' other jobs waited on their needs, which
+    // memory_waiting does not count). ci-2's 2 GiB put it ahead of ci-1
+    // whatever its run count, and nine runs in 14 minutes all went to it.
+    // A new run holds nothing until its jobs start.
+    const ci1 = new Runner(
+      "http://ci-1.test",
+      32,
+      { total: 24 * GiB, used: 24 * GiB, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    ci1.runs = 2;
+    const ci2 = new Runner(
+      "http://ci-2.test",
+      64,
+      { total: 26 * GiB, used: 24 * GiB, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    ci2.runs = 4;
+    const { run } = proxy({ "ci-1": ci1, "ci-2": ci2 });
+    const placed: Array<string | number | undefined> = [];
+    for (let i = 0; i < 9; i++) placed.push(await run());
+    expect(placed.filter((r) => r === "ci-1")).toHaveLength(5);
+    expect(placed.filter((r) => r === "ci-2")).toHaveLength(4);
+    expect(ci1.runs).toBe(7);
+    expect(ci2.runs).toBe(8);
+  });
+
+  it("sends runs to a runner again as soon as it stops draining", async () => {
+    const ci1 = new Runner(
+      "http://ci-1.test",
+      32,
+      { total: 24 * GiB, used: 0, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    ci1.draining = true;
+    const ci2 = new Runner(
+      "http://ci-2.test",
+      64,
+      { total: 26 * GiB, used: 0, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    const { run } = proxy({ "ci-1": ci1, "ci-2": ci2 });
+    expect(await run()).toBe("ci-2");
+    expect(await run()).toBe("ci-2");
+    // Restarted as the new release: idle, and the next run is its.
+    ci1.draining = false;
+    expect(await run()).toBe("ci-1");
+    expect(await run()).toBe("ci-1");
+    expect(await run()).toBe("ci-2");
+  });
+
   it("weighs held memory for a runner from before memory_waiting", async () => {
     const { run } = proxy({
       "ci-1": new Runner(
@@ -258,7 +392,14 @@ describe("placement", () => {
     expect(await run()).toBe(429);
   });
 
-  it("shows each runner's job memory in /v1/capacity", async () => {
+  it("shows each runner's job memory and V8 heap space in /v1/capacity", async () => {
+    const ci2 = new Runner(
+      "http://ci-2.test",
+      64,
+      { total: 26 * GiB, used: 24 * GiB, waiting: 12 * GiB },
+      { used: 0, waiting: 0 },
+    );
+    ci2.v8 = { total: 3.5 * GiB, used: 3 * GiB, lost: 3 };
     const { call } = proxy({
       "ci-1": new Runner(
         "http://ci-1.test",
@@ -266,15 +407,7 @@ describe("placement", () => {
         { total: 24 * GiB, used: 6 * GiB },
         { used: 0, waiting: 0 },
       ),
-      "ci-2": new Runner(
-        "http://ci-2.test",
-        64,
-        { total: 26 * GiB, used: 24 * GiB, waiting: 12 * GiB },
-        {
-          used: 0,
-          waiting: 0,
-        },
-      ),
+      "ci-2": ci2,
     });
     const body = (await (await call("GET", "/v1/capacity")).json()) as {
       runners: Array<Record<string, unknown>>;
@@ -285,12 +418,18 @@ describe("placement", () => {
         memory_total: 24 * GiB,
         memory_used: 6 * GiB,
         memory_waiting: null,
+        v8_heap_space_total: null,
+        v8_heap_space_used: null,
+        v8_lost_isolates: null,
       }),
       expect.objectContaining({
         name: "ci-2",
         memory_total: 26 * GiB,
         memory_used: 24 * GiB,
         memory_waiting: 12 * GiB,
+        v8_heap_space_total: 3.5 * GiB,
+        v8_heap_space_used: 3 * GiB,
+        v8_lost_isolates: 3,
       }),
     ]);
   });
