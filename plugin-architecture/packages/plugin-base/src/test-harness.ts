@@ -196,6 +196,13 @@ export function runPluginContractTests(contract: Plugin, credentials?: Record<st
         expect(validatePluginContract(contract)).toEqual([]);
       });
 
+      const ciKinds = plugin.manifest.ciExecutor?.kinds ?? [];
+      if (ciKinds.length > 0) {
+        it("ciExecutor declares each kind once", () => {
+          const kinds = ciKinds.map((k) => k.kind);
+          expect(new Set(kinds).size).toBe(kinds.length);
+        });
+      }
       const tokenFormats = plugin.manifest.tokenFormats ?? [];
       if (tokenFormats.length > 0) {
         it("tokenFormats are unique and name declared credential fields", () => {

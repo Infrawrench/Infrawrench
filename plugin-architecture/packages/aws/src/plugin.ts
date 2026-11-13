@@ -16,6 +16,7 @@ import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
 import { awsAiRequestLogCapability } from "./ai-request-logs.js";
 import { AWS_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
+import { AWS_CI_EXECUTOR } from "./ci-executor.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
 import { VPCResourceType } from "./resources/vpc.js";
@@ -226,6 +227,11 @@ export const manifest = {
   // identitystore:GetUserId/DescribeUser/ListUsers and
   // organizations:ListAccounts. See `jit-access.ts`.
   jitAccess: AWS_JIT_ACCESS,
+  // CI jobs on a fresh EC2 instance per job (user data runs the host's
+  // bootstrap, terminated when the job ends). Needs ec2:RunInstances,
+  // ec2:CreateTags, ec2:DescribeInstances, ec2:TerminateInstances and
+  // ssm:GetParameters for the default image. See `ci-executor.ts`.
+  ciExecutor: AWS_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

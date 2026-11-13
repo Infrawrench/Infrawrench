@@ -308,6 +308,24 @@ export type {
 } from "./leaked-secrets.js";
 
 export type {
+  CiComputeStatus,
+  CiCredentialDeclaration,
+  CiCredentialRequest,
+  CiExecutorDeclaration,
+  CiExecutorKind,
+  CiExecutorKindDeclaration,
+  CiHandle,
+  CiLentFile,
+  CiLentMaterial,
+  CiLentValue,
+  CiMissingPermission,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "./ci.js";
+export { CI_EXECUTOR_KINDS, CI_JOB_TAG, CI_RUN_TAG, CI_TAG, ciAlias } from "./ci.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,

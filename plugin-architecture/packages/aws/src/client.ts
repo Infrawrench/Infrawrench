@@ -61,6 +61,22 @@ import {
   listAwsAiRequestLogLocations,
 } from "./ai-request-logs.js";
 import type { AwsCredentials } from "./auth.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  ciListTagged,
+  ciPreflight,
+  ciStart,
+  ciStatus,
+  ciTeardown,
+  type Ec2Call,
+} from "./ci-executor.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listEC2Instances,
@@ -457,6 +473,33 @@ export class AWSClient implements PluginClient {
     return attempt(async () => {
       return runAwsPreflight(this.creds);
     });
+  }
+
+  /** EC2 Query API calls for CI jobs, signed for the region asked. */
+  private readonly ciCall: Ec2Call = <T>(
+    region: string,
+    action: string,
+    params?: Record<string, string>,
+  ) => ec2Call<T>(this.credsFor(region), action, params);
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.ciCall, this.creds.region, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.ciCall, this.creds.region, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.ciCall, this.creds.region, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.ciCall, this.creds.region, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.ciCall, this.creds.region, tagKey, regions));
   }
 
   listResources(

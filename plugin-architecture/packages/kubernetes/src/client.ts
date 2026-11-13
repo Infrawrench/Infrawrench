@@ -49,6 +49,8 @@ import type {
   ParsedKubeconfig,
 } from "./types.js";
 import { parseKubeconfig } from "./types.js";
+import type { CiCredentialRequest, CiLentMaterial } from "@infrawrench/plugin-base";
+import { lendKubeconfig, type InlineCredentials } from "./ci-credential.js";
 
 import {
   renderClusterDetail,
@@ -131,9 +133,13 @@ export class KubernetesClient implements PluginClient {
    */
   private lastCostIndex: CostIndex | undefined;
 
+  /** The kubeconfig as stored, for lending a CI job its own copy. */
+  private readonly kubeconfig: string;
+
   constructor(credentials: Credentials, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
+    this.kubeconfig = kubeconfig;
     // Node prices arrive from the parent cloud plugin through the peer
     // integration's credentialMappings, or from the optional field on a
     // standalone Kubernetes account. Absent means "no money", not "free".
@@ -231,6 +237,43 @@ export class KubernetesClient implements PluginClient {
       this.costCache = null;
       return undefined;
     }
+  }
+
+  lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(() => {
+      const k8s = this.services?.k8s;
+      return lendKubeconfig(
+        {
+          kubeconfig: this.kubeconfig,
+          ...(k8s
+            ? {
+                driverCredentials: async () =>
+                  (await k8s.command("credentials", {})) as InlineCredentials,
+              }
+            : {}),
+          mintToken: async (sa, seconds) => {
+            const answer = await this.k8sFetch<{
+              status?: { token?: string; expirationTimestamp?: string };
+            }>(
+              `/api/v1/namespaces/${encodeURIComponent(sa.namespace)}/serviceaccounts/${encodeURIComponent(sa.name)}/token`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  apiVersion: "authentication.k8s.io/v1",
+                  kind: "TokenRequest",
+                  spec: { expirationSeconds: seconds },
+                }),
+              },
+            );
+            const token = answer.status?.token;
+            if (!token) return null;
+            const expiresAt = answer.status?.expirationTimestamp;
+            return expiresAt ? { token, expiresAt } : { token };
+          },
+        },
+        request,
+      );
+    });
   }
 
   listResources(

@@ -269,6 +269,28 @@ export const driver = {
           return rawRequest(c.kc, resourcePath, { method: "DELETE" });
         }
 
+        case "credentials": {
+          // The credentials the SDK would send for the current context,
+          // after running whatever the kubeconfig declares (an exec
+          // credential plugin, OIDC refresh), for lending a self-contained
+          // kubeconfig to a CI job, which has none of those.
+          const opts: https.RequestOptions = { headers: {} };
+          await c.kc.applyToHTTPSOptions(opts);
+          const headers = (opts.headers ?? {}) as Record<string, unknown>;
+          const auth = headers["Authorization"] ?? headers["authorization"];
+          const token =
+            typeof auth === "string" && auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+          const pem = (v: unknown) =>
+            typeof v === "string" ? v : Buffer.isBuffer(v) ? v.toString("utf8") : undefined;
+          const cert = pem(opts.cert);
+          const key = pem(opts.key);
+          return {
+            ...(token ? { token } : {}),
+            ...(cert ? { clientCertificateData: Buffer.from(cert).toString("base64") } : {}),
+            ...(key ? { clientKeyData: Buffer.from(key).toString("base64") } : {}),
+          };
+        }
+
         case "request": {
           // Generic fallback used by the K8sFetcher → driver shim so the
           // existing path-based call sites (manifest fetch, custom create

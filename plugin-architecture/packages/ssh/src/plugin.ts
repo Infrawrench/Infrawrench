@@ -57,6 +57,14 @@ export const manifest = {
       accountReference: { pluginId: "ssh" },
     },
   ]),
+  // Lend the host to a CI job (`connections:` in a pipeline): an SSH config
+  // entry named after the connection, its key and a pinned host key check.
+  // See `ci-credential.ts`.
+  ciCredential: {
+    description:
+      "An SSH config entry named after the connection, with its key and a check against the host key pinned in Infrawrench.",
+    shortLived: false,
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;
@@ -68,7 +76,13 @@ export const plugin = definePlugin({
   resourceTypes,
   createClient: (credentials) =>
     new SshClient(
-      credentials as { host: string; port?: string; username?: string; privateKey?: string },
+      credentials as {
+        host: string;
+        port?: string;
+        username?: string;
+        privateKey?: string;
+        connectThroughAccountId?: string;
+      },
     ),
   testCredentials: {
     host: "192.168.1.1",

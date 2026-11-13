@@ -377,6 +377,18 @@ export interface PluginManifest {
    * `leaked-secrets.ts`; the host never sends a stored secret anywhere.
    */
   tokenFormats?: TokenFormatDeclaration[];
+  /**
+   * If present, this plugin can run a CI job on compute in the connected
+   * account (a machine, a container, a build, a host, a cluster job), and an
+   * organization can opt the connection in to cloud jobs. See `ci.ts`.
+   */
+  ciExecutor?: CiExecutorDeclaration;
+  /**
+   * If present, this plugin can lend a connection to a CI job (files and
+   * environment variables, minted short-lived where the provider allows),
+   * and an organization can opt the connection in to lending. See `ci.ts`.
+   */
+  ciCredential?: CiCredentialDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -1102,6 +1114,32 @@ export interface PluginClient {
    */
   resolveLeakedSecret?(ref: string, resolution: LeakedSecretResolution): PluginEffect<void>;
   /**
+   * Whether this connection can run CI jobs of `kind`, checked without
+   * starting anything (a dry run, a permission test). Required when the
+   * manifest declares `ciExecutor`. See `ci.ts`.
+   */
+  ciPreflight?(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult>;
+  /** Start compute for one CI job. Required with `ciExecutor`. */
+  ciStart?(spec: CiStartSpec): PluginEffect<CiHandle>;
+  /** How a started job's compute is doing. Required with `ciExecutor`. */
+  ciStatus?(handle: CiHandle): PluginEffect<CiComputeStatus>;
+  /**
+   * Remove a job's compute and everything started with it. Required with
+   * `ciExecutor`. Must succeed when it is already gone.
+   */
+  ciTeardown?(handle: CiHandle): PluginEffect<void>;
+  /**
+   * Everything carrying the `tagKey` tag in `regions` (the connection's own
+   * when empty), live or lingering, so the host can remove what no job
+   * owns any more. Required with `ciExecutor`.
+   */
+  ciListTagged?(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]>;
+  /**
+   * The files and environment one CI job gets for this connection. Required
+   * when the manifest declares `ciCredential`. See `ci.ts`.
+   */
+  lendCiCredential?(request: CiCredentialRequest): PluginEffect<CiLentMaterial>;
+  /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.
@@ -1642,6 +1680,18 @@ import type {
   AiRequestLogsCapabilityDeclaration,
 } from "./ai-requests.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
+import type {
+  CiComputeStatus,
+  CiCredentialDeclaration,
+  CiCredentialRequest,
+  CiExecutorDeclaration,
+  CiExecutorKind,
+  CiHandle,
+  CiLentMaterial,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "./ci.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
 import type {
   IdleFindingRecord,
