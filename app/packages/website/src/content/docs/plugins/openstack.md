@@ -42,6 +42,22 @@ You'll find the values in Horizon under **Project > API Access** (download the O
 
 <insert [OpenStack server detail view with power actions, Addresses section and the console log in the Logs tab] here>
 
+## Run CI jobs
+
+A OpenStack connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Nova server in the job's `cloud.region` (the connection's region when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                                         | Default `machine`                          | Default `image`              |
+| ------------ | --------------------------------------------------------------- | ------------------------------------------ | ---------------------------- |
+| `vm`         | A Nova server, booted from a volume when the flavor has no disk | The smallest flavor with 2 vCPUs and 4 GiB | An active Ubuntu 24.04 image |
+
+`cloud.machine` takes a flavor name or id, and `cloud.image` an image name or id. The server joins the project's one network, else the one shared network, else Nova's automatic network; a project with several networks a server could join can't run jobs yet, since a job can't name one. A boot volume is deleted with the server.
+
+The server holds no OpenStack credentials: no key pair, no application credential.
+
+As a backstop the server powers itself off when the job's time is up. Whether a stopped server is still billed depends on your cloud. The server has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it.
+
+Opting in reads the token's roles from Keystone. Nova's default policy needs the `member` role to create and delete servers, so a token with only `reader` is refused; a cloud with roles of its own is not judged by their names.
+
 ## Tips and limits
 
 - Every endpoint in your cloud's service catalog must be reachable from where Infrawrench runs. A bastion lets through the Keystone URL's host and, if your catalog puts Nova, Neutron or other services on other hostnames, the hosts you pick under **Service Endpoint Hosts** in the account's **Advanced options**. The picker lists the catalog hosts for the account's region and interface. A bastion only reaches public addresses. An SSH tunnel on the account only covers the Keystone URL, so it won't help if the other services are private too.

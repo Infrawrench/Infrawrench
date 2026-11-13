@@ -47,6 +47,21 @@ import type {
   VultrStartupScript,
 } from "./types.js";
 import { applyUpdate } from "./update.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  vultrCiListTagged,
+  vultrCiPreflight,
+  vultrCiStart,
+  vultrCiStatus,
+  vultrCiTeardown,
+} from "./ci-executor.js";
 
 type Lister = (api: VultrApi, accountId: string) => Promise<ResourceInstance[]>;
 
@@ -503,6 +518,26 @@ export class VultrClient implements PluginClient {
     return attempt(async () => {
       return this.storage.upload(bucket, key, file, onProgress);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => vultrCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => vultrCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => vultrCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => vultrCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => vultrCiListTagged(this.api, tagKey));
   }
 
   makeStorageFolder(bucket: string, key: string): PluginEffect<void> {

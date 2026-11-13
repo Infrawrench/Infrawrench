@@ -1813,6 +1813,7 @@
     "/object-storage/buckets/{regionId}/{bucket}/object-url": ["post"],
     "/object-storage/types": ["get"],
     "/profile": ["get"],
+    "/profile/grants": ["get"],
     "/regions": ["get"],
     "/volumes": ["get", "post"],
     "/volumes/types": ["get"],

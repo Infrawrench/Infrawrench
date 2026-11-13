@@ -42,6 +42,20 @@ Open issues from [status.civo.com](https://status.civo.com) are matched to your 
 
 Instances, volumes, Kubernetes clusters and node pools, databases, firewalls, networks, reserved IPs, DNS domains and records, Object Stores, credentials and SSH keys export to the official `civo/civo` provider with their import ids. The provider reads the key from `CIVO_TOKEN`.
 
+## Run CI jobs
+
+A Civo connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh compute instance in the job's `cloud.region` (`LON1` when it names none), started with the job's bootstrap as its startup script, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                                              | Default `machine` | Default `image` |
+| ------------ | -------------------------------------------------------------------- | ----------------- | --------------- |
+| `vm`         | A compute instance on the region's default network, with a public IP | `g4s.medium`      | `ubuntu-noble`  |
+
+The instance holds no Civo credentials: no API key and no SSH key. Civo sets a random password that is never read. It joins the default network's firewall, as instances made without one do.
+
+As a backstop the instance powers itself off when the job's time is up. Civo bills a stopped instance exactly like a running one, by the hour, rounded up. The instance has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by tag.
+
+Civo API keys have no scopes, so opting in checks with harmless reads: the instances, the default network, the Ubuntu image and the instance quota.
+
 ## Limits
 
 - Civo reports usage in hours but no prices or invoices, so Infrawrench doesn't show Civo spend. The account page lists this month's metered usage instead.

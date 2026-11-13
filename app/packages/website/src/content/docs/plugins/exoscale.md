@@ -50,6 +50,20 @@ Incidents and maintenance from [exoscalestatus.com](https://exoscalestatus.com) 
 
 Instances, volumes, private networks, security groups, elastic IPs, SKS clusters and node pools, load balancers, instance pools, DBaaS services, DNS domains and records, SSH keys and anti-affinity groups export to the official `exoscale/exoscale` provider. Instances export without their template id unless it's known, so set it before you apply. Volumes and DBaaS services export without an import id.
 
+## Run CI jobs
+
+A Exoscale connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Compute instance in the job's `cloud.region` (`ch-gva-2` when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                                         | Default `machine` | Default `image`               |
+| ------------ | --------------------------------------------------------------- | ----------------- | ----------------------------- |
+| `vm`         | A Compute instance with a public IPv4 address and a 20 GiB disk | `standard.medium` | Linux Ubuntu 24.04 LTS 64-bit |
+
+The instance holds no Exoscale credentials: no API key and no SSH key.
+
+As a backstop the instance powers itself off when the job's time is up, which ends its compute bill; its disk is billed until Infrawrench destroys the instance at the end of the job, or its cleanup later finds it by label. Running instances are billed by the second.
+
+Opting in reads the API key's role and names `compute` when the role denies it. A role written as rules can't be judged without running them, and a key without IAM access can't read its own role; then the check lists instances instead.
+
 ## Limits
 
 - Exoscale marks its billing report as beta. If Exoscale delivers it as Parquet, costs show a setup error.

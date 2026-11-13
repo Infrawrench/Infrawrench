@@ -23173,5 +23173,21 @@
   "cb3fc66344bb18f8": "Créez une clé d'API Paperspace dans l'équipe",
   "9cf4f4ca976a4d2e": "VM Crusoe",
   "07ea07abe3244852": "Attribuez à l'utilisateur de la clé le rôle Editor sur le projet",
-  "dbdd14ce9dae5116": "Créez une clé d'API Vast.ai avec lecture et écriture des instances, et lecture de l'utilisateur"
+  "dbdd14ce9dae5116": "Créez une clé d'API Vast.ai avec lecture et écriture des instances, et lecture de l'utilisateur",
+  "fd9009fb2ffeb540": "Instance Cloud Compute",
+  "7d0fd62407bbd3b7": "Serveur cloud",
+  "326e71b8679a0857": "Cloud Server",
+  "7ca99c0d2b65126a": "Instance de calcul",
+  "f3e0d7642869eba9": "Serveur Nova",
+  "8ae5294453f0d6a7": "Instance Public Cloud",
+  "9fbf3623958c8b4a": "Exécution Serverless Jobs",
+  "58a9c5551f0888aa": "Vérifiez les autorisations de l'utilisateur de l'API",
+  "36872d0e45cc89b7": "Créez des clés d'API avec ces droits",
+  "8fe0ee2818e1a262": "Attribuez ces ensembles d'autorisations à l'application de la clé d'API",
+  "b828b04bcaa6d9ec": "Accordez l'accès au calcul au rôle de la clé d'API",
+  "60baec214b51fd2c": "Accordez ces autorisations à l'utilisateur de l'API",
+  "4b37a3a8a263e631": "Attribuez à l'identifiant le rôle de membre sur le projet",
+  "f7869c64ce902b34": "Créez un jeton d'API Read & Write dans le projet",
+  "5593dd92988f9fcc": "Créez un jeton avec lecture et écriture sur Linodes",
+  "ac835c2ee2f47708": "Créez un jeton avec ces portées"
 }

@@ -1462,6 +1462,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profile/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                apiVersion: "v4" | "v4beta";
+            };
+            cookie?: never;
+        };
+        get: operations["get-profile-grants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/regions": {
         parameters: {
             query?: never;
@@ -5290,6 +5308,111 @@ export interface operations {
                         readonly verified_phone_number?: string | null;
                     };
                 };
+            };
+        };
+    };
+    "get-profile-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                apiVersion: "v4" | "v4beta";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        database?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        domain?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        firewall?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        global?: {
+                            /** @enum {string|null} */
+                            account_access?: "read_only" | "read_write" | null;
+                            add_databases?: boolean;
+                            add_domains?: boolean;
+                            add_firewalls?: boolean;
+                            add_images?: boolean;
+                            add_linodes?: boolean;
+                            add_longview?: boolean;
+                            add_nodebalancers?: boolean;
+                            add_stackscripts?: boolean;
+                            add_volumes?: boolean;
+                            add_vpcs?: boolean;
+                            cancel_account?: boolean;
+                            child_account_access?: boolean | null;
+                            longview_subscription?: boolean;
+                        };
+                        image?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        linode?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        longview?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        nodebalancer?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        stackscript?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        volume?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                        vpc?: {
+                            id?: number;
+                            readonly label?: string;
+                            /** @enum {string|null} */
+                            permissions?: "read_only" | "read_write" | null;
+                        }[];
+                    };
+                };
+            };
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

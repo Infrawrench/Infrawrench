@@ -7,6 +7,7 @@ import { civoRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { civoTerraformExport } from "./terraform.js";
+import { CIVO_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "civo",
@@ -39,6 +40,8 @@ export const manifest = {
   preflight: CIVO_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: CIVO_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

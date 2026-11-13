@@ -8,6 +8,7 @@ import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { vultrRemediationCommands } from "./remediation.js";
 import { vultrTerraformExport } from "./terraform.js";
+import { VULTR_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "vultr",
@@ -48,6 +49,8 @@ export const manifest = {
   statusFeed,
   // Vultr allows 30 requests per second per key; listers fan out at most 6 wide.
   rateLimit: { capacity: 30, refillPerSecond: 20 },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: VULTR_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

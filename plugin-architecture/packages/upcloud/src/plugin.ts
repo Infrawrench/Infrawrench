@@ -7,6 +7,7 @@ import { upcloudRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { upcloudTerraformExport } from "./terraform.js";
+import { UPCLOUD_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "upcloud",
@@ -68,6 +69,8 @@ export const manifest = {
   preflight: UPCLOUD_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: UPCLOUD_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

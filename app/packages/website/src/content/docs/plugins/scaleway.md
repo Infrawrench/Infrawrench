@@ -48,6 +48,23 @@ In the Scaleway Console, go to **Identity and Access Management > API keys > Gen
 - **DNS**: create and edit one record at a time. Leave the name empty (or `@`) for the zone apex.
 - A public Container Registry namespace is flagged on the security posture page.
 
+## Run CI jobs
+
+A Scaleway connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets fresh compute in the job's `cloud.region` (`fr-par-1` for an Instance, `fr-par` for a job when it names none), started with the job's bootstrap as cloud-init user data or a container's command, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                            | Default `machine` | Default `image`                               |
+| ------------ | -------------------------------------------------- | ----------------- | --------------------------------------------- |
+| `vm`         | An Instance with a 20 GB Block Storage root volume | `PLAY2-NANO`      | `ubuntu_noble`                                |
+| `container`  | A Serverless Jobs run                              | `2vcpu-4gb`       | `docker.io/library/buildpack-deps:noble-curl` |
+
+A Serverless Jobs `machine` is `<vCPUs>vcpu-<GiB>gb`, at most 6 vCPUs and 16 GB, and a job runs at most 24 hours. Its image must be `linux/amd64`; Docker Hub images work, within Docker Hub's rate limits.
+
+Neither holds Scaleway credentials. An Instance gets cloud-init user data and a dynamic address that goes with it; note that Scaleway adds the project's SSH keys to every Instance. A job run gets the bootstrap as its arguments and nothing else.
+
+As a backstop an Instance powers itself off when the job's time is up, which ends its compute bill; its root volume is billed until Infrawrench deletes it at the end of the job, or its cleanup later finds the Instance by tag. Instances are billed by the hour. A job run ends at the job's timeout and is billed by the second.
+
+Opting in reads the key's application in IAM and names missing permission sets: `InstancesFullAccess` and `BlockStorageFullAccess` for `vm`, `ServerlessJobsFullAccess` for `container` (`AllProductsFullAccess` covers both). Reading them needs `IAMReadOnly`; without it, or for a user's key, the check falls back to reads. If the connection has no Default Project ID, jobs run in the key's own default project.
+
 ## Tips & limits
 
 - Resources belong to a Project. Pick the default when you add the account.

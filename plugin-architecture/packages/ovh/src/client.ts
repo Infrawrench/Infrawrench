@@ -31,6 +31,21 @@ import { fetchOvhCostData } from "./cost-data.js";
 import { isAccessRefusal, OvhApiError, perRegion, readList, reportTypeUnread } from "./lists.js";
 import * as extras from "./extras.js";
 import type { OvhApi } from "./extras.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  ovhCiListTagged,
+  ovhCiPreflight,
+  ovhCiStart,
+  ovhCiStatus,
+  ovhCiTeardown,
+} from "./ci-executor.js";
 
 function ovhSshUsername(imageName: string): string {
   const lower = imageName.toLowerCase();
@@ -1429,6 +1444,26 @@ export class OvhClient implements PluginClient {
         lines.length > 0 ? lines.join("\n") + "\n" : "No recent log messages for this cluster.\n",
       );
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => ovhCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ovhCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ovhCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ovhCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ovhCiListTagged(this.api, tagKey, regions));
   }
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {

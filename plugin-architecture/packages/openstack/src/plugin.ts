@@ -6,6 +6,7 @@ import { OpenStackClient } from "./client.js";
 import { openstackRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resources.js";
 import { openstackTerraformExport } from "./terraform.js";
+import { OPENSTACK_CI_EXECUTOR } from "./ci-executor.js";
 
 /** OpenStack mark from simple-icons (CC0), white on the brand red. */
 const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -131,6 +132,8 @@ export const manifest = {
   ]),
   rateLimit: { capacity: 20, refillPerSecond: 10 },
   quotas: { label: "Quotas", partial: true },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: OPENSTACK_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

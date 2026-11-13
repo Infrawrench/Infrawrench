@@ -24,6 +24,7 @@ import { RegistryNamespaceResourceType } from "./resources/registry-namespace.js
 import { SecretResourceType } from "./resources/secret.js";
 import { DnsZoneResourceType } from "./resources/dns-zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
+import { SCALEWAY_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "scaleway",
@@ -81,6 +82,8 @@ export const manifest = {
   },
   statusFeed,
   priceCatalog: scalewayPriceCatalog,
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: SCALEWAY_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

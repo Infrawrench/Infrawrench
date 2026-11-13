@@ -23,6 +23,12 @@ import type {
   QuotaUsage,
   PriceCatalogRequest,
   PriceCatalogResult,
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
 } from "@infrawrench/plugin-base";
 import {
   buildCostEstimate,
@@ -43,6 +49,13 @@ import {
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { idSegment } from "./api.js";
+import {
+  doCiListTagged,
+  doCiPreflight,
+  doCiStart,
+  doCiStatus,
+  doCiTeardown,
+} from "./ci-executor.js";
 import { createDoApi, PICKER, type DoApi } from "./api.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -2161,6 +2174,27 @@ export class DigitalOceanClient implements PluginClient {
       const cfg = await this.getSpacesConfig(bucket);
       return putS3BucketPolicy(cfg, bucket, manifest);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => doCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => doCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => doCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => doCiTeardown(this.api, handle));
+  }
+
+  /** Droplets are listed account-wide, so `regions` does not narrow it. */
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => doCiListTagged(this.api, tagKey));
   }
 
   // Satisfy the required fields from DOKSClusterResourceType and ManagedDatabaseResourceType

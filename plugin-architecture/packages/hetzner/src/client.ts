@@ -58,6 +58,21 @@ import {
 } from "./storage-boxes.js";
 import { createRateCardCache, type RateCardCache } from "./pricing.js";
 import { fetchHetznerPriceCatalog } from "./price-catalog.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  hetznerCiListTagged,
+  hetznerCiPreflight,
+  hetznerCiStart,
+  hetznerCiStatus,
+  hetznerCiTeardown,
+} from "./ci-executor.js";
 
 /**
  * Hetzner Cloud plugin client.
@@ -2166,6 +2181,26 @@ export class HetznerClient implements PluginClient {
         request,
       );
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => hetznerCiPreflight(this.cloud, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => hetznerCiStart(this.cloud, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => hetznerCiStatus(this.cloud, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => hetznerCiTeardown(this.cloud, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => hetznerCiListTagged(this.cloud, tagKey));
   }
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {

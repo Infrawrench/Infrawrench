@@ -32,6 +32,21 @@ import type {
   CivoObjectStoreCredential,
 } from "./types.js";
 import { applyUpdate } from "./update.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  civoCiListTagged,
+  civoCiPreflight,
+  civoCiStart,
+  civoCiStatus,
+  civoCiTeardown,
+} from "./ci-executor.js";
 
 type Lister = (ctx: listers.ListContext, accountId: string) => Promise<ResourceInstance[]>;
 
@@ -401,6 +416,26 @@ export class CivoClient implements PluginClient {
     return attempt(async () => {
       return this.storage.upload(bucket, key, file, onProgress);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => civoCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => civoCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => civoCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => civoCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => civoCiListTagged(this.api, tagKey, regions));
   }
 
   makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
