@@ -79,6 +79,7 @@ describe("getClickHouseClient", () => {
           async_insert: 1,
           wait_for_async_insert: 0,
           date_time_input_format: "best_effort",
+          output_format_json_quote_64bit_integers: 1,
         },
       }),
     );

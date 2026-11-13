@@ -106,6 +106,13 @@ export function getClickHouseClient(): ClickHouseClient {
       // bit the in-cluster deployment (and CI), where the metric writers
       // swallowed the rejection and the pipeline read as silently empty.
       date_time_input_format: "best_effort",
+      // UInt64/Int64 columns (`tags_hash`, `pair_hash`) are read back as
+      // strings only if the server quotes them in JSON. ClickHouse Cloud and
+      // servers before 25.8 did by default; from 25.8 the default is off, so
+      // the in-cluster 26.3 server sent bare numbers, JSON.parse rounded them
+      // to the nearest double, and every tombstone keyed on a read-back hash
+      // landed on a key no row has: the row it was meant to zero stayed.
+      output_format_json_quote_64bit_integers: 1,
     },
     // Only `@clickhouse/client-web` (the edge alias) reads this; the Node
     // client's config type has no such field, hence the widening.

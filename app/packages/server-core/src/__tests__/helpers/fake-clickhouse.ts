@@ -60,7 +60,10 @@ function shadowClient(): ClickHouseClient | null {
     // Synchronous inserts (no async_insert) so a rejected body fails the
     // issuing test, and no keep-alive so workers exit cleanly.
     keep_alive: { enabled: false },
-    clickhouse_settings: { date_time_input_format: "best_effort" },
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+      output_format_json_quote_64bit_integers: 1,
+    },
   });
   return shadow;
 }
