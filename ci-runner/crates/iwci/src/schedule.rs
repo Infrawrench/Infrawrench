@@ -662,6 +662,10 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
 pub struct MemoryBudget {
     total: u64,
     used: AtomicU64,
+    /// The memory asked for by jobs that are ready but not started, for
+    /// `/v1/capacity`'s `memory_waiting`: the work a runner has admitted
+    /// beyond what it holds.
+    waiting: AtomicU64,
     /// The runs to wake when memory is given back.
     waiters: Mutex<Vec<Weak<Wake>>>,
 }
@@ -671,6 +675,7 @@ impl MemoryBudget {
         Self {
             total,
             used: AtomicU64::new(0),
+            waiting: AtomicU64::new(0),
             waiters: Mutex::default(),
         }
     }
@@ -681,6 +686,12 @@ impl MemoryBudget {
 
     pub fn used(&self) -> u64 {
         self.used.load(Ordering::SeqCst)
+    }
+
+    /// What the jobs queued in every run sharing the budget ask for: ready
+    /// to start, waiting for memory (or for one of their run's workers).
+    pub fn waiting(&self) -> u64 {
+        self.waiting.load(Ordering::SeqCst)
     }
 
     /// Takes `bytes` if they fit.
@@ -826,6 +837,52 @@ struct State<'p> {
     reports: HashMap<String, Vec<JobReport>>,
     /// Set by the worker threads when they stop, so the lookup threads do.
     done: bool,
+    /// What `queue` asks of the runner's budget.
+    queued: Queued,
+}
+
+impl<'p> State<'p> {
+    fn enqueue(&mut self, entry: (&'p JobTemplate, PlannedJob, Lookup)) {
+        self.queued.add(entry.1.memory_bytes);
+        self.queue.push(entry);
+    }
+
+    fn dequeue(&mut self, pos: usize) -> (&'p JobTemplate, PlannedJob, Lookup) {
+        let entry = self.queue.remove(pos);
+        self.queued.remove(entry.1.memory_bytes);
+        entry
+    }
+}
+
+/// A run's share of [`MemoryBudget::waiting`]: what its queued jobs ask
+/// for. Whatever is left when the run ends (a worker that panicked) is
+/// taken off then, so a runner never reports work it no longer has.
+struct Queued {
+    budget: Option<Arc<MemoryBudget>>,
+    bytes: u64,
+}
+
+impl Queued {
+    fn add(&mut self, bytes: u64) {
+        self.bytes += bytes;
+        if let Some(budget) = &self.budget {
+            budget.waiting.fetch_add(bytes, Ordering::SeqCst);
+        }
+    }
+
+    fn remove(&mut self, bytes: u64) {
+        self.bytes -= bytes;
+        if let Some(budget) = &self.budget {
+            budget.waiting.fetch_sub(bytes, Ordering::SeqCst);
+        }
+    }
+}
+
+impl Drop for Queued {
+    fn drop(&mut self) {
+        let bytes = self.bytes;
+        self.remove(bytes);
+    }
 }
 
 /// Task cache lookups in flight at once, per run. A lookup is a blocking
@@ -946,6 +1003,10 @@ pub fn run<T: Tools>(
         running: 0,
         reports: HashMap::new(),
         done: false,
+        queued: Queued {
+            budget: options.memory.clone(),
+            bytes: 0,
+        },
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -1030,7 +1091,7 @@ pub fn run<T: Tools>(
                         Looked::Run(lookup) => {
                             let mut s = state.lock().unwrap();
                             s.running -= 1;
-                            s.queue.push((template, job, lookup));
+                            s.enqueue((template, job, lookup));
                             drop(s);
                             wake.notify_all();
                         }
@@ -1062,7 +1123,7 @@ pub fn run<T: Tools>(
                                     .rposition(|(_, j, _)| budget.try_take(j.memory_bytes)),
                             };
                             if let Some(pos) = fits {
-                                let (template, job, lookup) = s.queue.remove(pos);
+                                let (template, job, lookup) = s.dequeue(pos);
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
@@ -1325,7 +1386,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     if job.task_cache.is_some() && options.caches.is_some() {
                         s.lookups.push((template, job));
                     } else {
-                        s.queue.push((template, job, Lookup::default()));
+                        s.enqueue((template, job, Lookup::default()));
                     }
                 }
             }

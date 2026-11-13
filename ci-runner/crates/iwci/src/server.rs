@@ -420,6 +420,8 @@ impl Server {
             "runs_active": self.active.load(Ordering::SeqCst),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
             "memory_used": self.runner.memory.as_ref().map(|m| m.used()),
+            // What queued jobs ask for on top, for the proxy's placement (#1089).
+            "memory_waiting": self.runner.memory.as_ref().map(|m| m.waiting()),
             // The process's own memory against that (#1035).
             "memory_host": self.memory_host,
             "memory_reserve": self.memory_reserve,

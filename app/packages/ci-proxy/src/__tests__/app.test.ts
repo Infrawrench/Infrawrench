@@ -145,7 +145,7 @@ describe("proxy", () => {
     expect((await call("GET", "/v1/capacity")).status).toBe(200);
   });
 
-  it("places runs on the runner with the most free slots and routes back by id", async () => {
+  it("places runs by free slots when no runner reports memory, and routes back by id", async () => {
     const a = new FakeRunner("http://a.test", 8, 1);
     const b = new FakeRunner("http://b.test", 8, 5);
     const { call } = await setup([a, b]);

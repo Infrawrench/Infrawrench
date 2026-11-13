@@ -804,6 +804,88 @@ fn a_run_waits_for_memory_another_run_holds() {
 }
 
 #[test]
+fn queued_jobs_count_as_waiting_memory_until_they_start() {
+    // #1089: `/v1/capacity`'s `memory_waiting` is what a runner has
+    // admitted beyond what it holds, so the proxy can tell a runner whose
+    // budget is spoken for from one with room.
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    let first = plan("name: first\njobs:\n  hog:\n    using: builtin:gate@1\n    memory: 1GiB\n");
+    let second = plan(
+        "name: second\njobs:\n  a:\n    using: builtin:ok@1\n    memory: 512MiB\n  b:\n    using: builtin:ok@1\n    memory: 256MiB\n  c:\n    using: builtin:ok@1\n    memory: 128MiB\n    needs: [a]\n",
+    );
+    let first_exec = Gated::new();
+    let second_exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| {
+            first_exec.open();
+            budget.give(1 << 30);
+        });
+        let first_run = scope.spawn(|| run_sharing(&first, &first_exec, &budget));
+        eventually("`hog` to start", || first_exec.ran() == ["hog"]);
+        // Started: held, not waiting.
+        assert_eq!(budget.waiting(), 0);
+        let second_run = scope.spawn(|| run_sharing(&second, &second_exec, &budget));
+        // `a` and `b` are ready and wait for memory; `c` is not ready yet,
+        // so it asks for nothing until `a` is done.
+        eventually("`a` and `b` to wait", || budget.waiting() == 768 << 20);
+        first_exec.open();
+        assert!(first_run.join().unwrap().passed());
+        assert!(second_run.join().unwrap().passed());
+    });
+    assert_eq!(budget.waiting(), 0, "nothing is left waiting");
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn a_cancelled_run_leaves_nothing_waiting() {
+    let budget = Arc::new(MemoryBudget::new(1 << 30));
+    assert!(budget.try_take(1 << 30)); // another run's
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:ok@1\n    memory: 512MiB\n  b:\n    using: builtin:ok@1\n    memory: 512MiB\n",
+    );
+    let cancel = iwci_runtime::Cancel::new();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| budget.give(1 << 30));
+        let run = scope.spawn(|| {
+            let options = Options {
+                parallelism: 4,
+                changed_paths: None,
+                base_env: Vec::new(),
+                memory: Some(budget.clone()),
+                caches: None,
+                logs: None,
+                slots: None,
+                secrets: BTreeMap::new(),
+                skip_task_cache: false,
+                downloads: None,
+                cancel: Some(cancel.clone()),
+            };
+            run(
+                &p,
+                &ws,
+                &FakeTools,
+                &exec,
+                &FakeCommitter(Mutex::default()),
+                &options,
+            )
+        });
+        eventually("`a` and `b` to wait", || budget.waiting() == 1 << 30);
+        cancel.cancel();
+        run.join().unwrap();
+    });
+    assert!(exec.ran().is_empty());
+    assert_eq!(budget.waiting(), 0);
+    assert_eq!(budget.used(), 1 << 30, "only the other run's is held");
+}
+
+#[test]
 fn memory_another_run_gives_back_is_taken_while_the_run_is_busy() {
     // Memory given back while the run waits on work of its own (here a
     // small job that fits beside another run's) is used at once, not when

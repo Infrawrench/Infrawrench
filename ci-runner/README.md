@@ -1830,7 +1830,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved, the process's own memory (below), and V8's out-of-memory losses (below).                                             |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), and V8's out-of-memory losses (below).                              |
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
@@ -1870,7 +1870,12 @@ A request body (for `runs` and `prepare`):
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
 - **Memory.** `memory_total` and `memory_used` are the job budget and what
-  running jobs have reserved of it. Beside them, each `null` where it
+  running jobs have reserved of it. `memory_waiting` is the memory asked
+  for by jobs that are ready but not started (waiting for memory, or for
+  one of their run's workers), across every run; a job whose `needs` have
+  not finished counts only once it is ready. The proxy places runs by these
+  three (`app/packages/ci-proxy`, "Placement"); a runner from before
+  `memory_waiting` leaves it out. Beside them, each `null` where it
   cannot be read: `memory_host` (the host's memory, or the service's
   cgroup limit), `memory_reserve` (`--memory-reserve`), `memory_resident`
   and `memory_anonymous` (the process's resident memory and the part of it
