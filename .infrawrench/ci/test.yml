@@ -18,6 +18,14 @@
 # Every job is task-cached: one whose files, the shared config and what it
 # is handed have not changed since a passing run is not run again.
 #
+# Every `using:` names an exact version. A range (`env:bash-node@24`) runs
+# whatever was published last, but the task cache keys on the text, so a
+# new environment would only reach the jobs whose key changed for another
+# reason. To move to a new version, change every `using:` of that tool in
+# this file in one commit: every job that uses it then runs once on it.
+# A job naming a version that does not exist fails listing the ones that
+# do (`using: env:bash-node@0.0.0`).
+#
 # rolldown (under Vite, Vitest and tsdown) runs as its wasm32-wasi build:
 # the runner installs the WebAssembly builds of native packages and gives
 # Node a working `node:wasi`. rolldown leaves that build out of its own
@@ -52,7 +60,7 @@ jobs:
   # native binary); the typecheck only reads that module's type, a string.
   prep:
     name: Prepare generated files
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     deps: false
     artifacts:
       - app/packages
@@ -66,15 +74,19 @@ jobs:
   # the packages that use it. Declarations are `build`'s.
   # Each waits for the libraries it depends on, though tsdown does not read
   # them: that is what hands every library's dist/ down the whole chain, so
-  # a test two levels up still has plugin-base's.
+  # a test two levels up still has plugin-base's. tsdown leaves workspace
+  # dependencies external (every library lists them as dependencies or peer
+  # dependencies), so what it is handed is left out of its task cache key:
+  # a change to plugin-base rebuilds plugin-base, not the bundles above it.
+  # The tests are still keyed on every dist/ they are handed.
   bundle:
     name: Bundle ${{ package.name }}
     packages: { scripts: { build: "tsdown*" } }
     needs: ["^bundle"]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     run: node node_modules/tsdown/dist/run.mjs --no-dts
     artifacts: [dist]
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: { root-inputs: [tsconfig.base.json], artifacts: false }
     memory: 3GiB
     timeout: 20m
 
@@ -105,7 +117,7 @@ jobs:
     packages:
       scripts: { test: "*vitest run*" }
     needs: [prep, bundle, "^bundle"]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     run: |
@@ -122,7 +134,7 @@ jobs:
     name: Library ${{ package.name }}
     packages: { scripts: { build: "tsdown*" } }
     needs: [prep, "^build"]
-    using: builtin:typescript@7.1
+    using: builtin:typescript@7.1.0
     args:
       [
         --noEmit,
@@ -148,7 +160,7 @@ jobs:
     packages:
       scripts: { build: "!tsdown*", typecheck: "tsc --noEmit*" }
     needs: [prep, "^build"]
-    using: builtin:typescript@7.1
+    using: builtin:typescript@7.1.0
     args: [--noEmit, -p, .]
     task-cache: { root-inputs: [tsconfig.base.json] }
     memory: 6GiB
@@ -161,7 +173,7 @@ jobs:
       has: [edge]
       scripts: { typecheck: "*tsc --noEmit -p edge*" }
     needs: [prep, "^build"]
-    using: builtin:typescript@7.1
+    using: builtin:typescript@7.1.0
     args: [--noEmit, -p, edge]
     task-cache: { root-inputs: [tsconfig.base.json] }
     memory: 6GiB
@@ -173,7 +185,7 @@ jobs:
     name: Typecheck desktop (${{ matrix }})
     matrix: [tsconfig.node.json, tsconfig.web.json]
     needs: [prep, build]
-    using: builtin:typescript@7.1
+    using: builtin:typescript@7.1.0
     cwd: /app/app/packages/desktop
     args: [--noEmit, -p, "${{ matrix }}"]
     task-cache:
@@ -187,7 +199,7 @@ jobs:
   mobile:
     name: Typecheck mobile (TypeScript 6)
     needs: [prep, build]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/app/packages/mobile
     # The runner's installer writes no node_modules/.bin, so the package's
     # own entry point, as `tsc6` would run it.
@@ -200,7 +212,7 @@ jobs:
 
   plugingen:
     name: Typecheck plugingen (TypeScript 6)
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/plugingen
     run: node node_modules/typescript/bin/tsc6 --noEmit
     task-cache: { inputs: [plugingen/**] }
@@ -217,7 +229,7 @@ jobs:
   # telemetry settings under HOME, which a job's environment does not set.
   website:
     name: Typecheck website (astro check)
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/app/packages/website
     env:
       HOME: /tmp
@@ -235,7 +247,7 @@ jobs:
   # none.
   translations-audit:
     name: Translations audit
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/app/packages/web
     env: { HOME: /tmp }
     run: node scripts/translation-audit.mjs
@@ -253,7 +265,7 @@ jobs:
 
   translations-status:
     name: Translations status
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/app/packages/web
     env: { HOME: /tmp }
     run: node scripts/translation-status.mjs
@@ -270,7 +282,7 @@ jobs:
     deps: &prettier-deps
       - pnpm:
           only: ["."]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app
     run: >-
       node node_modules/prettier/bin/prettier.cjs --check
@@ -285,7 +297,7 @@ jobs:
   prettier-rest:
     name: Prettier (outside the packages)
     deps: *prettier-deps
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     run: |
       shopt -s dotglob nullglob
       paths=()
@@ -317,11 +329,11 @@ jobs:
     deps:
       - pnpm:
           only: [app/packages/web]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     cwd: /app/app/packages/web
     services:
       postgres:
-        using: env:postgres@18
+        using: env:postgres@18.4.2
         run: pglite-server
         ready: { port: 5432 }
     env:
@@ -362,7 +374,7 @@ jobs:
       - pnpm:
           only: [app/packages/vscode]
     needs: ["^bundle"]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     # The package script (esbuild, then `vsce package` on a staged copy in
@@ -389,7 +401,7 @@ jobs:
       - pnpm:
           only: [app/packages/raycast]
     needs: ["^bundle"]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     run: |
