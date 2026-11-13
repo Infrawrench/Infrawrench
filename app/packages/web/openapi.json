@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.105.0",
+    "version": "1.106.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -517,6 +517,7 @@
           "baseten",
           "better-stack",
           "bitbucket",
+          "boat",
           "buildkite",
           "bunny",
           "cartesia",
@@ -1628,7 +1629,9 @@
           "s3-bucket",
           "sagemaker-endpoint",
           "sambanova-model",
+          "sandbox",
           "saved-query",
+          "saved-snapshot",
           "schedule",
           "scheduled-function",
           "schema-registry",

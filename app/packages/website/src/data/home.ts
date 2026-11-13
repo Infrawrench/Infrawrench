@@ -6,7 +6,7 @@
  * as "N+"; the logo strip's "and N more" is exact, so it sums with the named
  * logos to the total.
  */
-const PROVIDER_COUNT = 152;
+const PROVIDER_COUNT = 153;
 export const PROVIDER_COUNT_COPY = `${Math.floor(PROVIDER_COUNT / 10) * 10}+`;
 
 /** Logos in the strip under the hero; each has an SVG in `public/providers/`. */

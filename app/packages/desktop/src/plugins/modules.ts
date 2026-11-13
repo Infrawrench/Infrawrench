@@ -163,4 +163,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-nomad"),
   () => import("@infrawrench/plugin-consul"),
   () => import("@infrawrench/plugin-nats"),
+  () => import("@infrawrench/plugin-boat"),
 ];

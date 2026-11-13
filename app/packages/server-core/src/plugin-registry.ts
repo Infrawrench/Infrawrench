@@ -153,6 +153,7 @@ import { plugin as prometheusPlugin } from "@infrawrench/plugin-prometheus";
 import { plugin as nomadPlugin } from "@infrawrench/plugin-nomad";
 import { plugin as consulPlugin } from "@infrawrench/plugin-consul";
 import { plugin as natsPlugin } from "@infrawrench/plugin-nats";
+import { plugin as boatPlugin } from "@infrawrench/plugin-boat";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -314,4 +315,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   nomadPlugin,
   consulPlugin,
   natsPlugin,
+  boatPlugin,
 ];

@@ -15,7 +15,7 @@ import type { LoadedPlugin } from "@/plugins/loader";
 describe("SSH endpoint parity", () => {
   let plugins: LoadedPlugin[];
 
-  // Loading all 152 plugins takes several seconds under a busy test run.
+  // Loading all 153 plugins takes several seconds under a busy test run.
   beforeAll(async () => {
     plugins = await loadPlugins();
   }, 120_000);

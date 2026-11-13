@@ -159,6 +159,7 @@ infrawrench/
 │   ├── nomad/                # @infrawrench/plugin-nomad
 │   ├── consul/               # @infrawrench/plugin-consul
 │   ├── nats/                 # @infrawrench/plugin-nats
+│   ├── boat/                 # @infrawrench/plugin-boat
 
 │   ├── circleci/             # @infrawrench/plugin-circleci
 │   ├── devin/                # @infrawrench/plugin-devin (Devin AI engineer: ACU cost, sessions)
@@ -2884,6 +2885,22 @@ Verified against docs.spacelift.io/integrations/api, the official Bruno collecti
 - **Preflight**: `varz`/`jsz`/`accounts` (monitoring, "missing" without a URL), `client` (connect + auth) and `jetstream` (account info), none essential, since either endpoint alone is a working account.
 - **Metrics/quotas**: point-in-time readings. Quotas need monitoring: `max_connections`, JetStream `max_storage`/`max_memory`.
 - **Terraform**: `nats-io/jetstream` ~> 0.4: `jetstream_stream` (import `JETSTREAM_STREAM_<name>`), `jetstream_consumer` (`stream_id = "JETSTREAM_STREAM_<stream>"`, import `JETSTREAM_STREAM_<stream>_CONSUMER_<durable>`), durations converted to seconds; KV/OBJ streams, the bucket and object-store types, and ephemeral consumers are skipped.
+
+### boat (`@infrawrench/plugin-boat`)
+
+Cloud sandboxes for AI agents (persistent Ubuntu VMs, boat.dev). Verified 2026-11 against the Public API v1 document (`https://docs.boat.dev/openapi/boat-v1.yaml`, typed through `plugingen.json`; the document has no version prefix in its paths, the server is `https://boat.dev/api/v1`) and https://docs.boat.dev. Things the code does not make obvious:
+
+- **Auth and org.** `Authorization: Bearer boat_…` (old `box_` keys still work). The optional `org` credential (picker over `GET /orgs`, `type: "org"` rows) goes out as `X-Boat-Org` on every call; without it boat uses the key owner's active wallet. Every success carries `ok: true` and a `type`; errors are `{ok: false, status, code, message, error, requestId}`, which `BoatApiError` reads either way round.
+- **Sandboxes and saved snapshots are creator-private**, so an account lists its owner's sandboxes plus the organization sandboxes it can see (`access` says which: `owner`/`use`/`view`). A sandbox's `state` uses `archived` for what the CLI calls stopped; `online` (ready/idle/running) is a derived boolean because `sshEndpoint.runningWhen` takes one value. `ttlSeconds: null` means auto-stop is off, which is the `boat-autostop-disabled` posture check (running sandboxes only).
+- **Deletes need `X-Ascii-Confirm-Delete: <sandboxId>`** or boat answers 409; the delete is a 202 deletion operation. Create and fork send a fresh `Idempotency-Key`, so a host retry after a lost answer does not start a second billed machine.
+- **No catalog of sizes.** `sizes.ts` writes down vCPU/RAM/disk per size from docs.boat.dev/machines; the price is live (`/limits` `overagePrices.vmHourDollars` times the size multiplier: 0.5, 1, 2, 50/9) and `machineTypes[]` marks sizes the plan cannot create. A size changes only on resume or fork.
+- **Hosts discard prompt results**, so the Hosted Port URL a `host-port` prompt gets back (a private one carries `_token`) is stored as a secret (`hostedUrls`, JSON port to URL) and served as a sensitive output. The webhook `whsec_` signing secret, shown once on create and rotate, is stored the same way. `desktopUrl` carries a token too and is fetched on demand, never synced. SSH needs `POST /sandboxes/{id}/sshkey` first (the Authorize SSH key prompt); the user is `user`, and the SSH command uses `sshEndpoint` (host:port relay) when boat sets it, since the host's SSH endpoint cannot carry a port.
+- **Costs** come from `GET /sandboxes/{id}/usage?since&until` (billable seconds with the size multiplier applied, and dollars at list), the meter boat bills from, per sandbox per UTC day. One call over the range first, then day by day only for sandboxes that ran, clipped to `createdAt`..`stoppedAt`. List price before plan-included hours, no plan fee/snapshot overage/extra starts/AI proxy (v1 has no billing routes), hence `estimated: true`. A sandbox deleted before collection reached its last day loses that tail; `include=deletedCost` was not used because it is a month-to-date total that would double-count days already stored per resource. Cost rows carry labels as tags but not size, since boat reports only the current size.
+- **Credits** = `/limits` `wallet.balanceDollars` (absent on unlimited accounts, returned as no balance). **Quotas** from `/limits` and the saved-snapshot `allowance`: only sandboxes-at-once refuses; starts past the windows, VM time past the plan and snapshots past the included count are paid from the wallet, which the quota names say.
+- **`GET /api-keys` answers a scoped key with `apiKeys: []`**, not a 403, so a scoped account shows no API keys. A key with no `scope` is legacy full access (`admin`).
+- **Environments** expose `envContents` (the latest version's `.env` text) and secret file contents; only variable names and file paths are synced. Env vars are set and removed one at a time (`PUT/DELETE /environments/{id}/vars/{key}`), each minting a new version; `POST /environments/{id}/upgrade` moves sandboxes onto it. `GET /environments` creates a `base` environment on first access.
+- **Status feed** is boat's own static page: `status.boat.dev/status.json` is synthetic probes (`components[]` with `operational`/`degraded`/`outage`/`unknown`) plus `announcements[]` (`critical`/`warning`/`info`). A failing probe is one incident keyed by its name; `info` announcements and the Dashboard probe are ignored. Probe names still say "Box" (boat's old name).
+- **Not done**: commands/files/processes (an agent surface, not inventory), credential profiles and the AI proxy settings, telemetry export, CI, regions (boat runs only in Europe and the API has none), Terraform export (no provider exists), creating API keys (`POST /api-keys/scoped` needs a browser session or admin key and may answer 503 until enabled).
 
 ---
 

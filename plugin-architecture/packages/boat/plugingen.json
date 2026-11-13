@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.boat.dev/openapi/boat-v1.yaml",
+  "paths": {
+    "/me": ["get"],
+    "/orgs": ["get"],
+    "/limits": ["get"],
+    "/api-keys": ["get"],
+    "/api-keys/{apiKeyId}": ["delete"],
+    "/webhooks": ["get", "post"],
+    "/webhooks/{webhookId}": ["get", "patch", "delete"],
+    "/webhooks/{webhookId}/rotate": ["post"],
+    "/environments": ["get", "post"],
+    "/environments/{environmentId}": ["put", "delete"],
+    "/environments/{environmentId}/upgrade": ["post"],
+    "/environments/{environmentId}/vars/{key}": ["put", "delete"],
+    "/sandboxes": ["get", "post"],
+    "/sandboxes/{sandboxId}": ["get", "patch", "delete"],
+    "/sandboxes/{sandboxId}/stop": ["post"],
+    "/sandboxes/{sandboxId}/resume": ["post"],
+    "/sandboxes/{sandboxId}/fork": ["post"],
+    "/sandboxes/{sandboxId}/share": ["post"],
+    "/sandboxes/{sandboxId}/unshare": ["post"],
+    "/sandboxes/{sandboxId}/prompt": ["post"],
+    "/sandboxes/{sandboxId}/interrupt": ["post"],
+    "/sandboxes/{sandboxId}/desktop": ["post"],
+    "/sandboxes/{sandboxId}/host": ["post"],
+    "/sandboxes/{sandboxId}/sshkey": ["post"],
+    "/sandboxes/{sandboxId}/usage": ["get"],
+    "/saved-snapshots": ["get", "post"],
+    "/saved-snapshots/{name}": ["get", "delete"]
+  }
+}

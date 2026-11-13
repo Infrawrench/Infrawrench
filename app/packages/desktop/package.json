@@ -272,6 +272,7 @@
     "@infrawrench/plugin-nomad": "workspace:*",
     "@infrawrench/plugin-consul": "workspace:*",
     "@infrawrench/plugin-nats": "workspace:*",
+    "@infrawrench/plugin-boat": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

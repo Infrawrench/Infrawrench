@@ -462,4 +462,7 @@
 // gains `cancelled`, and `CiRun` gains optional `concurrencyGroups` and
 // `cancelRequested`. A cancelled run can be retried. Additive (new enum
 // values, which clients decode leniently).
-export const API_VERSION = "1.105.0";
+// 1.106.0: boat plugin. `pluginId` gains `boat` and `resourceTypeId` gains
+// its `sandbox`, `saved-snapshot`, `environment`, `webhook` and `api-key`
+// types. Additive.
+export const API_VERSION = "1.106.0";

@@ -281,6 +281,9 @@ importers:
       '@infrawrench/plugin-bitbucket':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/bitbucket
+      '@infrawrench/plugin-boat':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/boat
       '@infrawrench/plugin-buildkite':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/buildkite
@@ -1231,6 +1234,9 @@ importers:
       '@infrawrench/plugin-bitbucket':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/bitbucket
+      '@infrawrench/plugin-boat':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/boat
       '@infrawrench/plugin-buildkite':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/buildkite
@@ -2538,6 +2544,22 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/bitbucket:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(tsx@4.23.11)(unrun@0.3.1)
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/boat:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -21682,6 +21704,13 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
+  '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
+    dependencies:
+      '@emnapi/core': 1.11.2
+      '@emnapi/runtime': 1.11.2
+      '@tybys/wasm-util': 0.10.3
+    optional: true
+
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:
       '@emnapi/core': 2.0.0-beta.2
@@ -22024,7 +22053,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.2
       '@emnapi/runtime': 1.11.2
-      '@napi-rs/wasm-runtime': 1.2.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+      '@napi-rs/wasm-runtime': 1.2.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
     optional: true
 
   '@oxc-resolver/binding-win32-arm64-msvc@11.24.2':

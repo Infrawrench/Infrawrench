@@ -4,9 +4,9 @@ import { loadPlugins } from "@/plugins/loader";
 describe("plugin loader", () => {
   // The first call pays the cold import of every plugin, which takes well over
   // the default timeout on a busy machine; the rest of the file reuses it.
-  it("loads all 152 plugins successfully", async () => {
+  it("loads all 153 plugins successfully", async () => {
     const plugins = await loadPlugins();
-    expect(plugins).toHaveLength(152);
+    expect(plugins).toHaveLength(153);
   }, 120_000);
 
   it("each plugin has a valid manifest with required fields", async () => {
@@ -189,6 +189,7 @@ describe("plugin loader", () => {
       "nomad",
       "consul",
       "nats",
+      "boat",
     ];
     expect([...ids].sort()).toEqual([...expected].sort());
   });
