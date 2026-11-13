@@ -119,6 +119,27 @@ When a workload misbehaves, start with the pod's status, its logs and the namesp
 - [Service has no endpoints](https://infrawrench.com/blog/kubernetes-service-no-endpoints)
 - [kubectl can't connect to the server](https://infrawrench.com/blog/kubectl-unable-to-connect-to-the-server)
 
+## CI jobs
+
+A cluster can run [cloud jobs](../features/ci.md#cloud-jobs) of kind `cluster`: each job is a Kubernetes Job in a namespace, removed when the job ends.
+
+```yaml
+jobs:
+  integration:
+    cloud: { provider: kubernetes, kind: cluster, region: ci, machine: 4vcpu-8gb }
+    run: make integration
+```
+
+- `region` is the namespace (default: the kubeconfig context's namespace, or `default`). It has to exist.
+- `machine` is CPUs and memory, like `2vcpu-4gb` (the default) or `0.5vcpu-1gb`; the pod requests and is limited to that.
+- `image` is any image with a POSIX shell (default `buildpack-deps:noble-curl`). Images without `bash` or `curl` get them installed with their package manager when the job starts.
+- `gpu: nvidia:1` asks for `nvidia.com/gpu`; `amd:1` for `amd.com/gpu`; a full resource name such as `example.com/tpu:4` is used as written.
+- The pod gets no service account token and no service links, so the job cannot use the cluster's API with the connection's credentials. To deploy from a job, lend the connection with `connections:` instead.
+- The Job has `activeDeadlineSeconds` set to the job's time limit and is deleted with its pods when the job ends; a finished Job the cluster still has is removed after ten minutes.
+- The connection needs `create`, `get`, `list` and `delete` on `jobs.batch` in the namespace. **Check permissions** names any that are missing.
+
+A CoreWeave CKS, EKS, GKE, AKS or DOKS cluster runs jobs the same way once it's connected as a Kubernetes connection with its kubeconfig.
+
 ## Tips and limits
 
 - In the web app, terminals and port forwards go through Infrawrench's servers. Long sessions are fine, but heavy streaming over days (a continuous log tail, say) may reconnect.

@@ -4,6 +4,7 @@ import type {
   ResourceTypeDefinition,
   CredentialsOf,
 } from "@infrawrench/plugin-base";
+import { DOCKER_CI_EXECUTOR } from "./ci-executor.js";
 import { DockerClient } from "./client.js";
 import { DockerContainerResourceType } from "./resources/docker-container.js";
 import { DockerImageResourceType } from "./resources/docker-image.js";
@@ -39,6 +40,10 @@ export const manifest = {
     driver: "docker",
     credentialKey: "dockerHost",
   },
+  // CI jobs as a container per job on the daemon (`cloud: docker/container`),
+  // or a privileged container with a Docker daemon of its own for image
+  // builds (`cloud: docker/build`). See `ci-executor.ts`.
+  ciExecutor: DOCKER_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

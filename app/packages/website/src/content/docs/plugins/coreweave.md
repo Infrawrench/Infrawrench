@@ -64,6 +64,10 @@ The export covers CKS usage only for now. Object Storage cost is estimated per b
 
 Clusters, VPCs and buckets export to the official `coreweave/coreweave` provider as `coreweave_cks_cluster`, `coreweave_networking_vpc` and `coreweave_object_storage_bucket` blocks, each with its `terraform import` id. OIDC, webhook, audit-policy and kubelet settings and VPC host prefixes aren't included, so import and review the plan before you apply. Node Pools are Kubernetes objects and aren't exported. See [Export to Terraform](../features/terraform-export.md).
 
+## CI jobs
+
+To run [cloud jobs](../features/ci.md#cloud-jobs) on a CKS cluster, connect the cluster as a [Kubernetes](./kubernetes.md#ci-jobs) connection with its kubeconfig and opt that connection in. `gpu: nvidia:1` asks for a GPU node's `nvidia.com/gpu`.
+
 ## Tips & limits
 
 - **Rack-scale instances come in racks.** GB200, GB300 and Vera Rubin NVL72 Node Pools need a target that's a multiple of 18 and can't autoscale. Other sizes are refused before they're sent.

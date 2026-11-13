@@ -13,6 +13,12 @@ function makeClient(dockerHost: string): Dockerode {
   return new Dockerode({ host: url.hostname, port: Number(url.port) || 2375 });
 }
 
+/** The HTTP status dockerode puts on a failed call. */
+function statusCode(e: unknown): number | undefined {
+  const code = (e as { statusCode?: unknown } | null)?.statusCode;
+  return typeof code === "number" ? code : undefined;
+}
+
 /**
  * Where dockerode would connect: the local daemon socket for an empty host or
  * a `unix://` URL, otherwise the TCP endpoint `makeClient` builds.
@@ -118,6 +124,82 @@ export const driver = {
           await docker.getNetwork(params["id"] as string).remove();
           return { ok: true };
         }
+        // CI jobs (`ci-executor.ts`). The answers for a name in use, or a
+        // container that is gone, are values rather than errors: they are
+        // what a retry or a teardown expects to meet.
+        case "ciInfo": {
+          const info = (await docker.info()) as Record<string, unknown>;
+          return {
+            OSType: info["OSType"],
+            Architecture: info["Architecture"],
+            ServerVersion: info["ServerVersion"],
+          };
+        }
+        case "ciRun": {
+          const name = params["name"] as string;
+          const image = params["image"] as string;
+          const body = params["body"] as Dockerode.ContainerCreateOptions;
+          try {
+            const stream = await docker.pull(image);
+            await new Promise<void>((resolve, reject) => {
+              docker.modem.followProgress(stream, (err: Error | null) =>
+                err ? reject(err) : resolve(),
+              );
+            });
+          } catch (e: unknown) {
+            // A registry out of reach is fine when the image is already here.
+            const present = await docker
+              .getImage(image)
+              .inspect()
+              .then(() => true)
+              .catch(() => false);
+            if (!present) {
+              const msg = e instanceof Error ? e.message : String(e);
+              throw new Error(`Failed to pull image "${image}": ${msg}`, { cause: e });
+            }
+          }
+          let container: Dockerode.Container;
+          try {
+            container = await docker.createContainer({ ...body, name });
+          } catch (e: unknown) {
+            if (statusCode(e) === 409) return { conflict: true };
+            throw e;
+          }
+          await container.start();
+          return { id: container.id };
+        }
+        case "ciStartContainer": {
+          try {
+            await docker.getContainer(params["id"] as string).start();
+          } catch (e: unknown) {
+            // 304: already started.
+            if (statusCode(e) !== 304) throw e;
+          }
+          return { ok: true };
+        }
+        case "ciInspect": {
+          try {
+            return await docker.getContainer(params["id"] as string).inspect();
+          } catch (e: unknown) {
+            if (statusCode(e) === 404) return null;
+            throw e;
+          }
+        }
+        case "ciRemove": {
+          try {
+            await docker.getContainer(params["id"] as string).remove({ force: true, v: true });
+          } catch (e: unknown) {
+            // 404: gone. 409: AutoRemove is already removing it.
+            const status = statusCode(e);
+            if (status !== 404 && status !== 409) throw e;
+          }
+          return { ok: true };
+        }
+        case "ciList":
+          return docker.listContainers({
+            all: true,
+            filters: { label: [params["label"] as string] },
+          });
         default:
           throw new Error(`Docker driver: unknown op "${op}"`);
       }

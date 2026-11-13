@@ -23135,5 +23135,17 @@
   "52897e3fe91df6b2": "Was eine neue Sandbox enthält: Umgebungsvariablen, Secret-Dateien, Repositories und welche deiner Logins weitergegeben werden",
   "86a2354621173f5f": "Wenn aktiviert, gelangen keine deiner eigenen Zugangsdaten in Sandboxes dieser Umgebung",
   "3736b346cd988996": "Das Guthaben, über das das Konto abrechnet und auflistet. Leer verwendet das aktive Guthaben des Schlüsselinhabers.",
-  "5ad053bb54e17ece": "Dein Zugriff"
+  "5ad053bb54e17ece": "Dein Zugriff",
+  "e3c748b804b67d7a": "Fügen Sie diese Capabilities der ACL-Richtlinie des Tokens hinzu",
+  "bca280f4d93e0f29": "Verbinden Sie einen Docker-Daemon, den Infrawrench erreichen kann",
+  "c13de52645b86c6b": "Container auf dem Daemon",
+  "c7743a3aac490bfe": "Docker-Build-Container (privilegiert)",
+  "748551af21aab38c": "Vorhandener SSH-Host",
+  "ad4626a8db67499d": "Geben Sie dem API-Token eine Rolle mit diesen Berechtigungen",
+  "b7386ec8e8dac04c": "Geben Sie dem vCenter-Benutzer eine Rolle mit diesen Berechtigungen",
+  "e67761d515c19a42": "Gewähren Sie diese mit einer Role und einem RoleBinding im Namespace",
+  "2a4c6b9ed65f375b": "Installieren Sie als Benutzer der Verbindung, was dem Host fehlt",
+  "1d6230589a6d0682": "Kubernetes-Job",
+  "057446363226b9c1": "Nomad-Batch-Job",
+  "ab3389ba9a31b405": "Aus einer Vorlage geklonte VM"
 }

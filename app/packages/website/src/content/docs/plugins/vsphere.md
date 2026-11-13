@@ -49,6 +49,22 @@ By default vCenter signs its certificate with the VMware Certificate Authority. 
 
 <insert [vSphere VM detail view showing the power and guest actions, the Guest section with IP address and VMware Tools state, and attached tags] here>
 
+## CI jobs
+
+vCenter can run [cloud jobs](../features/ci.md#cloud-jobs) of kind `vm`: each job clones a VM from a template, powered off, hands it the job as cloud-init user data, powers it on, and deletes it when the job ends.
+
+```yaml
+jobs:
+  test:
+    cloud: { provider: vsphere, kind: vm, image: ubuntu-ci-template, region: Cluster-A }
+    run: make test
+```
+
+- `image` is the template's name or id (`vm-42`). It needs open-vm-tools 11.3 or later, cloud-init 21.1 or later with `disable_vmware_customization: false`, `bash` and `curl`, and vCenter 7.0 U3 or later.
+- `region` is the cluster, resource pool or host to place the clone in; with one cluster it can be left out. The template decides the size: the clone API can't change CPUs or memory, so `machine` isn't accepted.
+- The VM is named `iwci-<job>` and tagged in the `infrawrench-ci` tag category, powers itself off once the job's time is up, and is deleted by Infrawrench afterwards.
+- vCenter can't say ahead of time whether a user holds a privilege, so **Check permissions** only checks it can reach vCenter. The role needs `VirtualMachine.Provisioning.Clone`, `VirtualMachine.Provisioning.DeployTemplate`, `VirtualMachine.Provisioning.Customize`, `VirtualMachine.Inventory.CreateFromExisting`, `VirtualMachine.Inventory.Delete`, `VirtualMachine.Interact.PowerOn`, `VirtualMachine.Interact.PowerOff`, `Resource.AssignVMToPool`, `Datastore.AllocateSpace` and the tagging privileges `InventoryService.Tagging.CreateCategory`, `CreateTag`, `AttachTag` and `ObjectAttachable`. A job that is denied one names them.
+
 ## Tips and limits
 
 - Snapshots, alarms and performance charts aren't available. vCenter doesn't offer snapshots or alarms this way, and VMware advises against using its performance statistics preview in production.

@@ -66,6 +66,15 @@ import {
 import { proxmoxCreateConfig, proxmoxCreateResource } from "./create.js";
 import { proxmoxInvokeAction, proxmoxPromptCommand } from "./actions.js";
 import { proxmoxVerifyCredentials } from "./preflight.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import { ciListTagged, ciPreflight, ciStart, ciStatus, ciTeardown } from "./ci-executor.js";
 
 export type GuestKind = "qemu" | "lxc";
 
@@ -1298,6 +1307,26 @@ export class ProxmoxClient implements PluginClient {
     return attempt(async () => {
       return proxmoxPromptCommand(this, typeId, resourceId, command, args);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.api, kind));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.api, tagKey));
   }
 
   verifyCredentials(): PluginEffect<PreflightResult> {

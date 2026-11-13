@@ -49,8 +49,25 @@ import type {
   ParsedKubeconfig,
 } from "./types.js";
 import { parseKubeconfig } from "./types.js";
-import type { CiCredentialRequest, CiLentMaterial } from "@infrawrench/plugin-base";
-import { lendKubeconfig, type InlineCredentials } from "./ci-credential.js";
+import type {
+  CiComputeStatus,
+  CiCredentialRequest,
+  CiExecutorKind,
+  CiHandle,
+  CiLentMaterial,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import { kubeContext, lendKubeconfig, type InlineCredentials } from "./ci-credential.js";
+import {
+  ciListTagged,
+  ciPreflight,
+  ciStart,
+  ciStatus,
+  ciTeardown,
+  type K8sCall,
+} from "./ci-executor.js";
 
 import {
   renderClusterDetail,
@@ -274,6 +291,46 @@ export class KubernetesClient implements PluginClient {
         request,
       );
     });
+  }
+
+  /** Kubernetes API calls for CI jobs: JSON bodies, through the driver when there is one. */
+  private readonly ciCall: K8sCall = <T>(
+    path: string,
+    init?: { method?: string; body?: unknown },
+  ) =>
+    this.k8sFetch<T>(path, {
+      method: init?.method ?? "GET",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+    });
+
+  /** The namespace of the kubeconfig's current context: where CI jobs go unless a pipeline names one. */
+  private get ciNamespace(): string {
+    try {
+      return kubeContext(this.kubeconfig).namespace ?? "default";
+    } catch {
+      return "default";
+    }
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.ciCall, this.ciNamespace, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.ciCall, this.ciNamespace, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.ciCall, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.ciCall, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.ciCall, this.ciNamespace, tagKey, regions));
   }
 
   listResources(

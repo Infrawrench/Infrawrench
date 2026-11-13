@@ -23136,5 +23136,17 @@
   "52897e3fe91df6b2": "Ce que transporte une nouvelle sandbox : variables d'environnement, fichiers secrets, dépôts et lesquelles de vos connexions sont transmises",
   "86a2354621173f5f": "Si activé, aucun de vos identifiants n'entre dans les sandboxes de cet environnement",
   "3736b346cd988996": "Portefeuille que le compte facture et liste. Vide : utilise le portefeuille actif du propriétaire de la clé.",
-  "5ad053bb54e17ece": "Votre accès"
+  "5ad053bb54e17ece": "Votre accès",
+  "e3c748b804b67d7a": "Ajoutez ces capacités à la stratégie ACL du jeton",
+  "bca280f4d93e0f29": "Connectez un daemon Docker accessible par Infrawrench",
+  "c13de52645b86c6b": "Conteneur sur le daemon",
+  "c7743a3aac490bfe": "Conteneur de build Docker (privilégié)",
+  "748551af21aab38c": "Hôte SSH existant",
+  "ad4626a8db67499d": "Attribuez au jeton d'API un rôle disposant de ces privilèges",
+  "b7386ec8e8dac04c": "Attribuez à l'utilisateur vCenter un rôle disposant de ces privilèges",
+  "e67761d515c19a42": "Accordez-les avec un Role et un RoleBinding dans le namespace",
+  "2a4c6b9ed65f375b": "Installez ce qui manque sur l'hôte, en tant qu'utilisateur de la connexion",
+  "1d6230589a6d0682": "Job Kubernetes",
+  "057446363226b9c1": "Job batch Nomad",
+  "ab3389ba9a31b405": "VM clonée à partir d'un modèle"
 }

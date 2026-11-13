@@ -436,6 +436,19 @@ export interface DockerHostServices {
 }
 
 /**
+ * Host-provided SSH sessions to an account's own host. See `HostServices.ssh`.
+ */
+export interface SshHostServices {
+  /**
+   * Run `script` with `sh -s` on the host, the script on standard input so
+   * nothing in it shows in the host's process list. Resolves with standard
+   * output; rejects on a non-zero exit with standard error in the message.
+   * Neither the script nor its output is audit-logged.
+   */
+  exec(script: string, options?: { timeoutMs?: number }): Promise<string>;
+}
+
+/**
  * Host-provided Kubernetes operations injected into plugin clients. Backed
  * by the official `@kubernetes/client-node` SDK in the Node host process so
  * kubeconfigs with `exec` credential plugins, `auth-provider`, OIDC, and
@@ -581,6 +594,13 @@ export interface HostServices {
   k8s?: KubernetesHostServices;
   /** Always available: proxies HTTP requests through the host for custom CA support */
   http?: HttpHostServices;
+  /**
+   * Present when the host can open an SSH session to the account's own host:
+   * accounts of plugins that declare `jumpHost`, on a host that has wired it.
+   * The host connects the way its terminal does (the pinned host key, the
+   * account's jump hosts), so the plugin never handles either.
+   */
+  ssh?: SshHostServices;
   /**
    * The instance pricing warehouse, when this host can reach it. Plugins read it
    * through `fetchInstanceOnDemandRates` / `fetchInstanceCatalog` and must carry

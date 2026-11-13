@@ -38,6 +38,17 @@ Connect a Nomad cluster to run and operate jobs and look after the nodes they ru
 
 <insert [Nomad allocation Logs tab showing a task's stderr] here>
 
+## CI jobs
+
+A Nomad cluster can run [cloud jobs](../features/ci.md#cloud-jobs) of kind `cluster`: each job is a batch job with one task on the `docker` driver, stopped and purged when the job ends.
+
+- `region` is the Nomad namespace (default `default`). The connection's own region is used.
+- `machine` is CPUs and memory, like `2vcpu-4gb` (the default); a CPU counts as 1000 MHz.
+- `gpu: nvidia:1` (or `a100:2`, or a full device name such as `nvidia/gpu/a100`) asks for GPU devices.
+- The job never restarts or reschedules, and gets no Nomad token, no Vault or Consul access, no host volumes and no Docker socket.
+- Nomad has no run-time limit for a job, so a watchdog in the task stops the job once its time is up.
+- The token needs `list-jobs`, `read-job` and `submit-job` in the namespace (on Nomad 1.11.2 and later, `register-job` and `purge-job` also do). **Check permissions** tests each without starting anything, and says when no client has a healthy docker driver.
+
 ## Tips and limits
 
 - **Private clusters**: the desktop app connects directly. The cloud app reaches a private cluster through an [SSH tunnel](../features/ssh-tunnels.md) on the account. Through a tunnel the connection goes to `127.0.0.1`, so an HTTPS certificate must also cover that address.

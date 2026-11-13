@@ -11,6 +11,22 @@ import type {
   DashboardStat,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  ciListTagged,
+  ciPreflight,
+  ciStart,
+  ciStatus,
+  ciTeardown,
+  type DockerCommand,
+} from "./ci-executor.js";
 
 interface ContainerInfo {
   Id: string;
@@ -140,6 +156,49 @@ export class DockerClient implements PluginClient {
 
   constructor(_credentials: Credentials, services?: HostServices) {
     this.services = services;
+  }
+
+  /** The daemon's operations for CI jobs, through this plugin's driver. */
+  private ciCommand(): DockerCommand {
+    const docker = this.services?.docker;
+    if (!docker) {
+      throw new Error(
+        "This Infrawrench host has no Docker driver, so it cannot run CI jobs on Docker.",
+      );
+    }
+    return (op, params) => docker.command(op, params);
+  }
+
+  ciPreflight(kind: CiExecutorKind): PluginEffect<CiPreflightResult> {
+    return attempt(() => {
+      const docker = this.services?.docker;
+      if (!docker) {
+        return Promise.resolve({
+          ok: false,
+          missing: [],
+          problems: [
+            "This Infrawrench host has no Docker driver, so it cannot run CI jobs on Docker.",
+          ],
+        });
+      }
+      return ciPreflight((op, params) => docker.command(op, params), kind);
+    });
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.ciCommand(), spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.ciCommand(), handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.ciCommand(), handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.ciCommand(), tagKey));
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {

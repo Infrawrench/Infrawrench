@@ -29,6 +29,23 @@ Fill in:
 - **Use it as a bastion** for an [SSH tunnel](../features/ssh-tunnels.md) to a private database.
 - **Use it as a jumpbox**: pick any SSH account as the "Connect through" target of another, including the one the [Connect through jumpbox](../features/ssh-jumpbox.md) action creates on a cloud VM.
 
+## CI jobs
+
+An SSH host can run [cloud jobs](../features/ci.md#cloud-jobs) of kind `host`. Unlike the other kinds, nothing is created: the job runs on this host, as the connection's user, and the host stays when the job ends.
+
+```yaml
+jobs:
+  deploy:
+    cloud: ssh/host
+    run: ./scripts/deploy.sh
+```
+
+- Each job gets a work directory of its own, `~/.infrawrench-ci/job-<key>`, the key derived from the job's id, with `HOME` and `TMPDIR` inside it, and runs in a session of its own.
+- When the job ends, or its time is up, everything it started is killed (anything carrying the job's environment, on Linux, even if it left the session) and its work directory is removed.
+- The job gets none of the connection's credentials; the private key never reaches the host. It does run as the connection's user, so it can do whatever that user can on the host.
+- The host needs Linux with `setsid` (util-linux), `curl`, `bash`, `tar`, `gzip` and `base64`. **Check permissions** names anything missing.
+- `machine`, `image` and `gpu` aren't accepted: the host is what it is.
+
 ## Tips & limits
 
 - Host keys are pinned by default. The first connection records the host key, and you're asked before continuing if it ever changes.
