@@ -322,7 +322,7 @@ impl HeapSpace {
         if self.queued.load(Ordering::Acquire) == 0 && self.try_charge(bytes, keep_free) {
             return true;
         }
-        if wait.is_zero() || stopped.load(Ordering::Acquire) {
+        if wait.is_zero() || stopped.load(Ordering::Acquire) || self.never_fits(bytes, keep_free) {
             self.refusals.fetch_add(1, Ordering::AcqRel);
             return false;
         }
@@ -358,6 +358,7 @@ impl HeapSpace {
             if stopped.load(Ordering::Acquire)
                 || now >= deadline
                 || waiters.deadlocked(&me, self.live.load(Ordering::Acquire))
+                || self.never_fits(bytes, keep_free)
             {
                 self.refusals.fetch_add(1, Ordering::AcqRel);
                 break false;
@@ -376,6 +377,18 @@ impl HeapSpace {
         // Whoever came next may go now.
         self.freed.notify_all();
         got
+    }
+
+    /// iwci patch (#1135): whether `bytes` cannot fit, leaving `keep_free`,
+    /// beside what lost isolates hold alone. Their heaps are never freed,
+    /// so a wait for that ends only in vain, after minutes of others giving
+    /// room back; it is refused at once instead.
+    fn never_fits(&self, bytes: u64, keep_free: u64) -> bool {
+        let limit = self
+            .capacity
+            .load(Ordering::Acquire)
+            .saturating_sub(keep_free);
+        self.lost.load(Ordering::Acquire).saturating_add(bytes) > limit
     }
 
     /// An isolate's charge moved from `old` to `new` bytes.
@@ -2341,6 +2354,58 @@ mod tests {
         assert_eq!((usage.charged, usage.lost), (300 * MIB, 300 * MIB));
         // It is not one of the heaps that can give room back.
         assert_eq!(space.live.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn a_wait_the_lost_heaps_leave_no_room_for_is_refused_at_once() {
+        // Lost isolates hold all but 300 MiB of the space for good (#1135).
+        let space = private_space(V8_HEAP_CAGE);
+        let a = ResourceBudget::with_space(4096 * MIB, space);
+        let lost = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let t = tracker_for(&a, &stopped);
+        napi_host_heap_committed(t as *const c_void, (V8_HEAP_CAGE - 300 * MIB) as usize, 0);
+        napi_host_isolate_out_of_memory(t as *const c_void);
+        let b = ResourceBudget::with_space(4096 * MIB, space);
+        let never = AtomicBool::new(false);
+        let start = std::time::Instant::now();
+        // A new isolate keeps 512 MiB free: never, whatever the live heaps
+        // give back.
+        assert_eq!(
+            b.reserve_env_waiting(RequestedHeap::default(), None, IsolateRole::Process, &never),
+            Err(EnvRejected::HeapSpaceFull)
+        );
+        // A grant that does not fit beside them either.
+        assert!(!space.charge_waiting(
+            400 * MIB,
+            0,
+            HEAP_SPACE_GROW_WAIT,
+            &never,
+            100 * MIB,
+            true
+        ));
+        assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
+        assert_eq!(space.usage().waits, 0, "neither waited");
+        // One that fits beside them waits as before, for room a live heap
+        // gives back.
+        let held = 250 * MIB;
+        space.charged.fetch_add(held, Ordering::AcqRel);
+        std::thread::scope(|s| {
+            let waiter = s.spawn(|| {
+                space.charge_waiting(200 * MIB, 0, HEAP_SPACE_ADMIT_WAIT, &never, 0, false)
+            });
+            while space.usage().waits == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            space.uncharge(held);
+            assert!(waiter.join().unwrap());
+        });
+        let t = unsafe { Box::from_raw(t) };
+        a.release_env_as(
+            lost.ceiling_bytes,
+            t.space_charge.load(Ordering::Acquire),
+            t.lost.load(Ordering::Acquire),
+        );
     }
 
     /// Waits in a thread of `s` for `bytes` of `space` to grow a heap of

@@ -522,6 +522,24 @@ impl Options {
     fn cancelled(&self) -> bool {
         self.cancel.as_ref().is_some_and(|c| c.is_cancelled())
     }
+
+    /// Why no more jobs start, if none do: the run was cancelled, or the
+    /// runner holds its memory to restart ([`MemoryBudget::hold`]).
+    fn stopped(&self) -> Option<&str> {
+        self.held()
+            .or_else(|| self.cancelled().then_some(CANCELLED_REASON))
+    }
+
+    fn held(&self) -> Option<&str> {
+        self.memory.as_deref().and_then(MemoryBudget::held)
+    }
+
+    /// What a job the run's cancel stopped says: the restart that held
+    /// the memory when there is one, since that is what cancels the runs
+    /// it waits for.
+    fn cancel_reason(&self) -> &str {
+        self.held().unwrap_or(CANCELLED_REASON)
+    }
 }
 
 /// How long each job of a pipeline took when it last ran, kept between runs
@@ -736,6 +754,8 @@ pub struct MemoryBudget {
     waiting: AtomicU64,
     /// The runs to wake when memory is given back.
     waiters: Mutex<Vec<Weak<Wake>>>,
+    /// Why no job gets memory any more, once [`MemoryBudget::hold`] says.
+    held: std::sync::OnceLock<String>,
 }
 
 impl MemoryBudget {
@@ -745,7 +765,24 @@ impl MemoryBudget {
             used: AtomicU64::new(0),
             waiting: AtomicU64::new(0),
             waiters: Mutex::default(),
+            held: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Lends no more memory: every run sharing the budget starts no more
+    /// jobs and reports the ones it has not started as cancelled, saying
+    /// `reason`, while the jobs running go on. A server that has to restart
+    /// holds it, so that its drain ends with the jobs running then, not
+    /// with every job of every run it had admitted (#1135). The first
+    /// reason is kept.
+    pub fn hold(&self, reason: &str) {
+        let _ = self.held.set(reason.to_string());
+        self.wake_all();
+    }
+
+    /// Why the budget lends no more memory, once it is held.
+    pub fn held(&self) -> Option<&str> {
+        self.held.get().map(String::as_str)
     }
 
     pub fn total(&self) -> u64 {
@@ -778,6 +815,10 @@ impl MemoryBudget {
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
             });
+        self.wake_all();
+    }
+
+    fn wake_all(&self) {
         let mut waiters = self.waiters.lock().unwrap_or_else(|e| e.into_inner());
         waiters.retain(|w| match w.upgrade() {
             Some(wake) => {
@@ -1291,7 +1332,7 @@ pub fn run<T: Tools>(
                         }
                     };
                     if options.cancelled() {
-                        let report = cancelled_report(&job);
+                        let report = cancelled_report(&job, options.cancel_reason());
                         complete(&state, &wake, plan, options, template, report, Vec::new());
                         continue;
                     }
@@ -1347,7 +1388,7 @@ pub fn run<T: Tools>(
                     };
                     let mut kept = Vec::new();
                     let report = if options.cancelled() {
-                        cancelled_report(&job)
+                        cancelled_report(&job, options.cancel_reason())
                     } else {
                         run_external(&job, plan, options, &shared, inherited, &mut kept)
                     };
@@ -1367,9 +1408,10 @@ pub fn run<T: Tools>(
                             // The first job in `Rank` order whose memory fits
                             // the runner's budget right now; the reservation
                             // is held until it finishes. Without a budget,
-                            // simply the first. A cancelled run's queued jobs
-                            // are only reported, so they need no memory.
-                            let cancelled = options.cancelled();
+                            // simply the first. A cancelled run's queued jobs,
+                            // and every run's once the budget is held, are
+                            // only reported, so they need no memory.
+                            let cancelled = options.stopped().is_some();
                             let fits = match &options.memory {
                                 _ if cancelled => s.queue.len().checked_sub(1),
                                 None => s.queue.len().checked_sub(1),
@@ -1419,16 +1461,16 @@ pub fn run<T: Tools>(
                             // looked up, and wakes us when it finishes; or
                             // queued jobs wait for memory other runs hold,
                             // and the budget wakes us when any run gives
-                            // some back. A job that can never fit was
-                            // turned away when it was activated.
+                            // some back or holds it. A job that can never
+                            // fit was turned away when it was activated.
                             s = wake.wait(s, &state, seen);
                         }
                     };
-                    if options.cancelled() {
+                    if let Some(reason) = options.stopped() {
                         if let (true, Some(budget)) = (reserved, &options.memory) {
                             budget.give(job.memory_bytes);
                         }
-                        let report = cancelled_report(&job);
+                        let report = cancelled_report(&job, reason);
                         complete(&state, &wake, plan, options, template, report, Vec::new());
                         continue;
                     }
@@ -1569,11 +1611,11 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
             return;
         };
         let template = s.waiting.remove(pos);
-        if options.cancelled() {
+        if let Some(reason) = options.stopped() {
             let report = key_report(
                 template,
                 Status::Cancelled {
-                    reason: CANCELLED_REASON.into(),
+                    reason: reason.into(),
                 },
                 true,
             );
@@ -2243,7 +2285,7 @@ fn run_job<T: Tools>(
     };
     let mut status = if execution.cancelled {
         Status::Cancelled {
-            reason: CANCELLED_REASON.into(),
+            reason: options.cancel_reason().into(),
         }
     } else if let Some(failure) = &execution.service_failure {
         // The job never started; the failure (masked above) names the
@@ -2691,7 +2733,7 @@ fn run_external(
         End::Cancelled => {
             execution.cancelled = true;
             Status::Cancelled {
-                reason: CANCELLED_REASON.into(),
+                reason: options.cancel_reason().into(),
             }
         }
         End::Lost(reason) => Status::Error {
@@ -3225,11 +3267,12 @@ fn merge_env(into: &mut Vec<(String, String)>, from: &[(String, String)]) {
     }
 }
 
-/// A job of a cancelled run that never started.
-fn cancelled_report(job: &PlannedJob) -> JobReport {
+/// A job of a cancelled run, or of a runner that holds its memory, that
+/// never started.
+fn cancelled_report(job: &PlannedJob, reason: &str) -> JobReport {
     let mut report = errored(job, String::new(), Duration::ZERO);
     report.status = Status::Cancelled {
-        reason: CANCELLED_REASON.into(),
+        reason: reason.into(),
     };
     report.memory_mib = 0;
     report
