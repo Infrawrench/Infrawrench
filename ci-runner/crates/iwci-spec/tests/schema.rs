@@ -70,6 +70,14 @@ fn schema_matches_the_structs() {
             "/$defs/cacheEntry",
         ),
         (
+            "name: x\njobs:\n  a:\n    run: x\n    cloud: { zzz: 1 }\n",
+            "/$defs/cloud",
+        ),
+        (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    connections: [{ name: a, zzz: 1 }]\n",
+            "/$defs/connection",
+        ),
+        (
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    packages: { zzz: 1 }\n",
             "/$defs/packageFilter",
         ),

@@ -26,6 +26,9 @@ usage:
                                          (also IWCI_STALL_AFTER)
                                          [--keep-installs-unpacked 24h] pack a cached
                                          install not used for that long
+                                         [--untrusted] run as a fork's pull request;
+                                         IWCI_LENT_FILE=<json> lends connections, SSH
+                                         keys and resources as a request's `lent`
   iwci serve [--listen <addr>] [options]  run pipelines over HTTP (key: IWCI_SERVER_KEY)
                                          [--jobs-per-cpu 4] [--storage-quota 10GiB]
                                          [--restart-after-lost-isolates 8] drain and

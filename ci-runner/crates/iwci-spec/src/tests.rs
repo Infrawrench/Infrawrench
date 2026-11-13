@@ -911,11 +911,16 @@ fn secrets_stay_names_and_only_live_in_env() {
             SecretPart::Text(" on main".into()),
         ]
     );
-    let (value, missing) =
-        job.secret_env[1].fill(|n| (n == "API_KEY").then(|| "s3cr3t".to_string()));
+    let no_resource = |_: &str, _: &str| -> Result<String, String> { unreachable!() };
+    let (value, missing) = job.secret_env[1]
+        .fill(
+            |n| (n == "API_KEY").then(|| "s3cr3t".to_string()),
+            no_resource,
+        )
+        .unwrap();
     assert_eq!(value, "Bearer s3cr3t on main");
     assert!(missing.is_empty());
-    let (value, missing) = job.secret_env[0].fill(|_| None);
+    let (value, missing) = job.secret_env[0].fill(|_| None, no_resource).unwrap();
     assert_eq!(
         (value.as_str(), missing),
         ("", vec!["NPM_TOKEN".to_string()])
@@ -1783,4 +1788,336 @@ fn a_pull_request_number_comes_from_its_ref_or_branch() {
     );
     assert_eq!(pull_request_number(None, "main"), None);
     assert_eq!(pull_request_number(None, "pull/x"), None);
+}
+
+#[test]
+fn a_cloud_job_keeps_its_place_in_the_graph_and_takes_nothing_of_the_runner() {
+    let plan = parse(
+        r#"
+name: x
+workspace:
+  deps: [pnpm]
+  services:
+    db: { using: env:postgres@18, run: pglite-server }
+jobs:
+  build:
+    using: env:bash@5
+    run: make
+    outputs: [tag]
+  image:
+    cloud: gcp/build
+    needs: [build]
+    run: docker build -t app:${{ needs.build.outputs.tag }} .
+    timeout: 30m
+    outputs: [digest]
+    artifacts: [out/sbom.json]
+    clone: { depth: 5 }
+    changes: fail
+  push:
+    matrix: { size: [small, large] }
+    cloud:
+      provider: aws
+      kind: vm
+      connection: Production
+      machine: m7i.${{ matrix.size }}
+      image: ubuntu-24.04
+      region: eu-west-1
+      gpu: a100:2
+    run: ./deploy.sh
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let image = plan.template("image").unwrap();
+    assert_eq!(
+        image.tool,
+        ToolRef::Cloud {
+            provider: "gcp".into(),
+            kind: "build".into()
+        }
+    );
+    assert_eq!(image.tool.to_string(), "cloud:gcp/build");
+    assert_eq!(image.cloud.as_ref().unwrap().kind, "build");
+    // Deferred (it reads an output), and its workspace installs nothing and
+    // starts no services.
+    assert!(image.instances.is_none());
+    let ws = &plan.workspaces[image.workspace];
+    assert!(ws.deps.is_empty());
+    assert_eq!(ws.clone.as_ref().unwrap().depth, CloneDepth::Shallow(5));
+    let mut needs = NeedsValues::default();
+    needs.results.insert("build".into(), JobResult::Success);
+    needs
+        .outputs
+        .insert("build".into(), [("tag".into(), "v1".into())].into());
+    let jobs = plan.instantiate("image", &needs).unwrap();
+    let job = &jobs[0];
+    assert_eq!(job.memory_bytes, 0);
+    assert!(job.services.is_empty());
+    assert_eq!(job.artifacts, ["/app/out/sbom.json"]);
+    assert_eq!(job.changes, ChangePolicy::Fail);
+    assert_eq!(
+        job.action,
+        Action::Script {
+            script: "docker build -t app:v1 .".into()
+        }
+    );
+    let push = plan.template("push").unwrap().instances.as_ref().unwrap();
+    let small = push[0].cloud.as_ref().unwrap();
+    assert_eq!(small.machine.as_deref(), Some("m7i.small"));
+    assert_eq!(small.connection.as_deref(), Some("Production"));
+    assert_eq!(small.gpu.as_deref(), Some("a100:2"));
+    assert_eq!(
+        push[1].cloud.as_ref().unwrap().machine.as_deref(),
+        Some("m7i.large")
+    );
+    // The template keeps what was written, for the app to read before the
+    // run starts.
+    assert_eq!(
+        plan.template("push")
+            .unwrap()
+            .cloud
+            .as_ref()
+            .unwrap()
+            .machine
+            .as_deref(),
+        Some("m7i.${{ matrix.size }}")
+    );
+}
+
+#[test]
+fn a_cloud_job_refuses_what_only_means_something_on_the_runner() {
+    let base = "name: x\njobs:\n  a:\n    cloud: aws/vm\n    run: x\n";
+    for (extra, needle) in [
+        (
+            "    using: env:bash@5\n",
+            "jobs.a.using: a cloud job runs in its machine's image",
+        ),
+        (
+            "    deps: [pnpm]\n",
+            "jobs.a.deps: installs dependencies on the runner",
+        ),
+        (
+            "    tools: [builtin:gofmt@1]\n",
+            "jobs.a.tools: puts runner tools on PATH",
+        ),
+        (
+            "    cache: { key: k, paths: [x] }\n",
+            "jobs.a.cache: keeps files in the runner's cache",
+        ),
+        (
+            "    memory: 4GiB\n",
+            "jobs.a.memory: sizes a job on the runner",
+        ),
+        (
+            "    network: false\n",
+            "jobs.a.network: keeps a job off the internet",
+        ),
+        (
+            "    services:\n      db: { using: env:postgres@18, run: x }\n",
+            "jobs.a.services: starts services beside the job",
+        ),
+        (
+            "    clone: false\n",
+            "jobs.a.clone: a cloud job always starts from the commit",
+        ),
+        (
+            "    clone: { into: /src }\n",
+            "jobs.a.clone: a cloud job takes only",
+        ),
+        (
+            "    downloads: [x]\n",
+            "jobs.a.downloads: keeps files for people to download",
+        ),
+        (
+            "    changes: { commit: msg }\n",
+            "jobs.a.changes: commits its changes",
+        ),
+        (
+            "    task-cache: true\n",
+            "jobs.a.task-cache: replays a run from the task cache",
+        ),
+        ("    env-cache: false\n", "jobs.a.env-cache"),
+        (
+            "    args: [x]\n",
+            "jobs.a.args: a cloud job takes a `run:` script",
+        ),
+        ("    packages: true\n", "packages"),
+    ] {
+        assert_error(&format!("{base}{extra}"), needle);
+    }
+    assert_error(
+        "name: x\njobs:\n  a:\n    cloud: aws/vm\n",
+        "a cloud job needs a `run:` script",
+    );
+    assert_error(
+        "name: x\njobs:\n  a:\n    run: x\n",
+        "needs `using:` (a tool or environment), or `cloud:`",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: aws, run: x }\n",
+        "is `<provider>/<kind>`",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: aws/laptop, run: x }\n",
+        "jobs.a.cloud.kind: is one of `vm`, `container`, `build`, `host`, `cluster`, not `laptop`",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: { kind: vm }, run: x }\n",
+        "jobs.a.cloud.provider: is required",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: \"${{ vars.P }}/vm\", run: x }\n",
+        "is not a provider id",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: { provider: gcp, kind: vm, gpu: \"a100:0\" }, run: x }\n",
+        "jobs.a.cloud.gpu",
+    );
+    assert_error(
+        "name: x\njobs:\n  a: { cloud: { provider: gcp, kind: vm, size: big }, run: x }\n",
+        "unknown field `size`",
+    );
+    // A workspace's services and dependencies are simply not a cloud
+    // job's, rather than an error in every pipeline that has both.
+    parse(
+        "name: x\nworkspace:\n  deps: [go]\n  services:\n    db: { using: env:postgres@18, run: x }\njobs:\n  a: { cloud: aws/vm, run: x, services: false, env: { A: b } }\n",
+        &ctx(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn connections_keys_and_resources_are_listed_for_the_app_and_never_substituted() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  deploy:
+    using: env:bash-node@24
+    connections:
+      - Production cluster
+      - { name: staging, namespace: web }
+    ssh-keys: [deploy]
+    env-from: [r2-assets]
+    env:
+      DATABASE_URL: ${{ resources.prod-db.connectionString }}
+      DSN: "postgres://${{ resources.prod-db.user }}@${{ resources.prod-db.host }}/app"
+      API_KEY: ${{ resources.stripe-key.value }}
+    services:
+      cache:
+        using: env:bash@5
+        run: x
+        env: { TOKEN: "${{ resources.cache-token.value }}" }
+    run: kubectl rollout restart deploy/web
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let job = first(&plan);
+    let access = &plan.template("deploy").unwrap().access;
+    assert_eq!(&job.access, access);
+    assert_eq!(
+        access.connections,
+        [
+            ConnectionUse {
+                name: "Production cluster".into(),
+                namespace: None
+            },
+            ConnectionUse {
+                name: "staging".into(),
+                namespace: Some("web".into())
+            }
+        ]
+    );
+    assert_eq!(access.ssh_keys, ["deploy"]);
+    assert_eq!(access.env_from, ["r2-assets"]);
+    let outputs =
+        |name: &str| -> Vec<&str> { access.resources[name].iter().map(String::as_str).collect() };
+    assert_eq!(outputs("prod-db"), ["connectionString", "host", "user"]);
+    assert_eq!(outputs("stripe-key"), ["value"]);
+    assert_eq!(outputs("cache-token"), ["value"]);
+    let dsn = job.secret_env.iter().find(|e| e.key == "DSN").unwrap();
+    assert_eq!(
+        dsn.parts[1],
+        SecretPart::Resource {
+            name: "prod-db".into(),
+            output: "user".into()
+        }
+    );
+    let (value, _) = dsn
+        .fill(|_| None, |name, output| Ok(format!("<{name}.{output}>")))
+        .unwrap();
+    assert_eq!(value, "postgres://<prod-db.user>@<prod-db.host>/app");
+    assert_eq!(
+        dsn.fill(|_| None, |name, _| Err(format!("{name} is not granted")))
+            .unwrap_err(),
+        "prod-db is not granted"
+    );
+    assert!(job.env.iter().all(|(k, _)| k != "DATABASE_URL"));
+    let json = serde_json::to_string(&plan).unwrap();
+    assert!(json.contains("\"connectionString\""));
+}
+
+#[test]
+fn lent_names_are_checked_where_they_are_written() {
+    for (yaml, needle) in [
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, connections: [a, a] }\n",
+            "jobs.a.connections: lists `a` twice",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, connections: [\"${{ vars.C }}\"] }\n",
+            "names are literal",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, connections: [\" padded\"] }\n",
+            "no leading or trailing spaces",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, connections: [{ name: k, namespace: Web }] }\n",
+            "is not a Kubernetes namespace",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, ssh-keys: [\"\"] }\n",
+            "jobs.a.ssh-keys",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-from: [\"r2 assets\"] }\n",
+            "is not a resource name",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: \"echo ${{ resources.db.url }}\" }\n",
+            "resources can only be read in `env:` values",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env: { A: \"${{ resources.db }}\" } }\n",
+            "names no output",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env: { A: \"${{ resources.-db.url }}\" } }\n",
+            "is not a resource name",
+        ),
+        (
+            "name: x\nconcurrency: \"g-${{ resources.db.url }}\"\njobs:\n  a: { using: env:bash@5, run: x }\n",
+            "resources can only be read",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, ssh-keys: [k], task-cache: true }\n",
+            "a job that is lent connections, SSH keys or resources cannot be task-cached",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env: { A: \"${{ resources.db.url }}\" }, task-cache: true }\n",
+            "a job that reads secrets cannot be task-cached",
+        ),
+    ] {
+        assert_error(yaml, needle);
+    }
+    let many: Vec<String> = (0..=MAX_LENT).map(|i| format!("k{i}")).collect();
+    assert_error(
+        &format!(
+            "name: x\njobs:\n  a: {{ using: env:bash@5, run: x, ssh-keys: [{}] }}\n",
+            many.join(", ")
+        ),
+        "the limit is 16",
+    );
 }

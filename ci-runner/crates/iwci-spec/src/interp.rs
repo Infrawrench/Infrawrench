@@ -71,10 +71,43 @@ pub(crate) fn hash_files_globs(text: &str) -> Result<Vec<String>, String> {
 pub(crate) enum RawPart {
     Text(String),
     Secret(String),
+    /// `resources.<name>.<output>`.
+    Resource {
+        name: String,
+        output: String,
+    },
 }
 
 fn secret_name(text: &str) -> Option<&str> {
     text.strip_prefix("secrets.")
+}
+
+/// `resources.<name>.<output>`, split and checked: the name is a resource
+/// grant's CI name, the output one of its outputs.
+pub(crate) fn resource_ref(text: &str) -> Option<Result<(String, String), String>> {
+    let rest = text.strip_prefix("resources.")?;
+    let Some((name, output)) = rest.split_once('.') else {
+        return Some(Err(format!(
+            "`{text}` names no output; write `resources.<name>.<output>`"
+        )));
+    };
+    if !crate::is_grant_name(name) {
+        return Some(Err(format!(
+            "`{name}` is not a resource name (letters, digits, `-` and `_`, starting with a letter or digit, up to 64)"
+        )));
+    }
+    let ok = !output.is_empty()
+        && output.len() <= 128
+        && (output.as_bytes()[0].is_ascii_alphabetic() || output.as_bytes()[0] == b'_')
+        && output
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !ok {
+        return Some(Err(format!(
+            "`{output}` is not an output name (letters, digits, `_` and `-`, not starting with a digit, up to 128)"
+        )));
+    }
+    Some(Ok((name.to_string(), output.to_string())))
 }
 
 fn check_ref_name(kind: &str, name: &str) -> Result<(), String> {
@@ -91,9 +124,11 @@ fn check_ref_name(kind: &str, name: &str) -> Result<(), String> {
     }
 }
 
-/// Splits `text` around its `${{ secrets.<name> }}` references, or `None`
-/// when it has none. The text between them is substituted as usual by the
-/// caller; secrets are kept by name and filled in when the job starts.
+/// Splits `text` around its `${{ secrets.<name> }}` and
+/// `${{ resources.<name>.<output> }}` references, or `None` when it has
+/// none. The text between them is substituted as usual by the caller;
+/// secrets and resources are kept by name and filled in when the job
+/// starts.
 pub(crate) fn secret_parts(text: &str) -> Result<Option<Vec<RawPart>>, String> {
     let mut parts = Vec::new();
     let mut found = false;
@@ -107,13 +142,21 @@ pub(crate) fn secret_parts(text: &str) -> Result<Option<Vec<RawPart>>, String> {
         };
         let inner = text[after..after + end_rel].trim();
         let end = after + end_rel + 2;
-        if let Some(name) = secret_name(inner) {
+        let part = if let Some(name) = secret_name(inner) {
             check_ref_name("secrets", name)?;
+            Some(RawPart::Secret(name.to_string()))
+        } else if let Some(resource) = resource_ref(inner) {
+            let (name, output) = resource?;
+            Some(RawPart::Resource { name, output })
+        } else {
+            None
+        };
+        if let Some(part) = part {
             found = true;
             if text_start < start {
                 parts.push(RawPart::Text(text[text_start..start].to_string()));
             }
-            parts.push(RawPart::Secret(name.to_string()));
+            parts.push(part);
             text_start = end;
         }
         search = end;
@@ -191,9 +234,15 @@ impl Scope<'_> {
                     .into(),
             );
         }
+        if text.starts_with("resources.") {
+            return Err(
+                "resources can only be read in `env:` values, as secrets are, so they never appear in arguments, scripts or names; set one there and read the variable"
+                    .into(),
+            );
+        }
         let name = expr::parse_name(text).map_err(|_| {
             format!(
-                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `vars.<name>`, `secrets.<name>` (in `env:`)"
+                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `vars.<name>`, `secrets.<name>` and `resources.<name>.<output>` (in `env:`)"
             )
         })?;
         check_name(&name, self.needs_list, self.decls)?;

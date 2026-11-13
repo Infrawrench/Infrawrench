@@ -131,8 +131,72 @@ pub struct JobTemplate {
     /// The workspace package of a job a `packages:` job became.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package: Option<PackageRef>,
+    /// `cloud:` as written, for a job that runs on a connected cloud
+    /// account: `provider`, `kind` and `connection` are literal; the other
+    /// fields may still hold `${{ matrix }}`, which each entry substitutes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudSpec>,
+    /// The connections, SSH keys and resources the job is lent, by name,
+    /// for whoever dispatches the run to resolve before it starts.
+    #[serde(skip_serializing_if = "JobAccess::is_empty")]
+    pub access: JobAccess,
     #[serde(skip)]
     pub(crate) raw: Option<crate::raw::Job>,
+}
+
+/// Where a cloud job runs: `cloud:`, checked. Every field is substituted
+/// in a [`PlannedJob`]; in a [`JobTemplate`] only the first three are.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct CloudSpec {
+    pub provider: String,
+    /// `vm`, `container`, `build`, `host` or `cluster`.
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<String>,
+}
+
+/// The kinds of machine a cloud job may ask for.
+pub const CLOUD_KINDS: [&str; 5] = ["vm", "container", "build", "host", "cluster"];
+
+/// One of a job's `connections:`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ConnectionUse {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+}
+
+/// What a job is lent, by name: every one is literal, so the app can check
+/// and resolve them all before the run starts. Services' `env:` count too.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct JobAccess {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub connections: Vec<ConnectionUse>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ssh_keys: Vec<String>,
+    /// `${{ resources.<name>.<output> }}`: each resource's outputs read.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub resources: BTreeMap<String, std::collections::BTreeSet<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub env_from: Vec<String>,
+}
+
+impl JobAccess {
+    pub fn is_empty(&self) -> bool {
+        self.connections.is_empty()
+            && self.ssh_keys.is_empty()
+            && self.resources.is_empty()
+            && self.env_from.is_empty()
+    }
 }
 
 /// Which workspace package a job runs for, when a `packages:` job made it.
@@ -391,6 +455,14 @@ pub struct PlannedJob {
     /// `services:` (with `workspace.services`), in the order they start.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub services: Vec<PlannedService>,
+    /// Set for a job that runs on a connected cloud account: the runner
+    /// hands it to the app instead of running it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudSpec>,
+    /// `connections:`, `ssh-keys:`, `env-from:` and the resources its
+    /// `env:` values (and its services') read.
+    #[serde(skip_serializing_if = "JobAccess::is_empty")]
+    pub access: JobAccess,
 }
 
 /// A job's `downloads:`, checked: what it keeps, for how long, and after
@@ -486,12 +558,25 @@ pub struct SecretEnv {
 pub enum SecretPart {
     Text(String),
     Secret(String),
+    /// `${{ resources.<name>.<output> }}`: an infrastructure resource's
+    /// output, lent to the run by the app. Never empty: a value the run was
+    /// not given fails the job.
+    Resource {
+        name: String,
+        output: String,
+    },
 }
 
 impl SecretEnv {
-    /// The value, with each secret looked up by `secret`; a missing one is
-    /// empty and its name is returned too.
-    pub fn fill(&self, secret: impl Fn(&str) -> Option<String>) -> (String, Vec<String>) {
+    /// The value, with each secret looked up by `secret` (a missing one is
+    /// empty and its name is returned too) and each resource output by
+    /// `resource`, whose error (an output the run was not lent) is the
+    /// job's failure.
+    pub fn fill(
+        &self,
+        secret: impl Fn(&str) -> Option<String>,
+        resource: impl Fn(&str, &str) -> Result<String, String>,
+    ) -> Result<(String, Vec<String>), String> {
         let mut value = String::new();
         let mut missing = Vec::new();
         for part in &self.parts {
@@ -501,9 +586,10 @@ impl SecretEnv {
                     Some(v) => value.push_str(&v),
                     None => missing.push(name.clone()),
                 },
+                SecretPart::Resource { name, output } => value.push_str(&resource(name, output)?),
             }
         }
-        (value, missing)
+        Ok((value, missing))
     }
 }
 
@@ -554,9 +640,25 @@ pub enum Action {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ToolRef {
-    Builtin { name: String, version: String },
-    Repo { name: String, version: String },
-    Env { name: String, version: String },
+    Builtin {
+        name: String,
+        version: String,
+    },
+    Repo {
+        name: String,
+        version: String,
+    },
+    Env {
+        name: String,
+        version: String,
+    },
+    /// A job with `cloud:`: no tool on the runner, the machine's image is
+    /// its environment. Never resolved.
+    Cloud {
+        provider: String,
+        #[serde(rename = "cloud-kind")]
+        kind: String,
+    },
 }
 
 impl ToolRef {
@@ -564,11 +666,16 @@ impl ToolRef {
         matches!(self, ToolRef::Env { .. })
     }
 
+    pub fn is_cloud(&self) -> bool {
+        matches!(self, ToolRef::Cloud { .. })
+    }
+
     pub fn name(&self) -> &str {
         match self {
             ToolRef::Builtin { name, .. }
             | ToolRef::Repo { name, .. }
             | ToolRef::Env { name, .. } => name,
+            ToolRef::Cloud { provider, .. } => provider,
         }
     }
 }
@@ -579,6 +686,7 @@ impl std::fmt::Display for ToolRef {
             ToolRef::Builtin { name, version } => write!(f, "builtin:{name}@{version}"),
             ToolRef::Repo { name, version } => write!(f, "repo:{name}@{version}"),
             ToolRef::Env { name, version } => write!(f, "env:{name}@{version}"),
+            ToolRef::Cloud { provider, kind } => write!(f, "cloud:{provider}/{kind}"),
         }
     }
 }

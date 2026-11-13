@@ -10,6 +10,9 @@
 // | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most memory to spare per run |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
+// | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
+// | `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish` | the executor's side of a cloud job, on the runner that has it |
+// | `GET /v1/runs/{id}/jobs/{job}/inputs?claim=`, `PUT .../artifacts?claim=` | a cloud job's artifacts, for its machine: the claim token, no bearer key |
 // | `POST /v1/concurrency` | a request's pipelines and their concurrency groups, from any runner; runs nothing |
 // | `POST /v1/prepare` | warms a runner for a request |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
@@ -158,6 +161,115 @@ async function readSchedules(
   return { reply: (await response.json()) as ReadReply };
 }
 
+/** A run's id on the proxy (`<runner>.<id>`) in its runner's URLs. */
+function proxiedUrl(value: unknown, runner: string, id: string): unknown {
+  const prefix = `/v1/runs/${id}/`;
+  return typeof value === "string" && value.startsWith(prefix)
+    ? `/v1/runs/${runner}.${id}/${value.slice(prefix.length)}`
+    : value;
+}
+
+/** A job id as one percent-encoded path segment, as the runner takes it. */
+function isJobSegment(segment: string): boolean {
+  return /^[A-Za-z0-9%._~-]{1,512}$/.test(segment);
+}
+
+/** A cloud job's claim token: what the runner hands out, 32 hex digits. */
+function isClaimToken(token: string | null): token is string {
+  return token !== null && /^[0-9a-f]{32}$/.test(token);
+}
+
+/**
+ * The cloud job routes of a run (`/v1/runs/{id}/jobs...`), on the runner
+ * that has it. The claim's URLs are rewritten to the proxy's run id, so the
+ * app can hand them to the job's machine as they are.
+ */
+async function cloudJobs(
+  request: Request,
+  deps: Deps,
+  url: URL,
+  parts: string[],
+): Promise<Response> {
+  const [, , third = "", , job, action, extra] = parts;
+  if (extra !== undefined || (job !== undefined && !isJobSegment(job))) {
+    return error(404, "no such route");
+  }
+  const run = parseRunId(third, deps.pool);
+  if (!run) return error(404, "no such run");
+  const method = request.method;
+  const tail = parts.slice(3).join("/");
+  const path = `/v1/runs/${run.id}/${tail}`;
+  const call = async (init: RequestInit): Promise<Response> => {
+    try {
+      return await deps.pool.call(run.runner, `${path}${url.search}`, init);
+    } catch {
+      return error(502, "the runner with that run did not answer");
+    }
+  };
+  if (method === "GET" && action === undefined) return relay(run.runner, await call({}));
+  if (method === "POST" && job !== undefined && ["claim", "log", "finish"].includes(action ?? "")) {
+    const body = await request.text();
+    if (body.length > MAX_BODY) return error(413, `the body is over ${MAX_BODY} bytes`);
+    const response = await call({ method: "POST", body: body.length > 0 ? body : "{}" });
+    if (action !== "claim" || !response.ok) return relay(run.runner, response);
+    const claim = (await response.json()) as Record<string, unknown>;
+    claim.run = third;
+    for (const key of ["inputs", "artifacts"]) {
+      const value = claim[key];
+      if (typeof value === "object" && value !== null) {
+        const v = value as Record<string, unknown>;
+        v.url = proxiedUrl(v.url, run.runner, run.id);
+      }
+    }
+    return json(response.status, claim);
+  }
+  return error(404, "no such route for a cloud job");
+}
+
+/**
+ * A cloud job's machine fetching its input artifacts or uploading its own,
+ * with the claim's token instead of the proxy key: the runner checks the
+ * token. Bodies stream through. `null` for anything else.
+ */
+async function cloudArtifacts(
+  request: Request,
+  deps: Deps,
+  url: URL,
+  parts: string[],
+): Promise<Response | null> {
+  const [v1, runs, third = "", jobs, job = "", action, extra] = parts;
+  const shape =
+    v1 === "v1" &&
+    runs === "runs" &&
+    jobs === "jobs" &&
+    extra === undefined &&
+    ((request.method === "GET" && action === "inputs") ||
+      (request.method === "PUT" && action === "artifacts"));
+  if (!shape) return null;
+  const token = url.searchParams.get("claim");
+  if (!isClaimToken(token)) return null;
+  if (!isJobSegment(job)) return error(404, "no such route");
+  const run = parseRunId(third, deps.pool);
+  if (!run) return error(404, "no such run");
+  const path = `/v1/runs/${run.id}/jobs/${job}/${action}?claim=${token}`;
+  try {
+    const response = await deps.pool.call(
+      run.runner,
+      path,
+      request.method === "PUT"
+        ? {
+            method: "PUT",
+            body: request.body,
+            headers: { "Content-Type": "application/x-tar" },
+          }
+        : {},
+    );
+    return new Response(response.body, { status: response.status, headers: response.headers });
+  } catch {
+    return error(502, "the runner with that run did not answer");
+  }
+}
+
 export async function handle(request: Request, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
@@ -171,6 +283,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   if (parts[0] === "v1" && parts[1] === "artifacts") {
     return serveDownload(request, url, parts.slice(2), deps.downloads, deps.now());
   }
+  // A cloud job's machine, with its claim's token rather than the key.
+  const artifacts = await cloudArtifacts(request, deps, url, parts);
+  if (artifacts) return artifacts;
   if (!(await authorised(request, deps.proxyKey))) return error(401, "missing or wrong bearer key");
 
   if (method === "GET" && path === "/v1/capacity") {
@@ -203,8 +318,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
       const withValues = await withStoredValues(deps, body.value);
       if (withValues instanceof Response) return withValues;
       text = JSON.stringify(withValues);
-    } else if ("trusted" in body.value) {
-      const { trusted: _, ...rest } = body.value;
+    } else if ("trusted" in body.value || "lent" in body.value) {
+      // Preparing runs no job, so it needs neither.
+      const { trusted: _, lent: _lent, ...rest } = body.value;
       text = JSON.stringify(rest);
     }
     const placed = await deps.pool.place(`${path}${url.search}`, text);
@@ -217,7 +333,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     // groups may read variables, never secrets, so only variables are added.
     const body = await readBody(request);
     if (body instanceof Response) return body;
-    const { trusted: _trusted, secrets: _secrets, ...rest } = body.value;
+    const { trusted: _trusted, secrets: _secrets, lent: _lent, ...rest } = body.value;
     const { owner, repoId } = identify(rest);
     if (isId(owner) && isId(repoId)) {
       const stored = await forRun(deps.values, deps.secretsKey, owner, repoId, false);
@@ -232,6 +348,10 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     return response
       ? new Response(response.body, { status: response.status, headers: response.headers })
       : error(503, "no runner answered");
+  }
+
+  if (parts[0] === "v1" && parts[1] === "runs" && parts[3] === "jobs") {
+    return cloudJobs(request, deps, url, parts);
   }
 
   if (method === "POST" && parts[0] === "v1" && parts[1] === "runs" && parts.length === 4) {
@@ -370,17 +490,22 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
  * A run request with the owner's and repository's variables and, unless it
  * is a pull request the caller has not vouched for (`"trusted": true`: from
  * the repository itself, not a fork), their secrets. Values the request
- * carries itself win. `trusted` is the proxy's and is not passed on.
+ * carries itself win. An untrusted run's `lent` (connections, SSH keys and
+ * resource outputs the app lends its jobs) is dropped. The runner trusts
+ * anything but a pull request on its own, so `trusted` goes on only for a
+ * vouched-for pull request, which is then lent what the request carries.
  */
 async function withStoredValues(
   deps: Deps,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown> | Response> {
   const { trusted, ...rest } = body;
-  const { owner, repoId } = identify(rest);
-  if (!isId(owner) || !isId(repoId)) return rest;
   const event = typeof rest.event === "string" ? rest.event : "push";
   const withSecrets = event !== "pull-request" || trusted === true;
+  if (!withSecrets) delete rest.lent;
+  if (event === "pull-request" && trusted === true) rest.trusted = true;
+  const { owner, repoId } = identify(rest);
+  if (!isId(owner) || !isId(repoId)) return rest;
   const stored = await forRun(deps.values, deps.secretsKey, owner, repoId, withSecrets);
   if (stored.unreadable.length > 0) {
     // A run that silently got an empty deploy token would be worse than

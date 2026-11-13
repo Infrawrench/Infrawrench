@@ -149,6 +149,9 @@ pub const SCRATCH_PATH: &str = "/tmp/workflow";
 pub const MAX_TOOLS: usize = 16;
 /// The most services one job may start.
 pub const MAX_SERVICES: usize = 8;
+/// The most names one job's `connections:`, `ssh-keys:` or `env-from:` may
+/// list.
+pub const MAX_LENT: usize = 16;
 /// How long a job waits for a service's `ready:` unless it says.
 pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 60;
 pub const MIN_MEMORY: u64 = 16 << 20;
@@ -219,6 +222,15 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         .and_then(|w| w.services.clone())
         .unwrap_or_default();
     for job in raw.jobs.values_mut() {
+        if job.cloud.is_some() {
+            // A cloud job starts nothing on the runner, so the workspace's
+            // services are not its; services of its own are an error.
+            job.services = match job.services.take() {
+                Some(raw::Services::Map(own)) => Some(raw::Services::Map(own)),
+                _ => Some(raw::Services::Map(indexmap::IndexMap::new())),
+            };
+            continue;
+        }
         let services = effective_services(&base_services, job.services.as_ref());
         job.services = Some(raw::Services::Map(services));
     }
@@ -277,6 +289,66 @@ fn is_name(s: &str) -> bool {
         && bytes
             .iter()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-' || *b == b'_')
+}
+
+/// A resource grant's CI name, as `${{ resources.<name>.<output> }}` and
+/// `env-from:` read it: letters, digits, `-` and `_`, starting with a letter
+/// or digit, up to 64.
+pub(crate) fn is_grant_name(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
+}
+
+/// An Infrawrench connection's or SSH key's name as the app shows it: any
+/// text up to 128 characters without control characters or padding, and
+/// literal, so the app can resolve it before the run starts.
+fn lent_name_problem(s: &str) -> Option<&'static str> {
+    if s.is_empty() || s.chars().count() > 128 {
+        Some("needs a name of 1 to 128 characters")
+    } else if s.trim() != s || s.chars().any(char::is_control) {
+        Some("a name has no leading or trailing spaces and no control characters")
+    } else if s.contains("${{") {
+        Some(
+            "names are literal, so the app can check them before the run starts; `${{ }}` is not allowed here",
+        )
+    } else {
+        None
+    }
+}
+
+/// `cloud.gpu`: `<type>` or `<type>:<count>`.
+fn is_gpu(s: &str) -> bool {
+    let (kind, count) = match s.split_once(':') {
+        Some((k, c)) => (k, Some(c)),
+        None => (s, None),
+    };
+    !kind.is_empty()
+        && kind.len() <= 64
+        && kind
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        && count.is_none_or(|c| c.parse::<u8>().is_ok_and(|n| (1..=64).contains(&n)))
+}
+
+/// The job key of a `jobs.<key>` path.
+fn job_key(path: &str) -> String {
+    path.strip_prefix("jobs.").unwrap_or(path).to_string()
+}
+
+/// A Kubernetes namespace: a DNS label.
+fn is_namespace(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty()
+        && b.len() <= 63
+        && b[0].is_ascii_alphanumeric()
+        && b[b.len() - 1].is_ascii_alphanumeric()
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
 fn is_version_req(s: &str) -> bool {
@@ -365,6 +437,9 @@ struct Validator<'a> {
 /// jobs' outputs, checked once.
 struct JobStatic {
     tool: Option<ToolRef>,
+    /// `cloud:`, checked, its matrix expressions left for each entry.
+    cloud: Option<CloudSpec>,
+    access: JobAccess,
     tools: Vec<ToolRef>,
     timeout: u64,
     memory: u64,
@@ -523,6 +598,9 @@ impl Validator<'_> {
                 Some(raw::Override::Value(c)) => Some(c.clone()),
             };
             let deps = match &job.deps {
+                // A cloud job installs nothing on the runner: its machine
+                // starts from the commit alone.
+                _ if job.cloud.is_some() => Vec::new(),
                 None | Some(raw::Override::Disabled(true)) => base_deps.clone(),
                 Some(raw::Override::Disabled(false)) => Vec::new(),
                 Some(raw::Override::Value(d)) => d.clone(),
@@ -562,6 +640,8 @@ impl Validator<'_> {
             let (instances, deferred) =
                 self.instances(&key, &job, &st, ws_index, &workspaces, None);
             let path_tools = st.tools.clone();
+            let cloud = st.cloud.clone();
+            let access = st.access.clone();
             let Some(tool) = st.tool else { continue };
             jobs.push(JobTemplate {
                 key: key.clone(),
@@ -575,6 +655,8 @@ impl Validator<'_> {
                 tools: path_tools,
                 instances: (!deferred).then_some(instances),
                 package,
+                cloud,
+                access,
                 raw: deferred.then(|| job.clone()),
             });
         }
@@ -1079,13 +1161,38 @@ impl Validator<'_> {
     }
 
     fn job_static(&mut self, path: &str, job: &raw::Job, workspace: &WorkspaceSpec) -> JobStatic {
-        let tool = match parse_tool(&job.using) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                self.error(format!("{path}.using"), e);
+        let cloud = job.cloud.as_ref().and_then(|c| self.cloud(path, c));
+        let tool = match (&job.using, &job.cloud) {
+            (Some(_), Some(_)) => {
+                self.error(
+                    format!("{path}.using"),
+                    "a cloud job runs in its machine's image; give it `using:` or `cloud:`, not both",
+                );
                 None
             }
+            (None, None) => {
+                self.error(
+                    path,
+                    "needs `using:` (a tool or environment), or `cloud:` to run on a connected cloud account",
+                );
+                None
+            }
+            (Some(using), None) => match parse_tool(using) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    self.error(format!("{path}.using"), e);
+                    None
+                }
+            },
+            (None, Some(_)) => cloud.as_ref().map(|c| ToolRef::Cloud {
+                provider: c.provider.clone(),
+                kind: c.kind.clone(),
+            }),
         };
+        if job.cloud.is_some() {
+            self.cloud_limits(path, job);
+        }
+        let access = self.access(path, job);
         let timeout = match &job.timeout {
             None => DEFAULT_TIMEOUT_SECS,
             Some(t) => match units::parse_duration_secs(t) {
@@ -1167,14 +1274,24 @@ impl Validator<'_> {
                 );
             }
         }
+        let using = job.using.as_deref().unwrap_or_default();
         match (&tool, &job.args, &job.run) {
+            (_, Some(_), _) if job.cloud.is_some() => {
+                self.error(
+                    format!("{path}.args"),
+                    "a cloud job takes a `run:` script, not `args:`",
+                );
+            }
+            (_, _, None) if job.cloud.is_some() => {
+                self.error(
+                    path,
+                    "a cloud job needs a `run:` script, which runs with bash on its machine",
+                );
+            }
             (Some(t), _, None) if t.is_env() => {
                 self.error(
                     path,
-                    format!(
-                        "`{}` is an environment; give the job a `run:` script",
-                        job.using
-                    ),
+                    format!("`{using}` is an environment; give the job a `run:` script"),
                 );
             }
             (Some(t), Some(_), _) if t.is_env() => {
@@ -1183,8 +1300,8 @@ impl Validator<'_> {
                     "an environment job takes a `run:` script, not `args:`",
                 );
             }
-            (Some(t), _, Some(_)) if !t.is_env() => {
-                self.error(format!("{path}.run"), format!("`{}` is a tool; give it `args:`, or use an `env:` environment for a script", job.using));
+            (Some(t), _, Some(_)) if !t.is_env() && !t.is_cloud() => {
+                self.error(format!("{path}.run"), format!("`{using}` is a tool; give it `args:`, or use an `env:` environment for a script"));
             }
             _ => {}
         }
@@ -1261,6 +1378,13 @@ impl Validator<'_> {
             if matches!(changes, ChangePolicy::Commit { .. }) {
                 self.error(&at, "a job that commits its changes cannot be task-cached");
             }
+            if !(job.connections.is_empty() && job.ssh_keys.is_empty() && job.env_from.is_empty()) {
+                // As with secrets: its result could depend on what it is lent.
+                self.error(
+                    &at,
+                    "a job that is lent connections, SSH keys or resources cannot be task-cached",
+                );
+            }
         }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
@@ -1308,6 +1432,8 @@ impl Validator<'_> {
             .map(|d| self.downloads(path, &d.0, job, workspace));
         JobStatic {
             tool,
+            cloud,
+            access,
             tools,
             timeout,
             memory,
@@ -1315,6 +1441,239 @@ impl Validator<'_> {
             services,
             downloads,
         }
+    }
+
+    /// Checks `cloud:` and returns it with its literal parts checked and
+    /// the others as written (each matrix entry substitutes them).
+    fn cloud(&mut self, path: &str, field: &raw::CloudField) -> Option<CloudSpec> {
+        let at = format!("{path}.cloud");
+        let raw = match field {
+            raw::CloudField::Short(text) => match text.split_once('/') {
+                Some((provider, kind)) => raw::Cloud {
+                    provider: Some(provider.trim().to_string()),
+                    kind: Some(kind.trim().to_string()),
+                    ..Default::default()
+                },
+                None => {
+                    self.error(
+                        &at,
+                        format!(
+                            "`{text}` is `<provider>/<kind>`, such as `gcp/build`, or `{{ provider, kind, ... }}`"
+                        ),
+                    );
+                    return None;
+                }
+            },
+            raw::CloudField::Full(c) => c.clone(),
+        };
+        let errors = self.errors.len();
+        let provider = raw.provider.unwrap_or_default();
+        if provider.is_empty() {
+            self.error(
+                format!("{at}.provider"),
+                "is required: the plugin id of an opted-in connection, such as `aws` or `gcp`",
+            );
+        } else if !is_name(&provider) {
+            self.error(
+                format!("{at}.provider"),
+                format!("`{provider}` is not a provider id (lowercase letters, digits, `-` and `_`, up to 64, written out rather than an expression)"),
+            );
+        }
+        let kind = raw.kind.unwrap_or_default();
+        if !CLOUD_KINDS.contains(&kind.as_str()) {
+            self.error(
+                format!("{at}.kind"),
+                format!(
+                    "is one of {}, not `{kind}`",
+                    CLOUD_KINDS
+                        .iter()
+                        .map(|k| format!("`{k}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            );
+        }
+        if let Some(connection) = &raw.connection
+            && let Some(problem) = lent_name_problem(connection)
+        {
+            self.error(format!("{at}.connection"), problem);
+        }
+        for (field, value) in [
+            ("machine", &raw.machine),
+            ("image", &raw.image),
+            ("region", &raw.region),
+            ("gpu", &raw.gpu),
+        ] {
+            let Some(value) = value else { continue };
+            if value.trim().is_empty()
+                || value.chars().count() > 256
+                || value.chars().any(char::is_control)
+            {
+                self.error(
+                    format!("{at}.{field}"),
+                    "needs 1 to 256 characters without control characters",
+                );
+            } else if field == "gpu" && !value.contains("${{") && !is_gpu(value) {
+                self.error(
+                    format!("{at}.gpu"),
+                    format!(
+                        "`{value}` is `<type>` or `<type>:<count>`, such as `a100` or `h100:2`"
+                    ),
+                );
+            }
+        }
+        (self.errors.len() == errors).then_some(CloudSpec {
+            provider,
+            kind,
+            connection: raw.connection,
+            machine: raw.machine,
+            image: raw.image,
+            region: raw.region,
+            gpu: raw.gpu,
+        })
+    }
+
+    /// What a cloud job cannot have yet: everything that only means
+    /// something on the runner.
+    fn cloud_limits(&mut self, path: &str, job: &raw::Job) {
+        let not_yet = |what: &str| format!("{what}, which a cloud job does not support yet");
+        let packaged = self.generated.contains_key(&job_key(path)) || job.packages.is_some();
+        let mut refuse = |key: &str, why: String| self.error(format!("{path}.{key}"), why);
+        if job.deps.is_some() {
+            refuse("deps", not_yet("installs dependencies on the runner"));
+        }
+        if !job.tools.is_empty() {
+            refuse("tools", not_yet("puts runner tools on PATH"));
+        }
+        if job.cache.is_some() {
+            refuse("cache", not_yet("keeps files in the runner's cache"));
+        }
+        if job.memory.is_some() {
+            refuse(
+                "memory",
+                "sizes a job on the runner; a cloud job's size is its `cloud.machine`".into(),
+            );
+        }
+        if job.network == Some(false) {
+            refuse("network", not_yet("keeps a job off the internet"));
+        }
+        if matches!(&job.services, Some(raw::Services::Map(m)) if !m.is_empty()) {
+            refuse("services", not_yet("starts services beside the job"));
+        }
+        match &job.clone {
+            Some(raw::Override::Disabled(false)) => refuse(
+                "clone",
+                "a cloud job always starts from the commit; only `clone: { depth }` can change"
+                    .into(),
+            ),
+            Some(raw::Override::Value(c)) if c.into.is_some() || c.submodules.is_some() => {
+                refuse("clone", "a cloud job takes only `clone: { depth }`".into())
+            }
+            _ => {}
+        }
+        if packaged {
+            refuse("packages", not_yet("runs one job per workspace package"));
+        }
+        if matches!(
+            job.task_cache,
+            Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))
+        ) {
+            refuse("task-cache", not_yet("replays a run from the task cache"));
+        }
+        if job.env_cache.is_some() {
+            refuse("env-cache", not_yet("keeps an environment's caches"));
+        }
+        if job.downloads.is_some() {
+            refuse("downloads", not_yet("keeps files for people to download"));
+        }
+        if matches!(job.changes, Some(raw::Changes::Commit(_))) {
+            refuse("changes", not_yet("commits its changes"));
+        }
+    }
+
+    /// `connections:`, `ssh-keys:`, `env-from:` and the resources the
+    /// job's and its services' `env:` read, checked.
+    fn access(&mut self, path: &str, job: &raw::Job) -> JobAccess {
+        let mut access = JobAccess::default();
+        for (key, len) in [
+            ("connections", job.connections.len()),
+            ("ssh-keys", job.ssh_keys.len()),
+            ("env-from", job.env_from.len()),
+        ] {
+            if len > MAX_LENT {
+                self.error(
+                    format!("{path}.{key}"),
+                    format!("lists {len} names; the limit is {MAX_LENT}"),
+                );
+            }
+        }
+        for c in &job.connections {
+            let name = c.name();
+            if let Some(problem) = lent_name_problem(name) {
+                self.error(
+                    format!("{path}.connections"),
+                    format!("`{name}`: {problem}"),
+                );
+                continue;
+            }
+            if let Some(ns) = c.namespace()
+                && !is_namespace(ns)
+            {
+                self.error(
+                    format!("{path}.connections"),
+                    format!("`{ns}` is not a Kubernetes namespace (lowercase letters, digits and `-`, up to 63)"),
+                );
+            }
+            if access.connections.iter().any(|u| u.name == name) {
+                self.error(
+                    format!("{path}.connections"),
+                    format!("lists `{name}` twice"),
+                );
+                continue;
+            }
+            access.connections.push(ConnectionUse {
+                name: name.to_string(),
+                namespace: c.namespace().map(str::to_string),
+            });
+        }
+        for name in &job.ssh_keys {
+            if let Some(problem) = lent_name_problem(name) {
+                self.error(format!("{path}.ssh-keys"), format!("`{name}`: {problem}"));
+            } else if access.ssh_keys.contains(name) {
+                self.error(format!("{path}.ssh-keys"), format!("lists `{name}` twice"));
+            } else {
+                access.ssh_keys.push(name.clone());
+            }
+        }
+        for name in &job.env_from {
+            if !is_grant_name(name) {
+                self.error(
+                    format!("{path}.env-from"),
+                    format!("`{name}` is not a resource name (letters, digits, `-` and `_`, starting with a letter or digit, up to 64)"),
+                );
+            } else if access.env_from.contains(name) {
+                self.error(format!("{path}.env-from"), format!("lists `{name}` twice"));
+            } else {
+                access.env_from.push(name.clone());
+            }
+        }
+        let services = match &job.services {
+            Some(raw::Services::Map(m)) => m.values().map(|s| &s.env).collect(),
+            _ => Vec::new(),
+        };
+        for env in std::iter::once(&job.env).chain(services) {
+            for value in env.values() {
+                // A malformed one is reported where the value is planned.
+                if let Ok(Some(parts)) = interp::secret_parts(value) {
+                    for part in parts {
+                        if let interp::RawPart::Resource { name, output } = part {
+                            access.resources.entry(name).or_default().insert(output);
+                        }
+                    }
+                }
+            }
+        }
+        access
     }
 
     /// Checks a job's `downloads:` and returns its retention and `when:`.
@@ -1620,6 +1979,9 @@ impl Validator<'_> {
                                 .map(|p| match p {
                                     interp::RawPart::Text(t) => SecretPart::Text(sub(&field, &t)),
                                     interp::RawPart::Secret(name) => SecretPart::Secret(name),
+                                    interp::RawPart::Resource { name, output } => {
+                                        SecretPart::Resource { name, output }
+                                    }
                                 })
                                 .collect(),
                         }),
@@ -1630,6 +1992,33 @@ impl Validator<'_> {
             };
             let action = action_of("", &job.args, &job.run);
             let (env, secret_env) = env_of("", &job.env);
+            // Each entry's own machine, image, region and GPU.
+            let cloud = st.cloud.as_ref().map(|c| {
+                let field = |name: &str, v: &Option<String>| {
+                    v.as_ref().map(|v| sub(&format!("cloud.{name}"), v))
+                };
+                let gpu = field("gpu", &c.gpu);
+                if let Some(g) = &gpu
+                    && !is_gpu(g)
+                    && !scope.deferred.get()
+                {
+                    report(
+                        "cloud.gpu",
+                        format!(
+                            "`{g}` is `<type>` or `<type>:<count>`, such as `a100` or `h100:2`"
+                        ),
+                    );
+                }
+                CloudSpec {
+                    provider: c.provider.clone(),
+                    kind: c.kind.clone(),
+                    connection: c.connection.clone(),
+                    machine: field("machine", &c.machine),
+                    image: field("image", &c.image),
+                    region: field("region", &c.region),
+                    gpu,
+                }
+            });
             let services: Vec<PlannedService> = st
                 .services
                 .iter()
@@ -1844,7 +2233,8 @@ impl Validator<'_> {
                     changes: st.changes.clone(),
                     outputs: job.outputs.clone(),
                     timeout: std::time::Duration::from_secs(st.timeout),
-                    memory_bytes: st.memory,
+                    // A cloud job takes none of the runner's memory.
+                    memory_bytes: if cloud.is_some() { 0 } else { st.memory },
                     caches,
                     artifacts,
                     downloads: st.downloads.map(|(retention_secs, when)| DownloadSpec {
@@ -1866,6 +2256,8 @@ impl Validator<'_> {
                     package: package.clone(),
                     task_cache,
                     services,
+                    cloud,
+                    access: st.access.clone(),
                 });
             }
         }

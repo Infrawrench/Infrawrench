@@ -45,6 +45,9 @@ pub struct Runner {
     pub default_storage_quota: Option<u64>,
     /// What `downloads:` may keep.
     pub download_limits: DownloadLimits,
+    /// Where cloud jobs wait for their executor (`iwci serve`); `None`
+    /// fails them (`iwci run`).
+    pub external: Option<Arc<crate::external::ExternalJobs>>,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -101,6 +104,17 @@ pub struct RunRequest {
     /// cached again. `cache:` entries are restored as usual.
     #[serde(default)]
     pub no_task_cache: bool,
+    /// Whether the caller vouches for the run: `false` for a pull request
+    /// from a fork. Without it a pull request is untrusted and anything
+    /// else trusted. An untrusted run's jobs are lent nothing and its cloud
+    /// jobs fail.
+    #[serde(default)]
+    pub trusted: Option<bool>,
+    /// Connections, SSH keys and resource outputs the app lends the run's
+    /// jobs, by name. Never stored, echoed or put in a plan; masked in
+    /// output and reports. See [`crate::lent`].
+    #[serde(default)]
+    pub lent: crate::lent::Lent,
 }
 
 /// A run's secrets. Its `Debug` lists names only, so logging a request
@@ -171,6 +185,13 @@ fn size_or_bytes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, 
 }
 
 impl RunRequest {
+    /// Whether the run is trusted: as the request says, or else anything
+    /// but a pull request.
+    pub fn trusted(&self) -> bool {
+        self.trusted
+            .unwrap_or_else(|| !matches!(self.event(), Ok(Event::PullRequest)))
+    }
+
     fn event(&self) -> Result<Event, String> {
         match self.event.as_deref() {
             None | Some("push") => Ok(Event::Push),
@@ -304,6 +325,12 @@ pub struct Usage {
     pub wall_seconds: f64,
     pub vcpu_seconds: f64,
     pub memory_gib_seconds: f64,
+    /// Cloud jobs, which ran on the customer's account, not the runner's:
+    /// how many, and their time from claim to end. Not in the others.
+    #[serde(default)]
+    pub external_jobs: u64,
+    #[serde(default)]
+    pub external_seconds: f64,
 }
 
 impl Usage {
@@ -312,6 +339,8 @@ impl Usage {
         self.wall_seconds += other.wall_seconds;
         self.vcpu_seconds += other.vcpu_seconds;
         self.memory_gib_seconds += other.memory_gib_seconds;
+        self.external_jobs += other.external_jobs;
+        self.external_seconds += other.external_seconds;
     }
 }
 
@@ -397,12 +426,42 @@ impl Target {
     }
 }
 
-/// One pipeline a request triggers, and its concurrency group.
+/// One pipeline a request triggers, its concurrency group, and what its
+/// jobs ask of the app before the run starts.
 #[derive(Debug, Serialize)]
 pub struct PipelineConcurrency {
     pub file: String,
     pub name: String,
     pub concurrency: Option<iwci_spec::Concurrency>,
+    /// Each job key that runs on a cloud account or is lent anything.
+    pub jobs: Vec<JobNeeds>,
+}
+
+/// A job key's cloud block and what it is lent, by name: what the app
+/// resolves before it dispatches the run.
+#[derive(Debug, Serialize)]
+pub struct JobNeeds {
+    pub key: String,
+    /// `cloud:` as written: `provider`, `kind` and `connection` are
+    /// literal, the rest may hold `${{ matrix }}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<iwci_spec::CloudSpec>,
+    #[serde(flatten)]
+    pub access: iwci_spec::JobAccess,
+}
+
+impl JobNeeds {
+    fn of(plan: &iwci_spec::Plan) -> Vec<JobNeeds> {
+        plan.jobs
+            .iter()
+            .filter(|t| t.cloud.is_some() || !t.access.is_empty())
+            .map(|t| JobNeeds {
+                key: t.key.clone(),
+                cloud: t.cloud.clone(),
+                access: t.access.clone(),
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -446,6 +505,7 @@ impl Runner {
             }
             pipelines.push(PipelineConcurrency {
                 file: file.clone(),
+                jobs: JobNeeds::of(&plan),
                 name: plan.name,
                 concurrency: plan.concurrency,
             });
@@ -459,6 +519,7 @@ impl Runner {
     fn resolve(&self, req: &RunRequest) -> Result<Target, String> {
         check_named("secrets", &req.secrets.0)?;
         check_named("vars", &req.vars)?;
+        req.lent.check().map_err(|e| format!("lent: {e}"))?;
         let event = req.event()?;
         let owner = req.owner()?;
         let repo_id = req.repo_id()?;
@@ -627,6 +688,25 @@ impl Runner {
             slots: self.slots.clone(),
             skip_task_cache: req.no_task_cache,
             cancel: None,
+            access: schedule::RunAccess {
+                // An untrusted run is lent nothing, whatever the request
+                // carries; its jobs that name anything fail.
+                lent: Arc::new(if req.trusted() {
+                    req.lent.clone()
+                } else {
+                    Default::default()
+                }),
+                trusted: req.trusted(),
+                external: None,
+            },
+        };
+        let run_info = crate::external::RunInfo {
+            run_id: run.as_str().to_string(),
+            pipeline: String::new(),
+            repo: crate::external::without_credentials(&req.repo),
+            sha: r.sha.clone(),
+            branch: r.branch.clone(),
+            git_ref: r.git_ref.clone(),
         };
 
         let mut pipelines = Vec::new();
@@ -669,6 +749,15 @@ impl Runner {
                 continue;
             }
             options.cancel = control.as_ref().map(|c| c.start(file));
+            options.access.external = self.external.as_ref().map(|jobs| {
+                Arc::new(crate::external::RunExternal {
+                    jobs: jobs.clone(),
+                    run: crate::external::RunInfo {
+                        pipeline: file.clone(),
+                        ..run_info.clone()
+                    },
+                }) as Arc<dyn crate::external::External>
+            });
             let report = schedule::run(&plan, &workspaces, &tools, &executor, &committer, &options);
             passed &= report.passed();
             cancelled |= report
@@ -697,14 +786,24 @@ impl Runner {
     }
 
     /// What a report's jobs used. Only jobs that ran are charged: not one
-    /// the task cache stood in for.
+    /// the task cache stood in for. A cloud job ran on the customer's own
+    /// account: its time is counted apart, as external time, and charges
+    /// no runner CPU or memory.
     pub fn usage_of(&self, report: &RunReport) -> Usage {
         let mut usage = Usage::default();
         let share = self.jobs_per_cpu.max(1) as f64;
+        for job in &report.jobs {
+            if let Some(cloud) = &job.cloud
+                && cloud.claimed_ms > 0
+            {
+                usage.external_jobs += 1;
+                usage.external_seconds += cloud.claimed_ms as f64 / 1000.0;
+            }
+        }
         for job in report
             .jobs
             .iter()
-            .filter(|j| j.execution.is_some() && !j.cached)
+            .filter(|j| j.execution.is_some() && !j.cached && j.cloud.is_none())
         {
             let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
             usage.jobs += 1;
@@ -753,7 +852,7 @@ impl Runner {
                     Err(e) => out.problems.push(format!("workspace: {e}")),
                 }
             }
-            for template in &plan.jobs {
+            for template in plan.jobs.iter().filter(|t| !t.tool.is_cloud()) {
                 for tool in std::iter::once(&template.tool).chain(&template.tools) {
                     let name = tool.to_string();
                     if !seen_tools.insert(name.clone()) {

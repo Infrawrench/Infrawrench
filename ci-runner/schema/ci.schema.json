@@ -85,6 +85,64 @@
     }
   },
   "$defs": {
+    "cloud": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "kind"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "description": "The plugin id of an opted-in connection, such as `aws`, `gcp` or `hetzner`."
+        },
+        "kind": {
+          "enum": ["vm", "container", "build", "host", "cluster"],
+          "description": "A fresh machine, a one-off container, a managed build service, an existing host over SSH, or a job on an existing cluster."
+        },
+        "connection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "The connection's name, when the organisation opted in more than one of the provider."
+        },
+        "machine": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "The provider's size name, such as `e2-highcpu-8`. Default per provider and kind."
+        },
+        "image": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "A container image (container, build) or an OS image (vm)."
+        },
+        "region": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "gpu": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "`<type>` or `<type>:<count>`, where the provider offers GPUs."
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$",
+          "description": "For a Kubernetes connection: the namespace its kubeconfig's context selects."
+        }
+      }
+    },
     "triggerFilter": {
       "type": "object",
       "additionalProperties": false,
@@ -182,7 +240,14 @@
     "job": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["using"],
+      "anyOf": [
+        {
+          "required": ["using"]
+        },
+        {
+          "required": ["cloud"]
+        }
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -238,7 +303,55 @@
         "using": {
           "type": "string",
           "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
-          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x."
+          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x. Required unless the job has `cloud:`."
+        },
+        "cloud": {
+          "description": "Runs the job on one of the organisation's connected cloud accounts that an admin opted in, instead of on the runner: `<provider>/<kind>` (`gcp/build`) or a map. The job keeps its place in the graph (needs, if, outputs, artifacts, matrix); its `run:` script runs with bash on the machine, which is torn down after it. Not with `using:`, `deps`, `tools`, `cache`, `memory`, `network: false`, `services`, `packages`, `task-cache`, `env-cache`, `downloads`, `changes: commit` or a `clone` other than `{ depth }`. Never for a pull request from a fork.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}/(vm|container|build|host|cluster)$"
+            },
+            {
+              "$ref": "#/$defs/cloud"
+            }
+          ]
+        },
+        "connections": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              {
+                "$ref": "#/$defs/connection"
+              }
+            ]
+          },
+          "description": "Infrawrench connections whose credentials are lent to the job, by name: a Kubernetes cluster's kubeconfig (`KUBECONFIG`), an SSH host's entry in `~/.ssh/config` with its pinned host key. Each must be turned on for CI by an admin, for this repository and branch; otherwise the job fails at start saying why. Never for a pull request from a fork."
+        },
+        "ssh-keys": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": "Infrawrench SSH keys written into the job's `~/.ssh` (mode 0600), by name. Each must be turned on for CI by its owner. Never for a pull request from a fork."
+        },
+        "env-from": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          },
+          "description": "Resource grants (by their CI name) whose every exported key becomes an environment variable, such as an R2 bucket's S3 endpoint and keys. The job's own `env:` wins. Masked like secrets."
         },
         "args": {
           "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",
@@ -265,6 +378,7 @@
         },
         "env": {
           "type": "object",
+          "description": "Extra environment variables. Values may read `${{ secrets.<name> }}` and `${{ resources.<name>.<output> }}` (an infrastructure resource's output an admin granted to CI), which are filled in when the job starts and masked in its output.",
           "propertyNames": {
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
             "not": {
@@ -625,7 +739,7 @@
         },
         "env": {
           "type": "object",
-          "description": "The service's environment variables. ${{ secrets.<name> }} works here, and is masked in the log.",
+          "description": "The service's environment variables. ${{ secrets.<name> }} and ${{ resources.<name>.<output> }} work here, and are masked in the log.",
           "propertyNames": {
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
             "not": {

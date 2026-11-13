@@ -22,6 +22,9 @@
 //! | `DELETE /v1/storage/{owner}/{repo-id}` | deletes one repository's caches (never its downloads), and says what went |
 //! | `GET /v1/usage/{owner}[?month=YYYY-MM]` | the owner's billed usage for a month |
 //! | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, with their crons and text, for the proxy that fires them |
+//! | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, nothing secret |
+//! | `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish` | the executor's side of a cloud job (`crate::external`) |
+//! | `GET .../inputs?claim=`, `PUT .../artifacts?claim=` | a cloud job's artifacts, for its machine: the claim token instead of the key |
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
@@ -37,6 +40,8 @@ use crate::adapters::caches::{clear_repository, storage_usage};
 
 #[path = "server_concurrency.rs"]
 mod concurrency;
+#[path = "server_external.rs"]
+mod external;
 #[path = "server_lifecycle.rs"]
 pub(crate) mod lifecycle;
 #[path = "server_schedules.rs"]
@@ -59,7 +64,7 @@ const KEEP_FINISHED: usize = 1000;
 /// good (#1066).
 const KEEP_REPORT_SECS: u64 = 5 * 60;
 /// The current [`UsageRecord::schema`].
-pub const USAGE_SCHEMA: u32 = 2;
+pub const USAGE_SCHEMA: u32 = 3;
 
 pub struct Server {
     runner: Arc<Runner>,
@@ -136,7 +141,10 @@ fn forget_finished(
 
 /// One run's line in the bill, stored at
 /// `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`. `schema` 2: a job's
-/// `status` may be `cancelled`.
+/// `status` may be `cancelled`. 3: `usage` has `external_jobs` and
+/// `external_seconds` (cloud jobs, which ran on the customer's account and
+/// are not in the runner's numbers), and such a job is `external: true`
+/// with its claimed time as `duration_ms`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
     pub schema: u32,
@@ -162,6 +170,9 @@ pub struct JobUsage {
     pub status: String,
     pub duration_ms: u64,
     pub memory_mib: u64,
+    /// A cloud job: it ran on the customer's account.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
 }
 
 use crate::runner::random_id;
@@ -331,6 +342,10 @@ impl Server {
 
         let response = if method == Method::Get && path == "/healthz" {
             Response::from_string("ok").with_status_code(200).boxed()
+        } else if let Some(reply) = self.claim_route(&mut request, &method, &path, &query) {
+            // A cloud job's machine fetches and uploads its artifacts with
+            // its claim's token, never the runner's key.
+            reply
         } else if !self.authorised(&request) {
             error(401, "missing or wrong bearer key").boxed()
         } else {
@@ -367,6 +382,9 @@ impl Server {
                         ),
                         None => error(404, "no live log for that run on this runner").boxed(),
                     }
+                }
+                (_, ["v1", "runs", id, "jobs", ..]) => {
+                    self.external_route(&mut request, &method, id, &segments[4..])
                 }
                 (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(&mut request) {
                     Ok(files) => self.cancel_run(id, files.as_deref()).boxed(),
@@ -609,6 +627,9 @@ impl Server {
             let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
             let outcome = runner.run_with_logs(&req, &id_for_thread, Some(logs), Some(control));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
+            if let Some(jobs) = &this.runner.external {
+                jobs.forget_run(&id_for_thread);
+            }
             // Finished and remembered: a cancel from now on answers that.
             this.controls.lock().unwrap().remove(&id_for_thread);
             hub.close(&entry);
@@ -643,12 +664,13 @@ impl Server {
                             jobs.push(JobUsage {
                                 id: j.id.clone(),
                                 status: crate::schedule::status_name(&j.status).to_string(),
-                                duration_ms: if j.execution.is_some() {
-                                    j.duration_ms
-                                } else {
-                                    0
+                                duration_ms: match &j.cloud {
+                                    Some(cloud) => cloud.claimed_ms,
+                                    None if j.execution.is_some() => j.duration_ms,
+                                    None => 0,
                                 },
                                 memory_mib: j.memory_mib,
+                                external: j.cloud.is_some(),
                             });
                         }
                     }
@@ -943,11 +965,16 @@ struct PipelineProgress {
 
 #[derive(Debug, Clone, Serialize)]
 struct JobProgress {
+    /// `external` (a cloud job waiting for its executor), `running`, or
+    /// how it finished.
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     cached: bool,
+    /// A cloud job's `cloud:`, from when it is handed over.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cloud: Option<iwci_spec::CloudSpec>,
 }
 
 impl Progress {
@@ -959,14 +986,29 @@ impl Progress {
                 jobs: jobs.clone(),
                 states: Default::default(),
             }),
+            LogEvent::JobExternal { job, cloud, .. } => {
+                if let Some(p) = self.pipelines.last_mut() {
+                    p.states.insert(
+                        job.clone(),
+                        JobProgress {
+                            status: "external".into(),
+                            duration_ms: None,
+                            cached: false,
+                            cloud: Some(cloud.clone()),
+                        },
+                    );
+                }
+            }
             LogEvent::JobStarted { job, .. } => {
                 if let Some(p) = self.pipelines.last_mut() {
+                    let cloud = p.states.get(job).and_then(|s| s.cloud.clone());
                     p.states.insert(
                         job.clone(),
                         JobProgress {
                             status: "running".into(),
                             duration_ms: None,
                             cached: false,
+                            cloud,
                         },
                     );
                 }
@@ -978,12 +1020,14 @@ impl Progress {
                 cached,
             } => {
                 if let Some(p) = self.pipelines.last_mut() {
+                    let cloud = p.states.get(job).and_then(|s| s.cloud.clone());
                     p.states.insert(
                         job.clone(),
                         JobProgress {
                             status: status.clone(),
                             duration_ms: Some(*duration_ms),
                             cached: *cached,
+                            cloud,
                         },
                     );
                 }
