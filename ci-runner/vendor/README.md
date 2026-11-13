@@ -759,6 +759,21 @@ at the end of the input rather than counting down the rest of what it was
 asked for. Upstream main has the same `sock_send_file` (checked November
 2026).
 
+**A spawned child stops counting when it exits (#1082).** `proc_spawn3`
+kept the child's main-thread handle in the parent's `owned_handles`, and
+nothing ever took it out, so the handle's `TaskCountGuard` counted every
+child the parent had ever spawned against `max_threads` (the runner's
+`MAX_TASKS`, 512): the 512th `posix_spawn` of a long-lived process failed
+with `EPERM`, which stopped Go's `os/exec` and Node's `child_process`
+(`go vet` on a module with a few hundred packages). A forked child holds
+its own handle until its task ends, which is why bash was unaffected.
+`src/syscalls/wasix/proc_spawn3.rs` now gives the handle to the child's
+environment, as fork does, so it is dropped when the child's task ends,
+after its exit status is set; a child that is still running still counts.
+A builtin command (Wasmer's `/bin/wasmer`) keeps the old ownership, since
+its environment may be dropped before its task ends. Reported upstream as
+wasmerio/wasmer#7174; upstream main is unchanged (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -770,11 +785,13 @@ the task manager's idle threads end without queueing a task behind a
 busy one, a link the file system cannot make fails and `rmdir` finds a
 directory nothing looked up, a child's exit status reaches its parent
 unchanged, a directory's cookies hold while it changes, a moved
-directory's `..` is its new parent, `sendfile` writes to a file, and
-once the runner finds a renamed file's mode without its new
+directory's `..` is its new parent, `sendfile` writes to a file, a
+spawned child stops counting against `max_threads` once it exits
+(#7174), and once the runner finds a renamed file's mode without its new
 path's inode number: delete `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
-`builtins/test.sh`'s `background-passes`, `exit-status-passes` and
+`builtins/test.sh`'s `background-passes`, `exit-status-passes`,
+`spawn-many-passes` (bash, bash-node and go) and
 `shebang-passes` (bash and bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
 (bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
 and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
@@ -792,6 +809,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_service_blocked_in_accept_takes_its_sigterm`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
+`a_process_can_spawn_more_children_than_the_task_limit_one_by_one`,
 `removing_a_directory_nothing_looked_up_says_what_it_is`,
 `a_hard_link_is_refused_and_leaves_one_name`,
 `a_renamed_file_has_the_inode_number_of_its_new_path`,

@@ -7,8 +7,9 @@
 # Two checks stay on GitHub Actions (.github/workflows/terraform-provider.yml):
 # - `go vet`: vet compiled for WebAssembly traps in its errorsas and hostport
 #   analyzers on this module's packages, an upstream Go bug (it does the same
-#   under wasmtime with go.dev's own toolchain), and a `go` process here can
-#   start only 511 children (#1082), fewer than `go vet ./...` needs.
+#   under wasmtime with go.dev's own toolchain). Runners before the fix for
+#   #1082 also let a `go` process start only 511 children, fewer than
+#   `go vet ./...` needs.
 # - The docs check: tfplugindocs reads the schema by running a real
 #   Terraform, which loads the provider through go-plugin over a Unix domain
 #   socket, and WASIX has no Unix domain sockets.

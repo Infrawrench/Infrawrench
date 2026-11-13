@@ -1896,21 +1896,38 @@
      // Convert relative paths into absolute paths
      if search_path == Bool::True && !name.contains('/') {
          let path = if let Some(path) = path {
-@@ -117,6 +123,12 @@
-             FindExecutableResult::NotFound => return Ok(Errno::Noent),
-         }
-     } else if name.starts_with("./") {
-+        *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
-+    }
-+
-+    // A caller that turned the PATH search off named a file, so resolve it
-+    // against the current directory.
-+    if search_path == Bool::False && !name.starts_with('/') {
+@@ -120,6 +126,12 @@
          *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
      }
  
-@@ -176,7 +188,7 @@
-             let env = builder.take().unwrap();
++    // A caller that turned the PATH search off named a file, so resolve it
++    // against the current directory.
++    if search_path == Bool::False && !name.starts_with('/') {
++        *name = ctx.data().state.fs.relative_path_to_absolute(name.clone());
++    }
++
+     Span::current().record("full_path", name.as_str());
+ 
+     // Fork the environment which will copy all the open file handlers
+@@ -160,6 +172,7 @@
+     let bin_factory = Box::new(child_env.bin_factory.clone());
+ 
+     let mut builder = Some(child_env);
++    let mut child_handle = Some(child_handle);
+ 
+     let process = match bin_factory.try_built_in(name.clone(), Some(&ctx), &mut builder) {
+         Ok(task) => {
+@@ -173,16 +186,22 @@
+                 error!("builtin failed - {}", err);
+             }
+ 
+-            let env = builder.take().unwrap();
++            let mut env = builder.take().unwrap();
++            // The child owns its main thread's handle, as a forked child does,
++            // so its task count is given back when it exits. Kept here, it
++            // counted against `max_threads` for the rest of this process's
++            // life, and the 512th spawn of a long-lived parent failed.
++            env.owned_handles.extend(child_handle.take());
  
              // Spawn a new process with this current execution environment
 -            block_on(bin_factory.spawn(name.clone(), env)).map(|_| ())
@@ -1918,7 +1935,15 @@
          }
      };
  
-@@ -191,7 +203,9 @@
+     match process {
+         Ok(_) => {
+-            ctx.data_mut().owned_handles.push(child_handle);
++            // A builtin command's child is still the parent's to hold.
++            ctx.data_mut().owned_handles.extend(child_handle);
+             trace!(child_pid = %pid, "spawned sub-process");
+             Ok(Errno::Success)
+         }
+@@ -191,7 +210,9 @@
  
              debug!(child_pid = %pid, "process failed with (err={})", err_exit_code);
  

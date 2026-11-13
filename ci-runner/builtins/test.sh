@@ -733,6 +733,12 @@ jobs:
       test "$(sed 'N;s/^//e' two.txt)" = "$(printf 'first\nsecond')"
       test "$(echo 'echo one' | sed 's/^//e')" = one
       test "$(echo x | sed '1e echo before')" = "$(printf 'before\nx')"
+  # A process starts more children over its life than a job may have at
+  # once (#1082): sed's `e` spawns each, waits for it, and the 512th used to
+  # fail with "Operation not permitted".
+  spawn-many-passes:
+    using: env:bash@5
+    run: test "$(seq 600 | sed 's/.*/echo x/e' | wc -l)" = 600
   # An argument with a line feed in it reaches the program whole (#1003):
   # bash's exec joined the arguments with line feeds and WASIX split them
   # there again, so this printed `a|b|c|`. Through a second bash, through
@@ -1922,6 +1928,18 @@ jobs:
       });
       JS
       test "$(node /tmp/exit.js)" = "child exit ok"
+  # A `node` starts more children over its life than a job may have at
+  # once (#1082): the 512th `execFileSync` used to fail with EPERM.
+  spawn-many-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 5m
+    run: |
+      node -e '
+      const { execFileSync } = require("node:child_process");
+      for (let i = 1; i <= 600; i++) execFileSync("true");
+      console.log("600 spawns ok");
+      ' | grep -qx '600 spawns ok'
   # A child's exit status reaches a `node` whole (#1053): spawnSync and
   # `exit` read every status from 80 up as 79.
   exit-status-passes:
@@ -2258,6 +2276,36 @@ jobs:
     run: |
       git init -q -b main /tmp/r
       git -C /tmp/r status --short --branch | grep -q '^## No commits yet on main$'
+  # `os/exec` starts more children over a program's life than a job may
+  # have at once (#1082): the 512th used to fail with "Operation not
+  # permitted", which is what stopped `go vet` on a large module.
+  spawn-many-passes:
+    using: env:go@@MINOR@
+    timeout: 10m
+    run: |
+      mkdir -p /tmp/spawn && cd /tmp/spawn
+      printf 'module spawn\n\ngo 1.21\n' > go.mod
+      cat > main.go <<'GO'
+      package main
+
+      import (
+      	"fmt"
+      	"os"
+      	"os/exec"
+      )
+
+      func main() {
+      	for i := 1; i <= 600; i++ {
+      		if err := exec.Command("true").Run(); err != nil {
+      			fmt.Printf("spawn %d: %v\n", i, err)
+      			os.Exit(1)
+      		}
+      	}
+      	fmt.Println("600 spawns ok")
+      }
+      GO
+      go build -o spawn .
+      test "$(./spawn)" = "600 spawns ok"
 YAML
       ;;
     python)
