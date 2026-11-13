@@ -84,11 +84,19 @@ export interface CiDownloadLink {
   expiresAt: string;
 }
 
+/**
+ * What started a run: a push, a pull request, or a pipeline's
+ * `on.schedule` cron on the default branch.
+ */
+export const CI_EVENTS = ["push", "pull-request", "schedule"] as const;
+
+export type CiEvent = (typeof CI_EVENTS)[number];
+
 export interface CiRun {
   id: string;
   repoFullName: string;
-  event: "push" | "pull-request";
-  /** The branch pushed, or the pull request's head branch. */
+  event: CiEvent;
+  /** The branch pushed, the pull request's head branch, or the default branch for a schedule. */
   headRef: string;
   sha: string;
   pullNumber: number | null;
@@ -113,6 +121,8 @@ export interface CiRun {
   retriedAsRunId?: string | null;
   /** Run without reading the task cache: every `task-cache:` job ran. */
   noTaskCache?: boolean;
+  /** A scheduled run's pipeline file, whose `on.schedule` cron started it. */
+  pipelineFile?: string;
   /**
    * The concurrency groups its pipelines hold or wait for (`concurrency:`),
    * once the runners have read them; absent before then.
@@ -198,6 +208,36 @@ export interface CiCaches {
 }
 
 /** What clearing a repository's caches removed. */
+/** One pipeline file of a repository with `on.schedule`, as of its last read. */
+export interface CiScheduledPipeline {
+  /** The pipeline file, under `.infrawrench/ci/`. */
+  file: string;
+  /** Its `name:`. */
+  name: string;
+  /** Its `on.schedule` cron expressions, in UTC. */
+  cron: string[];
+  /** The next minute one of them fires on, or `null` when none ever does. */
+  nextRunAt: string | null;
+}
+
+/** A repository's scheduled pipelines on its default branch. */
+export interface CiRepoSchedule {
+  installationId: number;
+  repoFullName: string;
+  defaultBranch: string;
+  /** The default branch's commit the pipelines were read from, which scheduled runs run. */
+  sha: string | null;
+  pipelines: CiScheduledPipeline[];
+  /** When the default branch was last read; `null` until the first read. */
+  refreshedAt: string | null;
+  /** Why the last read failed, or which pipeline files did not parse. */
+  error: string | null;
+}
+
+export interface CiSchedules {
+  schedules: CiRepoSchedule[];
+}
+
 export interface CiCacheCleared {
   installationId: number;
   repo: string;

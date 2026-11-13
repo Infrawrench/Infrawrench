@@ -30,6 +30,7 @@ class FakeRunner {
     ],
     problems: [],
   };
+  scheduleReads: Array<Record<string, unknown>> = [];
   down = false;
   draining = false;
   cleared: string[] = [];
@@ -117,7 +118,10 @@ class FakeRunner {
       const id = status[1] ?? "";
       return json(200, { id, state: this.states.get(id) ?? "finished", runner: this.url });
     }
-    if (path === "/v1/schedules/read") return json(200, this.schedules);
+    if (path === "/v1/schedules/read") {
+      this.scheduleReads.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return json(200, this.schedules);
+    }
     if (path.startsWith("/v1/usage/")) return json(200, { runner: this.url });
     const clear = /^\/v1\/storage\/([^/]+)\/([^/]+)$/.exec(path);
     if (clear && init.method === "DELETE") {
@@ -253,6 +257,32 @@ describe("proxy", () => {
     });
     expect(res.status).toBe(202);
     expect(runner.runs[0]?.body["no-task-cache"]).toBe(true);
+  });
+
+  it("reads a branch's schedules for the app with its token, storing nothing", async () => {
+    const runner = new FakeRunner("http://a.test", 4, 4);
+    const { call, store, values } = await setup([runner]);
+    await values.put("var", "github.com-acme", "", "STAGE", "prod", 1);
+    await values.put("secret", "github.com-acme", "", "DEPLOY", "sealed", 1);
+    const res = await call("POST", "/v1/schedules/read", {
+      repo: "https://github.com/acme/web.git",
+      owner: "github.com-acme",
+      "repo-id": "web",
+      "default-branch": "main",
+      token: "ghs_installation",
+      trusted: true,
+    });
+    expect(res.status).toBe(200);
+    const read = (await res.json()) as { pipelines: Array<{ text: string }> };
+    expect(read.pipelines[0]?.text).toBe("name: Nightly");
+    const sent = runner.scheduleReads[0];
+    // The clone token reaches the runner; secrets and `trusted` never do.
+    expect(sent?.token).toBe("ghs_installation");
+    expect(sent?.vars).toEqual({ STAGE: "prod" });
+    expect(sent).not.toHaveProperty("secrets");
+    expect(sent).not.toHaveProperty("trusted");
+    // Nothing registered: the proxy's own Cron Trigger will not fire it.
+    expect(await store.all()).toEqual([]);
   });
 
   it("registers schedules without tokens and fires each due pipeline once", async () => {

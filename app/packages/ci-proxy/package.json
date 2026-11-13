@@ -6,9 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "pnpm --filter @infrawrench/client-core build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@infrawrench/client-core": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260808.1",

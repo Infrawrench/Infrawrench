@@ -102,7 +102,10 @@ export const CiJobOutputSchema = Schema.Struct({
 export const CiRunSchema = Schema.Struct({
   id: Schema.String,
   repoFullName: Schema.String,
-  event: Schema.Literals(["push", "pull-request"]),
+  event: Schema.Literals(["push", "pull-request", "schedule"]).annotate({
+    description:
+      "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head.",
+  }),
   headRef: Schema.String,
   sha: Schema.String,
   pullNumber: Schema.NullOr(Schema.Int),
@@ -130,6 +133,11 @@ export const CiRunSchema = Schema.Struct({
     Schema.Boolean.annotate({
       description:
         "The run did not read the task cache: every `task-cache:` job ran, and saved its result again.",
+    }),
+  ),
+  pipelineFile: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "A scheduled run's pipeline file, whose `on.schedule` cron started it.",
     }),
   ),
   concurrencyGroups: Schema.optionalKey(
@@ -384,6 +392,38 @@ export const CiCachesSchema = Schema.Struct({
   ),
 }).annotate({ identifier: "CiCaches" });
 
+export const CiScheduledPipelineSchema = Schema.Struct({
+  file: Schema.String.annotate({ description: "The pipeline file, under `.infrawrench/ci/`." }),
+  name: Schema.String,
+  cron: Schema.Array(Schema.String).annotate({
+    description: "Its `on.schedule` cron expressions, in UTC.",
+  }),
+  nextRunAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "The next minute one of them fires on; null when none ever does.",
+  }),
+}).annotate({ identifier: "CiScheduledPipeline" });
+
+export const CiRepoScheduleSchema = Schema.Struct({
+  installationId: Schema.Int,
+  repoFullName: Schema.String,
+  defaultBranch: Schema.String,
+  sha: Schema.NullOr(Schema.String).annotate({
+    description:
+      "The default branch's commit the pipelines were read from, which scheduled runs check out.",
+  }),
+  pipelines: Schema.Array(CiScheduledPipelineSchema),
+  refreshedAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "When the default branch was last read; null until the first read.",
+  }),
+  error: Schema.NullOr(Schema.String).annotate({
+    description: "Why the last read failed, or which pipeline files did not parse.",
+  }),
+}).annotate({ identifier: "CiRepoSchedule" });
+
+export const CiSchedulesSchema = Schema.Struct({
+  schedules: Schema.Array(CiRepoScheduleSchema),
+}).annotate({ identifier: "CiSchedules" });
+
 export const CiCacheClearedSchema = Schema.Struct({
   installationId: Schema.Int,
   repo: Schema.String,
@@ -549,6 +589,18 @@ export class CiGroup extends HttpApiGroup.make("ci")
         "Deletes every branch's and pull request's `cache:` and `task-cache:` entries of one repository. The next run of each job starts cold and saves again.",
       )
       .annotate(SuccessDescription, "What was removed"),
+    HttpApiEndpoint.get("listSchedules", "/schedules", {
+      params: OrgParams,
+      success: CiSchedulesSchema,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "Repositories' scheduled pipelines")
+      .annotate(
+        OpenApi.Description,
+        "Each repository's pipelines with `on.schedule` on its default branch, as last read, with each pipeline's next run. They are read again on every push to the default branch, which is also how a schedule is added, changed or removed. Repositories with no scheduled pipeline are left out unless their last read failed.",
+      )
+      .annotate(SuccessDescription, "Scheduled pipelines per repository"),
     HttpApiEndpoint.get("listValues", "/values", {
       params: OrgParams,
       query: ValueScopeQuery,

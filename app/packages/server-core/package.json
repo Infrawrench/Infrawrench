@@ -357,6 +357,7 @@
     "./ci/events": "./src/ci/events.ts",
     "./ci/pass": "./src/ci/pass.ts",
     "./ci/runs": "./src/ci/runs.ts",
+    "./ci/schedules": "./src/ci/schedules.ts",
     "./ci/values": "./src/ci/values.ts",
     "./infrafile/runner": "./src/infrafile/runner.ts",
     "./billing/build-meter": "./src/billing/build-meter.ts",

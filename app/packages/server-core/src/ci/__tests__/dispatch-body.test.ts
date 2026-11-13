@@ -14,6 +14,7 @@ const base = {
   defaultBranch: "main",
   baseSha: "b".repeat(40),
   noTaskCache: false,
+  pipelineText: null,
 };
 // Obviously fake, and in no real token format.
 const TOKEN = "installation-token-for-tests";
@@ -33,6 +34,32 @@ describe("dispatchBody", () => {
       "repo-id": "web",
       "default-branch": "main",
       token: TOKEN,
+    });
+  });
+
+  it("sends a scheduled run with its one pipeline's text, on the default branch", () => {
+    const body = dispatchBody(
+      {
+        ...base,
+        event: "schedule",
+        branch: "main",
+        pullNumber: null,
+        baseSha: null,
+        fromFork: false,
+        pipelineText: "name: Nightly",
+      },
+      TOKEN,
+    );
+    expect(body).toEqual({
+      repo: "https://github.com/acme/web.git",
+      sha: base.sha,
+      branch: "main",
+      event: "schedule",
+      owner: "github.com-acme",
+      "repo-id": "web",
+      "default-branch": "main",
+      token: TOKEN,
+      pipeline: "name: Nightly",
     });
   });
 

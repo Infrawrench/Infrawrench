@@ -20,6 +20,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import type { CiEvent } from "@infrawrench/client-core";
+
 import { accounts, organizations, users } from "./core-schema.js";
 
 /**
@@ -108,7 +110,14 @@ export const ciRuns = pgTable(
     ownerKey: text("owner_key").notNull(),
     /** The runner's repository id: the repository's name. */
     repoKey: text("repo_key").notNull(),
-    event: text("event").$type<"push" | "pull-request">().notNull(),
+    event: text("event").$type<CiEvent>().notNull(),
+    /**
+     * A scheduled run's pipeline: the file whose `on.schedule` fired, and
+     * its text as read from `sha`, which the runner runs instead of the
+     * commit's other pipelines. Null for pushes and pull requests.
+     */
+    pipelineFile: text("pipeline_file"),
+    pipelineText: text("pipeline_text"),
     /** The branch, or `pull/<n>` for a pull request (its cache scope). */
     branch: text("branch").notNull(),
     /** The head branch's own name, for display. */
@@ -185,6 +194,54 @@ export const ciRuns = pgTable(
     statusIdx: index("ci_runs_status_idx").on(t.status, t.nextAttemptAt),
     retryOfIdx: index("ci_runs_retry_of_idx").on(t.retryOfRunId),
     repoStatusIdx: index("ci_runs_repo_status_idx").on(t.installationId, t.repoFullName, t.status),
+  }),
+);
+
+/** One pipeline file with `on.schedule`, as the runners read it. */
+export interface CiScheduleEntry {
+  file: string;
+  name: string;
+  cron: string[];
+  /** The file's text at `ci_schedules.sha`, sent with each scheduled run. */
+  text: string;
+}
+
+/**
+ * A repository's `on.schedule` pipelines on its default branch, which the
+ * `ci` poller pass fires (the runners keep no clock). A row appears with the
+ * first push to the default branch the app sees, is re-read on every later
+ * one (and hourly while it schedules anything, in case a webhook was lost),
+ * and goes when a read finds the repository gone.
+ */
+export const ciSchedules = pgTable(
+  "ci_schedules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    installationId: integer("installation_id").notNull(),
+    /** `owner/name`, as GitHub spells it. */
+    repoFullName: text("repo_full_name").notNull(),
+    defaultBranch: text("default_branch").notNull(),
+    /** The default branch's head the pipelines were read from; null before the first read. */
+    sha: text("sha"),
+    pipelines: jsonb("pipelines").$type<CiScheduleEntry[]>().notNull().default([]),
+    /** Why the last read failed, or which files did not parse. */
+    error: text("error"),
+    /** When to read the default branch again; a push sets it to now. */
+    refreshAfter: timestamp("refresh_after").notNull().defaultNow(),
+    refreshedAt: timestamp("refreshed_at"),
+    /** The last read that succeeded: a repository unreadable for a day is dropped. */
+    readOkAt: timestamp("read_ok_at"),
+    /** Every minute up to this one has been fired; null before the first fire pass. */
+    firedThrough: timestamp("fired_through"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    repoIdx: uniqueIndex("ci_schedules_repo_idx").on(t.installationId, t.repoFullName),
+    orgIdx: index("ci_schedules_org_idx").on(t.organizationId),
+    refreshIdx: index("ci_schedules_refresh_idx").on(t.refreshAfter),
   }),
 );
 

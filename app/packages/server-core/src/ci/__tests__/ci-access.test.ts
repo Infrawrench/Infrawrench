@@ -113,6 +113,32 @@ describe("lending", () => {
     expect(scopeRefusal("x", run, { repos: ["acme/api"], branchPattern: null })).not.toBeNull();
   });
 
+  it("checks a scheduled run as its default branch, whose pipeline text it runs", () => {
+    // As `fireDueSchedules` queues it: the default branch as branch and head.
+    const scheduled = { ...run, event: "schedule" as const, headRef: "main" };
+    expect(scopeRefusal("x", scheduled, { repos: ["acme/web"], branchPattern: "main" })).toBeNull();
+    expect(
+      scopeRefusal("connection `prod`", scheduled, { repos: null, branchPattern: "feature/*" }),
+    ).toBe("connection `prod` is not lent to CI for acme/web on main");
+    expect(
+      matchConnections(scheduled, { cloud: { provider: "aws", kind: "vm" }, timeout_secs: 60 }, [
+        {
+          accountId: "a1",
+          displayName: "Production",
+          pluginId: "aws",
+          jobsEnabled: true,
+          jobKinds: ["vm"],
+          jobRepos: null,
+          jobBranchPattern: "main",
+          maxConcurrentJobs: 1,
+          maxJobMinutes: 60,
+        },
+      ]),
+    ).toEqual([
+      { accountId: "a1", displayName: "Production", maxConcurrentJobs: 1, maxJobMinutes: 60 },
+    ]);
+  });
+
   it("joins a connection's and its jump host's files at one path, keeping parts", () => {
     const entry = mergeMaterials([
       {

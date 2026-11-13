@@ -3,9 +3,10 @@
 The one public front of the iwci runner pool (`ci-runner/`, `iwci serve`),
 as a Cloudflare Worker. It authenticates callers, places each run on the
 runner with the most job memory to spare per run (below), sends status and
-log requests back to the
-runner that has the run, and fires `on.schedule` pipelines from a
-once-a-minute Cron Trigger. It is not wired into the app yet.
+log requests back to the runner that has the run, and fires `on.schedule`
+pipelines of the repositories registered with it from a once-a-minute Cron
+Trigger. The app drives it for repositories connected through the GitHub
+App, and fires those repositories' schedules itself (below).
 
 Runners stay stateless: reports, billing records and caches are in their
 shared object store, so the proxy keeps nothing about a run. Its only state
@@ -32,6 +33,7 @@ token routes needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET .../jobs/{job}/inputs?claim=`, `PUT .../jobs/{job}/artifacts?claim=` | A cloud job's artifacts, for its machine: the claim token, no bearer key (below).  |
 | `POST /v1/concurrency`                                                    | A request's pipelines and their concurrency groups, from any runner; runs nothing. |
 | `POST /v1/prepare`                                                        | Warms a runner for a request, placed like a run.                                   |
+| `POST /v1/schedules/read`                                                 | A branch's `on.schedule` pipelines, from any runner; stores nothing (below).       |
 | `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                            | From any runner that answers; they all read the same store.                        |
 | `DELETE /v1/storage/{owner}/{repo-id}`                                    | Clears one repository's caches (never its downloads), on any runner that answers.  |
 | `PUT /v1/schedules`                                                       | Registers a repository's scheduled pipelines (below).                              |
@@ -158,8 +160,9 @@ Every minute it:
 1. re-reads up to 20 registrations last read more than ten minutes ago,
    keeping the old pipelines if the read fails, so a runner outage does not
    stop schedules;
-2. matches every stored cron against the minute, in UTC (`src/cron.ts`
-   follows `iwci-spec/src/cron.rs`, and the tests share their cases);
+2. matches every stored cron against the minute, in UTC (client-core's
+   `ci-cron.ts` follows `iwci-spec/src/cron.rs`, and the tests share their
+   cases);
 3. claims each due pipeline for that minute in `schedule_fires`, whose
    primary key is what stops a repeated trigger firing it twice;
 4. sends it as a run with `event: schedule` and the stored text as
@@ -178,6 +181,21 @@ reason a full pool's is not queued. Runs the app starts (pushes, pull
 requests, retries) keep their groups in the app, which sees all of them; the
 two do not wait for each other. On `POST /v1/concurrency` the proxy adds the
 stored variables, never secrets, since a group may read `vars`.
+
+### The app's schedules
+
+Repositories connected through the GitHub App are never registered here.
+Their clones need an installation token, which D1 must not hold, and their
+runs need what only the app has: the plan check, the billing row, the GitHub
+check and the CI tab. So the app keeps their schedules and fires them from
+its `ci` poller pass (`server-core/src/ci/schedules.ts`), and the proxy only
+answers `POST /v1/schedules/read` for it: the request (with the token) goes
+to any runner, with stored variables added and secrets and `trusted` dropped
+as for `POST /v1/concurrency`, and the answer comes back unstored. The app
+then sends each due pipeline as an ordinary `POST /v1/runs` with `event:
+schedule` and the pipeline's text, which the proxy treats as any other run
+(secrets included, since it is not a pull request). Nothing fires a
+repository twice as long as it is registered in one place only.
 
 ## Cloud jobs
 

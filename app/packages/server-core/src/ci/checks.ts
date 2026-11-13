@@ -4,6 +4,7 @@
  * just shows nothing on GitHub, so failures here are logged, not raised.
  */
 import { eq } from "drizzle-orm";
+import type { CiEvent } from "@infrawrench/client-core";
 
 import { orgAppUrl } from "../app-url.js";
 import { db } from "../db/client.js";
@@ -17,8 +18,13 @@ import { githubInstallationFetch } from "../github/app.js";
  * pipeline (`on.push` limited to main) finished first and hid the pull
  * request's run, showing "0 job(s) passed" while it was still running.
  */
-export function checkName(event: "push" | "pull-request"): string {
-  return event === "pull-request" ? "Infrawrench CI / pull request" : "Infrawrench CI / push";
+export function checkName(event: CiEvent): string {
+  return `Infrawrench CI / ${eventLabel(event)}`;
+}
+
+/** How a check names its event: a scheduled run never stands in for a push's required check. */
+export function eventLabel(event: CiEvent): string {
+  return event === "pull-request" ? "pull request" : event;
 }
 
 type Conclusion = "success" | "failure" | "cancelled" | "action_required" | "neutral" | "skipped";
@@ -33,7 +39,7 @@ export interface CheckUpdate {
 
 interface CheckTarget {
   id: string;
-  event: "push" | "pull-request";
+  event: CiEvent;
   organizationId: string;
   installationId: number;
   repoFullName: string;

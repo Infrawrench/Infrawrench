@@ -14,6 +14,7 @@ import {
 } from "@infrawrench/client-core";
 import type { CiClient } from "./types.js";
 import { CiCachesCard } from "./CiCachesCard.js";
+import { CiSchedulesCard } from "./CiSchedulesCard.js";
 import { CiValuesCard } from "./CiValuesCard.js";
 import { CiAccessCard } from "./CiAccessCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
@@ -535,6 +536,16 @@ function RunSource({ run }: { run: CiRun }) {
       </span>
     );
   }
+  if (run.event === "schedule") {
+    return (
+      <span>
+        {run.pipelineFile
+          ? gt("Scheduled {file} on {branch}", { file: run.pipelineFile, branch: run.headRef })
+          : gt("Scheduled on {branch}", { branch: run.headRef })}
+        {run.retryOfRunId ? <RetryTag /> : null}
+      </span>
+    );
+  }
   return (
     <span>
       {run.headRef}
@@ -864,6 +875,7 @@ export function CiPanel({
                 canNarrow={canWrite}
               />
               {usage ? <UsageCard usage={usage} /> : null}
+              <CiSchedulesCard client={client} />
               <CiCachesCard client={client} canWrite={canWrite} />
 
               <section className="space-y-2" aria-labelledby="ci-runs">

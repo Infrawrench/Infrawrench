@@ -14,6 +14,9 @@
  * - Pull request runs use `pull/<n>` as their branch, which is what the
  *   runner keys caches on, so a fork can never write a cache that the
  *   repository's own branches, or another pull request, would restore.
+ * - A pipeline's `on.schedule` cron starts a run from the poller pass
+ *   (`schedules.ts`): trusted like a push to the default branch, whose
+ *   caches it shares, and carrying that one pipeline's text.
  *
  * Dispatch claims the row first (one UPDATE that only one caller can win),
  * because both the webhook and the poller pass dispatch.
@@ -51,6 +54,7 @@ import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
 import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiJobAccess } from "../db/schema.js";
+import { noteRepository } from "./schedules.js";
 
 type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -132,6 +136,15 @@ export async function acceptCiEvent(
   const organizationId = await ciOrganization(ev.installationId);
   if (!organizationId) return null;
   const isPull = ev.kind === "pull_request";
+  // Where its `on.schedule` pipelines are fired from: a push to the default
+  // branch is the only way they change, so it re-reads them.
+  await noteRepository({
+    organizationId,
+    installationId: ev.installationId,
+    repoFullName: ev.repoFullName,
+    defaultBranch: ev.defaultBranch,
+    refreshNow: !isPull && ev.branch === ev.defaultBranch,
+  }).catch((err) => console.warn(`[ci] noting ${ev.repoFullName} for schedules failed:`, err));
   const sha = isPull ? ev.headSha : ev.sha;
   const status: CiRunStatus = isPull && ev.fromFork ? "awaiting_approval" : "queued";
   const dedupeKey = isPull
@@ -258,6 +271,7 @@ export function dispatchBody(
     | "baseSha"
     | "fromFork"
     | "noTaskCache"
+    | "pipelineText"
   >,
   token: string,
 ): Record<string, unknown> {
@@ -280,6 +294,9 @@ export function dispatchBody(
     // own, so the proxy gives it none.
     if (!row.fromFork) body["trusted"] = true;
   }
+  // A scheduled run runs the one pipeline whose cron fired, as read from
+  // `sha`, not every pipeline of the commit with `on.schedule`.
+  if (row.pipelineText !== null) body["pipeline"] = row.pipelineText;
   // Only when asked: a runner before 0.3.8 refuses fields it does not know.
   if (row.noTaskCache) body["no-task-cache"] = true;
   return body;
@@ -875,6 +892,8 @@ export async function retryRun(
       ownerKey: original.ownerKey,
       repoKey: original.repoKey,
       event: original.event,
+      pipelineFile: original.pipelineFile,
+      pipelineText: original.pipelineText,
       branch: original.branch,
       headRef: original.headRef,
       defaultBranch: original.defaultBranch,
@@ -948,6 +967,7 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     retryOfRunId: row.retryOfRunId,
     retriedAsRunId,
     noTaskCache: row.noTaskCache,
+    ...(row.pipelineFile !== null ? { pipelineFile: row.pipelineFile } : {}),
     ...(row.concurrency !== null
       ? {
           concurrencyGroups: [

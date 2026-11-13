@@ -72,6 +72,8 @@ describe("CI checks on GitHub", () => {
   it("names a check after its event, so a push run cannot hide a pull request's", () => {
     expect(checkName("push")).toBe("Infrawrench CI / push");
     expect(checkName("pull-request")).toBe("Infrawrench CI / pull request");
+    // Its own name: a nightly never stands in for a push's required check.
+    expect(checkName("schedule")).toBe("Infrawrench CI / schedule");
   });
 
   it("concludes a run that matched no pipeline as skipped, not passed", async () => {

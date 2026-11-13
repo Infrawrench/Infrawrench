@@ -18,13 +18,13 @@
  * `checks: write` still runs CI.
  */
 import { eq } from "drizzle-orm";
-import type { CiJobSummary } from "@infrawrench/client-core";
+import type { CiEvent, CiJobSummary } from "@infrawrench/client-core";
 
 import { orgAppUrl } from "../app-url.js";
 import { db } from "../db/client.js";
 import { ciRuns } from "../db/schema.js";
 import { githubInstallationFetch } from "../github/app.js";
-import { fitCheckText, githubError } from "./checks.js";
+import { eventLabel, fitCheckText, githubError } from "./checks.js";
 
 /** What the runner reports of a running run (`GET /v1/runs/{id}`'s `progress`). */
 export interface ProxyProgress {
@@ -221,8 +221,8 @@ export function jobCheckState(group: JobGroup): JobCheckState {
   return { status, ...(conclusion ? { conclusion } : {}), title, summary };
 }
 
-export function jobCheckName(group: JobGroup, event: "push" | "pull-request"): string {
-  return `${group.pipeline} / ${group.name} (${event === "pull-request" ? "pull request" : "push"})`;
+export function jobCheckName(group: JobGroup, event: CiEvent): string {
+  return `${group.pipeline} / ${group.name} (${eventLabel(event)})`;
 }
 
 /** A short fingerprint of what a check says, to tell whether it changed. */
@@ -243,7 +243,7 @@ export interface JobCheckTarget {
   installationId: number;
   repoFullName: string;
   sha: string;
-  event: "push" | "pull-request";
+  event: CiEvent;
   jobChecks: Record<string, { id: number; sent: string }>;
 }
 

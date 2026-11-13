@@ -11,7 +11,9 @@
  *   SSH key lent by its owner, the resource granted, each for this
  *   repository and this branch. A name that is not allowed is sent as a
  *   `refused` reason, which the job that names it fails with; never as an
- *   empty value.
+ *   empty value. A scheduled run is never a fork's and runs the default
+ *   branch's pipeline text at the default branch's head, so it is checked
+ *   as that branch: what the default branch is lent, it is lent.
  * - Values are read fresh for every run (a rotated secret takes effect on
  *   the next run), minted short-lived where the plugin can, and sent as
  *   secret parts the runner masks. Nothing here stores them.
@@ -30,6 +32,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   CI_SECRET_VALUE_OUTPUT as SECRET_VALUE_OUTPUT,
+  type CiEvent,
   ciBranchMatches,
   ciRepoAllowed,
 } from "@infrawrench/client-core";
@@ -82,8 +85,12 @@ export interface LendingRun {
   id: string;
   organizationId: string;
   repoFullName: string;
-  event: "push" | "pull-request";
-  /** The pushed branch, or the pull request's head branch. */
+  event: CiEvent;
+  /**
+   * The pushed branch, or the pull request's head branch. A scheduled run's
+   * is the default branch, whose pipeline text it runs, so the default
+   * branch's opt-ins are the ones that apply to it.
+   */
   headRef: string;
   fromFork: boolean;
 }

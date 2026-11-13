@@ -61,6 +61,7 @@ describe("a check per job", () => {
     ]);
     expect(jobCheckName(groups[1]!, "pull-request")).toBe("Test / build (pull request)");
     expect(jobCheckName(groups[0]!, "push")).toBe("Test / Prepare (push)");
+    expect(jobCheckName(groups[0]!, "schedule")).toBe("Test / Prepare (schedule)");
   });
 
   it("says waiting, going, or how it finished", () => {
