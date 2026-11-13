@@ -635,9 +635,7 @@ release calls `proc_spawn3`.
 Git came into every environment in `bash` 5.1.19, `bash-node` 24.0.9,
 `python` 3.13.18, `php` 8.1.37, 8.2.38, 8.3.39, 8.4.30 and 8.5.15, `go`
 1.23.13, 1.24.14, 1.25.15, 1.26.12 and 1.27.5 (each the same Go as before)
-and `postgres` 18.4.2 (see [Git](#git)). Go's build cache is kept between
-runs from `go` 1.23.14, 1.24.15, 1.25.16, 1.26.13 and 1.27.6, the same Go
-again (see [Environment caches](#environment-caches)).
+and `postgres` 18.4.2 (see [Git](#git)).
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
