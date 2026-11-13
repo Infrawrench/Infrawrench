@@ -49,6 +49,24 @@ Modal spend shows in [cost graphs and budgets](../features/cloud-costs.md), usin
 
 Each environment's concurrency caps and spend limit show on the [quota radar](../features/quota-radar.md): running containers against **Max concurrent containers**, GPUs in use against **Max concurrent GPUs**, and spend this cycle against the spend limit. Only caps you've set appear. Modal doesn't share workspace-wide plan limits.
 
+## Run CI jobs
+
+A Modal connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job runs in a fresh Modal Sandbox, under an app named `infrawrench-ci` in the workspace's default environment:
+
+| `cloud.kind` | Runs on         | Default `machine` | Default `image`             |
+| ------------ | --------------- | ----------------- | --------------------------- |
+| `container`  | A Modal Sandbox | `2vcpu-4gb`       | `buildpack-deps:noble-curl` |
+
+`machine` is `<vCPUs>vcpu-<GB>gb`, such as `4vcpu-8gb` or `8vcpu-32gb`. Modal counts physical cores, each two vCPUs, so `2vcpu-4gb` asks for one core. `image` is any public registry image (`ubuntu:24.04`, `nvidia/cuda:12.8.0-runtime-ubuntu24.04`); the job installs `bash`, `curl` and `tar` into it when it lacks them. Modal prepares a new image once, which makes that image's first job slower.
+
+`cloud.gpu` takes Modal's GPU names with an optional count: `T4`, `L4`, `A10`, `L40S`, `A100`, `A100-40GB`, `A100-80GB`, `RTX-PRO-6000`, `H100`, `H100!`, `H200`, `B200`, `B200+` or `B300`, such as `H100:2` (at most 8, or 4 for an A10). Spellings like `nvidia-h100` or `a100-80gb` work too. Pick a CUDA image for a GPU job when it needs the CUDA libraries.
+
+`cloud.region` is optional and is one of Modal's region names, such as `us`, `eu`, `us-east` or `eu-west`. Modal charges 1.15 times as much in a broad region and 1.75 times in a narrow one, so leave it out unless the job needs it.
+
+The Sandbox gets no Modal credentials: no secrets, no volumes and no identity token. It ends at the job's time limit, which Modal enforces, and Infrawrench stops it when the job ends. A Sandbox runs at most 24 hours, so longer jobs are refused. Modal bills Sandboxes by the second at its non-preemptible CPU and memory rates, and GPUs at the standard rate.
+
+Modal tokens can't say what they're allowed to do, so opting a connection in reads the default environment, makes the empty `infrawrench-ci` app if it's missing (it costs nothing), and lists its Sandboxes. The token's user needs the **Contributor** role in the default environment; a Viewer is refused.
+
 ## Tips and limits
 
 - **You can't remove a cap here.** You can raise or lower an environment's concurrency caps, but to remove one entirely, use the Modal dashboard.

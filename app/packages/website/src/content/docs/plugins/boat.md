@@ -66,6 +66,20 @@ The quotas page shows how many sandboxes are running against your plan's limit, 
 - **Expiry radar**: API keys with an expiry date.
 - **Provider status**: failing probes and announcements on [status.boat.dev](https://status.boat.dev) are matched to your sandboxes.
 
+## Run CI jobs
+
+A boat connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh sandbox, deleted when the job ends:
+
+| `cloud.kind` | Runs on        | Default `machine` | Default `image`     |
+| ------------ | -------------- | ----------------- | ------------------- |
+| `vm`         | A boat sandbox | `default`         | boat's Ubuntu image |
+
+`machine` is a sandbox size: `small`, `default`, `large` or `xlarge` (`xlarge` needs the $100 plan). `image` names a saved snapshot (or a share code) to start from, for a sandbox with your tools already on it. The job runs as root once the sandbox is ready. boat has no regions and no GPUs, so `cloud.region` means nothing here and `cloud.gpu` is refused.
+
+The sandbox is made with nothing of your account in it: no environment variables, secret files, git or AI logins, and no in-sandbox boat API key (boat's "no env"). It is private, so members of an organization can't open it, it keeps no command output at boat, and it takes no snapshots, so stopping it erases its disk. Its auto-stop is set to the job's time limit, which ends the billing even if Infrawrench loses track of it; Infrawrench deletes it when the job ends, and again later if that fails. boat bills a sandbox by the second while it runs, and every job's sandbox counts as one start against your plan's start limits.
+
+Use an API key with the `ci` preset: it can create sandboxes and read and delete the ones it made. Opting in checks that the key can list and delete sandboxes; boat has no call that says whether a key may create one, so that shows at the first job. A `ci` key made before boat added `sandbox.delete-own` to the preset can't delete; make a new one.
+
 ## Things to know
 
 - Sandboxes and saved snapshots are private to whoever created them, so an account lists its key owner's sandboxes plus the organization sandboxes they can see.

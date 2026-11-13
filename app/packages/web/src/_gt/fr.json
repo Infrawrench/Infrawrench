@@ -23377,5 +23377,21 @@
   "14476ebbfd84570e": "Attribuez ces rôles au propriétaire de la clé d'API",
   "6562ed75abe44f4b": "Instance ECS",
   "2ffe7d973871677d": "Groupe de conteneurs ECI",
-  "cc24d50c52d5e269": "Accordez ces actions à l'utilisateur RAM"
+  "cc24d50c52d5e269": "Accordez ces actions à l'utilisateur RAM",
+  "4338e6b1d4e10376": "Sandbox boat",
+  "6b8f300607c10f33": "Créez une clé d'API boat avec le préréglage ci",
+  "f3e3f5c986f30fe0": "Fly Machine",
+  "3e9910df9417d51c": "Créez un jeton d'organisation avec fly tokens create org",
+  "7effbbcfa33f2d4f": "Sandbox Modal",
+  "7498dce947211267": "Attribuez à l'utilisateur du jeton le rôle Contributor dans l'environnement par défaut",
+  "9a6a48629fdb4035": "Pod (GPU ou CPU)",
+  "704df63151a3f323": "Créez une clé d'API Runpod avec l'accès All",
+  "61ac67d047a62316": "Instance GPU à la demande",
+  "e92c65b4959c198c": "Attribuez à l'identité de la clé d'API le rôle Workspace Member",
+  "1ddda4402d919609": "Instance (conteneur GPU)",
+  "3d232e11a2731788": "Machine Paperspace",
+  "cb3fc66344bb18f8": "Créez une clé d'API Paperspace dans l'équipe",
+  "9cf4f4ca976a4d2e": "VM Crusoe",
+  "07ea07abe3244852": "Attribuez à l'utilisateur de la clé le rôle Editor sur le projet",
+  "dbdd14ce9dae5116": "Créez une clé d'API Vast.ai avec lecture et écriture des instances, et lecture de l'utilisateur"
 }

@@ -59,6 +59,22 @@ Apps also chart the Fly Proxy edge: request rate, 5xx rate, p95 response time, d
 
 <insert [Fly Managed Postgres cluster detail view showing the Cluster, Storage, and Connection sections and the Back Up Now action] here>
 
+## Run CI jobs
+
+A Fly.io connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job runs as `cloud.kind` `container` on a Fly Machine of its own, in the job's `cloud.region` (`iad` when it names none):
+
+| `cloud.kind` | Runs on                                  | Default `machine` | Default `image`                               |
+| ------------ | ---------------------------------------- | ----------------- | --------------------------------------------- |
+| `container`  | A Fly Machine in an app made for the job | `performance-2x`  | `docker.io/library/buildpack-deps:noble-curl` |
+
+A Machine boots the image you name and runs the job as its main process, so the kind is `container` even though Fly runs it in a microVM. `machine` is a size such as `shared-cpu-4x` or `performance-2x`, with the memory after it when you want more than the default (`performance-4x-16gb`). Shared CPUs get 1 GB each by default and performance CPUs 2 GB each, within Fly's limits of 256 MB to 2 GB per shared CPU and 2 to 8 GB per performance CPU.
+
+Each job gets an app named `iwci-` and the job's key, on a private network of its own, so the job reaches the internet and nothing of your organization's other apps or other jobs. The app gets no public IP. The Machine destroys itself when the job ends (`auto_destroy`, never restarted), and a watchdog ends the job at its time limit, so a Machine stops being billed then even if Infrawrench loses track of it. Infrawrench deletes the Machine and its app when the job ends, and again later if that fails. Fly bills a Machine by the second while it runs.
+
+The Machine holds no Fly.io token: it gets the job's script and nothing else of the connection. Use an organization token (`fly tokens create org`); an app deploy token can't create the job's app, and opting in checks that the token can read the organization's apps. Fly has no call that says whether a token may create apps, so that shows at the first job.
+
+Fly.io no longer offers GPU Machines (they were unavailable after August 1, 2026), so `cloud.gpu` is refused.
+
 ## Tips and limits
 
 - A token scoped to one org won't see apps from another.

@@ -23142,5 +23142,21 @@
   "14476ebbfd84570e": "将这些角色分配给 API 密钥的所有者",
   "6562ed75abe44f4b": "ECS 实例",
   "2ffe7d973871677d": "ECI 容器组",
-  "cc24d50c52d5e269": "向 RAM 用户授予这些操作"
+  "cc24d50c52d5e269": "向 RAM 用户授予这些操作",
+  "4338e6b1d4e10376": "boat 沙箱",
+  "6b8f300607c10f33": "使用 ci 预设创建 boat API 密钥",
+  "f3e3f5c986f30fe0": "Fly Machine",
+  "3e9910df9417d51c": "使用 fly tokens create org 创建组织令牌",
+  "7effbbcfa33f2d4f": "Modal 沙箱",
+  "7498dce947211267": "在默认环境中为令牌的用户授予 Contributor 角色",
+  "9a6a48629fdb4035": "Pod（GPU 或 CPU）",
+  "704df63151a3f323": "创建具有 All 访问权限的 Runpod API 密钥",
+  "61ac67d047a62316": "按需 GPU 实例",
+  "e92c65b4959c198c": "为 API 密钥的身份授予 Workspace Member 角色",
+  "1ddda4402d919609": "实例（GPU 容器）",
+  "3d232e11a2731788": "Paperspace 机器",
+  "cb3fc66344bb18f8": "在团队中创建 Paperspace API 密钥",
+  "9cf4f4ca976a4d2e": "Crusoe 虚拟机",
+  "07ea07abe3244852": "为密钥的用户授予该项目的 Editor 角色",
+  "dbdd14ce9dae5116": "创建具有实例读写权限和用户读取权限的 Vast.ai API 密钥"
 }

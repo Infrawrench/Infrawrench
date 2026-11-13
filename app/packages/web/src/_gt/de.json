@@ -23376,5 +23376,21 @@
   "14476ebbfd84570e": "Weisen Sie dem Eigentümer des API-Schlüssels diese Rollen zu",
   "6562ed75abe44f4b": "ECS-Instanz",
   "2ffe7d973871677d": "ECI-Containergruppe",
-  "cc24d50c52d5e269": "Gewähren Sie dem RAM-Benutzer diese Aktionen"
+  "cc24d50c52d5e269": "Gewähren Sie dem RAM-Benutzer diese Aktionen",
+  "4338e6b1d4e10376": "boat-Sandbox",
+  "6b8f300607c10f33": "Erstellen Sie einen boat-API-Schlüssel mit der Vorlage ci",
+  "f3e3f5c986f30fe0": "Fly Machine",
+  "3e9910df9417d51c": "Erstellen Sie mit fly tokens create org ein Organisationstoken",
+  "7effbbcfa33f2d4f": "Modal-Sandbox",
+  "7498dce947211267": "Geben Sie dem Benutzer des Tokens die Rolle Contributor in der Standardumgebung",
+  "9a6a48629fdb4035": "Pod (GPU oder CPU)",
+  "704df63151a3f323": "Erstellen Sie einen Runpod-API-Schlüssel mit dem Zugriff All",
+  "61ac67d047a62316": "On-Demand-GPU-Instanz",
+  "e92c65b4959c198c": "Geben Sie der Identität des API-Schlüssels die Rolle Workspace Member",
+  "1ddda4402d919609": "Instanz (GPU-Container)",
+  "3d232e11a2731788": "Paperspace-Maschine",
+  "cb3fc66344bb18f8": "Erstellen Sie im Team einen Paperspace-API-Schlüssel",
+  "9cf4f4ca976a4d2e": "Crusoe-VM",
+  "07ea07abe3244852": "Geben Sie dem Benutzer des Schlüssels die Rolle Editor für das Projekt",
+  "dbdd14ce9dae5116": "Erstellen Sie einen Vast.ai-API-Schlüssel mit Lese- und Schreibzugriff auf Instanzen und Lesezugriff auf das Benutzerkonto"
 }

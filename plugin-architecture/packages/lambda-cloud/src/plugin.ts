@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { LAMBDA_CI_EXECUTOR } from "./ci-executor.js";
 import { LambdaCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { lambdaCloudRemediationCommands } from "./remediation.js";
@@ -27,6 +28,8 @@ export const manifest = {
     caCertCredentialField,
   ]),
   statusFeed,
+  // CI jobs on a fresh GPU instance (`cloud: lambda-cloud/vm`). See `ci-executor.ts`.
+  ciExecutor: LAMBDA_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

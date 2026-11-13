@@ -23158,5 +23158,21 @@
   "14476ebbfd84570e": "Asigne estos roles al propietario de la clave de API",
   "6562ed75abe44f4b": "Instancia de ECS",
   "2ffe7d973871677d": "Grupo de contenedores de ECI",
-  "cc24d50c52d5e269": "Conceda estas acciones al usuario de RAM"
+  "cc24d50c52d5e269": "Conceda estas acciones al usuario de RAM",
+  "4338e6b1d4e10376": "Sandbox de boat",
+  "6b8f300607c10f33": "Cree una clave de API de boat con el preajuste ci",
+  "f3e3f5c986f30fe0": "Fly Machine",
+  "3e9910df9417d51c": "Cree un token de organización con fly tokens create org",
+  "7effbbcfa33f2d4f": "Sandbox de Modal",
+  "7498dce947211267": "Asigne al usuario del token el rol Contributor en el entorno predeterminado",
+  "9a6a48629fdb4035": "Pod (GPU o CPU)",
+  "704df63151a3f323": "Cree una clave de API de Runpod con acceso All",
+  "61ac67d047a62316": "Instancia de GPU bajo demanda",
+  "e92c65b4959c198c": "Asigne a la identidad de la clave de API el rol Workspace Member",
+  "1ddda4402d919609": "Instancia (contenedor con GPU)",
+  "3d232e11a2731788": "Máquina de Paperspace",
+  "cb3fc66344bb18f8": "Cree una clave de API de Paperspace en el equipo",
+  "9cf4f4ca976a4d2e": "VM de Crusoe",
+  "07ea07abe3244852": "Asigne al usuario de la clave el rol Editor en el proyecto",
+  "dbdd14ce9dae5116": "Cree una clave de API de Vast.ai con lectura y escritura de instancias, y lectura de usuario"
 }

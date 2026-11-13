@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { CRUSOE_CI_EXECUTOR } from "./ci-executor.js";
 import { CrusoeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -75,6 +76,8 @@ export const manifest = {
     partial: false,
   },
   statusFeed,
+  // CI jobs on a fresh VM per job (`cloud: crusoe/vm`). See `ci-executor.ts`.
+  ciExecutor: CRUSOE_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

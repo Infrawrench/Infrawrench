@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostEstimate,
   CostFetchRange,
   CostRow,
@@ -24,6 +30,13 @@ import {
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import { createVastApi, isStatus, VENDOR, type VastApi } from "./api.js";
+import {
+  vastCiListTagged,
+  vastCiPreflight,
+  vastCiStart,
+  vastCiStatus,
+  vastCiTeardown,
+} from "./ci-executor.js";
 import type { operations } from "./api-types.gen.js";
 import { fetchVastCostData } from "./cost-data.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
@@ -793,5 +806,27 @@ export class VastClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderVastSidebarItem(resource);
+  }
+
+  // ── CI jobs (see ci-executor.ts) ─────────────────────────────────────
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => vastCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => vastCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => vastCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => vastCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => vastCiListTagged(this.api, tagKey));
   }
 }

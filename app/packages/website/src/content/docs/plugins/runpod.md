@@ -55,6 +55,22 @@ The create pod form also shows a monthly estimate from the GPU's list price for 
 - **Provider status**: incidents on [uptime.runpod.io](https://uptime.runpod.io) show against the data centers your pods and volumes run in, and against Serverless and the SSH proxy.
 - **Terraform export**: pods, Serverless endpoints, templates, network volumes and registry credentials export to Runpod's `runpod/runpod` provider, version 2. Everything except registry credentials can be imported by ID. Check the plan before applying an imported pod, because replacing a pod destroys it. A Serverless endpoint exports once it has synced since the move to Runpod's current API.
 
+## Run CI jobs
+
+A Runpod connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a pod of its own on Runpod's Secure Cloud, which is terminated when the job ends:
+
+| `cloud.kind` | Runs on | Default `machine` | Default `image`                               |
+| ------------ | ------- | ----------------- | --------------------------------------------- |
+| `container`  | A pod   | `cpu3c-2`         | `docker.io/library/buildpack-deps:noble-curl` |
+
+A job with `cloud.gpu` gets a GPU pod: `cloud.gpu: rtx4090:2` asks for two RTX 4090s. The type is matched against Runpod's GPU catalog by its ID or its name, so `NVIDIA H100 80GB HBM3`, `H100 SXM` and `h100-sxm` all name the same GPU. Runpod places exactly the type asked for, so a type that matches several (`h100` matches H100 SXM, PCIe and NVL) is refused with the choices named. Without `cloud.gpu`, a `machine` is a CPU flavor and a vCPU count (`cpu3c-2`, `cpu5c-8`; a power of two from 2), or a GPU type for a one-GPU pod. `cloud.region` is a data center ID such as `US-TX-3`; without one Runpod chooses.
+
+Runpod bills a pod by the second, with no minimum, and you need an hour's worth of credit to start one. CI pods have no volume disk, so nothing is billed once a pod is gone.
+
+The pod holds none of the connection's credentials. Runpod gives every pod a key scoped to that pod (`RUNPOD_API_KEY`); the job's command takes it out of the job's environment and uses it only to terminate its own pod when the job ends or its time is up. Runpod has no time limit for a pod of its own, so if that fails Infrawrench terminates the pod when the job ends, and again later if that fails. Runpod's API cannot put tags on a pod, so a CI pod is named `iwci-` and the job's key, and its tags are in its `INFRAWRENCH_CI_TAGS` environment variable.
+
+Runpod has no call that says what a key may do, so opting a connection in reads the pod list and tries to terminate a pod that does not exist. Use a key with **All** access: a **Read Only** key fails the check.
+
 ## Quirks
 
 - A pod being provisioned or starting its container shows as starting, and one Runpod reports as failed shows as error. An errored pod can be started again.

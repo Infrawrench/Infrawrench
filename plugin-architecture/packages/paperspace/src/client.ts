@@ -3,6 +3,12 @@ import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import { pathEncode, type ApiBody } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CreateResourceConfig,
   DetailViewSchema,
   HostServices,
@@ -14,6 +20,13 @@ import type {
 } from "@infrawrench/plugin-base";
 import { createPaperspaceApi, listAll, type ListReadOptions, type PaperspaceApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
+import {
+  paperspaceCiListTagged,
+  paperspaceCiPreflight,
+  paperspaceCiStart,
+  paperspaceCiStatus,
+  paperspaceCiTeardown,
+} from "./ci-executor.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
 import {
   externalOf,
@@ -562,6 +575,28 @@ export class PaperspaceClient implements PluginClient {
       if (resourceTypeId !== "deployment") return [];
       return fetchDeploymentMetrics(this.api, externalOf(resourceId), timeRange);
     });
+  }
+
+  // ── CI jobs (see ci-executor.ts) ─────────────────────────────────────
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => paperspaceCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => paperspaceCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => paperspaceCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => paperspaceCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => paperspaceCiListTagged(this.api, tagKey));
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

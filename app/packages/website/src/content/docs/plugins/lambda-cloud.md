@@ -54,6 +54,22 @@ Lambda Cloud has no billing or usage API, so Infrawrench doesn't report spend. E
 - **Posture checks**: a firewall ruleset, or the global rules, that allow SSH (TCP 22) from `0.0.0.0/0`.
 - **Provider status**: incidents on [status.lambda.ai](https://status.lambda.ai) are matched to the regions they name and to your instances and filesystems.
 
+## Run CI jobs
+
+A Lambda Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh on-demand instance, which is terminated when the job ends:
+
+| `cloud.kind` | Runs on               | Default `machine` | Default `image`             |
+| ------------ | --------------------- | ----------------- | --------------------------- |
+| `vm`         | An on-demand instance | `gpu_1x_a10`      | Lambda Stack (Lambda's own) |
+
+Ask for GPUs with `cloud.gpu`, such as `h100`, `a100:8` or `gh200`, and leave `cloud.machine` out: Infrawrench picks the cheapest instance type with that many of that GPU and a region with capacity for it right now (only in `cloud.region` if you name one). A `machine` such as `gpu_1x_h100_sxm5` or `gpu_8x_a100_80gb_sxm4` names the instance type itself. An `image` is an image family such as `ubuntu-24-04`, `lambda-stack-24-04` or `gpu-base-24-04`, or an image ID.
+
+Lambda bills in one-minute increments until an instance is terminated, and a shutdown from inside the instance doesn't stop the bill. So the job stops at its time limit, and Infrawrench terminates the instance when the job ends (and again later if that fails). An instance often takes several minutes to boot, which is billed too.
+
+The instance holds no Lambda credentials. Lambda requires an SSH key for every launch, so each job gets a key whose private half was never kept, removed from your account as soon as the instance starts. The job's tags are on the instance as Lambda tags.
+
+Lambda's roles can't be checked without using them, so opting a connection in tries harmless calls. The API key's identity needs **Instance: Launch, Read, Terminate** and **SSH Key: Create, Read, Delete** in the default workspace, which the **Workspace Member** and **Workspace Owner** roles grant.
+
 ## Things to know
 
 - Lambda instances can't be stopped, only restarted or terminated. Terminating deletes the instance's local storage, so keep data on a filesystem.

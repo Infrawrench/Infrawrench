@@ -41,6 +41,24 @@ Paperspace billing now lives in DigitalOcean's billing system, so this plugin do
 - **Sleep schedules**: stop and start machines on a schedule. You can also edit Paperspace's own auto shutdown on each machine.
 - **Provider status**: incidents on [status.paperspace.com](https://status.paperspace.com) show against the regions (NY2, CA1, AMS1) your machines run in, and against deployments and the streaming desktop.
 
+## Run CI jobs
+
+A Paperspace connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each `vm` job gets a fresh Paperspace machine in the job's `cloud.region` (`ny2` when it names none), which is deleted when the job ends:
+
+| `cloud.kind` | Runs on              | Default `machine` | Default `image` |
+| ------------ | -------------------- | ----------------- | --------------- |
+| `vm`         | A Paperspace machine | `C5`              | Ubuntu 22.04    |
+
+`machine` is a Paperspace machine type such as `C5`, `C7`, `A4000`, `A6000`, `A100-80G` or `H100`, or a multi-GPU type such as `A6000x4` or `H100x8`. Instead of a machine you can name a GPU with `cloud.gpu`: `a6000` becomes `A6000`, `a6000:4` becomes `A6000x4`, `a100-80gb:8` becomes `A100-80Gx8`. `image` is an OS template's name or ID; the template has to offer the machine type in the region.
+
+The job reaches the machine as a run-once startup script named after it, which is deleted with the machine. The machine holds no Paperspace credentials, gets a dynamic public IP and no snapshots, and Paperspace doesn't email a password for it.
+
+Paperspace machines have no tags, so a job's machine is named `iwci-` followed by the job's key and your organization's CI tag. Leave machines named like that alone: Infrawrench deletes any it no longer has a job for.
+
+Paperspace bills machines by the hour. A machine powers itself off when the job ends or its time is up (Paperspace's own auto-shutdown is set to the same deadline too), which stops compute billing, but its disk keeps billing until the machine is deleted. Infrawrench deletes it when the job ends, and again later if that fails.
+
+Paperspace API keys carry no scopes, so opting in only checks that the key can read machines, startup scripts and OS templates, and that the Ubuntu template runs on `C5`.
+
 ## Quirks
 
 - Paperspace only accepts fixed disk sizes (50 GB to 16 TB).

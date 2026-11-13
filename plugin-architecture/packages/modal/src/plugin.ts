@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { MODAL_CI_EXECUTOR } from "./ci-executor.js";
 import { ModalClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -55,6 +56,8 @@ export const manifest = {
     // workspace-wide plan limits are not exposed.
     partial: true,
   },
+  // CI jobs as Sandboxes (`cloud: modal/container`). See `ci-executor.ts`.
+  ciExecutor: MODAL_CI_EXECUTOR,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
 } satisfies PluginManifest;
