@@ -1,13 +1,15 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   CI_DEFAULT_CONNECTION_ACCESS,
   type CiAccessOverview,
   type CiConnectionAccessSettings,
   type CiJobOutput,
+  type CiResourceOutputs,
   type CiLogEvent,
   type CiRun,
   type CiStatus,
+  type SearchResult,
 } from "@infrawrench/client-core";
 
 // gt-react's `gt` is not referentially stable: a fresh function on every
@@ -149,8 +151,11 @@ function client() {
         },
       },
     })),
-    searchResources: vi.fn(async () => []),
-    resourceOutputs: vi.fn(async () => ({ outputs: [], secretVersions: null })),
+    searchResources: vi.fn(async (): Promise<SearchResult[]> => []),
+    resourceOutputs: vi.fn(async (): Promise<CiResourceOutputs> => ({
+      outputs: [],
+      secretVersions: null,
+    })),
     createGrant: vi.fn(),
     updateGrant: vi.fn(),
     deleteGrant: vi.fn(async () => {}),
@@ -195,37 +200,168 @@ const output = (id: string, name: string, needs: string[], stdout: string): CiJo
   stderr: "",
 });
 
+function renderPanel(c: ReturnType<typeof client>, canManageAccess = true) {
+  return render(
+    <CiPanel
+      client={c}
+      selectedRunId={null}
+      onSelectRun={() => {}}
+      canWrite
+      canManageAccess={canManageAccess}
+      canApprove
+    />,
+  );
+}
+
+/** The AWS connection, running EC2 jobs on main and release branches. */
+function runningJobs(): CiAccessOverview {
+  const o = accessOverview();
+  o.connections[0] = {
+    ...o.connections[0]!,
+    settings: {
+      ...CI_DEFAULT_CONNECTION_ACCESS,
+      jobsEnabled: true,
+      jobKinds: ["vm"],
+      jobBranchPattern: "main, release/*",
+    },
+    preflight: {
+      vm: { ok: true, missing: [], problems: [], checkedAt: "2026-11-13T00:00:00.000Z" },
+    },
+  };
+  o.connections.push({
+    ...o.connections[0],
+    accountId: "acc-off",
+    accountName: "Staging",
+    settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+    preflight: {},
+  });
+  return o;
+}
+
 describe("CI access", () => {
   it("names what a connection lacks after its check, and keeps the kind off", async () => {
     const c = client();
-    render(
-      <CiPanel
-        client={c}
-        selectedRunId={null}
-        onSelectRun={() => {}}
-        canWrite
-        canManageAccess
-        canApprove
-      />,
-    );
-    await waitFor(() => expect(screen.getByText("Production")).toBeTruthy());
-    fireEvent.click(screen.getByText("Check permissions for EC2 instance"));
+    renderPanel(c);
+    await waitFor(() => expect(screen.getByText("Manage connections")).toBeTruthy());
+    // Nothing is on yet: the card says so instead of listing the connection.
+    expect(screen.getByText("No connection runs jobs or lends its credentials yet.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Manage connections"));
+    const dialog = await screen.findByRole("dialog", { name: "Manage connections" });
+    expect(dialog.textContent).toContain("Production");
+    // The kinds show only once jobs are switched on.
+    expect(screen.queryByRole("button", { name: "Check permissions for EC2 instance" })).toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "Run jobs on it" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check permissions for EC2 instance" }));
     await waitFor(() => expect(screen.getByText("ec2:RunInstances")).toBeTruthy());
     expect(c.preflightConnection).toHaveBeenCalledWith("acc-aws", "vm");
     expect(screen.getByText("Not ready")).toBeTruthy();
     const kind = screen.getByRole("checkbox", { name: /EC2 instance/ }) as HTMLInputElement;
     expect(kind.disabled).toBe(true);
   });
+
+  it("lists only the connections that are on, in short, and saves one from the dialog", async () => {
+    const c = client();
+    c.access.mockImplementation(async () => runningJobs());
+    renderPanel(c);
+    const row = await screen.findByRole("button", { name: /Production/ });
+    expect(row.textContent).toContain("Runs jobs");
+    expect(row.textContent).toContain("EC2 instance");
+    expect(row.textContent).toContain("All repositories · main, release/*");
+    // Staging has nothing on, so it is only in the dialog.
+    expect(screen.queryByText("Staging")).toBeNull();
+
+    fireEvent.click(row);
+    const dialog = await screen.findByRole("dialog", { name: "Manage connections" });
+    expect(dialog.textContent).toContain("Staging");
+    const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Jobs at once"), { target: { value: "4" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy());
+    expect(c.setConnectionAccess).toHaveBeenCalledWith(
+      "acc-aws",
+      expect.objectContaining({ jobsEnabled: true, jobKinds: ["vm"], maxConcurrentJobs: 4 }),
+    );
+    expect(save.disabled).toBe(true);
+  });
+
+  it("asks before closing the dialog over unsaved changes", async () => {
+    const c = client();
+    c.access.mockImplementation(async () => runningJobs());
+    renderPanel(c);
+    fireEvent.click(await screen.findByRole("button", { name: /Production/ }));
+    await screen.findByRole("dialog", { name: "Manage connections" });
+    fireEvent.change(screen.getByLabelText("Minutes per job"), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByText("Discard unsaved changes?")).toBeTruthy();
+    fireEvent.click(screen.getByText("Discard"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(c.setConnectionAccess).not.toHaveBeenCalled();
+  });
+
+  it("grants a resource found by name, with its outputs that are not sensitive", async () => {
+    const c = client();
+    c.searchResources.mockImplementation(async () => [
+      {
+        id: "res-db",
+        pluginId: "aws",
+        pluginDisplayName: "Amazon Web Services",
+        pluginLogoSvg: "",
+        resourceTypeId: "aws-rds",
+        resourceTypeLabel: "RDS database",
+        accountId: "acc-aws",
+        accountName: "Production",
+        displayName: "prod-db",
+      },
+    ]);
+    c.resourceOutputs.mockImplementation(async () => ({
+      outputs: [
+        { key: "host", label: "Host", sensitive: false },
+        { key: "password", label: "Password", sensitive: true },
+      ],
+      secretVersions: null,
+    }));
+    c.createGrant.mockImplementation(async () => ({}));
+    renderPanel(c);
+    const search = await screen.findByPlaceholderText("Search for resources");
+    // Nothing to grant until a resource is chosen.
+    expect(screen.queryByRole("button", { name: "Grant" })).toBeNull();
+    fireEvent.change(search, { target: { value: "prod" } });
+    fireEvent.click(await screen.findByRole("button", { name: /prod-db/ }));
+    expect(c.searchResources).toHaveBeenCalledWith("prod");
+    await waitFor(() => expect(screen.getByText("password")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Branches"), { target: { value: "main" } });
+    fireEvent.click(screen.getByRole("button", { name: "Grant" }));
+    await waitFor(() =>
+      expect(c.createGrant).toHaveBeenCalledWith({
+        resourceId: "res-db",
+        ciName: "prod-db",
+        outputs: ["host"],
+        secretVersion: null,
+        repos: null,
+        branchPattern: "main",
+      }),
+    );
+  });
 });
 
 describe("CI access without ci-access:write", () => {
   it("shows the connections but offers no change, even with ci:write", async () => {
     const c = client();
-    render(<CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />);
+    c.access.mockImplementation(async () => runningJobs());
+    renderPanel(c, false);
     await waitFor(() => expect(screen.getByText("Production")).toBeTruthy());
-    expect(screen.queryByText("Grant a resource")).toBeNull();
-    const check = screen.getByText("Check permissions for EC2 instance").closest("button");
-    expect(check?.closest("fieldset")?.disabled).toBe(true);
+    expect(screen.queryByPlaceholderText("Search for resources")).toBeNull();
+    fireEvent.click(screen.getByText("View connections"));
+    const dialog = await screen.findByRole("dialog", { name: "Manage connections" });
+    expect(within(dialog).getByText(/Read only/)).toBeTruthy();
+    const check = screen.getByRole("button", { name: "Check permissions for EC2 instance" });
+    expect(check.closest("fieldset")?.disabled).toBe(true);
+    expect(
+      screen.getByRole("switch", { name: "Run jobs on it" }).closest("fieldset")?.disabled,
+    ).toBe(true);
+    expect(within(dialog).queryByRole("button", { name: "Save" })).toBeNull();
   });
 });
 
@@ -371,9 +507,18 @@ describe("CiPanel", () => {
       jobs: null,
       concurrencyGroups: ["ci-feature"],
     };
-    c.getRun
-      .mockResolvedValueOnce({ run: running, jobs: null })
-      .mockResolvedValue({ run: { ...running, cancelRequested: true }, jobs: null });
+    // The run reads as cancelling only once it was cancelled: a refetch
+    // before the click (the live log ending, say) must not take the button.
+    let cancelled = false;
+    c.getRun.mockImplementation(async () => ({
+      run: cancelled ? { ...running, cancelRequested: true } : running,
+      jobs: null,
+    }));
+    const cancel = c.cancelRun.getMockImplementation()!;
+    c.cancelRun.mockImplementation(async (id: string) => {
+      cancelled = true;
+      return cancel(id);
+    });
     render(
       <CiPanel client={c} selectedRunId={run.id} onSelectRun={() => {}} canWrite canApprove />,
     );

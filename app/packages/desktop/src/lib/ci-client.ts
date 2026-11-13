@@ -237,5 +237,12 @@ export function createDesktopCiClient(): CiClient {
       );
       return repos.filter((r) => enabled.has(r.installationId)).map((r) => r.fullName);
     },
+    // The renderer's own plugin manifests: no cloud round trip for artwork.
+    pluginLogos: async () => {
+      const { loadPlugins } = await import("../plugins/loader");
+      return Object.fromEntries(
+        (await loadPlugins()).map((p) => [p.plugin.manifest.id, p.plugin.manifest.logoSvg]),
+      );
+    },
   };
 }

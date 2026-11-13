@@ -1,386 +1,210 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useGT } from "gt-react";
 import {
   CI_GRANT_NAME,
-  ciBranchGlobs,
   ciGrantNameFor,
   type CiAccessOverview,
   type CiConnectionAccess,
-  type CiConnectionAccessSettings,
-  type CiExecutorKindId,
   type CiResourceGrant,
   type CiResourceOutputs,
   type SearchResult,
 } from "@infrawrench/client-core";
+import { ChevronIcon, SearchIcon } from "../components/icons/ChromeIcons.js";
+import { ResourceTypeIcon } from "../components/icons/ResourceTypeIcon.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { INPUT, LABEL } from "../settings/styles.js";
+import { Chip, PluginLogo, ScopeFields, errorText, scopeSummary } from "./ci-access-parts.js";
+import { CiConnectionsModal } from "./CiConnectionsModal.js";
 import type { CiClient, CiGrantInput } from "./types.js";
 
-const inputClass =
-  "rounded border border-border bg-surface px-2 py-1 text-xs text-on-surface placeholder:text-on-surface-faint";
-const labelClass = "flex flex-col gap-1 text-[11px] text-on-surface-faint";
+const SMALL_BUTTON =
+  "rounded-md border border-border px-2.5 py-1 text-xs text-on-surface transition-colors hover:bg-surface-overlay";
+const ROWS = "divide-y divide-border overflow-hidden rounded-lg border border-border";
 
-function errorText(e: unknown, fallback: string): string {
-  return e instanceof Error ? e.message : fallback;
-}
-
-/**
- * Which repositories and branches a permission holds for: every repository,
- * or the ones ticked, and an optional branch pattern.
- */
-function Scope({
-  repos,
-  allRepos,
-  branchPattern,
-  onChange,
-}: {
-  repos: string[] | null;
-  allRepos: string[];
-  branchPattern: string | null;
-  onChange: (repos: string[] | null, branchPattern: string | null) => void;
-}) {
-  const gt = useGT();
-  const id = useId();
-  const known = useMemo(
-    () => [...new Set([...allRepos, ...(repos ?? [])])].sort((a, b) => a.localeCompare(b)),
-    [allRepos, repos],
-  );
-  return (
-    <div className="space-y-1.5">
-      <div role="group" aria-labelledby={`${id}-repos`} className="space-y-1">
-        <span id={`${id}-repos`} className="text-[11px] text-on-surface-faint">
-          {gt("Repositories")}
-        </span>
-        <label className="flex items-center gap-1.5 text-xs text-on-surface">
-          <input
-            type="checkbox"
-            checked={repos === null}
-            onChange={(e) => onChange(e.target.checked ? null : [], branchPattern)}
-          />
-          {gt("Every repository CI runs for")}
-        </label>
-        {repos !== null ? (
-          <div className="flex max-h-32 flex-wrap gap-x-3 gap-y-1 overflow-y-auto">
-            {known.map((r) => (
-              <label
-                key={r}
-                className="flex items-center gap-1.5 font-mono text-xs text-on-surface"
-              >
-                <input
-                  type="checkbox"
-                  checked={repos.includes(r)}
-                  onChange={(e) =>
-                    onChange(
-                      e.target.checked ? [...repos, r] : repos.filter((x) => x !== r),
-                      branchPattern,
-                    )
-                  }
-                />
-                {r}
-              </label>
-            ))}
-            {known.length === 0 ? (
-              <span className="text-xs text-on-surface-muted">
-                {gt("No repositories run CI yet.")}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      <label className={labelClass}>
-        {gt("Branches")}
-        <input
-          value={branchPattern ?? ""}
-          onChange={(e) => onChange(repos, e.target.value.trim() === "" ? null : e.target.value)}
-          // i18n-ignore: branch glob syntax
-          placeholder="main, release/*"
-          className={`${inputClass} font-mono`}
-          autoComplete="off"
-        />
-      </label>
-      <p className="text-[11px] text-on-surface-faint">
-        {branchPattern === null
-          ? gt("Every branch")
-          : ciBranchGlobs(branchPattern).length === 0
-            ? gt("No branch: name at least one, or clear the field for every branch")
-            : gt("Only branches matching this pattern")}
-      </p>
-    </div>
-  );
-}
-
-function KindCheck({
+/** One connection CI may use, in a line: what it does for CI and where. */
+function ConnectionSummary({
   connection,
-  kind,
-  label,
-  checking,
-  onCheck,
+  logo,
+  onOpen,
 }: {
   connection: CiConnectionAccess;
-  kind: CiExecutorKindId;
-  label: string;
-  checking: boolean;
-  onCheck: () => void;
+  logo: string | undefined;
+  onOpen: () => void;
 }) {
   const gt = useGT();
   const data = useDataString();
-  const record = connection.preflight[kind];
-  const helpLink = connection.executor?.helpLink ?? null;
+  const s = connection.settings;
+  const kindLabels = (connection.executor?.kinds ?? [])
+    .filter((k) => s.jobKinds.includes(k.kind))
+    .map((k) => data(k.label));
+  const scopes = [
+    ...new Set([
+      ...(s.jobsEnabled ? [scopeSummary(gt, s.jobRepos, s.jobBranchPattern)] : []),
+      ...(s.lendEnabled ? [scopeSummary(gt, s.lendRepos, s.lendBranchPattern)] : []),
+    ]),
+  ];
   return (
-    <div className="space-y-1 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={checking}
-          onClick={onCheck}
-          className="rounded border border-border px-2 py-0.5 text-on-surface hover:bg-surface-sunken disabled:opacity-50"
-        >
-          {checking ? gt("Checking…") : gt("Check permissions for {kind}", { kind: label })}
-        </button>
-        {record ? (
-          <span role="status" className={record.ok ? "text-success" : "text-danger"}>
-            {record.ok ? gt("Ready") : gt("Not ready")}
-            {record.region ? (
-              <span className="ml-1 font-mono text-on-surface-faint">{record.region}</span>
-            ) : null}
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-overlay/60"
+      >
+        <PluginLogo svg={logo} />
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+          <span className="min-w-0 sm:w-52 sm:flex-shrink-0">
+            <span className="block truncate text-sm font-medium text-on-surface">
+              {connection.accountName}
+            </span>
+            <span className="block truncate text-xs text-on-surface-faint">
+              {connection.pluginName}
+            </span>
           </span>
-        ) : null}
-      </div>
-      {record && !record.ok ? (
-        <div className="space-y-1 text-on-surface-muted">
-          {record.missing.length > 0 ? (
-            <>
-              <p>{gt("The connection's credential lacks:")}</p>
-              <ul className="list-disc pl-5">
-                {record.missing.map((m) => (
-                  <li key={m.permission}>
-                    <span className="font-mono text-on-surface">{m.permission}</span> {m.label}
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {record.problems.map((p) => (
-            <p key={p}>{p}</p>
-          ))}
-          {helpLink ? (
-            <a
-              href={helpLink.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent hover:underline"
-            >
-              {data(helpLink.label)}
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ConnectionRow({
-  connection,
-  allRepos,
-  canWrite,
-  client,
-  onSaved,
-}: {
-  connection: CiConnectionAccess;
-  allRepos: string[];
-  canWrite: boolean;
-  client: CiClient;
-  onSaved: (c: CiConnectionAccess) => void;
-}) {
-  const gt = useGT();
-  const data = useDataString();
-  const [draft, setDraft] = useState<CiConnectionAccessSettings>(connection.settings);
-  const [checking, setChecking] = useState<CiExecutorKindId | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => setDraft(connection.settings), [connection.settings]);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(connection.settings);
-  const set = (patch: Partial<CiConnectionAccessSettings>) => setDraft((d) => ({ ...d, ...patch }));
-
-  const check = async (kind: CiExecutorKindId) => {
-    setChecking(kind);
-    setError(null);
-    try {
-      onSaved(await client.preflightConnection(connection.accountId, kind));
-    } catch (e) {
-      setError(errorText(e, gt("Could not check the connection")));
-    } finally {
-      setChecking(null);
-    }
-  };
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      onSaved(await client.setConnectionAccess(connection.accountId, draft));
-    } catch (e) {
-      setError(errorText(e, gt("Could not save")));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const kinds = connection.executor?.kinds ?? [];
-  return (
-    <li className="space-y-3 border-t border-border py-3">
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm font-medium text-on-surface">{connection.accountName}</span>
-        <span className="text-xs text-on-surface-faint">{connection.pluginName}</span>
-      </div>
-      <fieldset disabled={!canWrite} className="grid gap-4 md:grid-cols-2">
-        {connection.executor ? (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-on-surface">
-              <input
-                type="checkbox"
-                checked={draft.jobsEnabled}
-                onChange={(e) => set({ jobsEnabled: e.target.checked })}
-              />
-              {gt("Run jobs on it")}
-            </label>
-            {kinds.map((k) => {
-              const ready = connection.preflight[k.kind]?.ok === true;
-              return (
-                <div key={k.kind} className="space-y-1 pl-5">
-                  <label className="flex items-center gap-1.5 text-xs text-on-surface">
-                    <input
-                      type="checkbox"
-                      disabled={!ready}
-                      checked={draft.jobKinds.includes(k.kind)}
-                      onChange={(e) =>
-                        set({
-                          jobKinds: e.target.checked
-                            ? [...draft.jobKinds, k.kind]
-                            : draft.jobKinds.filter((x) => x !== k.kind),
-                        })
-                      }
-                    />
-                    {data(k.label)}{" "}
-                    <span className="font-mono text-on-surface-faint">{k.kind}</span>
-                    {k.defaults.machine ? (
-                      <span className="text-on-surface-faint">
-                        {gt("default {machine}", { machine: k.defaults.machine })}
-                      </span>
-                    ) : null}
-                    {k.regionLabel ? (
-                      <span className="text-on-surface-faint">
-                        {/* i18n-ignore: pipeline key */}
-                        {data(k.regionLabel)}: <span className="font-mono">cloud.region</span>
-                      </span>
-                    ) : null}
-                  </label>
-                  <KindCheck
-                    connection={connection}
-                    kind={k.kind}
-                    label={data(k.label)}
-                    checking={checking === k.kind}
-                    onCheck={() => void check(k.kind)}
-                  />
-                </div>
-              );
-            })}
-            <div className="flex flex-wrap gap-3 pl-5">
-              <label className={labelClass}>
-                {gt("Jobs at once")}
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={draft.maxConcurrentJobs}
-                  onChange={(e) => set({ maxConcurrentJobs: Number(e.target.value) })}
-                  className={`${inputClass} w-20`}
-                />
-              </label>
-              <label className={labelClass}>
-                {gt("Minutes per job")}
-                <input
-                  type="number"
-                  min={1}
-                  max={1440}
-                  value={draft.maxJobMinutes}
-                  onChange={(e) => set({ maxJobMinutes: Number(e.target.value) })}
-                  className={`${inputClass} w-24`}
-                />
-              </label>
-            </div>
-            <div className="pl-5">
-              <Scope
-                repos={draft.jobRepos}
-                allRepos={allRepos}
-                branchPattern={draft.jobBranchPattern}
-                onChange={(jobRepos, jobBranchPattern) => set({ jobRepos, jobBranchPattern })}
-              />
-            </div>
-          </div>
-        ) : null}
-        {connection.credential ? (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-on-surface">
-              <input
-                type="checkbox"
-                checked={draft.lendEnabled}
-                onChange={(e) => set({ lendEnabled: e.target.checked })}
-              />
-              {gt("Lend its credentials to jobs")}
-            </label>
-            <p className="pl-5 text-xs text-on-surface-muted">
-              {data(connection.credential.description)}
-            </p>
-            <div className="pl-5">
-              <Scope
-                repos={draft.lendRepos}
-                allRepos={allRepos}
-                branchPattern={draft.lendBranchPattern}
-                onChange={(lendRepos, lendBranchPattern) => set({ lendRepos, lendBranchPattern })}
-              />
-            </div>
-          </div>
-        ) : null}
-      </fieldset>
-      {canWrite ? (
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            disabled={busy || !dirty}
-            onClick={() => void save()}
-            className="rounded bg-accent px-3 py-1 text-xs text-on-accent disabled:opacity-50"
-          >
-            {gt("Save")}
-          </button>
-          {error ? (
-            <p role="alert" className="text-xs text-danger">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {s.jobsEnabled ? (
+              kindLabels.length > 0 ? (
+                <Chip tone="on">
+                  {gt("Runs jobs")}
+                  <span className="opacity-80">{` · ${kindLabels.join(", ")}`}</span>
+                </Chip>
+              ) : (
+                <Chip tone="warning">{gt("Runs jobs · no kind chosen")}</Chip>
+              )
+            ) : null}
+            {s.lendEnabled ? <Chip tone="on">{gt("Lends credentials")}</Chip> : null}
+            {scopes.map((scope) => (
+              <Chip key={scope}>{scope}</Chip>
+            ))}
+          </span>
+        </span>
+        <ChevronIcon direction="right" size={14} className="flex-shrink-0 text-on-surface-faint" />
+      </button>
     </li>
   );
+}
+
+/** The resource search a grant starts from: one wide field, the hits below it. */
+function ResourceSearch({
+  client,
+  query,
+  onQuery,
+  onPick,
+  onError,
+}: {
+  client: CiClient;
+  query: string;
+  onQuery: (q: string) => void;
+  onPick: (hit: SearchResult) => void;
+  onError: (message: string) => void;
+}) {
+  const gt = useGT();
+  const data = useDataString();
+  const [hits, setHits] = useState<SearchResult[] | null>(null);
+  const searchFailed = gt("Could not search resources");
+  const q = query.trim();
+
+  useEffect(() => {
+    setHits(null);
+    if (q.length < 2) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      client
+        .searchResources(q)
+        .then((h) => !cancelled && setHits(h.filter((r) => r.accountId !== "").slice(0, 20)))
+        .catch((e) => !cancelled && onError(errorText(e, searchFailed)));
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [client, q, searchFailed, onError]);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <SearchIcon
+          size={16}
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-on-surface-faint"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && query !== "") {
+              e.stopPropagation();
+              onQuery("");
+            }
+          }}
+          placeholder={gt("Search for resources")}
+          aria-label={gt("Search for resources")}
+          className="w-full rounded-lg border border-border-strong bg-surface py-2.5 pr-3 pl-10 text-sm text-on-surface placeholder:text-on-surface-faint [&::-webkit-search-cancel-button]:appearance-none"
+          autoComplete="off"
+        />
+      </div>
+      {q.length >= 2 ? (
+        hits === null ? (
+          <p role="status" className="px-1 text-xs text-on-surface-faint">
+            {gt("Searching…")}
+          </p>
+        ) : hits.length === 0 ? (
+          <p className="px-1 text-xs text-on-surface-muted">{gt("No resource matches.")}</p>
+        ) : (
+          <ul
+            aria-label={gt("Resources")}
+            className={`${ROWS} max-h-72 overflow-y-auto bg-surface-raised`}
+          >
+            {hits.map((h) => (
+              <li key={h.id}>
+                <button
+                  type="button"
+                  onClick={() => onPick(h)}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-overlay"
+                >
+                  <PluginLogo svg={h.pluginLogoSvg || undefined} size="sm" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-on-surface">{h.displayName}</span>
+                    <span className="block truncate text-xs text-on-surface-faint">
+                      {data(h.resourceTypeLabel)} · {h.accountName}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** The resource a grant is for, as the form shows it. */
+interface GrantTarget {
+  resourceId: string;
+  name: string;
+  detail: string;
+  logo: string | undefined;
 }
 
 function GrantForm({
   client,
   allRepos,
+  target,
   editing,
+  onChooseAnother,
   onDone,
 }: {
   client: CiClient;
   allRepos: string[];
+  target: GrantTarget;
   /** The grant being changed; null for a new one. */
   editing: CiResourceGrant | null;
+  onChooseAnother: () => void;
   onDone: (changed: boolean) => void;
 }) {
   const gt = useGT();
   const data = useDataString();
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchResult[]>([]);
-  const [resource, setResource] = useState<{ id: string; name: string } | null>(
-    editing ? { id: editing.resourceId, name: editing.resourceName } : null,
-  );
+  const id = useId();
   const [outputs, setOutputs] = useState<CiResourceOutputs | null>(null);
   const [input, setInput] = useState<CiGrantInput>(
     editing
@@ -393,8 +217,8 @@ function GrantForm({
           branchPattern: editing.branchPattern,
         }
       : {
-          resourceId: "",
-          ciName: "",
+          resourceId: target.resourceId,
+          ciName: ciGrantNameFor(target.name),
           outputs: [],
           secretVersion: null,
           repos: null,
@@ -403,33 +227,13 @@ function GrantForm({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const searchFailed = gt("Could not search resources");
   const outputsFailed = gt("Could not read the resource's outputs");
 
   useEffect(() => {
-    if (resource || query.trim().length < 2) {
-      setHits([]);
-      return;
-    }
-    let cancelled = false;
-    const t = setTimeout(() => {
-      client
-        .searchResources(query.trim())
-        .then((h) => !cancelled && setHits(h.filter((r) => r.accountId !== "").slice(0, 20)))
-        .catch((e) => !cancelled && setError(errorText(e, searchFailed)));
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [client, query, resource, searchFailed]);
-
-  useEffect(() => {
     setOutputs(null);
-    if (!resource) return;
     let cancelled = false;
     client
-      .resourceOutputs(resource.id)
+      .resourceOutputs(target.resourceId)
       .then((o) => {
         if (cancelled) return;
         setOutputs(o);
@@ -445,16 +249,8 @@ function GrantForm({
     return () => {
       cancelled = true;
     };
-  }, [client, resource, editing, outputsFailed]);
+  }, [client, target.resourceId, editing, outputsFailed]);
 
-  const pick = (hit: SearchResult) => {
-    setResource({ id: hit.id, name: hit.displayName });
-    setInput((i) => ({
-      ...i,
-      resourceId: hit.id,
-      ciName: i.ciName || ciGrantNameFor(hit.displayName),
-    }));
-  };
   const nameOk = CI_GRANT_NAME.test(input.ciName);
   const save = async () => {
     setBusy(true);
@@ -472,90 +268,74 @@ function GrantForm({
 
   return (
     <form
-      className="space-y-3 rounded border border-border p-3"
+      aria-label={editing ? gt("Edit the grant") : gt("Grant a resource")}
+      className="space-y-4 rounded-lg border border-border bg-surface p-4"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      {resource ? (
-        <div className="flex items-center gap-2 text-xs text-on-surface">
-          <span className="font-medium">{resource.name}</span>
-          {!editing ? (
-            <button
-              type="button"
-              onClick={() => {
-                setResource(null);
-                setInput((i) => ({ ...i, resourceId: "", outputs: [], secretVersion: null }));
-              }}
-              className="text-accent hover:underline"
-            >
-              {gt("Choose another")}
-            </button>
-          ) : null}
+      <div className="flex items-center gap-3">
+        <PluginLogo svg={target.logo} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-on-surface">{target.name}</p>
+          <p className="truncate text-xs text-on-surface-faint">{target.detail}</p>
         </div>
-      ) : (
-        <div className="space-y-1">
-          <label className={labelClass}>
-            {gt("Resource")}
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={gt("Search by name")}
-              className={inputClass}
-              autoComplete="off"
-            />
-          </label>
-          {hits.length > 0 ? (
-            <ul className="max-h-48 overflow-y-auto rounded border border-border">
-              {hits.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    onClick={() => pick(h)}
-                    className="flex w-full items-baseline gap-2 px-2 py-1 text-left text-xs hover:bg-surface-sunken"
-                  >
-                    <span className="text-on-surface">{h.displayName}</span>
-                    <span className="text-on-surface-faint">
-                      {h.resourceTypeLabel} · {h.accountName}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      )}
+        {!editing ? (
+          <button
+            type="button"
+            onClick={onChooseAnother}
+            className="flex-shrink-0 text-xs text-accent hover:underline"
+          >
+            {gt("Choose another")}
+          </button>
+        ) : null}
+      </div>
 
-      {resource && outputs ? (
+      {outputs === null && !error ? (
+        <p role="status" className="text-xs text-on-surface-faint">
+          {gt("Loading…")}
+        </p>
+      ) : null}
+      {outputs ? (
         <>
-          <div role="group" aria-label={gt("Outputs")} className="space-y-1">
-            <span className="text-[11px] text-on-surface-faint">{gt("Outputs jobs may read")}</span>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {outputs.outputs.map((o) => (
-                <label key={o.key} className="flex items-center gap-1.5 text-xs text-on-surface">
-                  <input
-                    type="checkbox"
-                    checked={input.outputs.includes(o.key)}
-                    onChange={(e) =>
-                      setInput((i) => ({
-                        ...i,
-                        outputs: e.target.checked
-                          ? [...i.outputs, o.key]
-                          : i.outputs.filter((x) => x !== o.key),
-                      }))
-                    }
-                  />
-                  {data(o.label)} <span className="font-mono text-on-surface-faint">{o.key}</span>
-                  {o.sensitive ? <span className="text-warning">{gt("sensitive")}</span> : null}
-                </label>
-              ))}
-            </div>
+          <div role="group" aria-labelledby={`${id}-outputs`}>
+            <span id={`${id}-outputs`} className={LABEL}>
+              {gt("Outputs jobs may read")}
+            </span>
+            {outputs.outputs.length === 0 ? (
+              <p className="text-xs text-on-surface-muted">{gt("This resource has no outputs.")}</p>
+            ) : (
+              <div className="grid gap-x-4 gap-y-1.5 rounded-lg border border-border p-2.5 sm:grid-cols-2">
+                {outputs.outputs.map((o) => (
+                  <label key={o.key} className="flex min-w-0 items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={input.outputs.includes(o.key)}
+                      onChange={(e) =>
+                        setInput((i) => ({
+                          ...i,
+                          outputs: e.target.checked
+                            ? [...i.outputs, o.key]
+                            : i.outputs.filter((x) => x !== o.key),
+                        }))
+                      }
+                    />
+                    <span className="truncate text-on-surface">{data(o.label)}</span>
+                    <span className="truncate font-mono text-on-surface-faint">{o.key}</span>
+                    {o.sensitive ? <span className="text-warning">{gt("sensitive")}</span> : null}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
           {outputs.secretVersions !== null ? (
-            <label className={labelClass}>
-              {gt("Secret value (read as the output value)")}
+            <div>
+              <label htmlFor={`${id}-secret`} className={LABEL}>
+                {gt("Secret value (read as the output value)")}
+              </label>
               <select
+                id={`${id}-secret`}
                 value={input.secretVersion ?? ""}
                 onChange={(e) =>
                   setInput((i) => ({
@@ -563,7 +343,7 @@ function GrantForm({
                     secretVersion: e.target.value === "" ? null : e.target.value,
                   }))
                 }
-                className={inputClass}
+                className={INPUT}
               >
                 <option value="">{gt("Not granted")}</option>
                 <option value="latest">{gt("The latest enabled version")}</option>
@@ -573,24 +353,31 @@ function GrantForm({
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : null}
-          <label className={labelClass}>
-            {gt("Name in pipelines")}
+          <div>
+            <label htmlFor={`${id}-name`} className={LABEL}>
+              {gt("Name in pipelines")}
+            </label>
             <input
+              id={`${id}-name`}
               value={input.ciName}
               onChange={(e) => setInput((i) => ({ ...i, ciName: e.target.value }))}
-              className={`${inputClass} font-mono`}
+              className={`${INPUT} font-mono`}
               aria-invalid={input.ciName !== "" && !nameOk}
               autoComplete="off"
             />
-          </label>
-          {nameOk ? (
-            <p className="font-mono text-[11px] text-on-surface-faint">
-              {`\${{ resources.${input.ciName}.<output> }}`}
-            </p>
-          ) : null}
-          <Scope
+            {nameOk ? (
+              <p className="mt-1 font-mono text-[11px] text-on-surface-faint">
+                {`\${{ resources.${input.ciName}.<output> }}`}
+              </p>
+            ) : input.ciName !== "" ? (
+              <p className="mt-1 text-[11px] text-danger">
+                {gt("Letters, digits, - and _, starting with a letter or digit.")}
+              </p>
+            ) : null}
+          </div>
+          <ScopeFields
             repos={input.repos}
             allRepos={allRepos}
             branchPattern={input.branchPattern}
@@ -599,20 +386,18 @@ function GrantForm({
         </>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <button
           type="submit"
-          disabled={
-            busy || !resource || !nameOk || (input.outputs.length === 0 && !input.secretVersion)
-          }
-          className="rounded bg-accent px-3 py-1 text-xs text-on-accent disabled:opacity-50"
+          disabled={busy || !nameOk || (input.outputs.length === 0 && !input.secretVersion)}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {editing ? gt("Save") : gt("Grant")}
         </button>
         <button
           type="button"
           onClick={() => onDone(false)}
-          className="text-xs text-on-surface-muted hover:underline"
+          className="rounded-md px-3 py-1.5 text-xs text-on-surface-muted transition-colors hover:text-on-surface"
         >
           {gt("Cancel")}
         </button>
@@ -626,20 +411,26 @@ function GrantForm({
   );
 }
 
-function scopeText(
-  gt: ReturnType<typeof useGT>,
-  repos: string[] | null,
-  branchPattern: string | null,
-): string {
-  const where = repos === null ? gt("every repository") : repos.join(", ") || gt("no repository");
-  return branchPattern
-    ? gt("{where}, branches {branches}", { where, branches: branchPattern })
-    : where;
+/** The heading of one of the card's three parts, with its action on the right. */
+function PartHeading({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-7 items-center justify-between gap-2">
+      <h4 className="text-xs font-semibold text-on-surface-muted">{children}</h4>
+      {action}
+    </div>
+  );
 }
 
 /**
  * What CI jobs may use: per connection, running jobs on it and lending its
- * credentials; resources granted one by one; SSH keys their owners lend.
+ * credentials (a line each here, their settings in a dialog); resources
+ * granted one by one; SSH keys their owners lend.
  */
 export function CiAccessCard({
   client,
@@ -653,12 +444,20 @@ export function CiAccessCard({
   canNarrow: boolean;
 }) {
   const gt = useGT();
+  const data = useDataString();
   const loadFailed = gt("Failed to load CI access");
   const [overview, setOverview] = useState<CiAccessOverview | null>(null);
   const [allRepos, setAllRepos] = useState<string[]>([]);
+  const [logos, setLogos] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const [editing, setEditing] = useState<CiResourceGrant | "new" | null>(null);
+  // The connections dialog: closed, or open on a connection (null: the first).
+  const [managing, setManaging] = useState<{ accountId: string | null } | null>(null);
+  const [query, setQuery] = useState("");
+  const [granting, setGranting] = useState<{
+    target: GrantTarget;
+    editing: CiResourceGrant | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -674,6 +473,17 @@ export function CiAccessCard({
       cancelled = true;
     };
   }, [client, nonce, loadFailed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .pluginLogos?.()
+      .then((l) => !cancelled && setLogos(l))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
 
   const replace = (c: CiConnectionAccess) =>
     setOverview((o) =>
@@ -698,9 +508,13 @@ export function CiAccessCard({
     }
   };
 
+  const active = overview?.connections.filter(
+    (c) => c.settings.jobsEnabled || c.settings.lendEnabled,
+  );
+
   return (
     <section
-      className="space-y-3 rounded border border-border bg-surface-raised p-4"
+      className="space-y-4 rounded border border-border bg-surface-raised p-4"
       aria-labelledby="ci-access"
     >
       <h3 id="ci-access" className="text-sm font-semibold text-on-surface">
@@ -711,53 +525,78 @@ export function CiAccessCard({
           {gt("Loading…")}
         </p>
       ) : null}
-      {overview ? (
+      {overview && active ? (
         <>
-          <div>
-            <h4 className="text-xs font-semibold text-on-surface-muted">{gt("Connections")}</h4>
+          <div className="space-y-2">
+            <PartHeading
+              action={
+                overview.connections.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setManaging({ accountId: null })}
+                    className={SMALL_BUTTON}
+                  >
+                    {canManage ? gt("Manage connections") : gt("View connections")}
+                  </button>
+                ) : null
+              }
+            >
+              {gt("Connections")}
+            </PartHeading>
             {overview.connections.length === 0 ? (
               <p className="text-xs text-on-surface-muted">
                 {gt("No connection's provider can run CI jobs or lend credentials yet.")}
               </p>
+            ) : active.length === 0 ? (
+              <p className="text-xs text-on-surface-muted">
+                {gt("No connection runs jobs or lends its credentials yet.")}
+              </p>
             ) : (
-              <ul>
-                {overview.connections.map((c) => (
-                  <ConnectionRow
+              <ul className={ROWS}>
+                {active.map((c) => (
+                  <ConnectionSummary
                     key={c.accountId}
                     connection={c}
-                    allRepos={allRepos}
-                    canWrite={canManage}
-                    client={client}
-                    onSaved={replace}
+                    logo={logos[c.pluginId]}
+                    onOpen={() => setManaging({ accountId: c.accountId })}
                   />
                 ))}
               </ul>
             )}
           </div>
 
-          <div className="space-y-2 border-t border-border pt-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-on-surface-muted">
-                {gt("Resources jobs may read")}
-              </h4>
-              {canManage && editing === null ? (
-                <button
-                  type="button"
-                  onClick={() => setEditing("new")}
-                  className="text-xs text-accent hover:underline"
-                >
-                  {gt("Grant a resource")}
-                </button>
-              ) : null}
-            </div>
-            {editing !== null ? (
+          <div className="space-y-2 border-t border-border pt-4">
+            <PartHeading>{gt("Resources jobs may read")}</PartHeading>
+            {canManage && granting === null ? (
+              <ResourceSearch
+                client={client}
+                query={query}
+                onQuery={setQuery}
+                onError={setError}
+                onPick={(hit) =>
+                  setGranting({
+                    target: {
+                      resourceId: hit.id,
+                      name: hit.displayName,
+                      detail: `${data(hit.resourceTypeLabel)} · ${hit.accountName}`,
+                      logo: hit.pluginLogoSvg || undefined,
+                    },
+                    editing: null,
+                  })
+                }
+              />
+            ) : null}
+            {granting !== null ? (
               <GrantForm
-                key={editing === "new" ? "new" : editing.id}
+                key={granting.editing?.id ?? granting.target.resourceId}
                 client={client}
                 allRepos={allRepos}
-                editing={editing === "new" ? null : editing}
+                target={granting.target}
+                editing={granting.editing}
+                onChooseAnother={() => setGranting(null)}
                 onDone={(changed) => {
-                  setEditing(null);
+                  setGranting(null);
+                  setQuery("");
                   if (changed) setNonce((n) => n + 1);
                 }}
               />
@@ -765,105 +604,98 @@ export function CiAccessCard({
             {overview.grants.length === 0 ? (
               <p className="text-xs text-on-surface-muted">{gt("No resource is granted.")}</p>
             ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-on-surface-faint">
-                    <th scope="col" className="py-1">
-                      {gt("Name")}
-                    </th>
-                    <th scope="col">{gt("Resource")}</th>
-                    <th scope="col">{gt("Outputs")}</th>
-                    <th scope="col">{gt("For")}</th>
-                    <th scope="col">
-                      <span className="sr-only">{gt("Actions")}</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overview.grants.map((g) => (
-                    <tr key={g.id} className="border-t border-border">
-                      <td className="py-1 font-mono text-on-surface">{g.ciName}</td>
-                      <td className="text-on-surface-muted">
-                        {g.resourceName} · {g.accountName}
-                      </td>
-                      <td className="font-mono text-on-surface-muted">{g.outputs.join(", ")}</td>
-                      <td className="text-on-surface-muted">
-                        {scopeText(gt, g.repos, g.branchPattern)}
-                      </td>
-                      <td className="text-right">
-                        {canManage ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditing(g)}
-                            className="mr-3 text-accent hover:underline"
-                          >
-                            {gt("Edit")}
-                          </button>
-                        ) : null}
-                        {canManage || canNarrow ? (
-                          <button
-                            type="button"
-                            onClick={() => void removeGrant(g)}
-                            className="text-danger hover:underline"
-                          >
-                            {gt("Remove")}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ul aria-label={gt("Granted resources")} className={ROWS}>
+                {overview.grants.map((g) => (
+                  <li key={g.id} className="flex items-center gap-3 px-3 py-2">
+                    <PluginLogo svg={logos[g.pluginId]} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs">
+                        <span className="font-mono text-on-surface">{g.ciName}</span>{" "}
+                        <span className="text-on-surface-muted">
+                          {g.resourceName} · {g.accountName}
+                        </span>
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="truncate font-mono text-[11px] text-on-surface-faint">
+                          {[...g.outputs, ...(g.secretVersion ? ["value"] : [])].join(", ")}
+                        </span>
+                        <Chip>{scopeSummary(gt, g.repos, g.branchPattern)}</Chip>
+                      </div>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-3 text-xs">
+                      {canManage ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setGranting({
+                              target: {
+                                resourceId: g.resourceId,
+                                name: g.resourceName,
+                                detail: g.accountName,
+                                logo: logos[g.pluginId],
+                              },
+                              editing: g,
+                            })
+                          }
+                          className="text-accent hover:underline"
+                        >
+                          {gt("Edit")}
+                        </button>
+                      ) : null}
+                      {canManage || canNarrow ? (
+                        <button
+                          type="button"
+                          onClick={() => void removeGrant(g)}
+                          className="text-danger hover:underline"
+                        >
+                          {gt("Remove")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
-          <div className="space-y-2 border-t border-border pt-3">
-            <h4 className="text-xs font-semibold text-on-surface-muted">
-              {gt("SSH keys lent to CI")}
-            </h4>
+          <div className="space-y-2 border-t border-border pt-4">
+            <PartHeading>{gt("SSH keys lent to CI")}</PartHeading>
             {overview.sshKeys.length === 0 ? (
               <p className="text-xs text-on-surface-muted">
                 {gt("No SSH key is lent. A key's owner lends it from Settings, SSH keys.")}
               </p>
             ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-on-surface-faint">
-                    <th scope="col" className="py-1">
-                      {gt("Name")}
-                    </th>
-                    <th scope="col">{gt("Key")}</th>
-                    <th scope="col">{gt("Owner")}</th>
-                    <th scope="col">{gt("For")}</th>
-                    <th scope="col">
-                      <span className="sr-only">{gt("Actions")}</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overview.sshKeys.map((k) => (
-                    <tr key={k.sshKeyId} className="border-t border-border">
-                      <td className="py-1 font-mono text-on-surface">{k.ciName}</td>
-                      <td className="text-on-surface-muted">{k.keyName}</td>
-                      <td className="text-on-surface-muted">{k.ownerName ?? ""}</td>
-                      <td className="text-on-surface-muted">
-                        {scopeText(gt, k.repos, k.branchPattern)}
-                      </td>
-                      <td className="text-right">
-                        {canNarrow || canManage ? (
-                          <button
-                            type="button"
-                            onClick={() => void revoke(k.sshKeyId)}
-                            className="text-danger hover:underline"
-                          >
-                            {gt("Revoke")}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ul aria-label={gt("SSH keys lent to CI")} className={ROWS}>
+                {overview.sshKeys.map((k) => (
+                  <li key={k.sshKeyId} className="flex items-center gap-3 px-3 py-2">
+                    <PluginLogo
+                      svg={undefined}
+                      size="sm"
+                      fallback={<ResourceTypeIcon iconKey="key" size={13} />}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs">
+                        <span className="font-mono text-on-surface">{k.ciName}</span>{" "}
+                        <span className="text-on-surface-muted">
+                          {k.ownerName ? `${k.keyName} · ${k.ownerName}` : k.keyName}
+                        </span>
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Chip>{scopeSummary(gt, k.repos, k.branchPattern)}</Chip>
+                      </div>
+                    </div>
+                    {canNarrow || canManage ? (
+                      <button
+                        type="button"
+                        onClick={() => void revoke(k.sshKeyId)}
+                        className="flex-shrink-0 text-xs text-danger hover:underline"
+                      >
+                        {gt("Revoke")}
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </>
@@ -872,6 +704,18 @@ export function CiAccessCard({
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
+      ) : null}
+      {overview && managing ? (
+        <CiConnectionsModal
+          connections={overview.connections}
+          allRepos={allRepos}
+          logos={logos}
+          canWrite={canManage}
+          client={client}
+          initialAccountId={managing.accountId}
+          onSaved={replace}
+          onClose={() => setManaging(null)}
+        />
       ) : null}
     </section>
   );

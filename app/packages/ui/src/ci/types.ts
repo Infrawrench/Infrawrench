@@ -88,6 +88,11 @@ export interface CiClient {
   revokeSshKeyLending(sshKeyId: string): Promise<void>;
   /** Every repository (`owner/name`) of the accounts that run CI, for the repository pickers. */
   listAllRepos(): Promise<string[]>;
+  /**
+   * Provider logos (inline SVG from each plugin's manifest) by plugin id, for
+   * the connection rows. Optional: without it a row shows a generic icon.
+   */
+  pluginLogos?(): Promise<Record<string, string>>;
 }
 
 /** A resource grant as the form sends it. */

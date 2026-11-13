@@ -305,13 +305,15 @@ Names are letters, digits and `_`, not starting with a digit. Managing them take
 
 Jobs can use what your organization has connected to Infrawrench, once someone turns it on: run on a cloud connection, use a connection's credentials, read a resource's outputs, or use an SSH key. Everything is off until then, and each permission says which repositories and branches it holds for. A run from a fork's pull request gets none of it.
 
-Everyone who can see runs can see the **CI access** card. Lending a connection, granting a resource and running cloud jobs on a connection take `ci-access:write`, which admins and owners hold; `ci:write` alone can only remove a grant or revoke a lent key. An SSH key is lent by its owner, with `ssh-keys:write`. None of this can be changed with an API key or by an agent: a person decides what CI jobs may use. Every change, and every time a run is lent something, is recorded in the [audit log](../team-and-billing/audit-log.md), with who allowed it.
+Everyone who can see runs can see the **CI access** card. It lists each connection that runs jobs or lends its credentials on one line, with what it does and for which repositories and branches; choose a line, or **Manage connections**, to open every connection that can do either, with the chosen one's settings beside the list. On a phone the list comes first, and choosing a connection opens its settings with a way back. Changes to a connection take effect when you **Save**; leaving with changes unsaved asks first. Lending a connection, granting a resource and running cloud jobs on a connection take `ci-access:write`, which admins and owners hold; `ci:write` alone can only remove a grant or revoke a lent key. An SSH key is lent by its owner, with `ssh-keys:write`. None of this can be changed with an API key or by an agent: a person decides what CI jobs may use. Every change, and every time a run is lent something, is recorded in the [audit log](../team-and-billing/audit-log.md), with who allowed it.
 
-<insert [The CI access card: an AWS connection "Production" with "Run jobs on it" ticked, EC2 instance ticked and "Ready", 2 jobs at once and 60 minutes per job, and a Kubernetes connection "Production cluster" with "Lend its credentials to jobs" ticked for acme/web on main] here>
+<insert [The CI access card: a Google Cloud connection "Infrawrench GCP" on one line with the chips "Runs jobs · Compute Engine instance, Cloud Run job" and "All repositories · main, release/*", a Kubernetes connection "Production cluster" with "Lends credentials" and "acme/web · main", the Manage connections button above them, the wide "Search for resources" field, and one granted resource and one lent SSH key as compact rows] here>
+
+<insert [The Manage connections dialog: the connection list on the left with a search field and an on dot beside Infrawrench GCP and Production cluster, and Infrawrench GCP's settings on the right with "Run jobs on it" switched on, Compute Engine instance and Cloud Run job ticked and "Ready", 2 jobs at once and 60 minutes per job, the branches "main, release/*", and Cancel and Save at the bottom] here>
 
 ### Repositories and branches
 
-Each permission holds for **every repository CI runs for**, or the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster.
+Each permission holds for **Every repository** CI runs for, or, with **Chosen repositories**, the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster.
 
 ### Cloud jobs
 
@@ -332,7 +334,7 @@ jobs:
     outputs: [digest]
 ```
 
-`cloud: aws/vm` is the short form. To let jobs run on a connection, tick **Run jobs on it** on its row, then **Check permissions** for each kind. The check asks the provider without starting anything, and says exactly which permission the connection's credential lacks and where to grant it; a kind that fails it cannot be turned on. Then set how many of its jobs may run at once and how long one may take.
+`cloud: aws/vm` is the short form. To let jobs run on a connection, open it under **Manage connections**, switch on **Run jobs on it**, then choose **Check permissions** beside each kind and tick the kinds that are ready. The check asks the provider without starting anything, and says exactly which permission the connection's credential lacks and where to grant it; a kind that fails it cannot be turned on. Then set how many of its jobs may run at once and how long one may take.
 
 - The machine gets the job's own environment and what the job is lent, never the connection's own credentials.
 - The machine starts with a one-time token for its job in its start-up script (on AWS, the instance's user data), which anyone who can read that in your cloud account can see until the job fetches its script; the token is spent on that first fetch, and it never appears in a URL.
@@ -392,7 +394,7 @@ Supported so far:
 
 `cloud.region` is the provider's region (or zone), except on Kubernetes and Nomad, where it names the namespace the job runs in. Without it a job runs in the connection's own region or namespace.
 
-The check on each connection's row names what that provider's credential needs, and links to where to grant it. A container or build image needs `bash`, `curl`, `tar`, `gzip` and `base64`; where they are missing, most container kinds install them with the image's package manager first.
+The check beside each kind names what that provider's credential needs, and links to where to grant it. A container or build image needs `bash`, `curl`, `tar`, `gzip` and `base64`; where they are missing, most container kinds install them with the image's package manager first.
 
 An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. Because `ssh` reads its configuration from the user's real home directory, a job on an SSH host that is lent another SSH connection uses it with `ssh -F "$HOME/.ssh/config"`.
 
@@ -412,7 +414,7 @@ jobs:
       ssh web-1 'sudo systemctl reload nginx'
 ```
 
-Names are the connections' names in Infrawrench. To lend one, tick **Lend its credentials to jobs** on its row.
+Names are the connections' names in Infrawrench. To lend one, open it under **Manage connections** and switch on **Lend its credentials to jobs**.
 
 - **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
 - **SSH:** an entry in `/root/.ssh/config` named after the connection, with its key, user and port, a check against the host key Infrawrench pinned for it, and the jump host it connects through, which must be lent too. A host with no pinned key is not lent: open a terminal to it from Infrawrench once first.
@@ -427,7 +429,7 @@ Names are the connections' names in Infrawrench. To lend one, tick **Lend its cr
 
 ### Resources
 
-A job can read a resource's outputs, granted one resource at a time under **Resources jobs may read**: choose **Grant a resource**, find it by name, and tick the outputs jobs may read. Sensitive outputs start unticked. For a secret in a secret manager, choose its latest enabled version or a pinned one, read as `value`.
+A job can read a resource's outputs, granted one resource at a time under **Resources jobs may read**: type its name in **Search for resources**, choose it, and tick the outputs jobs may read. Granted resources are listed below the search, each with **Edit** and **Remove**. Sensitive outputs start unticked. For a secret in a secret manager, choose its latest enabled version or a pinned one, read as `value`.
 
 ```yaml
 jobs:
@@ -440,7 +442,7 @@ jobs:
 
 `${{ resources.<name>.<output> }}` works where `${{ secrets.NAME }}` does, in `env:` values. Values are read fresh for every run, so a rotated secret takes effect on the next one, and they are masked in every log and output.
 
-<insert [The "Grant a resource" form with the database "prod-db" chosen, connectionString ticked, the sensitive adminPassword unticked, its name in pipelines "prod-db", and the branch pattern "main"] here>
+<insert [The grant form under Resources jobs may read, opened from the "Search for resources" results: the database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive adminPassword unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel] here>
 
 ### When a job is refused
 

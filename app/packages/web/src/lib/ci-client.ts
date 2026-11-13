@@ -19,6 +19,7 @@ import {
   type CiValues,
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
+import { fetchPluginCatalog } from "./plugin-catalog";
 
 function scopeQuery(installationId: number, repo: string | null): string {
   const q = new URLSearchParams({ installationId: String(installationId) });
@@ -145,5 +146,7 @@ export function createWebCiClient(orgId: string): CiClient {
       const ci = new Set(status.accounts.filter((a) => a.ciEnabled).map((a) => a.installationId));
       return repos.filter((r) => ci.has(r.installationId)).map((r) => r.fullName);
     },
+    pluginLogos: async () =>
+      Object.fromEntries((await fetchPluginCatalog(orgId)).map((p) => [p.id, p.logoSvg])),
   };
 }
