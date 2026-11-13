@@ -148,6 +148,29 @@ Each grant is its own conditional binding, so removing it never touches the pers
 
 The service account needs `resourcemanager.projects.getIamPolicy` and `resourcemanager.projects.setIamPolicy` on each target project (the Project IAM Admin role), `iam.roles.list` for the role picker, and `resourcemanager.projects.list` to offer projects other than its own.
 
+## Run CI jobs
+
+A Google Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets fresh compute in the job's `cloud.region` (`us-central1` when it names none), which is removed when the job ends:
+
+| `cloud.kind` | Runs on                                            | Default `machine` | Default `image`                               |
+| ------------ | -------------------------------------------------- | ----------------- | --------------------------------------------- |
+| `vm`         | A Compute Engine instance on the `default` network | `e2-standard-2`   | Ubuntu 24.04                                  |
+| `container`  | A Cloud Run job                                    | `2vcpu-4gb`       | `docker.io/library/buildpack-deps:noble-curl` |
+| `build`      | A Cloud Build build, with Docker                   | `e2-standard-2`   | `gcr.io/cloud-builders/docker`                |
+
+A Cloud Run `machine` is `<vCPUs>vcpu-<GiB>gb` with 1, 2, 4, 6 or 8 vCPUs. A Cloud Build `machine` is one of its machine types, such as `e2-highcpu-8`. A `vm` can have a GPU with `cloud.gpu`, such as `nvidia-l4:1`.
+
+The job's compute holds no useful Google credentials. An instance gets no service account. Cloud Run and Cloud Build always run as some service account and hand its token to the job, so Infrawrench creates one named `infrawrench-ci-runner` with no roles, and jobs and builds run as it. Don't grant it any roles. Every job also stops on its own when its time is up: an instance is deleted by its maximum run duration, and a Cloud Run task and a build have their own timeouts. Builds don't write logs, since the job's log goes to Infrawrench.
+
+Opting a connection in checks its permissions and names any that are missing:
+
+- **`vm`**: `compute.instances.create`, `compute.disks.create`, `compute.subnetworks.use`, `compute.subnetworks.useExternalIp`, `compute.instances.setMetadata`, `compute.instances.setLabels`, `compute.regions.get`, `compute.zoneOperations.get`, `compute.instances.get`, `compute.instances.list` and `compute.instances.delete`.
+- **`container`**: `run.jobs.create`, `run.jobs.run`, `run.jobs.get`, `run.jobs.list`, `run.executions.list` and `run.jobs.delete`.
+- **`build`**: `cloudbuild.builds.create`, `cloudbuild.builds.get`, `cloudbuild.builds.list` and `cloudbuild.builds.update`.
+- **`container` and `build`** also need `iam.serviceAccounts.actAs` on `infrawrench-ci-runner`, plus `iam.serviceAccounts.get` and `iam.serviceAccounts.create` until it exists.
+
+The Compute Engine, Cloud Run Admin and Cloud Build APIs must be enabled for the kinds you use.
+
 ## Tips and limits
 
 - Service account keys never expire on Google's side, but rotating them is good practice. Paste a new key any time.

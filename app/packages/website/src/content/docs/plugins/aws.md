@@ -102,6 +102,28 @@ The create forms offer current-generation sizes: Graviton RDS classes (`db.t4g`,
 
 The region pickers include every commercial region, including the opt-in regions added since 2023: Calgary (`ca-west-1`), Mexico (`mx-central-1`), Melbourne, Malaysia, New Zealand and Thailand (`ap-southeast-4` to `ap-southeast-7`) and Taipei (`ap-east-2`). Enable an opt-in region on your account before you create anything there.
 
+## Run CI jobs
+
+An AWS connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets fresh compute in the connection's region (or the job's `cloud.region`), which is removed when the job ends:
+
+| `cloud.kind` | Runs on                        | Default `machine`       | Default `image`                                           |
+| ------------ | ------------------------------ | ----------------------- | --------------------------------------------------------- |
+| `vm`         | An EC2 instance                | `t3.large`              | Ubuntu 24.04                                              |
+| `container`  | A one-off ECS task on Fargate  | `2vcpu-4gb`             | `public.ecr.aws/docker/library/buildpack-deps:noble-curl` |
+| `build`      | A CodeBuild build, with Docker | `BUILD_GENERAL1_MEDIUM` | `aws/codebuild/standard:8.0`                              |
+
+A Fargate `machine` is `<vCPUs>vcpu-<GiB>gb` and must be one of Fargate's CPU and memory pairs. A CodeBuild `machine` is a compute type, such as `BUILD_GENERAL1_LARGE`.
+
+The job's compute holds no useful AWS credentials. An EC2 instance gets no instance profile, and a Fargate task gets no task or execution role. CodeBuild always gives a build its project's service role, so Infrawrench creates a role named `infrawrench-ci-codebuild` with no permissions, and builds run as that role. Don't attach policies to it. Every job also stops on its own when its time is up: an instance shuts itself down, a task's command ends itself, and a build has CodeBuild's own timeout.
+
+Container and build jobs start in the default VPC and in a cluster and a project named `infrawrench-ci`, which Infrawrench creates on first use. Opting a connection in checks its permissions and names any that are missing:
+
+- **`vm`**: `ec2:RunInstances`, `ec2:CreateTags`, `ec2:DescribeInstances`, `ec2:TerminateInstances` and `ssm:GetParameters`.
+- **`container`**: `ecs:CreateCluster`, `ecs:DescribeClusters`, `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition`, `ecs:ListTaskDefinitions`, `ecs:DeregisterTaskDefinition`, `ecs:DeleteTaskDefinitions`, `ecs:RunTask`, `ecs:TagResource`, `ecs:DescribeTasks`, `ecs:ListTasks`, `ecs:StopTask` and `ec2:DescribeSubnets`.
+- **`build`**: `codebuild:BatchGetProjects`, `codebuild:CreateProject`, `codebuild:StartBuild`, `codebuild:BatchGetBuilds`, `codebuild:ListBuildsForProject`, `codebuild:StopBuild`, `iam:GetRole`, `iam:CreateRole` (until the role exists) and `iam:PassRole` on `infrawrench-ci-codebuild`.
+
+ECS and CodeBuild writes have no dry run, so the check for `container` and `build` uses the IAM policy simulator, which needs `iam:SimulatePrincipalPolicy`. The first ECS cluster in an account also needs `iam:CreateServiceLinkedRole`, once, if the ECS service-linked role doesn't exist yet.
+
 ## Tips and limits
 
 - Each AWS account in Infrawrench uses one region for defaults. Add more accounts if you work across regions.

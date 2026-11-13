@@ -70,13 +70,21 @@ import type {
   CiTaggedCompute,
 } from "@infrawrench/plugin-base";
 import {
-  ciListTagged,
+  awsCiListTagged,
   ciPreflight,
   ciStart,
   ciStatus,
   ciTeardown,
   type Ec2Call,
 } from "./ci-executor.js";
+import type { AwsCiCalls } from "./ci-calls.js";
+import {
+  codebuildPreflight,
+  codebuildStart,
+  codebuildStatus,
+  codebuildTeardown,
+} from "./ci-codebuild.js";
+import { ecsPreflight, ecsStart, ecsStatus, ecsTeardown } from "./ci-ecs.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listEC2Instances,
@@ -209,7 +217,7 @@ import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
-import { getCallerIdentity, runAwsPreflight } from "./preflight.js";
+import { getCallerIdentity, runAwsPreflight, simulateCallerActions } from "./preflight.js";
 import {
   checkAwsJitAccess,
   grantAwsJitAccess,
@@ -482,24 +490,64 @@ export class AWSClient implements PluginClient {
     params?: Record<string, string>,
   ) => ec2Call<T>(this.credsFor(region), action, params);
 
+  /** Everything the CI executors call AWS through, bound to this connection. */
+  private get ciCalls(): AwsCiCalls {
+    return {
+      ec2: this.ciCall,
+      json: <T>(region: string, service: string, target: string, body: object) =>
+        jsonCall<T>(this.credsFor(region), service, target, body as Record<string, unknown>),
+      query: <T>(
+        service: string,
+        action: string,
+        version: string,
+        params?: Record<string, string>,
+      ) => queryPostCall<T>(this.creds, service, action, version, params),
+      simulate: (actions, resource) => simulateCallerActions(this.creds, actions, resource),
+    };
+  }
+
   ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
-    return attempt(() => ciPreflight(this.ciCall, this.creds.region, kind, region));
+    return attempt(() => {
+      const where = region ?? this.creds.region;
+      if (kind === "container") return ecsPreflight(this.ciCalls, where);
+      if (kind === "build") return codebuildPreflight(this.ciCalls, where);
+      return ciPreflight(this.ciCall, this.creds.region, kind, region);
+    });
   }
 
   ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
-    return attempt(() => ciStart(this.ciCall, this.creds.region, spec));
+    return attempt(() => {
+      const region = spec.region ?? this.creds.region;
+      if (spec.kind === "container") return ecsStart(this.ciCalls, region, spec);
+      if (spec.kind === "build") return codebuildStart(this.ciCalls, region, spec);
+      return ciStart(this.ciCall, this.creds.region, spec);
+    });
   }
 
   ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
-    return attempt(() => ciStatus(this.ciCall, this.creds.region, handle));
+    return attempt(() => {
+      const region = handle.region ?? this.creds.region;
+      const kind = handle.data?.["kind"];
+      if (kind === "container") return ecsStatus(this.ciCalls, region, handle);
+      if (kind === "build") return codebuildStatus(this.ciCalls, region, handle);
+      return ciStatus(this.ciCall, this.creds.region, handle);
+    });
   }
 
   ciTeardown(handle: CiHandle): PluginEffect<void> {
-    return attempt(() => ciTeardown(this.ciCall, this.creds.region, handle));
+    return attempt(() => {
+      const region = handle.region ?? this.creds.region;
+      const kind = handle.data?.["kind"];
+      if (kind === "container") return ecsTeardown(this.ciCalls, region, handle);
+      if (kind === "build") return codebuildTeardown(this.ciCalls, region, handle);
+      return ciTeardown(this.ciCall, this.creds.region, handle);
+    });
   }
 
   ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
-    return attempt(() => ciListTagged(this.ciCall, this.creds.region, tagKey, regions));
+    return attempt(() =>
+      awsCiListTagged(this.ciCall, this.ciCalls, this.creds.region, tagKey, regions),
+    );
   }
 
   listResources(

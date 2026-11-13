@@ -79,6 +79,22 @@ import {
 import { type AzureCreateContext } from "./create-handlers.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
 import { azureRequest } from "./http.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  azureCiListTagged,
+  azureCiPreflight,
+  azureCiStart,
+  azureCiStatus,
+  azureCiTeardown,
+} from "./ci-executor.js";
+import type { AzureCiCalls } from "./ci-shared.js";
 import {
   deleteStorageObject,
   listStorageObjects,
@@ -293,6 +309,62 @@ export class AzureClient implements PluginClient {
    */
   private get graphClient() {
     return makeGraphClient({ graphToken: () => this.graphToken() }, this.http);
+  }
+
+  // ─── CI executor ───────────────────────────────────────────────────────
+
+  /** ARM requests for the CI executors, which read every status themselves. */
+  private get ciCalls(): AzureCiCalls {
+    return {
+      subscriptionId: this.creds.subscriptionId,
+      arm: async (method, path, body) => {
+        const tok = await this.token();
+        const res = await azureRequest(this.http, `${ARM}${path}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${tok}`,
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+        const text = await res.text();
+        let parsed: unknown = null;
+        try {
+          parsed = text ? JSON.parse(text) : null;
+        } catch {
+          parsed = { error: { message: text.slice(0, 500) } };
+        }
+        return { status: res.status, body: parsed };
+      },
+      // The ARM token's `oid` claim is the service principal's object id.
+      principalId: async () => {
+        const payload = (await this.token()).split(".")[1] ?? "";
+        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+        const oid = (JSON.parse(json) as { oid?: unknown }).oid;
+        if (typeof oid !== "string") throw new Error("The Azure token names no object id");
+        return oid;
+      },
+    };
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => azureCiPreflight(this.ciCalls, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => azureCiStart(this.ciCalls, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => azureCiStatus(this.ciCalls, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => azureCiTeardown(this.ciCalls, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => azureCiListTagged(this.ciCalls, tagKey, regions));
   }
 
   // ─── Context builders ──────────────────────────────────────────────────

@@ -321,9 +321,19 @@ export type {
   CiMissingPermission,
   CiPreflightResult,
   CiStartSpec,
+  CiContainerSize,
   CiTaggedCompute,
 } from "./ci.js";
-export { CI_EXECUTOR_KINDS, CI_JOB_TAG, CI_RUN_TAG, CI_TAG, ciAlias } from "./ci.js";
+export {
+  CI_EXECUTOR_KINDS,
+  CI_JOB_TAG,
+  CI_RUN_TAG,
+  CI_TAG,
+  ciAlias,
+  ciComputeKey,
+  ciContainerCommand,
+  parseCiContainerSize,
+} from "./ci.js";
 
 export type {
   ResourceTypeDefinition,

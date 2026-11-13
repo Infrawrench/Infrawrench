@@ -1,4 +1,7 @@
 /**
+ * CI jobs on AWS. `vm` is here (EC2); `container` (ECS on Fargate) is in
+ * `ci-ecs.ts` and `build` (CodeBuild) in `ci-codebuild.ts`.
+ *
  * CI jobs on EC2: one fresh instance per job, started with the host's
  * bootstrap script as user data and terminated when the job ends.
  *
@@ -46,6 +49,14 @@ import type {
 
 import { AwsRequestError } from "./aws-errors.js";
 import { instanceTypeArch } from "./ami-lookup.js";
+import {
+  CODEBUILD_DEFAULT_IMAGE,
+  CODEBUILD_DEFAULT_MACHINE,
+  CODEBUILD_MACHINES,
+  codebuildListTagged,
+} from "./ci-codebuild.js";
+import { ECS_DEFAULT_IMAGE, ECS_DEFAULT_MACHINE, ecsListTagged } from "./ci-ecs.js";
+import type { AwsCiCalls } from "./ci-calls.js";
 import { ensureArray } from "./xml.js";
 
 /** One EC2 Query API call in a region. */
@@ -71,6 +82,8 @@ export const AWS_CI_EXECUTOR = {
       label: "EC2 instance",
       defaults: { machine: DEFAULT_MACHINE, image: "Ubuntu 24.04" },
       typicalStartSeconds: 60,
+      // Linux instances are billed per second with a one-minute minimum.
+      minimumBillingSeconds: 60,
       gpus: true,
       machineSuggestions: [
         "t3.medium",
@@ -84,6 +97,24 @@ export const AWS_CI_EXECUTOR = {
         "g5.xlarge",
         "g6.xlarge",
       ],
+    },
+    {
+      kind: "container",
+      label: "ECS task on Fargate",
+      defaults: { machine: ECS_DEFAULT_MACHINE, image: ECS_DEFAULT_IMAGE },
+      // Fargate bills per second with a one-minute minimum.
+      minimumBillingSeconds: 60,
+      typicalStartSeconds: 45,
+      machineSuggestions: ["1vcpu-2gb", "2vcpu-4gb", "4vcpu-8gb", "8vcpu-16gb", "16vcpu-32gb"],
+    },
+    {
+      kind: "build",
+      label: "CodeBuild build",
+      defaults: { machine: CODEBUILD_DEFAULT_MACHINE, image: CODEBUILD_DEFAULT_IMAGE },
+      // On-demand builds are billed in whole minutes, rounded up.
+      minimumBillingSeconds: 60,
+      typicalStartSeconds: 60,
+      machineSuggestions: CODEBUILD_MACHINES,
     },
   ],
   helpLink: {
@@ -112,6 +143,12 @@ function isDryRunOk(err: unknown): boolean {
 function isUnauthorized(err: unknown): boolean {
   const c = code(err);
   return c === "UnauthorizedOperation" || c === "AccessDenied" || c === "AccessDeniedException";
+}
+
+/** A refusal that means nothing could have been started there by this key. */
+function isClosedToKey(err: unknown): boolean {
+  const c = code(err);
+  return isUnauthorized(err) || c === "SubscriptionRequiredException" || c === "OptInRequired";
 }
 
 function tagParams(prefix: string, tags: Readonly<Record<string, string>>): Record<string, string> {
@@ -173,7 +210,7 @@ export function runParams(spec: CiStartSpec, clientToken: string): Record<string
 
 function requireVm(kind: CiExecutorKind): void {
   if (kind !== "vm") {
-    throw new Error(`AWS runs CI jobs of kind \`vm\` (EC2) only so far, not \`${kind}\`.`);
+    throw new Error(`EC2 runs CI jobs of kind \`vm\`, not \`${kind}\`.`);
   }
 }
 
@@ -374,6 +411,34 @@ export async function ciListTagged(
       }
       nextToken = typeof data["nextToken"] === "string" ? data["nextToken"] : undefined;
     } while (nextToken);
+  }
+  return out;
+}
+
+/**
+ * Everything tagged in `regions` (the connection's own when empty), across
+ * EC2, ECS and CodeBuild. A kind this key may not list has nothing it could
+ * have started, so it does not hide the others.
+ */
+export async function awsCiListTagged(
+  call: Ec2Call,
+  calls: AwsCiCalls,
+  homeRegion: string,
+  tagKey: string,
+  regions: readonly string[],
+): Promise<CiTaggedCompute[]> {
+  const quiet = async (list: Promise<CiTaggedCompute[]>): Promise<CiTaggedCompute[]> => {
+    try {
+      return await list;
+    } catch (err) {
+      if (isClosedToKey(err)) return [];
+      throw err;
+    }
+  };
+  const out = await ciListTagged(call, homeRegion, tagKey, regions);
+  for (const region of regions.length > 0 ? [...new Set(regions)] : [homeRegion]) {
+    out.push(...(await quiet(ecsListTagged(calls, region, tagKey))));
+    out.push(...(await quiet(codebuildListTagged(calls, region, tagKey))));
   }
   return out;
 }

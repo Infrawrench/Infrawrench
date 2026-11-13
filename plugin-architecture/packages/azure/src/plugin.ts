@@ -7,6 +7,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { AZURE_FOCUS } from "./focus-services.js";
 import { AzureClient } from "./client.js";
+import { AZURE_CI_EXECUTOR } from "./ci-executor.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { azureTerraformExport } from "./terraform.js";
@@ -170,6 +171,11 @@ export const manifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: AZURE_TRANSFER_RATES,
+  // CI jobs on a fresh VM, a container group or an ACR Tasks run per job,
+  // each in a resource group of its own that teardown deletes, none with a
+  // managed identity. Needs the actions `ciPreflight` names. See
+  // `ci-executor.ts`.
+  ciExecutor: AZURE_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

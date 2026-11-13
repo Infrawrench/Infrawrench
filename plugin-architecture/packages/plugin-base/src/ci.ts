@@ -238,3 +238,84 @@ export function ciAlias(name: string): string {
     .slice(0, 48);
   return slug || "connection";
 }
+
+/**
+ * A short, stable key for one job's compute: lowercase hex, 32 characters,
+ * the same for every call with the same job. Plugins use it for names that
+ * make a start idempotent (an instance name, a resource group, a client
+ * token) and fit every provider's naming rules. It comes from the
+ * {@link CI_JOB_TAG} tag, or from the run and the name when that is absent.
+ */
+export function ciComputeKey(spec: Pick<CiStartSpec, "tags" | "name">): string {
+  const job = spec.tags[CI_JOB_TAG];
+  const plain = (job ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (job && plain.length >= 24 && plain.length === job.replace(/-/g, "").length) {
+    return plain.slice(0, 32).padEnd(32, "0");
+  }
+  const source = job ?? `${spec.tags[CI_RUN_TAG] ?? ""}\u0000${spec.name}`;
+  return fnv64(`a\u0000${source}`) + fnv64(`b\u0000${source}`);
+}
+
+/** FNV-1a, 64 bits, as 16 hex characters. Names, not security. */
+function fnv64(text: string): string {
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  for (const byte of new TextEncoder().encode(text)) {
+    hash ^= BigInt(byte);
+    hash = (hash * prime) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/** A container's size, for providers that size containers by vCPUs and memory. */
+export interface CiContainerSize {
+  vcpus: number;
+  memoryGb: number;
+}
+
+/**
+ * Reads `cloud.machine` for a container kind that has no size names of its
+ * own: `<vCPUs>vcpu-<memory>gb`, e.g. `2vcpu-4gb` or `0.5vcpu-1gb` (`gib`
+ * and a space or `/` in between are fine too). Null when it is not that.
+ */
+export function parseCiContainerSize(machine: string): CiContainerSize | null {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*vcpus?\s*[-_ /,]?\s*(\d+(?:\.\d+)?)\s*gi?b\s*$/i.exec(
+    machine,
+  );
+  if (!match) return null;
+  const vcpus = Number(match[1]);
+  const memoryGb = Number(match[2]);
+  if (!(vcpus > 0) || !(memoryGb > 0)) return null;
+  return { vcpus, memoryGb };
+}
+
+/**
+ * The argv that runs a job's bootstrap in a container that has no time limit
+ * of its own: `/bin/sh -c <watchdog> iwci <bootstrap>`. The watchdog runs the
+ * bootstrap, stops it once `maxSeconds` are up, and exits with its status, so
+ * the container (whose main process it is) ends with the job or with its
+ * time, whichever is first. Put the first two items where the provider takes
+ * an entrypoint and the rest where it takes arguments.
+ *
+ * `exitZero` makes it exit 0 whatever the job did, for a provider that may
+ * restart a container that exits otherwise: the job reports its result to
+ * the host itself, and a restarted bootstrap must not run it again.
+ */
+export function ciContainerCommand(
+  bootstrap: string,
+  maxSeconds: number,
+  options: { exitZero?: boolean } = {},
+): string[] {
+  const seconds = Math.max(60, Math.ceil(maxSeconds));
+  const watchdog = [
+    'sh -c "$1" &',
+    "job=$!",
+    `( sleep ${seconds}; echo "[infrawrench] the job ran out of time" >&2; kill -TERM "$job" 2>/dev/null; sleep 15; kill -KILL "$job" 2>/dev/null ) &`,
+    "watchdog=$!",
+    'wait "$job"',
+    "status=$?",
+    'kill "$watchdog" 2>/dev/null',
+    options.exitZero ? "exit 0" : 'exit "$status"',
+  ].join("\n");
+  return ["/bin/sh", "-c", watchdog, "iwci", bootstrap];
+}

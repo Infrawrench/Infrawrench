@@ -58,6 +58,22 @@ import {
 import { hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  gcpCiListTagged,
+  gcpCiPreflight,
+  gcpCiStart,
+  gcpCiStatus,
+  gcpCiTeardown,
+} from "./ci-executor.js";
+import type { GcpCiCalls } from "./ci-shared.js";
 import {
   buildCostEstimate,
   fetchInstanceOnDemandRates,
@@ -1300,6 +1316,52 @@ export class GcpClient implements PluginClient {
     if (!res.ok) throw gcpApiError(res.status, url, await res.text(), this.project);
     const text = await res.text();
     return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  /** Authenticated JSON calls for the CI executors, with the same 401 retry as `get`. */
+  private get ciCalls(): GcpCiCalls {
+    return {
+      project: this.project,
+      call: async <T>(method: "GET" | "POST" | "DELETE", url: string, body?: unknown) => {
+        const send = async (tok: string) =>
+          this.request(url, {
+            method,
+            headers: {
+              Authorization: `Bearer ${tok}`,
+              ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+            },
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          });
+        let res = await send(await this.token());
+        if (res.status === 401) {
+          invalidateAccessToken(this.key);
+          res = await send(await this.token());
+        }
+        if (!res.ok) throw gcpApiError(res.status, url, await res.text(), this.project);
+        const text = await res.text();
+        return (text ? JSON.parse(text) : {}) as T;
+      },
+    };
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => gcpCiPreflight(this.ciCalls, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => gcpCiStart(this.ciCalls, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => gcpCiStatus(this.ciCalls, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => gcpCiTeardown(this.ciCalls, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => gcpCiListTagged(this.ciCalls, tagKey, regions));
   }
 
   private get jitCtx(): GcpJitContext {
