@@ -138,6 +138,10 @@ static STOP: AtomicBool = AtomicBool::new(false);
 /// How often a server looks at what V8 out-of-memory has cost it.
 const V8_LOSSES_EVERY: Duration = Duration::from_secs(5);
 
+/// How long a server that has to restart lets the jobs running then go on
+/// before it cancels what is left of its runs (#1135).
+const RESTART_GRACE: Duration = Duration::from_secs(10 * 60);
+
 /// Why a server whose V8 has lost `losses` should restart, if it should:
 /// any V8 worker thread lost, `restart_after` isolates (`None`: never), or
 /// lost isolates holding a quarter of the V8 heap space every Node job
@@ -171,6 +175,20 @@ fn restart_reason(
     })
 }
 
+/// Waits, polling every `poll`, until `active` is 0, calling `cancel` once
+/// when `grace` has passed and it is not.
+fn wait_or_cancel(active: impl Fn() -> usize, cancel: impl Fn(), grace: Duration, poll: Duration) {
+    let deadline = std::time::Instant::now() + grace;
+    let mut cancelled = false;
+    while active() > 0 {
+        if !cancelled && std::time::Instant::now() >= deadline {
+            cancelled = true;
+            cancel();
+        }
+        std::thread::sleep(poll);
+    }
+}
+
 /// `1 thread`, `2 threads`.
 fn count(n: u64, what: &str) -> String {
     if n == 1 {
@@ -193,6 +211,39 @@ impl Server {
         while self.active.load(Ordering::SeqCst) > 0 {
             std::thread::sleep(Duration::from_secs(1));
         }
+    }
+
+    /// Drains to restart, which this process needs to work well again
+    /// (#1135): no run is admitted, and the runs already active start no
+    /// more jobs, reporting those they have not started as cancelled with
+    /// `reason` and run-it-again (the job budget is held, see
+    /// [`crate::schedule::MemoryBudget::hold`]). The jobs running go on for
+    /// `grace`, then whatever is still running is cancelled. Returns once no
+    /// run is active. Without this a drain waited for every job of every
+    /// active run to have had its turn, each meeting the same lost V8 heaps,
+    /// and the restart that ends them waited with it.
+    fn drain_to_restart(&self, reason: &str, grace: Duration) {
+        self.restarting.store(true, Ordering::SeqCst);
+        self.begin_drain(reason);
+        if let Some(memory) = &self.runner.memory {
+            memory.hold(&format!(
+                "the runner is restarting ({reason}); run it again"
+            ));
+        }
+        wait_or_cancel(
+            || self.active.load(Ordering::SeqCst),
+            || {
+                eprintln!(
+                    "iwci serve: restarting: cancelling what is left of the runs after {}s",
+                    grace.as_secs()
+                );
+                for control in self.controls.lock().unwrap().values() {
+                    control.cancel(None);
+                }
+            },
+            grace,
+            Duration::from_secs(1),
+        );
     }
 
     /// SIGTERM and SIGINT drain, then exit 0, instead of killing jobs.
@@ -283,9 +334,7 @@ impl Server {
                     );
                     let heap_space = iwci_runtime::v8_heap_space().total;
                     if let Some(reason) = restart_reason(&losses, restart_after, heap_space) {
-                        server.restarting.store(true, Ordering::SeqCst);
-                        server.begin_drain(&reason);
-                        server.wait_idle();
+                        server.drain_to_restart(&reason, RESTART_GRACE);
                         let exe = std::env::current_exe().map_err(|e| e.to_string());
                         eprintln!("iwci serve: restarting: {reason}");
                         let err = match exe.and_then(|exe| exec(&exe)) {
@@ -393,6 +442,61 @@ fn exec(exe: &Path) -> Result<std::convert::Infallible, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn a_restart_cancels_runs_still_going_after_its_grace() {
+        // Runs that would never end on their own (#1135): cancelled once,
+        // when the grace has passed, and then waited for.
+        let active = AtomicUsize::new(2);
+        let cancels = AtomicUsize::new(0);
+        let start = std::time::Instant::now();
+        wait_or_cancel(
+            || active.load(Ordering::SeqCst),
+            || {
+                cancels.fetch_add(1, Ordering::SeqCst);
+                active.store(0, Ordering::SeqCst);
+            },
+            Duration::from_millis(50),
+            Duration::from_millis(5),
+        );
+        assert!(start.elapsed() >= Duration::from_millis(50));
+        assert_eq!(cancels.load(Ordering::SeqCst), 1);
+
+        // Runs that end within it are never cancelled.
+        let active = AtomicUsize::new(1);
+        let polls = AtomicUsize::new(0);
+        wait_or_cancel(
+            || {
+                if polls.fetch_add(1, Ordering::SeqCst) == 3 {
+                    active.store(0, Ordering::SeqCst);
+                }
+                active.load(Ordering::SeqCst)
+            },
+            || panic!("cancelled within the grace"),
+            Duration::from_secs(60),
+            Duration::from_millis(1),
+        );
+
+        // A cancel that takes a while to stop them is not repeated.
+        let active = AtomicUsize::new(1);
+        let cancels = AtomicUsize::new(0);
+        let polls = AtomicUsize::new(0);
+        wait_or_cancel(
+            || {
+                if cancels.load(Ordering::SeqCst) > 0 && polls.fetch_add(1, Ordering::SeqCst) == 5 {
+                    active.store(0, Ordering::SeqCst);
+                }
+                active.load(Ordering::SeqCst)
+            },
+            || {
+                cancels.fetch_add(1, Ordering::SeqCst);
+            },
+            Duration::ZERO,
+            Duration::from_millis(1),
+        );
+        assert_eq!(cancels.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn a_server_restarts_for_any_lost_v8_worker_or_enough_lost_isolates() {

@@ -2562,6 +2562,145 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
 }
 
 #[test]
+fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
+    // One job at a time: `a` heads the longest chain so it runs first, `b`
+    // waits behind it, and `c` needs `a`. The runner holds its budget to
+    // restart while `a` runs (#1135): `a` finishes, nothing else starts,
+    // and the run ends at once instead of waiting for the rest.
+    let plan = iwci_spec::parse(
+        "name: x\njobs:\n  b: { using: builtin:ok@1, args: [] }\n  a: { using: builtin:slow@1, args: [] }\n  c: { using: builtin:ok@1, args: [], needs: [a] }\n",
+        &Context::default(),
+    )
+    .unwrap();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let memory = Arc::new(MemoryBudget::new(8 << 30));
+    let options = Options {
+        parallelism: 1,
+        changed_paths: None,
+        base_env: vec![],
+        memory: Some(memory.clone()),
+        caches: None,
+        logs: None,
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: None,
+        downloads: None,
+        cancel: Some(iwci_runtime::Cancel::new()),
+        access: Default::default(),
+    };
+    let reason = "the runner is restarting (out-of-memory lost 3 V8 isolates); run it again";
+    let report = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while exec.running.load(Ordering::SeqCst) == 0 {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            memory.hold(reason);
+        });
+        run(
+            &plan,
+            &ws,
+            &FakeTools,
+            &exec,
+            &FakeCommitter(Mutex::default()),
+            &options,
+        )
+    });
+    assert_eq!(*exec.order.lock().unwrap(), vec!["a".to_string()]);
+    assert_eq!(status(&report, "a"), &Status::Passed);
+    let held = Status::Cancelled {
+        reason: reason.into(),
+    };
+    for id in ["b", "c"] {
+        assert_eq!(status(&report, id), &held, "{id}");
+        let job = report.jobs.iter().find(|j| j.id == id).unwrap();
+        assert!(job.execution.is_none(), "{id} never started");
+    }
+    assert!(!report.passed());
+    assert_eq!(memory.used(), 0, "every reservation is given back");
+    assert_eq!(memory.waiting(), 0);
+}
+
+#[test]
+fn a_run_on_a_held_budget_starts_nothing_and_says_why_when_cancelled() {
+    // A run admitted before the hold, with nothing started yet: every job
+    // reports the hold. A run the restart then cancels says the same.
+    let plan = iwci_spec::parse(
+        "name: x\njobs:\n  a: { using: builtin:ok@1, args: [] }\n  b: { using: builtin:ok@1, args: [], needs: [a] }\n",
+        &Context::default(),
+    )
+    .unwrap();
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let memory = Arc::new(MemoryBudget::new(8 << 30));
+    let reason = "the runner is restarting (out-of-memory lost 8 V8 isolates); run it again";
+    memory.hold(reason);
+    memory.hold("a later reason is not kept");
+    let cancel = iwci_runtime::Cancel::new();
+    cancel.cancel();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    for cancel in [None, Some(cancel)] {
+        let options = Options {
+            parallelism: 2,
+            changed_paths: None,
+            base_env: vec![],
+            memory: Some(memory.clone()),
+            caches: None,
+            logs: None,
+            slots: None,
+            secrets: BTreeMap::new(),
+            skip_task_cache: false,
+            durations: None,
+            downloads: None,
+            cancel,
+            access: Default::default(),
+        };
+        let report = run(
+            &plan,
+            &ws,
+            &FakeTools,
+            &exec,
+            &FakeCommitter(Mutex::default()),
+            &options,
+        );
+        for id in ["a", "b"] {
+            assert_eq!(
+                status(&report, id),
+                &Status::Cancelled {
+                    reason: reason.into()
+                },
+                "{id}"
+            );
+        }
+    }
+    assert!(exec.order.lock().unwrap().is_empty());
+    assert_eq!(ws.builds.load(Ordering::SeqCst), 0, "no workspace built");
+    assert_eq!(memory.used(), 0);
+}
+
+#[test]
 fn a_run_cancelled_before_it_starts_runs_nothing() {
     let plan = iwci_spec::parse(
         "name: x\njobs:\n  a: { using: builtin:ok@1, args: [] }\n  b: { using: builtin:ok@1, args: [], needs: [a] }\n",

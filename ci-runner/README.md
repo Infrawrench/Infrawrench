@@ -2193,9 +2193,10 @@ whole pipeline.
   it needs to finish rather than each a little. A wait ends in vain after
   two minutes in which no heap gave any room back, or at once for the
   smallest heap when every live heap waits to grow (each holds its own, so
-  then one has to give up), as an out-of-memory note saying the shared
-  heap was full, not the job's `memory:`; such a job may pass when it runs
-  again. Before this, the heaps of a few busy test jobs together filled the
+  then one has to give up) or when what it asks for does not fit beside the
+  heaps of lost isolates alone (below; those are never freed), as an
+  out-of-memory note saying the shared heap was full, not the job's
+  `memory:`; such a job may pass when it runs again. Before this, the heaps of a few busy test jobs together filled the
   cage, and V8 failed inside a job well within its `memory:` ("young object
   promotion failed", "CALL_AND_RETRY_LAST"), losing the isolate. The log
   line and `/v1/capacity` say how much of the account is used. More
@@ -2767,7 +2768,12 @@ make that safe to do while jobs run:
   job shares (see [Limits](#limits); those heaps are never freed, and the
   space is all the JavaScript heap the process has), the server drains and
   `exec`s its own binary with the same arguments, the way an update does,
-  and starts again with none lost.
+  and starts again with none lost. That drain does not wait for its runs to
+  finish (#1135): they start no more jobs, and report each job they had not
+  started as cancelled because the runner is restarting, to be run again;
+  the jobs already running get 10 minutes, and what is still running then
+  is cancelled. A run of a hundred jobs used to keep starting them on a
+  process that failed each Node job it started, and the restart waited.
 
 Releases are published with `iwci release <binary> --version <v>
 [--target x86_64-linux] [--channel stable]` (signing key from
