@@ -366,9 +366,8 @@ jobs:
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     # The package script (esbuild, then `vsce package` on a staged copy in
-    # out/stage), and the .vsix moved out of out/ to leave the stage behind:
-    # `rm -rf out/stage` left entries behind (#1078) until a runner fix, so
-    # go back to it once the runner this runs on is a release with it.
+    # out/stage), and the .vsix moved into a directory of its own so the
+    # download is the package alone.
     run: |
       eval "$(node -p 'require("./package.json").scripts.package')"
       mkdir vsix
@@ -380,14 +379,8 @@ jobs:
   # `ray build -e dist` ends by running ./node_modules/.bin/tsc --noEmit,
   # which the runner's installer does not write and tsc-rs could not run
   # here: `--skip-types` (one of ray's own flags) leaves that check to
-  # `check`, which runs the same `tsc --noEmit` on the package. `ray` is an
-  # oclif command line, which asks the user database for the login shell
-  # when SHELL is unset, and the isolate has none (#1077), so SHELL is set.
-  # The environment has no tar: the package's own node-tar writes the
-  # tarball, from a list of the files, because Node cannot list a directory
-  # ray moved into dist/ once ray removes the directory it built in (#1079).
-  # The runner fixes both; drop SHELL and the file list once the runner this
-  # runs on is a release with those fixes.
+  # `check`, which runs the same `tsc --noEmit` on the package. The
+  # environment has no tar, so the package's own node-tar writes the tarball.
   raycast:
     name: Package the Raycast extension
     packages: { only: [app/packages/raycast] }
@@ -399,13 +392,10 @@ jobs:
     using: env:bash-node@24
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      SHELL: /bin/bash
     run: |
       script="$(node -p 'require("./package.json").scripts.build')"
       eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
-      files="$(cd dist && find . -type f)"
-      # shellcheck disable=SC2086 # one file per word; none has a space
-      node -e 'require("tar").c({ gzip: true, sync: true, file: "infrawrench-raycast.tgz", cwd: "dist" }, process.argv.slice(1))' $files
+      node -e 'require("tar").c({ gzip: true, sync: true, file: "infrawrench-raycast.tgz", cwd: "dist" }, ["."])'
     downloads: [infrawrench-raycast.tgz]
     memory: 3GiB
     timeout: 20m
