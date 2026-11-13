@@ -457,13 +457,27 @@ not the next, on the released runner as with the rest of #1061 fixed.
 `napi_call_function` is, so the heap grows for them. Upstream main has the
 same imports (checked November 2026).
 
+**And: a panic in a guest callback ends the guest, not the runner
+(#1092).** `snapi_host_invoke_wasm_callback` and
+`snapi_host_invoke_wasm_finalizer` are Rust called from the bridge's C++,
+and run guest code: a JavaScript call of a native function enters the
+guest through them. A host function the guest calls there that panics (a
+WASIX syscall hitting a bug) has its panic resumed by Wasmer where the
+guest was entered, inside a non-unwinding `extern "C"` frame, so the
+process aborted ("panic in a function that cannot unwind") and took every
+job on the runner with it: two Node Workers renaming onto one name did.
+`src/guest/callback.rs` now runs those calls under `catch_unwind` and
+turns a panic into a pending guest exit with status 134, which the
+enclosing import raises as it does a guest's own `proc_exit`. Upstream
+main has the same trampolines (checked November 2026).
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
 and #146's fix, and either a guest's event loop is kept alive and woken
 for its isolate's background work or the pinned Edge.js does that itself,
-and the stall check has another way to count V8's worker threads or goes
-without: delete
+the stall check has another way to count V8's worker threads or goes
+without, and a panic in a guest callback no longer aborts the process: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs, one that compiles WebAssembly
@@ -785,6 +799,32 @@ service's orphaned loop ran on after its job. `src/os/task/control_plane.rs`
 now has `processes()`, every process in its map. Upstream main has the
 same map and still no way to list it (checked November 2026).
 
+**Renames onto one name at once replace each other (#1092).**
+`path_rename` decided whether the target already had a cached entry before
+it renamed in the file system, then added the moved inode only if it had
+not, and `assert!`ed that nothing had appeared in between: two threads (or
+processes sharing the inode tree) renaming their temporaries onto one name,
+the atomic-replace idiom of compile and package caches, made it fire, and
+under Node that panic aborted the runner (see wasmer-napi above). Then it
+`expect`ed the target to resolve, which a concurrent unlink could also
+fail. `src/syscalls/wasi/path_rename.rs` now takes a lock the inode tree's
+renames share (`WasiFs::rename_lock`, shared with a forked process like
+the tree) for the whole rename, so the cache ends up as the file system
+does, and puts the moved inode in the target's entry whatever was there.
+The replaced inode stays with the descriptors open on it; it used to be
+kept as the target's entry with the moved file's name and size, so a later
+open of the target shared its handle and read the old contents. Upstream
+main still has the `assert!` (checked November 2026).
+
+**A panic in a syscall ends the process, not the thread (#1092).** Wasmer
+resumes a host function's panic where the guest was entered, which for
+every WASIX process and thread is `run_main_context`
+(`src/state/context_switching.rs`): uncaught, it ended the pool thread and
+the process carried on without that guest thread. It now ends the process
+with status 134, as an abort would on Linux; the panic itself is still
+logged by the runner. Upstream main does not catch it (checked November
+2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -798,7 +838,9 @@ directory nothing looked up, a child's exit status reaches its parent
 unchanged, a directory's cookies hold while it changes, a moved
 directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
-(#7174), a control plane lists its processes, and once the runner finds a
+(#7174), a control plane lists its processes, renames onto one name at
+once replace each other in the cache, a panic in a syscall ends only its
+process, and once the runner finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
@@ -811,7 +853,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
 `bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
-`bash-node/cp-sync-passes`,
+`bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,
@@ -830,8 +872,9 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_renamed_file_has_the_inode_number_of_its_new_path`,
 `reading_a_directory_while_removing_its_entries_misses_none`,
 `a_bash_script_can_rm_rf_a_directory_of_many_files`,
-`a_directory_moved_out_of_a_removed_one_has_its_new_parent` and
-`sendfile_copies_into_a_file`.
+`a_directory_moved_out_of_a_removed_one_has_its_new_parent`,
+`sendfile_copies_into_a_file` and
+`concurrent_renames_onto_one_name_all_succeed`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
@@ -951,4 +994,43 @@ listener's address (wasmerio/wasmer `main` still keeps it as of November
 2026): delete `vendor/virtual-net*` and its `[patch.crates-io]` entry.
 
 To regenerate after editing: `diff -u` the changed files against the crate
+from crates.io with `a/` and `b/` labels.
+
+## virtual-fs 0.705.0
+
+From crates.io, sha256
+`412131c1369d812684470f44c4803d7447f36676bce6c265b5d0af2f9b1e7d9a`, whole
+(its tests are in `src/`), with `virtual-fs.patch` applied.
+
+**Why (#1092).** Every job's file system has an in-memory upper layer
+(`TmpFileSystem`, `mem_fs`), and its `rename`, `remove_file`, `remove_dir`
+and `open` looked the parent, the entry and its position up under a read
+lock, let it go, and changed the tree under a write lock taken after. Two
+renames onto one name both found the old file, and the second removed an
+inode the first had already removed: a panic in `Slab::remove`, which
+under Node aborted the runner. A stale position removed the wrong entry
+or panicked in `Vec::remove`, a reused slot opened someone else's file,
+and two creates of one name both added it. The patch is
+wasmerio/wasmer#7039 (merged to `main` after 0.705.0, in no release yet,
+with its commit 1bdfd16e05, which keeps a replaced file that is still open
+readable), which holds the write lock from the lookup to the change, and
+one hunk of ours: `create_dir` does the same, as two threads making one
+directory both added it (`test_concurrent_create_dir_makes_one_directory`).
+Upstream main's `create_dir` still looks up under a read lock (checked
+November 2026).
+
+The runtime crate's `JobOverlay` (`crates/iwci-vfs`) had the same shape one
+layer up, across its two layers, and is fixed there: a rename holds a lock
+of its own, and a job's own file replaces the target in one step rather
+than unlinking it first, so the name is never missing in between.
+`concurrent_renames_onto_one_name_all_succeed_and_leave_one_file` there,
+`iwci-runtime`'s `concurrent_renames_onto_one_name_all_succeed` and
+`builtins/test.sh bash-node`'s `rename-race-passes` are the checks.
+
+**Remove it** when a virtual-fs release after 0.705.0 has #7039 and a
+`create_dir` that looks up under its write lock: delete `vendor/virtual-fs*`
+and its `[patch.crates-io]` entry. A release with only #7039 is still worth
+taking with the `create_dir` hunk kept.
+
+To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

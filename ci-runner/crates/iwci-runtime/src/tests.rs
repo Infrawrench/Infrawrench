@@ -2552,6 +2552,85 @@ fn a_service_process_started_after_thousands_of_others_is_stopped() {
     );
 }
 
+/// A WASIX command that `renames` times writes one byte, its `id`, to
+/// `/work/rr/t.<id>` and renames that onto `/work/rr/target`, exiting
+/// with a code from 10 up naming the first call that fails.
+fn renamer(id: char, renames: u32) -> WasmModule {
+    wat_module(
+        &format!("renamer-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_rename" (func $rename (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/rr/t.{id}")
+  (data (i32.const 140) "/work/rr/target")
+  (data (i32.const 160) "{id}")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (local $i i32)
+    (i32.store (i32.const 32) (i32.const 160))
+    (i32.store (i32.const 36) (i32.const 1))
+    (loop $again
+      ;; O_CREAT | O_TRUNC
+      (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 12)
+        (i32.const 9) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 10))
+      (call $check (call $fd_write (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40)) (i32.const 11))
+      (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 12))
+      (call $check (call $rename (i32.const 3) (i32.const 100) (i32.const 12)
+        (i32.const 3) (i32.const 140) (i32.const 15)) (i32.const 13))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {renames}))))))
+"#
+        ),
+    )
+}
+
+/// Processes renaming their temporaries onto one name at once (#1092),
+/// the atomic-replace idiom of compile and package caches. The file
+/// systems decided what the target held before taking the lock they
+/// changed it under: WASIX's rename `assert!`ed that the entry it had
+/// found missing still was, and the in-memory file system removed an
+/// inode another rename had already removed, and either panic took the
+/// whole runner down under Node. Every rename succeeds, one file is left,
+/// and it is one of the renamers' bytes.
+#[test]
+fn concurrent_renames_onto_one_name_all_succeed() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let ids = ['a', 'b', 'c', 'd'];
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(300);
+    inv.commands = ids
+        .iter()
+        .map(|&id| PathCommand {
+            name: format!("renamer-{id}"),
+            module: renamer(id, 2000),
+        })
+        .collect();
+    let script = "mkdir rr\npids=\n\
+                  for id in a b c d; do renamer-$id & pids=\"$pids $!\"; done\n\
+                  for pid in $pids; do wait $pid || exit $?; done\n\
+                  ls rr\n";
+    let outcome = rt.run_script(&packages, "bash", script, inv).unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "target\n");
+    let left = job.read("/work/rr/target").unwrap();
+    assert!(
+        matches!(left.as_slice(), [b'a' | b'b' | b'c' | b'd']),
+        "{left:?}"
+    );
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.

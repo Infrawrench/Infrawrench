@@ -5540,8 +5540,6 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "virtual-fs"
 version = "0.705.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "412131c1369d812684470f44c4803d7447f36676bce6c265b5d0af2f9b1e7d9a"
 dependencies = [
  "async-trait",
  "bytes",

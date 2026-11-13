@@ -72,8 +72,14 @@ opt-level = 2
 # virtual-net 0.705.0 with vendor/virtual-net.patch: closing a loopback
 # listener frees its port, so a job can listen on it again (#1009). See
 # vendor/README.md for when to remove it.
+#
+# virtual-fs 0.705.0 with vendor/virtual-fs.patch: the in-memory file
+# system decides a change under the lock it makes it under, so two renames
+# onto one name no longer panic (#1092). See vendor/README.md for when to
+# remove it.
 [patch.crates-io]
 wasmer-napi = { path = "vendor/wasmer-napi" }
 wasmer-wasix = { path = "vendor/wasmer-wasix" }
 wasmer-vm = { path = "vendor/wasmer-vm" }
 virtual-net = { path = "vendor/virtual-net" }
+virtual-fs = { path = "vendor/virtual-fs" }

@@ -78,6 +78,18 @@ pub fn path_rename_internal(
         }
     }
 
+    // iwci patch (#1092): one rename at a time in this inode tree, from the
+    // lookups below to the cached entries' update at the end, so the cache
+    // ends up as the file system does when several threads or processes
+    // rename onto one name at once. The file system's own rename is atomic;
+    // the cache's update was decided before it (whether the target had an
+    // entry), and the `assert!` that checked the decision afterwards took
+    // the runner down when another rename had added the entry in between.
+    let rename_lock = state.fs.rename_lock.clone();
+    let _one_at_a_time = rename_lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
     // this is to be sure the source file is fetched from the filesystem if needed
     // (not following a symlink: rename moves the link, which may dangle)
     let source_inode = wasi_try_ok!(state.fs.get_inode_at_path(
@@ -121,14 +133,10 @@ pub fn path_rename_internal(
             }
         }
     };
-    let mut need_create = true;
     let target_guest_path = {
         let guard = target_parent_inode.read();
         match guard.deref() {
-            Kind::Dir { entries, path, .. } => {
-                if entries.contains_key(&target_entry_name) {
-                    need_create = false;
-                }
+            Kind::Dir { path, .. } => {
                 crate::fs::PosixPath::from_path(path)
                     .join(&crate::fs::PosixPath::new(&target_entry_name))
                     .into_path_buf()
@@ -301,26 +309,19 @@ pub fn path_rename_internal(
         }
     }
 
-    let source_size = source_entry.stat.read().unwrap().st_size;
-
-    if need_create {
+    // iwci patch (#1092): the moved inode is the target's entry now, in
+    // place of any it had, as the name now holds the moved file. The cached
+    // inode of what was replaced stays with the descriptors still open on
+    // it, which read the replaced file as on Linux. It used to be kept as
+    // the target's entry, renamed and given the moved file's size, so a
+    // later open of the target shared its handle and read the old contents.
+    {
         let mut guard = target_parent_inode.write();
         if let Kind::Dir { entries, .. } = guard.deref_mut() {
-            let result = entries.insert(target_entry_name.clone(), source_entry);
-            assert!(
-                result.is_none(),
-                "fatal error: race condition on filesystem detected or internal logic error"
-            );
+            entries.insert(target_entry_name.clone(), source_entry.clone());
         }
     }
-
-    // The target entry is created, one way or the other
-    let target_inode = state
-        .fs
-        .get_inode_at_path(inodes, target_fd, target_path, false)
-        .expect("Expected target inode to exist, and it's too late to safely fail");
-    *target_inode.name.write().unwrap() = target_entry_name.into();
-    target_inode.stat.write().unwrap().st_size = source_size;
+    *source_entry.name.write().unwrap() = target_entry_name.into();
 
     // If the rename replaced an existing destination entry, clear any stale
     // ephemeral symlink mapping for that path.

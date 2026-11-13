@@ -2132,6 +2132,81 @@
              Arc::new(AtomicBool::new(false)),
          );
          let max = crate::guest::MAX_CALLBACK_DEPTH;
+--- a/src/guest/callback.rs
++++ b/src/guest/callback.rs
+@@ -43,6 +43,20 @@
+     false
+ }
+ 
++/// iwci patch (#1092): runs a call into the guest from one of the
++/// trampolines below, whose callers are C++ frames a Rust panic cannot
++/// unwind through: a panic in a host function the guest called there (a
++/// syscall that hit a bug) aborted the whole process, every other job on
++/// the runner with it. It ends just this guest instead, with status 134 as
++/// an abort would, through the same pending exit a guest `proc_exit` takes.
++fn guarded(call: impl FnOnce() -> u32) -> u32 {
++    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).unwrap_or_else(|_| {
++        eprintln!("[callback trampoline] the runtime panicked in a guest callback; ending the guest");
++        PENDING_GUEST_EXIT.with(|slot| slot.set(Some(ExitCode::from(134))));
++        0
++    })
++}
++
+ /// Take a pending guest instance exit stashed by a callback trampoline, if any.
+ /// Called at each N-API import boundary to re-raise the exit outward.
+ pub(crate) fn take_pending_guest_exit() -> Option<ExitCode> {
+@@ -231,14 +245,16 @@
+             eprintln!("[callback trampoline] reentrancy depth limit exceeded");
+             return 0;
+         }
+-        let result = call_guest_callback(
+-            store,
+-            &func_env,
+-            &table,
+-            guest_env as i32,
+-            wasm_fn_ptr,
+-            callback_arg,
+-        );
++        let result = guarded(|| {
++            call_guest_callback(
++                store,
++                &func_env,
++                &table,
++                guest_env as i32,
++                wasm_fn_ptr,
++                callback_arg,
++            )
++        });
+         func_env.as_mut(store).leave_callback();
+         result
+     });
+@@ -285,15 +301,17 @@
+             eprintln!("[finalizer trampoline] reentrancy depth limit exceeded");
+             return 0;
+         }
+-        let result = call_guest_callback2(
+-            store,
+-            &func_env,
+-            &table,
+-            guest_env as i32,
+-            wasm_fn_ptr,
+-            data,
+-            hint,
+-        );
++        let result = guarded(|| {
++            call_guest_callback2(
++                store,
++                &func_env,
++                &table,
++                guest_env as i32,
++                wasm_fn_ptr,
++                data,
++                hint,
++            )
++        });
+         func_env.as_mut(store).leave_callback();
+         result
+     })
 --- a/src/guest/napi.rs
 +++ b/src/guest/napi.rs
 @@ -597,8 +597,18 @@
