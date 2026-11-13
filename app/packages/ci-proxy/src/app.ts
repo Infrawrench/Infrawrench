@@ -303,6 +303,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         memory_total: r.memoryTotal,
         memory_used: r.memoryUsed,
         memory_waiting: r.memoryWaiting,
+        v8_heap_space_total: r.v8HeapSpaceTotal,
+        v8_heap_space_used: r.v8HeapSpaceUsed,
+        v8_lost_isolates: r.v8LostIsolates,
       })),
       slots_total: up.reduce((n, r) => n + r.slotsTotal, 0),
       // A draining runner takes no new runs, so its free slots are not free.

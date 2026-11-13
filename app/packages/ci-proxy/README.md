@@ -23,7 +23,7 @@ token routes needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET /healthz`                                                            | `200 ok`, unauthenticated.                                                         |
 | `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=`     | A job's download, for a link the app signed (below); no bearer key.                |
 | `GET`, `PUT /v1/runners`                                                  | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                        | Each runner's slots, job memory and whether it answered, and the pool's totals.    |
+| `GET /v1/capacity`                                                        | Each runner's slots, job memory, V8 heap space, whether it answered; pool totals.  |
 | `POST /v1/runs[?wait=true]`                                               | A run on the best placed runner (below). `429` only when every runner refuses.     |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                             | From the runner that has the run. Logs stream through as Server-Sent Events.       |
 | `POST /v1/runs/{id}/cancel`                                               | Cancels the run, or the pipelines the body names, on the runner that has it.       |
@@ -62,28 +62,49 @@ A run (or a prepare) goes to the first runner in this order that takes it,
 from each runner's `/v1/capacity` at that moment (`byPlacement` in
 `src/pool.ts`). A runner's _room_ is its job memory budget less what
 running jobs hold and what jobs ready to start ask for:
-`memory_total - memory_used - memory_waiting`.
+`memory_total - memory_used - memory_waiting`. Its _share_ is what a new
+run could expect of that budget:
 
-1. Runners with room first, then any that report no memory budget, then
-   those with none (their admitted work already wants all of it).
-2. Among runners with room, the most room per run, counting the new one:
-   `room / (runs_active + 1)`. Among those without, the smallest backlog.
-3. Then the most free slots, the fewest active runs, and the name.
+```
+(memory_total + max(room, -memory_total)) / 2 / (runs_active + 1)
+  * (1 + v8 free) / 2
+```
+
+where _v8 free_ is the part of `v8_heap_space_total` that
+`v8_heap_space_used` leaves (1 when the runner does not report it).
+
+1. Runners that report a memory budget first, then any that do not.
+2. The largest share.
+3. The most room, so when every runner is owed more than its budget the
+   run goes where the smallest backlog waits.
+4. Then the most free slots, the fewest active runs, and the name.
+
+The share averages the whole budget, which is what runs get over their
+life as the jobs holding memory now finish, with the room at this moment,
+and divides it among the runs that would then share the host. Runs last
+tens of minutes and a runner's reservations swing between a quarter and
+all of its budget in ten, so how many runs a runner has counts as much as
+what is free at the instant of placing. Ranking any free memory ahead of
+run counts sent every run of a burst to a runner with 2 GiB free and four
+runs rather than one with none free and two, until the V8 heap space its
+Node jobs share ran out (#1132). The V8 factor takes up to half of a
+runner's share away as that space fills; lost isolates' heaps count as
+used.
 
 Draining and unreachable runners are left out, and a runner that answers
-`429` is passed over for the next. Slots are a tiebreak only: a runner
-whose memory is reserved still has nearly every slot free, so placing by
-slots sent run after run to it while another runner sat idle, and a run
-cannot move once it has started (#1089). A runner from before
-`memory_waiting` leaves it out and counts as nothing waiting, which still
-ranks it by the memory its running jobs hold.
+`429` is passed over for the next. Nothing about a runner is remembered
+between placements, so one that comes back from draining is placed on at
+once. Slots are a tiebreak only: a runner whose memory is reserved still
+has nearly every slot free, so placing by slots sent run after run to it
+while another runner sat idle, and a run cannot move once it has started
+(#1089). A runner from before `memory_waiting` leaves it out and counts as
+nothing waiting, which still ranks it by the memory its running jobs hold.
 
-When every runner is short of memory the run is still placed, on the one
-with the smallest backlog, rather than refused for the app to retry.
-Refusing would let it go to whichever runner frees up first, but the proxy
-cannot see what a run's jobs ask for, so it would also hold back runs small
-enough to start at once, and a schedule's fire that finds the pool full is
-skipped, not queued.
+When every runner is short of memory the run is still placed rather than
+refused for the app to retry. Refusing would let it go to whichever runner
+frees up first, but the proxy cannot see what a run's jobs ask for, so it
+would also hold back runs small enough to start at once, and a schedule's
+fire that finds the pool full is skipped, not queued.
 
 ## Secrets and variables
 

@@ -2425,8 +2425,8 @@ it is masked, and an untrusted run is given none of it:
   for by jobs that are ready but not started (waiting for memory, or for
   one of their run's workers), across every run; a job whose `needs` have
   not finished counts only once it is ready. The proxy places runs by these
-  three (`app/packages/ci-proxy`, "Placement"); a runner from before
-  `memory_waiting` leaves it out. Beside them, each `null` where it
+  three, `runs_active` and the V8 heap space below (`app/packages/ci-proxy`,
+  "Placement"); a runner from before `memory_waiting` leaves it out. Beside them, each `null` where it
   cannot be read: `memory_host` (the host's memory, or the service's
   cgroup limit), `memory_reserve` (`--memory-reserve`), `memory_resident`
   and `memory_anonymous` (the process's resident memory and the part of it
