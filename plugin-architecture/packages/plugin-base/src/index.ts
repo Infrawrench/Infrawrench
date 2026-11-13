@@ -850,3 +850,16 @@ export {
   instancePricingSelectionSql,
 } from "./instance-rates.js";
 export type { InstanceCatalogEntry, InstanceRateRequest } from "./instance-rates.js";
+export {
+  ciCloudInitScript,
+  ciDecodeTagValue,
+  ciEncodeTagValue,
+  ciHttpStatus,
+  ciMachineName,
+  ciTagMarker,
+  ciTagString,
+  ciTagStrings,
+  ciTagsFromStrings,
+  ciThrowawayPassword,
+  ciThrowawaySshKey,
+} from "./ci-vm.js";

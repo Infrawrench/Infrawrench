@@ -265,3 +265,6 @@ export function runPluginRenderingTests(
     extras?.(client, plugin);
   });
 }
+
+export { FakeHttpReply, fakeCiHttp } from "./ci-fake-http.js";
+export type { FakeHttpCall } from "./ci-fake-http.js";
