@@ -242,6 +242,46 @@ export interface paths {
         patch: operations["update_load_balancer"];
         trace?: never;
     };
+    "/public_gateways": {
+        parameters: {
+            query: {
+                generation: components["parameters"]["generation"];
+                version: components["parameters"]["version"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_public_gateways"];
+        put?: never;
+        post: operations["create_public_gateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public_gateways/{id}": {
+        parameters: {
+            query: {
+                generation: components["parameters"]["generation"];
+                version: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["publicGatewayIdUnqualified"];
+            };
+            cookie?: never;
+        };
+        get: operations["get_public_gateway"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/regions": {
         parameters: {
             query: {
@@ -433,7 +473,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_vpc"];
         put?: never;
         post?: never;
         delete: operations["delete_vpc"];
@@ -695,6 +735,18 @@ export interface components {
             name?: string;
             resource_group?: components["schemas"]["ResourceGroupIdentity"];
         } & (components["schemas"]["FloatingIPByZone"] | components["schemas"]["FloatingIPByTarget"]);
+        FloatingIPPrototypeTargetContext: {
+            name?: string;
+            resource_group?: components["schemas"]["ResourceGroupIdentity"];
+        };
+        FloatingIPReference: {
+            address: string;
+            crn: string;
+            deleted?: components["schemas"]["Deleted"];
+            href: string;
+            id: string;
+            name: string;
+        };
         FloatingIPTarget: components["schemas"]["NetworkInterfaceReference"] | components["schemas"]["BareMetalServerNetworkInterfaceReference"] | components["schemas"]["PublicGatewayReference"] | components["schemas"]["VirtualNetworkInterfaceReference"];
         FloatingIPTargetPatch: (components["schemas"]["BareMetalServerNetworkInterfaceIdentity"] | components["schemas"]["NetworkInterfaceIdentity"] | components["schemas"]["VirtualNetworkInterfaceIdentity"]) | null;
         FloatingIPTargetPrototype: components["schemas"]["BareMetalServerNetworkInterfaceIdentity"] | components["schemas"]["NetworkInterfaceIdentity"] | components["schemas"]["VirtualNetworkInterfaceIdentity"];
@@ -1936,6 +1988,32 @@ export interface components {
             /** @enum {string} */
             resource_type: "public_address_range";
         };
+        PublicGateway: {
+            /** Format: date-time */
+            created_at: string;
+            crn: string;
+            floating_ip: unknown & components["schemas"]["FloatingIPReference"];
+            href: string;
+            id: string;
+            name: string;
+            resource_group: components["schemas"]["ResourceGroupReference"] & unknown;
+            /** @enum {string} */
+            resource_type: "public_gateway";
+            /** @enum {string} */
+            status: "available" | "deleting" | "failed" | "pending";
+            vpc: components["schemas"]["VPCReference"] & unknown;
+            zone: components["schemas"]["ZoneReference"] & unknown;
+        };
+        PublicGatewayCollection: {
+            first: components["schemas"]["PageLink"];
+            /** Format: int32 */
+            limit: number;
+            next?: components["schemas"]["PageLink"];
+            public_gateways: components["schemas"]["PublicGateway"][];
+            /** Format: int32 */
+            total_count: number;
+        };
+        PublicGatewayFloatingIPPrototype: components["schemas"]["FloatingIPIdentity"] | components["schemas"]["FloatingIPPrototypeTargetContext"];
         PublicGatewayIdentity: components["schemas"]["PublicGatewayIdentityById"] | components["schemas"]["PublicGatewayIdentityByCRN"] | components["schemas"]["PublicGatewayIdentityByHref"];
         PublicGatewayIdentityByCRN: {
             crn: string;
@@ -1945,6 +2023,13 @@ export interface components {
         };
         PublicGatewayIdentityById: {
             id: string;
+        };
+        PublicGatewayPrototype: {
+            floating_ip?: components["schemas"]["PublicGatewayFloatingIPPrototype"];
+            name?: string;
+            resource_group?: components["schemas"]["ResourceGroupIdentity"];
+            vpc: components["schemas"]["VPCIdentity"] & unknown;
+            zone: components["schemas"]["ZoneIdentity"] & unknown;
         };
         PublicGatewayReference: {
             crn: string;
@@ -2887,6 +2972,7 @@ export interface components {
         name: string;
         operatingSystemArchitecture: components["schemas"]["OperatingSystemArchitectureExtendedFilter"];
         operatingSystemFamily: components["schemas"]["OperatingSystemFamily"];
+        publicGatewayIdUnqualified: components["schemas"]["ID"];
         regionName: string;
         reservation: components["schemas"]["ID"];
         reservationByCRN: string;
@@ -3287,18 +3373,7 @@ export interface operations {
         };
     };
     list_keys: {
-        parameters: {
-            query: {
-                generation: components["parameters"]["generation"];
-                limit?: components["parameters"]["limit"];
-                "resource_group.id"?: components["parameters"]["resourceGroup"];
-                start?: components["parameters"]["start"];
-                version: components["parameters"]["version"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_0b5e3879;
         requestBody?: never;
         responses: {
             200: {
@@ -3462,6 +3537,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoadBalancer"];
+                };
+            };
+        };
+    };
+    list_public_gateways: {
+        parameters: parameters_0b5e3879;
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicGatewayCollection"];
+                };
+            };
+        };
+    };
+    create_public_gateway: {
+        parameters: {
+            query: {
+                generation: components["parameters"]["generation"];
+                version: components["parameters"]["version"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicGatewayPrototype"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicGateway"];
+                };
+            };
+        };
+    };
+    get_public_gateway: {
+        parameters: {
+            query: {
+                generation: components["parameters"]["generation"];
+                version: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["publicGatewayIdUnqualified"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicGateway"];
                 };
             };
         };
@@ -3914,6 +4053,31 @@ export interface operations {
             };
         };
     };
+    get_vpc: {
+        parameters: {
+            query: {
+                generation: components["parameters"]["generation"];
+                version: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["vpcIdUnqualified"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    ETag: components["headers"]["eTag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VPC"];
+                };
+            };
+        };
+    };
     delete_vpc: {
         parameters: {
             query: {
@@ -3970,5 +4134,17 @@ export interface operations {
         };
     };
 }
+type parameters_0b5e3879 = {
+    query: {
+        generation: components["parameters"]["generation"];
+        limit?: components["parameters"]["limit"];
+        "resource_group.id"?: components["parameters"]["resourceGroup"];
+        start?: components["parameters"]["start"];
+        version: components["parameters"]["version"];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
 type protocol_a4c3c7ed = "ah" | "any" | "esp" | "gre" | "icmp" | "icmp_tcp_udp" | "ip_in_ip" | "l2tp" | "number_0" | "number_10" | "number_100" | "number_101" | "number_102" | "number_103" | "number_104" | "number_105" | "number_106" | "number_107" | "number_108" | "number_109" | "number_11" | "number_110" | "number_111" | "number_113" | "number_114" | "number_116" | "number_117" | "number_118" | "number_119" | "number_12" | "number_120" | "number_121" | "number_122" | "number_123" | "number_124" | "number_125" | "number_126" | "number_127" | "number_128" | "number_129" | "number_13" | "number_130" | "number_131" | "number_133" | "number_134" | "number_135" | "number_136" | "number_137" | "number_138" | "number_139" | "number_14" | "number_140" | "number_141" | "number_142" | "number_143" | "number_144" | "number_145" | "number_146" | "number_147" | "number_148" | "number_149" | "number_15" | "number_150" | "number_151" | "number_152" | "number_153" | "number_154" | "number_155" | "number_156" | "number_157" | "number_158" | "number_159" | "number_16" | "number_160" | "number_161" | "number_162" | "number_163" | "number_164" | "number_165" | "number_166" | "number_167" | "number_168" | "number_169" | "number_170" | "number_171" | "number_172" | "number_173" | "number_174" | "number_175" | "number_176" | "number_177" | "number_178" | "number_179" | "number_18" | "number_180" | "number_181" | "number_182" | "number_183" | "number_184" | "number_185" | "number_186" | "number_187" | "number_188" | "number_189" | "number_19" | "number_190" | "number_191" | "number_192" | "number_193" | "number_194" | "number_195" | "number_196" | "number_197" | "number_198" | "number_199" | "number_2" | "number_20" | "number_200" | "number_201" | "number_202" | "number_203" | "number_204" | "number_205" | "number_206" | "number_207" | "number_208" | "number_209" | "number_21" | "number_210" | "number_211" | "number_212" | "number_213" | "number_214" | "number_215" | "number_216" | "number_217" | "number_218" | "number_219" | "number_22" | "number_220" | "number_221" | "number_222" | "number_223" | "number_224" | "number_225" | "number_226" | "number_227" | "number_228" | "number_229" | "number_23" | "number_230" | "number_231" | "number_232" | "number_233" | "number_234" | "number_235" | "number_236" | "number_237" | "number_238" | "number_239" | "number_24" | "number_240" | "number_241" | "number_242" | "number_243" | "number_244" | "number_245" | "number_246" | "number_247" | "number_248" | "number_249" | "number_25" | "number_250" | "number_251" | "number_252" | "number_253" | "number_254" | "number_255" | "number_26" | "number_27" | "number_28" | "number_29" | "number_3" | "number_30" | "number_31" | "number_32" | "number_33" | "number_34" | "number_35" | "number_36" | "number_37" | "number_38" | "number_39" | "number_40" | "number_41" | "number_42" | "number_43" | "number_44" | "number_45" | "number_48" | "number_49" | "number_5" | "number_52" | "number_53" | "number_54" | "number_55" | "number_56" | "number_57" | "number_58" | "number_59" | "number_60" | "number_61" | "number_62" | "number_63" | "number_64" | "number_65" | "number_66" | "number_67" | "number_68" | "number_69" | "number_7" | "number_70" | "number_71" | "number_72" | "number_73" | "number_74" | "number_75" | "number_76" | "number_77" | "number_78" | "number_79" | "number_8" | "number_80" | "number_81" | "number_82" | "number_83" | "number_84" | "number_85" | "number_86" | "number_87" | "number_88" | "number_89" | "number_9" | "number_90" | "number_91" | "number_92" | "number_93" | "number_94" | "number_95" | "number_96" | "number_97" | "number_98" | "number_99" | "rsvp" | "sctp" | "tcp" | "udp" | "vrrp";
 type protocol_a7c286e0 = "ah" | "esp" | "gre" | "ip_in_ip" | "l2tp" | "number_0" | "number_10" | "number_100" | "number_101" | "number_102" | "number_103" | "number_104" | "number_105" | "number_106" | "number_107" | "number_108" | "number_109" | "number_11" | "number_110" | "number_111" | "number_113" | "number_114" | "number_116" | "number_117" | "number_118" | "number_119" | "number_12" | "number_120" | "number_121" | "number_122" | "number_123" | "number_124" | "number_125" | "number_126" | "number_127" | "number_128" | "number_129" | "number_13" | "number_130" | "number_131" | "number_133" | "number_134" | "number_135" | "number_136" | "number_137" | "number_138" | "number_139" | "number_14" | "number_140" | "number_141" | "number_142" | "number_143" | "number_144" | "number_145" | "number_146" | "number_147" | "number_148" | "number_149" | "number_15" | "number_150" | "number_151" | "number_152" | "number_153" | "number_154" | "number_155" | "number_156" | "number_157" | "number_158" | "number_159" | "number_16" | "number_160" | "number_161" | "number_162" | "number_163" | "number_164" | "number_165" | "number_166" | "number_167" | "number_168" | "number_169" | "number_170" | "number_171" | "number_172" | "number_173" | "number_174" | "number_175" | "number_176" | "number_177" | "number_178" | "number_179" | "number_18" | "number_180" | "number_181" | "number_182" | "number_183" | "number_184" | "number_185" | "number_186" | "number_187" | "number_188" | "number_189" | "number_19" | "number_190" | "number_191" | "number_192" | "number_193" | "number_194" | "number_195" | "number_196" | "number_197" | "number_198" | "number_199" | "number_2" | "number_20" | "number_200" | "number_201" | "number_202" | "number_203" | "number_204" | "number_205" | "number_206" | "number_207" | "number_208" | "number_209" | "number_21" | "number_210" | "number_211" | "number_212" | "number_213" | "number_214" | "number_215" | "number_216" | "number_217" | "number_218" | "number_219" | "number_22" | "number_220" | "number_221" | "number_222" | "number_223" | "number_224" | "number_225" | "number_226" | "number_227" | "number_228" | "number_229" | "number_23" | "number_230" | "number_231" | "number_232" | "number_233" | "number_234" | "number_235" | "number_236" | "number_237" | "number_238" | "number_239" | "number_24" | "number_240" | "number_241" | "number_242" | "number_243" | "number_244" | "number_245" | "number_246" | "number_247" | "number_248" | "number_249" | "number_25" | "number_250" | "number_251" | "number_252" | "number_253" | "number_254" | "number_255" | "number_26" | "number_27" | "number_28" | "number_29" | "number_3" | "number_30" | "number_31" | "number_32" | "number_33" | "number_34" | "number_35" | "number_36" | "number_37" | "number_38" | "number_39" | "number_40" | "number_41" | "number_42" | "number_43" | "number_44" | "number_45" | "number_48" | "number_49" | "number_5" | "number_52" | "number_53" | "number_54" | "number_55" | "number_56" | "number_57" | "number_58" | "number_59" | "number_60" | "number_61" | "number_62" | "number_63" | "number_64" | "number_65" | "number_66" | "number_67" | "number_68" | "number_69" | "number_7" | "number_70" | "number_71" | "number_72" | "number_73" | "number_74" | "number_75" | "number_76" | "number_77" | "number_78" | "number_79" | "number_8" | "number_80" | "number_81" | "number_82" | "number_83" | "number_84" | "number_85" | "number_86" | "number_87" | "number_88" | "number_89" | "number_9" | "number_90" | "number_91" | "number_92" | "number_93" | "number_94" | "number_95" | "number_96" | "number_97" | "number_98" | "number_99" | "rsvp" | "sctp" | "vrrp";

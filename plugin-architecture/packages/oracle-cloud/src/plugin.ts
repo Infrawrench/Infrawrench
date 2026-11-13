@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { ORACLE_CI_EXECUTOR } from "./ci-executor.js";
 import { OracleCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { DEFAULT_REGION, HOME_REGION_OPTIONS } from "./regions.js";
@@ -92,6 +93,8 @@ export const manifest = {
     increaseUrl: "https://cloud.oracle.com/limits",
     partial: true,
   },
+  // CI jobs on a fresh instance or container instance per job. See ci-executor.ts.
+  ciExecutor: ORACLE_CI_EXECUTOR,
   statusFeed,
   priceCatalog: ociPriceCatalog,
   rateLimit: { capacity: 20, refillPerSecond: 5 },

@@ -15,10 +15,12 @@
         "/instances/{instance_id}/volume_attachments": ["post"],
         "/floating_ips": ["get", "post"],
         "/floating_ips/{id}": ["patch", "delete"],
+        "/public_gateways": ["get", "post"],
+        "/public_gateways/{id}": ["get"],
         "/volumes": ["get", "post"],
         "/volumes/{id}": ["patch", "delete"],
         "/vpcs": ["get", "post"],
-        "/vpcs/{id}": ["patch", "delete"],
+        "/vpcs/{id}": ["get", "patch", "delete"],
         "/subnets": ["get", "post"],
         "/subnets/{id}": ["get", "patch", "delete"],
         "/security_groups": ["get", "post"],
@@ -100,9 +102,11 @@
       "specUrl": "https://cloud.ibm.com/apidocs/codeengine/v2.json",
       "paths": {
         "/projects": ["get", "post"],
-        "/projects/{id}": ["delete"],
+        "/projects/{id}": ["get", "delete"],
         "/projects/{project_id}/apps": ["get", "post"],
-        "/projects/{project_id}/apps/{name}": ["get", "patch", "delete"]
+        "/projects/{project_id}/apps/{name}": ["get", "patch", "delete"],
+        "/projects/{project_id}/job_runs": ["get", "post"],
+        "/projects/{project_id}/job_runs/{name}": ["get", "delete"]
       }
     },
     {
@@ -142,6 +146,14 @@
       ],
       "paths": {
         "/identity/token#apikey": ["post"]
+      }
+    },
+    {
+      "name": "tagging",
+      "specUrl": "https://cloud.ibm.com/apidocs/tagging.json",
+      "paths": {
+        "/v3/tags": ["get"],
+        "/v3/tags/attach": ["post"]
       }
     }
   ]

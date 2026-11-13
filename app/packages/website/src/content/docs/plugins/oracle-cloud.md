@@ -70,6 +70,31 @@ Price estimates in create and edit forms use Oracle's public pay-as-you-go list 
 - **Carbon estimates** cover instances in regions whose country has a published grid figure. Other regions show no estimate rather than a guess. The tenancy page also shows OCI's own reported emissions.
 - **Posture checks** flag public buckets and security lists that open SSH or RDP to the internet.
 
+## Run CI jobs
+
+An Oracle Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets fresh compute in the tenancy's root compartment, in the job's `cloud.region` (the home region when it names none), which is removed when the job ends:
+
+| `cloud.kind` | Runs on                               | Default `machine`         | Default `image`                               |
+| ------------ | ------------------------------------- | ------------------------- | --------------------------------------------- |
+| `vm`         | A Compute instance with a public IP   | `VM.Standard.E5.Flex/1/8` | Ubuntu 24.04                                  |
+| `container`  | A Container Instance with a public IP | `2vcpu-8gb`               | `docker.io/library/buildpack-deps:noble-curl` |
+
+A `vm` `machine` is a shape, with `/<OCPUs>/<memory GB>` after a Flex shape (`VM.Standard.A1.Flex/4/24`); a GPU shape such as `VM.GPU.A10.1` brings its GPU. A `vm` image other than the default is an image OCID or `<operating system>|<version>` (`Oracle Linux|9`). A container `machine` is `<vCPUs>vcpu-<GB>gb` on `CI.Standard.E4.Flex` (two vCPUs to an OCPU, so an even number of vCPUs), or `<shape>/<OCPUs>/<memory GB>` for another container shape.
+
+The first job in a region makes a network for CI jobs: a VCN named `infrawrench-ci` (`10.231.0.0/16`) with an internet gateway, and a public subnet whose security list lets nothing in and everything out. Jobs reach the internet and nothing of your own networks, and nothing reaches them. The network costs nothing and is kept for the next job.
+
+The job's compute holds no OCI credentials. A container's access to the container instance's resource principal is turned off. An instance's principal is worth something only if a dynamic group matches it and a policy grants that group something, so opting a `vm` connection in refuses while any dynamic group matches every instance in the root compartment. Every instance principal can still list the tenancy's compartments (OCI grants that to all of them, and it can't be revoked), so a `vm` job could read compartment names and their free-form tags.
+
+OCI has no time limit for an instance. A `vm` powers itself off when the job ends or its time is up, but OCI keeps billing an instance shut down from inside until it is terminated, which Infrawrench does when the job ends (and again later if that fails). A Container Instance's command stops itself at the job's time limit, and a stopped Container Instance isn't billed.
+
+Opting a connection in reads the root compartment's policies and the API key user's groups, and names each statement that is missing. OCI has no call that checks a permission without using it, so when the key can't read policies (`inspect policies` and `inspect groups` in the tenancy), the check falls back to what the key can list. The statements are:
+
+- **`vm`**: `Allow group <group> to manage instance-family in tenancy` and `Allow group <group> to use volume-family in tenancy`.
+- **`container`**: `Allow group <group> to manage compute-container-family in tenancy`.
+- **Both**: `Allow group <group> to manage virtual-network-family in tenancy` until the region's CI network exists, then `use virtual-network-family` is enough.
+
+DevOps build pipelines aren't offered as a `build` kind: a build needs a standing DevOps project with a notification topic, a build spec in a code repository, and a dynamic group and policies for the pipeline. Run Docker builds as a `vm` job instead.
+
 ## Tips & limits
 
 - A resource you created outside Infrawrench a few seconds ago may need a refresh to appear.

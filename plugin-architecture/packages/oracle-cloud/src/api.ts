@@ -36,6 +36,8 @@ export interface OciRequest {
   body?: unknown;
   /** Return the body as text instead of parsing JSON (kubeconfig content). */
   rawResponse?: boolean;
+  /** Extra headers, sent but not signed (`opc-retry-token`, `if-match`). */
+  headers?: Record<string, string>;
 }
 
 export interface OciResponse<T> {
@@ -123,7 +125,7 @@ export class OciApi {
         method,
         url,
         ...(body !== undefined ? { body } : {}),
-        headers: { accept: "application/json" },
+        headers: { ...req.headers, accept: "application/json" },
       });
       const res = await this.send(url, method, headers, body);
       if (res.status >= 200 && res.status < 300) {

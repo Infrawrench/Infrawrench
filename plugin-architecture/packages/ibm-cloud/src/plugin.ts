@@ -9,6 +9,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { IbmApi } from "./api.js";
+import { IBM_CI_EXECUTOR } from "./ci-executor.js";
 import { IbmCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { DEFAULT_REGION, HOME_REGION_OPTIONS, VPC_QUERY, regionInfo } from "./regions.js";
@@ -68,6 +69,8 @@ export const manifest = {
     label: "Promotional credit",
     topUpUrl: "https://cloud.ibm.com/billing/promotions",
   },
+  // CI jobs on a fresh virtual server or Code Engine job run per job. See ci-executor.ts.
+  ciExecutor: IBM_CI_EXECUTOR,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 8 },
 } satisfies PluginManifest;

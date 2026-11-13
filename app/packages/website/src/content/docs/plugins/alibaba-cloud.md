@@ -73,6 +73,27 @@ Create forms show price estimates from Alibaba for the chosen region: instance t
 - **Posture checks** flag security groups that open SSH or RDP to the internet, and OSS buckets that are publicly readable or writable.
 - The status page shows Alibaba Cloud incidents in progress, matched to the regions you use.
 
+## Run CI jobs
+
+An Alibaba Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets fresh compute in the region's default VPC, in the job's `cloud.region` (the default region when it names none), which is removed when the job ends:
+
+| `cloud.kind` | Runs on                                       | Default `machine` | Default `image`                               |
+| ------------ | --------------------------------------------- | ----------------- | --------------------------------------------- |
+| `vm`         | A pay-as-you-go ECS instance with a public IP | `ecs.g8i.large`   | Ubuntu 24.04                                  |
+| `container`  | An ECI container group with an EIP            | `2vcpu-4gb`       | `docker.io/library/buildpack-deps:noble-curl` |
+
+A `vm` `machine` is an instance type; a GPU type such as `ecs.gn7i-c8g1.2xlarge` brings its GPU. A `vm` image other than the default is an image ID. A container `machine` is `<vCPUs>vcpu-<GB>gb`; ECI rounds a size it doesn't offer up to the next one. ECI isn't offered in every region.
+
+The first job in a region makes a security group named `infrawrench-ci` in the default VPC: an advanced (enterprise) group that lets nothing in and everything out, so jobs reach the internet and don't reach each other. A region with no default VPC can't run jobs until you create one.
+
+The job's compute has no RAM role, so it holds no Alibaba Cloud credentials. Every job also ends on its own: an instance has an automatic release time at the job's deadline (at least 30 minutes after it starts), and a container group has a deadline of its own. An instance that shuts itself down keeps billing until it is released. Pay-as-you-go instances bill per second with a minimum of 10 minutes at 1 vCPU, 5 at 2 and 2 at 4 or more. When a container group is deleted, any public address it had that is left unbound is released.
+
+RAM has no call that checks a permission without using it. Opting a connection in reads what it can and makes dry runs, and names any action that is refused, but a passed dry run of a launch doesn't prove the action is granted. Grant the RAM user:
+
+- **`vm`**: `ecs:RunInstances`, `ecs:DescribeInstances`, `ecs:DeleteInstances`, `ecs:DescribeImages`, `ecs:DescribeInstanceTypes`, `ecs:DescribeAvailableResource` and `ecs:TagResources`.
+- **`container`**: `eci:CreateContainerGroup`, `eci:DescribeContainerGroups`, `eci:DeleteContainerGroup`, `vpc:DescribeEipAddresses` and `vpc:ReleaseEipAddress`, plus `ram:CreateServiceLinkedRole` once, if ECI's service-linked role `AliyunServiceRoleForECI` doesn't exist yet.
+- **Both**: `vpc:DescribeVpcs`, `vpc:DescribeVSwitches`, `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute`, plus `ecs:CreateSecurityGroup` and `ecs:AuthorizeSecurityGroupEgress` until the region's CI group exists.
+
 ## Tips & limits
 
 - China mainland regions are included. Finance and government clouds are not.

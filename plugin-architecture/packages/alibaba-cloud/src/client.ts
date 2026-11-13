@@ -26,7 +26,23 @@ import {
   ListTruncatedError,
   type InstancePricingHostServices,
 } from "@infrawrench/plugin-base";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
 import { AliApi, isPermissionGap, mapLimit } from "./api.js";
+import {
+  alibabaCiListTagged,
+  alibabaCiPreflight,
+  alibabaCiStart,
+  alibabaCiStatus,
+  alibabaCiTeardown,
+} from "./ci-executor.js";
+import type { AliCiContext } from "./ci-shared.js";
 import { fetchBalance, fetchCostData, fetchQuotas, monthToDate } from "./billing.js";
 import { createResource, getCreateConfig, RDS_ENGINES } from "./create.js";
 import { getResourceByExternalId } from "./get.js";
@@ -1073,6 +1089,33 @@ export class AlibabaCloudClient implements PluginClient {
       }
       return null;
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // CI jobs (see ci-executor.ts)
+
+  private get ciContext(): AliCiContext {
+    return { api: this.api, list: this.ctx(""), homeRegion: this.inventory.homeRegion };
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => alibabaCiPreflight(this.ciContext, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => alibabaCiStart(this.ciContext, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => alibabaCiStatus(this.ciContext, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => alibabaCiTeardown(this.ciContext, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => alibabaCiListTagged(this.ciContext, tagKey, regions));
   }
 
   // -------------------------------------------------------------------------

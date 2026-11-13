@@ -745,7 +745,7 @@ async function firstPublicSubnet(ctx: CreateContext, region: string): Promise<st
   );
 }
 
-async function resolveImage(
+export async function resolveImage(
   ctx: CreateContext,
   region: string,
   image: string,

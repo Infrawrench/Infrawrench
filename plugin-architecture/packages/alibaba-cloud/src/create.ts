@@ -892,7 +892,7 @@ async function ensureKeyPair(ctx: ListContext, region: string, publicKey: string
   return name;
 }
 
-interface VSwitchInfo {
+export interface VSwitchInfo {
   VSwitchId: string;
   VpcId: string;
   ZoneId: string;
@@ -912,7 +912,7 @@ async function describeVSwitch(ctx: ListContext, region: string, id: string): Pr
 }
 
 /** A vSwitch in the default VPC whose zone sells the instance type. */
-async function defaultVSwitch(
+export async function defaultVSwitch(
   ctx: ListContext,
   region: string,
   instanceType: string,
@@ -996,7 +996,10 @@ async function sshSecurityGroup(ctx: ListContext, region: string, vpcId: string)
   return created.SecurityGroupId;
 }
 
-async function instanceArch(ctx: ListContext, instanceType: string): Promise<"x86_64" | "arm64"> {
+export async function instanceArch(
+  ctx: ListContext,
+  instanceType: string,
+): Promise<"x86_64" | "arm64"> {
   const res = await ctx.api
     .rpc<{ InstanceTypes?: { InstanceType?: InstanceTypeInfo[] } }>(
       "ecs",

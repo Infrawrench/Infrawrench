@@ -20,7 +20,23 @@ import {
   pathEncode,
   type ApiResponse,
 } from "@infrawrench/plugin-base";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
 import { IbmApi, isPermissionGap } from "./api.js";
+import {
+  ibmCiListTagged,
+  ibmCiPreflight,
+  ibmCiStart,
+  ibmCiStatus,
+  ibmCiTeardown,
+} from "./ci-executor.js";
+import type { IbmCiContext } from "./ci-shared.js";
 import type { operations as DatabaseOperations } from "./api-types.databases.gen.js";
 import { fetchCostData, fetchCredits, monthToDate } from "./billing.js";
 import { createResource, getCreateConfig } from "./create.js";
@@ -152,6 +168,8 @@ function nextObjectToken(xml: string): string {
 export class IbmCloudClient implements PluginClient {
   private readonly api: IbmApi;
   private readonly inventory: Inventory;
+  /** The connection's default region: where a CI job runs when it names none. */
+  private readonly region: string;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -163,6 +181,7 @@ export class IbmCloudClient implements PluginClient {
       .filter(Boolean);
     this.api = new IbmApi(apiKey, services?.http, credentials["caCert"] ?? "");
     this.inventory = new Inventory(this.api, region, regions);
+    this.region = region;
   }
 
   private ctx(accountId: string, regionHint?: string): ListContext {
@@ -664,6 +683,33 @@ export class IbmCloudClient implements PluginClient {
     return attempt(async () => {
       return fetchCredits(this.api);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // CI jobs (see ci-executor.ts)
+
+  private get ciContext(): IbmCiContext {
+    return { api: this.api, homeRegion: this.region };
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => ibmCiPreflight(this.ciContext, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ibmCiStart(this.ciContext, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ibmCiStatus(this.ciContext, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ibmCiTeardown(this.ciContext, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ibmCiListTagged(this.ciContext, tagKey, regions));
   }
 
   // -------------------------------------------------------------------------
