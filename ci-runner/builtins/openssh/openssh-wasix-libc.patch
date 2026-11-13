@@ -1,0 +1,128 @@
+diff --git a/openbsd-compat/bsd-poll.c b/openbsd-compat/bsd-poll.c
+index 967f947..ee55b63 100644
+--- a/openbsd-compat/bsd-poll.c
++++ b/openbsd-compat/bsd-poll.c
+@@ -32,7 +32,73 @@
+ #include <unistd.h>
+ #include "bsd-poll.h"
+ 
+-#if !defined(HAVE_PPOLL) || defined(BROKEN_POLL)
++#if !defined(HAVE_PPOLL) && defined(__wasi__)
++/*
++ * ppoll(2) for WASIX, on its poll(2). Its C library has no pselect(2) to
++ * build one on (a stub that fails with ENOSYS, which failed every
++ * connection), and its poll(2) fails with ENOSYS for an entry that asks
++ * for neither POLLIN nor POLLOUT, which ssh's channel loop passes for a
++ * channel with nothing to wait for: such an entry is left out, as if its
++ * fd were -1 (it could only report POLLHUP or POLLERR, which WASIX's poll
++ * cannot see without POLLIN or POLLOUT anyway). The signal mask is
++ * swapped around the poll, as close as WASIX comes: signals reach a
++ * process between its calls.
++ */
++#include <limits.h>
++#include <poll.h>
++
++int
++ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmoutp,
++    const sigset_t *sigmask)
++{
++	sigset_t osigmask;
++	nfds_t i;
++	int ret, saved_errno, timeout = -1;
++	int *skipped = NULL;
++
++	if (tmoutp != NULL) {
++		if (tmoutp->tv_sec < 0 || tmoutp->tv_nsec < 0 ||
++		    tmoutp->tv_nsec >= 1000000000) {
++			errno = EINVAL;
++			return -1;
++		}
++		if (tmoutp->tv_sec >= INT_MAX / 1000 - 1)
++			timeout = INT_MAX;
++		else	/* rounded up, so a short wait does not spin */
++			timeout = tmoutp->tv_sec * 1000 +
++			    (tmoutp->tv_nsec + 999999) / 1000000;
++	}
++	for (i = 0; i < nfds; i++) {
++		fds[i].revents = 0;
++		if (fds[i].fd < 0 || (fds[i].events & (POLLIN|POLLOUT)) != 0)
++			continue;
++		if (skipped == NULL &&
++		    (skipped = calloc(nfds, sizeof(*skipped))) == NULL)
++			return -1;
++		skipped[i] = fds[i].fd + 1;
++		fds[i].fd = -1;
++	}
++	if (sigmask != NULL &&
++	    sigprocmask(SIG_SETMASK, sigmask, &osigmask) == -1) {
++		ret = -1;
++		saved_errno = errno;
++	} else {
++		ret = poll(fds, nfds, timeout);
++		saved_errno = errno;
++		if (sigmask != NULL)
++			sigprocmask(SIG_SETMASK, &osigmask, NULL);
++	}
++	if (skipped != NULL) {
++		for (i = 0; i < nfds; i++) {
++			if (skipped[i] != 0)
++				fds[i].fd = skipped[i] - 1;
++		}
++		free(skipped);
++	}
++	errno = saved_errno;
++	return ret;
++}
++#elif !defined(HAVE_PPOLL) || defined(BROKEN_POLL)
+ /*
+  * A minimal implementation of ppoll(2), built on top of pselect(2).
+  *
+diff --git a/openbsd-compat/getrrsetbyname.c b/openbsd-compat/getrrsetbyname.c
+index 36e558c..e71e598 100644
+--- a/openbsd-compat/getrrsetbyname.c
++++ b/openbsd-compat/getrrsetbyname.c
+@@ -47,7 +47,29 @@
+ 
+ #include "includes.h"
+ 
+-#if !defined (HAVE_GETRRSETBYNAME) && !defined (HAVE_LDNS)
++#if !defined (HAVE_GETRRSETBYNAME) && !defined (HAVE_LDNS) && defined(__wasi__)
++
++/*
++ * WASIX has getaddrinfo() but no resolver library (res_query), so there
++ * are no SSHFP records to look up: VerifyHostKeyDNS finds none.
++ */
++#include <stdlib.h>
++#include "getrrsetbyname.h"
++
++int
++getrrsetbyname(const char *hostname, unsigned int rdclass,
++    unsigned int rdtype, unsigned int flags,
++    struct rrsetinfo **res)
++{
++	return (ERRSET_FAIL);
++}
++
++void
++freerrset(struct rrsetinfo *rrset)
++{
++}
++
++#elif !defined (HAVE_GETRRSETBYNAME) && !defined (HAVE_LDNS)
+ 
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/sshkey.c b/sshkey.c
+index dddfeb4..8129e75 100644
+--- a/sshkey.c
++++ b/sshkey.c
+@@ -741,7 +741,8 @@ sshkey_prekey_alloc(u_char **prekeyp, size_t len)
+ 	if ((prekey = mmap(NULL, len, PROT_READ|PROT_WRITE,
+ 	    MAP_ANON|MAP_PRIVATE|PREKEY_MMAP_FLAG, -1, 0)) == MAP_FAILED)
+ 		return SSH_ERR_SYSTEM_ERROR;
+-#if defined(MADV_DONTDUMP) && !defined(MAP_CONCEAL) && !defined(MAP_NOCORE)
++#if defined(MADV_DONTDUMP) && !defined(MAP_CONCEAL) && !defined(MAP_NOCORE) && \
++    !defined(__wasi__) /* declared, but WASIX has no madvise() */
+ 	(void)madvise(prekey, len, MADV_DONTDUMP);
+ #endif
+ 	*prekeyp = prekey;
