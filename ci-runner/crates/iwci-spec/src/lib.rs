@@ -1938,7 +1938,8 @@ impl Validator<'_> {
             };
             let display_name = match (&job.name, &package) {
                 (Some(n), _) => sub("name", n),
-                (None, Some(p)) => format!("{} ({})", p.job, p.dir),
+                (None, Some(p)) if values.is_empty() => format!("{} ({})", p.job, p.dir),
+                (None, Some(p)) => format!("{} ({}, {})", p.job, p.dir, values.join(", ")),
                 (None, None) if values.is_empty() => key.to_string(),
                 (None, None) => format!("{key} ({})", values.join(", ")),
             };
@@ -2138,9 +2139,13 @@ impl Validator<'_> {
             let task_cache = match &job.task_cache {
                 None | Some(raw::TaskCache::Enabled(false)) => None,
                 Some(t) => {
-                    let (inputs, root_inputs) = match t {
-                        raw::TaskCache::Inputs(i) => (i.inputs.clone(), i.root_inputs.clone()),
-                        _ => (Vec::new(), Vec::new()),
+                    let (inputs, root_inputs, handed) = match t {
+                        raw::TaskCache::Inputs(i) => (
+                            i.inputs.clone(),
+                            i.root_inputs.clone(),
+                            i.artifacts.unwrap_or(true),
+                        ),
+                        _ => (Vec::new(), Vec::new(), true),
                     };
                     let prefix = package.as_ref().map(|p| format!("{}/", p.dir));
                     let mut globs = Vec::new();
@@ -2174,7 +2179,10 @@ impl Validator<'_> {
                     for g in &root_inputs {
                         check("task-cache.root-inputs", sub("task-cache.root-inputs", g));
                     }
-                    Some(TaskCacheSpec { inputs: globs })
+                    Some(TaskCacheSpec {
+                        inputs: globs,
+                        artifacts: handed,
+                    })
                 }
             };
             deferred |= scope.deferred.get();

@@ -420,6 +420,7 @@ fn run_full(
         slots: None,
         secrets,
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -804,6 +805,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -939,6 +941,7 @@ fn a_cancelled_run_leaves_nothing_waiting() {
                 slots: None,
                 secrets: BTreeMap::new(),
                 skip_task_cache: false,
+                durations: None,
                 downloads: None,
                 cancel: Some(cancel.clone()),
                 access: Default::default(),
@@ -1323,6 +1326,7 @@ fn runs_share_the_runners_slots() {
         slots: Some(slots.clone()),
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1377,6 +1381,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1633,6 +1638,7 @@ fn run_cached_with(
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1910,6 +1916,7 @@ fn run_looked_up(
         slots,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2283,6 +2290,7 @@ fn run_downloads(
         slots: None,
         secrets,
         skip_task_cache: false,
+        durations: None,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
         cancel: None,
         access: Default::default(),
@@ -2397,8 +2405,8 @@ fn downloads_follow_when_and_say_when_nothing_keeps_them() {
 
 #[test]
 fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
-    // One job at a time, and the queue is a stack: `a` runs first, `b` is
-    // queued behind it when it cancels the run.
+    // One job at a time: `a` heads the longest chain so it runs first, and
+    // `b` is queued behind it when it cancels the run.
     let plan = iwci_spec::parse(
         "name: x\njobs:\n  b: { using: builtin:ok@1, args: [] }\n  a: { using: builtin:cancel-run@1, args: [] }\n  c: { using: builtin:ok@1, args: [], needs: [a] }\n  d: { using: builtin:ok@1, args: [], needs: [a], if: 'always()' }\n",
         &Context::default(),
@@ -2430,6 +2438,7 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2500,6 +2509,7 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel: Some(cancel),
         access: Default::default(),
@@ -2562,6 +2572,7 @@ fn run_access(
         slots: None,
         secrets,
         skip_task_cache: false,
+        durations: None,
         downloads: None,
         cancel,
         access,
@@ -3076,4 +3087,201 @@ fn a_cloud_job_fails_with_its_executor_is_cancelled_with_its_run_and_never_runs_
     assert!(
         matches!(status(&report, "a"), Status::Error { message } if message.contains("iwci serve"))
     );
+}
+
+// The start order: the longest chain of work first.
+
+/// Durations in memory, per pipeline, and how many times they were saved.
+#[derive(Default)]
+struct MemoryDurations {
+    kept: Mutex<HashMap<String, BTreeMap<String, u64>>>,
+    saves: AtomicUsize,
+}
+
+impl MemoryDurations {
+    fn with(pipeline: &str, jobs: &[(&str, u64)]) -> Arc<Self> {
+        let d = Self::default();
+        d.kept.lock().unwrap().insert(
+            pipeline.into(),
+            jobs.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        );
+        Arc::new(d)
+    }
+
+    fn of(&self, pipeline: &str) -> BTreeMap<String, u64> {
+        self.kept
+            .lock()
+            .unwrap()
+            .get(pipeline)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+impl Durations for MemoryDurations {
+    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64> {
+        self.of(pipeline).into_iter().collect()
+    }
+
+    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>) {
+        self.saves.fetch_add(1, Ordering::SeqCst);
+        self.kept
+            .lock()
+            .unwrap()
+            .insert(pipeline.into(), durations.clone());
+    }
+}
+
+/// Runs `plan` one job at a time, and the order the jobs started in.
+fn run_ordered(
+    plan: &Plan,
+    durations: Option<Arc<MemoryDurations>>,
+    caches: Option<Arc<MemoryCaches>>,
+    memory: Option<Arc<MemoryBudget>>,
+) -> (RunReport, Vec<String>) {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let options = Options {
+        parallelism: 1,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory,
+        caches: caches.map(|c| c as Arc<dyn Caches>),
+        logs: None,
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: durations.map(|d| d as Arc<dyn Durations>),
+        downloads: None,
+        cancel: None,
+        access: Default::default(),
+    };
+    let commits = FakeCommitter(Mutex::default());
+    let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
+    let order = ran(&exec);
+    (report, order)
+}
+
+#[test]
+fn the_longest_chain_starts_first_and_the_rest_in_file_order() {
+    // Declared first, the chain would once have waited for every job
+    // declared after it: the queue was a stack.
+    let p = plan(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [] }\n  b: { using: builtin:t@1, args: [], needs: [a] }\n  c: { using: builtin:t@1, args: [], needs: [b] }\n  n1: { using: builtin:t@1, args: [] }\n  n2: { using: builtin:t@1, args: [] }\n  m: { using: builtin:t@1, args: [], matrix: [x, y, z] }\n  n3: { using: builtin:t@1, args: [] }\n",
+    );
+    let (report, order) = run_ordered(&p, None, None, None);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert_eq!(
+        order,
+        ["a", "b", "c", "n1", "n2", "m[x]", "m[y]", "m[z]", "n3"],
+        "with no history every job counts alike: the three-job chain first, then file and matrix order"
+    );
+    // The same plan starts the same way every time.
+    for _ in 0..3 {
+        assert_eq!(run_ordered(&p, None, None, None).1, order);
+    }
+}
+
+#[test]
+fn the_job_more_jobs_wait_on_goes_first_among_equal_chains() {
+    let p = plan(
+        "name: x\njobs:\n  lone: { using: builtin:t@1, args: [] }\n  lone-next: { using: builtin:t@1, args: [], needs: [lone] }\n  root: { using: builtin:t@1, args: [] }\n  leaf1: { using: builtin:t@1, args: [], needs: [root] }\n  leaf2: { using: builtin:t@1, args: [], needs: [root] }\n",
+    );
+    let (_, order) = run_ordered(&p, None, None, None);
+    assert_eq!(order[0], "root", "{order:?}");
+}
+
+#[test]
+fn last_runs_durations_decide_which_chain_is_longest() {
+    let p = plan(
+        "name: x\njobs:\n  short1: { using: builtin:t@1, args: [] }\n  short2: { using: builtin:t@1, args: [], needs: [short1] }\n  long: { using: builtin:t@1, args: [] }\n  new: { using: builtin:t@1, args: [] }\n",
+    );
+    // Without history the two-job chain looks longest.
+    let (_, order) = run_ordered(&p, None, None, None);
+    assert_eq!(order, ["short1", "short2", "long", "new"]);
+
+    // `long` took a minute last time, the chain two tenths of a second.
+    // `new` has no time yet and counts as the median of the others
+    // (100 ms), behind the chain's 200 but ahead of nothing.
+    let history = MemoryDurations::with("x", &[("short1", 100), ("short2", 100), ("long", 60_000)]);
+    let (_, order) = run_ordered(&p, Some(history), None, None);
+    assert_eq!(order, ["long", "short1", "short2", "new"]);
+}
+
+#[test]
+fn with_a_memory_budget_jobs_still_start_in_rank_order() {
+    let p = plan(
+        "name: x\njobs:\n  small: { using: builtin:t@1, args: [], memory: 1GiB }\n  head: { using: builtin:t@1, args: [], memory: 3GiB }\n  tail: { using: builtin:t@1, args: [], needs: [head] }\n",
+    );
+    let budget = Arc::new(MemoryBudget::new(3 << 30));
+    let (report, order) = run_ordered(&p, None, None, Some(budget.clone()));
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert_eq!(
+        order,
+        ["head", "small", "tail"],
+        "`tail` and `small` tie, and `small` comes first in the file"
+    );
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn durations_are_kept_for_the_next_run() {
+    let p = plan(
+        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], task-cache: true }\n  b: { using: builtin:slow@1, args: [], needs: [a], task-cache: true }\n  skipped: { using: builtin:t@1, args: [], if: \"commit.branch == 'nope'\" }\n",
+    );
+    // `skipped` keeps last time's; `removed` is gone from the file.
+    let durations = MemoryDurations::with("x", &[("skipped", 9), ("removed", 7)]);
+    let store = Arc::new(MemoryCaches::default());
+    let (first, _) = run_ordered(&p, Some(durations.clone()), Some(store.clone()), None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    let kept = durations.of("x");
+    assert_eq!(
+        kept.keys().collect::<Vec<_>>(),
+        ["a", "b", "skipped"],
+        "{kept:?}"
+    );
+    assert_eq!(kept["skipped"], 9);
+    assert!(kept["b"] >= 50, "`b` sleeps 50 ms: {kept:?}");
+    assert_eq!(durations.saves.load(Ordering::SeqCst), 1);
+
+    // Every job a hit: each counts as the run it replays, so nothing
+    // changed and nothing is written.
+    let (second, ran) = run_ordered(&p, Some(durations.clone()), Some(store), None);
+    assert!(second.passed() && ran.is_empty(), "{ran:?}");
+    assert_eq!(durations.of("x"), kept);
+    assert_eq!(durations.saves.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_job_can_leave_what_it_is_handed_out_of_its_key() {
+    let with = |value: &str, handed: bool| {
+        plan(&format!(
+            "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [{value}]\n    artifacts: [dist]\n  pass-on:\n    using: builtin:art-read@1\n    needs: [lib]\n    task-cache: {{ artifacts: {handed} }}\n"
+        ))
+    };
+    let store = Arc::new(MemoryCaches::default());
+    let (first, _) = run_cached(&with("a", false), &store, "a");
+    assert_eq!(
+        stdout_of(&first, "pass-on"),
+        "lib_a_.txt",
+        "it is still handed the artifacts"
+    );
+    // What it is handed changes; its key does not.
+    let (second, ran) = run_cached(&with("b", false), &store, "a");
+    assert!(cached(&second, "pass-on"), "{ran:?}");
+    // The default keys on them, as before.
+    let (third, ran) = run_cached(&with("b", true), &store, "a");
+    assert!(!cached(&third, "pass-on"), "{ran:?}");
+    assert_eq!(stdout_of(&third, "pass-on"), "lib_b_.txt");
 }

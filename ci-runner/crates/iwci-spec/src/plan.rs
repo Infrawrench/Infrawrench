@@ -215,6 +215,10 @@ pub struct PackageRef {
 pub struct TaskCacheSpec {
     /// Filter globs relative to the clone (`!` excludes, in order).
     pub inputs: Vec<String>,
+    /// Whether the artifacts it is handed are part of its key: `false`
+    /// for a job that only passes them on (`task-cache: { artifacts:
+    /// false }`).
+    pub artifacts: bool,
 }
 
 impl JobTemplate {

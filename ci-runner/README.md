@@ -38,7 +38,9 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
 5. **Run** (`iwci-runtime`). Jobs run in parallel as soon as their `needs`
    finish and their `paths:` and `if:` allow it, each in a fresh Wasmer instance with no host file system and
    a private loopback plus the public internet for a network (see [Networking](#networking)), under a timeout and a memory limit. Compiled modules are cached
-   on disk, so a tool is compiled once per runner, not once per job.
+   on disk, so a tool is compiled once per runner, not once per job. When
+   more jobs are ready than may run, the one with the longest chain of
+   work still ahead of it starts first (see [Job order](#job-order)).
 6. **Changes.** What a job wrote is read back from its overlay layer.
    `changes: fail` fails the job if it changed anything; `changes: commit`
    turns the changes into a commit on top of the run's commit (written to
@@ -551,8 +553,21 @@ jobs:
   same package's `build`. Any other job naming a `packages:` job waits for
   all of its packages, so `needs: [build]` on a plain job gets every
   package's artifacts. A dependency cycle among packages is an error.
-- A `packages:` job cannot have a `matrix:`, `outputs:` or
-  `changes: commit`, and `${{ needs.<job> }}` cannot read one (it has a
+- A `packages:` job can have a `matrix:`: each package's job gets its
+  entries, keyed `<job>[<package dir>][<values>]` (`test[app/web][1]`), and
+  naming it waits for all of them. That splits one package's long suite
+  without splitting every package's; give the big packages a job of their
+  own with `only:`:
+
+  ```yaml
+  test-web:
+    packages: { only: [app/web] }
+    matrix: [1, 2, 3, 4]
+    run: vitest run --shard=${{ matrix }}/4
+    task-cache: true # one entry per shard
+  ```
+
+- A `packages:` job cannot have `outputs:` or `changes: commit`, and `${{ needs.<job> }}` cannot read one (it has a
   result per package). `iwci plan` expands it over the workspace of the
   checkout the file is in; outside one, `iwci validate` checks it against a
   placeholder package.
@@ -569,6 +584,7 @@ task-cache: true # every file of the package (or the clone)
 task-cache:
   inputs: [src/**, tsconfig.json, "!src/**/*.test.ts"]
   root-inputs: [tsconfig.base.json] # relative to the clone
+  artifacts: false # what it is handed is not part of its key (below)
 ```
 
 - **The key** is a hash of the job's definition (tool and version,
@@ -578,7 +594,18 @@ task-cache:
   `Cargo.lock`), the files its inputs match as the commit has them, and the
   bytes of every artifact it is handed. A job downstream of one that
   changed is handed different files, so its key changes too; one whose
-  upstream rebuilt the same files is not.
+  upstream rebuilt the same files is not. The tool's version is the one
+  `using:` names, not the one it resolves to: `env:bash-node@24` keeps its
+  key when a new `24.x` is published, and runs on the new one only once
+  something else changes the key. Name an exact version (`@24.0.8`) for
+  the key to follow it.
+- **`artifacts: false`** leaves the artifacts a job is handed out of its
+  key, for a job that has them only to pass them on, such as a bundler
+  that keeps its workspace dependencies external but must hand their
+  `dist/` down to the tests: without it, a change at the bottom of the
+  chain reruns every bundle above it. The job still receives them. Only
+  for a job whose result does not depend on them, or it is skipped when
+  they change.
 - **Inputs** are filter globs (`!` excludes, read in order), relative to
   the package or, for a job without `packages:`, the clone. The default is
   every file there. `node_modules` and `.git` are never read; the lockfile
@@ -669,6 +696,26 @@ jobs:
 Every tool is pinned. `@7.1` takes the newest `7.1.x`, `@7` the newest `7.x`,
 `@7.1.3` exactly that; a bare name is an error, so a new release can never
 change what an old commit runs.
+
+### Job order
+
+When more jobs are ready than may run, a run starts the one with the
+longest chain of work still ahead of it: its own expected time plus the
+longest of the jobs that wait on it, directly or through others. A job at
+the bottom of a long `needs` chain, such as the first library every test
+waits for, starts before a hundred formatting jobs nothing waits on. Ties
+go to the job more jobs wait on, then to the order of the file and of the
+matrix, so the same plan and history always start in the same order.
+Task cache lookups go in the same order.
+
+Expected times are what each job took the last time the pipeline ran on
+the branch (or, for a branch's first run, on the default branch), kept with
+the [job caches](#job-caches) as one small entry per pipeline and updated
+after every run. A task cache hit counts as the run it stands for. A job
+with no recorded time is expected to take the median of those with one;
+with no history at all every job counts alike, so the longest chain is the
+one with the most jobs on it. The order only ever applies within a run: runs
+sharing a runner still share its slots and memory as before.
 
 ### What changed from the first sketch
 

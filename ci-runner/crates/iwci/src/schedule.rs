@@ -3,7 +3,9 @@
 //! A job key becomes ready when every job it `needs` has finished. Then its
 //! `paths:` filter and `if:` are checked, it is expanded (a matrix that
 //! comes from another job's output is only known now), and its entries are
-//! queued for the worker threads. Workspaces are built the first time a
+//! queued for the worker threads, which start the queued job with the
+//! longest chain of work still ahead of it first (see [`Rank`]), as last
+//! time's durations estimate it. Workspaces are built the first time a
 //! job needs them, once each, so a job that is skipped never costs a clone
 //! or an install.
 //!
@@ -503,12 +505,27 @@ pub struct Options {
     pub cancel: Option<iwci_runtime::Cancel>,
     /// What the app lends the run's jobs, and where cloud jobs go.
     pub access: RunAccess,
+    /// How long the pipeline's jobs took last time, read before the run to
+    /// order it (see [`Rank`]) and written after it; `None` orders by the
+    /// shape of the plan alone.
+    pub durations: Option<Arc<dyn Durations>>,
 }
 
 impl Options {
     fn cancelled(&self) -> bool {
         self.cancel.as_ref().is_some_and(|c| c.is_cancelled())
     }
+}
+
+/// How long each job of a pipeline took when it last ran, kept between runs
+/// so that the next one can start the jobs at the head of its longest
+/// chains first. Only ever an ordering hint: a store that cannot be read
+/// orders by the plan's shape, and one that cannot be written is ignored.
+pub trait Durations: Send + Sync {
+    /// Job id to milliseconds for the pipeline named `pipeline`, empty
+    /// when nothing is kept.
+    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64>;
+    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>);
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -863,15 +880,153 @@ struct Finished {
     artifacts: Arc<Vec<Entry>>,
 }
 
+/// Which ready job starts first: the one with the most work still ahead of
+/// it on its longest chain of dependents, so the chain that decides when
+/// the run ends is never left waiting behind jobs nothing depends on. Then
+/// the one more jobs wait on, then plan order and matrix order, so the
+/// order is the same every time for the same plan and history.
+///
+/// It only orders one run's own jobs. Runs sharing a runner still share
+/// its slots and memory as before: a run with long chains does not take
+/// slots from another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Rank {
+    /// The job's own estimate plus the longest of its dependents'.
+    remaining_ms: u64,
+    /// Every job that waits on it, directly or through others.
+    dependents: usize,
+    plan_order: std::cmp::Reverse<usize>,
+    entry: std::cmp::Reverse<usize>,
+}
+
+/// What a job of `ranks` is expected to take when the history has nothing
+/// at all for the pipeline: every job alike, so the longest chain is the
+/// one with the most jobs on it.
+const UNKNOWN_DURATION_MS: u64 = 1000;
+
+/// Each key's place in the start order (see [`Rank`]; `entry` is filled in
+/// per matrix entry), from how long each job took last time.
+///
+/// A job without history is expected to take the median of those with, or
+/// [`UNKNOWN_DURATION_MS`] when there is none. A matrix key is as long as
+/// its longest entry, since its entries run side by side.
+fn ranks(plan: &Plan, history: &HashMap<String, u64>) -> HashMap<String, Rank> {
+    let index: HashMap<&str, usize> = plan
+        .jobs
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.key.as_str(), i))
+        .collect();
+    let recorded = |t: &JobTemplate| -> Option<u64> {
+        let from_ids = match &t.instances {
+            Some(jobs) => jobs
+                .iter()
+                .filter_map(|j| history.get(&j.id))
+                .max()
+                .copied(),
+            // A matrix set by another job: whatever its entries were called
+            // last time.
+            None => {
+                let prefix = format!("{}[", t.key);
+                history
+                    .iter()
+                    .filter(|(id, _)| id.starts_with(&prefix))
+                    .map(|(_, ms)| *ms)
+                    .max()
+            }
+        };
+        from_ids.or_else(|| history.get(&t.key).copied())
+    };
+    let known: Vec<Option<u64>> = plan.jobs.iter().map(recorded).collect();
+    let mut sorted: Vec<u64> = known.iter().flatten().copied().collect();
+    sorted.sort_unstable();
+    let fallback = sorted
+        .get(sorted.len() / 2)
+        .copied()
+        .unwrap_or(UNKNOWN_DURATION_MS);
+    let estimate: Vec<u64> = known.iter().map(|k| k.unwrap_or(fallback)).collect();
+
+    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); plan.jobs.len()];
+    for (i, t) in plan.jobs.iter().enumerate() {
+        for need in &t.needs {
+            if let Some(&n) = index.get(need.as_str()) {
+                dependents[n].push(i);
+            }
+        }
+    }
+    // Longest remaining path, dependents first. `needs` has no cycles once
+    // validated; one that slipped through is cut where it closes.
+    fn remaining(
+        i: usize,
+        dependents: &[Vec<usize>],
+        estimate: &[u64],
+        memo: &mut [Option<u64>],
+        visiting: &mut [bool],
+    ) -> u64 {
+        if let Some(r) = memo[i] {
+            return r;
+        }
+        if visiting[i] {
+            return 0;
+        }
+        visiting[i] = true;
+        let mut longest = 0;
+        for &d in &dependents[i] {
+            longest = longest.max(remaining(d, dependents, estimate, memo, visiting));
+        }
+        visiting[i] = false;
+        let r = estimate[i].saturating_add(longest);
+        memo[i] = Some(r);
+        r
+    }
+    let mut memo = vec![None; plan.jobs.len()];
+    let mut visiting = vec![false; plan.jobs.len()];
+    let mut out = HashMap::with_capacity(plan.jobs.len());
+    for (i, t) in plan.jobs.iter().enumerate() {
+        let remaining_ms = remaining(i, &dependents, &estimate, &mut memo, &mut visiting);
+        // Everything downstream, each once.
+        let mut seen = vec![false; plan.jobs.len()];
+        let mut stack = dependents[i].clone();
+        let mut count = 0;
+        while let Some(d) = stack.pop() {
+            if !std::mem::replace(&mut seen[d], true) {
+                count += 1;
+                stack.extend(&dependents[d]);
+            }
+        }
+        out.insert(
+            t.key.clone(),
+            Rank {
+                remaining_ms,
+                dependents: count,
+                plan_order: std::cmp::Reverse(i),
+                entry: std::cmp::Reverse(0),
+            },
+        );
+    }
+    out
+}
+
+/// Puts `item` into `list`, which is kept in ascending [`Rank`] order so
+/// that the job to start next is the last one.
+fn enqueue<T>(list: &mut Vec<(Rank, T)>, rank: Rank, item: T) {
+    let at = list.partition_point(|(r, _)| *r < rank);
+    list.insert(at, (rank, item));
+}
+
 struct State<'p> {
     /// Keys not yet activated.
     waiting: Vec<&'p JobTemplate>,
     finished: HashMap<String, Finished>,
-    /// Expanded `task-cache:` jobs whose entry has not been looked up yet.
-    /// A hit finishes from here; anything else moves on to `queue`.
-    lookups: Vec<(&'p JobTemplate, PlannedJob)>,
-    /// Expanded jobs ready to run, each with what its lookup left it.
-    queue: Vec<(&'p JobTemplate, PlannedJob, Lookup)>,
+    /// Expanded `task-cache:` jobs whose entry has not been looked up yet,
+    /// in [`Rank`] order, the next one last. A hit finishes from here;
+    /// anything else moves on to `queue`.
+    lookups: Vec<(Rank, (&'p JobTemplate, PlannedJob))>,
+    /// Expanded jobs ready to run, each with what its lookup left it, in
+    /// [`Rank`] order, the next one last.
+    queue: Vec<(Rank, (&'p JobTemplate, PlannedJob, Lookup))>,
+    /// Where each key's jobs go in `lookups` and `queue`.
+    ranks: HashMap<String, Rank>,
     /// Cloud jobs ready to hand over: no slot and no memory.
     external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
@@ -888,13 +1043,13 @@ struct State<'p> {
 }
 
 impl<'p> State<'p> {
-    fn enqueue(&mut self, entry: (&'p JobTemplate, PlannedJob, Lookup)) {
+    fn enqueue(&mut self, rank: Rank, entry: (&'p JobTemplate, PlannedJob, Lookup)) {
         self.queued.add(entry.1.memory_bytes);
-        self.queue.push(entry);
+        enqueue(&mut self.queue, rank, entry);
     }
 
     fn dequeue(&mut self, pos: usize) -> (&'p JobTemplate, PlannedJob, Lookup) {
-        let entry = self.queue.remove(pos);
+        let (_, entry) = self.queue.remove(pos);
         self.queued.remove(entry.1.memory_bytes);
         entry
     }
@@ -1040,12 +1195,18 @@ pub fn run<T: Tools>(
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
     let checkouts: Vec<OnceLock<Result<Snapshot, String>>> =
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
+    let history = options
+        .durations
+        .as_ref()
+        .map(|d| d.load_durations(&plan.name))
+        .unwrap_or_default();
     let state = Mutex::new(State {
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
         lookups: Vec::new(),
         queue: Vec::new(),
         external: Vec::new(),
+        ranks: ranks(plan, &history),
         open: HashMap::new(),
         running: 0,
         reports: HashMap::new(),
@@ -1083,10 +1244,12 @@ pub fn run<T: Tools>(
         options.secrets.values().chain(lent_values.iter()),
     ));
     let artifact_bytes = AtomicU64::new(0);
+    let measured = Mutex::new(BTreeMap::new());
     let shared = RunShared {
         scratch: &scratch,
         mask: &mask,
         artifact_bytes: &artifact_bytes,
+        measured: &measured,
     };
 
     // Lookup threads only for a plan that can have a task-cached job: one
@@ -1104,15 +1267,15 @@ pub fn run<T: Tools>(
         for _ in 0..if lookups { LOOKUPS } else { 0 } {
             scope.spawn(|| {
                 loop {
-                    let (template, job, inherited) = {
+                    let (rank, template, job, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             let seen = wake.seen();
-                            if let Some((template, job)) = s.lookups.pop() {
+                            if let Some((rank, (template, job))) = s.lookups.pop() {
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (template, job, inherited);
+                                break (rank, template, job, inherited);
                             }
                             if s.done {
                                 return;
@@ -1141,7 +1304,7 @@ pub fn run<T: Tools>(
                         Looked::Run(lookup) => {
                             let mut s = state.lock().unwrap();
                             s.running -= 1;
-                            s.enqueue((template, job, lookup));
+                            s.enqueue(rank, (template, job, lookup));
                             drop(s);
                             wake.notify_all();
                         }
@@ -1194,11 +1357,11 @@ pub fn run<T: Tools>(
                             // Read before the budget is, so memory given
                             // back after this wakes the wait below.
                             let seen = wake.seen();
-                            // The newest job whose memory fits the runner's
-                            // budget right now; the reservation is held until
-                            // it finishes. Without a budget, simply the newest.
-                            // A cancelled run's queued jobs are only
-                            // reported, so they need no memory.
+                            // The first job in `Rank` order whose memory fits
+                            // the runner's budget right now; the reservation
+                            // is held until it finishes. Without a budget,
+                            // simply the first. A cancelled run's queued jobs
+                            // are only reported, so they need no memory.
                             let cancelled = options.cancelled();
                             let fits = match &options.memory {
                                 _ if cancelled => s.queue.len().checked_sub(1),
@@ -1206,7 +1369,7 @@ pub fn run<T: Tools>(
                                 Some(budget) => s
                                     .queue
                                     .iter()
-                                    .rposition(|(_, j, _)| budget.try_take(j.memory_bytes)),
+                                    .rposition(|(_, (_, j, _))| budget.try_take(j.memory_bytes)),
                             };
                             if let Some(pos) = fits {
                                 let (template, job, lookup) = s.dequeue(pos);
@@ -1293,11 +1456,17 @@ pub fn run<T: Tools>(
         warnings.extend(ws.warnings.iter().cloned());
         installs.extend(ws.installs.iter().cloned());
     }
-    let jobs = plan
+    let jobs: Vec<JobReport> = plan
         .jobs
         .iter()
         .flat_map(|t| state.reports.remove(&t.key).unwrap_or_default())
         .collect();
+    if let Some(durations) = &options.durations {
+        let kept = merge_durations(plan, &jobs, history, measured.into_inner().unwrap());
+        if let Some(kept) = kept {
+            durations.save_durations(&plan.name, &kept);
+        }
+    }
     RunReport {
         pipeline: plan.name.clone(),
         jobs,
@@ -1305,6 +1474,36 @@ pub fn run<T: Tools>(
         installs,
         duration_ms: millis(started.elapsed()),
     }
+}
+
+/// What to keep for the next run's order: this run's times over the ones
+/// read before it, for the jobs the plan still has. A job that did not run
+/// here (skipped, failed to start) keeps its old time; a renamed or removed
+/// one is dropped. `None` when that is what is kept already.
+fn merge_durations(
+    plan: &Plan,
+    reports: &[JobReport],
+    history: HashMap<String, u64>,
+    measured: BTreeMap<String, u64>,
+) -> Option<BTreeMap<String, u64>> {
+    let mut ids: HashSet<&str> = reports.iter().map(|r| r.id.as_str()).collect();
+    let mut dynamic = Vec::new();
+    for t in &plan.jobs {
+        ids.insert(&t.key);
+        match &t.instances {
+            Some(jobs) => ids.extend(jobs.iter().map(|j| j.id.as_str())),
+            None => dynamic.push(format!("{}[", t.key)),
+        }
+    }
+    let still = |id: &str| ids.contains(id) || dynamic.iter().any(|p| id.starts_with(p.as_str()));
+    let before: BTreeMap<String, u64> = history.into_iter().collect();
+    let mut kept: BTreeMap<String, u64> = before
+        .iter()
+        .filter(|(id, _)| still(id))
+        .map(|(id, ms)| (id.clone(), *ms))
+        .collect();
+    kept.extend(measured);
+    (kept != before).then_some(kept)
 }
 
 /// Records one entry's report, from a run or from the task cache, and when
@@ -1470,17 +1669,25 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         artifacts: Vec::new(),
                     },
                 );
-                // The queue is a stack; push in reverse so entries start in
-                // matrix order.
-                for job in jobs.into_iter().rev() {
+                // Entries share their key's rank (`ranks` has every key of
+                // the plan) and start in matrix order. Cloud jobs go to a
+                // stack of their own, pushed in reverse for the same order.
+                let rank = s.ranks[&template.key];
+                let mut cloud = Vec::new();
+                for (i, job) in jobs.into_iter().enumerate() {
+                    let rank = Rank {
+                        entry: std::cmp::Reverse(i),
+                        ..rank
+                    };
                     if job.cloud.is_some() {
-                        s.external.push((template, job));
+                        cloud.push((template, job));
                     } else if job.task_cache.is_some() && options.caches.is_some() {
-                        s.lookups.push((template, job));
+                        enqueue(&mut s.lookups, rank, (template, job));
                     } else {
-                        s.enqueue((template, job, Lookup::default()));
+                        s.enqueue(rank, (template, job, Lookup::default()));
                     }
                 }
+                s.external.extend(cloud.into_iter().rev());
             }
         }
     }
@@ -1559,6 +1766,9 @@ struct RunShared<'a> {
     /// Bytes of artifacts kept so far, held to the run's `scratch:` limit:
     /// both live in memory for the whole run.
     artifact_bytes: &'a AtomicU64,
+    /// How long each job that ran took, by id, for [`Durations`]; a task
+    /// cache hit counts as the run it replays.
+    measured: &'a Mutex<BTreeMap<String, u64>>,
 }
 
 /// Looks a `task-cache:` job up before it is queued. A job whose inputs
@@ -2173,6 +2383,15 @@ fn run_job<T: Tools>(
         }
     }
 
+    // How long it took, for the next run's order and for the task cache's
+    // record, which a hit then counts as: the same number in both.
+    let ran_ms = millis(started.elapsed());
+    shared
+        .measured
+        .lock()
+        .unwrap()
+        .insert(job.id.clone(), ran_ms);
+
     // Record a pass for the task cache: what it kept, its outputs and its
     // log, under the key of everything it read.
     if status == Status::Passed
@@ -2183,7 +2402,7 @@ fn run_job<T: Tools>(
             stdout: execution.stdout.clone(),
             stderr: execution.stderr.clone(),
             outputs: outputs.clone().unwrap_or_default(),
-            duration_ms: millis(started.elapsed()),
+            duration_ms: ran_ms,
         };
         let mut entries = kept.clone();
         let saved: u64 = entries
@@ -2618,6 +2837,9 @@ fn task_cache_key(
     let spec = job.task_cache.as_ref()?;
     let ws = &plan.workspaces[job.workspace];
     let root = ws.clone.as_ref()?.into.clone();
+    // A job that says it does not read what it is handed is keyed without
+    // it, so an upstream change does not rerun it.
+    let inherited = if spec.artifacts { inherited } else { &[] };
     #[derive(Serialize)]
     struct Definition<'a> {
         tool: &'a ToolRef,
@@ -2780,6 +3002,11 @@ fn replay(
         shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
         return Err("its artifacts would take the run past its `scratch:` limit".into());
     }
+    shared
+        .measured
+        .lock()
+        .unwrap()
+        .insert(job.id.clone(), record.duration_ms);
     let stdout = shared.mask.mask(&record.stdout);
     let stderr = shared.mask.mask(&record.stderr);
     if let Some(logs) = &options.logs {

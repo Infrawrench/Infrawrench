@@ -13,8 +13,10 @@
 //! - `build` (in any other job): every package's `build`.
 //!
 //! From there on each package's job is an ordinary job, so readiness,
-//! skipping, artifacts (handed on through `needs`, transitively) and the
-//! task cache work as they do for any other.
+//! skipping, artifacts (handed on through `needs`, transitively), the task
+//! cache and a `matrix:` work as they do for any other: a matrix gives
+//! each package's job its entries (`test[apps/web][1]`, `test[apps/web][2]`),
+//! and naming the job waits for all of them.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -113,13 +115,6 @@ pub(crate) fn expand(
             // Reported by the validator once the key is back; generate
             // nothing from a key that could not be one.
             continue;
-        }
-        if job.matrix.is_some() {
-            error(
-                format!("{path}.matrix"),
-                "a `packages:` job already has one entry per package; it cannot have a matrix too"
-                    .into(),
-            );
         }
         if !job.outputs.is_empty() {
             error(

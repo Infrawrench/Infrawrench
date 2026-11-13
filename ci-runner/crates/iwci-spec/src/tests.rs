@@ -1312,6 +1312,94 @@ jobs:
 }
 
 #[test]
+fn a_packages_job_can_have_a_matrix() {
+    let plan = parse(
+        r#"
+name: ts
+jobs:
+  build:
+    using: builtin:typescript@7.1
+    packages: { has: [tsconfig.json], only: ["libs/*"] }
+    needs: ["^build"]
+    args: []
+    artifacts: [dist]
+    task-cache: { artifacts: false }
+  test:
+    name: test ${{ package.name }} ${{ matrix }}/2
+    using: builtin:typescript@7.1
+    packages: { only: [apps/web, libs/ui] }
+    matrix: [1, 2]
+    needs: [build, "^build"]
+    args: ["--shard=${{ matrix }}/2"]
+    task-cache: true
+  unnamed:
+    using: builtin:typescript@7.1
+    packages: { only: [libs/core] }
+    matrix: { mode: [a] }
+    args: []
+  report:
+    using: builtin:typescript@7.1
+    needs: [test]
+    args: []
+"#,
+        &workspace(),
+    )
+    .unwrap();
+    assert_eq!(
+        ids(&plan),
+        [
+            "build[libs/core]",
+            "build[libs/ui]",
+            "test[apps/web][1]",
+            "test[apps/web][2]",
+            "test[libs/ui][1]",
+            "test[libs/ui][2]",
+            "unnamed[libs/core][a]",
+            "report",
+        ]
+    );
+    // Each package's job is one key whose entries share its needs.
+    assert_eq!(template(&plan, "test[apps/web]").needs, ["build[libs/ui]"]);
+    assert_eq!(
+        template(&plan, "test[libs/ui]").needs,
+        ["build[libs/ui]", "build[libs/core]"]
+    );
+    assert_eq!(
+        template(&plan, "report").needs,
+        ["test[apps/web]", "test[libs/ui]"]
+    );
+    let second = plan.job("test[libs/ui][2]").unwrap();
+    assert_eq!(second.display_name, "test @x/ui 2/2");
+    assert_eq!(second.cwd, "/app/libs/ui");
+    assert_eq!(
+        second.action,
+        Action::Args {
+            args: vec!["--shard=2/2".into()]
+        }
+    );
+    assert_eq!(
+        second.task_cache.as_ref().unwrap().inputs,
+        ["libs/ui/**"],
+        "every entry reads its package"
+    );
+    assert!(second.task_cache.as_ref().unwrap().artifacts);
+    assert_eq!(
+        plan.job("unnamed[libs/core][a]").unwrap().display_name,
+        "unnamed (libs/core, a)"
+    );
+    assert!(
+        !plan
+            .job("build[libs/ui]")
+            .unwrap()
+            .task_cache
+            .as_ref()
+            .unwrap()
+            .artifacts,
+        "`artifacts: false` leaves what it is handed out of its key"
+    );
+}
+
+#[test]
 fn packages_without_a_known_repository_use_a_placeholder() {
     let plan = parse(
         r#"
@@ -1351,10 +1439,6 @@ fn packages_mistakes_are_named() {
     with(
         "name: x\njobs:\n  a: { using: builtin:t@1, args: [], needs: ['^a'] }\n",
         "only means something in a job with `packages:`",
-    );
-    with(
-        "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true, matrix: [1, 2] }\n",
-        "cannot have a matrix",
     );
     with(
         "name: x\njobs:\n  a: { using: builtin:t@1, args: [], packages: true, outputs: [o] }\n",
