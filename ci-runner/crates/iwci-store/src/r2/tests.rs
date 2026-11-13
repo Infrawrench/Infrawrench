@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,6 +24,8 @@ struct State {
     log: Mutex<Vec<String>>,
     /// Signatures that did not verify.
     bad_signatures: AtomicU32,
+    /// Answer DELETE with a 200 and an XML body instead of R2's bare 204.
+    delete_with_body: AtomicBool,
 }
 
 fn creds() -> Credentials {
@@ -286,6 +288,18 @@ fn handle(state: &State, mut stream: TcpStream) {
             objects.insert(key, req.body);
             respond(&mut stream, 200, &[("etag", "\"x\"".into())], b"", false);
         }
+        "DELETE" => {
+            objects.remove(&key);
+            if state.delete_with_body.load(Ordering::SeqCst) {
+                let body = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><DeleteResult/>";
+                return respond(&mut stream, 200, &[], body, false);
+            }
+            // What R2 sends, whether or not the key existed: a 204 with no
+            // body and no Content-Length.
+            let _ = stream.write_all(
+                b"HTTP/1.1 204 No Content\r\nconnection: close\r\nserver: cloudflare\r\n\r\n",
+            );
+        }
         _ => respond(&mut stream, 405, &[], &error_xml("MethodNotAllowed"), false),
     }
 }
@@ -380,6 +394,37 @@ fn full_request_path_against_emulator() {
         "{log:?}"
     );
     assert_eq!(state.bad_signatures.load(Ordering::SeqCst), 0);
+}
+
+/// #1129: every delete removed the object and then failed with "object
+/// larger than 0 bytes", because the body of R2's empty 204 was read with a
+/// limit of 0, which ureq fails on the first read.
+#[test]
+fn delete_succeeds_on_r2s_empty_204_and_on_a_body() {
+    let (state, endpoint) = serve();
+    let store = R2Store::with_endpoint(&endpoint, BUCKET, creds(), fast_options(1000)).unwrap();
+    for key in ["caches/o/r/s/entries/a.zst", "caches/o/r/s/entries/b.zst"] {
+        store.put(key, b"x", "application/zstd").unwrap();
+    }
+
+    store.delete("caches/o/r/s/entries/a.zst").unwrap();
+    assert_eq!(store.get("caches/o/r/s/entries/a.zst").unwrap(), None);
+    // A key that is already gone gets the same 204.
+    store.delete("caches/o/r/s/entries/a.zst").unwrap();
+
+    state.delete_with_body.store(true, Ordering::SeqCst);
+    store.delete("caches/o/r/s/entries/b.zst").unwrap();
+    assert_eq!(store.list("caches/o/").unwrap(), Vec::<String>::new());
+    assert_eq!(state.bad_signatures.load(Ordering::SeqCst), 0);
+
+    // A refused delete is still an error, with the server's code.
+    let wrong = Credentials::new("test-key-id", "wrong");
+    let refused = R2Store::with_endpoint(&endpoint, BUCKET, wrong, fast_options(1000)).unwrap();
+    let err = refused.delete("caches/o/r/s/entries/c.zst").unwrap_err();
+    assert!(
+        matches!(&err, StoreError::Http { method: "DELETE", status: 403, code: Some(c), .. } if c == "SignatureDoesNotMatch"),
+        "{err}"
+    );
 }
 
 #[test]
