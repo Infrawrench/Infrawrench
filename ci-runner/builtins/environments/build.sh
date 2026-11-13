@@ -11,6 +11,9 @@
 #   env:go         the same as env:bash plus a Go toolchain (five minors)
 #   env:postgres   the same as env:bash plus PostgreSQL (Wasmer's pglite)
 #                  and pglite-server, for a job's `services:`
+#   env:clickhouse the same as env:bash-node plus ClickHouse 26.11
+#                  (CloudHouse for one-thread WebAssembly) behind its HTTP
+#                  interface, `clickhouse-server`, for a job's `services:`
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -25,15 +28,16 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Five packages are not taken from the CDN as they are. `edgejs/build.sh`
+# Seven packages are not taken from the CDN as they are. `edgejs/build.sh`
 # builds Wasmer's Edge.js 0.2.5 from source on a C library without the races
 # behind #937 and #967, which no Wasmer release has yet; `bash/build.sh` and
 # `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
 # that split an argument at its line feeds (#1003, #1022);
 # `php-cli/build.sh` packages env:php's own `php` and Composer; and
-# `pglite-server/build.sh` env:postgres's server for many connections; and
+# `pglite-server/build.sh` env:postgres's server for many connections;
 # `git/build.sh` builds Git, which Wasmer does not publish, from its
-# release. Each result is pinned here by hash like the others, so a build
+# release; and `clickhouse/build.sh` builds env:clickhouse's ClickHouse from
+# CloudHouse with a patch of ours (two to three hours). Each result is pinned here by hash like the others, so a build
 # that comes out different fails.
 #
 #   environments/build.sh              all of them
@@ -54,10 +58,14 @@
 #                                      ARM64) to build pglite-server
 #   environments/build.sh bash-node    needs the Edge.js build: x86_64 Linux,
 #                                      or its webc already in dist/package/
+#   environments/build.sh clickhouse   the same as bash-node, and the
+#                                      ClickHouse build (Linux, x86_64 or
+#                                      ARM64) or its webc already in
+#                                      dist/package/clickhouse/
 #
 # Needs: curl, shasum, and what patch-module.sh and git/build.sh need;
-# bash-node, php and postgres also what edgejs/build.sh, php-cli/build.sh
-# and pglite-server/build.sh need.
+# bash-node, php, postgres and clickhouse also what edgejs/build.sh,
+# php-cli/build.sh, pglite-server/build.sh and clickhouse/build.sh need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
@@ -93,6 +101,12 @@ PGLITE_PKG="wasmer/pglite 0.2.0 4dd0b5db74b06ecf899f19fae460fd775fbb7a6a93663541
 # transaction at a time, and a pgcrypto (pglite has no OpenSSL). Its hash is
 # its output's, as with Edge.js.
 PGLITE_SERVER_PKG="iwci/pglite-server 1.0.0 2ee4e13f7554cc290a6954508f157292646966e15998d583468ba0a422cecab4"
+# Built by clickhouse/build.sh: ClickHouse 26.11 (CloudHouse's
+# `clickhouse-ci` target, cloudhouse-ci.patch) and the HTTP server in front
+# of it, at /opt/clickhouse. Its hash is its output's, as with Edge.js.
+CLICKHOUSE_PKG="iwci/clickhouse 26.11.1-iwci.1 6ba689f8796a2ec446beac57d8d958ce2f8a5783c16117a7abe4397c6697eb9b"
+# env:clickhouse's `clickhouse-server` (README.md, "ClickHouse").
+CLICKHOUSE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/opt/clickhouse/bin"'
 # python/python's version is Wasmer's, not the interpreter's: 3.13.20 holds
 # CPython 3.13.15, which named the environment's first version. Its prefix is
 # a Nix store path inside the package, where pip puts console scripts
@@ -190,6 +204,7 @@ fetch() {
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
     iwci/git) ours=git ;;
+    iwci/clickhouse) ours=clickhouse ;;
   esac
   if [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
@@ -345,8 +360,14 @@ for env in "$@"; do
       build_env postgres 18.4.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
         "" "${TOOLS[@]}" "$PGLITE_PKG" "$PGLITE_SERVER_PKG"
       ;;
+    clickhouse)
+      # Its version is ClickHouse's major and minor, as postgres's is
+      # PostgreSQL's; its patch number is the environment's own.
+      build_env clickhouse 26.11.0 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+        "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
+      ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>) and postgres" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres and clickhouse" >&2
       exit 2
       ;;
   esac

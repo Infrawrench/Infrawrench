@@ -766,6 +766,7 @@ Environments:
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
+| `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                            |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -1984,6 +1985,59 @@ does not use it up; its log line `OLIPHAUNT_WASIX_SOCKET_READY 5432` works
 as `ready: { log: ... }`). PostgreSQL with backends that really run at the
 same time needs `fork` with memory shared between processes, which WASIX
 does not have: a forked WASIX process gets a copy of its parent's memory.
+
+#### ClickHouse
+
+`env:clickhouse@26.11` is ClickHouse 26.11 behind its HTTP interface on
+port 8123, beside the tools of `env:bash-node@24`. The data is in memory.
+
+```yaml
+services:
+  clickhouse:
+    using: env:clickhouse@26.11
+    run: clickhouse-server
+    env: { CLICKHOUSE_DB: app, CLICKHOUSE_PASSWORD: secret }
+    ready: { port: 8123, timeout: 120s }
+env:
+  CLICKHOUSE_URL: http://localhost:8123
+```
+
+The engine is [CloudHouse](https://github.com/Infrawrench/CloudHouse),
+Infrawrench's fork of ClickHouse, built with Emscripten for one-thread
+WebAssembly (wasm64): its `clickhouse-ci` target, which our
+`builtins/environments/clickhouse/cloudhouse-ci.patch` adds. It registers
+what `clickhouse-local` does (every function and format, the whole
+`MergeTree` family, materialized views, every system table), so DDL and
+queries are ClickHouse's own, with 26.11's defaults. `clickhouse-server` is
+a Node program in front of it (Edge.js, like any Node in a job), serving
+what clients use of the HTTP interface: `/ping`; the query in `query` or
+the body, with an `INSERT`'s data after it; settings, `database`,
+`default_format` and `param_<name>` from the URL or a multipart body;
+Basic or `X-ClickHouse-User`/`X-ClickHouse-Key` auth; gzip both ways; and
+errors as a server sends them (`Code: N. DB::Exception: ...`, with its HTTP
+status and `X-ClickHouse-Exception-Code`). `@clickhouse/client` works
+against it unchanged. It reads the official image's variables,
+`CLICKHOUSE_USER` (`default`), `CLICKHOUSE_PASSWORD` (none) and
+`CLICKHOUSE_DB` (created at start), and `CLICKHOUSE_HTTP_PORT` (8123),
+`CLICKHOUSE_COMPATIBILITY` (an older server's setting defaults, the
+`compatibility` setting, for every query) and `CLICKHOUSE_LOG_QUERIES=1`
+(each query and its time on stderr). It starts in about a second.
+
+One thread is the difference to know:
+
+- **Nothing runs in the background.** Merges, mutations and TTL never run
+  on their own. `FINAL` and `OPTIMIZE TABLE ... FINAL` work (in the query),
+  and `DELETE` and `ALTER TABLE ... UPDATE` return at once and apply when a
+  table is read (`apply_mutations_on_fly`).
+- **There is no asynchronous insert queue.** An insert with `async_insert`
+  = 1 is written before it returns, and `SYSTEM FLUSH ASYNC INSERT QUEUE`
+  succeeds and does nothing.
+- **Queries run one at a time**, and `max_threads` and the other thread
+  settings are 1 and cannot be raised.
+- **Memory**: the engine takes about 850 MiB before any data, counted
+  against the job's `memory:`, and grows to at most 4 GiB.
+- There is no native protocol (port 9000), no Keeper, no dictionaries and
+  no table engines that reach outside the job (S3, Kafka, URL).
 
 What else is and is not available:
 

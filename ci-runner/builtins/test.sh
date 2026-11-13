@@ -11,12 +11,16 @@
 #   builtins/test.sh typescript oxfmt bash-node python php
 #   builtins/test.sh go              every Go minor; go@1.25 for one
 #   builtins/test.sh python postgres
+#   builtins/test.sh clickhouse      ClickHouse as a service, from Node
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
 # (`services:`) for Python jobs, so it needs python in the same list.
+# `clickhouse` runs ClickHouse as a service (`services:`) and talks to it
+# over its HTTP interface from Node, so it needs an iwci built with
+# `--features node`, like bash-node.
 # `kubectl` runs kubectl from bash scripts against a small API server its
 # build makes (`kubectl/fake-apiserver.go`), on the job's loopback, with a
 # kubeconfig lent the way the app lends a connection (`IWCI_LENT_FILE`), so
@@ -90,11 +94,11 @@ for name in "$@"; do
         dirs+=("$dist"/builtin/"$program"/*)
       done
       ;;
-    bash | bash-node | python | php | go@* | postgres)
+    bash | bash-node | python | php | go@* | postgres | clickhouse)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php | go@* | postgres) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -110,7 +114,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools, kubectl, openssh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh" >&2
       exit 2
       ;;
   esac
@@ -3196,6 +3200,104 @@ jobs:
     run: git --version
 YAML
       ;;
+    clickhouse)
+      cat <<'YAML'
+name: clickhouse
+workspace:
+  services:
+    clickhouse:
+      using: env:clickhouse@26.11
+      run: clickhouse-server
+      env: { CLICKHOUSE_DB: app, CLICKHOUSE_PASSWORD: secret }
+      ready: { port: 8123, timeout: 120s }
+jobs:
+  # ClickHouse's HTTP interface as @clickhouse/client uses it, against the
+  # engines and features the app's metrics and cost tables depend on: a
+  # MergeTree with a TTL, an AggregatingMergeTree fed by a materialized
+  # view, a ReplacingMergeTree read with FINAL, JSONEachRow inserts with
+  # async_insert, query parameters, gzip, errors and auth.
+  sql-passes:
+    using: env:clickhouse@26.11
+    memory: 3GiB
+    timeout: 10m
+    run: |
+      cat > /tmp/ch.mjs <<'JS'
+      import zlib from "node:zlib";
+      const auth = "Basic " + Buffer.from("default:secret").toString("base64");
+      async function ch(sql, { params = {}, body, headers = {} } = {}) {
+        const url = new URL("http://clickhouse:8123/");
+        url.searchParams.set("database", "app");
+        for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+        if (body !== undefined) url.searchParams.set("query", sql);
+        const r = await fetch(url, { method: "POST", headers: { Authorization: auth, ...headers }, body: body ?? sql });
+        const text = await r.text();
+        if (r.status !== 200) throw new Error(`${r.status}: ${text}`);
+        return text.trim();
+      }
+      function expect(name, got, want) {
+        if (got !== want) throw new Error(`${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+        console.log(`ok ${name}`);
+      }
+      expect("ping", await (await fetch("http://clickhouse:8123/ping")).text(), "Ok.\n");
+      expect("version", (await ch("SELECT version()")).split(".").slice(0, 2).join("."), "26.11");
+      await ch(`CREATE TABLE raw (series String, unit LowCardinality(String), ts DateTime64(3), value Float64)
+        ENGINE = MergeTree PARTITION BY toYYYYMM(ts) ORDER BY (series, ts) TTL toDateTime(ts) + INTERVAL 10 YEAR`);
+      await ch(`CREATE TABLE per_minute (series String, unit LowCardinality(String), minute DateTime,
+        value_avg AggregateFunction(avg, Float64)) ENGINE = AggregatingMergeTree ORDER BY (series, minute)
+        SETTINGS allow_dimensions_outside_sorting_key = 1`);
+      await ch(`CREATE MATERIALIZED VIEW mv TO per_minute AS SELECT series, unit, toStartOfMinute(toDateTime(ts)) AS minute,
+        avgState(value) AS value_avg FROM raw GROUP BY series, unit, minute`);
+      const rows = [10, 20, 30].map((value, i) =>
+        JSON.stringify({ series: "cpu", unit: "%", ts: `2026-11-0${i + 1}T10:00:00.123Z`, value }));
+      await ch("INSERT INTO raw FORMAT JSONEachRow", {
+        params: { async_insert: "1", wait_for_async_insert: "0", date_time_input_format: "best_effort" },
+        body: rows.join("\n"),
+      });
+      await ch("SYSTEM FLUSH ASYNC INSERT QUEUE");
+      expect("milliseconds", await ch("SELECT toUnixTimestamp64Milli(min(ts)) FROM raw"), "1793527200123");
+      expect("rollup", await ch("SELECT sum(v) FROM (SELECT avgMerge(value_avg) AS v FROM per_minute GROUP BY minute)"), "60");
+      expect("parameters", await ch("SELECT count() FROM raw WHERE value > {min:Float64}", { params: { param_min: "15" } }), "2");
+      await ch(`CREATE TABLE costs (id String, amount Float64, ingested DateTime) ENGINE = ReplacingMergeTree(ingested) ORDER BY id`);
+      await ch("INSERT INTO costs VALUES ('a', 1, '2026-11-01 00:00:00')");
+      await ch("INSERT INTO costs VALUES ('a', 2, '2026-11-02 00:00:00')");
+      expect("without FINAL", await ch("SELECT count() FROM costs"), "2");
+      expect("FINAL", await ch("SELECT amount FROM costs FINAL"), "2");
+      await ch("OPTIMIZE TABLE costs FINAL");
+      expect("OPTIMIZE FINAL", await ch("SELECT count() FROM costs"), "1");
+      await ch("DELETE FROM raw WHERE value = 10");
+      expect("DELETE", await ch("SELECT count() FROM raw"), "2");
+      expect("64-bit integers quoted on request", JSON.parse(await ch("SELECT toUInt64(18446744073709551000) AS n FORMAT JSONEachRow",
+        { params: { output_format_json_quote_64bit_integers: "1" } })).n, "18446744073709551000");
+      const gz = await fetch("http://clickhouse:8123/?enable_http_compression=1",
+        { method: "POST", headers: { Authorization: auth, "Accept-Encoding": "gzip" }, body: "SELECT 42" });
+      expect("gzip", gz.headers.get("content-encoding") + " " + (await gz.text()).trim(), "gzip 42");
+      const denied = await fetch("http://clickhouse:8123/?query=SELECT%201", { headers: { Authorization: "Basic " + Buffer.from("default:wrong").toString("base64") } });
+      expect("wrong password", denied.status, 401);
+      expect("26.11's MergeTree defaults", await ch("SELECT value FROM system.merge_tree_settings WHERE name = 'allow_dimensions_outside_sorting_key'"), "0");
+      JS
+      node /tmp/ch.mjs
+  # A statement the server rejects fails the job with ClickHouse's message.
+  rejected-fails:
+    using: env:clickhouse@26.11
+    memory: 3GiB
+    run: |
+      node --input-type=module -e '
+      const r = await fetch("http://clickhouse:8123/?database=app", { method: "POST", body: "SELEC 1",
+        headers: { Authorization: "Basic " + Buffer.from("default:secret").toString("base64") } });
+      if (r.status !== 200) { console.error(r.status, await r.text()); process.exit(1); }'
+  # Without `ready`, a job would race the server; with it, a server that
+  # never listens fails the job and says why.
+  not-ready-fails:
+    using: env:clickhouse@26.11
+    memory: 3GiB
+    services:
+      clickhouse:
+        using: env:clickhouse@26.11
+        run: CLICKHOUSE_HTTP_PORT=9999 clickhouse-server
+        ready: { port: 8123, timeout: 20s }
+    run: "true"
+YAML
+      ;;
     php)
       cat <<'YAML'
 name: php
@@ -3326,6 +3428,8 @@ want_reason() {
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;
+    clickhouse/rejected-fails) echo "exited with 1" ;;
+    clickhouse/not-ready-fails) echo "service \`clickhouse\` was not ready after 20s: nothing listened on port 8123" ;;
     bash/signal-fails) echo "exited with 127" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;
@@ -3347,6 +3451,7 @@ want_stderr() {
     openssh/refused-fails) echo "ssh: connect to host 127.0.0.1 port 2299: Connection refused" ;;
     postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
+    clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
