@@ -288,7 +288,10 @@ jobs:
     env-from: [r2-assets] # every key the resource exports, as variables
     env:
       DATABASE_URL: ${{ resources.prod-db.connectionString }}
-    run: node scripts/deploy.mjs # reads $KUBECONFIG, ~/.ssh and the variables
+    tools: [builtin:kubectl@1.37] # see kubectl, below
+    run: |
+      kubectl rollout restart deploy/web
+      node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
 | Key           | Meaning                                                                                                                                                                                                                                                                                                          |
@@ -698,6 +701,7 @@ Builtins:
 | `typescript@7.1` | `tsc-host` | [tsc-rs] v0.8.0 (TypeScript 7.1) for `wasm32-wasip1`. Reads files through two host imports the runner serves from the in-memory file system. |
 | `gofmt@1.27`     | `wasi`     | Go 1.27.3's `cmd/gofmt`, `GOOS=wasip1`.                                                                                                      |
 | `oxfmt@0.69`     | `wasix`    | Oxc `apps_v1.84.0`'s pure-Rust CLI for WASIX (it needs threads).                                                                             |
+| `kubectl@1.37`   | `wasix`    | kubectl 1.37.2, built with `env:go`'s toolchain for WASIX, so it reaches a cluster over the job's network. See [kubectl](#kubectl).          |
 
 Environments:
 
@@ -1089,6 +1093,48 @@ and default environment come with it. Two kinds cannot be commands and are
 refused when the job starts: tools that use the tsc-host ABI
 (`builtin:typescript`, which reads files through its own host interface;
 run it as a job of its own) and tools whose manifest has default arguments.
+
+### kubectl
+
+`tools: [builtin:kubectl@1.37]` puts kubectl on an environment's `PATH`.
+It is Kubernetes' own `cmd/kubectl` (1.37.2, `kubectl version` says so),
+built by `builtins/kubectl/build.sh` with `env:go`'s toolchain, whose
+WASIX patches give it sockets, and it reads the kubeconfig a
+[lent connection](#connections-ssh-keys-and-resources) writes
+(`KUBECONFIG`).
+
+```yaml
+deploy:
+  using: env:bash@5
+  tools: [builtin:kubectl@1.37]
+  connections: [Production cluster]
+  run: |
+    kubectl get pods
+    kubectl rollout restart deploy/web
+    kubectl rollout status deploy/web --timeout=5m
+```
+
+What to know:
+
+- **No exec credential plugins.** A job has no `aws`, `gcloud` or `doctl`,
+  so a kubeconfig that runs one cannot log in. The app lends a kubeconfig
+  with a short-lived token instead; one you write yourself needs a token or
+  a client certificate.
+- **The cluster's API must be public**, or reached through a public jump
+  host: jobs reach public addresses only (see [Networking](#networking)).
+- **No terminal.** A job has none, so `kubectl exec -it` and `kubectl
+attach -it` run without a TTY, as from any CI. Three vendored packages
+  that assume a terminal (`moby/term`, kubectl's `util` and `util/term`)
+  get wasip1 files that say so, which is the whole change to kubectl's
+  source; `build.sh` checks each file it touches.
+- **It is a 128 MB module.** A runner compiles it once (`iwci serve` warms
+  it), after which a command starts in a fraction of a second.
+- Tested end to end (`builtins/test.sh bash kubectl`) against a small TLS
+  API server on the job's own loopback (`builtins/kubectl/fake-apiserver.go`):
+  version, discovery, `get`, `-o jsonpath`, `rollout restart`, a refused
+  token, and a lent kubeconfig whose token is masked in the log. Streams
+  that upgrade the connection (`exec`, `logs -f`, `port-forward`) are not
+  tested yet.
 
 ### Git
 
@@ -2618,6 +2664,7 @@ bash builtins/test.sh                        # gofmt and bash
 bash builtins/test.sh typescript oxfmt       # needs their toolchains
 bash builtins/test.sh python php             # need the internet (pip, Composer)
 bash builtins/test.sh go                     # every minor; go@1.27 for one
+bash builtins/test.sh bash kubectl           # needs Go's archive and modules
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 
