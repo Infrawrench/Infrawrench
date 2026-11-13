@@ -82,6 +82,13 @@ beforeEach(async () => {
 });
 
 describe("allowlistForPlugins", { timeout: 60_000 }, () => {
+  // The first getPlugin after resetModules loads every plugin, which takes
+  // 6 to 12 s alone and over 60 s on a loaded CI runner (#1125). Do that in
+  // a hook with room to spare, so each test's timeout covers its assertions.
+  beforeEach(async () => {
+    await registry.allowlistForPlugins(["aws"]);
+  }, 180_000);
+
   it("maps known plugin ids to their host suffixes (deduped)", async () => {
     const out = await registry.allowlistForPlugins(["aws", "aws", "gcp"]);
     expect(out).toContain("*.amazonaws.com");
