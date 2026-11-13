@@ -617,6 +617,20 @@ impl WasiProcess {
         signal_process_internal(&self.inner, signal);
     }
 
+    /// Signals this process's own threads, never its children, whoever
+    /// is waiting on it. The exit path's SIGQUIT is for the threads of the
+    /// process that is ending: [`Self::signal_process`] hands a signal to
+    /// the children instead while the process has `waiting` set, which a
+    /// parent's `waitpid` on it does, so a subshell's exit killed the
+    /// background command it had started (`( cmd & )`).
+    pub fn signal_threads(&self, signal: Signal) {
+        let guard = self.inner.0.lock().unwrap();
+        wake_atomic_waiters(&guard, signal);
+        for thread in guard.threads.values() {
+            thread.signal(signal);
+        }
+    }
+
     /// Registers the shared memory used by this process.
     pub fn register_memory(&self, memory: impl Into<MemoryOps>) {
         let mut inner = self.inner.0.lock().unwrap();

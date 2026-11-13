@@ -2552,6 +2552,70 @@ fn a_service_process_started_after_thousands_of_others_is_stopped() {
     );
 }
 
+/// A command a subshell starts in the background outlives the subshell
+/// (#1105), as on Linux: `( cmd & )` is how a script detaches a helper such
+/// as an SSH tunnel. wasmer-wasix's exit path sends SIGQUIT to the process
+/// that is ending, and a process its parent waits for passed that to its
+/// children instead, so the subshell's exit killed `cmd`. A `bash -c`
+/// waited for in turn did the same to what its subshell started.
+#[test]
+fn a_command_a_subshell_started_outlives_the_subshell() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let script = "( bash -c 'sleep 1; echo a > a' & )\n\
+                  bash -c '( sh -c \"sleep 1; echo b > b\" & ); exit 0'\n\
+                  sleep 3\ncat a b\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "a\nb\n",
+        "{stderr:?}"
+    );
+    assert!(!stderr.contains("fatal signal"), "{stderr:?}");
+}
+
+/// What a job leaves running ends with it (#1106): a command a subshell
+/// started (#1105) and a plain background command, one sleeping between
+/// writes and one spinning. Both outlive their parent, as on Linux, but
+/// used to run on after the job too, on the runner, writing into its files.
+#[test]
+fn what_a_job_leaves_running_is_stopped_when_it_ends() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let script = "( bash -c 'i=0; while :; do i=$((i + 1)); echo $i > /work/a; sleep 0.1; done' & )\n\
+                  bash -c 'i=0; while :; do i=$((i + 1)); ((i % 1000)) || echo $i > /work/b; done' &\n\
+                  until test -e /work/a && test -e /work/b; do sleep 0.1; done\necho started\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "started\n",
+        "{stderr:?}"
+    );
+    let read = || {
+        (
+            job.read("/work/a").unwrap_or_default(),
+            job.read("/work/b").unwrap_or_default(),
+        )
+    };
+    let before = read();
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(read(), before, "a process ran on after the job: {stderr:?}");
+}
+
 /// A WASIX command that `renames` times writes one byte, its `id`, to
 /// `/work/rr/t.<id>` and renames that onto `/work/rr/target`, exiting
 /// with a code from 10 up naming the first call that fails.

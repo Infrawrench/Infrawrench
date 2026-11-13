@@ -811,7 +811,28 @@
  impl MutableState {
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
-@@ -855,6 +855,36 @@
+@@ -615,6 +615,20 @@
+     /// Signals all the threads in this process
+     pub fn signal_process(&self, signal: Signal) {
+         signal_process_internal(&self.inner, signal);
++    }
++
++    /// Signals this process's own threads, never its children, whoever
++    /// is waiting on it. The exit path's SIGQUIT is for the threads of the
++    /// process that is ending: [`Self::signal_process`] hands a signal to
++    /// the children instead while the process has `waiting` set, which a
++    /// parent's `waitpid` on it does, so a subshell's exit killed the
++    /// background command it had started (`( cmd & )`).
++    pub fn signal_threads(&self, signal: Signal) {
++        let guard = self.inner.0.lock().unwrap();
++        wake_atomic_waiters(&guard, signal);
++        for thread in guard.threads.values() {
++            thread.signal(signal);
++        }
+     }
+ 
+     /// Registers the shared memory used by this process.
+@@ -855,6 +869,36 @@
              res.unwrap_or_else(|e| e.as_exit_code().unwrap_or_else(|| Errno::Canceled.into()));
  
          Ok(Some((child.pid, code)))
@@ -1174,6 +1195,17 @@
              *self.state.fs.current_dir.lock().unwrap() = "/".to_string();
  
              // We need to rebuild the basic file descriptors
+@@ -1319,7 +1320,9 @@
+                     // Otherwise a pending Sigquit can win the status race and
+                     // make waiters observe a successful exit.
+                     process.terminate(process_exit_code);
+-                    process.signal_process(Signal::Sigquit);
++                    // Only this process's threads: its children outlive
++                    // it, as they do on Linux.
++                    process.signal_threads(Signal::Sigquit);
+                 }
+             })
+         } else {
 --- a/src/syscalls/mod.rs
 +++ b/src/syscalls/mod.rs
 @@ -684,7 +684,88 @@

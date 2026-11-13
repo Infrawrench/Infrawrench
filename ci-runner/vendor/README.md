@@ -825,6 +825,23 @@ with status 134, as an abort would on Linux; the panic itself is still
 logged by the runner. Upstream main does not catch it (checked November
 2026).
 
+**A process's children outlive it (#1105).** A process that exits sends
+SIGQUIT to its own threads (`WasiEnv::on_exit`), through
+`signal_process`, which hands a signal to the process's children instead
+while its `waiting` count is set. `WasiProcess::join` sets that count on
+the process being waited for, so a process whose parent was in `waitpid`
+on it passed its exit's SIGQUIT to its children: `( cmd & )`, the usual
+way to detach a helper such as an SSH tunnel, killed `cmd` ("Program
+recieved fatal signal: Quit") when the subshell exited, and so did a
+`node` exiting to a `detached` child. A plain `cmd &` in the job's script
+was spared because nothing waits on the script's own process that way.
+`src/os/task/process.rs` adds
+`signal_threads`, which signals the process's own threads and nothing
+else, and `src/state/env.rs` exits with it. On Linux an orphan is
+reparented and keeps running; the runner stops what a job left running
+when the job ends (`stop_left_behind`). Upstream main is unchanged
+(checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -840,13 +857,14 @@ directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
 once replace each other in the cache, a panic in a syscall ends only its
-process, and once the runner finds a
+process, a process's exit signals only its own threads, and once the runner finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes`, `exit-status-passes`,
 `spawn-many-passes` (bash, bash-node and go),
-`bash/many-processes-checked-passes` and
+`bash/many-processes-checked-passes`, `bash/subshell-background-passes`,
+`bash-node/detached-child-passes` and
 `shebang-passes` (bash and bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
 (bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
 and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
@@ -873,8 +891,9 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `reading_a_directory_while_removing_its_entries_misses_none`,
 `a_bash_script_can_rm_rf_a_directory_of_many_files`,
 `a_directory_moved_out_of_a_removed_one_has_its_new_parent`,
-`sendfile_copies_into_a_file` and
-`concurrent_renames_onto_one_name_all_succeed`.
+`sendfile_copies_into_a_file`,
+`concurrent_renames_onto_one_name_all_succeed` and
+`a_command_a_subshell_started_outlives_the_subshell`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

@@ -817,6 +817,33 @@ jobs:
       before="$(cat /tmp/workflow/spawner-tick)"
       sleep 3
       test "$(cat /tmp/workflow/spawner-tick)" = "$before"
+  # A command a subshell starts in the background outlives the subshell
+  # (#1105), as on Linux: `( cmd & )` is how a script detaches a helper.
+  # The subshell's exit sent it SIGQUIT ("Program recieved fatal signal:
+  # Quit"), in a `bash -c` too.
+  subshell-background-passes:
+    using: env:bash@5
+    run: |
+      ( bash -c 'sleep 1; echo a > /tmp/a' & )
+      bash -c '( sh -c "sleep 1; echo b > /tmp/b" & ); exit 0'
+      sleep 3
+      test "$(cat /tmp/a /tmp/b)" = "$(printf 'a\nb')"
+  # ...but not the job: what a job leaves running, by `( cmd & )` or
+  # `cmd &`, is stopped when it ends (#1106). It used to run on and write
+  # here.
+  left-running-passes:
+    using: env:bash@5
+    run: |
+      ( bash -c 'i=0; while :; do i=$((i + 1)); echo "$i" > /tmp/workflow/left-a; sleep 0.1; done' & )
+      bash -c 'i=0; while :; do i=$((i + 1)); ((i % 1000)) || echo "$i" > /tmp/workflow/left-b; done' &
+      until test -e /tmp/workflow/left-a && test -e /tmp/workflow/left-b; do sleep 0.1; done
+  left-running-stopped-passes:
+    using: env:bash@5
+    needs: [left-running-passes]
+    run: |
+      before="$(cat /tmp/workflow/left-a /tmp/workflow/left-b)"
+      sleep 3
+      test "$(cat /tmp/workflow/left-a /tmp/workflow/left-b)" = "$before"
   # An argument with a line feed in it reaches the program whole (#1003):
   # bash's exec joined the arguments with line feeds and WASIX split them
   # there again, so this printed `a|b|c|`. Through a second bash, through
@@ -2344,6 +2371,30 @@ jobs:
       for (let i = 1; i <= 600; i++) execFileSync("true");
       console.log("600 spawns ok");
       ' | grep -qx '600 spawns ok'
+  # A detached child outlives the `node` that started it (#1105): node's
+  # exit sent it SIGQUIT. It does not outlive the job, though, which
+  # left-running-stopped-passes checks.
+  detached-child-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      node -e '
+      const { spawn } = require("node:child_process");
+      const once = "sleep 1; echo n > /tmp/n";
+      spawn("bash", ["-c", once], { detached: true, stdio: "ignore" }).unref();
+      const loop = "i=0; while :; do i=$((i + 1)); echo $i > /tmp/workflow/left-node; sleep 0.1; done";
+      spawn("bash", ["-c", loop], { detached: true, stdio: "ignore" }).unref();
+      '
+      sleep 3
+      test "$(cat /tmp/n)" = n
+      test -s /tmp/workflow/left-node
+  left-running-stopped-passes:
+    using: env:bash-node@24
+    needs: [detached-child-passes]
+    run: |
+      before="$(cat /tmp/workflow/left-node)"
+      sleep 3
+      test "$(cat /tmp/workflow/left-node)" = "$before"
   # A child's exit status reaches a `node` whole (#1053): spawnSync and
   # `exit` read every status from 80 up as 79.
   exit-status-passes:
