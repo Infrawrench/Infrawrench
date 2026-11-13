@@ -92,6 +92,13 @@ impl LazyWorkspace<'_> {
 pub trait Tools: Send + Sync {
     type Tool: Send + Sync;
     fn resolve(&self, tool: &ToolRef) -> Result<Arc<Self::Tool>, String>;
+    /// What `tool` resolves to, by content and without fetching it: the
+    /// exact version a range picks and a digest that fixes every byte of it.
+    /// A task cache key holds this rather than the `using:` text, so a
+    /// version published under a range changes the key. It must agree with
+    /// [`Tools::resolve`] for the rest of the run, as `StoreTools` does by
+    /// memoising its listings per run.
+    fn pin(&self, tool: &ToolRef) -> Result<String, String>;
     /// The caches `tool`'s environment keeps on its own (its manifest's
     /// `caches`); none for a tool.
     fn env_caches(&self, _tool: &Self::Tool) -> Vec<crate::env_cache::EnvCacheDecl> {
@@ -1296,7 +1303,7 @@ pub fn run<T: Tools>(
                     };
                     let mut kept = Vec::new();
                     match look_up(
-                        &job, plan, &workspace, options, &shared, &inherited, &mut kept,
+                        &job, plan, &workspace, tools, options, &shared, &inherited, &mut kept,
                     ) {
                         Looked::Done(report) => {
                             complete(&state, &wake, plan, options, template, *report, kept)
@@ -1780,18 +1787,35 @@ struct RunShared<'a> {
 /// This holds no job slot and none of the job's `memory:`, which is what
 /// lets a run look up many more entries at once than it may run jobs. Keep
 /// it to the checkout, the key and the store.
-fn look_up(
+#[allow(clippy::too_many_arguments)]
+fn look_up<T: Tools>(
     job: &PlannedJob,
     plan: &Plan,
     workspace: &LazyWorkspace<'_>,
+    tools: &T,
     options: &Options,
     shared: &RunShared<'_>,
     inherited: &[(String, Arc<Vec<Entry>>)],
     kept: &mut Vec<Entry>,
 ) -> Looked {
     let started = Instant::now();
+    // What every tool and environment the job uses resolves to, by content.
+    // One that does not resolve leaves the job unkeyed: it runs, fails at
+    // the same resolution with the usual message, and saves nothing.
+    let pins = match job_tools(job)
+        .map(|t| tools.pin(t).map_err(|e| format!("{t}: {e}")))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(pins) => pins,
+        Err(e) => {
+            return Looked::Run(Lookup {
+                key: None,
+                lines: vec![format!("task cache: not read, {e}")],
+            });
+        }
+    };
     let key = match workspace.files() {
-        Ok(files) => task_cache_key(job, plan, files, inherited),
+        Ok(files) => task_cache_key(job, plan, files, &pins, inherited),
         Err(e) => {
             return Looked::Done(Box::new(errored(
                 job,
@@ -2820,17 +2844,27 @@ fn short_key(key: &str) -> &str {
     &hash[..hash.len().min(12)]
 }
 
+/// Every tool and environment a job runs: its `using:`, its `tools:` and
+/// its services', in that order.
+fn job_tools(job: &PlannedJob) -> impl Iterator<Item = &ToolRef> {
+    std::iter::once(&job.tool)
+        .chain(&job.tools)
+        .chain(job.services.iter().map(|s| &s.tool))
+}
+
 /// The task cache key of a `task-cache:` job: everything that decides what
 /// it does and what it reads. Its definition (tool, arguments or script,
-/// environment, directory, what it keeps), its workspace's settings and
-/// lockfiles, the files its inputs match as the commit has them (never
-/// under `node_modules`), and the artifacts it is handed, by content, so a
-/// change to a package reaches every job downstream of it. `None` for a
-/// job without one.
+/// environment, directory, what it keeps), what each of [`job_tools`]
+/// resolves to (`pins`, from [`Tools::pin`], so a version published under
+/// a range is a new key), its workspace's settings and lockfiles, the files
+/// its inputs match as the commit has them (never under `node_modules`),
+/// and the artifacts it is handed, by content, so a change to a package
+/// reaches every job downstream of it. `None` for a job without one.
 fn task_cache_key(
     job: &PlannedJob,
     plan: &Plan,
     snapshot: &Snapshot,
+    pins: &[String],
     inherited: &[(String, Arc<Vec<Entry>>)],
 ) -> Option<String> {
     use sha2::Digest;
@@ -2877,8 +2911,14 @@ fn task_cache_key(
         hash.update([0]);
         hash.update(sha2::Sha256::digest(content));
     };
-    hash.update(b"iwci task cache 1\0");
+    // 2: keyed on what each tool resolves to as well as on its `using:`.
+    hash.update(b"iwci task cache 2\0");
     hash.update(serde_json::to_vec(&definition).ok()?);
+    hash.update(b"\0pins\0");
+    for pin in pins {
+        hash.update(pin.as_bytes());
+        hash.update([0]);
+    }
     for dep in &ws.deps {
         let names: Vec<&str> = match dep.ecosystem {
             iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],

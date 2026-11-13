@@ -50,6 +50,11 @@ impl Tools for FakeTools {
             t => Ok(Arc::new(t.to_string())),
         }
     }
+    /// Every range resolves to version `1.0.0` of its name.
+    fn pin(&self, tool: &ToolRef) -> Result<String, String> {
+        self.resolve(tool)?;
+        Ok(format!("{}@1.0.0", tool.name()))
+    }
     /// `envcache` tools have one environment cache, of 64 bytes at most.
     fn env_caches(&self, tool: &String) -> Vec<crate::env_cache::EnvCacheDecl> {
         if !tool.contains(":envcache") {
@@ -1615,6 +1620,17 @@ fn run_cached_with(
     source: &'static str,
     skip_task_cache: bool,
 ) -> (RunReport, Vec<String>, usize) {
+    run_cached_on(plan, caches, source, skip_task_cache, &FakeTools)
+}
+
+/// [`run_cached_with`], with the tools given.
+fn run_cached_on(
+    plan: &Plan,
+    caches: &Arc<MemoryCaches>,
+    source: &'static str,
+    skip_task_cache: bool,
+    tools: &impl Tools<Tool = String>,
+) -> (RunReport, Vec<String>, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -1646,13 +1662,75 @@ fn run_cached_with(
     let report = run(
         plan,
         &ws,
-        &FakeTools,
+        tools,
         &exec,
         &FakeCommitter(Mutex::default()),
         &options,
     );
     let ran = ran(&exec);
     (report, ran, ws.installs.load(Ordering::SeqCst))
+}
+
+/// [`FakeTools`] where the store has `version` published for `name`, and
+/// every other name at `1.0.0`.
+struct Published {
+    name: &'static str,
+    version: &'static str,
+}
+
+impl Tools for Published {
+    type Tool = String;
+    fn resolve(&self, tool: &ToolRef) -> Result<Arc<String>, String> {
+        FakeTools.resolve(tool)
+    }
+    fn pin(&self, tool: &ToolRef) -> Result<String, String> {
+        if tool.name() == self.name {
+            return Ok(format!("{}@{}", self.name, self.version));
+        }
+        FakeTools.pin(tool)
+    }
+}
+
+/// #1112: a version published under a job's `using:`, `tools:` or service
+/// range is a new key, so cached passes from the old version stop
+/// replaying; the same version keeps hitting.
+#[test]
+fn the_task_cache_keys_on_what_each_tool_resolves_to() {
+    let p = plan(
+        "name: x\njobs:\n  t:\n    using: env:bash-node@24\n    run: echo\n    tools: [builtin:tsc@7]\n    task-cache: true\n    services: { db: { using: env:postgres@18, run: pglite } }\n",
+    );
+    for name in ["bash-node", "tsc", "postgres"] {
+        let store = Arc::new(MemoryCaches::default());
+        let at = |version| Published { name, version };
+        let (first, ran, _) = run_cached_on(&p, &store, "a", false, &at("1.0.4"));
+        assert!(first.passed(), "{:#?}", first.jobs);
+        assert_eq!(ran, ["t"], "{name}");
+        let (again, ran, _) = run_cached_on(&p, &store, "a", false, &at("1.0.4"));
+        assert!(cached(&again, "t") && ran.is_empty(), "{name}: {ran:?}");
+        let (newer, ran, _) = run_cached_on(&p, &store, "a", false, &at("1.0.5"));
+        assert!(
+            !cached(&newer, "t") && ran == ["t"],
+            "{name}: a new version under the range must run, ran {ran:?}"
+        );
+        let (_, ran, _) = run_cached_on(&p, &store, "a", false, &at("1.0.5"));
+        assert!(ran.is_empty(), "{name}: {ran:?}");
+    }
+}
+
+/// A tool that does not resolve leaves the job unkeyed: it fails as it
+/// would without the task cache, and nothing is read or saved.
+#[test]
+fn a_tool_that_does_not_resolve_is_not_looked_up() {
+    let p = plan("name: x\njobs:\n  t:\n    using: repo:missing@1\n    task-cache: true\n");
+    let store = Arc::new(MemoryCaches::default());
+    let (report, ran) = run_cached(&p, &store, "a");
+    assert!(ran.is_empty() && !report.passed(), "{ran:?}");
+    assert!(
+        matches!(status(&report, "t"), Status::Error { message } if message.contains("no such tool")),
+        "{:#?}",
+        report.jobs
+    );
+    assert!(store.saved.lock().unwrap().is_empty());
 }
 
 fn cached(report: &RunReport, id: &str) -> bool {
@@ -2217,7 +2295,7 @@ fn a_service_is_part_of_a_task_cache_key() {
                 b"a",
             )
             .unwrap();
-        task_cache_key(p.job("a").unwrap(), p, &snapshot.freeze(), &[]).unwrap()
+        task_cache_key(p.job("a").unwrap(), p, &snapshot.freeze(), &[], &[]).unwrap()
     };
     let none = job("");
     let with = job("    services: { db: { using: env:postgres@18, run: pglite } }\n");

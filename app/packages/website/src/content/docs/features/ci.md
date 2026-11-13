@@ -177,6 +177,7 @@ jobs:
 - Filter which packages a job runs in by directory or name (`only:`), by the files a package has (`has:`), and by its scripts (`has-script:`, or `scripts:` to match a script's command).
 - A skipped job shows as **Passed** with the reason _Cached: nothing it reads changed since a run that passed_, and its output is the output of that run. The check on GitHub says how many jobs the task cache stood in for.
 - A job's cache key covers the job itself, the files it reads, your lockfile and everything earlier jobs hand it, so a change in one package reruns the jobs downstream of it only when their inputs actually changed.
+- It also covers the exact version of every tool and environment the job uses. When a new version is published under a range you wrote in `using:` (such as `env:bash-node@24`), each job using it runs once more on the new version; a job that names an exact version (`@24.0.8`) stays cached.
 - Pull requests keep their own cached results, like their caches: nothing a pull request saves is reused on your default branch.
 
 ## Runs

@@ -133,7 +133,7 @@ mod r2;
 mod store;
 mod version;
 
-pub use catalog::{Blob, Catalog, Resolved, ToolKind, ToolRef};
+pub use catalog::{Blob, Catalog, Pinned, Resolved, ToolKind, ToolRef};
 pub use error::{Error, ManifestError, StoreError};
 pub use keys::{Namespace, RepoId};
 pub use manifest::{

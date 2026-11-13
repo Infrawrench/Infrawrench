@@ -125,6 +125,34 @@ pub enum Resolved {
     },
 }
 
+/// Exactly which published version a reference resolves to, by content:
+/// what [`Catalog::pin`] returns. Displays as
+/// `env:bash-node@24.0.4 sha256:<manifest digest>`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Pinned {
+    /// The namespace.
+    pub kind: ToolKind,
+    /// The tool or environment name.
+    pub name: String,
+    /// The version picked, never a range.
+    pub version: Version,
+    /// SHA-256 of the manifest document as stored.
+    pub manifest_sha256: String,
+}
+
+impl fmt::Display for Pinned {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}@{} sha256:{}",
+            self.kind.label(),
+            self.name,
+            self.version,
+            self.manifest_sha256
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Loaded {
     Tool(Arc<ToolManifest>, String),
@@ -345,10 +373,26 @@ impl Catalog {
         Ok(blob)
     }
 
-    /// Resolves `reference` for a job of repository `repo`: picks the highest
-    /// matching version, loads and validates its manifest, and fetches and
-    /// verifies every blob it names.
-    pub fn resolve(&self, reference: &ToolRef, repo: &RepoId) -> Result<Resolved, Error> {
+    /// What `reference` resolves to for a job of repository `repo`, without
+    /// fetching a blob: the version [`Catalog::resolve`] picks and the
+    /// SHA-256 of that version's manifest, which names every blob by its
+    /// own SHA-256, so the pin identifies exactly the bytes that would run.
+    /// The listing and the manifest are memoised, so a later `resolve` of the
+    /// same reference on this catalog hands over what this pinned.
+    pub fn pin(&self, reference: &ToolRef, repo: &RepoId) -> Result<Pinned, Error> {
+        let (version, loaded) = self.pick(reference, repo)?;
+        let (Loaded::Tool(_, manifest_sha256) | Loaded::Env(_, manifest_sha256)) = loaded;
+        Ok(Pinned {
+            kind: reference.kind,
+            name: reference.name.clone(),
+            version,
+            manifest_sha256,
+        })
+    }
+
+    /// The highest version matching `reference`, its manifest loaded and
+    /// validated.
+    fn pick(&self, reference: &ToolRef, repo: &RepoId) -> Result<(Version, Loaded), Error> {
         let ns = Self::namespace(reference.kind, repo);
         let versions = self.listing(&ns, &reference.name)?;
         if versions.is_empty() {
@@ -364,7 +408,15 @@ impl Catalog {
             });
         };
         let key = ns.manifest_key(&reference.name, version)?;
-        match self.load(reference.kind, &key, &reference.name, version)? {
+        let loaded = self.load(reference.kind, &key, &reference.name, version)?;
+        Ok((version.clone(), loaded))
+    }
+
+    /// Resolves `reference` for a job of repository `repo`: picks the highest
+    /// matching version, loads and validates its manifest, and fetches and
+    /// verifies every blob it names.
+    pub fn resolve(&self, reference: &ToolRef, repo: &RepoId) -> Result<Resolved, Error> {
+        match self.pick(reference, repo)?.1 {
             Loaded::Tool(manifest, manifest_sha256) => {
                 let module = self.blob(&manifest.module.sha256, manifest.module.size)?;
                 let files = manifest

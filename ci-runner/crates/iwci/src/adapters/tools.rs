@@ -18,17 +18,26 @@ pub struct StoreTools {
     pub repo: RepoId,
 }
 
+/// The spec and the store each parse references; the store's parser is the
+/// one that decides version matching, so it is handed the text.
+fn store_ref(tool: &ToolRef) -> Result<iwci_store::ToolRef, String> {
+    tool.to_string().parse().map_err(|e| format!("{e}"))
+}
+
 impl Tools for StoreTools {
     type Tool = Resolved;
 
     fn resolve(&self, tool: &ToolRef) -> Result<Arc<Resolved>, String> {
-        // The spec and the store each parse references; the store's parser
-        // is the one that decides version matching, so hand it the text.
-        let reference: iwci_store::ToolRef =
-            tool.to_string().parse().map_err(|e| format!("{e}"))?;
         self.catalog
-            .resolve(&reference, &self.repo)
+            .resolve(&store_ref(tool)?, &self.repo)
             .map(Arc::new)
+            .map_err(|e| e.to_string())
+    }
+
+    fn pin(&self, tool: &ToolRef) -> Result<String, String> {
+        self.catalog
+            .pin(&store_ref(tool)?, &self.repo)
+            .map(|pinned| pinned.to_string())
             .map_err(|e| e.to_string())
     }
 
