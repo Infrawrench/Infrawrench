@@ -2126,9 +2126,15 @@ fn a_scratch_directory_is_shared_between_separate_runs() {
         .unwrap();
     assert_eq!(outcome.exit_code, 0, "{outcome:?}");
     assert_eq!(scratch.read("/dist/out.txt").unwrap(), b"built\n");
-    // The scratch is not the job's change, and the job's own /tmp is not
+    // The scratch is not the job's: only its own /tmp is, which is not
     // shared.
-    assert!(first.changes("/").is_empty(), "{:?}", first.changes("/"));
+    assert_eq!(
+        first.changes("/"),
+        vec![Change::Added {
+            path: "/tmp/mine.txt".into(),
+            bytes: b"private\n".to_vec()
+        }]
+    );
 
     let second = snapshot(&[]).fork();
     let mut inv = invocation(second.as_dyn(), &[]);

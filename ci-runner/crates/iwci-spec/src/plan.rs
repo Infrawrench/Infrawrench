@@ -369,6 +369,8 @@ pub struct PlannedJob {
     pub memory_bytes: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
+    /// Which of its environment's own caches the job keeps (`env-cache:`).
+    pub env_cache: EnvCachePolicy,
     /// Whether the job may reach the public internet (`network:`, default
     /// on). Its loopback is always there.
     #[serde(skip_serializing_if = "is_true")]
@@ -502,6 +504,30 @@ impl SecretEnv {
             }
         }
         (value, missing)
+    }
+}
+
+/// Which of an environment's caches a job keeps (`env-cache:`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EnvCachePolicy {
+    /// Every cache the environment declares (the default).
+    #[default]
+    All,
+    /// None of them (`env-cache: false`).
+    Off,
+    /// Every one but these (`env-cache: { <name>: false }`).
+    Except(Vec<String>),
+}
+
+impl EnvCachePolicy {
+    /// Whether the job keeps the environment's cache `name`.
+    pub fn keeps(&self, name: &str) -> bool {
+        match self {
+            EnvCachePolicy::All => true,
+            EnvCachePolicy::Off => false,
+            EnvCachePolicy::Except(off) => !off.iter().any(|n| n == name),
+        }
     }
 }
 

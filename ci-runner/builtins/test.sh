@@ -2899,4 +2899,5 @@ for name in "$@"; do
     jq '.pipelines[0].report.jobs[] | {id, status, reason, message, execution}' <<<"$out" >&2
   fi
 done
+
 exit "$failed"

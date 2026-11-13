@@ -746,6 +746,25 @@ fn the_dynamic_example_parses() {
 }
 
 #[test]
+fn env_cache_turns_an_environments_caches_off() {
+    let job = |extra: &str| {
+        format!("name: x\njobs:\n  t:\n    using: env:go@1.27\n    run: go build\n{extra}")
+    };
+    let policy = |extra: &str| {
+        first(&parse(&job(extra), &ctx()).unwrap())
+            .env_cache
+            .clone()
+    };
+    assert_eq!(policy(""), EnvCachePolicy::All);
+    assert_eq!(policy("    env-cache: true\n"), EnvCachePolicy::All);
+    assert_eq!(policy("    env-cache: false\n"), EnvCachePolicy::Off);
+    let some = policy("    env-cache: { go-build: false, other: true }\n");
+    assert_eq!(some, EnvCachePolicy::Except(vec!["go-build".into()]));
+    assert!(!some.keeps("go-build") && some.keeps("other"));
+    assert_error(&job("    env-cache: [go-build]\n"), "invalid type");
+}
+
+#[test]
 fn caches_resolve_paths_and_keep_hash_files_for_the_run() {
     let plan = parse(
         r#"

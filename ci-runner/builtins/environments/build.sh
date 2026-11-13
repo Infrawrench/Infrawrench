@@ -216,6 +216,8 @@ fetch() {
 # build_env <name> <version> <description> <env> <package lines...>
 # <env> is the manifest's default environment as JSON object members
 # (`"KEY": "value", ...`), or empty; a job's own `env:` wins over it.
+# $CACHES, when set, is the manifest's `caches` as JSON array items
+# (README.md, "Environment caches").
 build_env() {
   local name="$1" version="$2" description="$3" env="$4"
   shift 4
@@ -228,6 +230,11 @@ build_env() {
   done
   local joined
   joined="$(IFS=,; printf '%s' "${packages[*]}")"
+  # Built here: inside the heredoc, `${CACHES:+...}` would strip its quotes.
+  local caches=""
+  if [[ -n "${CACHES:-}" ]]; then
+    caches=$'\n  "caches": ['"$CACHES"'],'
+  fi
   cat >"$out/build.json" <<JSON
 {
   "kind": "environment",
@@ -235,7 +242,7 @@ build_env() {
   "version": "$version",
   "entry": "bash",
   "packages": [$joined],
-  "env": { $env },
+  "env": { $env },$caches
   "description": "$description"
 }
 JSON

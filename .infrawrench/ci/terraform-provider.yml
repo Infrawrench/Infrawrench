@@ -60,9 +60,11 @@ jobs:
   # runs the tests against this commit. `-vet=off` because vet runs on
   # GitHub Actions (above); `go test`'s own vet includes errorsas.
   #
-  # Go compiles one package at a time here, so most of a run is compiling
-  # the dependencies. Their build cache is not kept between runs: a job
-  # cache of GOCACHE (/root/.cache/go-build) saves nothing yet (#1083).
+  # Go compiles one package at a time here, so most of a cold run is
+  # compiling the dependencies. Their build cache is not kept between runs
+  # yet: `env:go` keeps it on its own once the Go environments declare it
+  # (ci-runner/README.md, "Environment caches"), which waits for a runner
+  # release that reads that declaration.
   go:
     name: Build and test
     using: env:go@1.27
