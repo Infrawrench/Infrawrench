@@ -96,7 +96,8 @@ for patch in "$here/environments/go/$go_minor"/*.patch; do
   }
 done
 # The native go command, with nothing from this machine's configuration.
-# Modules come from the proxy and are checked against go.sum.
+# Modules come from the proxy and are checked against go.sum, into a cache
+# left writable (`-modcacherw`) so the scratch directory can be removed.
 hostgo() {
   env -i PATH="$goroot/bin:/usr/bin:/bin" HOME="$work/home" GOROOT="$goroot" \
     GOENV=off GOTOOLCHAIN=local GOTELEMETRY=off CGO_ENABLED=0 \
@@ -109,7 +110,7 @@ src="$work/src"
 rm -rf "$src"
 mkdir -p "$src"
 cp "$self/main.go" "$self/$minor/go.mod" "$self/$minor/go.sum" "$src/"
-(cd "$src" && hostgo GOFLAGS=-mod=mod go mod vendor)
+(cd "$src" && hostgo GOFLAGS="-mod=mod -modcacherw" go mod vendor)
 
 # 3. Off the Unix files, onto the shims. `retag <file> <build line>`: the
 # file's build line must still be the one written here, or the vendored
@@ -147,7 +148,7 @@ for pkg in k8s.io/component-base/version k8s.io/client-go/pkg/version; do
   ldflags+=" -X $pkg.gitTreeState=clean -X $pkg.buildDate=$date"
 done
 out="$(out_dir builtin kubectl "$version")"
-(cd "$src" && hostgo GOFLAGS=-mod=vendor go build -trimpath -ldflags="$ldflags" -o "$out/module.wasm" .)
+(cd "$src" && hostgo GOFLAGS="-mod=vendor -modcacherw" go build -trimpath -ldflags="$ldflags" -o "$out/module.wasm" .)
 if ! echo "$module_sha  $out/module.wasm" | sha256sum -c --status -; then
   echo "error: kubectl $version came out as $(sha256sum "$out/module.wasm" | cut -d' ' -f1), not the pinned $module_sha" >&2
   exit 1
@@ -170,5 +171,5 @@ test_out="$dist/test/kubectl"
 mkdir -p "$test_out" "$work/fake"
 cp "$self/fake-apiserver.go" "$work/fake/main.go"
 printf 'module fake\n\ngo 1.25\n' >"$work/fake/go.mod"
-(cd "$work/fake" && hostgo GOFLAGS=-mod=mod go build -trimpath -ldflags="-s -w -buildid=" -o "$test_out/fake-apiserver.wasm" .)
+(cd "$work/fake" && hostgo GOFLAGS="-mod=mod -modcacherw" go build -trimpath -ldflags="-s -w -buildid=" -o "$test_out/fake-apiserver.wasm" .)
 echo "built $test_out/fake-apiserver.wasm"
