@@ -576,6 +576,9 @@ pub struct WasiFs {
     pub root_inode: InodeGuard,
     pub has_unioned: Mutex<HashSet<PackageId>>,
     ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
+    /// iwci patch (#1092): held by `path_rename` for the whole rename, and
+    /// shared, like the inode tree, with a forked process.
+    pub(crate) rename_lock: Arc<Mutex<()>>,
     /// Preopens the program has put something else in place of, by the
     /// number they had (see `get_dir_fd`). Taken after `fd_map`.
     displaced_preopens: RwLock<HashMap<WasiFd, Fd>>,
@@ -713,6 +716,7 @@ impl WasiFs {
             root_inode: self.root_inode.clone(),
             has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
             ephemeral_symlinks: self.ephemeral_symlinks.clone(),
+            rename_lock: self.rename_lock.clone(),
             displaced_preopens: RwLock::new(self.displaced_preopens.read().unwrap().clone()),
             init_preopens: self.init_preopens.clone(),
             init_vfs_preopens: self.init_vfs_preopens.clone(),
@@ -877,6 +881,7 @@ impl WasiFs {
             root_inode,
             has_unioned: Mutex::new(HashSet::new()),
             ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
+            rename_lock: Arc::default(),
             displaced_preopens: RwLock::new(HashMap::new()),
             init_preopens: Default::default(),
             init_vfs_preopens: Default::default(),

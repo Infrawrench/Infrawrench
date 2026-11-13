@@ -969,6 +969,50 @@ jobs:
       console.log(text, fs.existsSync("data.txt"), fs.readdirSync("go").sort().join(","), fs.readlinkSync("node-link"));
       JS
       test "$(node /tmp/rename.js)" = "fixture line false clean,renamed data.txt"
+  # Threads and processes renaming temporaries onto one name at once
+  # (#1092), the atomic-replace idiom of compile and package caches: two
+  # renames racing onto one target aborted the runner, every job on it
+  # included. Every rename succeeds, the last one wins and no temporary is
+  # left behind.
+  rename-race-passes:
+    using: env:bash-node@24
+    timeout: 5m
+    run: |
+      cat > /tmp/race.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const { spawn } = require("node:child_process");
+      const { Worker, isMainThread, threadId } = require("node:worker_threads");
+      const dir = "/tmp/rr";
+      const N = 3000;
+      const hammer = (who) => {
+        for (let i = 0; i < N; i++) {
+          const tmp = `${dir}/target.${who}.${i}.tmp`;
+          fs.writeFileSync(tmp, `${who}.${i}`);
+          fs.renameSync(tmp, `${dir}/target`);
+        }
+      };
+      if (process.argv[2]) {
+        hammer(process.argv[2]);
+      } else if (!isMainThread) {
+        hammer(`t${threadId}`);
+      } else {
+        fs.mkdirSync(dir, { recursive: true });
+        const exited = (child) => new Promise((resolve, reject) => child.on("exit", resolve).on("error", reject));
+        const all = [
+          ...["p1", "p2"].map((who) => exited(spawn(process.execPath, [__filename, who], { stdio: "inherit" }))),
+          ...[1, 2, 3, 4].map(() => exited(new Worker(__filename))),
+        ];
+        Promise.all(all).then((codes) => {
+          assert.deepStrictEqual(codes, [0, 0, 0, 0, 0, 0]);
+          assert.deepStrictEqual(fs.readdirSync(dir), ["target"]);
+          assert.match(fs.readFileSync(`${dir}/target`, "utf8"), new RegExp(`^(p[12]|t[0-9]+)\\.${N - 1}$`));
+          console.log("rename race ok");
+        });
+      }
+      JS
+      test "$(node /tmp/race.js)" = "rename race ok"
+      test "$(ls /tmp/rr)" = target
   # `fs.rmSync(dir, { recursive: true })` removes the tree (#1049). Its
   # `remove` tries `unlink` before `rmdir`, and WASIX's unlink of a
   # directory dropped it from its directory cache before refusing, so the

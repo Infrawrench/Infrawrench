@@ -363,25 +363,29 @@
      state::{Stderr, Stdin, Stdout},
  };
  use futures::{Future, future::BoxFuture};
-@@ -575,6 +576,9 @@
+@@ -575,6 +576,12 @@
      pub root_inode: InodeGuard,
      pub has_unioned: Mutex<HashSet<PackageId>>,
      ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
++    /// iwci patch (#1092): held by `path_rename` for the whole rename, and
++    /// shared, like the inode tree, with a forked process.
++    pub(crate) rename_lock: Arc<Mutex<()>>,
 +    /// Preopens the program has put something else in place of, by the
 +    /// number they had (see `get_dir_fd`). Taken after `fd_map`.
 +    displaced_preopens: RwLock<HashMap<WasiFd, Fd>>,
  
      // TODO: remove
      // using an atomic is a hack to enable customization after construction,
-@@ -709,6 +713,7 @@
+@@ -709,6 +716,8 @@
              root_inode: self.root_inode.clone(),
              has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
              ephemeral_symlinks: self.ephemeral_symlinks.clone(),
++            rename_lock: self.rename_lock.clone(),
 +            displaced_preopens: RwLock::new(self.displaced_preopens.read().unwrap().clone()),
              init_preopens: self.init_preopens.clone(),
              init_vfs_preopens: self.init_vfs_preopens.clone(),
          }
-@@ -735,6 +740,9 @@
+@@ -735,6 +744,9 @@
              let mut flush_targets = Vec::new();
              for fd in to_close {
                  let outcome = Self::close_fd_locked(&mut fd_map, fd);
@@ -391,15 +395,16 @@
                  if let Some(target) = outcome.flush_target {
                      flush_targets.push(target);
                  }
-@@ -869,6 +877,7 @@
+@@ -869,6 +881,8 @@
              root_inode,
              has_unioned: Mutex::new(HashSet::new()),
              ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
++            rename_lock: Arc::default(),
 +            displaced_preopens: RwLock::new(HashMap::new()),
              init_preopens: Default::default(),
              init_vfs_preopens: Default::default(),
          };
-@@ -1096,7 +1105,7 @@
+@@ -1096,7 +1110,7 @@
  
      /// refresh size from filesystem
      pub fn filestat_resync_size(&self, fd: WasiFd) -> Result<Filesize, Errno> {
@@ -408,7 +413,7 @@
          let mut guard = inode.write();
          match guard.deref_mut() {
              Kind::File { handle, .. } => {
-@@ -1758,7 +1767,13 @@
+@@ -1758,7 +1772,13 @@
          path: &str,
          follow_symlinks: bool,
      ) -> Result<InodeGuard, Errno> {
@@ -423,7 +428,7 @@
          let mut symlink_count = 0;
          self.get_inode_at_path_inner(
              inodes,
-@@ -1797,7 +1812,7 @@
+@@ -1797,7 +1817,7 @@
      ) -> Result<(InodeGuard, String), Errno> {
          let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
          if parent_dir.as_str().is_empty() {
@@ -432,10 +437,13 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1819,6 +1834,48 @@
-         }
-     }
- 
+@@ -1816,9 +1836,51 @@
+             Ok(Self::virtual_root_fd(self.root_inode.clone()))
+         } else {
+             ret
++        }
++    }
++
 +    /// The descriptor a path call given `fd` and `path` works from, for its
 +    /// rights. An absolute path resolves from the virtual root whatever `fd`
 +    /// is (as `openat` ignores its `dirfd` for one), so it takes the root's
@@ -445,9 +453,9 @@
 +            Ok(Self::virtual_root_fd(self.root_inode.clone()))
 +        } else {
 +            self.get_dir_fd(fd)
-+        }
-+    }
-+
+         }
+     }
+ 
 +    /// The directory a path call given `fd` resolves a relative path from:
 +    /// what is on `fd`, unless that is not a directory and a preopen used to
 +    /// be there, in which case that preopen (#1019).
@@ -481,7 +489,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,57 +1890,83 @@
+@@ -1833,57 +1895,83 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -601,7 +609,7 @@
                  Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
                      InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
                      InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
-@@ -1905,10 +1988,21 @@
+@@ -1905,10 +1993,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -624,7 +632,7 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2120,7 @@
+@@ -2026,6 +2125,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -632,7 +640,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2189,7 @@
+@@ -2094,6 +2194,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -640,7 +648,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2228,7 @@
+@@ -2132,6 +2233,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -648,7 +656,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2268,29 @@
+@@ -2171,18 +2273,29 @@
                  return Ok(None);
              }
  
@@ -681,7 +689,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2707,7 @@
+@@ -2599,6 +2712,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -689,7 +697,7 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,7 +2783,24 @@
+@@ -2674,9 +2788,26 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -699,8 +707,8 @@
 +            self.restore_displaced_preopen_locked(&mut fd_map, fd);
 +        }
 +        outcome
-+    }
-+
+     }
+ 
 +    /// Puts back the preopen `dup2_at` kept for `fd`, now that what was put
 +    /// over it is closed (#1019). A preopen cannot be closed (see
 +    /// `close_fd_locked`), so it comes back as it was: `exec 4>&-` after
@@ -712,9 +720,11 @@
 +        {
 +            panic!("Internal error: expected FD {fd} to be free after closing it");
 +        }
-     }
- 
++    }
++
      /// Closes an open FD in an already write-locked fd map.
+     fn close_fd_locked(fd_map: &mut FdList, fd: WasiFd) -> CloseFdOutcome {
+         let Some(fd_ref) = fd_map.get(fd) else {
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -118,7 +118,9 @@
@@ -1097,6 +1107,63 @@
 +        until(|| pool.threads() == 0);
 +    }
  }
+--- a/src/state/context_switching.rs
++++ b/src/state/context_switching.rs
+@@ -21,6 +21,25 @@
+ use wasmer::{RuntimeError, Store};
+ use wasmer_wasix_types::wasi::ExitCode;
+ 
++/// iwci patch (#1092): a panic in a host function the guest called (a
++/// syscall that hit a bug) ends this process with status 134, as an abort
++/// would on Linux. Wasmer unwinds the guest's frames and resumes the panic
++/// where the guest was entered, which is here for every WASIX process and
++/// thread; uncaught, it ended the host thread, and the process carried on
++/// without the guest thread that had been running on it. (A guest entered
++/// from the N-API bridge is caught in the bridge's trampolines, whose
++/// callers cannot unwind.)
++fn catching_panics(
++    call: impl FnOnce() -> Result<Box<[wasmer::Value]>, RuntimeError>,
++) -> Result<Box<[wasmer::Value]>, RuntimeError> {
++    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).unwrap_or_else(|_| {
++        tracing::error!("the runtime panicked in a call from the guest; ending the process");
++        Err(RuntimeError::user(Box::new(WasiError::Exit(
++            ExitCode::from(134),
++        ))))
++    })
++}
++
+ /// The context-switching environment represents all state for WASIX context-switching
+ /// on a single host thread.
+ #[derive(Debug)]
+@@ -118,7 +137,7 @@
+             .threading
+             .enable_asynchronous_threading
+         {
+-            let result = entrypoint.call(&mut store, &params);
++            let result = catching_panics(|| entrypoint.call(&mut store, &params));
+             return (store, result);
+         }
+ 
+@@ -136,7 +155,7 @@
+         // Do a normal call and dont install the context switching env, if the engine does not support async
+         let engine_supports_async = store.engine().supports_async();
+         if !engine_supports_async {
+-            let result = entrypoint.call(&mut store, &params);
++            let result = catching_panics(|| entrypoint.call(&mut store, &params));
+             return (store, result);
+         }
+ 
+@@ -154,7 +173,9 @@
+ 
+         // Turn the store into an async store and run the entrypoint
+         let store_async = store.into_async();
+-        let result = local_executor.run_until(entrypoint.call_async(&store_async, params));
++        let result = catching_panics(|| {
++            local_executor.run_until(entrypoint.call_async(&store_async, params))
++        });
+ 
+         // Process if this was terminated by a context entrypoint returning
+         let result = match &result {
 --- a/src/state/env.rs
 +++ b/src/state/env.rs
 @@ -317,6 +317,7 @@
@@ -1599,7 +1666,7 @@
              .fs
 --- a/src/syscalls/wasi/path_rename.rs
 +++ b/src/syscalls/wasi/path_rename.rs
-@@ -68,22 +68,23 @@
+@@ -68,22 +68,35 @@
      let mut moved_ephemeral_symlink = false;
  
      {
@@ -1615,6 +1682,18 @@
          }
      }
  
++    // iwci patch (#1092): one rename at a time in this inode tree, from the
++    // lookups below to the cached entries' update at the end, so the cache
++    // ends up as the file system does when several threads or processes
++    // rename onto one name at once. The file system's own rename is atomic;
++    // the cache's update was decided before it (whether the target had an
++    // entry), and the `assert!` that checked the decision afterwards took
++    // the runner down when another rename had added the entry in between.
++    let rename_lock = state.fs.rename_lock.clone();
++    let _one_at_a_time = rename_lock
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++
      // this is to be sure the source file is fetched from the filesystem if needed
 +    // (not following a symlink: rename moves the link, which may dangle)
      let source_inode = wasi_try_ok!(state.fs.get_inode_at_path(
@@ -1626,7 +1705,23 @@
      ));
      // Create the destination inode if the file exists.
      let _ = state
-@@ -168,7 +169,16 @@
+@@ -120,14 +133,10 @@
+             }
+         }
+     };
+-    let mut need_create = true;
+     let target_guest_path = {
+         let guard = target_parent_inode.read();
+         match guard.deref() {
+-            Kind::Dir { entries, path, .. } => {
+-                if entries.contains_key(&target_entry_name) {
+-                    need_create = false;
+-                }
++            Kind::Dir { path, .. } => {
+                 crate::fs::PosixPath::from_path(path)
+                     .join(&crate::fs::PosixPath::new(&target_entry_name))
+                     .into_path_buf()
+@@ -168,7 +177,16 @@
          let mut guard = source_parent_inode.write();
          match guard.deref_mut() {
              Kind::Dir { entries, .. } => {
@@ -1644,7 +1739,7 @@
              }
              Kind::Root { .. } => return Ok(Errno::Notcapable),
              Kind::Socket { .. }
-@@ -210,12 +220,13 @@
+@@ -210,12 +228,13 @@
                      let mut guard = source_entry.write();
                      if let Kind::File { path, .. } = guard.deref_mut() {
                          *path = target_guest_path.clone();
@@ -1659,7 +1754,7 @@
                  let cloned_path = path.clone();
                  let res = {
                      let state = state;
-@@ -227,6 +238,12 @@
+@@ -227,6 +246,12 @@
                  if let Err(e) = res {
                      return Ok(e);
                  }
@@ -1672,16 +1767,44 @@
                  {
                      let source_dir_path = path.clone();
                      drop(guard);
-@@ -300,7 +317,7 @@
-     // The target entry is created, one way or the other
-     let target_inode = state
-         .fs
+@@ -284,27 +309,20 @@
+         }
+     }
+ 
+-    let source_size = source_entry.stat.read().unwrap().st_size;
+-
+-    if need_create {
++    // iwci patch (#1092): the moved inode is the target's entry now, in
++    // place of any it had, as the name now holds the moved file. The cached
++    // inode of what was replaced stays with the descriptors still open on
++    // it, which read the replaced file as on Linux. It used to be kept as
++    // the target's entry, renamed and given the moved file's size, so a
++    // later open of the target shared its handle and read the old contents.
++    {
+         let mut guard = target_parent_inode.write();
+         if let Kind::Dir { entries, .. } = guard.deref_mut() {
+-            let result = entries.insert(target_entry_name.clone(), source_entry);
+-            assert!(
+-                result.is_none(),
+-                "fatal error: race condition on filesystem detected or internal logic error"
+-            );
++            entries.insert(target_entry_name.clone(), source_entry.clone());
+         }
+     }
++    *source_entry.name.write().unwrap() = target_entry_name.into();
+ 
+-    // The target entry is created, one way or the other
+-    let target_inode = state
+-        .fs
 -        .get_inode_at_path(inodes, target_fd, target_path, true)
-+        .get_inode_at_path(inodes, target_fd, target_path, false)
-         .expect("Expected target inode to exist, and it's too late to safely fail");
-     *target_inode.name.write().unwrap() = target_entry_name.into();
-     target_inode.stat.write().unwrap().st_size = source_size;
-@@ -323,10 +340,12 @@
+-        .expect("Expected target inode to exist, and it's too late to safely fail");
+-    *target_inode.name.write().unwrap() = target_entry_name.into();
+-    target_inode.stat.write().unwrap().st_size = source_size;
+-
+     // If the rename replaced an existing destination entry, clear any stale
+     // ephemeral symlink mapping for that path.
+     if !moved_ephemeral_symlink {
+@@ -323,10 +341,12 @@
      match guard.deref_mut() {
          Kind::File { path, .. } => {
              *path = adjust_path(path, source_dir_path, target_dir_path);
@@ -1694,7 +1817,7 @@
              children = entries.values().cloned().collect::<Vec<_>>();
          }
          _ => return,
-@@ -338,6 +357,18 @@
+@@ -338,6 +358,18 @@
      }
  }
  

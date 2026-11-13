@@ -1,0 +1,956 @@
+use super::filesystem::{FileSystemInner, InodeResolution};
+use super::*;
+use crate::{FileType, FsError, Metadata, OpenOptionsConfig, Result, VirtualFile};
+use shared_buffer::OwnedBuffer;
+use std::path::Path;
+use tracing::*;
+
+impl FileSystem {
+    /// Inserts a readonly file into the file system that uses copy-on-write
+    /// (this is required for zero-copy creation of the same file)
+    pub fn insert_ro_file(&self, path: &Path, contents: OwnedBuffer) -> Result<()> {
+        let _ = crate::FileSystem::remove_file(self, path);
+        let (inode_of_parent, maybe_inode_of_file, name_of_file) = self.insert_inode(path)?;
+
+        let inode_of_parent = match inode_of_parent {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(..) => {
+                return Err(FsError::InvalidInput);
+            }
+        };
+
+        match maybe_inode_of_file {
+            // The file already exists, then it can not be inserted.
+            Some(_inode_of_file) => return Err(FsError::AlreadyExists),
+
+            // The file doesn't already exist; it's OK to create it if
+            None => {
+                // Write lock.
+                let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+
+                let file = ReadOnlyFile::new(contents);
+                let file_len = file.len() as u64;
+
+                // Creating the file in the storage.
+                let inode_of_file = fs.storage.vacant_entry().key();
+                let real_inode_of_file = fs.storage.insert(Node::ReadOnlyFile(ReadOnlyFileNode {
+                    inode: inode_of_file,
+                    name: name_of_file,
+                    file,
+                    metadata: {
+                        let time = time();
+
+                        Metadata {
+                            ft: FileType {
+                                file: true,
+                                ..Default::default()
+                            },
+                            accessed: time,
+                            created: time,
+                            modified: time,
+                            len: file_len,
+                        }
+                    },
+                    lifecycle: Arc::default(),
+                }));
+
+                assert_eq!(
+                    inode_of_file, real_inode_of_file,
+                    "new file inode should have been correctly calculated",
+                );
+
+                // Adding the new directory to its parent.
+                fs.add_child_to_node(inode_of_parent, inode_of_file)?;
+
+                inode_of_file
+            }
+        };
+        Ok(())
+    }
+
+    /// Inserts a arc file into the file system that references another file
+    /// in another file system (does not copy the real data)
+    pub fn insert_arc_file_at(
+        &self,
+        target_path: PathBuf,
+        fs: Arc<dyn crate::FileSystem + Send + Sync>,
+        source_path: PathBuf,
+    ) -> Result<()> {
+        let _ = crate::FileSystem::remove_file(self, target_path.as_path());
+        let (inode_of_parent, maybe_inode_of_file, name_of_file) =
+            self.insert_inode(target_path.as_path())?;
+
+        let inode_of_parent = match inode_of_parent {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(..) => {
+                return Err(FsError::InvalidInput);
+            }
+        };
+
+        match maybe_inode_of_file {
+            // The file already exists, then it can not be inserted.
+            Some(_inode_of_file) => return Err(FsError::AlreadyExists),
+
+            // The file doesn't already exist; it's OK to create it if
+            None => {
+                // Write lock.
+                let mut fs_lock = self.inner.write().map_err(|_| FsError::Lock)?;
+
+                // Read the metadata or generate a dummy one
+                let meta = match fs.metadata(&target_path) {
+                    Ok(meta) => meta,
+                    _ => {
+                        let time = time();
+                        Metadata {
+                            ft: FileType {
+                                file: true,
+                                ..Default::default()
+                            },
+                            accessed: time,
+                            created: time,
+                            modified: time,
+                            len: 0,
+                        }
+                    }
+                };
+
+                // Creating the file in the storage.
+                let inode_of_file = fs_lock.storage.vacant_entry().key();
+                let real_inode_of_file = fs_lock.storage.insert(Node::ArcFile(ArcFileNode {
+                    inode: inode_of_file,
+                    name: name_of_file,
+                    fs,
+                    path: source_path,
+                    metadata: meta,
+                    lifecycle: Arc::default(),
+                }));
+
+                assert_eq!(
+                    inode_of_file, real_inode_of_file,
+                    "new file inode should have been correctly calculated",
+                );
+
+                // Adding the new directory to its parent.
+                fs_lock.add_child_to_node(inode_of_parent, inode_of_file)?;
+
+                inode_of_file
+            }
+        };
+        Ok(())
+    }
+
+    /// Inserts a arc file into the file system that references another file
+    /// in another file system (does not copy the real data)
+    pub fn insert_arc_file(
+        &self,
+        target_path: PathBuf,
+        fs: Arc<dyn crate::FileSystem + Send + Sync>,
+    ) -> Result<()> {
+        self.insert_arc_file_at(target_path.clone(), fs, target_path)
+    }
+
+    /// Inserts a arc directory into the file system that references another file
+    /// in another file system (does not copy the real data)
+    pub fn insert_arc_directory_at(
+        &self,
+        target_path: PathBuf,
+        other: Arc<dyn crate::FileSystem + Send + Sync>,
+        source_path: PathBuf,
+    ) -> Result<()> {
+        let _ = crate::FileSystem::remove_dir(self, target_path.as_path());
+        let (inode_of_parent, maybe_inode_of_file, name_of_file) =
+            self.insert_inode(target_path.as_path())?;
+
+        let inode_of_parent = match inode_of_parent {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(..) => {
+                return Err(FsError::InvalidInput);
+            }
+        };
+
+        match maybe_inode_of_file {
+            // The file already exists, then it can not be inserted.
+            Some(_inode_of_file) => return Err(FsError::AlreadyExists),
+
+            // The file doesn't already exist; it's OK to create it if
+            None => {
+                // Write lock.
+                let mut fs_lock = self.inner.write().map_err(|_| FsError::Lock)?;
+
+                // Creating the file in the storage.
+                let inode_of_file = fs_lock.storage.vacant_entry().key();
+                let real_inode_of_file =
+                    fs_lock.storage.insert(Node::ArcDirectory(ArcDirectoryNode {
+                        inode: inode_of_file,
+                        name: name_of_file,
+                        fs: other,
+                        path: source_path,
+                        metadata: {
+                            let time = time();
+                            Metadata {
+                                ft: FileType {
+                                    file: true,
+                                    ..Default::default()
+                                },
+                                accessed: time,
+                                created: time,
+                                modified: time,
+                                len: 0,
+                            }
+                        },
+                    }));
+
+                assert_eq!(
+                    inode_of_file, real_inode_of_file,
+                    "new file inode should have been correctly calculated",
+                );
+
+                // Adding the new directory to its parent.
+                fs_lock.add_child_to_node(inode_of_parent, inode_of_file)?;
+
+                inode_of_file
+            }
+        };
+        Ok(())
+    }
+
+    /// Inserts a arc directory into the file system that references another file
+    /// in another file system (does not copy the real data)
+    pub fn insert_arc_directory(
+        &self,
+        target_path: PathBuf,
+        other: Arc<dyn crate::FileSystem + Send + Sync>,
+    ) -> Result<()> {
+        self.insert_arc_directory_at(target_path.clone(), other, target_path)
+    }
+
+    /// Inserts a arc file into the file system that references another file
+    /// in another file system (does not copy the real data)
+    pub fn insert_device_file(
+        &self,
+        path: PathBuf,
+        file: Box<dyn crate::VirtualFile + Send + Sync>,
+    ) -> Result<()> {
+        let _ = crate::FileSystem::remove_file(self, path.as_path());
+        let (inode_of_parent, maybe_inode_of_file, name_of_file) =
+            self.insert_inode(path.as_path())?;
+
+        let inode_of_parent = match inode_of_parent {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(..) => {
+                // TODO: should remove the inode again!
+                return Err(FsError::InvalidInput);
+            }
+        };
+
+        if let Some(_inode_of_file) = maybe_inode_of_file {
+            // TODO: restore previous inode?
+            return Err(FsError::AlreadyExists);
+        }
+        // Write lock.
+        let mut fs_lock = self.inner.write().map_err(|_| FsError::Lock)?;
+
+        // Creating the file in the storage.
+        let inode_of_file = fs_lock.storage.vacant_entry().key();
+        let real_inode_of_file = fs_lock.storage.insert(Node::CustomFile(CustomFileNode {
+            inode: inode_of_file,
+            name: name_of_file,
+            file: Mutex::new(file),
+            metadata: {
+                let time = time();
+                Metadata {
+                    ft: FileType {
+                        file: true,
+                        ..Default::default()
+                    },
+                    accessed: time,
+                    created: time,
+                    modified: time,
+                    len: 0,
+                }
+            },
+            lifecycle: Arc::default(),
+        }));
+
+        assert_eq!(
+            inode_of_file, real_inode_of_file,
+            "new file inode should have been correctly calculated",
+        );
+
+        // Adding the new directory to its parent.
+        fs_lock.add_child_to_node(inode_of_parent, inode_of_file)?;
+
+        Ok(())
+    }
+
+    fn insert_inode(
+        &self,
+        path: &Path,
+    ) -> Result<(InodeResolution, Option<InodeResolution>, OsString)> {
+        // Read lock.
+        let fs = self.inner.read().map_err(|_| FsError::Lock)?;
+        fs.resolve_file_in_parent(path)
+    }
+}
+
+impl FileSystemInner {
+    /// Resolves the parent directory of `path`, and the file named by its
+    /// last component if it exists.
+    fn resolve_file_in_parent(
+        &self,
+        path: &Path,
+    ) -> Result<(InodeResolution, Option<InodeResolution>, OsString)> {
+        // Check the path has a parent.
+        let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
+
+        // Check the file name.
+        let name_of_file = path
+            .file_name()
+            .ok_or(FsError::InvalidInput)?
+            .to_os_string();
+
+        // Find the parent inode.
+        let inode_of_parent = match self.inode_of_parent(parent_of_path)? {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(fs, parent_path) => {
+                return Ok((
+                    InodeResolution::Redirect(fs, parent_path),
+                    None,
+                    name_of_file,
+                ));
+            }
+        };
+
+        // Find the inode of the file if it exists.
+        let maybe_inode_of_file = self
+            .as_parent_get_position_and_inode_of_file(inode_of_parent, &name_of_file)?
+            .map(|(_nth, inode)| inode);
+
+        Ok((
+            InodeResolution::Found(inode_of_parent),
+            maybe_inode_of_file,
+            name_of_file,
+        ))
+    }
+}
+
+impl crate::FileOpener for FileSystem {
+    fn open(
+        &self,
+        path: &Path,
+        conf: &OpenOptionsConfig,
+    ) -> Result<Box<dyn VirtualFile + Send + Sync + 'static>> {
+        debug!(path=%path.display(), "open");
+
+        let read = conf.read();
+        let mut write = conf.write();
+        let append = conf.append();
+        let mut truncate = conf.truncate();
+        let mut create = conf.create();
+        let create_new = conf.create_new();
+
+        // If `create_new` is used, `create` and `truncate ` are ignored.
+        if create_new {
+            create = false;
+            truncate = false;
+        }
+
+        // To truncate a file, `write` must be used.
+        if truncate && !write {
+            return Err(FsError::PermissionDenied);
+        }
+
+        // `append` is semantically equivalent to `write` + `append`
+        // but let's keep them exclusive.
+        if append {
+            write = false;
+        }
+
+        // The write lock is held from the lookup until the file is opened or
+        // created, so a concurrent operation cannot remove the resolved inode
+        // (and let an unrelated file reuse it) or create the same name twice.
+        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+        let (inode_of_parent, maybe_inode_of_file, name_of_file) =
+            fs.resolve_file_in_parent(path)?;
+
+        let inode_of_parent = match inode_of_parent {
+            InodeResolution::Found(a) => a,
+            InodeResolution::Redirect(redirect_fs, mut parent_path) => {
+                drop(fs);
+                parent_path.push(name_of_file);
+                return redirect_fs
+                    .new_open_options()
+                    .options(conf.clone())
+                    .open(parent_path);
+            }
+        };
+        let maybe_inode_of_file = match maybe_inode_of_file {
+            Some(InodeResolution::Found(inode)) => Some(inode),
+            Some(InodeResolution::Redirect(redirect_fs, path)) => {
+                drop(fs);
+                return redirect_fs
+                    .new_open_options()
+                    .options(conf.clone())
+                    .open(path);
+            }
+            None => None,
+        };
+
+        let cursor = 0u64;
+        let (inode_of_file, handle_lifecycle) = match maybe_inode_of_file {
+            // The file already exists, and a _new_ one _must_ be
+            // created; it's not OK.
+            Some(_inode_of_file) if create_new => return Err(FsError::AlreadyExists),
+
+            // The file already exists; it's OK.
+            Some(inode_of_file) => {
+                let handle_lifecycle = match fs.storage.get_mut(inode_of_file) {
+                    Some(Node::File(FileNode {
+                        metadata,
+                        file,
+                        lifecycle,
+                        ..
+                    })) => {
+                        // Update the accessed time.
+                        metadata.accessed = time();
+
+                        // Truncate if needed.
+                        if truncate {
+                            file.truncate();
+                            metadata.len = 0;
+                        }
+
+                        lifecycle.clone()
+                    }
+
+                    Some(Node::OffloadedFile(OffloadedFileNode {
+                        metadata,
+                        file,
+                        lifecycle,
+                        ..
+                    })) => {
+                        // Update the accessed time.
+                        metadata.accessed = time();
+
+                        // Truncate if needed.
+                        if truncate {
+                            file.truncate();
+                            metadata.len = 0;
+                        }
+
+                        lifecycle.clone()
+                    }
+
+                    Some(Node::ReadOnlyFile(node)) => {
+                        // Update the accessed time.
+                        node.metadata.accessed = time();
+
+                        // Truncate if needed.
+                        if truncate || append {
+                            return Err(FsError::PermissionDenied);
+                        }
+
+                        node.lifecycle.clone()
+                    }
+
+                    Some(Node::CustomFile(node)) => {
+                        // Update the accessed time.
+                        node.metadata.accessed = time();
+
+                        // Truncate if needed.
+                        let mut file = node.file.lock().unwrap();
+                        if truncate {
+                            file.set_len(0)?;
+                            node.metadata.len = 0;
+                        }
+
+                        node.lifecycle.clone()
+                    }
+
+                    Some(Node::ArcFile(node)) => {
+                        // Update the accessed time.
+                        node.metadata.accessed = time();
+
+                        let mut file = node
+                            .fs
+                            .new_open_options()
+                            .read(read)
+                            .write(write)
+                            .append(append)
+                            .truncate(truncate)
+                            .create(create)
+                            .create_new(create_new)
+                            .open(node.path.as_path())?;
+
+                        // Truncate if needed.
+                        if truncate {
+                            file.set_len(0)?;
+                            node.metadata.len = 0;
+                        }
+
+                        node.lifecycle.clone()
+                    }
+
+                    None => return Err(FsError::EntryNotFound),
+                    _ => return Err(FsError::NotAFile),
+                };
+
+                handle_lifecycle.opened();
+                (inode_of_file, handle_lifecycle)
+            }
+
+            // The file doesn't already exist; it's OK to create it if:
+            // 1. `create_new` is used with `write` or `append`,
+            // 2. `create` is used with `write` or `append`.
+            None if (create_new || create) && (create_new || write || append) => {
+                let handle_lifecycle: Arc<FileLifecycle> = Arc::default();
+                let metadata = {
+                    let time = time();
+                    Metadata {
+                        ft: FileType {
+                            file: true,
+                            ..Default::default()
+                        },
+                        accessed: time,
+                        created: time,
+                        modified: time,
+                        len: 0,
+                    }
+                };
+                let inode_of_file = fs.storage.vacant_entry().key();
+
+                // We might be in optimized mode
+                let file = match fs.backing_offload.clone() {
+                    Some(offload) => {
+                        let file = OffloadedFile::new(fs.limiter.clone(), offload);
+                        Node::OffloadedFile(OffloadedFileNode {
+                            inode: inode_of_file,
+                            name: name_of_file,
+                            file,
+                            metadata,
+                            lifecycle: handle_lifecycle.clone(),
+                        })
+                    }
+                    _ => {
+                        let file = File::new(fs.limiter.clone());
+                        Node::File(FileNode {
+                            inode: inode_of_file,
+                            name: name_of_file,
+                            file,
+                            metadata,
+                            lifecycle: handle_lifecycle.clone(),
+                        })
+                    }
+                };
+
+                // Creating the file in the storage.
+                let real_inode_of_file = fs.storage.insert(file);
+
+                assert_eq!(
+                    inode_of_file, real_inode_of_file,
+                    "new file inode should have been correctly calculated",
+                );
+
+                // Adding the new directory to its parent.
+                fs.add_child_to_node(inode_of_parent, inode_of_file)?;
+
+                handle_lifecycle.opened();
+                (inode_of_file, handle_lifecycle)
+            }
+
+            None if (create_new || create) => return Err(FsError::PermissionDenied),
+
+            None => return Err(FsError::EntryNotFound),
+        };
+        drop(fs);
+
+        #[cfg(test)]
+        test_file_opener::run_open_before_handle_hook();
+
+        Ok(Box::new(FileHandle::new_opened(
+            inode_of_file,
+            self.clone(),
+            handle_lifecycle,
+            read,
+            write || append || truncate,
+            append,
+            cursor,
+        )))
+    }
+}
+
+#[cfg(test)]
+mod test_file_opener {
+    use std::cell::RefCell;
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+
+    use crate::{FileSystem as FS, FsError, mem_fs::*};
+    use std::io;
+    use std::sync::Arc;
+
+    macro_rules! path {
+        ($path:expr) => {
+            std::path::Path::new($path)
+        };
+    }
+
+    type OpenBeforeHandleHook = Box<dyn FnOnce() + 'static>;
+
+    #[cfg(test)]
+    thread_local! {
+        static OPEN_BEFORE_HANDLE_HOOK: RefCell<Option<OpenBeforeHandleHook>> = RefCell::new(None);
+    }
+
+    struct OpenBeforeHandleHookGuard;
+
+    impl OpenBeforeHandleHookGuard {
+        fn install(hook: OpenBeforeHandleHook) -> Self {
+            OPEN_BEFORE_HANDLE_HOOK.with(|slot| {
+                let previous = slot.borrow_mut().replace(hook);
+                assert!(
+                    previous.is_none(),
+                    "open-before-handle test hook should not already be installed"
+                );
+            });
+            Self
+        }
+    }
+
+    impl Drop for OpenBeforeHandleHookGuard {
+        fn drop(&mut self) {
+            OPEN_BEFORE_HANDLE_HOOK.with(|slot| {
+                slot.borrow_mut().take();
+            });
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn run_open_before_handle_hook() {
+        OPEN_BEFORE_HANDLE_HOOK.with(|slot| {
+            if let Some(hook) = slot.borrow_mut().take() {
+                hook();
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn test_create_new_file() {
+        let fs = FileSystem::default();
+
+        assert!(
+            fs.new_open_options()
+                .write(true)
+                .create_new(true)
+                .open(path!("/foo.txt"))
+                .is_ok(),
+            "creating a new file",
+        );
+
+        {
+            let fs_inner = fs.inner.read().unwrap();
+
+            assert_eq!(fs_inner.storage.len(), 2, "storage has the new file");
+            assert!(
+                matches!(
+                    fs_inner.storage.get(ROOT_INODE),
+                    Some(Node::Directory(DirectoryNode {
+                        inode: ROOT_INODE,
+                        name,
+                        children,
+                        ..
+                    })) if name == "/" && children == &[1]
+                ),
+                "`/` contains `foo.txt`",
+            );
+            assert!(
+                matches!(
+                    fs_inner.storage.get(1),
+                    Some(Node::File(FileNode {
+                        inode: 1,
+                        name,
+                        ..
+                    })) if name == "foo.txt"
+                ),
+                "`foo.txt` exists and is a file",
+            );
+        }
+
+        assert!(
+            matches!(
+                fs.new_open_options()
+                    .write(true)
+                    .create_new(true)
+                    .open(path!("/foo.txt")),
+                Err(FsError::AlreadyExists)
+            ),
+            "creating a new file that already exist",
+        );
+
+        assert_eq!(
+            fs.new_open_options()
+                .write(true)
+                .create_new(true)
+                .open(path!("/foo/bar.txt"))
+                .map(|_| ()),
+            Err(FsError::EntryNotFound),
+            "creating a file in a directory that doesn't exist",
+        );
+
+        assert_eq!(fs.remove_file(path!("/foo.txt")), Ok(()), "removing a file");
+
+        assert!(
+            fs.new_open_options()
+                .write(false)
+                .create_new(true)
+                .open(path!("/foo.txt"))
+                .is_ok(),
+            "creating a file without the `write` option",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_truncate_a_read_only_file() {
+        let fs = FileSystem::default();
+
+        assert!(
+            matches!(
+                fs.new_open_options()
+                    .write(false)
+                    .truncate(true)
+                    .open(path!("/foo.txt")),
+                Err(FsError::PermissionDenied),
+            ),
+            "truncating a read-only file",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_truncate() {
+        let fs = FileSystem::default();
+
+        let mut file = fs
+            .new_open_options()
+            .write(true)
+            .create_new(true)
+            .open(path!("/foo.txt"))
+            .expect("failed to create a new file");
+
+        assert!(
+            matches!(file.write(b"foobar").await, Ok(6)),
+            "writing `foobar` at the end of the file",
+        );
+
+        assert!(
+            matches!(file.seek(io::SeekFrom::Current(0)).await, Ok(6)),
+            "checking the current position is 6",
+        );
+        assert!(
+            matches!(file.seek(io::SeekFrom::End(0)).await, Ok(6)),
+            "checking the size is 6",
+        );
+
+        let mut file = fs
+            .new_open_options()
+            .write(true)
+            .truncate(true)
+            .open(path!("/foo.txt"))
+            .expect("failed to open + truncate `foo.txt`");
+
+        assert!(
+            matches!(file.seek(io::SeekFrom::Current(0)).await, Ok(0)),
+            "checking the current position is 0",
+        );
+        assert!(
+            matches!(file.seek(io::SeekFrom::End(0)).await, Ok(0)),
+            "checking the size is 0",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_append() {
+        let fs = FileSystem::default();
+
+        let mut file = fs
+            .new_open_options()
+            .write(true)
+            .create_new(true)
+            .open(path!("/foo.txt"))
+            .expect("failed to create a new file");
+
+        assert!(
+            matches!(file.write(b"foobar").await, Ok(6)),
+            "writing `foobar` at the end of the file",
+        );
+
+        assert!(
+            matches!(file.seek(io::SeekFrom::Current(0)).await, Ok(6)),
+            "checking the current position is 6",
+        );
+        assert!(
+            matches!(file.seek(io::SeekFrom::End(0)).await, Ok(6)),
+            "checking the size is 6",
+        );
+
+        let mut file = fs
+            .new_open_options()
+            .append(true)
+            .open(path!("/foo.txt"))
+            .expect("failed to open `foo.txt`");
+
+        assert!(
+            matches!(file.seek(io::SeekFrom::Current(0)).await, Ok(0)),
+            "checking the current position in append-mode is 0",
+        );
+        assert!(
+            matches!(file.seek(io::SeekFrom::Start(0)).await, Ok(0)),
+            "trying to rewind in append-mode",
+        );
+        assert!(matches!(file.write(b"baz").await, Ok(3)), "writing `baz`");
+
+        let mut file = fs
+            .new_open_options()
+            .read(true)
+            .open(path!("/foo.txt"))
+            .expect("failed to open `foo.txt");
+
+        assert!(
+            matches!(file.seek(io::SeekFrom::Current(0)).await, Ok(0)),
+            "checking the current position is read-mode is 0",
+        );
+
+        let mut string = String::new();
+        assert!(
+            matches!(file.read_to_string(&mut string).await, Ok(9)),
+            "reading the entire `foo.txt` file",
+        );
+        assert_eq!(
+            string, "foobarbaz",
+            "checking append-mode is ignoring seek operations",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_opening_a_file_that_already_exists() {
+        let fs = FileSystem::default();
+
+        assert!(
+            fs.new_open_options()
+                .write(true)
+                .create_new(true)
+                .open(path!("/foo.txt"))
+                .is_ok(),
+            "creating a _new_ file",
+        );
+
+        assert!(
+            matches!(
+                fs.new_open_options()
+                    .create_new(true)
+                    .open(path!("/foo.txt")),
+                Err(FsError::AlreadyExists),
+            ),
+            "creating a _new_ file that already exists",
+        );
+
+        assert!(
+            fs.new_open_options()
+                .read(true)
+                .open(path!("/foo.txt"))
+                .is_ok(),
+            "opening a file that already exists",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_opening_existing_file_in_arc_directory_redirects() {
+        let fs = FileSystem::default();
+        let backing = FileSystem::default();
+        let backing_arc: Arc<dyn crate::FileSystem + Send + Sync> = Arc::new(backing.clone());
+
+        backing
+            .new_open_options()
+            .write(true)
+            .create_new(true)
+            .open(path!("/foo.txt"))
+            .expect("create file in backing fs");
+
+        fs.insert_arc_directory_at(
+            path!("/mnt").to_path_buf(),
+            backing_arc,
+            path!("/").to_path_buf(),
+        )
+        .expect("mount arc directory");
+
+        let mut file = fs
+            .new_open_options()
+            .read(true)
+            .open(path!("/mnt/foo.txt"))
+            .expect("open should redirect to the backing fs");
+
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .await
+            .expect("read redirected file");
+        assert_eq!(contents, "");
+
+        assert!(
+            matches!(
+                fs.new_open_options()
+                    .create_new(true)
+                    .open(path!("/mnt/foo.txt")),
+                Err(FsError::AlreadyExists),
+            ),
+            "create_new on a redirected existing file follows the backing fs result",
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_open_keeps_unlinked_inode_alive_before_returning_handle() {
+        let fs = FileSystem::default();
+
+        fs.new_open_options()
+            .write(true)
+            .create_new(true)
+            .open(path!("/foo.txt"))
+            .expect("create /foo.txt");
+
+        let _hook = OpenBeforeHandleHookGuard::install(Box::new({
+            let fs = fs.clone();
+            move || {
+                assert_eq!(
+                    fs.remove_file(path!("/foo.txt")),
+                    Ok(()),
+                    "unlink during the open-return window",
+                );
+            }
+        }));
+
+        let mut file = fs
+            .new_open_options()
+            .read(true)
+            .write(true)
+            .open(path!("/foo.txt"))
+            .expect(
+                "open should succeed even if the path is unlinked before the handle is returned",
+            );
+
+        assert_eq!(
+            fs.metadata(path!("/foo.txt")),
+            Err(FsError::EntryNotFound),
+            "the path is gone immediately after unlink",
+        );
+
+        file.write_all(b"hello")
+            .await
+            .expect("write after the in-flight unlink should still work");
+        file.seek(io::SeekFrom::Start(0))
+            .await
+            .expect("rewind after in-flight unlink");
+
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)
+            .await
+            .expect("read after the in-flight unlink should still work");
+        assert_eq!(contents, b"hello");
+    }
+}

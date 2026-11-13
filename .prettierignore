@@ -57,6 +57,7 @@ ci-runner/vendor/wasmer-napi/
 ci-runner/vendor/wasmer-wasix/
 ci-runner/vendor/wasmer-vm/
 ci-runner/vendor/virtual-net/
+ci-runner/vendor/virtual-fs/
 
 # @tybys/wasm-util's published bundle, vendored unmodified for the runner's
 # `node:wasi` (ci-runner/crates/iwci-runtime/node/README.md).

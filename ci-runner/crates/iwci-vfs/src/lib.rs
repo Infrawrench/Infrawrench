@@ -670,6 +670,7 @@ impl Snapshot {
             base: self.fs.clone(),
             budget,
             modes: Modes::over(self.modes.clone()),
+            renames: futures::lock::Mutex::new(()),
         };
         JobFs {
             overlay: Arc::new(overlay),
@@ -871,6 +872,12 @@ pub struct JobOverlay {
     base: Arc<ReadOnlyFs>,
     budget: Option<Arc<dyn WriteBudget>>,
     modes: Modes,
+    /// Held for the whole of a rename (#1092). A rename looks at what is
+    /// at both ends, then changes them, in several steps across the two
+    /// layers; two renames onto one name at once both saw the old file
+    /// there, and the second failed to remove what the first had already
+    /// replaced. Async, as a rename awaits under it.
+    renames: futures::lock::Mutex<()>,
 }
 
 impl JobOverlay {
@@ -1007,6 +1014,10 @@ impl JobOverlay {
                     }
                     (true, false) => return Err(FsError::BaseNotDirectory),
                     (false, true) => return Err(FsError::InvalidInput),
+                    // The job's own file replaces `to` in one step below,
+                    // so that `to` is never missing in between (#1092).
+                    (false, false)
+                        if !kind.is_symlink() && self.upper.symlink_metadata(from).is_ok() => {}
                     (false, false) => self.unlink(to)?,
                 }
             }
@@ -1024,9 +1035,14 @@ impl JobOverlay {
             if !kind.is_dir() {
                 if self.upper.symlink_metadata(from).is_ok() {
                     // The job's own file (or its copy of a snapshot one):
-                    // the overlay renames it within the upper layer and
-                    // whites out a snapshot file at `from`.
-                    return self.inner.rename(from, to).await;
+                    // the overlay renames it within the upper layer, over
+                    // whatever the upper layer has at `to`, and whites out a
+                    // snapshot file at `from`. A snapshot file at `to` is
+                    // hidden by the upper one, as a copy-up hides it.
+                    let replaced = self.upper_size(to);
+                    self.inner.rename(from, to).await?;
+                    self.give(replaced);
+                    return Ok(());
                 }
                 // A snapshot file is copied up to `to`, as a write to it
                 // would copy it up, and is not charged to the job for the
@@ -1121,6 +1137,7 @@ impl FileSystem for JobOverlay {
         to: &'a Path,
     ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
         Box::pin(async move {
+            let _one_at_a_time = self.renames.lock().await;
             self.move_entry(from, to).await?;
             self.modes.renamed(from, to);
             Ok(())
@@ -1663,6 +1680,55 @@ mod tests {
         futures::executor::block_on(f.write_all(b"E")).unwrap();
         drop(f);
         assert_eq!(cap.used.load(Ordering::SeqCst), before);
+    }
+
+    /// Several threads writing a temporary file each and renaming it onto
+    /// one name, the atomic-replace idiom (#1092): the in-memory layer's
+    /// rename looked the old file up under a read lock and removed it under
+    /// the write lock after, so the second of two renames removed an inode
+    /// the first had already removed and panicked. Every rename succeeds,
+    /// the name always holds one whole file, the last rename's content wins
+    /// and no temporary is left, and the budget ends charged for one file.
+    #[test]
+    fn concurrent_renames_onto_one_name_all_succeed_and_leave_one_file() {
+        use std::sync::atomic::Ordering;
+        const THREADS: usize = 8;
+        const RENAMES: usize = 1500;
+        let cap = Arc::new(Cap {
+            max: 1 << 30,
+            ..Default::default()
+        });
+        let job = snapshot().fork_limited(cap.clone());
+        job.write("/tmp/rr/target", b"first").unwrap();
+        let last: Vec<String> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let job = &job;
+                    scope.spawn(move || {
+                        let mut last = String::new();
+                        for i in 0..RENAMES {
+                            let tmp = format!("/tmp/rr/target.{t}.{i}.tmp");
+                            let body = format!("{t}.{i}");
+                            job.write(&tmp, body.as_bytes()).unwrap();
+                            rename(job, &tmp, "/tmp/rr/target").unwrap();
+                            // A reader never finds the name missing.
+                            let read = job.read("/tmp/rr/target").unwrap();
+                            assert!(!read.is_empty());
+                            last = body;
+                        }
+                        last
+                    })
+                })
+                .collect();
+            workers.into_iter().map(|w| w.join().unwrap()).collect()
+        });
+        assert_eq!(names(&job, "/tmp/rr"), ["target"]);
+        let content = String::from_utf8(job.read("/tmp/rr/target").unwrap()).unwrap();
+        assert!(
+            last.contains(&content),
+            "{content} is no thread's last write"
+        );
+        assert_eq!(cap.used.load(Ordering::SeqCst), content.len() as u64);
     }
 
     #[test]

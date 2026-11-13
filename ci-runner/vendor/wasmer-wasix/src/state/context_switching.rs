@@ -21,6 +21,25 @@ use tracing::trace;
 use wasmer::{RuntimeError, Store};
 use wasmer_wasix_types::wasi::ExitCode;
 
+/// iwci patch (#1092): a panic in a host function the guest called (a
+/// syscall that hit a bug) ends this process with status 134, as an abort
+/// would on Linux. Wasmer unwinds the guest's frames and resumes the panic
+/// where the guest was entered, which is here for every WASIX process and
+/// thread; uncaught, it ended the host thread, and the process carried on
+/// without the guest thread that had been running on it. (A guest entered
+/// from the N-API bridge is caught in the bridge's trampolines, whose
+/// callers cannot unwind.)
+fn catching_panics(
+    call: impl FnOnce() -> Result<Box<[wasmer::Value]>, RuntimeError>,
+) -> Result<Box<[wasmer::Value]>, RuntimeError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).unwrap_or_else(|_| {
+        tracing::error!("the runtime panicked in a call from the guest; ending the process");
+        Err(RuntimeError::user(Box::new(WasiError::Exit(
+            ExitCode::from(134),
+        ))))
+    })
+}
+
 /// The context-switching environment represents all state for WASIX context-switching
 /// on a single host thread.
 #[derive(Debug)]
@@ -118,7 +137,7 @@ impl ContextSwitchingEnvironment {
             .threading
             .enable_asynchronous_threading
         {
-            let result = entrypoint.call(&mut store, &params);
+            let result = catching_panics(|| entrypoint.call(&mut store, &params));
             return (store, result);
         }
 
@@ -136,7 +155,7 @@ impl ContextSwitchingEnvironment {
         // Do a normal call and dont install the context switching env, if the engine does not support async
         let engine_supports_async = store.engine().supports_async();
         if !engine_supports_async {
-            let result = entrypoint.call(&mut store, &params);
+            let result = catching_panics(|| entrypoint.call(&mut store, &params));
             return (store, result);
         }
 
@@ -154,7 +173,9 @@ impl ContextSwitchingEnvironment {
 
         // Turn the store into an async store and run the entrypoint
         let store_async = store.into_async();
-        let result = local_executor.run_until(entrypoint.call_async(&store_async, params));
+        let result = catching_panics(|| {
+            local_executor.run_until(entrypoint.call_async(&store_async, params))
+        });
 
         // Process if this was terminated by a context entrypoint returning
         let result = match &result {
