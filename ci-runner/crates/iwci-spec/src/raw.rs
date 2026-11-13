@@ -542,6 +542,9 @@ pub struct TaskCacheInputs {
     /// as a shared `tsconfig.base.json`.
     #[serde(default)]
     pub root_inputs: Vec<String>,
+    /// `false` leaves the artifacts the job is handed out of its key, for a
+    /// job that has them only to pass them on. Default `true`.
+    pub artifacts: Option<bool>,
 }
 
 /// One value or a list of them. Deserialised by hand rather than as an

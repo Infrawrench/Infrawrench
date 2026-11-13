@@ -1,6 +1,7 @@
 //! `cache:` entries in the object store (`iwci-store`'s key table has the
 //! layout). The same store as the tools, so on R2 every runner shares them.
 
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::sync::Arc;
 
@@ -9,7 +10,7 @@ use iwci_store::{ObjectStore, RepoId};
 use iwci_vfs::{Entry, archive};
 use sha2::Digest;
 
-use crate::schedule::{Caches, Restored};
+use crate::schedule::{Caches, Durations, Restored};
 
 pub struct StoreCaches {
     store: Arc<dyn ObjectStore>,
@@ -477,6 +478,63 @@ impl Caches for StoreCaches {
     }
 }
 
+/// Where a pipeline's job durations live among the caches, and the one
+/// file of the entry.
+fn durations_key(pipeline: &str) -> String {
+    format!("iwci-durations/{pipeline}")
+}
+const DURATIONS_FILE: &str = "/iwci/durations.json";
+/// More than any pipeline's durations take; a bigger entry is not read.
+const MAX_DURATIONS: u64 = 4 << 20;
+
+/// What the durations entry holds.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DurationsRecord {
+    version: u32,
+    jobs: BTreeMap<String, u64>,
+}
+
+/// Job durations kept beside the caches, in the same scopes: a branch reads
+/// its own, then the default branch's, and a pull request's never reach
+/// the default branch. One small entry per pipeline, counted toward the
+/// owner's quota like any other.
+impl Durations for StoreCaches {
+    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64> {
+        let Ok(Some(found)) = self.restore(&durations_key(pipeline), &[], MAX_DURATIONS) else {
+            return HashMap::new();
+        };
+        found
+            .entries
+            .into_iter()
+            .find_map(|e| match e {
+                Entry::File { path, data } if path == std::path::Path::new(DURATIONS_FILE) => {
+                    serde_json::from_slice::<DurationsRecord>(&data).ok()
+                }
+                _ => None,
+            })
+            .filter(|r| r.version == 1)
+            .map(|r| r.jobs.into_iter().collect())
+            .unwrap_or_default()
+    }
+
+    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>) {
+        let record = DurationsRecord {
+            version: 1,
+            jobs: durations.clone(),
+        };
+        let Ok(data) = serde_json::to_vec(&record) else {
+            return;
+        };
+        let entry = Entry::File {
+            path: DURATIONS_FILE.into(),
+            data: data.into(),
+        };
+        // Only an ordering hint: a store that refuses it costs the next run
+        // its order, nothing else.
+        let _ = Caches::save(self, &durations_key(pipeline), &[], &[entry]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +560,36 @@ mod tests {
                 data: text.as_bytes().to_vec().into(),
             },
         ]
+    }
+
+    #[test]
+    fn durations_follow_the_cache_scopes() {
+        let (store, dir) = store();
+        let repo = RepoId::new("repo_1").unwrap();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let at = |branch: &str, event: Event| {
+            StoreCaches::new(store.clone(), &org, &repo, branch, "main", event, None)
+        };
+        let main = at("main", Event::Push);
+        let pr = at("feature", Event::PullRequest);
+        assert!(main.load_durations("Test").is_empty());
+        let times: BTreeMap<String, u64> = [("a".to_string(), 5), ("b[x]".to_string(), 7)].into();
+        main.save_durations("Test", &times);
+        assert_eq!(
+            main.load_durations("Test"),
+            times.clone().into_iter().collect::<HashMap<_, _>>()
+        );
+        assert!(
+            main.load_durations("Lint").is_empty(),
+            "one entry per pipeline"
+        );
+        // A pull request starts from the default branch's, and what it
+        // saves never reaches the default branch.
+        assert_eq!(pr.load_durations("Test")["a"], 5);
+        pr.save_durations("Test", &[("a".to_string(), 1)].into());
+        assert_eq!(pr.load_durations("Test")["a"], 1);
+        assert_eq!(main.load_durations("Test")["a"], 5);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -551,7 +551,7 @@
               "$ref": "#/$defs/packageFilter"
             }
           ],
-          "description": "One job per workspace package (from `pnpm-workspace.yaml`, or the root `package.json`'s `workspaces`): `true` for every package, or a filter. Each runs in its package's directory, reads `${{ package.dir }}` and `${{ package.name }}`, and resolves relative `artifacts`, `cache` paths and `task-cache` inputs against the package."
+          "description": "One job per workspace package (from `pnpm-workspace.yaml`, or the root `package.json`'s `workspaces`): `true` for every package, or a filter. Each runs in its package's directory, reads `${{ package.dir }}` and `${{ package.name }}`, and resolves relative `artifacts`, `cache` paths and `task-cache` inputs against the package. With a `matrix:`, each package's job has those entries."
         },
         "task-cache": {
           "oneOf": [
@@ -692,6 +692,10 @@
             "minLength": 1
           },
           "description": "Globs relative to the clone that the job reads too, such as `tsconfig.base.json`."
+        },
+        "artifacts": {
+          "type": "boolean",
+          "description": "Whether the artifacts the job is handed by the jobs it needs are part of its key. Default true. `false` is for a job that has them only to pass them on and whose result does not depend on them, so a change upstream does not rerun it."
         }
       }
     },

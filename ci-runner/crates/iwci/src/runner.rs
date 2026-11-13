@@ -651,6 +651,15 @@ impl Runner {
             .clone()
             .unwrap_or_else(|| "main".to_string());
         let quota = req.storage_quota.or(self.default_storage_quota);
+        let caches = Arc::new(StoreCaches::new(
+            self.store.clone(),
+            &r.owner,
+            &r.repo_id,
+            &r.branch,
+            &default_branch,
+            r.event,
+            quota,
+        ));
         let mut options = schedule::Options {
             // With shared slots the slots are the limit; without, `cpus`.
             parallelism: self.slots.as_ref().map_or(self.cpus, |s| s.total()),
@@ -667,15 +676,8 @@ impl Runner {
             ],
             memory: self.memory.clone(),
             secrets: req.secrets.0.clone(),
-            caches: Some(Arc::new(StoreCaches::new(
-                self.store.clone(),
-                &r.owner,
-                &r.repo_id,
-                &r.branch,
-                &default_branch,
-                r.event,
-                quota,
-            ))),
+            caches: Some(caches.clone()),
+            durations: Some(caches),
             downloads: Some(Arc::new(StoreDownloads::new(
                 self.store.clone(),
                 &r.owner,
