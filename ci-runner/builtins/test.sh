@@ -11,10 +11,16 @@
 #   builtins/test.sh typescript oxfmt bash-node python php
 #   builtins/test.sh go              every Go minor; go@1.25 for one
 #   builtins/test.sh python postgres
+#   builtins/test.sh bash kubectl    kubectl against a fake API server
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
 # (`services:`) for Python jobs, so it needs python in the same list.
+# `kubectl` runs kubectl from bash scripts against a small API server its
+# build makes (`kubectl/fake-apiserver.go`), on the job's loopback, with a
+# kubeconfig lent the way the app lends a connection (`IWCI_LENT_FILE`), so
+# it needs bash in the same list and Go's archive and modules from the
+# internet to build.
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
@@ -40,6 +46,10 @@ fi
 
 # A secret the bash pipeline reads, which must never show up in a report.
 export IWCI_SECRET_FIXTURE_TOKEN="fixture-secret-value-0451"
+# The token of the kubeconfig the kubectl jobs are lent: the fake API
+# server wants it, and it must never show up in a report either (the
+# kubectl-passes job prints it).
+KUBE_FIXTURE_TOKEN="fixture-token"
 
 # `go` is every Go minor the environments build.
 names=()
@@ -63,6 +73,10 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/$name/build.sh"
       dirs=("$dist"/builtin/"$name"/*)
       ;;
+    kubectl)
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/kubectl/build.sh" 1.37
+      dirs=("$dist"/builtin/kubectl/*)
+      ;;
     bash | bash-node | python | php | go@* | postgres)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
@@ -83,7 +97,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools, kubectl" >&2
       exit 2
       ;;
   esac
@@ -375,6 +389,11 @@ printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
 # A committed symlink, for renaming one the job did not make.
 ln -s data.txt "$repo/data-link"
+# kubectl's API server, from its build.
+if [[ -f "$dist/test/kubectl/fake-apiserver.wasm" ]]; then
+  mkdir -p "$repo/k8s"
+  cp "$dist/test/kubectl/fake-apiserver.wasm" "$repo/k8s/"
+fi
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -892,6 +911,45 @@ jobs:
   git-fatal-fails:
     using: env:bash@5
     run: git rev-parse --verify no-such-ref
+YAML
+      ;;
+    kubectl)
+      cat <<'YAML'
+name: kubectl
+jobs:
+  # A connection lent as the app lends it: a kubeconfig whose token is a
+  # secret part, `KUBECONFIG` pointing at it. The server makes its own
+  # certificate, which the kubeconfig trusts (client-go sends no token
+  # over plain HTTP).
+  kubectl-passes:
+    using: env:bash@5
+    tools: [builtin:kubectl@1.37]
+    connections: [fixture cluster]
+    run: |
+      /app/k8s/fake-apiserver.wasm > /tmp/api.log 2>&1 &
+      wait-for-port 6443
+      kubectl version --client | grep -q 'Client Version: v1.37'
+      kubectl version -o json | grep -q v1.37.2-fixture
+      test "$(kubectl get namespaces -o name | tr '\n' ' ')" = "namespace/default namespace/kube-system "
+      test "$(kubectl get ns default -o jsonpath='{.status.phase}')" = Active
+      kubectl rollout restart deploy/web
+      grep -q "PATCH /apis/apps/v1/namespaces/default/deployments/web" /tmp/api.log
+      kubectl config view --minify --raw -o jsonpath='{.users[0].user.token}'
+  # The server refuses a wrong token, and kubectl fails for it.
+  unauthorized-fails:
+    using: env:bash@5
+    tools: [builtin:kubectl@1.37]
+    run: |
+      /app/k8s/fake-apiserver.wasm > /tmp/api.log 2>&1 &
+      wait-for-port 6443
+      kubectl --server https://127.0.0.1:6443 --certificate-authority /tmp/fake-api-ca.pem \
+        --token wrong-token get namespaces
+  # A connection the app refused: the job never starts, with its reason.
+  refused-fails:
+    using: env:bash@5
+    tools: [builtin:kubectl@1.37]
+    connections: [staging]
+    run: kubectl get namespaces
 YAML
       ;;
     tools)
@@ -2961,6 +3019,8 @@ want_reason() {
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
     bash/git-fatal-fails) echo "exited with 128" ;;
+    kubectl/unauthorized-fails) echo "exited with 1" ;;
+    kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
@@ -2981,6 +3041,7 @@ want_stderr() {
   case "$1" in
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
+    kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
     postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
@@ -3006,7 +3067,24 @@ for name in "$@"; do
   if [[ "$name" == bash-node ]]; then
     stall_after=15s
   fi
-  out="$("$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
+  # What the app would lend the run (`lent` of a run request).
+  lent=""
+  if [[ "$name" == kubectl ]]; then
+    lent="$SCRATCH/kubectl-lent.json"
+    kube_head='apiVersion: v1\nkind: Config\nclusters:\n- name: fixture\n  cluster:\n    server: https://127.0.0.1:6443\n    certificate-authority: /tmp/fake-api-ca.pem\ncontexts:\n- name: fixture\n  context:\n    cluster: fixture\n    user: ci\n    namespace: default\ncurrent-context: fixture\nusers:\n- name: ci\n  user:\n    token: '
+    cat >"$lent" <<JSON
+{
+  "connections": {
+    "fixture cluster": {
+      "env": { "KUBECONFIG": [{ "text": "/root/.kube/config" }] },
+      "files": [{ "path": "/root/.kube/config", "content": [{ "text": "$kube_head" }, { "secret": "$KUBE_FIXTURE_TOKEN" }] }]
+    },
+    "staging": { "refused": "staging is not lent to CI for this fixture" }
+  }
+}
+JSON
+  fi
+  out="$(IWCI_LENT_FILE="$lent" "$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
     --store "$SCRATCH/store" --cache "$SCRATCH/cache" --stall-after "$stall_after")" || status=$?
   if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null 2>&1 <<<"$out"; then
     if ((status > 128)); then
@@ -3054,7 +3132,7 @@ for name in "$@"; do
       failed=1
     fi
   done < <(jq -r '.pipelines[0].report.jobs[].id' <<<"$out")
-  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out"; then
+  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
   fi
