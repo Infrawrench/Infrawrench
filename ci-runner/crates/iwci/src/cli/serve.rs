@@ -89,7 +89,9 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
         );
     }
     let quota = storage_quota(&mut args)?.unwrap_or(DEFAULT_STORAGE_QUOTA);
-    let runner = open_runner(&mut args, &limits, true, Some(quota))?;
+    let mut runner = open_runner(&mut args, &limits, true, Some(quota))?;
+    // Cloud jobs wait here for the app to claim them.
+    runner.external = Some(Arc::new(crate::external::ExternalJobs::new()));
     let no_warm = args.flag("--no-warm");
     let warm_every = match args.value("--warm-every")? {
         None => DEFAULT_WARM_EVERY_SECS,

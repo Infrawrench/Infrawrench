@@ -291,6 +291,35 @@ impl Executor<String> for FakeExecutor {
                 )
                 .unwrap();
         }
+        // `lent` prints its environment and the lent files it finds, with
+        // their modes, then writes a file of its own beside them.
+        if tool.contains(":lent@") {
+            for (k, v) in &inv.env {
+                stdout.push_str(&format!("{k}={v}\n"));
+            }
+            let modes = inv.fs.modes();
+            for path in [
+                "/root/.kube/config",
+                "/root/.ssh/id_deploy",
+                "/root/.ssh/config",
+            ] {
+                match inv.fs.read(path) {
+                    Ok(bytes) => stdout.push_str(&format!(
+                        "{path} {:o}\n{}\n",
+                        modes.get(std::path::Path::new(path)).unwrap_or(0),
+                        String::from_utf8_lossy(&bytes)
+                    )),
+                    Err(_) => stdout.push_str(&format!("{path} absent\n")),
+                }
+            }
+            stdout.push_str(&format!(
+                "/root/.ssh dir {:o}\n",
+                modes.get(std::path::Path::new("/root/.ssh")).unwrap_or(0)
+            ));
+            inv.fs
+                .write("/root/.ssh/job-note", b"written by the job")
+                .unwrap();
+        }
         if tool.contains(":scratch-write@") {
             inv.scratch
                 .write("/shared.txt", inv.job.id.as_bytes())
@@ -393,6 +422,7 @@ fn run_full(
         skip_task_cache: false,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     let report = run(plan, &ws, &FakeTools, &exec, &commits, &options);
     let builds = ws.builds.load(Ordering::SeqCst);
@@ -776,6 +806,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         skip_task_cache: false,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     run(
         plan,
@@ -910,6 +941,7 @@ fn a_cancelled_run_leaves_nothing_waiting() {
                 skip_task_cache: false,
                 downloads: None,
                 cancel: Some(cancel.clone()),
+                access: Default::default(),
             };
             run(
                 &p,
@@ -1293,6 +1325,7 @@ fn runs_share_the_runners_slots() {
         skip_task_cache: false,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     // Two runs at once, each wanting four jobs in parallel: together they
     // never exceed the two slots.
@@ -1346,6 +1379,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         skip_task_cache: false,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -1601,6 +1635,7 @@ fn run_cached_with(
         skip_task_cache,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     let report = run(
         plan,
@@ -1877,6 +1912,7 @@ fn run_looked_up(
         skip_task_cache: false,
         downloads: None,
         cancel: None,
+        access: Default::default(),
     };
     let report = run(
         plan,
@@ -2249,6 +2285,7 @@ fn run_downloads(
         skip_task_cache: false,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
         cancel: None,
+        access: Default::default(),
     };
     run(
         &p,
@@ -2395,6 +2432,7 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
         skip_task_cache: false,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
+        access: Default::default(),
     };
     let report = run(
         &plan,
@@ -2464,6 +2502,7 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
         skip_task_cache: false,
         downloads: None,
         cancel: Some(cancel),
+        access: Default::default(),
     };
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -2486,5 +2525,555 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
             .jobs
             .iter()
             .all(|j| matches!(j.status, Status::Cancelled { .. }))
+    );
+}
+
+/// A run with what the app lends it, and where its cloud jobs go; the live
+/// log's events are collected.
+fn run_access(
+    plan: &Plan,
+    access: RunAccess,
+    secrets: BTreeMap<String, String>,
+    caches: Option<Arc<dyn Caches>>,
+    cancel: Option<iwci_runtime::Cancel>,
+) -> (RunReport, FakeExecutor, Vec<LogEvent>) {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = events.clone();
+    let options = Options {
+        parallelism: 4,
+        changed_paths: None,
+        base_env: vec![("IWCI".into(), "1".into())],
+        memory: None,
+        caches,
+        logs: Some(Arc::new(move |e| sink.lock().unwrap().push(e))),
+        slots: None,
+        secrets,
+        skip_task_cache: false,
+        downloads: None,
+        cancel,
+        access,
+    };
+    let report = run(
+        plan,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    let events = events.lock().unwrap().clone();
+    (report, exec, events)
+}
+
+const KUBE_TOKEN: &str = "kube-token-hunter2";
+const KEY_LINE: &str = "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ";
+const DB_URL: &str = "postgres://ci:db-pass-hunter2@db.internal/app";
+const R2_SECRET: &str = "r2-secret-hunter2";
+
+fn lent() -> Arc<crate::lent::Lent> {
+    let lent: crate::lent::Lent = serde_json::from_value(serde_json::json!({
+        "connections": {
+            "Production cluster": {
+                "env": { "KUBECONFIG": [{ "text": "/root/.kube/config" }] },
+                "files": [{ "path": "/root/.kube/config", "content": [
+                    { "text": "apiVersion: v1\nusers:\n- user:\n    token: " },
+                    { "secret": KUBE_TOKEN }
+                ] }]
+            },
+            "staging": { "refused": "staging is not lent to CI for acme/web on feature/x" }
+        },
+        "ssh-keys": {
+            "deploy": { "files": [
+                { "path": "/root/.ssh/id_deploy", "content": format!(
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\n{KEY_LINE}\n-----END OPENSSH PRIVATE KEY-----\n"
+                ) },
+                { "path": "/root/.ssh/config", "mode": "644", "content": [{ "text": "Host *\n  IdentityFile /root/.ssh/id_deploy" }] }
+            ] }
+        },
+        "resources": {
+            "prod-db": { "outputs": { "url": DB_URL } },
+            "r2": { "env": { "AWS_ACCESS_KEY_ID": "r2-id", "AWS_SECRET_ACCESS_KEY": R2_SECRET } }
+        }
+    }))
+    .unwrap();
+    lent.check().unwrap();
+    Arc::new(lent)
+}
+
+fn trusted() -> RunAccess {
+    RunAccess {
+        lent: lent(),
+        trusted: true,
+        external: None,
+    }
+}
+
+#[test]
+fn lent_material_reaches_only_the_job_that_names_it_and_never_leaves_it() {
+    let p = plan(
+        r#"
+name: x
+jobs:
+  deploy:
+    using: builtin:lent@1
+    connections: [Production cluster]
+    ssh-keys: [deploy]
+    env-from: [r2]
+    env:
+      DATABASE_URL: ${{ resources.prod-db.url }}
+      AWS_ACCESS_KEY_ID: own-wins
+    artifacts: [/root]
+    cache: { key: root-ssh, paths: [/root/.ssh] }
+    changes: fail
+  after:
+    using: builtin:lent@1
+    needs: [deploy]
+"#,
+    );
+    let caches = Arc::new(MemoryCaches::default());
+    let (report, exec, events) =
+        run_access(&p, trusted(), BTreeMap::new(), Some(caches.clone()), None);
+    assert_eq!(status(&report, "deploy"), &Status::Passed, "{report:#?}");
+    assert_eq!(status(&report, "after"), &Status::Passed);
+    let env = exec.seen_env.lock().unwrap()["deploy"].clone();
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    assert_eq!(get("KUBECONFIG").as_deref(), Some("/root/.kube/config"));
+    assert_eq!(get("DATABASE_URL").as_deref(), Some(DB_URL));
+    assert_eq!(get("AWS_SECRET_ACCESS_KEY").as_deref(), Some(R2_SECRET));
+    // The job's own `env:` wins over `env-from:`.
+    assert_eq!(get("AWS_ACCESS_KEY_ID").as_deref(), Some("own-wins"));
+
+    let deploy = report.jobs.iter().find(|j| j.id == "deploy").unwrap();
+    let stdout = &deploy.execution.as_ref().unwrap().stdout;
+    // The files are there with their modes; their secret parts are masked
+    // in the log, their ordinary lines are not.
+    assert!(
+        stdout.contains("/root/.kube/config 600\napiVersion: v1"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("token: ***"), "{stdout}");
+    // The key whole, as one value, before any of its lines alone.
+    assert!(
+        stdout.contains("/root/.ssh/id_deploy 600\n***\n"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("/root/.ssh/config 644\nHost *"), "{stdout}");
+    assert!(!stdout.contains("PRIVATE KEY"), "{stdout}");
+    assert!(stdout.contains("/root/.ssh dir 700"), "{stdout}");
+    assert!(stdout.contains("DATABASE_URL=***") && stdout.contains("AWS_SECRET_ACCESS_KEY=***"));
+    assert_eq!(deploy.access.connections[0].name, "Production cluster");
+
+    // A job that names nothing gets nothing, not even as an artifact.
+    let after = report.jobs.iter().find(|j| j.id == "after").unwrap();
+    let after_out = &after.execution.as_ref().unwrap().stdout;
+    assert!(
+        after_out.contains("/root/.kube/config absent"),
+        "{after_out}"
+    );
+    assert!(
+        after_out.contains("/root/.ssh/id_deploy absent"),
+        "{after_out}"
+    );
+    assert!(
+        !exec.seen_env.lock().unwrap()["after"]
+            .iter()
+            .any(|(k, _)| k == "KUBECONFIG")
+    );
+
+    // Not a change, not an artifact, not in a cache: the job's own file
+    // beside the key is.
+    assert!(deploy.changes.is_empty());
+    let saved = caches.entries.lock().unwrap()["root-ssh"].clone();
+    let saved_paths: Vec<String> = saved
+        .iter()
+        .filter_map(|e| match e {
+            iwci_vfs::Entry::File { path, .. } => Some(path.display().to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(saved_paths, ["/root/.ssh/job-note"]);
+
+    // Nothing secret anywhere a report or the live log goes.
+    let everything = format!(
+        "{}{}",
+        serde_json::to_string(&report).unwrap(),
+        serde_json::to_string(&events).unwrap()
+    );
+    for secret in [KUBE_TOKEN, KEY_LINE, DB_URL, R2_SECRET] {
+        assert!(!everything.contains(secret), "{secret} leaked");
+    }
+}
+
+#[test]
+fn a_name_the_app_refused_or_never_sent_fails_the_job_before_it_runs() {
+    let p = plan(
+        r#"
+name: x
+jobs:
+  refused:
+    using: builtin:lent@1
+    connections: [staging]
+  missing:
+    using: builtin:lent@1
+    ssh-keys: [nobody]
+  output:
+    using: builtin:lent@1
+    env: { PW: "${{ resources.prod-db.password }}" }
+  fine:
+    using: builtin:lent@1
+"#,
+    );
+    let (report, exec, _) = run_access(&p, trusted(), BTreeMap::new(), None, None);
+    let reason = |id: &str| match status(&report, id) {
+        Status::Failed { reason } => reason.clone(),
+        other => panic!("{id}: {other:?}"),
+    };
+    assert_eq!(
+        reason("refused"),
+        "staging is not lent to CI for acme/web on feature/x"
+    );
+    assert_eq!(
+        reason("missing"),
+        "SSH key `nobody` was not lent to this run"
+    );
+    assert_eq!(
+        reason("output"),
+        "resource `prod-db` has no output `password` lent to this run"
+    );
+    assert_eq!(status(&report, "fine"), &Status::Passed);
+    assert_eq!(ran(&exec), ["fine"]);
+    for id in ["refused", "missing", "output"] {
+        let job = report.jobs.iter().find(|j| j.id == id).unwrap();
+        assert!(job.execution.is_none() && job.memory_mib == 0);
+    }
+
+    // An untrusted run is lent nothing, whatever it was sent.
+    let p = plan(
+        "name: x\njobs:\n  a: { using: builtin:lent@1, connections: [Production cluster] }\n  b: { using: builtin:lent@1, env: { U: \"${{ resources.prod-db.url }}\" } }\n",
+    );
+    let untrusted = RunAccess {
+        trusted: false,
+        ..trusted()
+    };
+    let (report, exec, _) = run_access(&p, untrusted, BTreeMap::new(), None, None);
+    for id in ["a", "b"] {
+        assert_eq!(
+            status(&report, id),
+            &Status::Failed {
+                reason: crate::lent::UNTRUSTED.into()
+            }
+        );
+    }
+    assert!(ran(&exec).is_empty());
+}
+
+/// Drives a run's cloud jobs as the app would, through the registry the
+/// server answers from.
+fn executor(
+    jobs: Arc<crate::external::ExternalJobs>,
+    run: &'static str,
+    act: impl FnOnce(&crate::external::ExternalJobs, serde_json::Value) + Send + 'static,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let until = Instant::now() + Duration::from_secs(20);
+        let listed = loop {
+            let list = jobs.list(run);
+            if let Some(job) = list.into_iter().next() {
+                break job;
+            }
+            assert!(Instant::now() < until, "no cloud job was handed over");
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        act(&jobs, listed);
+    })
+}
+
+fn cloud_access(jobs: &Arc<crate::external::ExternalJobs>, run: &str) -> RunAccess {
+    RunAccess {
+        external: Some(Arc::new(crate::external::RunExternal {
+            jobs: jobs.clone(),
+            run: crate::external::RunInfo {
+                run_id: run.into(),
+                pipeline: ".infrawrench/ci/test.yml".into(),
+                repo: "https://github.com/acme/web".into(),
+                sha: "c0ffee".into(),
+                branch: "main".into(),
+                git_ref: "refs/heads/main".into(),
+            },
+        })),
+        ..trusted()
+    }
+}
+
+fn tar_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut tar = tar::Builder::new(Vec::new());
+    for (path, data) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_entry_type(tar::EntryType::Regular);
+        tar.append_data(&mut header, path, *data).unwrap();
+    }
+    tar.into_inner().unwrap()
+}
+
+#[test]
+fn a_cloud_job_is_claimed_logged_and_finished_by_its_executor_and_the_graph_carries_on() {
+    let p = plan(
+        r#"
+name: x
+jobs:
+  build:
+    using: builtin:art-write@1
+    artifacts: [dist]
+  image:
+    cloud: { provider: gcp, kind: build, machine: e2-highcpu-8 }
+    needs: [build]
+    env:
+      TOKEN: ${{ secrets.TOKEN }}
+      DB: ${{ resources.prod-db.url }}
+      PLAIN: plain-value
+    run: docker build .
+    outputs: [digest]
+    artifacts: [dist/image]
+    timeout: 20m
+  after:
+    using: builtin:art-read@1
+    needs: [image]
+"#,
+    );
+    let jobs = Arc::new(crate::external::ExternalJobs::new());
+    let secret = "cloud-token-hunter2";
+    let driver = executor(jobs.clone(), "r1", move |jobs, listed| {
+        assert_eq!(listed["job"], "image");
+        assert_eq!(listed["state"], "external");
+        assert_eq!(listed["cloud"]["machine"], "e2-highcpu-8");
+        assert_eq!(listed["commit"]["sha"], "c0ffee");
+        assert_eq!(listed["pipeline"], ".infrawrench/ci/test.yml");
+        // What anyone listing it sees holds no secret.
+        let shown = listed.to_string();
+        assert!(
+            !shown.contains(secret) && !shown.contains(DB_URL),
+            "{shown}"
+        );
+        let claim = jobs
+            .claim("r1", "image", Some("aws ec2 i-0abc".into()))
+            .unwrap();
+        // A second executor cannot take it.
+        assert_eq!(jobs.claim("r1", "image", None).unwrap_err().0, 409);
+        assert_eq!(claim["env"]["TOKEN"], secret);
+        assert_eq!(claim["env"]["DB"], DB_URL);
+        assert_eq!(claim["env"]["PLAIN"], "plain-value");
+        assert_eq!(claim["env"]["IWCI_JOB"], "image");
+        let keys = claim["secret_env"].as_array().unwrap();
+        assert!(keys.contains(&"TOKEN".into()) && keys.contains(&"DB".into()));
+        assert!(!keys.contains(&"PLAIN".into()));
+        assert_eq!(claim["clone"]["into"], "/app");
+        assert_eq!(claim["timeout_secs"], 1200);
+        let token = claim["claim"].as_str().unwrap().to_string();
+        assert!(
+            claim["inputs"]["url"]
+                .as_str()
+                .unwrap()
+                .ends_with(&format!("/v1/runs/r1/jobs/image/inputs?claim={token}"))
+        );
+        // The inputs are the artifacts `build` kept, rooted at `/`.
+        let inputs = jobs.inputs("r1", "image", &token).unwrap();
+        let mut names = Vec::new();
+        for entry in tar::Archive::new(&inputs[..]).entries().unwrap() {
+            names.push(entry.unwrap().path().unwrap().display().to_string());
+        }
+        assert!(
+            names.contains(&"app/dist/build.txt".to_string()),
+            "{names:?}"
+        );
+        assert_eq!(jobs.inputs("r1", "image", "wrong").unwrap_err().0, 403);
+        jobs.log(
+            "r1",
+            "image",
+            &token,
+            "stdout",
+            &format!("token is {secret}\nhalf a "),
+        )
+        .unwrap();
+        jobs.log("r1", "image", &token, "stdout", "line\n").unwrap();
+        jobs.log("r1", "image", &token, "stderr", "").unwrap();
+        // Outside its artifact paths, an upload is refused.
+        let stray = tar_of(&[("root/.ssh/id_rsa", b"k")]);
+        assert_eq!(
+            jobs.upload("r1", "image", &token, &mut &stray[..])
+                .unwrap_err()
+                .0,
+            400
+        );
+        let body = tar_of(&[("app/dist/image/sbom.json", b"{}")]);
+        let up = jobs.upload("r1", "image", &token, &mut &body[..]).unwrap();
+        assert_eq!(up["files"], 1);
+        let finish: crate::external::Finish = serde_json::from_value(serde_json::json!({
+            "claim": token,
+            "status": "passed",
+            "exit_code": 0,
+            "output": format!("digest=sha256:{secret}"),
+        }))
+        .unwrap();
+        jobs.finish("r1", "image", finish).unwrap();
+        // Finished: the executor's next call says so, and it tears down.
+        let (code, body) = jobs.log("r1", "image", &token, "stdout", "x").unwrap_err();
+        assert_eq!((code, body["state"].as_str()), (409, Some("finished")));
+    });
+    let secrets = BTreeMap::from([("TOKEN".to_string(), secret.to_string())]);
+    let (report, exec, events) = run_access(&p, cloud_access(&jobs, "r1"), secrets, None, None);
+    driver.join().unwrap();
+    assert!(report.passed(), "{report:#?}");
+    let image = report.jobs.iter().find(|j| j.id == "image").unwrap();
+    assert_eq!(image.tool, "cloud:gcp/build");
+    assert_eq!(image.memory_mib, 0);
+    let cloud = image.cloud.as_ref().unwrap();
+    assert_eq!(cloud.executor.as_deref(), Some("aws ec2 i-0abc"));
+    assert_eq!(image.outputs["digest"], "sha256:***");
+    let execution = image.execution.as_ref().unwrap();
+    assert_eq!(execution.stdout, "token is ***\nhalf a line\n");
+    // The runner never ran it, and the job after it got its artifacts.
+    assert_eq!(ran(&exec), ["build", "after"]);
+    let after = report.jobs.iter().find(|j| j.id == "after").unwrap();
+    assert_eq!(
+        after.execution.as_ref().unwrap().stdout,
+        "build.txt,sbom.json"
+    );
+    // The live log: handed over, then started on the claim, its lines
+    // masked, then finished.
+    let image_events: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            LogEvent::JobExternal { job, cloud, .. } if job == "image" => {
+                Some(format!("external {}", cloud.provider))
+            }
+            LogEvent::JobStarted { job, .. } if job == "image" => Some("started".into()),
+            LogEvent::Output { job, line, .. } if job == "image" => Some(format!("out {line}")),
+            LogEvent::JobFinished { job, status, .. } if job == "image" => {
+                Some(format!("finished {status}"))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        image_events,
+        [
+            "external gcp",
+            "started",
+            "out token is ***",
+            "out half a line",
+            "finished passed"
+        ]
+    );
+    let everything = format!(
+        "{}{}",
+        serde_json::to_string(&report).unwrap(),
+        serde_json::to_string(&events).unwrap()
+    );
+    assert!(!everything.contains(secret) && !everything.contains(DB_URL));
+}
+
+#[test]
+fn a_cloud_job_fails_with_its_executor_is_cancelled_with_its_run_and_never_runs_untrusted() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    cloud: aws/vm\n    run: x\n  b:\n    using: builtin:ok@1\n    needs: [a]\n",
+    );
+    // No connection to run it on: the executor finishes it unclaimed.
+    let jobs = Arc::new(crate::external::ExternalJobs::new());
+    let driver = executor(jobs.clone(), "r2", |jobs, _| {
+        let passed: crate::external::Finish =
+            serde_json::from_value(serde_json::json!({ "status": "passed" })).unwrap();
+        assert_eq!(jobs.finish("r2", "a", passed).unwrap_err().0, 400);
+        let error: crate::external::Finish = serde_json::from_value(serde_json::json!({
+            "status": "error",
+            "error": "no connection for `aws` is opted in to cloud jobs for acme/web",
+        }))
+        .unwrap();
+        jobs.finish("r2", "a", error).unwrap();
+    });
+    let (report, _, _) = run_access(&p, cloud_access(&jobs, "r2"), BTreeMap::new(), None, None);
+    driver.join().unwrap();
+    assert_eq!(
+        status(&report, "a"),
+        &Status::Error {
+            message: "no connection for `aws` is opted in to cloud jobs for acme/web".into()
+        }
+    );
+    assert!(matches!(status(&report, "b"), Status::Skipped { .. }));
+    let a = report.jobs.iter().find(|j| j.id == "a").unwrap();
+    assert!(a.execution.is_none());
+    assert_eq!(a.cloud.as_ref().unwrap().claimed_ms, 0);
+
+    // Claimed, then the run is cancelled: the job is, and its executor's
+    // next call says so.
+    let jobs = Arc::new(crate::external::ExternalJobs::new());
+    let cancel = iwci_runtime::Cancel::new();
+    let stop = cancel.clone();
+    let driver = executor(jobs.clone(), "r3", move |jobs, _| {
+        let claim = jobs.claim("r3", "a", None).unwrap();
+        let token = claim["claim"].as_str().unwrap().to_string();
+        jobs.log("r3", "a", &token, "stdout", "booting\n").unwrap();
+        stop.cancel();
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            match jobs.log("r3", "a", &token, "stdout", "") {
+                Err((409, body)) => {
+                    assert_eq!(body["state"], "cancelled");
+                    break;
+                }
+                _ => assert!(Instant::now() < until, "never told it was cancelled"),
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+    let (report, _, _) = run_access(
+        &p,
+        cloud_access(&jobs, "r3"),
+        BTreeMap::new(),
+        None,
+        Some(cancel),
+    );
+    driver.join().unwrap();
+    assert!(matches!(status(&report, "a"), Status::Cancelled { .. }));
+    assert!(matches!(status(&report, "b"), Status::Cancelled { .. }));
+
+    // Untrusted: fails at once and is never handed over.
+    let jobs = Arc::new(crate::external::ExternalJobs::new());
+    let access = RunAccess {
+        trusted: false,
+        ..cloud_access(&jobs, "r4")
+    };
+    let (report, _, events) = run_access(&p, access, BTreeMap::new(), None, None);
+    assert_eq!(
+        status(&report, "a"),
+        &Status::Failed {
+            reason: crate::external::UNTRUSTED.into()
+        }
+    );
+    assert!(jobs.list("r4").is_empty());
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, LogEvent::JobExternal { .. }))
+    );
+
+    // Without an executor (`iwci run`), it errors rather than waits.
+    let (report, _, _) = run_access(&p, trusted(), BTreeMap::new(), None, None);
+    assert!(
+        matches!(status(&report, "a"), Status::Error { message } if message.contains("iwci serve"))
     );
 }

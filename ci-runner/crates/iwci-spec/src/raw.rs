@@ -209,7 +209,28 @@ pub struct Job {
     pub name: Option<String>,
     #[serde(default)]
     pub matrix: Option<Matrix>,
-    pub using: String,
+    /// The tool or environment the job runs in. Required, unless the job
+    /// runs on a connected cloud account (`cloud:`), where the machine's
+    /// image is the environment.
+    #[serde(default)]
+    pub using: Option<String>,
+    /// Runs the job on one of the organisation's connected cloud accounts
+    /// rather than on the runner: `<provider>/<kind>`, or the map. The
+    /// runner keeps the job in the graph and hands its execution to the
+    /// app. See [`Cloud`].
+    #[serde(default)]
+    pub cloud: Option<CloudField>,
+    /// Infrawrench connections whose credentials are lent to the job (a
+    /// kubeconfig, an SSH host entry): names, or `{ name, namespace }`.
+    #[serde(default)]
+    pub connections: Vec<ConnectionRef>,
+    /// Infrawrench SSH keys written into the job (`~/.ssh`), by name.
+    #[serde(default)]
+    pub ssh_keys: Vec<String>,
+    /// Resource grants whose every exported key becomes an environment
+    /// variable, by their CI name. The job's own `env:` wins.
+    #[serde(default)]
+    pub env_from: Vec<String>,
     /// Arguments for a tool (`builtin:` / `repo:`), as a list or one string
     /// split like a shell would split it (no expansion).
     #[serde(default)]
@@ -284,6 +305,106 @@ pub struct Job {
     /// over `workspace.services`. See [`Service`].
     #[serde(default)]
     pub services: Option<Services>,
+}
+
+/// `cloud: gcp/build`, or `cloud: { provider, kind, ... }`. Deserialised by
+/// hand, like [`Concurrency`], so an unknown key in the map form is
+/// reported as such.
+#[derive(Debug, Clone)]
+pub enum CloudField {
+    Short(String),
+    Full(Cloud),
+}
+
+/// Where a cloud job runs. `provider` and `kind` are required and literal;
+/// the rest are optional and may use `${{ matrix }}`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Cloud {
+    /// The plugin id of an opted-in connection (`aws`, `gcp`, `hetzner`).
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// `vm`, `container`, `build`, `host` or `cluster`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// The connection's name, when the organisation opted in more than one
+    /// of the provider.
+    #[serde(default)]
+    pub connection: Option<String>,
+    /// The provider's size name (`e2-highcpu-8`); default per provider.
+    #[serde(default)]
+    pub machine: Option<String>,
+    /// A container image (container, build) or an OS image (vm).
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub region: Option<String>,
+    /// `<type>` or `<type>:<count>`, where the provider offers GPUs.
+    #[serde(default)]
+    pub gpu: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for CloudField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(CloudField::Short(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(CloudField::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`cloud` is `<provider>/<kind>` or `{ provider, kind, ... }`",
+            )),
+        }
+    }
+}
+
+/// One of `connections:`: a name, or `{ name, namespace }`.
+#[derive(Debug, Clone)]
+pub enum ConnectionRef {
+    Name(String),
+    Full(ConnectionEntry),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct ConnectionEntry {
+    pub name: String,
+    /// For a Kubernetes connection: the namespace its kubeconfig's context
+    /// selects.
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+impl ConnectionRef {
+    pub fn name(&self) -> &str {
+        match self {
+            ConnectionRef::Name(n) => n,
+            ConnectionRef::Full(e) => &e.name,
+        }
+    }
+
+    pub fn namespace(&self) -> Option<&str> {
+        match self {
+            ConnectionRef::Name(_) => None,
+            ConnectionRef::Full(e) => e.namespace.as_deref(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ConnectionRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(ConnectionRef::Name(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(ConnectionRef::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "a connection is its name, or `{ name, namespace }`",
+            )),
+        }
+    }
 }
 
 /// `downloads: [dist/app.tar.gz]`, or

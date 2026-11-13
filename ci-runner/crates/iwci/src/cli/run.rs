@@ -15,7 +15,10 @@
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
 //! and so do secrets: `IWCI_SECRET_<NAME>` becomes `${{ secrets.<NAME> }}`,
-//! so a value never lands in shell history or a process listing.
+//! so a value never lands in shell history or a process listing. What a
+//! request would lend the run (`lent`: connections, SSH keys, resource
+//! outputs) comes from the JSON file `IWCI_LENT_FILE` names, for the same
+//! reason; `--untrusted` runs as a fork's pull request would.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -191,6 +194,7 @@ pub(super) fn open_runner(
         author,
         default_storage_quota,
         download_limits,
+        external: None,
     })
 }
 
@@ -236,6 +240,16 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
         repo_id: args.value("--repo-id")?,
         owner: args.value("--owner")?,
         default_branch: args.value("--default-branch")?,
+        trusted: args.flag("--untrusted").then_some(false),
+        lent: match std::env::var("IWCI_LENT_FILE") {
+            Ok(path) if !path.is_empty() => {
+                let text =
+                    std::fs::read_to_string(&path).map_err(|e| format!("IWCI_LENT_FILE: {e}"))?;
+                serde_json::from_str(&text)
+                    .map_err(|e| format!("IWCI_LENT_FILE: not what `lent` takes: {e}"))?
+            }
+            _ => Default::default(),
+        },
         pipeline: match local_pipeline {
             Some(path) => Some(std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?),
             None => None,

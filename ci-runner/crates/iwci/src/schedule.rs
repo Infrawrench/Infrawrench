@@ -25,8 +25,8 @@ use std::time::{Duration, Instant};
 
 use iwci_spec::expr::{self, Name};
 use iwci_spec::{
-    Action, ChangePolicy, JobResult, JobTemplate, NeedsValues, Plan, PlannedJob, PlannedService,
-    ToolRef, WorkspaceSpec,
+    Action, ChangePolicy, CloudSpec, JobAccess, JobResult, JobTemplate, NeedsValues, Plan,
+    PlannedJob, PlannedService, ToolRef, WorkspaceSpec,
 };
 use iwci_vfs::{Change, Entry, JobFs, Snapshot, WriteBudget};
 use serde::Serialize;
@@ -139,6 +139,14 @@ pub enum LogEvent {
     JobStarted {
         job: String,
         name: String,
+    },
+    /// A cloud job is ready and waits for its executor to claim it
+    /// (`POST /v1/runs/{id}/jobs/{job}/claim`); `job-started` follows the
+    /// claim.
+    JobExternal {
+        job: String,
+        name: String,
+        cloud: CloudSpec,
     },
     /// One line of output, without its newline.
     Output {
@@ -413,6 +421,35 @@ pub struct JobReport {
     /// skip by `paths:` or a false `if:`.
     #[serde(skip)]
     pub blocks: bool,
+    /// The connections, SSH keys and resources it names, by name only.
+    #[serde(skip_serializing_if = "JobAccess::is_empty")]
+    pub access: JobAccess,
+    /// Set for a cloud job: where it ran and for how long.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudRun>,
+}
+
+/// Where a cloud job ran, as its report says.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudRun {
+    #[serde(flatten)]
+    pub spec: CloudSpec,
+    /// What claimed it, as the executor named itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executor: Option<String>,
+    /// From its claim to its end; 0 if it was never claimed. Billed as
+    /// external time, not the runner's.
+    pub claimed_ms: u64,
+}
+
+/// What a run may give its jobs beyond their pipeline: material the app
+/// lends by name, whether the run is trusted (not a fork's pull request),
+/// and where cloud jobs go.
+#[derive(Clone, Default)]
+pub struct RunAccess {
+    pub lent: Arc<crate::lent::Lent>,
+    pub trusted: bool,
+    pub external: Option<Arc<dyn crate::external::External>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -464,6 +501,8 @@ pub struct Options {
     /// jobs are stopped, and every job that did not finish reports
     /// [`Status::Cancelled`].
     pub cancel: Option<iwci_runtime::Cancel>,
+    /// What the app lends the run's jobs, and where cloud jobs go.
+    pub access: RunAccess,
 }
 
 impl Options {
@@ -833,6 +872,8 @@ struct State<'p> {
     lookups: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Expanded jobs ready to run, each with what its lookup left it.
     queue: Vec<(&'p JobTemplate, PlannedJob, Lookup)>,
+    /// Cloud jobs ready to hand over: no slot and no memory.
+    external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
     /// Started templates: their instances' ids in matrix order, the reports
     /// of those finished so far, and the artifacts they kept.
@@ -1004,6 +1045,7 @@ pub fn run<T: Tools>(
         finished: HashMap::new(),
         lookups: Vec::new(),
         queue: Vec::new(),
+        external: Vec::new(),
         open: HashMap::new(),
         running: 0,
         reports: HashMap::new(),
@@ -1036,7 +1078,10 @@ pub fn run<T: Tools>(
             used: AtomicU64::new(0),
             refused: AtomicBool::new(false),
         }));
-    let mask = Arc::new(Masker::new(options.secrets.values()));
+    let lent_values = options.access.lent.secret_values();
+    let mask = Arc::new(Masker::new(
+        options.secrets.values().chain(lent_values.iter()),
+    ));
     let artifact_bytes = AtomicU64::new(0);
     let shared = RunShared {
         scratch: &scratch,
@@ -1104,6 +1149,42 @@ pub fn run<T: Tools>(
                 }
             });
         }
+        // Cloud jobs: each waits for its executor on a thread of its own,
+        // with no slot and no memory, since nothing runs here.
+        let cloud = plan.jobs.iter().any(|t| t.tool.is_cloud());
+        for _ in 0..if cloud {
+            crate::external::MAX_EXTERNAL
+        } else {
+            0
+        } {
+            scope.spawn(|| {
+                loop {
+                    let (template, job, inherited) = {
+                        let mut s = state.lock().unwrap();
+                        loop {
+                            let seen = wake.seen();
+                            if let Some((template, job)) = s.external.pop() {
+                                s.running += 1;
+                                let inherited =
+                                    inherited_artifacts(plan, &template.key, &s.finished);
+                                break (template, job, inherited);
+                            }
+                            if s.done {
+                                return;
+                            }
+                            s = wake.wait(s, &state, seen);
+                        }
+                    };
+                    let mut kept = Vec::new();
+                    let report = if options.cancelled() {
+                        cancelled_report(&job)
+                    } else {
+                        run_external(&job, plan, options, &shared, inherited, &mut kept)
+                    };
+                    complete(&state, &wake, plan, options, template, report, kept);
+                }
+            });
+        }
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
@@ -1135,7 +1216,11 @@ pub fn run<T: Tools>(
                                 let reserved = !cancelled && options.memory.is_some();
                                 break (template, job, lookup, inherited, reserved);
                             }
-                            if s.running == 0 && s.lookups.is_empty() && s.queue.is_empty() {
+                            if s.running == 0
+                                && s.lookups.is_empty()
+                                && s.queue.is_empty()
+                                && s.external.is_empty()
+                            {
                                 // Nothing queued, nothing running, nothing
                                 // being looked up: whatever is
                                 // still waiting can never become ready. That
@@ -1388,7 +1473,9 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 // The queue is a stack; push in reverse so entries start in
                 // matrix order.
                 for job in jobs.into_iter().rev() {
-                    if job.task_cache.is_some() && options.caches.is_some() {
+                    if job.cloud.is_some() {
+                        s.external.push((template, job));
+                    } else if job.task_cache.is_some() && options.caches.is_some() {
                         s.lookups.push((template, job));
                     } else {
                         s.enqueue((template, job, Lookup::default()));
@@ -1460,6 +1547,8 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         blocks,
         cached: false,
         needs: template.needs.clone(),
+        access: template.access.clone(),
+        cloud: None,
     }
 }
 
@@ -1559,6 +1648,13 @@ fn run_job<T: Tools>(
         key: task_key,
         lines: task_lines,
     } = lookup;
+    // What the app lent the job, checked before anything is built: a name
+    // it did not supply, or refused, fails the job with the reason.
+    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
+    {
+        Ok(lent) => lent,
+        Err(reason) => return refused(job, shared.mask.mask(&reason), started.elapsed()),
+    };
     let workspace = match workspace.built() {
         Ok(ws) => ws,
         Err(e) => {
@@ -1633,6 +1729,45 @@ fn run_job<T: Tools>(
             .count();
         artifact_notes.push(format!("artifacts: {files} file(s) from `{from}`"));
         restored.extend(entries.iter().map(|e| entry_path(e).to_path_buf()));
+    }
+
+    // Lent files: in this job's file system only, with their modes. They
+    // are the job's inputs, never its changes, artifacts, downloads or
+    // cache entries, and never inside the clone, where a commit could
+    // take them.
+    let mut lent_paths: HashSet<PathBuf> = HashSet::new();
+    for (path, mode, data) in &lent.files {
+        if let Some(root) = &root
+            && path.starts_with(root)
+        {
+            return refused(
+                job,
+                format!(
+                    "the lent file `{}` would be inside the clone ({root}), where it could be committed or kept",
+                    path.display()
+                ),
+                started.elapsed(),
+            );
+        }
+        let new_parent = path
+            .parent()
+            .filter(|p| *p != std::path::Path::new("/") && !workspace.snapshot.is_dir(p));
+        if let Err(e) = fs.write(path, data) {
+            return errored(
+                job,
+                format!("could not write the lent file `{}`: {e}", path.display()),
+                started.elapsed(),
+            );
+        }
+        let modes = fs.modes();
+        modes.set(path, *mode);
+        if let Some(parent) = new_parent {
+            // A directory made for it (`~/.ssh`) is the job's alone, as
+            // OpenSSH wants it.
+            modes.set(parent, 0o700);
+        }
+        lent_paths.insert(path.clone());
+        restored.insert(path.clone());
     }
 
     // Restore caches before the job runs. A miss, or a store that cannot be
@@ -1710,13 +1845,22 @@ fn run_job<T: Tools>(
     env.push(("IWCI_OUTPUT".into(), OUTPUT_PATH.into()));
     env.push(("IWCI_SCRATCH".into(), iwci_spec::SCRATCH_PATH.into()));
     merge_env(&mut env, &workspace.env);
+    merge_env(&mut env, &lent.env);
     merge_env(&mut env, &job.env);
     // Secrets last, read now so they are never part of the plan. A secret
-    // the run does not have reads as empty, and the report says which.
+    // the run does not have reads as empty, and the report says which; a
+    // resource it was not lent fails the job.
     let mut notes = artifact_notes;
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
-        let (value, missing) = entry.fill(|name| options.secrets.get(name).cloned());
+        let filled = entry.fill(
+            |name| options.secrets.get(name).cloned(),
+            |name, output| options.access.lent.output(name, output),
+        );
+        let (value, missing) = match filled {
+            Ok(filled) => filled,
+            Err(reason) => return refused(job, shared.mask.mask(&reason), started.elapsed()),
+        };
         for name in missing {
             notes.push(format!(
                 "secret `{name}` is not set for this run, so `{}` has it empty",
@@ -1737,7 +1881,14 @@ fn run_job<T: Tools>(
         merge_env(&mut service_env, &service.env);
         let mut secrets = Vec::new();
         for entry in &service.secret_env {
-            let (value, missing) = entry.fill(|name| options.secrets.get(name).cloned());
+            let filled = entry.fill(
+                |name| options.secrets.get(name).cloned(),
+                |name, output| options.access.lent.output(name, output),
+            );
+            let (value, missing) = match filled {
+                Ok(filled) => filled,
+                Err(reason) => return refused(job, shared.mask.mask(&reason), started.elapsed()),
+            };
             for name in missing {
                 notes.push(format!(
                     "secret `{name}` is not set for this run, so service `{}` has `{}` empty",
@@ -1926,36 +2077,7 @@ fn run_job<T: Tools>(
         // nothing: read every change once (only what the job wrote lives in
         // its upper layer) and keep those at or under an artifact path.
         let entries = written_under(&fs, &job.artifacts, &restored);
-        let files = entries
-            .iter()
-            .filter(|e| matches!(e, Entry::File { .. }))
-            .count();
-        let bytes: u64 = entries
-            .iter()
-            .map(|e| match e {
-                Entry::File { data, .. } => data.len() as u64,
-                _ => 0,
-            })
-            .sum();
-        let total = shared.artifact_bytes.fetch_add(bytes, Ordering::SeqCst) + bytes;
-        if total > plan.scratch_bytes {
-            shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
-            status = Status::Failed {
-                reason: format!(
-                    "its artifacts ({} KiB) would take the run past its `scratch:` limit of {} MiB",
-                    bytes.div_ceil(1024),
-                    plan.scratch_bytes >> 20
-                ),
-            };
-        } else if files == 0 {
-            notes.push("artifacts: nothing under its `artifacts:` paths".into());
-        } else {
-            notes.push(format!(
-                "artifacts: kept {files} file(s), {} KiB",
-                bytes.div_ceil(1024)
-            ));
-            *kept = entries;
-        }
+        keep_artifacts(entries, plan, shared, &mut status, &mut notes, kept);
     }
 
     // Keep the job's downloads, when its outcome is one they are kept for.
@@ -2019,7 +2141,12 @@ fn run_job<T: Tools>(
             if *exact {
                 continue;
             }
-            let entries = fs.entries_under(paths);
+            // Never a lent credential, whatever path the cache names.
+            let entries: Vec<Entry> = fs
+                .entries_under(paths)
+                .into_iter()
+                .filter(|e| !lent_paths.contains(entry_path(e)))
+                .collect();
             if !entries
                 .iter()
                 .any(|e| matches!(e, iwci_vfs::Entry::File { .. }))
@@ -2098,6 +2225,328 @@ fn run_job<T: Tools>(
         blocks,
         cached: false,
         needs: Vec::new(),
+        access: job.access.clone(),
+        cloud: None,
+    }
+}
+
+/// Keeps a passing job's artifacts for the jobs that need it, within the
+/// run's `scratch:` limit (they stay in memory until the run ends), or
+/// fails it.
+fn keep_artifacts(
+    entries: Vec<Entry>,
+    plan: &Plan,
+    shared: &RunShared<'_>,
+    status: &mut Status,
+    notes: &mut Vec<String>,
+    kept: &mut Vec<Entry>,
+) {
+    let files = entries
+        .iter()
+        .filter(|e| matches!(e, Entry::File { .. }))
+        .count();
+    let bytes: u64 = entries
+        .iter()
+        .map(|e| match e {
+            Entry::File { data, .. } => data.len() as u64,
+            _ => 0,
+        })
+        .sum();
+    let total = shared.artifact_bytes.fetch_add(bytes, Ordering::SeqCst) + bytes;
+    if total > plan.scratch_bytes {
+        shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
+        *status = Status::Failed {
+            reason: format!(
+                "its artifacts ({} KiB) would take the run past its `scratch:` limit of {} MiB",
+                bytes.div_ceil(1024),
+                plan.scratch_bytes >> 20
+            ),
+        };
+    } else if files == 0 {
+        notes.push("artifacts: nothing under its `artifacts:` paths".into());
+    } else {
+        notes.push(format!(
+            "artifacts: kept {files} file(s), {} KiB",
+            bytes.div_ceil(1024)
+        ));
+        *kept = entries;
+    }
+}
+
+/// Hands a cloud job to the run's executor and waits for it: the runner
+/// keeps it in the graph, the app runs it on a connected cloud account.
+/// See [`crate::external`].
+fn run_external(
+    job: &PlannedJob,
+    plan: &Plan,
+    options: &Options,
+    shared: &RunShared<'_>,
+    inherited: Vec<(String, Arc<Vec<Entry>>)>,
+    kept: &mut Vec<Entry>,
+) -> JobReport {
+    use crate::external::{End, ExternalJob, FinishStatus};
+    let started = Instant::now();
+    let spec = job.cloud.clone().expect("only cloud jobs are handed over");
+    let with_cloud = |mut report: JobReport, executor, claimed: Option<Duration>| {
+        report.memory_mib = 0;
+        report.cloud = Some(CloudRun {
+            spec: spec.clone(),
+            executor,
+            claimed_ms: claimed.map_or(0, millis),
+        });
+        report
+    };
+    if !options.access.trusted {
+        return with_cloud(
+            refused(job, crate::external::UNTRUSTED.into(), started.elapsed()),
+            None,
+            None,
+        );
+    }
+    let Some(external) = &options.access.external else {
+        return with_cloud(
+            errored(
+                job,
+                "this runner hands cloud jobs to nothing (`iwci run`): they run when a run comes through `iwci serve`, whose executor claims them".into(),
+                started.elapsed(),
+            ),
+            None,
+            None,
+        );
+    };
+    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
+    {
+        Ok(lent) => lent,
+        Err(reason) => {
+            return with_cloud(
+                refused(job, shared.mask.mask(&reason), started.elapsed()),
+                None,
+                None,
+            );
+        }
+    };
+    let mut env = options.base_env.clone();
+    env.push(("IWCI_JOB".into(), job.id.clone()));
+    merge_env(&mut env, &lent.env);
+    merge_env(&mut env, &job.env);
+    let mut notes = Vec::new();
+    let mut secret_vars = Vec::new();
+    for entry in &job.secret_env {
+        let filled = entry.fill(
+            |name| options.secrets.get(name).cloned(),
+            |name, output| options.access.lent.output(name, output),
+        );
+        let (value, missing) = match filled {
+            Ok(filled) => filled,
+            Err(reason) => {
+                return with_cloud(
+                    refused(job, shared.mask.mask(&reason), started.elapsed()),
+                    None,
+                    None,
+                );
+            }
+        };
+        for name in missing {
+            notes.push(format!(
+                "secret `{name}` is not set for this run, so `{}` has it empty",
+                entry.key
+            ));
+        }
+        secret_vars.push((entry.key.clone(), value));
+    }
+    merge_env(&mut env, &secret_vars);
+    // What the executor should treat as secret: everything lent the job's
+    // own `env:` does not replace, and every value that reads a secret.
+    let mut secret_keys: Vec<String> = lent
+        .env
+        .iter()
+        .map(|(k, _)| k.clone())
+        .filter(|k| !job.env.iter().any(|(own, _)| own == k))
+        .chain(job.secret_env.iter().map(|e| e.key.clone()))
+        .collect();
+    secret_keys.sort();
+    secret_keys.dedup();
+    let script = match &job.action {
+        Action::Script { script } => script.clone(),
+        Action::Args { .. } => String::new(),
+    };
+    let sink = options.logs.as_ref().map(|logs| {
+        logs(LogEvent::JobExternal {
+            job: job.id.clone(),
+            name: job.display_name.clone(),
+            cloud: spec.clone(),
+        });
+        Arc::new(LineSink {
+            job: job.id.clone(),
+            logs: logs.clone(),
+            mask: shared.mask.clone(),
+            pending: Mutex::default(),
+        })
+    });
+    let on_claim: Box<dyn Fn() + Send + Sync> = match &options.logs {
+        Some(logs) => {
+            let logs = logs.clone();
+            let (id, name) = (job.id.clone(), job.display_name.clone());
+            Box::new(move || {
+                logs(LogEvent::JobStarted {
+                    job: id.clone(),
+                    name: name.clone(),
+                })
+            })
+        }
+        None => Box::new(|| {}),
+    };
+    let log: Option<OutputSink> = sink.clone().map(|sink| {
+        let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
+        sink
+    });
+    let room = plan
+        .scratch_bytes
+        .saturating_sub(shared.artifact_bytes.load(Ordering::SeqCst));
+    let outcome = external.run(
+        ExternalJob {
+            id: job.id.clone(),
+            name: job.display_name.clone(),
+            cloud: spec.clone(),
+            script,
+            cwd: job.cwd.clone(),
+            env,
+            secret_keys,
+            files: lent.files,
+            timeout: job.timeout,
+            outputs: job.outputs.clone(),
+            artifacts: job.artifacts.clone(),
+            changes: job.changes.clone(),
+            clone: plan.workspaces[job.workspace].clone.clone(),
+            inputs: inherited,
+            max_artifact_bytes: room,
+            on_claim,
+            log,
+        },
+        options.cancel.as_ref(),
+    );
+    if let Some(sink) = &sink {
+        sink.flush();
+    }
+    let mask = |t: &str| shared.mask.mask(t);
+    let claimed = outcome.claimed_for;
+    let mut execution = Execution {
+        exit_code: 0,
+        stdout: mask(&outcome.stdout),
+        stderr: mask(&outcome.stderr),
+        ..Default::default()
+    };
+    if outcome.truncated {
+        notes.push(format!(
+            "log: kept the first {} MiB of each stream",
+            crate::external::MAX_LOG_BYTES >> 20
+        ));
+    }
+    let mut outputs = BTreeMap::new();
+    let mut changes = Vec::new();
+    let mut status = match &outcome.end {
+        End::Cancelled => {
+            execution.cancelled = true;
+            Status::Cancelled {
+                reason: CANCELLED_REASON.into(),
+            }
+        }
+        End::Lost(reason) => Status::Error {
+            message: mask(reason),
+        },
+        End::TimedOut => {
+            execution.timed_out = true;
+            Status::Failed {
+                reason: format!(
+                    "timed out: no end {}s after it was claimed ({}s of `timeout:` and {}s to start a machine)",
+                    job.timeout.as_secs() + crate::external::BOOT_SECS,
+                    job.timeout.as_secs(),
+                    crate::external::BOOT_SECS
+                ),
+            }
+        }
+        End::Finished(finish) => {
+            execution.exit_code = finish.exit_code.unwrap_or(match finish.status {
+                FinishStatus::Passed => 0,
+                _ => 1,
+            });
+            execution.timed_out = finish.timed_out;
+            changes = finish.changes.iter().map(|c| c.changed_file()).collect();
+            let error = finish.error.as_deref().map(mask);
+            match finish.status {
+                FinishStatus::Error => Status::Error {
+                    message: error.unwrap_or_else(|| "its executor could not run it".into()),
+                },
+                FinishStatus::Failed => Status::Failed {
+                    reason: error.unwrap_or_else(|| {
+                        if finish.timed_out {
+                            format!("timed out after {}s", job.timeout.as_secs())
+                        } else {
+                            format!("exited with {}", execution.exit_code)
+                        }
+                    }),
+                },
+                FinishStatus::Passed => {
+                    match parse_outputs(
+                        finish.output.as_deref().unwrap_or_default().as_bytes(),
+                        &job.outputs,
+                    ) {
+                        // Masked, as a local job's are: an output carrying a
+                        // secret would pass it on.
+                        Ok(read) => {
+                            outputs = read.into_iter().map(|(k, v)| (k, mask(&v))).collect();
+                            match (&job.changes, changes.is_empty()) {
+                                (ChangePolicy::Fail, false) => Status::Failed {
+                                    reason: format!(
+                                        "changed {} file(s); run it locally and commit the result",
+                                        changes.len()
+                                    ),
+                                },
+                                _ => Status::Passed,
+                            }
+                        }
+                        Err(e) => Status::Failed {
+                            reason: format!("$IWCI_OUTPUT: {e}"),
+                        },
+                    }
+                }
+            }
+        }
+    };
+    if status == Status::Passed && !job.artifacts.is_empty() {
+        keep_artifacts(
+            outcome.artifacts,
+            plan,
+            shared,
+            &mut status,
+            &mut notes,
+            kept,
+        );
+    }
+    let blocks = !status.is_success();
+    JobReport {
+        id: job.id.clone(),
+        name: job.display_name.clone(),
+        tool: job.tool.to_string(),
+        status,
+        execution: claimed.is_some().then_some(execution),
+        changes,
+        commit: None,
+        outputs,
+        caches: Vec::new(),
+        downloads: Vec::new(),
+        notes,
+        duration_ms: millis(started.elapsed()),
+        memory_mib: 0,
+        blocks,
+        cached: false,
+        needs: Vec::new(),
+        access: job.access.clone(),
+        cloud: Some(CloudRun {
+            spec,
+            executor: outcome.executor.map(|e| mask(&e)),
+            claimed_ms: claimed.map_or(0, millis),
+        }),
     }
 }
 
@@ -2389,6 +2838,8 @@ fn replay(
         blocks: false,
         cached: true,
         needs: Vec::new(),
+        access: job.access.clone(),
+        cloud: None,
     })
 }
 
@@ -2535,7 +2986,18 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         blocks: true,
         cached: false,
         needs: Vec::new(),
+        access: job.access.clone(),
+        cloud: None,
     }
+}
+
+/// A job that never started because it was refused something it names (a
+/// connection the app would not lend, a cloud job of an untrusted run).
+fn refused(job: &PlannedJob, reason: String, elapsed: Duration) -> JobReport {
+    let mut report = errored(job, String::new(), elapsed);
+    report.status = Status::Failed { reason };
+    report.memory_mib = 0;
+    report
 }
 
 fn millis(d: Duration) -> u64 {

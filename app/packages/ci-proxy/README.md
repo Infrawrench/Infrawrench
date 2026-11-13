@@ -15,28 +15,31 @@ bucket (below).
 
 ## Routes
 
-Every route but `/healthz` and `/v1/artifacts/...` needs
-`Authorization: Bearer <PROXY_KEY>`.
+Every route but `/healthz`, `/v1/artifacts/...` and a cloud job's two
+token routes needs `Authorization: Bearer <PROXY_KEY>`.
 
-| Route                                                                 | Does                                                                               |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /healthz`                                                        | `200 ok`, unauthenticated.                                                         |
-| `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | A job's download, for a link the app signed (below); no bearer key.                |
-| `GET`, `PUT /v1/runners`                                              | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                    | Each runner's slots, job memory and whether it answered, and the pool's totals.    |
-| `POST /v1/runs[?wait=true]`                                           | A run on the best placed runner (below). `429` only when every runner refuses.     |
-| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                         | From the runner that has the run. Logs stream through as Server-Sent Events.       |
-| `POST /v1/runs/{id}/cancel`                                           | Cancels the run, or the pipelines the body names, on the runner that has it.       |
-| `POST /v1/concurrency`                                                | A request's pipelines and their concurrency groups, from any runner; runs nothing. |
-| `POST /v1/prepare`                                                    | Warms a runner for a request, placed like a run.                                   |
-| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                        | From any runner that answers; they all read the same store.                        |
-| `DELETE /v1/storage/{owner}/{repo-id}`                                | Clears one repository's caches (never its downloads), on any runner that answers.  |
-| `PUT /v1/schedules`                                                   | Registers a repository's scheduled pipelines (below).                              |
-| `GET /v1/schedules/{owner}`                                           | An owner's registered repositories, their crons and the last refresh's error.      |
-| `DELETE /v1/schedules/{owner}/{repo-id}`                              | Stops a repository's scheduled runs.                                               |
-| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets`                      | Secret names and when each was set; never values.                                  |
-| `PUT`, `DELETE .../secrets/{name}`                                    | Sets (`{ "value": "..." }`) or removes a secret.                                   |
-| `GET`, `PUT`, `DELETE .../vars[/{name}]`                              | The same for variables, whose values are listed.                                   |
+| Route                                                                     | Does                                                                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /healthz`                                                            | `200 ok`, unauthenticated.                                                         |
+| `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=`     | A job's download, for a link the app signed (below); no bearer key.                |
+| `GET`, `PUT /v1/runners`                                                  | The runners runs go to (below).                                                    |
+| `GET /v1/capacity`                                                        | Each runner's slots, job memory and whether it answered, and the pool's totals.    |
+| `POST /v1/runs[?wait=true]`                                               | A run on the best placed runner (below). `429` only when every runner refuses.     |
+| `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                             | From the runner that has the run. Logs stream through as Server-Sent Events.       |
+| `POST /v1/runs/{id}/cancel`                                               | Cancels the run, or the pipelines the body names, on the runner that has it.       |
+| `GET /v1/runs/{id}/jobs[/{job}]`                                          | A run's cloud jobs and their state, from the runner that has the run.              |
+| `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish`                  | The executor's side of a cloud job (below), on the runner that has the run.        |
+| `GET .../jobs/{job}/inputs?claim=`, `PUT .../jobs/{job}/artifacts?claim=` | A cloud job's artifacts, for its machine: the claim token, no bearer key (below).  |
+| `POST /v1/concurrency`                                                    | A request's pipelines and their concurrency groups, from any runner; runs nothing. |
+| `POST /v1/prepare`                                                        | Warms a runner for a request, placed like a run.                                   |
+| `GET /v1/storage/{owner}`, `/v1/usage/{owner}`                            | From any runner that answers; they all read the same store.                        |
+| `DELETE /v1/storage/{owner}/{repo-id}`                                    | Clears one repository's caches (never its downloads), on any runner that answers.  |
+| `PUT /v1/schedules`                                                       | Registers a repository's scheduled pipelines (below).                              |
+| `GET /v1/schedules/{owner}`                                               | An owner's registered repositories, their crons and the last refresh's error.      |
+| `DELETE /v1/schedules/{owner}/{repo-id}`                                  | Stops a repository's scheduled runs.                                               |
+| `GET /v1/orgs/{owner}[/repos/{repo-id}]/secrets`                          | Secret names and when each was set; never values.                                  |
+| `PUT`, `DELETE .../secrets/{name}`                                        | Sets (`{ "value": "..." }`) or removes a secret.                                   |
+| `GET`, `PUT`, `DELETE .../vars[/{name}]`                                  | The same for variables, whose values are listed.                                   |
 
 Request bodies are the runner's (`ci-runner/README.md`, "HTTP API"). A run id
 is the runner's id prefixed with the runner's name (`ci-1.<32 hex>`), which
@@ -100,8 +103,18 @@ job prints or reports (`ci-runner/README.md`, "Secrets and variables").
 
 - **Pull requests get no secrets** unless the request says
   `"trusted": true`, meaning the caller has checked that the branch is in the
-  repository itself, not a fork; variables are given either way. The flag is
-  the proxy's and is not passed to the runner.
+  repository itself, not a fork; variables are given either way. The runner
+  treats a pull request as untrusted unless told, so the proxy passes
+  `"trusted": true` on for a vouched-for pull request and nothing otherwise.
+- **Lent connections, keys and resources** (the request's `lent`,
+  `ci-runner/README.md` "HTTP API") go to the runner only for a trusted run:
+  the proxy drops them from an untrusted pull request, and from `POST
+/v1/concurrency` and `POST /v1/prepare`, which run no job. The runner
+  refuses them for an untrusted run as well.
+- **Release the runners first.** A runner from before `trusted` and `lent`
+  refuses a request with either (`400`, unknown field), so a proxy that
+  sends them must not be deployed until every runner in the pool runs a
+  release that has them.
 - **Secrets are sealed** in D1 with AES-GCM under the Worker secret
   `SECRETS_KEY` (32 random bytes, base64), with the kind, owner, repository
   and name as associated data, so a row copied to another name or repository
@@ -144,6 +157,26 @@ reason a full pool's is not queued. Runs the app starts (pushes, pull
 requests, retries) keep their groups in the app, which sees all of them; the
 two do not wait for each other. On `POST /v1/concurrency` the proxy adds the
 stored variables, never secrets, since a group may read `vars`.
+
+## Cloud jobs
+
+A job with `cloud:` (`ci-runner/README.md`, "Cloud jobs") waits on the
+runner that has its run until its executor, the app, claims it and drives
+it with `claim`, `log` and `finish`. The proxy forwards those, with its key
+checked and the runner key added, to the runner the run id names, and
+rewrites the claim's `run` and its `inputs.url` and `artifacts.url` to the
+proxy's run id (`<runner>.<id>`), so the app can give them to the job's
+machine as they are.
+
+The machine fetches the job's input artifacts with `GET
+/v1/runs/{id}/jobs/{job}/inputs?claim=<token>` and uploads its own with
+`PUT .../artifacts?claim=<token>`, tar archives, without the proxy key: the
+claim's token (32 hex digits) is the credential, and the runner checks it
+and stops honouring it when the job ends. Without a well-formed token those
+paths are ordinary routes and need the key. Bodies stream through in both
+directions; Cloudflare holds a request body to its plan's limit (100 MB on
+most plans), so a job whose artifacts are larger than that cannot upload
+them through the proxy.
 
 ## Downloads
 

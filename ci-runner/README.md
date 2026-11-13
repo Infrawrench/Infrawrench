@@ -147,33 +147,37 @@ everything through.
 
 ### Jobs
 
-| Key          | Meaning                                                                                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `using`      | Required. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                     |
-| `args`       | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                        |
-| `run`        | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                        |
-| `name`       | Display name. Defaults to the key plus the matrix values.                                                                                                                               |
-| `matrix`     | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.          |
-| `cwd`        | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                          |
-| `env`        | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                       |
-| `clone`      | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                        |
-| `deps`       | Override `workspace.deps`, or `false` to install nothing.                                                                                                                               |
-| `changes`    | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                               |
-| `needs`      | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                    |
-| `if`         | When the job runs, given how its `needs` went. See below.                                                                                                                               |
-| `outputs`    | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                             |
-| `paths`      | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                           |
-| `timeout`    | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                          |
-| `memory`     | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                          |
-| `cache`      | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                          |
-| `env-cache`  | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).      |
-| `tools`      | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                          |
-| `network`    | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                   |
-| `artifacts`  | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                            |
-| `downloads`  | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                          |
-| `packages`   | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                            |
-| `task-cache` | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                          |
-| `services`   | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services). |
+| Key           | Meaning                                                                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `using`       | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
+| `cloud`       | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
+| `args`        | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
+| `run`         | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
+| `name`        | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
+| `matrix`      | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
+| `cwd`         | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
+| `env`         | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
+| `clone`       | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
+| `deps`        | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
+| `changes`     | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
+| `needs`       | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
+| `if`          | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
+| `outputs`     | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
+| `paths`       | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
+| `timeout`     | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                     |
+| `memory`      | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `cache`       | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
+| `env-cache`   | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
+| `tools`       | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
+| `network`     | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
+| `artifacts`   | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
+| `downloads`   | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
+| `packages`    | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
+| `task-cache`  | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
+| `services`    | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
+| `connections` | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
+| `ssh-keys`    | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
+| `env-from`    | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -183,7 +187,9 @@ Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `${{ pipeline.name }}` (the file's `name:`), `${{ pull-request.number }}`
 (empty unless the event is `pull-request`), `${{ vars.<name> }}`,
 and, in `env:` values only, `${{ secrets.<name> }}` (see
-[Secrets and variables](#secrets-and-variables)). Each is one name;
+[Secrets and variables](#secrets-and-variables)) and
+`${{ resources.<name>.<output> }}` (see
+[Connections, SSH keys and resources](#connections-ssh-keys-and-resources)). Each is one name;
 operators belong in `if:`. Every name is checked when the file is parsed:
 reading a job that is not in `needs:`, or an output that job does not
 declare, is an error at push time rather than an empty string at run time.
@@ -263,6 +269,130 @@ ${{ secrets.API_KEY }}"`). The parser keeps it as a name, so a secret is
   (`"trusted": true` on the proxy).
 - `iwci run` reads secrets from `IWCI_SECRET_<NAME>` environment variables
   and variables from `--var NAME=value`.
+
+### Connections, SSH keys and resources
+
+A job can be lent what Infrawrench already holds: a connection's
+credentials, an SSH key, an infrastructure resource's outputs. Nothing is
+lent unless someone allowed it for the repository (and, optionally, the
+branch): an admin turns a connection on for CI, an SSH key's owner turns
+the key on, and an admin grants a resource and the outputs jobs may read,
+under a CI name. A pull request from a fork is lent nothing.
+
+```yaml
+jobs:
+  deploy:
+    using: env:bash-node@24
+    connections: [Production cluster, { name: staging, namespace: web }]
+    ssh-keys: [deploy]
+    env-from: [r2-assets] # every key the resource exports, as variables
+    env:
+      DATABASE_URL: ${{ resources.prod-db.connectionString }}
+    run: node scripts/deploy.mjs # reads $KUBECONFIG, ~/.ssh and the variables
+```
+
+| Key           | Meaning                                                                                                                                                                                                                                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`. |
+| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                   |
+| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                       |
+
+`${{ resources.<name>.<output> }}` reads one output of a granted resource,
+such as a database's `connectionString` or a secret manager entry's
+`value`. Like `${{ secrets.<name> }}` it only works in `env:` values, a
+job's or a service's, and the parser keeps it as a name, so a value is never
+in a plan or a report.
+
+- **Literal names.** Connection, key and grant names cannot use `${{ }}`:
+  the app reads them from the file before the run starts (`POST
+/v1/concurrency`, each pipeline's `jobs`) and resolves exactly those.
+- **Fails, never empty.** A name the app did not lend fails the job before
+  it starts, with the app's reason ("staging is not lent to CI for
+  acme/web on feature/x"), and so does an output it did not grant. A job of
+  an untrusted run (a pull request from a fork) that names anything fails
+  the same way: "connections, SSH keys and resources are never lent to an
+  untrusted run".
+- **Only the job that names it.** Files are written into that job's own file
+  system (mode `0600` unless the app says otherwise; a directory made for
+  them, such as `~/.ssh`, is `0700`), never into the clone, the shared
+  `/tmp/workflow` or another job. They are never its changes, artifacts,
+  downloads or cache entries, whatever paths those name. Variables come
+  under the job's own `env:`, which wins.
+- **Masked.** Every value is masked like a secret in the live log, the
+  job's output, its error messages and outputs, and its text downloads,
+  each line of a multi-line one (a private key) too. The app marks which
+  parts of a file are secret, so a kubeconfig's token is masked and its
+  `apiVersion: v1` is not.
+- **Short-lived where the provider allows.** The app mints what it can for
+  the run (a Kubernetes bearer token instead of a kubeconfig that runs
+  `aws eks get-token`), and reads every value fresh per run.
+- **The network does not change.** A job still reaches public addresses
+  only (see [Networking](#networking)): a cluster API or host on a private
+  address is reached through a public jump host, which the generated SSH
+  config names as `ProxyJump`.
+- `iwci run` reads what to lend from the JSON file `IWCI_LENT_FILE` names
+  (the request's `lent`, below), and `--untrusted` runs as a fork's pull
+  request would.
+- A job that is lent anything cannot be task-cached.
+
+### Cloud jobs
+
+`cloud:` runs a job on one of the organisation's connected cloud accounts
+that an admin opted in to CI, rather than on the runner: a fresh VM, a
+one-off container, a managed build service with Docker, an existing host
+over SSH, or a job on an existing cluster. The runner keeps the job in the
+pipeline graph; the app, which holds the account's credentials, starts the
+machine, runs the script there, and tears the machine down.
+
+```yaml
+jobs:
+  image:
+    cloud:
+      provider: gcp # the plugin id of an opted-in connection
+      kind: build # vm, container, build, host or cluster
+      connection: Production # optional: which connection, when there are several
+      machine: e2-highcpu-8 # optional: the provider's size name
+      image: gcr.io/cloud-builders/docker # optional: container or OS image
+      region: europe-west1 # optional
+      gpu: a100:2 # optional: <type>[:<count>], where the provider has GPUs
+    needs: [build]
+    run: docker build -t europe-docker.pkg.dev/acme/web/app:${{ commit.sha }} . && docker push ...
+    timeout: 30m
+    outputs: [digest]
+    artifacts: [out/sbom.json]
+```
+
+`cloud: gcp/build` is the short form. `provider`, `kind` and `connection`
+are literal, so the app can match the job to an opted-in connection before
+the run starts; `machine`, `image`, `region` and `gpu` may use
+`${{ matrix }}`.
+
+- **Like any job:** `run` (bash, with `set -euo pipefail`, on the
+  machine), `env` (secrets and resources included), `needs`, `if`,
+  `outputs` (`$IWCI_OUTPUT`), `artifacts` both ways (it gets the artifacts
+  of the jobs it needs, and hands its own on), `matrix`, `paths`,
+  `timeout`, `cwd`, `changes: fail`, `connections`, `ssh-keys` and
+  `env-from`. It starts from the commit, cloned as `workspace.clone` says
+  (`clone: { depth }` may change the depth).
+- **Not yet**, each an error naming the key: `using`, `args`, `deps`,
+  `tools`, `cache`, `memory`, `network: false`, `services`, `packages`,
+  `task-cache`, `env-cache`, `downloads`, `changes: commit`, and `clone`
+  other than `{ depth }`. A workspace's `deps` and `services` are not a
+  cloud job's.
+- **What it takes of the runner:** nothing. It waits for its executor as
+  `external`, with no slot and no memory, and is billed as external time,
+  apart from the runner's CPU and memory (see [HTTP API](#http-api-iwci-serve)).
+- **Timeout.** The executor holds the script to `timeout:` on the machine.
+  The runner also ends a claimed job `timeout:` plus 10 minutes (for the
+  machine to start) after its claim, one whose executor has said nothing for
+  5 minutes as lost, and one nobody has claimed after its `timeout:` (at
+  least 10 minutes).
+- **Never for an untrusted run.** A pull request from a fork fails its cloud
+  jobs at once: "Cloud jobs only run for trusted runs", and the app is never
+  asked to run them.
+- **The machine gets no cloud credentials** of the account it runs on, only
+  the job's own `env:` and what it is lent.
+- `iwci run` has no executor: a cloud job there is an error.
 
 ### The run's scratch directory
 
@@ -1966,6 +2096,12 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
 | `POST /v1/runs/{id}/cancel`             | Cancels a run on this runner, or only some of its pipelines (below).                                                                                                    |
+| `GET /v1/runs/{id}/jobs[/{job}]`        | The run's cloud jobs and their state, nothing secret (below).                                                                                                           |
+| `POST /v1/runs/{id}/jobs/{job}/claim`   | Claims a cloud job for its executor: the spec, the environment with its secrets, a claim token (below).                                                                 |
+| `POST /v1/runs/{id}/jobs/{job}/log`     | A cloud job's output; every call renews the claim's lease.                                                                                                              |
+| `POST /v1/runs/{id}/jobs/{job}/finish`  | How a cloud job went.                                                                                                                                                   |
+| `GET .../jobs/{job}/inputs?claim=`      | A cloud job's input artifacts, a tar archive. The claim token instead of the key.                                                                                       |
+| `PUT .../jobs/{job}/artifacts?claim=`   | A cloud job's own artifacts, a tar archive. The claim token instead of the key.                                                                                         |
 | `POST /v1/concurrency`                  | The pipelines a request (below) would run and each one's `concurrency:` group, without running anything (below).                                                        |
 | `POST /v1/prepare`                      | Warms a request's clone, dependency installs and tools without running a job.                                                                                           |
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
@@ -1992,9 +2128,68 @@ A request body (for `runs` and `prepare`):
   "token": "optional: for a private repository; never stored or echoed",
   "secrets": { "NPM_TOKEN": "optional: never stored or echoed, masked in output" },
   "vars": { "REGION": "optional: for ${{ vars.<name> }}" },
-  "no-task-cache": "optional: true runs every task-cache: job; passes still save"
+  "no-task-cache": "optional: true runs every task-cache: job; passes still save",
+  "trusted": "optional: false for a pull request from a fork; default false for a pull request, true otherwise",
+  "lent": "optional: connections, SSH keys and resource outputs lent to the jobs, by name (below)"
 }
 ```
+
+`lent` is what the app lends the run's jobs (see
+[Connections, SSH keys and resources](#connections-ssh-keys-and-resources)).
+Like `secrets` it is never stored, echoed or put in a plan, every secret in
+it is masked, and an untrusted run is given none of it:
+
+```json
+{
+  "connections": {
+    "Production cluster": {
+      "env": { "KUBECONFIG": [{ "text": "/root/.kube/config" }] },
+      "files": [
+        {
+          "path": "/root/.kube/config",
+          "mode": "600",
+          "content": [
+            { "text": "apiVersion: v1\nkind: Config\nusers:\n- name: ci\n  user:\n    token: " },
+            { "secret": "<a short-lived token>" }
+          ]
+        }
+      ]
+    },
+    "staging": { "refused": "staging is not lent to CI for acme/web on feature/x" }
+  },
+  "ssh-keys": {
+    "deploy": {
+      "files": [{ "path": "/root/.ssh/id_deploy", "content": "<the private key>" }]
+    }
+  },
+  "resources": {
+    "prod-db": {
+      "outputs": { "connectionString": "<value>" },
+      "refused-outputs": { "adminPassword": "adminPassword of prod-db is not granted to CI" }
+    },
+    "r2-assets": { "env": { "AWS_ACCESS_KEY_ID": "<value>", "AWS_SECRET_ACCESS_KEY": "<value>" } },
+    "stripe-key": { "refused": "stripe-key is not granted to CI for acme/web" }
+  }
+}
+```
+
+- **Values.** A string is secret as a whole. A list of parts says which
+  pieces are: `{ "text": ... }` is shown as it is, `{ "secret": ... }` is
+  masked. Each value is at most 64 KiB, without a NUL byte.
+- **Files.** `path` is absolute, without `..`, and not under `/iwci`,
+  `/dev`, `/proc`, `/usr/local/lib/iwci`, `/tmp/workflow` or the job's
+  clone (a job whose file would land in its clone fails); `mode` is octal,
+  default `600`; up to 16 per entry. Two entries the same job names that
+  write one path (an SSH host's `~/.ssh/config` entry and a key's) are
+  joined in the order the job lists them, connections before keys, with
+  the stricter mode.
+- **Variables** may not be `IWCI_*`. A connection's and key's come first,
+  then `env-from`'s, then the job's own `env:`, which wins.
+- **Refusals.** `refused` (1 to 1024 characters) instead of the material,
+  or `refused-outputs` per output, is what a job that names it fails with.
+  A name the job uses that `lent` does not have fails it as "connection
+  `X` was not lent to this run".
+- Up to 64 entries of each kind; the whole body is at most 1 MiB.
 
 - **Capacity.** A run is admitted when a slot is free and fewer runs are
   active than there are slots; otherwise `429` with `Retry-After` and the
@@ -2046,9 +2241,13 @@ A request body (for `runs` and `prepare`):
   `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`: the run, its jobs, and
   its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU
   (`vcpu_seconds`) and the memory it reserved over that time
-  (`memory_gib_seconds`). Failed and errored runs are recorded too, with no
-  usage. The record's `schema` is 2: from it a job's `status` may be
-  `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`). Storage is read from `GET /v1/storage/{owner}`, for billing by
+  (`memory_gib_seconds`). A cloud job ran on the customer's own account: it
+  is in none of those, but in `external_jobs` and `external_seconds` (from
+  its claim to its end), and its line in `jobs` is `"external": true` with
+  that time as `duration_ms`. Failed and errored runs are recorded too,
+  with no usage. The record's `schema` is 3: 2 added a job `status` of
+  `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`), 3 the
+  external fields. Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
   the same four per repository under `repos`.
@@ -2071,15 +2270,25 @@ A request body (for `runs` and `prepare`):
   `"status": "cancelled"` (see [Concurrency](#concurrency)), and the live
   log's `job-finished` events say `cancelled` and `run-finished` carries
   `cancelled`.
-- **Concurrency groups.** `POST /v1/concurrency` takes the same body as a
-  run and resolves it as a run would (the commit, the pipeline files or
-  `pipeline`, `base` for `paths:`), without a job slot, answering only the
-  pipelines the event triggers:
-  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" } }] }`,
-  with `"concurrency": null` for a pipeline without one. Files that do not
-  parse are left out (the run reports them). `400` for a bad request,
-  `422` when the commit cannot be fetched. `POST /v1/schedules/read`
-  carries each scheduled pipeline's `concurrency` the same way.
+- **Concurrency groups, and what to lend.** `POST /v1/concurrency` takes
+  the same body as a run and resolves it as a run would (the commit, the
+  pipeline files or `pipeline`, `base` for `paths:`), without a job slot,
+  answering only the pipelines the event triggers:
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }] }`,
+  with `"concurrency": null` for a pipeline without one. `jobs` lists each
+  job key that runs on a cloud account or is lent anything, which is what
+  the app resolves before it dispatches the run:
+  `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...] }`
+  (a key is left out when empty; `cloud` holds the block as written, its
+  `machine`, `image`, `region` and `gpu` possibly with `${{ matrix }}`
+  still in them; `resources` includes what the job's services read). One
+  route rather than a second, because the app already calls it before every
+  dispatch, and a second would clone and parse the commit again. Files that
+  do not parse are left out (the run reports them). `400` for a bad
+  request, `422` when the commit cannot be fetched. `POST
+/v1/schedules/read` carries each scheduled pipeline's `concurrency` the
+  same way.
+- **Cloud jobs.** See [Cloud jobs: the executor's routes](#cloud-jobs-the-executors-routes).
 - **Without the task cache.** A request with `"no-task-cache": true`, or
   `iwci run --no-task-cache`, runs every `task-cache:` job instead of
   replaying a passing run's entry, and each says so in its cache lines. A job that
@@ -2096,6 +2305,105 @@ A request body (for `runs` and `prepare`):
   touched. Other repositories, other owners, run reports, billing records and each
   runner's own caches (git objects, installs, compiled modules) stay. A run
   saving at the same moment can leave its new entry behind.
+
+### Cloud jobs: the executor's routes
+
+A cloud job that is ready (its needs done, its `if:` true) waits on the
+runner that has its run as `external`: the run's `progress` shows its
+`status` as `external` with its `cloud` block, the live log sends
+`job-external` (`{ "job", "name", "cloud" }`), and it takes no slot or
+memory. The executor (the app, through the proxy) then calls these. `{job}`
+is the job's id, percent-encoded as one path segment (`build%5Bapp%2Fweb%5D`
+for `build[app/web]`). Every body and answer is JSON unless it says tar.
+
+- `GET /v1/runs/{id}/jobs` answers `{ "run", "jobs": [<spec>, ...] }`, and
+  `GET /v1/runs/{id}/jobs/{job}` one `<spec>`: nothing secret in either.
+
+  ```json
+  {
+    "run": "<run id>",
+    "job": "image",
+    "name": "image",
+    "pipeline": ".infrawrench/ci/build.yml",
+    "state": "external | claimed | finished | cancelled | lost | timed-out",
+    "cloud": { "provider": "gcp", "kind": "build", "machine": "e2-highcpu-8" },
+    "commit": {
+      "repo": "https://github.com/acme/web",
+      "sha": "...",
+      "branch": "main",
+      "ref": "refs/heads/main"
+    },
+    "clone": { "depth": 1, "into": "/app" },
+    "cwd": "/app",
+    "script": "docker build ...",
+    "env_keys": [
+      "CI",
+      "IWCI",
+      "HOME",
+      "IWCI_COMMIT",
+      "IWCI_BRANCH",
+      "IWCI_REPO_ID",
+      "IWCI_JOB",
+      "TOKEN"
+    ],
+    "secret_env": ["TOKEN"],
+    "files": [{ "path": "/root/.kube/config", "mode": "600", "bytes": 512 }],
+    "timeout_secs": 1800,
+    "deadline_secs": 2400,
+    "lease_secs": 300,
+    "outputs": ["digest"],
+    "changes": "ignore | fail",
+    "inputs": { "files": 3, "bytes": 1234 },
+    "artifacts": { "paths": ["/app/out/sbom.json"], "max_bytes": 1073741824 }
+  }
+  ```
+
+  `clone` is `null` for a job without one, `depth` a number or `"full"`;
+  `inputs` is `null` when the jobs it needs kept nothing, `artifacts` when
+  it keeps nothing. The commit's `repo` never has credentials in it.
+
+- `POST /v1/runs/{id}/jobs/{job}/claim` with `{ "executor"?: "<what runs
+it, shown on its report>" }` answers `200` with the spec and, **secret**:
+  `claim` (the token for the calls below), `env` (every variable, with
+  secrets, resource outputs and lent values filled in), `files` (`[{ "path",
+"mode", "content" }]`, lent files with their content); `inputs.url` and
+  `artifacts.url` are the two token routes below, with the token in them.
+  `409 { "error", "state" }` when it is already claimed or has ended.
+  The claim's lease is 5 minutes.
+- `POST .../log` with `{ "claim", "stream"?: "stdout" | "stderr", "text"?: "<output, any number of lines>" }`
+  answers `{ "state": "claimed", "lease_secs" }`. An empty `text` is a
+  heartbeat; every call renews the lease. The runner splits text into lines
+  and masks every secret and lent value before the live log or the report
+  sees it. A report keeps 16 MiB of each stream.
+- `POST .../finish` with
+  `{ "claim", "status": "passed" | "failed" | "error", "exit_code"?, "output"?: "<the text of $IWCI_OUTPUT>", "error"?: "<why>", "timed_out"?: false, "changes"?: [{ "path", "kind": "added" | "modified" | "deleted" }] }`
+  answers `{ "state": "finished" }`. `passed` checks `output` as a local
+  job's `$IWCI_OUTPUT` is checked (an undeclared name fails the job) and,
+  for `changes: fail`, fails it for any change; `failed` fails it with
+  `error` or the exit code; `error` is for an executor that could not run
+  it (no opted-in connection, a machine that would not start). Without
+  `claim`, only an unclaimed job can be finished, and only with `status:
+error`. Outputs, `error` and the log are masked.
+- `GET .../inputs?claim=<token>` answers a tar archive of the artifacts
+  of the jobs it needs, paths relative to `/` (`app/dist/app.txt`),
+  oldest job first, so a later file wins when extracted with `tar -xf - -C
+/`.
+- `PUT .../artifacts?claim=<token>` takes a tar archive of its artifacts,
+  paths relative to `/`, every entry at or under one of its `artifacts:`
+  paths (a directory on the way to one is fine): files, directories and
+  symbolic links, together within the run's `scratch:` room. Another upload
+  replaces it. They are handed on only if the job passes.
+- **Who may call.** The first three need the runner's key. The two token
+  routes take the claim's token instead of the key, so the app can hand the
+  URLs to the job's machine; a wrong token is `403`, and both stop working
+  when the job ends.
+- **How it ends.** `finish`; or the run (or pipeline) is cancelled; or its
+  lease runs out (`lost`); or it is still claimed `timeout:` plus 10
+  minutes after the claim (`timed-out`); or nobody claims it in its
+  `timeout:` (at least 10 minutes, `lost`). From then on every call about it
+  answers `409 { "state" }`, and `404` once its run has finished: either way
+  the executor tears the machine down.
+- An untrusted run's cloud jobs fail at once and are never listed.
 
 ### Warm builtins
 

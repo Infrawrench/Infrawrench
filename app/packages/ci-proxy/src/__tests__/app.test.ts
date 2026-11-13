@@ -37,6 +37,8 @@ class FakeRunner {
   states = new Map<string, string>();
   cancels: Array<{ id: string; body: unknown }> = [];
   resolved: Array<Record<string, unknown>> = [];
+  /** Calls to a run's cloud job routes: method, path and body. */
+  jobCalls: Array<{ method: string; path: string; body: string }> = [];
 
   constructor(
     readonly url: string,
@@ -70,6 +72,28 @@ class FakeRunner {
       this.cancels.push({ id, body: JSON.parse(String(init.body)) as unknown });
       if (this.states.get(id) !== "running") return json(200, { id, state: "finished" });
       return json(202, { id, state: "cancelling" });
+    }
+    const jobs = /^\/v1\/runs\/([0-9a-f]{32})\/jobs(\/[^/?]+)?(\/[a-z]+)?(\?.*)?$/.exec(path);
+    if (jobs) {
+      const body =
+        init.body === undefined || init.body === null ? "" : await new Response(init.body).text();
+      this.jobCalls.push({ method: init.method ?? "GET", path, body });
+      const [, id = "", job = "", action = ""] = jobs;
+      if (action === "/claim") {
+        const base = `/v1/runs/${id}/jobs${job}`;
+        return json(200, {
+          run: id,
+          claim: "c".repeat(32),
+          env: { TOKEN: "s3cret" },
+          inputs: { url: `${base}/inputs?claim=${"c".repeat(32)}`, files: 1 },
+          artifacts: { url: `${base}/artifacts?claim=${"c".repeat(32)}`, paths: ["/app/out"] },
+        });
+      }
+      if (action === "/inputs") {
+        return new Response("tar bytes", { headers: { "Content-Type": "application/x-tar" } });
+      }
+      if (action === "/log") return json(409, { error: "it is cancelled", state: "cancelled" });
+      return json(200, { run: id, state: "ok" });
     }
     if (path === "/v1/concurrency" && init.method === "POST") {
       this.resolved.push(JSON.parse(String(init.body)) as Record<string, unknown>);
@@ -477,7 +501,34 @@ describe("secrets and variables", () => {
       secrets: { TOKEN: "repo" },
       vars: { REGION: "us" },
     });
-    expect("trusted" in (runner.runs[2]?.body ?? {})).toBe(false);
+    // The runner trusts a pull request only when told.
+    expect(runner.runs[2]?.body.trusted).toBe(true);
+    expect("trusted" in (runner.runs[0]?.body ?? {})).toBe(false);
+  });
+
+  it("lends connections, keys and resources only to trusted runs", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const { call } = await setup([runner]);
+    const lent = { connections: { prod: { env: { KUBECONFIG: "/root/.kube/config" } } } };
+    await call("POST", "/v1/runs", { repo, branch: "main", lent });
+    await call("POST", "/v1/runs", { repo, branch: "fix", event: "pull-request", lent });
+    await call("POST", "/v1/runs", {
+      repo,
+      branch: "fix",
+      event: "pull-request",
+      trusted: true,
+      lent,
+    });
+    expect(runner.runs[0]?.body.lent).toEqual(lent);
+    expect(runner.runs[0]?.body).not.toHaveProperty("trusted");
+    expect(runner.runs[1]?.body).not.toHaveProperty("lent");
+    expect(runner.runs[1]?.body).not.toHaveProperty("trusted");
+    expect(runner.runs[2]?.body).toMatchObject({ lent, trusted: true });
+
+    // Neither parsing nor warming needs them.
+    await call("POST", "/v1/concurrency", { repo, branch: "main", lent, trusted: true });
+    expect(runner.resolved[0]).not.toHaveProperty("lent");
+    expect(runner.resolved[0]).not.toHaveProperty("trusted");
   });
 
   it("gives scheduled runs their secrets", async () => {
@@ -553,5 +604,99 @@ describe("runners", () => {
       { name: "ci-1", url: "https://a.example" },
       { name: "1", url: "https://b.example" },
     ]);
+  });
+});
+
+describe("cloud jobs", () => {
+  async function started(runner: FakeRunner) {
+    const ctx = await setup([runner]);
+    const run = (await (
+      await ctx.call("POST", "/v1/runs", { repo: "https://github.com/acme/web", branch: "main" })
+    ).json()) as { id: string };
+    return { ...ctx, id: run.id, runnerId: run.id.split(".")[1] ?? "" };
+  }
+
+  it("forwards an executor's calls to the run's runner and points the claim's URLs at the proxy", async () => {
+    const runner = new FakeRunner("http://a.test", 4, 4);
+    const { call, id, runnerId } = await started(runner);
+    const job = "build%5Bapp%2Fweb%5D";
+
+    expect((await call("GET", `/v1/runs/${id}/jobs`)).status).toBe(200);
+    expect((await call("GET", `/v1/runs/${id}/jobs/${job}`)).status).toBe(200);
+    const claim = await call("POST", `/v1/runs/${id}/jobs/${job}/claim`, { executor: "aws" });
+    expect(claim.status).toBe(200);
+    const body = (await claim.json()) as {
+      run: string;
+      env: Record<string, string>;
+      inputs: { url: string };
+      artifacts: { url: string };
+    };
+    expect(body.run).toBe(id);
+    expect(body.env.TOKEN).toBe("s3cret");
+    expect(body.inputs.url).toBe(`/v1/runs/${id}/jobs/${job}/inputs?claim=${"c".repeat(32)}`);
+    expect(body.artifacts.url).toBe(`/v1/runs/${id}/jobs/${job}/artifacts?claim=${"c".repeat(32)}`);
+    const log = await call("POST", `/v1/runs/${id}/jobs/${job}/log`, {
+      claim: "c".repeat(32),
+      text: "hello\n",
+    });
+    expect(log.status).toBe(409);
+    expect(((await log.json()) as { state: string }).state).toBe("cancelled");
+    const finish = { claim: "c".repeat(32), status: "passed", output: "digest=x" };
+    expect((await call("POST", `/v1/runs/${id}/jobs/${job}/finish`, finish)).status).toBe(200);
+    expect(runner.jobCalls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      `GET /v1/runs/${runnerId}/jobs`,
+      `GET /v1/runs/${runnerId}/jobs/${job}`,
+      `POST /v1/runs/${runnerId}/jobs/${job}/claim`,
+      `POST /v1/runs/${runnerId}/jobs/${job}/log`,
+      `POST /v1/runs/${runnerId}/jobs/${job}/finish`,
+    ]);
+    expect(JSON.parse(runner.jobCalls[4]?.body ?? "")).toEqual(finish);
+
+    // The executor's routes need the proxy key; odd shapes go nowhere.
+    expect((await call("POST", `/v1/runs/${id}/jobs/${job}/claim`, {}, "wrong")).status).toBe(401);
+    expect((await call("POST", `/v1/runs/${id}/jobs/${job}/start`, {})).status).toBe(404);
+    expect((await call("POST", `/v1/runs/${id}/jobs/a/b/claim`, {})).status).toBe(404);
+    expect((await call("POST", `/v1/runs/9.${runnerId}/jobs/${job}/claim`, {})).status).toBe(404);
+    expect(runner.jobCalls.length).toBe(5);
+  });
+
+  it("lets a cloud job's machine move its artifacts with the claim's token alone", async () => {
+    const runner = new FakeRunner("http://a.test", 4, 4);
+    const { deps, id, runnerId } = await started(runner);
+    const token = "d".repeat(32);
+    const bare = (method: string, path: string, body?: string) =>
+      handle(
+        new Request(`https://proxy.example${path}`, {
+          method,
+          ...(body === undefined ? {} : { body }),
+        }),
+        deps,
+      );
+
+    const inputs = await bare("GET", `/v1/runs/${id}/jobs/image/inputs?claim=${token}`);
+    expect(inputs.status).toBe(200);
+    expect(inputs.headers.get("Content-Type")).toBe("application/x-tar");
+    expect(await inputs.text()).toBe("tar bytes");
+    const upload = await bare(
+      "PUT",
+      `/v1/runs/${id}/jobs/image/artifacts?claim=${token}`,
+      "uploaded tar",
+    );
+    expect(upload.status).toBe(200);
+    expect(runner.jobCalls).toEqual([
+      { method: "GET", path: `/v1/runs/${runnerId}/jobs/image/inputs?claim=${token}`, body: "" },
+      {
+        method: "PUT",
+        path: `/v1/runs/${runnerId}/jobs/image/artifacts?claim=${token}`,
+        body: "uploaded tar",
+      },
+    ]);
+
+    // Without a well-formed token it is an ordinary route, and needs the key.
+    expect((await bare("GET", `/v1/runs/${id}/jobs/image/inputs`)).status).toBe(401);
+    expect((await bare("GET", `/v1/runs/${id}/jobs/image/inputs?claim=zz`)).status).toBe(401);
+    expect((await bare("POST", `/v1/runs/${id}/jobs/image/claim?claim=${token}`)).status).toBe(401);
+    expect((await bare("PUT", `/v1/runs/${id}/jobs/image/inputs?claim=${token}`)).status).toBe(401);
+    expect(runner.jobCalls.length).toBe(2);
   });
 });
