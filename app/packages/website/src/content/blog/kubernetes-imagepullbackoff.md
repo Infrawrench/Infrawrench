@@ -129,7 +129,7 @@ Typing a password on the command line can leave it in your shell history, so pre
 
 - **IfNotPresent**: pull only if the image is not already on the node.
 - **Always**: ask the container runtime to resolve the tag with the registry every time a container starts. Layers already cached are not downloaded again, but the registry must be reachable.
-- **Never**: never pull. If the image is not already on the node, the container fails to start.
+- **Never**: never pull. If the image is not already on the node, the container fails to start with ErrImageNeverPull, which the [ErrImageNeverPull guide](/blog/kubernetes-errimageneverpull) covers.
 
 If you leave the field out, Kubernetes fills it in when the object is first created: `Always` for an image tagged `:latest` or with no tag, and `IfNotPresent` for any other tag or a digest. The value is not updated later if you change the tag, so a Deployment created with a versioned tag keeps `IfNotPresent` even after you switch it to `:latest`.
 

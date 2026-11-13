@@ -19,6 +19,7 @@ If you already know the status or error you are looking at, jump straight to its
 - ContainerCreating that never finishes: [pod stuck in ContainerCreating](/blog/kubernetes-pod-stuck-containercreating)
 - Init:0/1, Init:Error or Init:CrashLoopBackOff: [pod stuck in Init](/blog/kubernetes-pod-stuck-init)
 - ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
+- ErrImageNeverPull with a locally built image: [local images the node cannot find](/blog/kubernetes-errimageneverpull)
 - CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
 - CreateContainerError: [missing commands, name conflicts and runtime failures](/blog/kubernetes-createcontainererror)
 - RunContainerError, or StartError with exit code 128: [commands that will not start](/blog/kubernetes-runcontainererror)
