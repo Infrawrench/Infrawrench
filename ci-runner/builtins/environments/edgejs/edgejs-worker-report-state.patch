@@ -1,0 +1,50 @@
+diff --git a/src/internal_binding/binding_worker.cc b/src/internal_binding/binding_worker.cc
+index 4c3ea892..4580a657 100644
+--- a/src/internal_binding/binding_worker.cc
++++ b/src/internal_binding/binding_worker.cc
+@@ -161,8 +161,11 @@ struct WorkerReportTaskState {
+   std::vector<EdgeWorkerReportEntry> reports;
+ };
+ 
++// The state is shared by the thread collecting the reports and every task it
++// sent: a worker finishes with it after the collector may have stopped
++// waiting (see CompleteWorkerReportTask).
+ struct WorkerReportTask {
+-  WorkerReportTaskState* state = nullptr;
++  std::shared_ptr<WorkerReportTaskState> state;
+   int32_t thread_id = 0;
+   std::string thread_name;
+ };
+@@ -254,6 +257,13 @@ void CompleteWorkerReportTask(WorkerReportTask* task, std::string json) {
+       task->state->pending -= 1;
+     }
+   }
++  // The collector may see `pending` reach 0 as soon as the lock is let go
++  // (woken by an earlier report, or spuriously) and return. The state was a
++  // local of its frame, so this notify_one then signalled a condition
++  // variable in a frame that was gone, and musl's signal followed its waiter
++  // list through whatever that stack held by then, writing into it (the
++  // collector's stack) or faulting on it (`out of bounds memory access`).
++  // The task holds the state now, so it outlives this signal.
+   task->state->cv.notify_one();
+   delete task;
+ }
+@@ -1945,7 +1955,8 @@ std::vector<EdgeWorkerReportEntry> EdgeWorkerCollectReports(napi_env env) {
+     }
+   }
+ 
+-  WorkerReportTaskState state;
++  auto shared_state = std::make_shared<WorkerReportTaskState>();
++  WorkerReportTaskState& state = *shared_state;
+   for (Worker* wrap : wraps) {
+     if (wrap == nullptr || !wrap->started.load(std::memory_order_acquire)) continue;
+ 
+@@ -1960,7 +1971,7 @@ std::vector<EdgeWorkerReportEntry> EdgeWorkerCollectReports(napi_env env) {
+ 
+     auto* task = new (std::nothrow) WorkerReportTask();
+     if (task == nullptr) continue;
+-    task->state = &state;
++    task->state = shared_state;
+     task->thread_id = wrap->thread_id;
+     task->thread_name = std::move(thread_name);
+ 

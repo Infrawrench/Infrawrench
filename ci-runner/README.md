@@ -827,6 +827,15 @@ issue is in `vendor/wasmer-napi`: a copied buffer of 16 or 64 MiB failed
 to read now and then (a `messageerror`, "Message could not be
 deserialized"), because reading a message could not grow the guest heap.
 
+24.0.13 adds `edgejs-worker-report-state.patch` (#1070):
+`process.report.getReport()` waited for its workers' parts on a condition
+variable in its own stack frame, and a worker signalled it after letting
+go of its lock, so the parent could return in between and the signal then
+followed whatever that stack held next: it wrote into it, or the worker
+faulted (`out of bounds memory access`, `unaligned atomic access`). The
+wait's state is now shared with the requests, so the last of them frees
+it.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
