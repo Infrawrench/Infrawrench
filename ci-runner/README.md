@@ -836,6 +836,18 @@ faulted (`out of bounds memory access`, `unaligned atomic access`). The
 wait's state is now shared with the requests, so the last of them frees
 it.
 
+24.0.14 adds `edgejs-worker-task-free.patch` (#1070): a worker's bootstrap
+no longer fails now and then with "No such built-in module", a preload
+path with four bytes zeroed or a fault when a program polls its workers.
+`worker.getHeapStatistics()` and `worker.cpuUsage()` make a task holding a
+reference to the object the answer goes to; a worker refuses tasks before
+its env is up and while it ends, and on a refusal Edge.js freed the task
+and then cleared that reference in it, a four-byte zero into freed memory.
+Workers polled from the moment they are made did that thousands of times
+a run, and when another thread had been handed the block by then, a
+built-in module's name or a path it was holding lost four bytes. The task
+is now kept until its reference is gone.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

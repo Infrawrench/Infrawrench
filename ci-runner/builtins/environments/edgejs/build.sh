@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, and with ten fixes to
+# and file modes and CPU time read from the runner, and with eleven fixes to
 # Edge.js itself and its built-ins code cache turned on.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
@@ -42,7 +42,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And eleven patches to Edge.js's own source, applied to its checkout:
+# And twelve patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -171,6 +171,19 @@
 #     the collector and its tasks now, so the last of them frees it. Ours;
 #     drafted for Edge.js.
 #
+#   edgejs-worker-task-free.patch (#1070). Asking a worker for its heap
+#     statistics or CPU use makes a task holding a reference to the object
+#     the answer goes to. A worker refuses tasks before its env is up and
+#     while it ends, and on a refusal the task was freed first and its
+#     reference cleared after, a four-byte zero into freed memory. Polled
+#     workers starting or ending did that thousands of times a run, and
+#     now and then the block had already gone to another thread: a
+#     worker's bootstrap missed a built-in module whose name had lost four
+#     bytes, or loaded a preload path with four bytes zeroed (about one job
+#     in 25 of `worker-readers-passes` a dozen at a time). The caller keeps
+#     the task until it has let go of the reference. Ours; drafted for
+#     Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -221,10 +234,11 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # 1 had the first patch alone, 2 both C library patches, 3 adds the first
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
 # the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
-# child exit poll, 9 postMessage, 10 the worker report state.
-VERSION="0.2.5-iwci.10"
+# child exit poll, 9 postMessage, 10 the worker report state, 11 the
+# worker task free.
+VERSION="0.2.5-iwci.11"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its

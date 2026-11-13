@@ -1697,8 +1697,12 @@ jobs:
       test "$(node /tmp/ask.js)" = "introspection ok"
   # The same calls, and event loop utilisation, while workers end by
   # themselves (#938): each reads the worker's env, as the stop once did, now
-  # under the worker's mutex (edgejs-worker-env-readers.patch). A smoke test,
-  # since the window is narrow.
+  # under the worker's mutex (edgejs-worker-env-readers.patch). Polling from
+  # creation also asks workers that refuse tasks (not up yet, or ending),
+  # which wrote into a freed task thousands of times a run until
+  # edgejs-worker-task-free.patch (#1070). A smoke test: the windows are
+  # narrow, and the write only broke something when another thread had the
+  # block by then (about one job in 25 with twelve copies at once).
   worker-readers-passes:
     using: env:bash-node@24
     needs: [node-passes]
