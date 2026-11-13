@@ -3,6 +3,12 @@ import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -42,6 +48,13 @@ import {
   type FlyVolume,
   type FlyVolumeSnapshot,
 } from "./api.js";
+import {
+  flyCiListTagged,
+  flyCiPreflight,
+  flyCiStart,
+  flyCiStatus,
+  flyCiTeardown,
+} from "./ci-executor.js";
 import { formatRegion, regionOptionsFrom, staticRegionOptions } from "./regions.js";
 import {
   MPG_PLANS,
@@ -132,6 +145,28 @@ export class FlyClient implements PluginClient {
       caCert: credentials["caCert"] ?? "",
       http: services?.http,
     });
+  }
+
+  // CI jobs (see ci-executor.ts)
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => flyCiPreflight(this.api, this.orgSlug, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => flyCiStart(this.api, this.orgSlug, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => flyCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => flyCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => flyCiListTagged(this.api, this.orgSlug, tagKey));
   }
 
   private regionCache: FlyPlatformRegion[] | null = null;

@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CommitmentRecord,
   CostEstimate,
   CostFetchRange,
@@ -26,6 +32,13 @@ import {
 } from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
 import { isStatus, RunpodApi } from "./api.js";
+import {
+  runpodCiListTagged,
+  runpodCiPreflight,
+  runpodCiStart,
+  runpodCiStatus,
+  runpodCiTeardown,
+} from "./ci-executor.js";
 import { fetchRunpodCostData } from "./cost-data.js";
 import { ANY, buildCreateConfig, NONE } from "./create-config.js";
 import {
@@ -1034,5 +1047,27 @@ export class RunpodClient implements PluginClient {
       }
       return out;
     });
+  }
+
+  // ── CI jobs (see ci-executor.ts) ─────────────────────────────────────
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => runpodCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => runpodCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => runpodCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => runpodCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => runpodCiListTagged(this.api, tagKey));
   }
 }

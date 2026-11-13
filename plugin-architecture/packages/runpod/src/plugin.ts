@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { RUNPOD_CI_EXECUTOR } from "./ci-executor.js";
 import { RunpodClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { runpodRemediationCommands } from "./remediation.js";
@@ -52,6 +53,8 @@ export const manifest = {
     partial: true,
   },
   statusFeed,
+  // CI jobs run in a pod, GPU or CPU (`cloud: runpod/container`). See `ci-executor.ts`.
+  ciExecutor: RUNPOD_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

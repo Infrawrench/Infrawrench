@@ -69,6 +69,24 @@ Credits are shown in the [credit burndown](../features/credit-burndown.md) secti
 - **Provider status**: incidents on [status.crusoecloud.com](https://status.crusoecloud.com) are matched to the regions and products you use.
 - **Terraform export**: projects, VMs, disks, networks, subnets, firewall rules, clusters and node pools export to the `crusoecloud/crusoe` provider, with import IDs in the provider's `<id>,<project_id>` form.
 
+## Run CI jobs
+
+A Crusoe Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each `vm` job gets a fresh VM in the job's `cloud.region` (`us-east1-a` when it names none), which is deleted when the job ends:
+
+| `cloud.kind` | Runs on     | Default `machine` | Default `image`                                 |
+| ------------ | ----------- | ----------------- | ----------------------------------------------- |
+| `vm`         | A Crusoe VM | `c1a.4x`          | Ubuntu 24.04, the curated image for the VM type |
+
+`machine` is a Crusoe VM type such as `c1a.8x`, `l40s-48gb.1x`, `a100-80gb.8x` or `h100-80gb-sxm-ib.8x`. Instead of a machine you can name a GPU with `cloud.gpu`: `l40s:4` becomes `l40s-48gb.4x`, `h100:8` becomes `h100-80gb-sxm-ib.8x`, from the VM types your project offers. `image` is a curated or custom image as `name:tag`, such as `ubuntu24.04-nvidia-b.h100.1.0:latest`.
+
+Jobs run in the project named `infrawrench-ci`. If the key's user belongs to only one project they run there, and otherwise in the project named `default`; with several projects and neither name, create an `infrawrench-ci` project. Jobs use on-demand capacity only, never a reservation's.
+
+The VM holds no Crusoe credentials. Crusoe requires an SSH key, so it gets one whose private half is thrown away, and the Crusoe Watch agent isn't installed. Crusoe VMs have no tags, so a job's VM is named `iwci-` followed by the job's key and your organization's CI tag. Leave VMs named like that alone: Infrawrench deletes any it no longer has a job for.
+
+Crusoe bills VMs per second while they run. A VM powers itself off when the job ends or its time is up, which stops compute billing, but its OS disk keeps billing until the VM is deleted. Infrawrench deletes it when the job ends, and again later if that fails.
+
+Crusoe has no call that checks a permission without using it, so opting in reads the project's VMs and VM types and tries to delete a VM that doesn't exist. Give the key's user the **Editor** (or Admin) role on the project; a Reader can't start VMs.
+
 ## Good to know
 
 - A VM's dynamic public IP changes when you stop and start it again.

@@ -5,6 +5,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { FLY_CI_EXECUTOR } from "./ci-executor.js";
 import { FlyClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { AppResourceType } from "./resources/app.js";
@@ -50,6 +51,9 @@ export const manifest = {
     caCertCredentialField,
   ]),
   statusFeed,
+  // CI jobs on a Machine of their own that destroys itself (`cloud: fly/container`).
+  // See `ci-executor.ts`.
+  ciExecutor: FLY_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

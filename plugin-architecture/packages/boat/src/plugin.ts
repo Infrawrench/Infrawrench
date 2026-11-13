@@ -8,6 +8,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { attempt } from "@infrawrench/plugin-base/effect";
 import { createBoatApi, listOf } from "./api.js";
+import { BOAT_CI_EXECUTOR } from "./ci-executor.js";
 import { BoatClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -52,6 +53,8 @@ export const manifest = {
   },
   credits: { label: "Wallet", topUpUrl: DASHBOARD },
   quotas: { label: "Plan limits", increaseUrl: DASHBOARD, partial: true },
+  // CI jobs on a fresh sandbox of their own (`cloud: boat/vm`). See `ci-executor.ts`.
+  ciExecutor: BOAT_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

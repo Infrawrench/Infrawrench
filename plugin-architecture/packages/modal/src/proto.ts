@@ -84,6 +84,19 @@ export class ProtoWriter {
     return this;
   }
 
+  /**
+   * A `float` field. `always` writes a zero too, which an `optional float`
+   * needs to say "explicitly zero" rather than "unset".
+   */
+  float(field: number, value: number | undefined, always = false): this {
+    if (value === undefined || (value === 0 && !always)) return this;
+    this.tag(field, WIRE_I32);
+    const buf = new DataView(new ArrayBuffer(4));
+    buf.setFloat32(0, value, true);
+    for (let i = 0; i < 4; i++) this.chunks.push(buf.getUint8(i));
+    return this;
+  }
+
   /** An embedded message field. Written even when empty, so presence is kept. */
   message(field: number, inner: ProtoWriter | undefined): this {
     if (inner) this.bytesField(field, inner.finish());

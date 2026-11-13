@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { VAST_CI_EXECUTOR } from "./ci-executor.js";
 import { VastClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { vastRemediationCommands } from "./remediation.js";
@@ -38,6 +39,8 @@ export const manifest = {
     label: "Vast.ai credit",
     topUpUrl: "https://cloud.vast.ai/billing/",
   },
+  // CI jobs run in a rented instance (`cloud: vast-ai/container`). See `ci-executor.ts`.
+  ciExecutor: VAST_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

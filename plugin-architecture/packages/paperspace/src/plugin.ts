@@ -1,6 +1,7 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { PAPERSPACE_CI_EXECUTOR } from "./ci-executor.js";
 import { PaperspaceClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -30,6 +31,8 @@ export const manifest = {
     caCertCredentialField,
   ]),
   statusFeed,
+  // CI jobs on a fresh machine per job (`cloud: paperspace/vm`). See `ci-executor.ts`.
+  ciExecutor: PAPERSPACE_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

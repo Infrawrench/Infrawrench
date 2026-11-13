@@ -863,3 +863,5 @@ export {
   ciThrowawayPassword,
   ciThrowawaySshKey,
 } from "./ci-vm.js";
+export { ciGpuKey, ciGpuMatches, ciGpuWords, parseCiGpu } from "./ci-gpu.js";
+export type { CiGpuRequest } from "./ci-gpu.js";

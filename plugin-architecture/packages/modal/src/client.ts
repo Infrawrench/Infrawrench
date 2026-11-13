@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -45,6 +51,13 @@ import {
   updateEnvironment,
   workspaceName,
 } from "./api.js";
+import {
+  modalCiListTagged,
+  modalCiPreflight,
+  modalCiStart,
+  modalCiStatus,
+  modalCiTeardown,
+} from "./ci-executor.js";
 import { fetchModalCostData } from "./cost-data.js";
 import type { ModalContext } from "./grpc.js";
 import { DEFAULT_SERVER_URL, GrpcCode, grpcCodeOf } from "./grpc.js";
@@ -797,6 +810,30 @@ export class ModalClient implements PluginClient {
       }
       throw new Error(`Modal plugin: unknown action "${actionId}" for "${typeId}"`);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // CI jobs (see ci-executor.ts)
+  // -------------------------------------------------------------------------
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => modalCiPreflight(this.ctx, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => modalCiStart(this.ctx, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => modalCiStatus(this.ctx, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => modalCiTeardown(this.ctx, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => modalCiListTagged(this.ctx, tagKey));
   }
 
   // -------------------------------------------------------------------------

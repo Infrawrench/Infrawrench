@@ -46,6 +46,22 @@ Your **credit balance** appears in the [credit burndown](../features/credit-burn
 - **Sleep schedules**: stop and start instances on a schedule.
 - **Expiry radar**: each instance's host contract end, after which the host can reclaim the machine.
 
+## Run CI jobs
+
+A Vast.ai connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job rents the cheapest verified on-demand offer that fits and destroys the instance when the job ends:
+
+| `cloud.kind` | Runs on     | Default `machine` | Default `image`                               |
+| ------------ | ----------- | ----------------- | --------------------------------------------- |
+| `container`  | An instance | `4vcpu-16gb`      | `docker.io/library/buildpack-deps:noble-curl` |
+
+Every Vast.ai offer comes with GPUs. `cloud.gpu` names the GPU and how many, as Vast names them (`RTX_4090`, `h100_sxm:8`, `RTX A6000:2`); a type Vast spells differently is matched by name against the cheapest offers. Without `cloud.gpu`, the job gets the cheapest single GPU. A `machine` is the least the offer must have, as `<vCPUs>vcpu-<GB>gb`, or a GPU type. `cloud.region` is a country code such as `US` or `DE`. The instance has 32 GB of disk.
+
+The instance runs in Vast's entrypoint mode: the image's own entrypoint, if it has one, receives the job's command as arguments, so pick an image without one or one that runs its arguments.
+
+Vast bills compute by the second while an instance runs and storage for as long as it exists, stopped or not, so only destroying it ends the bill. The instance holds none of the connection's credentials. Vast gives every instance a key that can only start, stop or destroy that instance (`CONTAINER_API_KEY`); the job's command takes it out of the job's environment and uses it to destroy its own instance when the job ends or its time is up. Infrawrench also destroys it when the job ends, and again later if that fails. Environment variables you set for the whole account in the Vast console are injected into every instance, CI jobs included. Vast instances have no tags, so a CI instance's label is `iwci-` and the job's key, and its tags are in its `INFRAWRENCH_CI_TAGS` environment variable.
+
+Opting a connection in reads the instance list and tries to destroy an instance that does not exist, since a key cannot say what it may do. A scoped key needs `instance_read` and `instance_write`. An account with no credit fails the check, because Vast stops instances at zero.
+
 ## Quirks
 
 - Stopping an instance releases its GPU to other renters, so starting it again may mean waiting for the host's GPU to free up. Reboot and recycle keep the GPU.

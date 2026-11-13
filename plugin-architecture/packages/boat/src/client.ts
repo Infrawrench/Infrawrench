@@ -1,6 +1,12 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostEstimate,
   CostFetchRange,
   CostRow,
@@ -22,6 +28,13 @@ import {
   pathEncode,
   type ApiBody,
 } from "@infrawrench/plugin-base";
+import {
+  boatCiListTagged,
+  boatCiPreflight,
+  boatCiStart,
+  boatCiStatus,
+  boatCiTeardown,
+} from "./ci-executor.js";
 import { createBoatApi, isStatus, listOf, listSandboxes, type BoatApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
@@ -154,6 +167,28 @@ export class BoatClient implements PluginClient {
       listOf((await this.api.get("/webhooks"))?.webhooks, "/webhooks", "webhooks"),
     apiKeys: async () => listOf((await this.api.get("/api-keys"))?.apiKeys, "/api-keys", "apiKeys"),
   };
+
+  // CI jobs (see ci-executor.ts)
+
+  ciPreflight(kind: CiExecutorKind, _region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => boatCiPreflight(this.api, kind));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => boatCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => boatCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => boatCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => boatCiListTagged(this.api, tagKey));
+  }
 
   async savedSnapshotList(): Promise<{
     snapshots: BSavedSnapshot[];
