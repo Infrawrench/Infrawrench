@@ -25,7 +25,8 @@ export interface ProxmoxCredentials {
   caCert?: string;
 }
 
-export type FormValue = string | number | boolean | undefined | null;
+/** A list is sent as the same key repeated, the form of an array parameter (`agent/exec`'s `command`). */
+export type FormValue = string | number | boolean | readonly string[] | undefined | null;
 
 /** An Error carrying the HTTP status, so the poller can classify failures. */
 export class ProxmoxApiError extends Error {
@@ -58,6 +59,12 @@ export function encodeForm(params: Record<string, FormValue>): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(item)}`);
+      }
+      continue;
+    }
     const v = typeof value === "boolean" ? (value ? "1" : "0") : String(value);
     parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
   }

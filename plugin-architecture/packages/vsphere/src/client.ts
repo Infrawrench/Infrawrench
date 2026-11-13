@@ -36,6 +36,15 @@ import {
   type VsphereEnrichment,
 } from "./render.js";
 import { vsphereCreateConfig, vsphereCreateResource } from "./create.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import { ciListTagged, ciPreflight, ciStart, ciStatus, ciTeardown } from "./ci-executor.js";
 
 const GIB = 1024 ** 3;
 const gib = (bytes: number | undefined) =>
@@ -317,6 +326,26 @@ export class VsphereClient implements PluginClient {
   // ---------------------------------------------------------------------------
   // Listing
   // ---------------------------------------------------------------------------
+
+  ciPreflight(kind: CiExecutorKind): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.api, kind));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.api, tagKey));
+  }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {

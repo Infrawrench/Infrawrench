@@ -47,6 +47,23 @@ Proxmox VE signs its certificate with the cluster's own CA. Paste `/etc/pve/pve-
 
 <insert [Proxmox VE VM detail view showing power actions, the Snapshots table with Roll back and Delete buttons, and the Metrics tab] here>
 
+## CI jobs
+
+A Proxmox VE cluster can run [cloud jobs](../features/ci.md#cloud-jobs) of kind `vm`: each job clones a VM from a template, runs there, and the VM is destroyed when the job ends.
+
+```yaml
+jobs:
+  test:
+    cloud: { provider: proxmox, kind: vm, image: ubuntu-ci, machine: 4vcpu-8gb }
+    run: make test
+```
+
+- `image` is the template's VMID or name (required). The template needs the QEMU guest agent installed and enabled (**Options**, **QEMU Guest Agent**), plus `bash` and `curl`; cloud-init isn't needed. Proxmox can't take cloud-init user data over its API, so the job is handed in through the guest agent.
+- `machine` is whole vCPUs and memory, like `2vcpu-4gb` (the default). `region` is the node to clone onto (default: the template's node; another node needs shared storage).
+- The VM is tagged `infrawrench-ci`, powers itself off once the job's time is up, and is destroyed by Infrawrench afterwards. Proxmox has no "destroy on shutdown", so a VM that powered off on its own waits for that, using disk but no CPU or memory.
+- The token needs `VM.Clone`, `VM.Allocate`, `VM.Config.CPU`, `VM.Config.Memory`, `VM.Config.Options`, `VM.PowerMgmt`, `VM.Audit`, `Datastore.AllocateSpace`, `SDN.Use` and `VM.GuestAgent.Unrestricted` (`VM.Monitor` on Proxmox VE 8). **Check permissions** names any that are missing.
+- Containers (LXC) can't run CI jobs: the API has no way to run a command inside one.
+
 ## Tips and limits
 
 - To reach a private cluster, the desktop app connects directly. The cloud app needs an SSH tunnel on the account. A bastion only reaches public addresses. Through an SSH tunnel the connection goes to `127.0.0.1`, so certificate checks fail unless the node's certificate also covers that address.

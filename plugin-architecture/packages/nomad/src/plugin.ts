@@ -2,6 +2,7 @@ import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NOMAD_PREFLIGHT, NomadClient } from "./client.js";
+import { NOMAD_CI_EXECUTOR } from "./ci-executor.js";
 import { LOGO_SVG } from "./logo.js";
 import { nomadRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -51,6 +52,10 @@ export const manifest = {
   ]),
   preflight: NOMAD_PREFLIGHT,
   rateLimit: { capacity: 20, refillPerSecond: 10 },
+  // CI jobs as a batch job per job on the docker driver, in a namespace
+  // (`cloud: nomad/cluster`). Needs list-jobs, read-job and submit-job in
+  // that namespace. See `ci-executor.ts`.
+  ciExecutor: NOMAD_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

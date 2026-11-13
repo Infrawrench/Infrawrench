@@ -23357,5 +23357,17 @@
   "86a2354621173f5f": "Si está activado, ninguna de tus credenciales entra en los sandboxes de este entorno",
   "3736b346cd988996": "Monedero que factura y lista la cuenta. Si está vacío, usa el monedero activo del propietario de la clave.",
   "5ad053bb54e17ece": "Tu acceso",
-  "6a10bc28b0c52484": "Los 153 plugins"
+  "6a10bc28b0c52484": "Los 153 plugins",
+  "e3c748b804b67d7a": "Añada estas capacidades a la política ACL del token",
+  "bca280f4d93e0f29": "Conecte un daemon de Docker al que Infrawrench pueda acceder",
+  "c13de52645b86c6b": "Contenedor en el daemon",
+  "c7743a3aac490bfe": "Contenedor de compilación de Docker (privilegiado)",
+  "748551af21aab38c": "Host SSH existente",
+  "ad4626a8db67499d": "Asigne al token de API un rol con estos privilegios",
+  "b7386ec8e8dac04c": "Asigne al usuario de vCenter un rol con estos privilegios",
+  "e67761d515c19a42": "Conceda estos permisos con un Role y un RoleBinding en el espacio de nombres",
+  "2a4c6b9ed65f375b": "Instale lo que le falta al host, como el usuario de la conexión",
+  "1d6230589a6d0682": "Job de Kubernetes",
+  "057446363226b9c1": "Job por lotes de Nomad",
+  "ab3389ba9a31b405": "VM clonada a partir de una plantilla"
 }

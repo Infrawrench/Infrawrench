@@ -27,6 +27,24 @@ Controlling a Docker engine is the same as having admin access to the machine it
 - Start, stop, restart or remove a container straight from the list.
 - Open a container to see its logs.
 
+## CI jobs
+
+A Docker daemon can run [cloud jobs](../features/ci.md#cloud-jobs) of two kinds:
+
+- `container`: the job runs in a container from `image` (default `buildpack-deps:noble-curl`), not privileged, with no mounts and no access to the daemon.
+- `build`: the job runs in `docker:29-dind` with a Docker daemon of its own, so `docker build` and `docker push` work without the job reaching yours. A daemon inside a container needs it **privileged**, which is as good as root on the daemon's machine. Only opt this kind in on a daemon you'd give a job that much.
+
+```yaml
+jobs:
+  image:
+    cloud: docker/build
+    run: docker build -t registry.example.com/app:${{ github.sha }} . && docker push registry.example.com/app:${{ github.sha }}
+```
+
+- `machine` is CPUs and memory, like `2vcpu-4gb` (the default). `gpu: nvidia:1` asks for GPUs through the NVIDIA runtime (`container` only).
+- Every container is labelled `infrawrench-ci` and removed when it stops. Docker has no time limit of its own, so a watchdog in the container stops the job once its time is up.
+- Jobs run from the cloud need a daemon Infrawrench can reach over TCP or an SSH tunnel; a local socket only works from the desktop app.
+
 ## Tips and limits
 
 - Plaintext TCP (2375) is insecure. Use TLS (2376) with client certs for anything close to production.

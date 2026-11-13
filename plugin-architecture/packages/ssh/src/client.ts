@@ -1,6 +1,18 @@
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { CiCredentialRequest, CiLentMaterial, PluginEffect } from "@infrawrench/plugin-base";
+import type {
+  CiComputeStatus,
+  CiCredentialRequest,
+  CiExecutorKind,
+  CiHandle,
+  CiLentMaterial,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+  HostServices,
+  PluginEffect,
+} from "@infrawrench/plugin-base";
 import { lendSshHost } from "./ci-credential.js";
+import { ciListTagged, ciPreflight, ciStart, ciStatus, ciTeardown } from "./ci-executor.js";
 import type {
   PluginClient,
   ResourceInstance,
@@ -24,10 +36,33 @@ function shellQuote(value: string): string {
 }
 
 export class SshClient implements PluginClient {
-  constructor(private readonly creds: SshCredentials) {}
+  constructor(
+    private readonly creds: SshCredentials,
+    private readonly services?: HostServices,
+  ) {}
 
   lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
     return attempt(() => lendSshHost(this.creds, request));
+  }
+
+  ciPreflight(kind: CiExecutorKind): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.services?.ssh, kind));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.services?.ssh, this.creds.host, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.services?.ssh, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.services?.ssh, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.services?.ssh, this.creds.host, tagKey));
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {

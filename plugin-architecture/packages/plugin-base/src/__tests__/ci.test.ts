@@ -1,5 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { ciAlias, ciComputeKey, ciContainerCommand, parseCiContainerSize } from "../ci.js";
+import {
+  ciAlias,
+  ciBootstrapWithTools,
+  ciComputeKey,
+  ciContainerCommand,
+  ciShellQuote,
+  parseCiContainerSize,
+} from "../ci.js";
 import { clientContractProblems, defineCredentials } from "../define-plugin.js";
 import type { ClientFor } from "../define-plugin.js";
 import type { PluginManifest } from "../manifest.js";
@@ -104,5 +111,21 @@ describe("ciContainerCommand", () => {
     expect(argv.slice(3)).toEqual(["iwci", "#!/bin/sh\necho hi\n"]);
     expect(argv[2]).toContain('exit "$status"');
     expect(ciContainerCommand("true", 60, { exitZero: true })[2]?.endsWith("exit 0")).toBe(true);
+  });
+});
+
+describe("ciBootstrapWithTools", () => {
+  it("installs what is missing, then runs the bootstrap, with one shebang", () => {
+    const script = ciBootstrapWithTools("#!/bin/sh\necho 'hi'\n");
+    expect(script).toContain("for t in bash curl tar gzip base64");
+    expect(script).toContain("apt-get install");
+    expect(script).toContain("apk add");
+    expect(script.match(/^#!/gm)).toHaveLength(1);
+    expect(script.trimEnd().endsWith("echo 'hi'")).toBe(true);
+  });
+
+  it("quotes any text as one shell word", () => {
+    expect(ciShellQuote("a'b")).toBe("'a'\\''b'");
+    expect(ciShellQuote("$HOME")).toBe("'$HOME'");
   });
 });

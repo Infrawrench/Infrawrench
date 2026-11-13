@@ -24,6 +24,7 @@ import { ConfigMapResourceType } from "./resources/configmap.js";
 import { SecretResourceType } from "./resources/secret.js";
 import { KUBERNETES_NETWORK_FLOW_CAPABILITY } from "./network-flows.js";
 import { KUBERNETES_JIT_ACCESS } from "./jit-access.js";
+import { KUBERNETES_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "kubernetes",
@@ -182,6 +183,10 @@ export const manifest = {
   jitAccess: KUBERNETES_JIT_ACCESS,
   // Lend the cluster to a CI job (`connections:` in a pipeline): a
   // self-contained kubeconfig for one context. See `ci-credential.ts`.
+  // CI jobs as a batch/v1 Job per job in a namespace (`cloud: kubernetes/cluster`),
+  // with no service account token mounted. Needs create, get, list and
+  // delete on jobs.batch in that namespace. See `ci-executor.ts`.
+  ciExecutor: KUBERNETES_CI_EXECUTOR,
   ciCredential: {
     description:
       "A kubeconfig for this cluster in /root/.kube, named after the connection, with KUBECONFIG pointing at it. A service account token is swapped for a short-lived one where the cluster allows it.",

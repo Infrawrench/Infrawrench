@@ -1,5 +1,6 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
+import { VSPHERE_CI_EXECUTOR } from "./ci-executor.js";
 import { VsphereClient } from "./client.js";
 import { vsphereRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resources.js";
@@ -59,6 +60,9 @@ export const manifest = {
     },
   ]),
   rateLimit: { capacity: 20, refillPerSecond: 10 },
+  // CI jobs on a VM cloned from a template per job, the bootstrap handed in
+  // as cloud-init user data (`cloud: vsphere/vm`). See `ci-executor.ts`.
+  ciExecutor: VSPHERE_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

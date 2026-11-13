@@ -4,6 +4,7 @@ import type {
   ResourceTypeDefinition,
   CredentialsOf,
 } from "@infrawrench/plugin-base";
+import { SSH_CI_EXECUTOR } from "./ci-executor.js";
 import { SshClient } from "./client.js";
 import { SshTargetResourceType } from "./resources/ssh-target.js";
 
@@ -60,6 +61,10 @@ export const manifest = {
   // Lend the host to a CI job (`connections:` in a pipeline): an SSH config
   // entry named after the connection, its key and a pinned host key check.
   // See `ci-credential.ts`.
+  // Run CI jobs on this host (`cloud: ssh/host`): each in a work directory of
+  // its own, killed and removed when the job ends; the host itself is reused.
+  // Needs the host's SSH service (`services.ssh`). See `ci-executor.ts`.
+  ciExecutor: SSH_CI_EXECUTOR,
   ciCredential: {
     description:
       "An SSH config entry named after the connection, with its key and a check against the host key pinned in Infrawrench.",
@@ -74,7 +79,7 @@ const resourceTypes: ResourceTypeDefinition[] = [SshTargetResourceType];
 export const plugin = definePlugin({
   manifest,
   resourceTypes,
-  createClient: (credentials) =>
+  createClient: (credentials, services) =>
     new SshClient(
       credentials as {
         host: string;
@@ -83,6 +88,7 @@ export const plugin = definePlugin({
         privateKey?: string;
         connectThroughAccountId?: string;
       },
+      services,
     ),
   testCredentials: {
     host: "192.168.1.1",

@@ -3,6 +3,7 @@ import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { ProxmoxClient } from "./client.js";
 import { resourceTypes } from "./resources.js";
 import { PREFLIGHT, proxmoxPolicyTemplate } from "./preflight.js";
+import { PROXMOX_CI_EXECUTOR } from "./ci-executor.js";
 import { proxmoxRemediationCommands } from "./remediation.js";
 
 /** Proxmox mark from simple-icons (CC0), white on the brand orange. */
@@ -62,6 +63,9 @@ export const manifest = {
   // API and no vendor status page exist for it.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
   preflight: PREFLIGHT,
+  // CI jobs on a VM cloned from a template per job, the bootstrap handed in
+  // through the QEMU guest agent (`cloud: proxmox/vm`). See `ci-executor.ts`.
+  ciExecutor: PROXMOX_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

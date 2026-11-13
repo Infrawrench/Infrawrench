@@ -319,3 +319,39 @@ export function ciContainerCommand(
   ].join("\n");
   return ["/bin/sh", "-c", watchdog, "iwci", bootstrap];
 }
+
+/** A value quoted as one word for a POSIX shell. */
+export function ciShellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The bootstrap behind a preamble that installs what it needs (`bash`,
+ * `curl`, `tar`, `gzip`, `base64`) with the image's package manager (apt,
+ * apk, dnf, microdnf or yum) when the image lacks any, and fails naming
+ * them when it cannot. For container kinds that run an image the pipeline
+ * chose; pass the result to {@link ciContainerCommand}.
+ */
+export function ciBootstrapWithTools(bootstrap: string): string {
+  return [
+    "#!/bin/sh",
+    "# Infrawrench CI: install what the job needs, then run it.",
+    'need=""',
+    'for t in bash curl tar gzip base64; do command -v "$t" >/dev/null 2>&1 || need="$need $t"; done',
+    'if [ -n "$need" ]; then',
+    "  if command -v apt-get >/dev/null 2>&1; then",
+    "    DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
+    "  elif command -v apk >/dev/null 2>&1; then",
+    "    apk add --no-cache bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
+    "  elif command -v dnf >/dev/null 2>&1; then",
+    "    dnf install -y -q bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
+    "  elif command -v microdnf >/dev/null 2>&1; then",
+    "    microdnf install -y bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
+    "  elif command -v yum >/dev/null 2>&1; then",
+    "    yum install -y -q bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
+    "  fi",
+    '  for t in $need; do command -v "$t" >/dev/null 2>&1 || { echo "Infrawrench CI: the image has no $t and it could not be installed" >&2; exit 127; }; done',
+    "fi",
+    bootstrap.replace(/^#![^\n]*\n/, ""),
+  ].join("\n");
+}

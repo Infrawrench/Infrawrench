@@ -15,6 +15,7 @@ export type {
   DockerDriverDeclaration,
   DockerHostServices,
   KubernetesHostServices,
+  SshHostServices,
   HttpHostServices,
   InstancePricingCell,
   InstancePricingHostServices,
@@ -333,6 +334,8 @@ export {
   ciComputeKey,
   ciContainerCommand,
   parseCiContainerSize,
+  ciBootstrapWithTools,
+  ciShellQuote,
 } from "./ci.js";
 
 export type {

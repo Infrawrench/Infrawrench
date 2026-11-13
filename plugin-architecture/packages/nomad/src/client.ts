@@ -54,6 +54,22 @@ import {
   parseMeta,
 } from "./mappers.js";
 import { COMMANDS, renderNomadDetail, renderNomadSidebar } from "./render.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  ciListTagged,
+  ciPreflight,
+  ciStart,
+  ciStatus,
+  ciTeardown,
+  type NomadCiApi,
+} from "./ci-executor.js";
 
 /** Nomad answers a list whole when `per_page` is left out, so this only refuses what the host cannot prune (#572). */
 const MAX_LISTED = 50_000;
@@ -217,6 +233,41 @@ export class NomadClient implements PluginClient {
   constructor(credentials: Credentials, services?: HostServices) {
     this.ctx = buildContext(credentials, services?.http);
     this.api = nomadApi(this.ctx);
+  }
+
+  /** The Nomad calls CI jobs make, on the connection's own region. */
+  private readonly ci: NomadCiApi = {
+    register: (job, namespace, enforce) =>
+      this.api.post("/jobs", {
+        body: { Job: job, EnforceIndex: true, JobModifyIndex: enforce.JobModifyIndex },
+        query: { namespace },
+      }),
+    readJob: (id, namespace) => this.api.get(`/job/${pathEncode(id)}`, { query: { namespace } }),
+    purgeJob: (id, namespace) =>
+      this.api.delete(`/job/${pathEncode(id)}`, { query: { namespace, purge: true } }),
+    listJobs: async (prefix) =>
+      rows("/jobs", await this.api.get("/jobs", { query: { ...ALL, prefix } })),
+    listNodes: async () => rows("/nodes", await this.api.get("/nodes")),
+  };
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => ciPreflight(this.ci, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => ciStart(this.ci, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => ciStatus(this.ci, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => ciTeardown(this.ci, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => ciListTagged(this.ci, tagKey));
   }
 
   private soft<T>(p: Promise<T>): Promise<T | undefined> {
