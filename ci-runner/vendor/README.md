@@ -724,6 +724,41 @@ the field as a number, so `src/syscalls/wasix/proc_join.rs` now writes the
 status itself (its low 8 bits, what `wait` reports) over it. Upstream main
 has the same conversion (checked November 2026).
 
+**A directory's cookies hold while it changes (#1078).** `fd_readdir`
+listed the directory afresh on every call and took the cookie as a
+position in that listing, so each entry removed between two calls moved
+the rest down by one, and the next call skipped as many. Rust's standard
+library reads 128 bytes of entries a call, so uutils' `rm -rf`, which
+removes what it has read before reading on, left entries behind in any
+directory of three or more and failed with "Directory not empty". A read
+from cookie 0 now keeps its listing on the descriptor (`FdInner`'s
+`dir_listing`, shared by its duplicates like the offset), and later
+cookies index that: an entry removed since is still listed, as POSIX
+allows (wasix-libc's `readdir` skips one that is gone), and one added
+since shows up after a rewind. It also stops a directory from being
+listed and sorted again for every few entries read. Upstream main lists
+the same way (checked November 2026).
+
+**A moved directory's `..` is its new parent (#1079).** `path_rename`
+moved a directory's inode into its new parent's entries but left its
+`parent`, a weak reference, on the old one, so once that was removed a
+lookup of `..` from the moved directory failed with `EACCES`. wasix-libc's
+`scandir` stats every entry `fd_readdir` gives, `..` included, so Node's
+`fs.readdirSync` of the moved directory threw while `stat` and reads
+worked. `src/syscalls/wasi/path_rename.rs` now points it at the target's
+parent. Upstream main has the same rename (checked November 2026).
+
+**`sendfile` writes to any descriptor (#1075).** `sock_send_file` wrote
+only to sockets and answered `EACCES` (the right to send) for anything
+else, but `sendfile(2)` takes any output descriptor, and libc++'s
+`std::filesystem::copy_file` copies one file into another with it: Node's
+`fs.cpSync` of a directory, which copies in C++, threw.
+`src/syscalls/wasix/sock_send_file.rs` now writes to anything that is not a
+socket as `fd_write` does, as `sock_send` already did for a pipe, and stops
+at the end of the input rather than counting down the rest of what it was
+asked for. Upstream main has the same `sock_send_file` (checked November
+2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -734,7 +769,9 @@ or receive waits with no timeout of its own and still ends for a signal,
 the task manager's idle threads end without queueing a task behind a
 busy one, a link the file system cannot make fails and `rmdir` finds a
 directory nothing looked up, a child's exit status reaches its parent
-unchanged, and once the runner finds a renamed file's mode without its new
+unchanged, a directory's cookies hold while it changes, a moved
+directory's `..` is its new parent, `sendfile` writes to a file, and
+once the runner finds a renamed file's mode without its new
 path's inode number: delete `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes`, `exit-status-passes` and
@@ -743,6 +780,8 @@ its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/cpu-time-passes`, `bash-node/idle-server-passes`,
 `bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
+`bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
+`bash-node/cp-sync-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,
@@ -754,8 +793,12 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
 `removing_a_directory_nothing_looked_up_says_what_it_is`,
-`a_hard_link_is_refused_and_leaves_one_name` and
-`a_renamed_file_has_the_inode_number_of_its_new_path`.
+`a_hard_link_is_refused_and_leaves_one_name`,
+`a_renamed_file_has_the_inode_number_of_its_new_path`,
+`reading_a_directory_while_removing_its_entries_misses_none`,
+`a_bash_script_can_rm_rf_a_directory_of_many_files`,
+`a_directory_moved_out_of_a_removed_one_has_its_new_parent` and
+`sendfile_copies_into_a_file`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

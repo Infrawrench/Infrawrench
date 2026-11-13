@@ -2120,6 +2120,7 @@ impl WasiFs {
                 flags: fs_flags,
                 offset: Arc::new(AtomicU64::new(0)),
                 fd_flags,
+                dir_listing: Default::default(),
             },
             open_flags,
             inode,
@@ -2188,6 +2189,7 @@ impl WasiFs {
                     rights_inheriting: fd.inner.rights_inheriting,
                     flags: fd.inner.flags,
                     offset: fd.inner.offset.clone(),
+                    dir_listing: fd.inner.dir_listing.clone(),
                     fd_flags: match cloexec {
                         None => fd.inner.fd_flags,
                         Some(cloexec) => {
@@ -2226,6 +2228,7 @@ impl WasiFs {
                 flags: Fdflags::empty(),
                 offset: Arc::new(AtomicU64::new(0)),
                 fd_flags: Fdflagsext::empty(),
+                dir_listing: Default::default(),
             },
             open_flags: 0,
             inode: root_inode,
@@ -2282,6 +2285,7 @@ impl WasiFs {
             let new_fd_entry = Fd {
                 inner: FdInner {
                     offset: fd_entry.inner.offset.clone(),
+                    dir_listing: fd_entry.inner.dir_listing.clone(),
                     // dup2 aliases an existing descriptor; it does not open a
                     // child beneath it. Preserve the descriptor's active
                     // rights just like clone_fd does. In particular, stdio's
@@ -2703,6 +2707,7 @@ impl WasiFs {
                     flags: fd_flags,
                     offset: Arc::new(AtomicU64::new(0)),
                     fd_flags: Fdflagsext::empty(),
+                    dir_listing: Default::default(),
                 },
                 // since we're not calling open on this, we don't need open flags
                 open_flags: 0,

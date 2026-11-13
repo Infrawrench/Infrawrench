@@ -226,7 +226,7 @@ pub fn path_rename_internal(
                     }
                 }
             }
-            Kind::Dir { path, .. } => {
+            Kind::Dir { path, parent, .. } => {
                 let cloned_path = path.clone();
                 let res = {
                     let state = state;
@@ -238,6 +238,12 @@ pub fn path_rename_internal(
                 if let Err(e) = res {
                     return Ok(e);
                 }
+                // The directory's `..` is its new parent now. It kept
+                // pointing at the old one, which only holds it weakly: once
+                // that was removed, looking up `..` failed with EACCES, and
+                // so did listing the moved directory with `scandir`, which
+                // stats every entry it reads, `..` included.
+                *parent = target_parent_inode.downgrade();
                 {
                     let source_dir_path = path.clone();
                     drop(guard);

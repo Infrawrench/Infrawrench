@@ -304,6 +304,55 @@
      }
  }
 +
+--- a/src/fs/fd.rs
++++ b/src/fs/fd.rs
+@@ -2,11 +2,11 @@
+     borrow::Cow,
+     collections::HashMap,
+     path::PathBuf,
+-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, atomic::AtomicU64},
++    sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, atomic::AtomicU64},
+ };
+ 
+ use virtual_fs::{Pipe, PipeRx, PipeTx, VirtualFile};
+-use wasmer_wasix_types::wasi::{Fdflags, Fdflagsext, Filestat, Rights};
++use wasmer_wasix_types::wasi::{Fdflags, Fdflagsext, Filestat, Filetype, Rights};
+ 
+ use crate::net::socket::InodeSocket;
+ use crate::os::epoll::EpollState;
+@@ -37,8 +37,22 @@
+     pub flags: Fdflags,         // This is file table related flags, not fd flags
+     pub offset: Arc<AtomicU64>, // This also belongs in the file table
+     pub fd_flags: Fdflagsext,   // This is the actual FD flags that belongs here
++    /// The entries `fd_readdir` serves a directory's cookies from, shared
++    /// like the offset (see [`DirListing`]).
++    pub dir_listing: DirListing,
+ }
+ 
++/// A directory's entries (name, type, inode) as `fd_readdir` listed them
++/// for a read from cookie 0, sorted by name. A cookie is a position in this
++/// list, so the cookies a reader holds keep naming the same entries while
++/// the directory changes: re-listing on every call shifted every later
++/// entry down by one for each one removed meanwhile, and `rm -rf`, which
++/// unlinks what it has read before reading on, skipped as many as it had
++/// removed and failed with "Directory not empty". Reading from cookie 0
++/// lists the directory again (`rewinddir`), so entries added or removed
++/// since show up then, as POSIX allows.
++pub type DirListing = Arc<Mutex<Option<Arc<Vec<(String, Filetype, u64)>>>>>;
++
+ impl Fd {
+     /// This [`Fd`] can be used with read system calls.
+     pub const READ: u16 = 1;
+--- a/src/fs/fd_list.rs
++++ b/src/fs/fd_list.rs
+@@ -331,6 +331,7 @@
+                 rights_inheriting: Rights::empty(),
+                 flags: Fdflags::from_bits_preserve(n),
+                 fd_flags: Fdflagsext::empty(),
++                dir_listing: Default::default(),
+             },
+         }
+     }
 --- a/src/fs/mod.rs
 +++ b/src/fs/mod.rs
 @@ -35,6 +35,7 @@
@@ -383,13 +432,10 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1816,9 +1831,51 @@
-             Ok(Self::virtual_root_fd(self.root_inode.clone()))
-         } else {
-             ret
-+        }
-+    }
-+
+@@ -1819,6 +1834,48 @@
+         }
+     }
+ 
 +    /// The descriptor a path call given `fd` and `path` works from, for its
 +    /// rights. An absolute path resolves from the virtual root whatever `fd`
 +    /// is (as `openat` ignores its `dirfd` for one), so it takes the root's
@@ -419,13 +465,13 @@
 +            && matches!(*entry.inode.read(), Kind::Dir { .. } | Kind::Root { .. })
 +        {
 +            return current;
-         }
++        }
 +        match self.displaced_preopens.read().unwrap().get(&fd) {
 +            Some(preopen) => Ok(preopen.clone()),
 +            None => current,
 +        }
-     }
- 
++    }
++
 +    /// Forgets the preopens `dup2_at` kept, with the descriptors they were
 +    /// kept for.
 +    pub(crate) fn clear_displaced_preopens(&self) {
@@ -578,7 +624,31 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2171,18 +2265,28 @@
+@@ -2026,6 +2120,7 @@
+                 flags: fs_flags,
+                 offset: Arc::new(AtomicU64::new(0)),
+                 fd_flags,
++                dir_listing: Default::default(),
+             },
+             open_flags,
+             inode,
+@@ -2094,6 +2189,7 @@
+                     rights_inheriting: fd.inner.rights_inheriting,
+                     flags: fd.inner.flags,
+                     offset: fd.inner.offset.clone(),
++                    dir_listing: fd.inner.dir_listing.clone(),
+                     fd_flags: match cloexec {
+                         None => fd.inner.fd_flags,
+                         Some(cloexec) => {
+@@ -2132,6 +2228,7 @@
+                 flags: Fdflags::empty(),
+                 offset: Arc::new(AtomicU64::new(0)),
+                 fd_flags: Fdflagsext::empty(),
++                dir_listing: Default::default(),
+             },
+             open_flags: 0,
+             inode: root_inode,
+@@ -2171,18 +2268,29 @@
                  return Ok(None);
              }
  
@@ -602,6 +672,7 @@
                  inner: FdInner {
                      offset: fd_entry.inner.offset.clone(),
 -                    rights: fd_entry.inner.rights_inheriting,
++                    dir_listing: fd_entry.inner.dir_listing.clone(),
 +                    // dup2 aliases an existing descriptor; it does not open a
 +                    // child beneath it. Preserve the descriptor's active
 +                    // rights just like clone_fd does. In particular, stdio's
@@ -610,7 +681,15 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2674,9 +2778,26 @@
+@@ -2599,6 +2707,7 @@
+                     flags: fd_flags,
+                     offset: Arc::new(AtomicU64::new(0)),
+                     fd_flags: Fdflagsext::empty(),
++                    dir_listing: Default::default(),
+                 },
+                 // since we're not calling open on this, we don't need open flags
+                 open_flags: 0,
+@@ -2674,7 +2783,24 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -620,8 +699,8 @@
 +            self.restore_displaced_preopen_locked(&mut fd_map, fd);
 +        }
 +        outcome
-     }
- 
++    }
++
 +    /// Puts back the preopen `dup2_at` kept for `fd`, now that what was put
 +    /// over it is closed (#1019). A preopen cannot be closed (see
 +    /// `close_fd_locked`), so it comes back as it was: `exec 4>&-` after
@@ -633,11 +712,9 @@
 +        {
 +            panic!("Internal error: expected FD {fd} to be free after closing it");
 +        }
-+    }
-+
+     }
+ 
      /// Closes an open FD in an already write-locked fd map.
-     fn close_fd_locked(fd_map: &mut FdList, fd: WasiFd) -> CloseFdOutcome {
-         let Some(fd_ref) = fd_map.get(fd) else {
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -118,7 +118,9 @@
@@ -1281,6 +1358,43 @@
                      );
                      let res = res?.map_err(|err| match err {
                          Errno::Timedout => Errno::Again,
+--- a/src/syscalls/wasi/fd_readdir.rs
++++ b/src/syscalls/wasi/fd_readdir.rs
+@@ -37,9 +37,19 @@
+     let working_dir = wasi_try_ok!(state.fs.get_fd(fd));
+     let mut buf_idx = 0usize;
+ 
+-    let entries: Vec<(String, Filetype, u64)> = {
++    // A cookie past 0 goes on through the listing the read from 0 made, in
++    // which it stays put whatever was added or removed since
++    // (`DirListing`). Only a descriptor that never read from 0 lists the
++    // directory here for another cookie.
++    let listed = match cookie {
++        0 => None,
++        _ => working_dir.inner.dir_listing.lock().unwrap().clone(),
++    };
++    let entries: Arc<Vec<(String, Filetype, u64)>> = if let Some(listed) = listed {
++        listed
++    } else {
+         let guard = working_dir.inode.read();
+-        match guard.deref() {
++        let listed: Vec<(String, Filetype, u64)> = match guard.deref() {
+             Kind::Dir { path, entries, .. } => {
+                 trace!("reading dir {:?}", path);
+                 // TODO: refactor this code
+@@ -115,7 +125,11 @@
+             | Kind::DuplexPipe { .. }
+             | Kind::EventNotifications { .. }
+             | Kind::Epoll { .. } => return Ok(Errno::Notdir),
+-        }
++        };
++        drop(guard);
++        let listed = Arc::new(listed);
++        *working_dir.inner.dir_listing.lock().unwrap() = Some(listed.clone());
++        listed
+     };
+ 
+     for (cur_cookie, (entry_path_str, wasi_file_type, ino)) in
 --- a/src/syscalls/wasi/path_create_directory.rs
 +++ b/src/syscalls/wasi/path_create_directory.rs
 @@ -55,7 +55,7 @@
@@ -1508,7 +1622,7 @@
              }
              Kind::Root { .. } => return Ok(Errno::Notcapable),
              Kind::Socket { .. }
-@@ -210,6 +220,7 @@
+@@ -210,12 +220,13 @@
                      let mut guard = source_entry.write();
                      if let Kind::File { path, .. } = guard.deref_mut() {
                          *path = target_guest_path.clone();
@@ -1516,7 +1630,27 @@
                      } else {
                          unreachable!()
                      }
-@@ -300,7 +311,7 @@
+                 }
+             }
+-            Kind::Dir { path, .. } => {
++            Kind::Dir { path, parent, .. } => {
+                 let cloned_path = path.clone();
+                 let res = {
+                     let state = state;
+@@ -227,6 +238,12 @@
+                 if let Err(e) = res {
+                     return Ok(e);
+                 }
++                // The directory's `..` is its new parent now. It kept
++                // pointing at the old one, which only holds it weakly: once
++                // that was removed, looking up `..` failed with EACCES, and
++                // so did listing the moved directory with `scandir`, which
++                // stats every entry it reads, `..` included.
++                *parent = target_parent_inode.downgrade();
+                 {
+                     let source_dir_path = path.clone();
+                     drop(guard);
+@@ -300,7 +317,7 @@
      // The target entry is created, one way or the other
      let target_inode = state
          .fs
@@ -1525,7 +1659,7 @@
          .expect("Expected target inode to exist, and it's too late to safely fail");
      *target_inode.name.write().unwrap() = target_entry_name.into();
      target_inode.stat.write().unwrap().st_size = source_size;
-@@ -323,10 +334,12 @@
+@@ -323,10 +340,12 @@
      match guard.deref_mut() {
          Kind::File { path, .. } => {
              *path = adjust_path(path, source_dir_path, target_dir_path);
@@ -1538,7 +1672,7 @@
              children = entries.values().cloned().collect::<Vec<_>>();
          }
          _ => return,
-@@ -338,6 +351,18 @@
+@@ -338,6 +357,18 @@
      }
  }
  
@@ -2093,3 +2227,50 @@
                  }
              ));
  
+--- a/src/syscalls/wasix/sock_send_file.rs
++++ b/src/syscalls/wasix/sock_send_file.rs
+@@ -61,6 +61,15 @@
+     let tasks = env.tasks().clone();
+     let state = env.state.clone();
+     let fd_entry = wasi_try_ok_ok!(state.fs.get_fd(in_fd));
++    // sendfile(2) writes to any descriptor, not only a socket: libc++'s
++    // `std::filesystem::copy_file` copies a file into another with it, which
++    // failed with EACCES here (the file has no right to send), and so did
++    // Node's `fs.cpSync` of a directory. Anything else is written as
++    // `fd_write` would write it, as `sock_send` does for a pipe.
++    let to_socket = {
++        let out = wasi_try_ok_ok!(state.fs.get_fd(sock));
++        matches!(out.inode.read().deref(), Kind::Socket { .. })
++    };
+ 
+     // Set the offset of the file
+     fd_entry.inner.offset.store(offset, Ordering::Release);
+@@ -221,6 +230,28 @@
+             }
+         };
+ 
++        // The end of the file: there is nothing more to send.
++        if data.is_empty() {
++            break;
++        }
++
++        if !to_socket {
++            let out = wasi_try_ok_ok!(ctx.data().state.fs.get_fd(sock));
++            let out_offset = out.inner.offset.load(Ordering::Acquire);
++            let bytes_written = wasi_try_ok_ok!(fd_write_internal::<Memory64>(
++                ctx,
++                sock,
++                out,
++                FdWriteSource::Buffer(Cow::Owned(data)),
++                out_offset,
++                true,
++                false,
++            )?);
++            env = ctx.data();
++            total_written += bytes_written as u64;
++            continue;
++        }
++
+         // Write it down to the socket
+         let tasks = ctx.data().tasks().clone();
+         let bytes_written = wasi_try_ok_ok!(__sock_asyncify_mut(

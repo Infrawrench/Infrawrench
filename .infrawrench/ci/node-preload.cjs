@@ -35,7 +35,9 @@
 //    fails; with one it walks the tree in JavaScript, which works. So a
 //    recursive call without a filter is given one that keeps everything.
 //    `ray build` (the Raycast extension) and the VS Code extension's
-//    package script both copy directories this way.
+//    package script both copy directories this way. The runner's own fix
+//    (its `sendfile` writes to files) makes this unneeded; remove it once
+//    the runner these jobs run on is a release with that fix.
 "use strict";
 
 const fs = require("node:fs");

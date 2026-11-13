@@ -331,6 +331,7 @@ mod tests {
                 rights_inheriting: Rights::empty(),
                 flags: Fdflags::from_bits_preserve(n),
                 fd_flags: Fdflagsext::empty(),
+                dir_listing: Default::default(),
             },
         }
     }

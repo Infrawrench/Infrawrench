@@ -366,7 +366,9 @@ jobs:
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
     # The package script (esbuild, then `vsce package` on a staged copy in
-    # out/stage), and the .vsix moved out of out/ to leave the stage behind.
+    # out/stage), and the .vsix moved out of out/ to leave the stage behind:
+    # `rm -rf out/stage` left entries behind (#1078) until a runner fix, so
+    # go back to it once the runner this runs on is a release with it.
     run: |
       eval "$(node -p 'require("./package.json").scripts.package')"
       mkdir vsix
@@ -384,6 +386,8 @@ jobs:
   # The environment has no tar: the package's own node-tar writes the
   # tarball, from a list of the files, because Node cannot list a directory
   # ray moved into dist/ once ray removes the directory it built in (#1079).
+  # The runner fixes both; drop SHELL and the file list once the runner this
+  # runs on is a release with those fixes.
   raycast:
     name: Package the Raycast extension
     packages: { only: [app/packages/raycast] }

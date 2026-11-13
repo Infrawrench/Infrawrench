@@ -417,6 +417,7 @@ fn start_one(
             if !env.iter().any(|(k, _)| k == "PATH") {
                 env.push(("PATH".into(), crate::DEFAULT_PATH.into()));
             }
+            crate::script_shell(&mut env, entry);
             if starter.node {
                 let options = crate::wasix::node_options(&env);
                 env.retain(|(k, _)| k != "NODE_OPTIONS");
