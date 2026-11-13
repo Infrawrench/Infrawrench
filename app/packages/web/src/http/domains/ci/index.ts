@@ -7,8 +7,13 @@ import { Effect, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import {
+  CiAccessOverviewSchema,
   CiAccountSchema,
   CiApi,
+  CiConnectionAccessSchema,
+  CiResourceGrantSchema,
+  CiResourceOutputsSchema,
+  CiSshKeyLendingSchema,
   CiCacheClearedSchema,
   CiCachesSchema,
   CiDownloadLinkSchema,
@@ -23,6 +28,17 @@ import {
 } from "@infrawrench/api-contract";
 import { CI_RUN_STATUSES } from "@infrawrench/client-core";
 import { ciStatus, setCiAccount } from "@infrawrench/server-core/ci/accounts";
+import {
+  ciAccessOverview,
+  createGrant,
+  deleteGrant,
+  preflightConnection,
+  resourceOutputs,
+  revokeSshKeyLending,
+  setConnectionAccess,
+  setSshKeyLending,
+  updateGrant,
+} from "@infrawrench/server-core/ci/access";
 import { ciUsage } from "@infrawrench/server-core/ci/billing";
 import { clearCiCache, listCiCaches } from "@infrawrench/server-core/ci/caches";
 import {
@@ -56,6 +72,25 @@ const requireCi = Effect.gen(function* () {
   const enabled = yield* legacy(() => orgHasFeature(principal.organizationId, "ci"));
   if (!enabled) return yield* notFound("CI is not turned on for this organization.");
   return principal;
+});
+
+/** A grant as the audit log records it: what was granted, never a value. */
+const grantAudit = (grant: {
+  ciName: string;
+  resourceId: string;
+  resourceName: string;
+  outputs: readonly string[];
+  secretVersion: string | null;
+  repos: readonly string[] | null;
+  branchPattern: string | null;
+}) => ({
+  ciName: grant.ciName,
+  resourceId: grant.resourceId,
+  resourceName: grant.resourceName,
+  outputs: grant.outputs,
+  secretVersion: grant.secretVersion,
+  repos: grant.repos,
+  branchPattern: grant.branchPattern,
 });
 
 /** A values scope as sent: an installation id, and a repository or none. */
@@ -356,6 +391,215 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
             entityType: "ci_value",
             entityId: params.name,
             metadata: { installationId: scope.installationId, repo: scope.repo },
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("access", () =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const overview = yield* legacy(() =>
+          ciAccessOverview(organizationId, session.userId ?? null),
+        );
+        return yield* respond(CiAccessOverviewSchema)(overview);
+      }),
+    )
+    .handle("setConnectionAccess", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const access = yield* legacyTry(
+          () =>
+            setConnectionAccess(
+              organizationId,
+              params.accountId,
+              {
+                ...payload,
+                jobKinds: [...payload.jobKinds],
+                jobRepos: payload.jobRepos ? [...payload.jobRepos] : null,
+                lendRepos: payload.lendRepos ? [...payload.lendRepos] : null,
+              },
+              session.userId ?? null,
+            ),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.access.update",
+            entityType: "account",
+            entityId: params.accountId,
+            metadata: { accountName: access.accountName, ...access.settings },
+          }),
+        );
+        return yield* respond(CiConnectionAccessSchema)(access);
+      }),
+    )
+    .handle("preflightConnection", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        // One `legacy` call around the plugin call, so the egress scope covers it.
+        const access = yield* legacyTry(
+          () => preflightConnection(organizationId, params.accountId, payload.kind, payload.region),
+          refusal,
+        );
+        const record = access.preflight[payload.kind];
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.access.preflight",
+            entityType: "account",
+            entityId: params.accountId,
+            metadata: {
+              kind: payload.kind,
+              ok: record?.ok ?? false,
+              missing: record?.missing.map((m) => m.permission) ?? [],
+            },
+          }),
+        );
+        return yield* respond(CiConnectionAccessSchema)(access);
+      }),
+    )
+    .handle("resourceOutputs", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        if (!query.resourceId) return yield* badRequest("resourceId is required");
+        const outputs = yield* legacyTry(
+          () => resourceOutputs(organizationId, query.resourceId),
+          refusal,
+        );
+        return yield* respond(CiResourceOutputsSchema)(outputs);
+      }),
+    )
+    .handle("createGrant", ({ payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const grant = yield* legacyTry(
+          () =>
+            createGrant(
+              organizationId,
+              {
+                ...payload,
+                outputs: [...payload.outputs],
+                repos: payload.repos ? [...payload.repos] : null,
+              },
+              session.userId ?? null,
+            ),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.grant.create",
+            entityType: "ci_resource_grant",
+            entityId: grant.id,
+            metadata: grantAudit(grant),
+          }),
+        );
+        return yield* respond(CiResourceGrantSchema)(grant);
+      }),
+    )
+    .handle("updateGrant", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const grant = yield* legacyTry(
+          () =>
+            updateGrant(
+              organizationId,
+              params.grantId,
+              {
+                ...payload,
+                outputs: [...payload.outputs],
+                repos: payload.repos ? [...payload.repos] : null,
+              },
+              session.userId ?? null,
+            ),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.grant.update",
+            entityType: "ci_resource_grant",
+            entityId: grant.id,
+            metadata: grantAudit(grant),
+          }),
+        );
+        return yield* respond(CiResourceGrantSchema)(grant);
+      }),
+    )
+    .handle("deleteGrant", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const grant = yield* legacyTry(() => deleteGrant(organizationId, params.grantId), refusal);
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.grant.delete",
+            entityType: "ci_resource_grant",
+            entityId: grant.id,
+            metadata: grantAudit(grant),
+          }),
+        );
+        return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("setSshKeyLending", ({ params, payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        if (!session.userId) return yield* notFound("Only a person can lend their SSH key.");
+        const userId = session.userId;
+        const lending = yield* legacyTry(
+          () =>
+            setSshKeyLending(organizationId, userId, params.sshKeyId, {
+              enabled: payload.enabled,
+              ciName: payload.ciName,
+              repos: payload.repos ? [...payload.repos] : null,
+              branchPattern: payload.branchPattern,
+            }),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId,
+            action: payload.enabled ? "ci.ssh_key.lend" : "ci.ssh_key.unlend",
+            entityType: "ssh_key",
+            entityId: params.sshKeyId,
+            metadata: lending
+              ? {
+                  ciName: lending.ciName,
+                  repos: lending.repos,
+                  branchPattern: lending.branchPattern,
+                }
+              : {},
+          }),
+        );
+        return yield* respond(Schema.Struct({ lending: Schema.NullOr(CiSshKeyLendingSchema) }))({
+          lending,
+        });
+      }),
+    )
+    .handle("revokeSshKeyLending", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const revoked = yield* legacyTry(
+          () => revokeSshKeyLending(organizationId, params.sshKeyId),
+          refusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.ssh_key.revoke",
+            entityType: "ssh_key",
+            entityId: params.sshKeyId,
+            metadata: { ciName: revoked?.ciName, ownerUserId: revoked?.ownerUserId },
           }),
         );
         return yield* respond(Ok)({ ok: true });

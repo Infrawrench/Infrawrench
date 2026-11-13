@@ -3,6 +3,11 @@ import type { CiClient } from "@infrawrench/ui/ci";
 import { Effect, Stream } from "effect";
 import {
   ciLogEvent,
+  type CiAccessOverview,
+  type CiConnectionAccess,
+  type CiResourceGrant,
+  type CiResourceOutputs,
+  type SearchResult,
   type CiAccount,
   type CiCacheCleared,
   type CiCaches,
@@ -87,6 +92,7 @@ async function* streamRunLogs(
 
 const ci = () => cloudClient("ci").ci;
 const github = () => cloudClient("github").github;
+const search = () => cloudClient("search").search;
 
 const scope = (installationId: number, repo: string | null) => ({
   installationId: String(installationId),
@@ -173,6 +179,63 @@ export function createDesktopCiClient(): CiClient {
           query: scope(installationId, repo),
         }),
       );
+    },
+    // The contract's answers are readonly arrays; the shared types are the
+    // same shapes, mutable.
+    access: async (): Promise<CiAccessOverview> =>
+      (await runRpc(
+        ci().access({ params: { orgId: requireOrgId() } }),
+      )) as unknown as CiAccessOverview,
+    setConnectionAccess: async (accountId, settings): Promise<CiConnectionAccess> =>
+      (await runRpc(
+        ci().setConnectionAccess({
+          params: { orgId: requireOrgId(), accountId },
+          payload: settings,
+        }),
+      )) as unknown as CiConnectionAccess,
+    preflightConnection: async (accountId, kind): Promise<CiConnectionAccess> =>
+      (await runRpc(
+        ci().preflightConnection({
+          params: { orgId: requireOrgId(), accountId },
+          payload: { kind },
+        }),
+      )) as unknown as CiConnectionAccess,
+    searchResources: async (query): Promise<SearchResult[]> => [
+      ...(await runRpc(
+        search().search({
+          params: { orgId: requireOrgId() },
+          query: { q: query, kinds: "resource" },
+        }),
+      )),
+    ],
+    resourceOutputs: async (resourceId): Promise<CiResourceOutputs> =>
+      (await runRpc(
+        ci().resourceOutputs({ params: { orgId: requireOrgId() }, query: { resourceId } }),
+      )) as unknown as CiResourceOutputs,
+    createGrant: async (input): Promise<CiResourceGrant> =>
+      (await runRpc(
+        ci().createGrant({ params: { orgId: requireOrgId() }, payload: input }),
+      )) as unknown as CiResourceGrant,
+    updateGrant: async (grantId, input): Promise<CiResourceGrant> =>
+      (await runRpc(
+        ci().updateGrant({ params: { orgId: requireOrgId(), grantId }, payload: input }),
+      )) as unknown as CiResourceGrant,
+    deleteGrant: async (grantId) => {
+      await runRpc(ci().deleteGrant({ params: { orgId: requireOrgId(), grantId } }));
+    },
+    revokeSshKeyLending: async (sshKeyId) => {
+      await runRpc(ci().revokeSshKeyLending({ params: { orgId: requireOrgId(), sshKeyId } }));
+    },
+    listAllRepos: async () => {
+      const orgId = requireOrgId();
+      const [{ repos }, status] = await Promise.all([
+        runRpc(github().repos({ params: { orgId } })),
+        runRpc(ci().status({ params: { orgId } })),
+      ]);
+      const enabled = new Set(
+        status.accounts.filter((a) => a.ciEnabled).map((a) => a.installationId),
+      );
+      return repos.filter((r) => enabled.has(r.installationId)).map((r) => r.fullName);
     },
   };
 }

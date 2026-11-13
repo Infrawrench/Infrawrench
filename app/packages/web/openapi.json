@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.106.0",
+    "version": "1.107.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -23653,6 +23653,7 @@
           "ci:read",
           "ci:write",
           "ci:approve",
+          "ci-access:write",
           "incidents:read",
           "incidents:write",
           "tag-policy:override",
@@ -62465,6 +62466,687 @@
         ],
         "additionalProperties": false
       },
+      "CiSshKeyLending": {
+        "type": "object",
+        "properties": {
+          "sshKeyId": {
+            "type": "string"
+          },
+          "keyName": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "ownerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ciName": {
+            "type": "string"
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+          },
+          "branchPattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          },
+          "mine": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "sshKeyId",
+          "keyName",
+          "ownerUserId",
+          "ownerName",
+          "ciName",
+          "repos",
+          "branchPattern",
+          "mine",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "ciName": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secretVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+          },
+          "branchPattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "resourceId",
+          "resourceTypeId",
+          "resourceName",
+          "ciName",
+          "outputs",
+          "secretVersion",
+          "repos",
+          "branchPattern",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrantInput": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "ciName": {
+            "type": "string",
+            "description": "The name pipelines use: `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`, unique in the organization."
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secretVersion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "For a secret with versions: `latest`, or a version id. Read as the output `value`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+          },
+          "branchPattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          }
+        },
+        "required": [
+          "resourceId",
+          "ciName",
+          "outputs",
+          "secretVersion",
+          "repos",
+          "branchPattern"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceOutputs": {
+        "type": "object",
+        "properties": {
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "sensitive": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "sensitive"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "secretVersions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "state",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "outputs",
+          "secretVersions"
+        ],
+        "additionalProperties": false
+      },
+      "CiConnectionAccess": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "vm",
+                            "container",
+                            "build",
+                            "host",
+                            "cluster"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "defaults": {
+                          "type": "object",
+                          "properties": {
+                            "machine": {
+                              "type": "string"
+                            },
+                            "image": {
+                              "type": "string"
+                            },
+                            "region": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "typicalStartSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "minimumBillingSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "gpus": {
+                          "type": "boolean"
+                        },
+                        "machineSuggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "regionLabel": {
+                          "type": "string",
+                          "description": "What `cloud.region` means for this kind, when it is not a region."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "label",
+                        "defaults"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "helpLink": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "url"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "helpLink"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "shortLived": {
+                    "type": "boolean"
+                  },
+                  "namespaces": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "description",
+                  "shortLived",
+                  "namespaces"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/components/schemas/CiConnectionAccessSettings"
+          },
+          "preflight": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CiPreflightRecord"
+            }
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "executor",
+          "credential",
+          "settings",
+          "preflight",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiPreflightRecord": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "permission": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "permission",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "region": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ok",
+          "missing",
+          "problems",
+          "checkedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiConnectionAccessSettings": {
+        "type": "object",
+        "properties": {
+          "jobsEnabled": {
+            "type": "boolean",
+            "description": "Cloud jobs may run on this connection. Needs a passing check for every kind."
+          },
+          "jobKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vm",
+                "container",
+                "build",
+                "host",
+                "cluster"
+              ]
+            }
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "maxJobMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "jobRepos": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+          },
+          "jobBranchPattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          },
+          "lendEnabled": {
+            "type": "boolean",
+            "description": "Jobs may be lent this connection's credentials (`connections:`)."
+          },
+          "lendRepos": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+          },
+          "lendBranchPattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          }
+        },
+        "required": [
+          "jobsEnabled",
+          "jobKinds",
+          "maxConcurrentJobs",
+          "maxJobMinutes",
+          "jobRepos",
+          "jobBranchPattern",
+          "lendEnabled",
+          "lendRepos",
+          "lendBranchPattern"
+        ],
+        "additionalProperties": false
+      },
+      "CiAccessOverview": {
+        "type": "object",
+        "properties": {
+          "viewerUserId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The caller: only a key's owner can lend it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiConnectionAccess"
+            }
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiResourceGrant"
+            }
+          },
+          "sshKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiSshKeyLending"
+            }
+          }
+        },
+        "required": [
+          "viewerUserId",
+          "connections",
+          "grants",
+          "sshKeys"
+        ],
+        "additionalProperties": false
+      },
       "CiValues": {
         "type": "object",
         "properties": {
@@ -62969,6 +63651,12 @@
               "type": "string"
             },
             "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
+          },
+          "access": {
+            "$ref": "#/components/schemas/CiJobAccessNames"
+          },
+          "cloud": {
+            "$ref": "#/components/schemas/CiJobCloud"
           }
         },
         "required": [
@@ -62980,6 +63668,64 @@
           "durationMs"
         ],
         "additionalProperties": false
+      },
+      "CiJobCloud": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "machine": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "executor": {
+            "type": "string",
+            "description": "What ran it, e.g. `aws ec2 i-0abc (eu-west-1)`."
+          }
+        },
+        "required": [
+          "provider",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "description": "A cloud job's `cloud:` block and what ran it."
+      },
+      "CiJobAccessNames": {
+        "type": "object",
+        "properties": {
+          "connections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sshKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "envFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "description": "What the job was lent, by name only: connections, SSH keys, resources and `env-from:` grants."
       },
       "CiRunStatus": {
         "type": "string",
@@ -63031,11 +63777,153 @@
                 "type": "null"
               }
             ]
+          },
+          "cloudJobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiCloudJob"
+            },
+            "description": "Where each of its cloud jobs ran. Absent when it has none."
           }
         },
         "required": [
           "run",
           "jobs"
+        ],
+        "additionalProperties": false
+      },
+      "CiCloudJob": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "jobName": {
+            "type": "string"
+          },
+          "pipeline": {
+            "type": "string"
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "claiming",
+              "starting",
+              "running",
+              "tearing_down",
+              "done"
+            ],
+            "description": "`claiming`: Infrawrench is claiming it from the runner (retried when the runner pool is busy). `starting`: the machine is coming up. `running`: it called back. `tearing_down`: the job ended and its compute is being removed. `done`: removed."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The provider's name for what runs it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "jobId",
+          "jobName",
+          "pipeline",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "kind",
+          "machine",
+          "region",
+          "state",
+          "outcome",
+          "reason",
+          "label",
+          "claimedAt",
+          "finishedAt"
         ],
         "additionalProperties": false
       },
@@ -63095,6 +63983,12 @@
               "type": "string"
             },
             "description": "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1."
+          },
+          "access": {
+            "$ref": "#/components/schemas/CiJobAccessNames"
+          },
+          "cloud": {
+            "$ref": "#/components/schemas/CiJobCloud"
           },
           "stdout": {
             "type": "string"
@@ -126918,6 +127812,727 @@
         "description": "_Requires permission: `ci:write`._"
       }
     },
+    "/api/org/{orgId}/ci/access": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CI access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiAccessOverview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every connection whose provider can run CI jobs or lend its credentials, with what it is allowed; the resources granted to CI; and the SSH keys their owners lend. Nothing secret.\n\n_Requires permission: `ci:read`._",
+        "summary": "What CI jobs may use: connections, resources and SSH keys",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiAccess"
+      }
+    },
+    "/api/org/{orgId}/ci/access/connections/{accountId}": {
+      "put": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "accountId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection's CI access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiConnectionAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Run cloud jobs on it (kinds, limits, repositories, branches) and lend its credentials to jobs (repositories, branches). Turning cloud jobs on needs a passing permission check for every kind.\n\n_Requires permission: `ci-access:write`._",
+        "summary": "Set what CI may do with a connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CiConnectionAccessSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci-access:write",
+        "operationId": "putOrgOrgIdCiAccessConnectionsAccountId"
+      }
+    },
+    "/api/org/{orgId}/ci/access/connections/{accountId}/preflight": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "accountId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection's CI access, with the check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiConnectionAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Asks the provider without starting anything (a dry run or a permission test) and keeps the answer: what is missing and how to grant it. A failing check turns that kind off.\n\n_Requires permission: `ci-access:write`._",
+        "summary": "Check whether a connection can run cloud jobs of a kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "vm",
+                      "container",
+                      "build",
+                      "host",
+                      "cluster"
+                    ]
+                  },
+                  "region": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci-access:write",
+        "operationId": "postOrgOrgIdCiAccessConnectionsAccountIdPreflight"
+      }
+    },
+    "/api/org/{orgId}/ci/access/resource-outputs": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The resource's id."
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its outputs and, for a secret, its versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiResourceOutputs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "What a resource can be granted to CI",
+        "x-required-permission": "ci-access:write",
+        "operationId": "getOrgOrgIdCiAccessResourceOutputs",
+        "description": "_Requires permission: `ci-access:write`._"
+      }
+    },
+    "/api/org/{orgId}/ci/access/grants": {
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiResourceGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. Only for the listed repositories and branches, and never for a fork's pull request.\n\n_Requires permission: `ci-access:write`._",
+        "summary": "Grant CI jobs a resource's outputs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CiResourceGrantInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci-access:write",
+        "operationId": "postOrgOrgIdCiAccessGrants"
+      }
+    },
+    "/api/org/{orgId}/ci/access/grants/{grantId}": {
+      "put": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "grantId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiResourceGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Change a resource grant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CiResourceGrantInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci-access:write",
+        "operationId": "putOrgOrgIdCiAccessGrantsGrantId",
+        "description": "_Requires permission: `ci-access:write`._"
+      },
+      "delete": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "grantId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Remove a resource grant",
+        "x-required-permission": "ci:write",
+        "operationId": "deleteOrgOrgIdCiAccessGrantsGrantId",
+        "description": "_Requires permission: `ci:write`._"
+      }
+    },
+    "/api/org/{orgId}/ci/access/ssh-keys/{sshKeyId}": {
+      "put": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "sshKeyId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The key's lending, or null once stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lending": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/CiSshKeyLending"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "lending"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Only the key's owner can, and only for a key whose private half Infrawrench holds. Jobs name it in `ssh-keys:`.\n\n_Requires permission: `ssh-keys:write`._",
+        "summary": "Lend one of your SSH keys to CI jobs, or stop",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "ciName": {
+                    "type": "string",
+                    "description": "The name pipelines use in `ssh-keys:`; unique in the organization."
+                  },
+                  "repos": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Repositories (`owner/name`). Null: every repository the organization runs CI for."
+                  },
+                  "branchPattern": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "ciName",
+                  "repos",
+                  "branchPattern"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ssh-keys:write",
+        "operationId": "putOrgOrgIdCiAccessSshKeysSshKeyId"
+      },
+      "delete": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "sshKeyId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No longer lent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Stop CI jobs using someone's SSH key",
+        "x-required-permission": "ci:write",
+        "operationId": "deleteOrgOrgIdCiAccessSshKeysSshKeyId",
+        "description": "_Requires permission: `ci:write`._"
+      }
+    },
     "/api/org/{orgId}/ci/usage": {
       "get": {
         "tags": [
@@ -134106,6 +135721,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

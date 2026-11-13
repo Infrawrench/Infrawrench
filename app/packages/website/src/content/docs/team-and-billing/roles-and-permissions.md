@@ -133,6 +133,7 @@ A `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:w
 - `ci:read`: [CI](../features/ci.md) runs and usage. Members hold it.
 - `ci:write`: which GitHub accounts run CI, CI secrets and variables, and clearing a repository's CI caches. Admins and owners hold it.
 - `ci:approve`: approving or rejecting CI for pull requests from forks, and retrying and cancelling runs. Admins and owners hold it.
+- `ci-access:write`: what CI jobs may use: lending a connection's credentials to jobs, granting a resource's outputs, and running cloud jobs on a connection. Admins and owners hold it. `ci:*` does not include it, and API keys and agents cannot use it.
 
 ### Config as code
 

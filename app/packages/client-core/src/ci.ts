@@ -4,6 +4,8 @@
  * these and both apps render them.
  */
 
+import type { CiCloudJob, CiJobAccessNames } from "./ci-access";
+
 export const CI_RUN_STATUSES = [
   "awaiting_approval",
   "queued",
@@ -38,6 +40,20 @@ export interface CiJobSummary {
    * (`build[app/packages/ui]`, `prep`). Absent from runs before runner 0.3.1.
    */
   needs?: string[] | undefined;
+  /** What the job was lent, by name (`connections:`, `ssh-keys:`, resources, `env-from:`). */
+  access?: CiJobAccessNames | undefined;
+  /** A cloud job's `cloud:` block, and what ran it. */
+  cloud?: CiJobCloud | undefined;
+}
+
+/** Where a cloud job ran. */
+export interface CiJobCloud {
+  provider: string;
+  kind: string;
+  machine?: string;
+  region?: string;
+  /** The provider's name for what ran it, e.g. `aws ec2 i-0abc (eu-west-1)`. */
+  executor?: string;
 }
 
 export interface CiJobOutput extends CiJobSummary {
@@ -110,6 +126,8 @@ export interface CiRunDetail {
   run: CiRun;
   /** Each job's output, once the run has finished; `null` before then. */
   jobs: CiJobOutput[] | null;
+  /** The run's cloud jobs: where each ran and how far it got. Absent when it has none. */
+  cloudJobs?: CiCloudJob[];
 }
 
 export interface CiAccount {

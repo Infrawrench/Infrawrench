@@ -2455,6 +2455,37 @@ export const sshKeys = pgTable(
 );
 
 /**
+ * An SSH key its owner lends to CI jobs (`ssh-keys: [<ciName>]` in a
+ * pipeline). Only the key's owner turns it on; admins can see and revoke.
+ * Only keys whose private half Infrawrench holds can be lent.
+ */
+export const ciSshKeyAccess = pgTable(
+  "ci_ssh_key_access",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sshKeyId: text("ssh_key_id")
+      .notNull()
+      .references(() => sshKeys.id, { onDelete: "cascade" }),
+    /** The name a pipeline uses; unique in the organization (key names are only unique per user). */
+    ciName: text("ci_name").notNull(),
+    repos: jsonb("repos").$type<string[] | null>(),
+    branchPattern: text("branch_pattern"),
+    enabledByUserId: text("enabled_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex("ci_ssh_key_access_key_idx").on(t.sshKeyId),
+    orgNameIdx: uniqueIndex("ci_ssh_key_access_org_name_idx").on(t.organizationId, t.ciName),
+  }),
+);
+
+/**
  * Saved fan-out SSH command snippets: org-shared, so the whole team reuses
  * the same "check kernel", "disk usage" one-liners from the fan-out screen,
  * the desktop app, and the CLI. Commands are not secret (they run over hosts

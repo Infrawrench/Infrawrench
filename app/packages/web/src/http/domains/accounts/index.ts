@@ -38,6 +38,7 @@ import {
   AccountDetail,
   AccountsApi,
   badRequest,
+  conflict,
   CreateAccountResponse,
   CredentialOptionsResponse,
   notFound,
@@ -62,6 +63,7 @@ import { syncAccountResources, syncAccountResourceType } from "../../../services
 import { exportStoredResourcesToTerraform } from "../../../services/terraform-export";
 import { FREE_PLAN_LIMITS, planAccess } from "../../../services/entitlements";
 import { logAudit } from "../../../services/audit";
+import { liveCloudJobCount } from "@infrawrench/server-core/ci/access";
 import { makeDomain } from "../../domain";
 import { HttpFailure } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson } from "../../request-body";
@@ -608,6 +610,14 @@ const AccountsHandlers = HttpApiBuilder.group(AccountsApi, "accounts", (handlers
     .handle("delete", ({ params }) =>
       Effect.gen(function* () {
         const { organizationId } = yield* OrgPrincipal;
+        // A connection running CI cloud jobs is what tears their compute
+        // down; deleting it now would leave machines nobody can remove.
+        const live = yield* legacy(() => liveCloudJobCount(organizationId, params.id));
+        if (live > 0) {
+          return yield* conflict(
+            `This connection has ${live} CI cloud job(s) running or being torn down. Cancel them, or wait for them to end, then delete it.`,
+          );
+        }
         const deleted = yield* legacy(() =>
           db
             .delete(accounts)

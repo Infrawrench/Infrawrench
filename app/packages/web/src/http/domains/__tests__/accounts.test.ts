@@ -65,6 +65,10 @@ vi.mock("@/services/plugin-clients", () => ({
 }));
 
 vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
+const mockLiveCloudJobs = vi.fn(async () => 0);
+vi.mock("@infrawrench/server-core/ci/access", () => ({
+  liveCloudJobCount: (...a: unknown[]) => mockLiveCloudJobs(...(a as [])),
+}));
 
 vi.mock("@/services/entitlements", () => ({
   planAccess: vi.fn().mockResolvedValue({ paid: true, reason: "subscription", status: "active" }),
@@ -482,6 +486,14 @@ describe("Account routes", () => {
       const body = await res.json();
       expect(body.ok).toBe(true);
       expect(mockRefreshAllowlist).not.toHaveBeenCalled();
+    });
+
+    it("refuses a connection with CI cloud jobs still running, deleting nothing", async () => {
+      mockLiveCloudJobs.mockResolvedValueOnce(2);
+      const res = await buildApp().request("/a1", { method: "DELETE" });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toContain("2 CI cloud job(s)");
+      expect(mockDelete).not.toHaveBeenCalled();
     });
 
     it("takes a bastion-bound account's hosts off the bastion's allowlist", async () => {

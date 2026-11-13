@@ -24,6 +24,7 @@ export function WebCiPanel({
         selectedRunId={runId ?? null}
         onSelectRun={onSelectRun}
         canWrite={has("ci:write")}
+        canManageAccess={has("ci-access:write")}
         canApprove={has("ci:approve")}
         onOpenUrl={(url) => window.open(url, "_blank", "noopener,noreferrer")}
       />

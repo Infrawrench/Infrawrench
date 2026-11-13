@@ -52,6 +52,12 @@ export interface CiExecutorKindDeclaration {
    * provider's own list is the authority, and a wrong name fails at start.
    */
   machineSuggestions?: readonly string[];
+  /**
+   * What `cloud.region` means for this kind, when it is not a region: a
+   * Kubernetes or Nomad job reads it as the namespace. The UI and the docs
+   * show this label beside it; omitted means "Region".
+   */
+  regionLabel?: string;
 }
 
 /** `manifest.ciExecutor`: the kinds of compute this plugin can run CI jobs on. */

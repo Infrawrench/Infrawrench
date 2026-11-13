@@ -62,6 +62,7 @@ describe("every unoffered scope gates a route API keys cannot reach anyway", () 
     "team:invite": { method: "POST", path: "/team/invitations" },
     "team:role:write": { method: "POST", path: "/team/roles" },
     "team:remove": { method: "DELETE", path: "/team/members/m1" },
+    "ci-access:write": { method: "PUT", path: "/ci/access/connections/acc_1" },
     "access:request": { method: "POST", path: "/access-requests" },
     "access:approve": { method: "POST", path: "/access-requests/r1/approve" },
   };

@@ -118,6 +118,7 @@ import { starredDomain } from "./domains/starred/index";
 import { orgFeaturesDomain } from "./domains/org-features/index";
 import { productsDomain } from "./domains/products/index";
 import { ciDomain } from "./domains/ci/index";
+import { ciJobsDomain } from "./domains/ci-jobs/index";
 import { orgConfigDomain } from "./domains/org-config/index";
 import { costVisibilityDomain } from "./domains/cost-visibility/index";
 import { sharingDomain } from "./domains/sharing/index";
@@ -318,6 +319,7 @@ export const DOMAINS: readonly Domain[] = [
   stripeWebhookDomain,
   workflowGitWebhookDomain,
   issueWebhooksDomain,
+  ciJobsDomain,
   internalRelayDomain,
   callbackDomain,
   slackOAuthDomain,

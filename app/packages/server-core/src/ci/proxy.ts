@@ -93,6 +93,15 @@ export interface ProxyRun {
           execution?: { stdout?: string; stderr?: string } | null;
           /** What it kept with `downloads:`; absent from runners before it. */
           downloads?: ProxyDownload[];
+          /** What it was lent, by name (runners from 0.3.16). */
+          access?: {
+            connections?: unknown;
+            "ssh-keys"?: unknown;
+            resources?: unknown;
+            "env-from"?: unknown;
+          };
+          /** A cloud job's block and what ran it (runners from 0.3.16). */
+          cloud?: Record<string, unknown>;
         }>;
       };
     }>;

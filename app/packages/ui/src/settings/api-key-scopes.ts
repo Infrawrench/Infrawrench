@@ -97,7 +97,7 @@ export const API_KEY_SCOPE_GROUPS: readonly ApiKeyScopeGroup[] = [
       { value: "freezes:write", label: "Change freezes (write)" },
       { value: "freezes:override", label: "Change freezes (override)" },
       { value: "ci:read", label: "CI (read)" },
-      { value: "ci:write", label: "CI (choose GitHub accounts)" },
+      { value: "ci:write", label: "CI (GitHub accounts, secrets, variables, caches)" },
       { value: "ci:approve", label: "CI (approve forks' pull requests)" },
       { value: "tag-policy:override", label: "Tag policy (override)" },
       { value: "sharing:override", label: "Sharing (override)" },
@@ -165,6 +165,7 @@ export const API_KEY_UNOFFERED_SCOPES: Readonly<Record<string, string>> = {
   "team:invite": "API keys cannot invite people.",
   "team:role:write": "API keys cannot define roles or change who holds them.",
   "team:remove": "API keys cannot remove members.",
+  "ci-access:write": "API keys cannot change what CI jobs may use.",
   "access:request": "API keys cannot request break-glass access.",
   "access:approve": "API keys cannot approve or deny break-glass access.",
 };

@@ -31,6 +31,7 @@ export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./org-features";
 export * from "./products";
 export * from "./ci";
+export * from "./ci-access";
 export * from "./ci-live";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.

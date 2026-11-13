@@ -37,6 +37,25 @@ describe("orgSubPath", () => {
 });
 
 describe("apiKeyRouteDenial", () => {
+  it("closes changes to what CI jobs may use, and leaves reading it open", () => {
+    for (const [method, path] of [
+      ["PUT", "/ci/access/connections/acc_1"],
+      ["POST", "/ci/access/connections/acc_1/preflight"],
+      ["POST", "/ci/access/grants"],
+      ["PUT", "/ci/access/grants/g1"],
+      ["DELETE", "/ci/access/grants/g1"],
+      ["PUT", "/ci/access/ssh-keys/k1"],
+      ["DELETE", "/ci/access/ssh-keys/k1"],
+    ] as const) {
+      expect(apiKeyRouteDenial(method, `${ORG}${path}`)).toMatch(/what CI jobs may use/);
+      expect(agentRouteDenial(method, `${ORG}${path}`)).toMatch(
+        /^Agents cannot change what CI jobs/,
+      );
+    }
+    expect(apiKeyRouteDenial("GET", `${ORG}/ci/access`)).toBeNull();
+    expect(apiKeyRouteDenial("PUT", `${ORG}/ci/values/secrets/X`)).toBeNull();
+  });
+
   it("closes key minting to keys entirely", () => {
     for (const method of ["GET", "POST", "PATCH", "DELETE"]) {
       expect(apiKeyRouteDenial(method, `${ORG}/api-keys`)).toMatch(/cannot manage API keys/);

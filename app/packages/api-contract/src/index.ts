@@ -125,6 +125,7 @@ export * from "./domains/internal-relay";
 export * from "./domains/invitations";
 export * from "./domains/invoices";
 export * from "./domains/issue-webhooks";
+export * from "./domains/ci-jobs";
 export * from "./domains/jira";
 export * from "./domains/jit-access";
 export * from "./domains/k8s-efficiency-reports";
@@ -284,6 +285,7 @@ import { InternalRelayApi } from "./domains/internal-relay";
 import { InvitationsApi } from "./domains/invitations";
 import { InvoicesApi } from "./domains/invoices";
 import { IssueWebhooksApi } from "./domains/issue-webhooks";
+import { CiJobsApi } from "./domains/ci-jobs";
 import { JiraApi } from "./domains/jira";
 import { JitAccessApi } from "./domains/jit-access";
 import { KubernetesEfficiencyReportsApi } from "./domains/k8s-efficiency-reports";
@@ -448,6 +450,7 @@ export const API_DEFINITIONS = {
   invitations: InvitationsApi,
   invoices: InvoicesApi,
   "issue-webhooks": IssueWebhooksApi,
+  "ci-jobs": CiJobsApi,
   jira: JiraApi,
   "jit-access": JitAccessApi,
   "k8s-efficiency-reports": KubernetesEfficiencyReportsApi,

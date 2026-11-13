@@ -33,6 +33,10 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
+const mockStopLending = vi.fn(async () => [] as string[]);
+vi.mock("@infrawrench/server-core/ci/access", () => ({
+  stopLendingKeysOf: (...a: unknown[]) => mockStopLending(...(a as [])),
+}));
 vi.mock("@/services/seats", () => ({
   releaseSeat: vi.fn().mockResolvedValue(undefined),
   addSeat: vi.fn().mockResolvedValue(undefined),
@@ -525,6 +529,8 @@ describe("Team routes", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
     expect(releaseSeat).toHaveBeenCalledWith("org-1");
+    // Their SSH keys stop being lent to CI jobs.
+    expect(mockStopLending).toHaveBeenCalledWith("org-1", "u2");
   });
 
   it("DELETE /members/:id still succeeds when the seat release fails", async () => {

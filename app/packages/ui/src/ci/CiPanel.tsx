@@ -15,6 +15,7 @@ import {
 import type { CiClient } from "./types.js";
 import { CiCachesCard } from "./CiCachesCard.js";
 import { CiValuesCard } from "./CiValuesCard.js";
+import { CiAccessCard } from "./CiAccessCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
 import { formatDuration } from "./format.js";
 
@@ -25,6 +26,11 @@ export interface CiPanelProps {
   onSelectRun: (id: string | null) => void;
   /** `ci:write`: choose which GitHub accounts run CI, set values, clear caches. */
   canWrite: boolean;
+  /**
+   * `ci-access:write`: what CI jobs may use (lent connections, resource
+   * grants, cloud jobs). Defaults to off.
+   */
+  canManageAccess?: boolean | undefined;
   /** `ci:approve`: approve or reject forks' pull requests, and retry and cancel runs. */
   canApprove: boolean;
   /**
@@ -696,7 +702,13 @@ function RunDetailView({
             </Notice>
           ) : null}
           {run.status === "running" ? (
-            <CiRunView run={run} jobs={null} live={live.run} liveError={live.error} />
+            <CiRunView
+              run={run}
+              jobs={null}
+              live={live.run}
+              liveError={live.error}
+              cloudJobs={detail.cloudJobs}
+            />
           ) : (detail.jobs ?? run.jobs) === null ? (
             <p className="text-xs text-on-surface-faint">
               {ACTIVE.includes(run.status)
@@ -712,6 +724,7 @@ function RunDetailView({
               live={null}
               liveError={null}
               onDownload={download}
+              cloudJobs={detail.cloudJobs}
             />
           )}
         </>
@@ -725,6 +738,7 @@ export function CiPanel({
   selectedRunId,
   onSelectRun,
   canWrite,
+  canManageAccess,
   canApprove,
   onOpenUrl,
   onDownloadUrl,
@@ -844,6 +858,11 @@ export function CiPanel({
                 onChanged={refresh}
               />
               {canWrite ? <CiValuesCard client={client} accounts={status.accounts} /> : null}
+              <CiAccessCard
+                client={client}
+                canManage={canManageAccess === true}
+                canNarrow={canWrite}
+              />
               {usage ? <UsageCard usage={usage} /> : null}
               <CiCachesCard client={client} canWrite={canWrite} />
 

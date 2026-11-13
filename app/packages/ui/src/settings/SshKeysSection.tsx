@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { T, useGT } from "gt-react";
+import { CI_GRANT_NAME, ciGrantNameFor, type CiAccessOverview } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import type { SshKey } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 
 export function SshKeysSection() {
-  const { orgId, api } = useSettingsHost();
+  const { orgId, api, has } = useSettingsHost();
   const gt = useGT();
+  // Lending a key to CI jobs is its owner's act, under `ssh-keys:write`.
+  const canLend = has("ssh-keys:write");
   const [keys, setKeys] = useState<SshKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -16,11 +19,27 @@ export function SshKeysSection() {
     privateKey: string;
   } | null>(null);
 
+  // CI access, when CI is on for the organization (the route is a 404
+  // otherwise): which keys are lent to CI jobs, and who is asking.
+  const [ci, setCi] = useState<CiAccessOverview | null>(null);
+  const [lending, setLending] = useState<SshKey | null>(null);
+
   async function load() {
     setLoading(true);
     const result = await api.get<SshKey[]>(`/api/org/${orgId}/ssh-keys`);
     setKeys(result);
     setLoading(false);
+    setCi(await api.get<CiAccessOverview>(`/api/org/${orgId}/ci/access`).catch(() => null));
+  }
+
+  async function stopLending(id: string) {
+    await api.put(`/api/org/${orgId}/ci/access/ssh-keys/${id}`, {
+      enabled: false,
+      ciName: "",
+      repos: null,
+      branchPattern: null,
+    });
+    await load();
   }
 
   useEffect(() => {
@@ -117,6 +136,27 @@ export function SshKeysSection() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     <div className="flex gap-2 justify-end">
+                      {canLend && ci && ci.viewerUserId === key.userId && !key.isImported ? (
+                        ci.sshKeys.some((l) => l.sshKeyId === key.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => void stopLending(key.id)}
+                            className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
+                          >
+                            {gt("Stop using in CI jobs ({name})", {
+                              name: ci.sshKeys.find((l) => l.sshKeyId === key.id)?.ciName ?? "",
+                            })}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setLending(key)}
+                            className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
+                          >
+                            {gt("Use in CI jobs")}
+                          </button>
+                        )
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => {
@@ -140,6 +180,17 @@ export function SshKeysSection() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {lending && (
+        <LendKeyModal
+          sshKey={lending}
+          onClose={() => setLending(null)}
+          onSaved={() => {
+            setLending(null);
+            void load();
+          }}
+        />
       )}
 
       {showGenerate && (
@@ -397,6 +448,118 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
           </button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+/** Lends one of the caller's own keys to CI jobs: its name in pipelines, and where. */
+function LendKeyModal({
+  sshKey,
+  onClose,
+  onSaved,
+}: {
+  sshKey: SshKey;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { orgId, api } = useSettingsHost();
+  const gt = useGT();
+  const [ciName, setCiName] = useState(() => ciGrantNameFor(sshKey.name));
+  const [repos, setRepos] = useState("");
+  const [branchPattern, setBranchPattern] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const nameOk = CI_GRANT_NAME.test(ciName);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const list = repos
+        .split(",")
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0);
+      await api.put(`/api/org/${orgId}/ci/access/ssh-keys/${sshKey.id}`, {
+        enabled: true,
+        ciName,
+        repos: list.length > 0 ? list : null,
+        branchPattern: branchPattern.trim() || null,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Could not save"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputClass =
+    "w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary";
+  return (
+    <Modal onClose={onClose} ariaLabel={gt("Use in CI jobs")}>
+      <form
+        className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl p-5 space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <h2 className="text-sm font-semibold text-on-surface-secondary">
+          {gt("Use {name} in CI jobs", { name: sshKey.name })}
+        </h2>
+        <label className="block text-xs text-on-surface-muted space-y-1">
+          <span>{gt("Name in pipelines")}</span>
+          <input
+            value={ciName}
+            onChange={(e) => setCiName(e.target.value)}
+            className={`${inputClass} font-mono`}
+            aria-invalid={!nameOk}
+            autoComplete="off"
+          />
+        </label>
+        <p className="font-mono text-[11px] text-on-surface-faint">{`ssh-keys: [${ciName}]`}</p>
+        <label className="block text-xs text-on-surface-muted space-y-1">
+          <span>{gt("Repositories (owner/name, separated by commas; empty for every one)")}</span>
+          <input
+            value={repos}
+            onChange={(e) => setRepos(e.target.value)}
+            className={`${inputClass} font-mono`}
+            autoComplete="off"
+          />
+        </label>
+        <label className="block text-xs text-on-surface-muted space-y-1">
+          <span>{gt("Branches (empty for every branch)")}</span>
+          <input
+            value={branchPattern}
+            onChange={(e) => setBranchPattern(e.target.value)}
+            // i18n-ignore: branch glob syntax
+            placeholder="main, release/*"
+            className={`${inputClass} font-mono`}
+            autoComplete="off"
+          />
+        </label>
+        {error ? (
+          <p role="alert" className="text-xs text-danger">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm text-on-surface-muted hover:text-on-surface-secondary"
+          >
+            {gt("Cancel")}
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !nameOk}
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg disabled:opacity-50"
+          >
+            {gt("Use in CI jobs")}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

@@ -20,7 +20,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organizations, users } from "./core-schema.js";
+import { accounts, organizations, users } from "./core-schema.js";
 
 /**
  * A connected GitHub App installation (a GitHub organization or user) whose
@@ -78,6 +78,21 @@ export interface CiConcurrencyEntry {
   cancelSent?: boolean;
 }
 
+/**
+ * One job's references to things the organization lends CI, as the runners'
+ * `POST /v1/concurrency` answer names them (per job key, not per matrix entry).
+ */
+export interface CiJobAccess {
+  pipeline: string;
+  job: string;
+  connections?: Array<{ name: string; namespace?: string }>;
+  sshKeys?: string[];
+  /** Grant CI name to the outputs the job reads. */
+  resources?: Record<string, string[]>;
+  envFrom?: string[];
+  cloud?: Record<string, string>;
+}
+
 /** One run of a repository's pipelines for a push or a pull request. */
 export const ciRuns = pgTable(
   "ci_runs",
@@ -121,6 +136,12 @@ export const ciRuns = pgTable(
      * (queued with this set, or running) until it ends.
      */
     concurrency: jsonb("concurrency").$type<CiConcurrencyEntry[]>(),
+    /**
+     * What each of its jobs names to be lent (`connections:`, `ssh-keys:`,
+     * `resources.*`, `env-from:`) and its `cloud:` block, read with its
+     * pipelines before dispatch; null until then, and for runs from before.
+     */
+    access: jsonb("access").$type<CiJobAccess[]>(),
     /** Someone asked to cancel the whole run, and when the runner was told. */
     cancelRequestedAt: timestamp("cancel_requested_at"),
     cancelSentAt: timestamp("cancel_sent_at"),
@@ -187,5 +208,172 @@ export const ciStorageSamples = pgTable(
   },
   (t) => ({
     ownerHourIdx: uniqueIndex("ci_storage_samples_owner_hour_idx").on(t.ownerKey, t.hour),
+  }),
+);
+
+/**
+ * What an organization lets CI do with one connection: run jobs on it (cloud
+ * jobs, `cloud:` in a pipeline), lend its credentials to jobs (`connections:`),
+ * or both. Off unless a row turns it on. A null repository list means every
+ * repository the organization runs CI for; a branch pattern narrows it to
+ * branches that match (`main`, `release/*`).
+ */
+export const ciConnectionAccess = pgTable(
+  "ci_connection_access",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    jobsEnabled: boolean("jobs_enabled").notNull().default(false),
+    /** The kinds (`vm`, `container`, ...) jobs may use; the plugin declares which exist. */
+    jobKinds: jsonb("job_kinds").$type<string[]>().notNull().default([]),
+    maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(2),
+    maxJobMinutes: integer("max_job_minutes").notNull().default(60),
+    jobRepos: jsonb("job_repos").$type<string[] | null>(),
+    jobBranchPattern: text("job_branch_pattern"),
+    /** The last preflight per kind, as the plugin answered it. */
+    jobPreflight: jsonb("job_preflight")
+      .$type<
+        Record<
+          string,
+          {
+            ok: boolean;
+            missing: Array<{ permission: string; label: string }>;
+            problems: string[];
+            region?: string;
+            checkedAt: string;
+          }
+        >
+      >()
+      .notNull()
+      .default({}),
+    lendEnabled: boolean("lend_enabled").notNull().default(false),
+    lendRepos: jsonb("lend_repos").$type<string[] | null>(),
+    lendBranchPattern: text("lend_branch_pattern"),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    accountIdx: uniqueIndex("ci_connection_access_account_idx").on(t.accountId),
+    orgIdx: index("ci_connection_access_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * One resource CI jobs may read, granted one by one: `${{ resources.<ciName>.<output> }}`
+ * and `env-from: [<ciName>]`. Only the ticked outputs (or the secret's value, for
+ * a secret-manager resource) are read, fresh at each dispatch.
+ */
+export const ciResourceGrants = pgTable(
+  "ci_resource_grants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** The resource's id as the plugin lists it; not a foreign key, since syncs replace rows. */
+    resourceId: text("resource_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    resourceName: text("resource_name").notNull(),
+    /** The name a pipeline uses: `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`, unique in the organization. */
+    ciName: text("ci_name").notNull(),
+    outputs: jsonb("outputs").$type<string[]>().notNull().default([]),
+    /**
+     * For a secret-manager resource: `latest` (the newest enabled version) or a
+     * version id, read as the output `value`. Null when it grants no secret value.
+     */
+    secretVersion: text("secret_version"),
+    repos: jsonb("repos").$type<string[] | null>(),
+    branchPattern: text("branch_pattern"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Who last changed it (widened it, perhaps): the audit names them as who allowed a read. */
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgNameIdx: uniqueIndex("ci_resource_grants_org_name_idx").on(t.organizationId, t.ciName),
+    accountIdx: index("ci_resource_grants_account_idx").on(t.accountId),
+  }),
+);
+
+export type CiCloudJobState = "claiming" | "starting" | "running" | "tearing_down" | "done";
+
+/**
+ * One cloud job (`cloud:` in a pipeline) the executor claimed: where it runs,
+ * the plugin's handle to it, and how far teardown has got. The claim's secret
+ * part (the claim token, the job's env and files) is kept encrypted only until
+ * the job ends; the machine fetches it with its own token, of which only a hash
+ * is kept.
+ */
+export const ciCloudJobs = pgTable(
+  "ci_cloud_jobs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => ciRuns.id, { onDelete: "cascade" }),
+    proxyRunId: text("proxy_run_id").notNull(),
+    /** The runner's job id (`build[app/web]` for a matrix entry). */
+    jobId: text("job_id").notNull(),
+    jobName: text("job_name").notNull(),
+    pipeline: text("pipeline").notNull(),
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    pluginId: text("plugin_id").notNull(),
+    kind: text("kind").notNull(),
+    machine: text("machine"),
+    image: text("image"),
+    region: text("region"),
+    state: text("state").$type<CiCloudJobState>().notNull(),
+    /** How the job ended, once it has: `passed`, `failed`, `error`, `cancelled`, `lost`, `timed-out`. */
+    outcome: text("outcome"),
+    reason: text("reason"),
+    /** The plugin's handle (`CiHandle`), once it started something. */
+    handle: jsonb("handle").$type<{
+      id: string;
+      region?: string;
+      label: string;
+      data?: Record<string, string>;
+    }>(),
+    /** SHA-256 of the machine's callback token. */
+    callbackTokenHash: text("callback_token_hash").notNull(),
+    /** AES-GCM: the claim token, env, files and transfer URLs. Cleared when the job ends. */
+    encryptedClaim: text("encrypted_claim"),
+    claimIv: text("claim_iv"),
+    timeoutSeconds: integer("timeout_seconds").notNull(),
+    /** When the machine last called back. */
+    lastSeenAt: timestamp("last_seen_at"),
+    claimedAt: timestamp("claimed_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+    /** Claims that failed for a passing reason (the proxy busy, the network). */
+    claimAttempts: integer("claim_attempts").notNull().default(0),
+    teardownAttempts: integer("teardown_attempts").notNull().default(0),
+    teardownError: text("teardown_error"),
+    nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    runJobIdx: uniqueIndex("ci_cloud_jobs_run_job_idx").on(t.proxyRunId, t.jobId),
+    tokenIdx: uniqueIndex("ci_cloud_jobs_token_idx").on(t.callbackTokenHash),
+    stateIdx: index("ci_cloud_jobs_state_idx").on(t.state, t.nextAttemptAt),
+    accountIdx: index("ci_cloud_jobs_account_idx").on(t.accountId, t.state),
   }),
 );

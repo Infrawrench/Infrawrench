@@ -51,7 +51,10 @@ for (const plugin of BUNDLED_PLUGINS) {
   add(manifest.secretScanning?.label);
   add(manifest.secretScanning?.description);
   for (const format of manifest.tokenFormats ?? []) add(format.label);
-  for (const kind of manifest.ciExecutor?.kinds ?? []) add(kind.label);
+  for (const kind of manifest.ciExecutor?.kinds ?? []) {
+    add(kind.label);
+    add(kind.regionLabel);
+  }
   add(manifest.ciExecutor?.helpLink?.label);
   add(manifest.ciCredential?.description);
   add(manifest.warehouseSink?.label);

@@ -21,6 +21,7 @@ import {
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
 import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
+import { stopLendingKeysOf } from "@infrawrench/server-core/ci/access";
 import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import {
   BadRequest,
@@ -236,6 +237,9 @@ async function removeMembership(organizationId: string, userId: string) {
       ),
     )
     .returning({ id: apiKeys.id });
+  // Their SSH keys stop being lent to CI jobs: a key lent by someone who has
+  // left must not keep reaching every trusted run.
+  await stopLendingKeysOf(organizationId, userId);
   return revoked.map((k) => k.id);
 }
 

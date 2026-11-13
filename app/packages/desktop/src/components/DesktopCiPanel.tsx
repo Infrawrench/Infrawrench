@@ -57,6 +57,7 @@ export function DesktopCiPanel({ runId }: { runId?: string | undefined }) {
           })
         }
         canWrite={hasPermission(permissions, "ci:write")}
+        canManageAccess={hasPermission(permissions, "ci-access:write")}
         canApprove={hasPermission(permissions, "ci:approve")}
         onOpenUrl={(url) => void openExternalUrl(url)}
         onDownloadUrl={(url) => void openExternalUrl(url)}

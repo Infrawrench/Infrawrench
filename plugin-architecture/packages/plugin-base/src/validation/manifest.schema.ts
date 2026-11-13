@@ -470,6 +470,7 @@ export const pluginManifestSchema = Schema.Struct({
           minimumBillingSeconds: Schema.optional(PositiveInt),
           gpus: Schema.optional(Schema.Boolean),
           machineSuggestions: Schema.optional(Schema.Array(NonEmpty)),
+          regionLabel: Schema.optional(NonEmpty),
         }),
       ).check(Schema.isMinLength(1)),
       helpLink: Schema.optional(Schema.Struct({ label: NonEmpty, url: Url })),

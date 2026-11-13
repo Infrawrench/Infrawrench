@@ -465,4 +465,13 @@
 // 1.106.0: boat plugin. `pluginId` gains `boat` and `resourceTypeId` gains
 // its `sandbox`, `saved-snapshot`, `environment`, `webhook` and `api-key`
 // types. Additive.
-export const API_VERSION = "1.106.0";
+// 1.107.0: CI access. `GET /api/org/:orgId/ci/access` (`ci:read`) lists
+// the connections that can run CI jobs or lend credentials with what each
+// is allowed, resource grants and lent SSH keys; `PUT
+// /ci/access/connections/:accountId` and `POST .../preflight`, `GET
+// /ci/access/resource-outputs`, `POST|PUT|DELETE /ci/access/grants[/:id]`
+// and `DELETE /ci/access/ssh-keys/:id` (`ci:write`) change them, and `PUT
+// /ci/access/ssh-keys/:id` (`ci:read`, the key's owner) lends one's own key.
+// `CiJobSummary` gains optional `access` and `cloud`, and `CiRunDetail`
+// optional `cloudJobs`. Additive.
+export const API_VERSION = "1.107.0";

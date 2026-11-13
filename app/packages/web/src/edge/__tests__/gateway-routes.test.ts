@@ -99,6 +99,19 @@ describe("routeRequest", () => {
     expect(routeRequest("POST", "/api/org/org_1/pr-checks/repositories", null).target).toBe("edge");
   });
 
+  it("sends a cloud job's callback and CI access's plugin calls to Node", () => {
+    for (const [method, path] of [
+      ["GET", "/api/ci-jobs/script"],
+      ["POST", "/api/ci-jobs/log"],
+      ["POST", "/api/ci-jobs/finish"],
+      ["POST", "/api/org/org_1/ci/access/connections/acc_1/preflight"],
+      ["GET", "/api/org/org_1/ci/access/resource-outputs"],
+    ] as const) {
+      expect(routeRequest(method, path, null)).toMatchObject({ target: "gateway", tier: "node" });
+    }
+    expect(routeRequest("GET", "/api/org/org_1/ci/access", null).target).toBe("edge");
+  });
+
   it("computes the org grade on the gateway but serves its history at the edge", () => {
     // The grade reads plugin-bound feeds; the history is a Postgres read.
     // Plugin work that finishes in the request: any Node runtime will do.
