@@ -932,6 +932,68 @@ void ProcessOOMErrorCallback(const char* location, const v8::OOMDetails& details
   std::fflush(stderr);
 }
 
+// iwci patch (#1134): the isolate group's main isolate, owned by the bridge.
+//
+// Every isolate of the process is in one isolate group, whose page pool
+// takes a disposed isolate's young-generation pages (V8 13.6
+// `SemiSpace::TearDown`, `PagePool::ReleaseOnTearDown`). They stay reserved
+// in the 4 GiB pointer-compression cage, in no heap, until a task V8 posts
+// 8 s later to the group's main isolate frees them, or a new young
+// generation takes them back. The main isolate is the first one created and
+// stays main until it is disposed. When its thread ran no foreground task
+// (a `node` blocked or busy in one long call, or idle in its event loop,
+// which a delayed task does not wake), the pool was held that long; when it
+// was an isolate abandoned after running out of memory (#972), never
+// disposed, it was main for good and the pool was never freed. The cage
+// then filled while the heap space account (budget.rs) showed room: a
+// heap's next old-generation or large-object page found no address space,
+// V8 failed "CALL_AND_RETRY_LAST" well within the job's memory, and each
+// such isolate was abandoned with its heap, which made the next loss
+// likelier. This isolate is made before any other, so it is main for the
+// life of the process; it runs no JavaScript, and its own thread runs its
+// foreground tasks every `kPoolKeeperPump`, so the pool is freed 8 s after
+// each disposal.
+constexpr auto kPoolKeeperPump = std::chrono::milliseconds(250);
+
+void StartPoolKeeper(EdgeV8Platform* platform) {
+  struct Started {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+  };
+  auto started = std::make_shared<Started>();
+  std::thread([platform, started] {
+    v8::Isolate::CreateParams params;
+    // Never freed, like the isolate.
+    params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+    v8::Isolate* isolate = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
+      InIsolateLifecycle in_lifecycle;
+      isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
+      if (isolate != nullptr && !platform->RegisterIsolate(isolate)) {
+        isolate->Dispose();
+        isolate = nullptr;
+      }
+      if (isolate != nullptr) v8::Isolate::Initialize(isolate, params);
+    }
+    {
+      std::lock_guard<std::mutex> lock(started->mutex);
+      started->done = true;
+    }
+    started->cv.notify_all();
+    if (isolate == nullptr) return;
+    v8::Isolate::Scope scope(isolate);
+    for (;;) {
+      platform->PumpPendingForegroundTasks(isolate);
+      std::this_thread::sleep_for(kPoolKeeperPump);
+    }
+  }).detach();
+  // Made before ConfigureRuntime returns, so before any env's isolate.
+  std::unique_lock<std::mutex> lock(started->mutex);
+  started->cv.wait(lock, [&] { return started->done; });
+}
+
 napi_status ConfigureRuntime(const char* engine_flags,
                              size_t engine_flags_length) {
   if ((engine_flags_length > 0 && engine_flags == nullptr) ||
@@ -993,6 +1055,8 @@ napi_status ConfigureRuntime(const char* engine_flags,
   // iwci patch (#972)
   g_oom_platform.store(g_runtime.platform.get(), std::memory_order_release);
   v8::V8::SetFatalMemoryErrorCallback(ProcessOOMErrorCallback);
+  // iwci patch (#1134)
+  StartPoolKeeper(g_runtime.platform.get());
   g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                 engine_flags_length);
   return napi_ok;

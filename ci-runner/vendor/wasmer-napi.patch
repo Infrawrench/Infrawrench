@@ -4731,7 +4731,7 @@
      auto callback_it = g_near_heap_limit_callbacks.find(isolate);
      if (callback_it != g_near_heap_limit_callbacks.end()) {
        state = callback_it->second;
-@@ -443,8 +501,51 @@
+@@ -443,6 +501,49 @@
      return current_heap_limit;
    }
    return state.callback(env, state.data, current_heap_limit, initial_heap_limit);
@@ -4751,8 +4751,8 @@
 +  const size_t cap = static_cast<size_t>(reinterpret_cast<uintptr_t>(data));
 +  if (current_heap_limit >= cap) return current_heap_limit;
 +  return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
- }
- 
++}
++
 +// iwci patch (#1063): every isolate of the process allocates its heap from
 +// one pointer-compression cage, which the host accounts for: a budgeted
 +// isolate reports the heap it has committed after each garbage collection,
@@ -4778,11 +4778,9 @@
 +  napi_host_heap_committed(
 +      data, heap.total_heap_size(),
 +      (type & v8::kGCTypeMarkSweepCompact) != 0 ? 1 : 0);
-+}
-+
+ }
+ 
  // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
- // context is installed, every V8 backing store is allocated inside the guest's
- // linear memory so guest and host share buffer bytes directly. `free` returns
 @@ -462,6 +563,11 @@
  }
  extern "C" __attribute__((weak)) void napi_host_guest_heap_release(
@@ -4968,15 +4966,15 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.oom;
-@@ -687,15 +903,42 @@
+@@ -687,6 +903,95 @@
    if (callback != nullptr) {
      callback(env, location, details.is_heap_oom, details.detail);
    }
 +  // Returns only when it cannot confine, and then so does
 +  // `ProcessOOMErrorCallback`, which V8 calls next and which says why.
 +  (void)ConfineOutOfMemory(isolate, location, details);
- }
- 
++}
++
 +// iwci patch (#972): process-wide, for what V8 reports without an isolate
 +// (V8::FatalProcessOutOfMemory(nullptr, ...) on a worker thread, a zone
 +// allocation for instance). With an isolate, V8 13.6 calls this after the
@@ -5001,9 +4999,70 @@
 +  std::fflush(stderr);
 +}
 +
++// iwci patch (#1134): the isolate group's main isolate, owned by the bridge.
++//
++// Every isolate of the process is in one isolate group, whose page pool
++// takes a disposed isolate's young-generation pages (V8 13.6
++// `SemiSpace::TearDown`, `PagePool::ReleaseOnTearDown`). They stay reserved
++// in the 4 GiB pointer-compression cage, in no heap, until a task V8 posts
++// 8 s later to the group's main isolate frees them, or a new young
++// generation takes them back. The main isolate is the first one created and
++// stays main until it is disposed. When its thread ran no foreground task
++// (a `node` blocked or busy in one long call, or idle in its event loop,
++// which a delayed task does not wake), the pool was held that long; when it
++// was an isolate abandoned after running out of memory (#972), never
++// disposed, it was main for good and the pool was never freed. The cage
++// then filled while the heap space account (budget.rs) showed room: a
++// heap's next old-generation or large-object page found no address space,
++// V8 failed "CALL_AND_RETRY_LAST" well within the job's memory, and each
++// such isolate was abandoned with its heap, which made the next loss
++// likelier. This isolate is made before any other, so it is main for the
++// life of the process; it runs no JavaScript, and its own thread runs its
++// foreground tasks every `kPoolKeeperPump`, so the pool is freed 8 s after
++// each disposal.
++constexpr auto kPoolKeeperPump = std::chrono::milliseconds(250);
++
++void StartPoolKeeper(EdgeV8Platform* platform) {
++  struct Started {
++    std::mutex mutex;
++    std::condition_variable cv;
++    bool done = false;
++  };
++  auto started = std::make_shared<Started>();
++  std::thread([platform, started] {
++    v8::Isolate::CreateParams params;
++    // Never freed, like the isolate.
++    params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
++    v8::Isolate* isolate = nullptr;
++    {
++      std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
++      InIsolateLifecycle in_lifecycle;
++      isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
++      if (isolate != nullptr && !platform->RegisterIsolate(isolate)) {
++        isolate->Dispose();
++        isolate = nullptr;
++      }
++      if (isolate != nullptr) v8::Isolate::Initialize(isolate, params);
++    }
++    {
++      std::lock_guard<std::mutex> lock(started->mutex);
++      started->done = true;
++    }
++    started->cv.notify_all();
++    if (isolate == nullptr) return;
++    v8::Isolate::Scope scope(isolate);
++    for (;;) {
++      platform->PumpPendingForegroundTasks(isolate);
++      std::this_thread::sleep_for(kPoolKeeperPump);
++    }
++  }).detach();
++  // Made before ConfigureRuntime returns, so before any env's isolate.
++  std::unique_lock<std::mutex> lock(started->mutex);
++  started->cv.wait(lock, [&] { return started->done; });
+ }
+ 
  napi_status ConfigureRuntime(const char* engine_flags,
-                              size_t engine_flags_length) {
-   if ((engine_flags_length > 0 && engine_flags == nullptr) ||
+@@ -695,7 +1000,7 @@
        engine_flags_length > static_cast<size_t>(std::numeric_limits<int>::max())) {
      return napi_invalid_arg;
    }
@@ -5012,11 +5071,10 @@
    if (g_runtime.platform != nullptr) {
      return g_runtime.engine_flags.size() == engine_flags_length &&
                     (engine_flags_length == 0 ||
-@@ -709,6 +952,37 @@
-   if (engine_flags_length > 0) {
+@@ -710,12 +1015,48 @@
      v8::V8::SetFlagsFromString(engine_flags,
                                 static_cast<int>(engine_flags_length));
-+  }
+   }
 +  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
 +  // process-wide JS dispatch table with a protection key and grants access to
 +  // it in the PKRU register of the thread that first initialises V8, and of
@@ -5047,20 +5105,22 @@
 +    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
 +    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
 +                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
-   }
++  }
    v8::V8::InitializeICUDefaultLocation("");
    v8::V8::InitializeExternalStartupData("");
-@@ -716,6 +990,9 @@
+   g_runtime.platform = EdgeV8Platform::Create();
    if (g_runtime.platform == nullptr) return napi_generic_failure;
    v8::V8::InitializePlatform(g_runtime.platform.get());
    v8::V8::Initialize();
 +  // iwci patch (#972)
 +  g_oom_platform.store(g_runtime.platform.get(), std::memory_order_release);
 +  v8::V8::SetFatalMemoryErrorCallback(ProcessOOMErrorCallback);
++  // iwci patch (#1134)
++  StartPoolKeeper(g_runtime.platform.get());
    g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                  engine_flags_length);
    return napi_ok;
-@@ -723,7 +1000,7 @@
+@@ -723,7 +1064,7 @@
  
  napi_status AcquireRuntime(EdgeV8Platform** platform_out) {
    if (platform_out == nullptr) return napi_invalid_arg;
@@ -5069,7 +5129,7 @@
    if (g_runtime.platform == nullptr) return napi_invalid_arg;
    g_runtime.refcount++;
    *platform_out = g_runtime.platform.get();
-@@ -731,7 +1008,7 @@
+@@ -731,7 +1072,7 @@
  }
  
  void ReleaseRuntime() {
@@ -5078,7 +5138,7 @@
    if (g_runtime.refcount == 0) return;
    g_runtime.refcount--;
    // Keep shared V8 runtime alive for process lifetime in tests to avoid
-@@ -746,7 +1023,7 @@
+@@ -746,7 +1087,7 @@
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5087,7 +5147,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -856,7 +1133,7 @@
+@@ -856,7 +1197,7 @@
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5096,7 +5156,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -898,7 +1175,7 @@
+@@ -898,7 +1239,7 @@
    std::array<v8::Local<v8::Function>, 4> hooks;
    if (env == nullptr || isolate == nullptr) return hooks;
  
@@ -5105,7 +5165,7 @@
    auto hooks_it = g_promise_hooks.find(isolate);
    if (hooks_it == g_promise_hooks.end()) return hooks;
  
-@@ -1705,6 +1982,18 @@
+@@ -1705,6 +2046,18 @@
  }
  
  extern "C" {
@@ -5124,7 +5184,7 @@
  
  napi_status NAPI_CDECL unofficial_napi_configure_runtime(
      const unofficial_napi_runtime_options* options) {
-@@ -1753,7 +2042,7 @@
+@@ -1753,7 +2106,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5133,7 +5193,7 @@
      if (g_runtime.platform != nullptr &&
          !g_runtime.platform->BindForegroundTaskTarget(
              env->isolate,
-@@ -1776,8 +2065,8 @@
+@@ -1776,8 +2129,8 @@
  
    env->isolate->SetFatalErrorHandler(
        hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
@@ -5144,7 +5204,7 @@
    *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
    return napi_ok;
  }
-@@ -1789,7 +2078,7 @@
+@@ -1789,7 +2142,7 @@
    auto* env = new (std::nothrow) napi_env__(context, module_api_version);
    if (env == nullptr) return napi_generic_failure;
    {
@@ -5153,7 +5213,7 @@
      g_env_by_isolate[env->isolate] = env;
    }
    *result = env;
-@@ -1800,8 +2089,9 @@
+@@ -1800,8 +2153,9 @@
    if (env == nullptr) return napi_invalid_arg;
    ProfilerState profiler_state;
    bool has_profiler_state = false;
@@ -5164,7 +5224,7 @@
      if (g_runtime.platform != nullptr) {
        g_runtime.platform->ClearForegroundTaskTarget(env->isolate, env);
      }
-@@ -1829,7 +2119,8 @@
+@@ -1829,7 +2183,8 @@
      }
      unofficial_napi_internal::ResetErrorFormattingState(env);
      g_fatal_error_callbacks.erase(env->isolate);
@@ -5174,7 +5234,7 @@
      auto profiler_it = g_profiler_states.find(env);
      if (profiler_it != g_profiler_states.end()) {
        profiler_state = std::move(profiler_it->second);
-@@ -1845,7 +2136,25 @@
+@@ -1845,7 +2200,25 @@
      env->isolate->SetPromiseHook(nullptr);
      env->isolate->SetPromiseRejectCallback(nullptr);
      env->isolate->SetFatalErrorHandler(nullptr);
@@ -5201,7 +5261,7 @@
    }
    delete env;
    return napi_ok;
-@@ -1865,28 +2174,42 @@
+@@ -1865,28 +2238,42 @@
    if (callback_or_null != nullptr) {
      bool install_provider_callback = false;
      {
@@ -5246,7 +5306,7 @@
    }
    return napi_ok;
  }
-@@ -1966,7 +2289,7 @@
+@@ -1966,7 +2353,7 @@
      return napi_generic_failure;
    }
    {
@@ -5255,7 +5315,7 @@
      g_hash_seeds[isolate] = GenerateHashSeed();
      g_tracking_allocators[allocator.get()] = allocator;
    }
-@@ -1975,7 +2298,7 @@
+@@ -1975,7 +2362,7 @@
    if (scope == nullptr) {
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5264,7 +5324,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -1990,7 +2313,7 @@
+@@ -1990,7 +2377,7 @@
      delete scope;
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5273,7 +5333,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -2007,27 +2330,56 @@
+@@ -2007,27 +2394,56 @@
    if (owner == nullptr) return napi_invalid_arg;
    auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
  
@@ -5337,7 +5397,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
    }
-@@ -2063,7 +2415,7 @@
+@@ -2063,7 +2479,7 @@
  
    bool has_prepare_stack_trace_callback = false;
    {
@@ -5346,7 +5406,7 @@
      PrepareStackTraceState& state = g_prepare_stack_trace_callbacks[env];
      v8::Local<v8::Context> principal_context = env->context();
      const bool use_principal_callback =
-@@ -2121,52 +2473,122 @@
+@@ -2121,52 +2537,122 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -5491,7 +5551,7 @@
    }
    return napi_ok;
  }
-@@ -2337,7 +2759,7 @@
+@@ -2337,7 +2823,7 @@
    v8::Local<v8::Value> raw = napi_v8_unwrap_value(callback);
    if (!raw->IsFunction()) return napi_function_expected;
    {
@@ -5500,7 +5560,7 @@
      g_env_by_isolate[env->isolate] = env;
      auto& slot = g_promise_reject_callbacks[env->isolate];
      slot.Reset();
-@@ -2371,7 +2793,7 @@
+@@ -2371,7 +2857,7 @@
    const bool has_hooks = HasPromiseHooks(persistent_hooks);
  
    {
@@ -5509,7 +5569,7 @@
      g_env_by_isolate[env->isolate] = env;
  
      auto existing = g_promise_hooks.find(env->isolate);
-@@ -2464,7 +2886,7 @@
+@@ -2464,7 +2950,7 @@
  
    v8::Local<v8::Function> callback;
    {
@@ -5518,7 +5578,7 @@
      const auto cb_it = g_promise_reject_callbacks.find(isolate);
      if (cb_it == g_promise_reject_callbacks.end() || cb_it->second.IsEmpty()) {
        return napi_ok;
-@@ -2702,7 +3124,7 @@
+@@ -2702,7 +3188,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5527,7 +5587,7 @@
      auto it = g_hash_seeds.find(env->isolate);
      if (it != g_hash_seeds.end()) {
        *hash_seed_out = it->second;
-@@ -2746,7 +3168,7 @@
+@@ -2746,7 +3232,7 @@
    stats_out->external_memory = stats.external_memory();
    stats_out->array_buffer_memory = 0;
    {
@@ -5536,7 +5596,7 @@
      auto it = g_tracking_allocators.find(env->isolate->GetArrayBufferAllocator());
      if (it != g_tracking_allocators.end() && it->second) {
        stats_out->array_buffer_memory = it->second->total_mem_usage();
-@@ -2820,7 +3242,7 @@
+@@ -2820,7 +3306,7 @@
  
    if (kind == unofficial_napi_profile_heap) {
      {
@@ -5545,7 +5605,7 @@
        auto it = g_profiler_states.find(env);
        if (it != g_profiler_states.end() &&
            std::any_of(it->second.active_profiles.begin(),
-@@ -2844,7 +3266,7 @@
+@@ -2844,7 +3330,7 @@
      }
      profile->kind = kind;
      {
@@ -5554,7 +5614,7 @@
        EnsureProfilerState(env).active_profiles.push_back(profile);
      }
      *profile_out = profile;
-@@ -2853,7 +3275,7 @@
+@@ -2853,7 +3339,7 @@
  
    v8::CpuProfiler* cpu_profiler = nullptr;
    {
@@ -5563,7 +5623,7 @@
      ProfilerState& state = EnsureProfilerState(env);
      if (state.cpu_profiler == nullptr) {
        state.cpu_profiler = v8::CpuProfiler::New(env->isolate);
-@@ -2883,7 +3305,7 @@
+@@ -2883,7 +3369,7 @@
    profile->kind = kind;
    profile->provider_id = static_cast<uint32_t>(result.id);
    {
@@ -5572,7 +5632,7 @@
      auto it = g_profiler_states.find(env);
      if (it != g_profiler_states.end()) {
        it->second.active_profiles.push_back(profile);
-@@ -2908,7 +3330,7 @@
+@@ -2908,7 +3394,7 @@
    unofficial_napi_profile_kind kind = unofficial_napi_profile_cpu;
    uint32_t provider_id = 0;
    {
