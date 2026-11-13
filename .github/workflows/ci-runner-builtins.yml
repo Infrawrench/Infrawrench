@@ -50,9 +50,12 @@ on:
       - "ci-runner/rust-toolchain.toml"
       - ".github/workflows/ci-runner-builtins.yml"
 
+# A pull request's newer push replaces its older run. On main, a run
+# publishes what it built (env:clickhouse takes about four hours), so a newer
+# push queues behind it instead of cancelling it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
