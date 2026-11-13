@@ -172,6 +172,7 @@ pub(crate) fn proc_spawn3_impl<M: MemorySize>(
     let bin_factory = Box::new(child_env.bin_factory.clone());
 
     let mut builder = Some(child_env);
+    let mut child_handle = Some(child_handle);
 
     let process = match bin_factory.try_built_in(name.clone(), Some(&ctx), &mut builder) {
         Ok(task) => {
@@ -185,7 +186,12 @@ pub(crate) fn proc_spawn3_impl<M: MemorySize>(
                 error!("builtin failed - {}", err);
             }
 
-            let env = builder.take().unwrap();
+            let mut env = builder.take().unwrap();
+            // The child owns its main thread's handle, as a forked child does,
+            // so its task count is given back when it exits. Kept here, it
+            // counted against `max_threads` for the rest of this process's
+            // life, and the 512th spawn of a long-lived parent failed.
+            env.owned_handles.extend(child_handle.take());
 
             // Spawn a new process with this current execution environment
             block_on(bin_factory.spawn(name.clone(), invoked_as.clone(), env)).map(|_| ())
@@ -194,7 +200,8 @@ pub(crate) fn proc_spawn3_impl<M: MemorySize>(
 
     match process {
         Ok(_) => {
-            ctx.data_mut().owned_handles.push(child_handle);
+            // A builtin command's child is still the parent's to hold.
+            ctx.data_mut().owned_handles.extend(child_handle);
             trace!(child_pid = %pid, "spawned sub-process");
             Ok(Errno::Success)
         }

@@ -2441,6 +2441,38 @@ fn a_command_sed_runs_gets_its_line_feeds() {
     );
 }
 
+/// A process can start more children over its life than the job may have
+/// at once (#1082). `posix_spawn` (sed's `e` here, Go's `os/exec`, Node's
+/// `child_process`) left each child's main thread with the parent, so a
+/// child that had exited and been waited for still counted against
+/// `MAX_TASKS`, and the 512th spawn failed with "Operation not permitted".
+#[test]
+fn a_process_can_spawn_more_children_than_the_task_limit_one_by_one() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let children = wasix::MAX_TASKS + 100;
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(300);
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            &format!("set -o pipefail\nseq {children} | sed 's/.*/echo x/e' | wc -l\n"),
+            inv,
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout).trim(),
+        children.to_string(),
+        "{stderr:?}"
+    );
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.

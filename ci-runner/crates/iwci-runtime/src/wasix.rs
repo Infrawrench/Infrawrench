@@ -82,7 +82,7 @@ const KILL_GRACE: Duration = Duration::from_secs(5);
 
 /// The most threads plus processes one job may have. A fork bomb hits this
 /// instead of the machine.
-const MAX_TASKS: usize = 512;
+pub(crate) const MAX_TASKS: usize = 512;
 
 /// How often the kill is repeated while a timed-out job unwinds.
 const KILL_POLL: Duration = Duration::from_millis(50);

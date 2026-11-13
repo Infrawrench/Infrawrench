@@ -1306,9 +1306,13 @@ What to know:
   `runtime.mapaccess2`) in its `errorsas` and `hostport` analyzers on some
   packages. That is upstream Go's WebAssembly port: go.dev's own `vet` built
   for `wasip1` does the same under wasmtime. Turning both off gets past it:
-  `go vet -errorsas=false -hostport=false`. On a module with a few hundred
-  dependencies `go vet ./...` also needs more children than a process can
-  start ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
+  `go vet -errorsas=false -hostport=false`.
+- **A process can start any number of children**, one after another, as
+  long as no more than the job's 512 threads and processes are alive at
+  once: `go vet ./...` on a module with a few hundred dependencies starts
+  over 600. Each used to count until its parent exited, so the 512th
+  `os/exec` (or Node `child_process`) failed with "Operation not
+  permitted" ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
 
 ### Rust
 
