@@ -55,9 +55,7 @@ use wasmer_wasix::runtime::task_manager::VirtualTaskManager;
 use wasmer_wasix::runtime::{InstantiationState, ModuleInput, PluggableRuntime, TaintReason};
 use wasmer_wasix::virtual_net::DynVirtualNetworking;
 use wasmer_wasix::wasmer_wasix_types::wasi::{ExitCode, Signal};
-use wasmer_wasix::{
-    Runtime as WasixRuntime, SpawnError, WasiControlPlane, WasiEnvBuilder, WasiProcessId,
-};
+use wasmer_wasix::{Runtime as WasixRuntime, SpawnError, WasiControlPlane, WasiEnvBuilder};
 use webc::Container;
 
 use crate::background::Services;
@@ -1492,27 +1490,17 @@ pub(crate) fn prepare(
     Ok(())
 }
 
-/// Calls `f` on every process of the job. Process ids are handed out from 1
-/// upwards and never reused within a control plane, which is per job.
+/// Calls `f` on every process of the job: every one its control plane
+/// (which is per job) has created, whatever its id (#1094). Ids come from
+/// one counter that thread ids share and never go back, so a job that has
+/// started thousands of processes, or a process after a run of threads, has
+/// ids that probing a fixed range from 1 would not reach. `f` runs on a
+/// snapshot, outside the control plane's lock.
 pub(crate) fn for_each_process(
     control_plane: &wasmer_wasix::WasiControlPlane,
-    mut f: impl FnMut(wasmer_wasix::WasiProcess),
+    f: impl FnMut(wasmer_wasix::WasiProcess),
 ) {
-    let mut missing = 0;
-    for pid in 1..=(MAX_TASKS as u32 * 4) {
-        match control_plane.get_process(WasiProcessId::from(pid)) {
-            Some(process) => {
-                missing = 0;
-                f(process);
-            }
-            None => {
-                missing += 1;
-                if missing > 16 {
-                    break;
-                }
-            }
-        }
-    }
+    control_plane.processes().into_iter().for_each(f);
 }
 
 /// Treats a command's `wasi.env` annotation as defaults: an entry whose key

@@ -167,6 +167,19 @@ impl WasiControlPlane {
             .get(&pid)
             .cloned()
     }
+
+    /// Every process this control plane has created, running or not (none
+    /// is de-registered yet), whatever its id.
+    pub fn processes(&self) -> Vec<WasiProcess> {
+        self.state
+            .mutable
+            .read()
+            .unwrap()
+            .processes
+            .values()
+            .cloned()
+            .collect()
+    }
 }
 
 impl MutableState {

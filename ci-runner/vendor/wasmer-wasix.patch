@@ -777,6 +777,28 @@
                  })))
              },
              _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)
+--- a/src/os/task/control_plane.rs
++++ b/src/os/task/control_plane.rs
+@@ -167,6 +167,19 @@
+             .get(&pid)
+             .cloned()
+     }
++
++    /// Every process this control plane has created, running or not (none
++    /// is de-registered yet), whatever its id.
++    pub fn processes(&self) -> Vec<WasiProcess> {
++        self.state
++            .mutable
++            .read()
++            .unwrap()
++            .processes
++            .values()
++            .cloned()
++            .collect()
++    }
+ }
+ 
+ impl MutableState {
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
 @@ -855,6 +855,36 @@
