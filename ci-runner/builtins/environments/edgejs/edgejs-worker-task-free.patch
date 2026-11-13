@@ -1,0 +1,34 @@
+diff --git a/src/internal_binding/binding_worker.cc b/src/internal_binding/binding_worker.cc
+index 84aba0ea..fafdb227 100644
+--- a/src/internal_binding/binding_worker.cc
++++ b/src/internal_binding/binding_worker.cc
+@@ -1069,7 +1069,16 @@ napi_status RequestWorkerInterrupt(Worker* worker, unofficial_napi_interrupt_cal
+   return unofficial_napi_request_interrupt(worker_env, callback, data);
+ }
+ 
+-bool QueueWorkerTask(Worker* wrap, std::unique_ptr<WorkerTask> task) {
++// Hands the task to the worker's thread. On failure the caller still owns
++// it: QueueWorkerTakerTask deletes the task's reference to its taker after a
++// failure, and the task used to be freed here first (a unique_ptr taken by
++// value), so that cleared a field of freed memory. A worker refuses tasks
++// before its env is up and while it ends, and a caller that polls a worker
++// (`getHeapStatistics`, `cpuUsage`) hit that window as every worker started:
++// another thread had often been handed the block by then, and four bytes of
++// what it kept there (a built-in module's name, a preload path) became
++// zeros.
++bool QueueWorkerTask(Worker* wrap, std::unique_ptr<WorkerTask>& task) {
+   if (wrap == nullptr || task == nullptr || !WorkerCanAcceptTask(wrap)) return false;
+   WorkerTask* raw_task = task.release();
+   const napi_status status = RequestWorkerInterrupt(wrap, OnWorkerTaskInterrupt, raw_task);
+@@ -1763,9 +1772,8 @@ napi_value QueueWorkerTakerTask(napi_env env, Worker* wrap, std::unique_ptr<Work
+   if (napi_create_reference(env, taker, 1, &task->taker_ref) != napi_ok || task->taker_ref == nullptr) {
+     return Undefined(env);
+   }
+-  WorkerTask* raw_task = task.get();
+-  if (!QueueWorkerTask(wrap, std::move(task))) {
+-    DeleteWorkerTaskRef(env, raw_task);
++  if (!QueueWorkerTask(wrap, task)) {
++    DeleteWorkerTaskRef(env, task.get());
+     return Undefined(env);
+   }
+   return taker;
