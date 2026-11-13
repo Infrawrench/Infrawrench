@@ -848,6 +848,51 @@ a run, and when another thread had been handed the block by then, a
 built-in module's name or a path it was holding lost four bytes. The task
 is now kept until its reference is gone.
 
+24.0.15 adds `edgejs-compile-cache.patch`: Node's module compile cache,
+which Edge.js stubbed out as disabled. `NODE_COMPILE_CACHE=<dir>`, or
+`module.enableCompileCache()`, keeps the engine's code cache of every
+CommonJS and ES module the default loaders compile from a file in that
+directory, and the next `node` takes it instead of compiling the module
+again.
+`module.getCompileCacheDir()`, `flushCompileCache()`,
+`NODE_DISABLE_COMPILE_CACHE` and `NODE_COMPILE_CACHE_PORTABLE=1` (entries
+keyed by paths relative to the cache, so it moves with the tree) behave
+as in Node 24, and `NODE_DEBUG_NATIVE=COMPILE_CACHE` reports what happened
+to each module. Entries live under a directory named for the Node version,
+the engine's code cache version and flags (read from a code cache's
+header, since N-API has no `CachedDataVersionTag()`) and the user; each
+carries the size and hash of its source and of its payload, so a changed
+file, an entry another engine or other flags wrote, or a damaged one costs
+only the compile, and V8 refuses a cache it did not write in any case.
+They are written as they are made rather than at exit, so a test runner's
+worker killed at the end keeps what it compiled, and in place rather than
+renamed over, since concurrent renames onto one name abort the runner
+(#1092); a directory that cannot be made is no cache, never an error.
+Nothing turns it on by itself yet. A job can keep the cache between runs with a [job cache](#job-caches)
+inside the clone, which is scoped by branch like any other:
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env: { NODE_COMPILE_CACHE: /app/.node-compile-cache }
+    cache:
+      key: node-compile-cache-${{ hashFiles('pnpm-lock.yaml') }}
+      restore-keys: [node-compile-cache-]
+      paths: [.node-compile-cache]
+```
+
+The win is modest, because a code cache made right after compiling holds
+only the functions V8 compiled eagerly, as Node's does. On ci-1 with the
+host quiet, without and with a warm cache in one job, medians of nine
+alternating runs: `node -e 0` 38 ms either way, `require("effect")` 447
+to 422 ms, importing `vitest/node` 350 to 337 ms, `vitest --version` 63
+to 60 ms. `client-core`'s Vitest suite took 21.2 to 22.4 s without and
+20.2 to 20.5 s with it (three runs each), `ui`'s 121 and 141 s without and
+116 and 116 s with it. A tsdown bundle did not move (median 1.92 s
+against 1.87 s): its time is rolldown's WebAssembly. `ui`'s suite writes
+about 2,800 entries.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

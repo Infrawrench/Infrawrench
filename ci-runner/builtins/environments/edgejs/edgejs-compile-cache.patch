@@ -1,0 +1,796 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 63d9eed4..ba4057dc 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -18,6 +18,7 @@ set(EDGE_LOADER_SOURCES
+   "${CMAKE_CURRENT_LIST_DIR}/builtin_catalog.cc"
+   "${CMAKE_CURRENT_LIST_DIR}/edge_builtin_bytecode.cc"
+   "${CMAKE_CURRENT_LIST_DIR}/edge_bytecode_cache.cc"
++  "${CMAKE_CURRENT_LIST_DIR}/edge_compile_cache.cc"
+   "${CMAKE_CURRENT_LIST_DIR}/edge_module_loader.cc"
+   "${CMAKE_CURRENT_LIST_DIR}/edge_precompile.cc"
+ )
+diff --git a/src/edge_compile_cache.cc b/src/edge_compile_cache.cc
+new file mode 100644
+index 00000000..53485309
+--- /dev/null
++++ b/src/edge_compile_cache.cc
+@@ -0,0 +1,364 @@
++#include "edge_compile_cache.h"
++
++#include <cctype>
++#include <cerrno>
++#include <cstdarg>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <filesystem>
++#include <string>
++#include <system_error>
++#include <vector>
++
++#include <fcntl.h>
++#include <unistd.h>
++
++#include "edge_buffer_lease.h"
++#include "edge_bytecode.h"
++#include "edge_bytecode_io.h"
++#include "edge_path.h"
++#include "node_version.h"
++#include "unofficial_napi.h"
++
++namespace edge_compile_cache {
++namespace {
++
++namespace fs = std::filesystem;
++using edge_bytecode_cache::Hash64;
++using edge_bytecode_cache::io::ReadU32;
++using edge_bytecode_cache::io::ReadU64;
++using edge_bytecode_cache::io::WriteU32;
++using edge_bytecode_cache::io::WriteU64;
++
++// An entry file:
++//   [0, 8)   magic
++//   [8, 12)  format version
++//   [12, 16) code type
++//   [16, 24) source size (UTF-8 bytes)
++//   [24, 32) source hash (XXH3-64 of the UTF-8 source)
++//   [32, 40) payload size
++//   [40, 48) payload hash (XXH3-64): V8 does not check its own checksum of
++//            a code cache in a release build, so a damaged payload would
++//            otherwise reach the deserializer
++//   [48, ...) payload: the engine's code cache, or transpiled TypeScript
++constexpr char kMagic[8] = {'E', 'D', 'G', 'E', 'N', 'C', 'C', '1'};
++constexpr uint32_t kFormatVersion = 1;
++constexpr size_t kHeaderSize = 48;
++
++struct State {
++  bool initialized = false;
++  bool active = false;
++  bool portable = false;
++  std::string dir;  // <dir>/<tag>
++};
++
++thread_local State g_state;
++
++bool DebugEnabled() {
++  static const bool enabled = [] {
++    const char* value = std::getenv("NODE_DEBUG_NATIVE");
++    if (value == nullptr) return false;
++    std::string upper(value);
++    for (char& ch : upper) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
++    size_t start = 0;
++    while (start <= upper.size()) {
++      size_t end = upper.find(',', start);
++      if (end == std::string::npos) end = upper.size();
++      if (upper.compare(start, end - start, "COMPILE_CACHE") == 0) return true;
++      start = end + 1;
++    }
++    return false;
++  }();
++  return enabled;
++}
++
++void Debug(const char* format, ...) {
++  if (!DebugEnabled()) return;
++  va_list args;
++  va_start(args, format);
++  std::vfprintf(stderr, format, args);
++  va_end(args);
++}
++
++const char* TypeName(CodeType type) {
++  switch (type) {
++    case CodeType::kCommonJS:
++      return "CommonJS";
++    case CodeType::kESM:
++      return "ESM";
++    case CodeType::kStrippedTypeScript:
++      return "StrippedTypeScript";
++    case CodeType::kTransformedTypeScript:
++      return "TransformedTypeScript";
++    case CodeType::kTransformedTypeScriptWithSourceMaps:
++      return "TransformedTypeScriptWithSourceMaps";
++  }
++  return "unknown";
++}
++
++std::string Hex(uint64_t value, int digits) {
++  static const char kDigits[] = "0123456789abcdef";
++  std::string out(static_cast<size_t>(digits), '0');
++  for (int i = digits - 1; i >= 0; --i) {
++    out[static_cast<size_t>(i)] = kDigits[value & 0xf];
++    value >>= 4;
++  }
++  return out;
++}
++
++// What V8 checks before it takes a code cache, read from the header of one
++// it makes: the magic number (which counts the external references), the
++// version hash, the flag hash and the read-only snapshot checksum (the
++// source hash between them is the source's length). N-API offers nothing
++// like ScriptCompiler::CachedDataVersionTag(), which Node names its
++// directories by; a layout this does not expect only names the directory
++// less precisely, since V8 still refuses a cache it did not write.
++bool EngineVersionTag(napi_env env, uint32_t* out) {
++  napi_value code = nullptr;
++  napi_value filename = nullptr;
++  if (napi_create_string_utf8(env, "0", NAPI_AUTO_LENGTH, &code) != napi_ok ||
++      napi_create_string_utf8(env, "[compile cache]", NAPI_AUTO_LENGTH, &filename) != napi_ok) {
++    return false;
++  }
++  EdgeBytecode bytecode;
++  if (bytecode.Open(env, code, filename, unofficial_napi_bytecode_shape_script, nullptr, nullptr, 0, 0) !=
++          napi_ok ||
++      !bytecode) {
++    bool pending = false;
++    napi_value ignored = nullptr;
++    if (napi_is_exception_pending(env, &pending) == napi_ok && pending) {
++      (void)napi_get_and_clear_last_exception(env, &ignored);
++    }
++    return false;
++  }
++  napi_value buffer = nullptr;
++  if (bytecode.Serialize(&buffer) != napi_ok || buffer == nullptr) return false;
++  EdgeBufferLease bytes;
++  if (!bytes.Acquire(env, buffer, unofficial_napi_buffer_access_read) || bytes.size() < 20) return false;
++  uint8_t key[16];
++  std::memcpy(key, bytes.data(), 8);
++  std::memcpy(key + 8, bytes.data() + 12, 8);
++  const uint64_t hash = Hash64(key, sizeof(key));
++  *out = static_cast<uint32_t>(hash ^ (hash >> 32));
++  return true;
++}
++
++// Node's is $NODE_VERSION-$ARCH-$CACHED_DATA_VERSION_TAG-$UID.
++bool VersionTag(napi_env env, bool portable, std::string* out) {
++  uint32_t engine = 0;
++  if (!EngineVersionTag(env, &engine)) return false;
++  *out = std::string(NODE_VERSION) + "-wasm32-" + Hex(engine, 8);
++  // A portable cache is meant for other users too (Node 24.12).
++  if (!portable) *out += "-" + std::to_string(static_cast<unsigned long>(getuid()));
++  return true;
++}
++
++std::string WithoutTrailingSeparators(std::string path) {
++  while (path.size() > 1 && path.back() == '/') path.pop_back();
++  return path;
++}
++
++}  // namespace
++
++void InitializeFromEnvironment(napi_env env) {
++  State& state = g_state;
++  if (state.initialized) return;
++  state.initialized = true;
++  const char* dir = std::getenv("NODE_COMPILE_CACHE");
++  if (dir == nullptr || dir[0] == '\0') return;
++  const char* portable_value = std::getenv("NODE_COMPILE_CACHE_PORTABLE");
++  const bool portable = portable_value != nullptr && std::strcmp(portable_value, "1") == 0;
++  if (portable) Debug("[compile cache] using relative path\n");
++  const EnableResult result = Enable(env, dir, portable);
++  if (!result.message.empty()) Debug("[compile cache] %s\n", result.message.c_str());
++}
++
++EnableResult Enable(napi_env env, const std::string& dir, bool portable) {
++  State& state = g_state;
++  state.initialized = true;
++  EnableResult result;
++  if (std::getenv("NODE_DISABLE_COMPILE_CACHE") != nullptr) {
++    result.status = EnableStatus::kDisabled;
++    result.message = "Disabled by NODE_DISABLE_COMPILE_CACHE";
++    Debug("[compile cache] %s.\n", result.message.c_str());
++    return result;
++  }
++  if (state.active) {
++    result.status = EnableStatus::kAlreadyEnabled;
++    result.directory = state.dir;
++    return result;
++  }
++
++  std::string tag;
++  if (!VersionTag(env, portable, &tag)) {
++    result.status = EnableStatus::kFailed;
++    result.message = "Cannot read the engine's code cache version";
++    return result;
++  }
++  std::error_code ec;
++  fs::path base = dir.empty() ? fs::current_path(ec) : fs::absolute(fs::path(dir), ec);
++  if (ec) {
++    result.status = EnableStatus::kFailed;
++    result.message = "Cannot resolve cache directory: " + ec.message();
++    return result;
++  }
++  const std::string base_dir = WithoutTrailingSeparators(base.lexically_normal().string());
++  const std::string dir_with_tag = base_dir + "/" + tag;
++  Debug("[compile cache] resolved path %s + %s -> %s\n", dir.c_str(), tag.c_str(), dir_with_tag.c_str());
++
++  fs::create_directories(dir_with_tag, ec);
++  Debug("[compile cache] creating cache directory %s...%s\n",
++        dir_with_tag.c_str(),
++        ec ? ec.message().c_str() : "success");
++  if (ec) {
++    std::error_code dir_ec;
++    if (!fs::is_directory(dir_with_tag, dir_ec)) {
++      result.status = EnableStatus::kFailed;
++      result.message = "Cannot create cache directory: " + ec.message();
++      return result;
++    }
++  }
++
++  state.active = true;
++  state.portable = portable;
++  state.dir = dir_with_tag;
++  result.status = EnableStatus::kEnabled;
++  result.directory = base_dir;
++  return result;
++}
++
++bool Active() {
++  return g_state.active;
++}
++
++const std::string& Directory() {
++  static const std::string empty;
++  return g_state.active ? g_state.dir : empty;
++}
++
++bool Prepare(const std::string& filename, std::string_view source, CodeType type, Entry* entry) {
++  const State& state = g_state;
++  if (!state.active || entry == nullptr) return false;
++  // Only modules read from files: an absolute path (CommonJS) or a file:
++  // URL (ES modules), never [eval], the REPL or a data: URL.
++  if (filename.empty() || (filename[0] != '/' && filename.rfind("file://", 0) != 0)) return false;
++  std::string path = edge_path::NormalizeFileURLOrPath(filename);
++  if (path.empty() || path[0] != '/') return false;
++  std::string key = path;
++  if (state.portable) {
++    const std::string relative = fs::path(path).lexically_relative(fs::path(state.dir)).string();
++    if (!relative.empty()) {
++      key = relative;
++      Debug("[compile cache] using relative path %s from %s\n", key.c_str(), state.dir.c_str());
++    }
++  }
++  std::string keyed;
++  keyed.reserve(key.size() + 1);
++  keyed.push_back(static_cast<char>(type));
++  keyed += key;
++  entry->cache_path = state.dir + "/" + Hex(Hash64(keyed.data(), keyed.size()), 16);
++  entry->source_filename = filename;
++  entry->type = type;
++  entry->code_size = source.size();
++  entry->code_hash = Hash64(source.data(), source.size());
++  return true;
++}
++
++bool Read(const Entry& entry, edge_bytecode_cache::SidecarPayload* out) {
++  out->file_bytes.clear();
++  out->payload_offset = 0;
++  out->payload_size = 0;
++  Debug("[compile cache] reading cache from %s for %s %s...",
++        entry.cache_path.c_str(),
++        TypeName(entry.type),
++        entry.source_filename.c_str());
++  if (!edge_bytecode_cache::io::ReadFileFully(entry.cache_path, &out->file_bytes)) {
++    Debug(" no entry\n");
++    return false;
++  }
++  const uint8_t* data = out->file_bytes.data();
++  const size_t size = out->file_bytes.size();
++  const char* mismatch = nullptr;
++  if (size < kHeaderSize || std::memcmp(data, kMagic, sizeof(kMagic)) != 0 ||
++      ReadU32(data, 8) != kFormatVersion) {
++    mismatch = "not an entry of this format";
++  } else if (ReadU32(data, 12) != static_cast<uint32_t>(entry.type)) {
++    mismatch = "code type mismatch";
++  } else if (ReadU64(data, 16) != entry.code_size) {
++    mismatch = "code size mismatch";
++  } else if (ReadU64(data, 24) != entry.code_hash) {
++    mismatch = "code hash mismatch";
++  } else if (ReadU64(data, 32) != size - kHeaderSize) {
++    mismatch = "cache size mismatch";
++  } else if (ReadU64(data, 40) != Hash64(data + kHeaderSize, size - kHeaderSize)) {
++    mismatch = "cache hash mismatch";
++  } else if (size == kHeaderSize) {
++    mismatch = "empty cache";
++  }
++  if (mismatch != nullptr) {
++    Debug(" %s\n", mismatch);
++    out->file_bytes.clear();
++    return false;
++  }
++  out->payload_offset = kHeaderSize;
++  out->payload_size = size - kHeaderSize;
++  Debug(" success, size=%zu\n", out->payload_size);
++  return true;
++}
++
++void Save(const Entry& entry, const uint8_t* payload, size_t size) {
++  if (payload == nullptr || size == 0) return;
++  std::vector<uint8_t> contents(kHeaderSize + size);
++  std::memcpy(contents.data(), kMagic, sizeof(kMagic));
++  WriteU32(&contents, 8, kFormatVersion);
++  WriteU32(&contents, 12, static_cast<uint32_t>(entry.type));
++  WriteU64(&contents, 16, entry.code_size);
++  WriteU64(&contents, 24, entry.code_hash);
++  WriteU64(&contents, 32, size);
++  WriteU64(&contents, 40, Hash64(payload, size));
++  std::memcpy(contents.data() + kHeaderSize, payload, size);
++
++  // Written in place rather than to a temporary file and renamed: renames
++  // onto one name from two threads at once abort the iwci runner (#1092),
++  // and a test runner's workers all write the same entries. The stale or
++  // refused entry goes first; then only one writer can create the file, and
++  // a reader that meets one half written finds its hashes wrong and takes
++  // it for a miss.
++  Debug("[compile cache] writing cache for %s %s to %s...",
++        TypeName(entry.type),
++        entry.source_filename.c_str(),
++        entry.cache_path.c_str());
++  std::error_code ec;
++  fs::remove(entry.cache_path, ec);
++  const int fd = open(entry.cache_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
++  if (fd < 0) {
++    Debug("failed: %s\n", std::strerror(errno));
++    return;
++  }
++  size_t written = 0;
++  while (written < contents.size()) {
++    const ssize_t n = write(fd, contents.data() + written, contents.size() - written);
++    if (n < 0 && errno == EINTR) continue;
++    if (n <= 0) break;
++    written += static_cast<size_t>(n);
++  }
++  const int write_errno = errno;
++  close(fd);
++  if (written != contents.size()) {
++    Debug("failed: %s\n", std::strerror(write_errno));
++    fs::remove(entry.cache_path, ec);
++    return;
++  }
++  Debug("success\n");
++}
++
++void ReportCompiled(const Entry& entry, bool had_cache, bool rejected) {
++  Debug("[compile cache] V8 code cache for %s %s was %s, %s\n",
++        TypeName(entry.type),
++        entry.source_filename.c_str(),
++        rejected ? "rejected" : (had_cache ? "accepted" : "not initialized"),
++        had_cache && !rejected ? "keeping the entry" : (had_cache ? "refreshing the entry" : "writing an entry"));
++}
++
++}  // namespace edge_compile_cache
+diff --git a/src/edge_compile_cache.h b/src/edge_compile_cache.h
+new file mode 100644
+index 00000000..977c0bc9
+--- /dev/null
++++ b/src/edge_compile_cache.h
+@@ -0,0 +1,97 @@
++#ifndef EDGE_COMPILE_CACHE_H_
++#define EDGE_COMPILE_CACHE_H_
++
++#include <cstddef>
++#include <cstdint>
++#include <string>
++#include <string_view>
++
++#include "edge_bytecode_cache.h"
++#include "unofficial_napi.h"
++
++// Node's module compile cache (`NODE_COMPILE_CACHE`, `module.enableCompileCache()`),
++// for the engine N-API imports from its host. CommonJS and ES modules compiled
++// by the default loaders are looked up in a directory and the engine's code
++// cache for them is written there, so the next process compiles nothing it
++// has compiled before. Transpiled TypeScript is kept the same way, as Node
++// does, for a build that strips types (this one answers ERR_NO_TYPESCRIPT).
++//
++// Layout, as Node's: <dir>/<tag>/<entry>, where <tag> names this Node
++// version, the engine's code cache version and flags, and the user, so a
++// cache from another engine build or other flags is never even read (and
++// the engine refuses one anyway), and <entry> is a hash of the module's file
++// name (relative to the cache directory with NODE_COMPILE_CACHE_PORTABLE=1)
++// and its kind. Each entry carries the size and hash of the source it was
++// compiled from and of its payload, so a changed file or a damaged entry is
++// a miss, and a miss or a rejected entry costs only the compile it would have
++// done anyway. Entries are written as they are made, so `flushCompileCache()`
++// has nothing left to do, and a process that does not exit normally keeps
++// what it compiled.
++//
++// The state is per thread, which is per Edge.js environment: the main thread
++// and each Worker enable their own, as each Node environment does.
++namespace edge_compile_cache {
++
++// Node's CachedCodeType.
++enum class CodeType : uint8_t {
++  kCommonJS = 0,
++  kESM = 1,
++  kStrippedTypeScript = 2,
++  kTransformedTypeScript = 3,
++  kTransformedTypeScriptWithSourceMaps = 4,
++};
++
++// Node's CompileCacheEnableStatus.
++enum class EnableStatus : int32_t {
++  kFailed = 0,
++  kEnabled = 1,
++  kAlreadyEnabled = 2,
++  kDisabled = 3,
++};
++
++struct EnableResult {
++  EnableStatus status = EnableStatus::kFailed;
++  std::string message;
++  std::string directory;
++};
++
++// Enables the cache from NODE_COMPILE_CACHE (and NODE_COMPILE_CACHE_PORTABLE)
++// as Node does at start-up, once per environment; a failure leaves it off and
++// is only reported with NODE_DEBUG_NATIVE=COMPILE_CACHE.
++void InitializeFromEnvironment(napi_env env);
++
++// module.enableCompileCache(dir, portable). NODE_DISABLE_COMPILE_CACHE wins.
++EnableResult Enable(napi_env env, const std::string& dir, bool portable);
++
++bool Active();
++
++// <dir>/<tag> while active, else empty (module.getCompileCacheDir()).
++const std::string& Directory();
++
++struct Entry {
++  std::string cache_path;
++  std::string source_filename;
++  CodeType type = CodeType::kCommonJS;
++  uint64_t code_size = 0;
++  uint64_t code_hash = 0;
++};
++
++// The entry for `filename` compiled from `source` as `type`. False when the
++// cache is off or the file name is not one a module is cached under (not an
++// absolute path or file: URL: [eval], the REPL, data: URLs).
++bool Prepare(const std::string& filename, std::string_view source, CodeType type, Entry* entry);
++
++// Reads the entry's payload: false (and an empty payload) unless the file is
++// one this writes, compiled from exactly this source, and undamaged.
++bool Read(const Entry& entry, edge_bytecode_cache::SidecarPayload* out);
++
++// Replaces the entry; failures (a read-only directory, no space, another
++// process writing it) are silent, as in Node.
++void Save(const Entry& entry, const uint8_t* payload, size_t size);
++
++// Reports what the engine did with an entry, as Node's debug output does.
++void ReportCompiled(const Entry& entry, bool had_cache, bool rejected);
++
++}  // namespace edge_compile_cache
++
++#endif  // EDGE_COMPILE_CACHE_H_
+diff --git a/src/edge_module_loader.cc b/src/edge_module_loader.cc
+index ae474081..197b8aed 100644
+--- a/src/edge_module_loader.cc
++++ b/src/edge_module_loader.cc
+@@ -4,6 +4,7 @@
+ #include "edge_bytecode.h"
+ #include "edge_builtin_bytecode.h"
+ #include "edge_bytecode_cache.h"
++#include "edge_compile_cache.h"
+ #include "edge_cares_wrap.h"
+ #include "edge_crypto.h"
+ #include "edge_env_loop.h"
+@@ -49,6 +50,7 @@
+ #include <filesystem>
+ #include <fstream>
+ #include <initializer_list>
++#include <memory>
+ #include <optional>
+ #include <sstream>
+ #include <string>
+@@ -2905,59 +2907,123 @@ static napi_value ModulesGetPackageTypeCallback(napi_env env, napi_callback_info
+   return out;
+ }
+ 
++// iwci: Node's compile cache (edge_compile_cache.h) in place of stubs that
++// reported it disabled.
++static napi_value CompileCacheString(napi_env env, const std::string& value) {
++  napi_value out = nullptr;
++  if (napi_create_string_utf8(env, value.c_str(), value.size(), &out) != napi_ok || out == nullptr) {
++    napi_get_undefined(env, &out);
++  }
++  return out;
++}
++
+ static napi_value ModulesEnableCompileCacheCallback(napi_env env, napi_callback_info info) {
+-  size_t argc = 1;
+-  napi_value argv[1] = {nullptr};
++  size_t argc = 2;
++  napi_value argv[2] = {nullptr, nullptr};
+   if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok) {
+-    napi_value undefined = nullptr;
+-    napi_get_undefined(env, &undefined);
+-    return undefined;
++    return UndefinedValue(env);
++  }
++  napi_valuetype dir_type = napi_undefined;
++  if (argc < 1 || argv[0] == nullptr || napi_typeof(env, argv[0], &dir_type) != napi_ok ||
++      dir_type != napi_string) {
++    napi_throw_type_error(env, "ERR_INVALID_ARG_TYPE", "cacheDir should be a string");
++    return nullptr;
++  }
++  bool portable = false;
++  napi_valuetype portable_type = napi_undefined;
++  if (argc >= 2 && argv[1] != nullptr && napi_typeof(env, argv[1], &portable_type) == napi_ok &&
++      portable_type == napi_boolean) {
++    napi_get_value_bool(env, argv[1], &portable);
+   }
++  edge_compile_cache::InitializeFromEnvironment(env);
++  const edge_compile_cache::EnableResult result =
++      edge_compile_cache::Enable(env, ValueToUtf8(env, argv[0]), portable);
+   napi_value out = nullptr;
+   if (napi_create_array_with_length(env, 3, &out) != napi_ok || out == nullptr) {
+-    napi_value undefined = nullptr;
+-    napi_get_undefined(env, &undefined);
+-    return undefined;
++    return UndefinedValue(env);
+   }
+   napi_value status = nullptr;
+-  // CompileCacheEnableStatus::DISABLED
+-  napi_create_int32(env, 3, &status);
++  napi_create_int32(env, static_cast<int32_t>(result.status), &status);
+   napi_set_element(env, out, 0, status);
+-  napi_value empty = nullptr;
+-  napi_create_string_utf8(env, "", NAPI_AUTO_LENGTH, &empty);
+-  napi_set_element(env, out, 1, empty);
+-  if (argc >= 1 && argv[0] != nullptr) {
+-    napi_set_element(env, out, 2, argv[0]);
+-  } else {
+-    napi_set_element(env, out, 2, empty);
+-  }
++  napi_set_element(env, out, 1, CompileCacheString(env, result.message));
++  napi_set_element(env, out, 2, CompileCacheString(env, result.directory));
+   return out;
+ }
+ 
+ static napi_value ModulesGetCompileCacheDirCallback(napi_env env, napi_callback_info /*info*/) {
+-  napi_value out = nullptr;
+-  if (napi_create_string_utf8(env, "", NAPI_AUTO_LENGTH, &out) != napi_ok || out == nullptr) {
+-    napi_get_undefined(env, &out);
+-  }
+-  return out;
++  edge_compile_cache::InitializeFromEnvironment(env);
++  return CompileCacheString(env, edge_compile_cache::Directory());
+ }
+ 
++// Entries are written as they are made, so there is nothing left to flush.
+ static napi_value ModulesFlushCompileCacheCallback(napi_env env, napi_callback_info /*info*/) {
+-  napi_value undefined = nullptr;
+-  napi_get_undefined(env, &undefined);
+-  return undefined;
++  return UndefinedValue(env);
+ }
+ 
+-static napi_value ModulesGetCompileCacheEntryCallback(napi_env env, napi_callback_info /*info*/) {
+-  napi_value undefined = nullptr;
+-  napi_get_undefined(env, &undefined);
+-  return undefined;
++static void DeleteCompileCacheEntry(napi_env /*env*/, void* data, void* /*hint*/) {
++  delete static_cast<edge_compile_cache::Entry*>(data);
+ }
+ 
+-static napi_value ModulesSaveCompileCacheEntryCallback(napi_env env, napi_callback_info /*info*/) {
+-  napi_value undefined = nullptr;
+-  napi_get_undefined(env, &undefined);
+-  return undefined;
++// getCompileCacheEntry(source, filename, type): undefined while the cache is
++// off, else { external } plus { transpiled } when the entry holds the
++// TypeScript transpiled from this source.
++static napi_value ModulesGetCompileCacheEntryCallback(napi_env env, napi_callback_info info) {
++  size_t argc = 3;
++  napi_value argv[3] = {nullptr, nullptr, nullptr};
++  if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc < 3 ||
++      !edge_compile_cache::Active()) {
++    return UndefinedValue(env);
++  }
++  uint32_t type = 0;
++  if (napi_get_value_uint32(env, argv[2], &type) != napi_ok ||
++      type > static_cast<uint32_t>(edge_compile_cache::CodeType::kTransformedTypeScriptWithSourceMaps)) {
++    return UndefinedValue(env);
++  }
++  auto entry = std::make_unique<edge_compile_cache::Entry>();
++  const std::string source = ValueToUtf8(env, argv[0]);
++  if (!edge_compile_cache::Prepare(ValueToUtf8(env, argv[1]),
++                                   source,
++                                   static_cast<edge_compile_cache::CodeType>(type),
++                                   entry.get())) {
++    return UndefinedValue(env);
++  }
++  edge_bytecode_cache::SidecarPayload payload;
++  const bool has_cache = edge_compile_cache::Read(*entry, &payload);
++
++  napi_value out = nullptr;
++  napi_value external = nullptr;
++  if (napi_create_object(env, &out) != napi_ok || out == nullptr ||
++      napi_create_external(env, entry.get(), DeleteCompileCacheEntry, nullptr, &external) != napi_ok ||
++      external == nullptr) {
++    return UndefinedValue(env);
++  }
++  entry.release();
++  napi_set_named_property(env, out, "external", external);
++  if (has_cache) {
++    napi_value transpiled = nullptr;
++    if (napi_create_string_utf8(env,
++                                reinterpret_cast<const char*>(payload.data()),
++                                payload.payload_size,
++                                &transpiled) == napi_ok &&
++        transpiled != nullptr) {
++      napi_set_named_property(env, out, "transpiled", transpiled);
++    }
++  }
++  return out;
++}
++
++static napi_value ModulesSaveCompileCacheEntryCallback(napi_env env, napi_callback_info info) {
++  size_t argc = 2;
++  napi_value argv[2] = {nullptr, nullptr};
++  void* data = nullptr;
++  if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) == napi_ok && argc >= 2 &&
++      napi_get_value_external(env, argv[0], &data) == napi_ok && data != nullptr) {
++    const std::string transpiled = ValueToUtf8(env, argv[1]);
++    edge_compile_cache::Save(*static_cast<edge_compile_cache::Entry*>(data),
++                             reinterpret_cast<const uint8_t*>(transpiled.data()),
++                             transpiled.size());
++  }
++  return UndefinedValue(env);
+ }
+ 
+ static napi_value ModulesSetLazyPathHelpersCallback(napi_env env, napi_callback_info info) {
+@@ -3863,9 +3929,56 @@ static napi_value ContextifyCompileFunctionForCJSLoaderCallback(napi_env env, na
+   // compiles the fallback, so this layer owns persistence but not fallback
+   // policy. Only real files participate; [eval]/[stdin]/REPL sources do not.
+   EdgeBytecode cjs_bytecode;
++  // iwci: Node's compile cache (NODE_COMPILE_CACHE, module.enableCompileCache()),
++  // which takes the place of the sidecars while it is on.
++  edge_compile_cache::Entry cache_entry;
++  if (edge_compile_cache::Active()) {
++    const std::string source_utf8 = ValueToUtf8(env, code);
++    if (edge_compile_cache::Prepare(
++            ValueToUtf8(env, filename), source_utf8, edge_compile_cache::CodeType::kCommonJS, &cache_entry)) {
++      edge_bytecode_cache::SidecarPayload payload;
++      const bool has_cache = edge_compile_cache::Read(cache_entry, &payload);
++      bool cache_rejected = false;
++      bool can_parse_as_module = false;
++      const napi_status open_status = cjs_bytecode.Open(env,
++                                                        code,
++                                                        filename,
++                                                        unofficial_napi_bytecode_shape_cjs_function,
++                                                        params,
++                                                        host_defined_option_id,
++                                                        0,
++                                                        0,
++                                                        has_cache ? payload.data() : nullptr,
++                                                        has_cache ? payload.payload_size : 0,
++                                                        has_cache,
++                                                        &cache_rejected,
++                                                        &can_parse_as_module);
++      if (open_status != napi_ok || !cjs_bytecode) {
++        if (open_status == napi_pending_exception && should_detect_module && can_parse_as_module) {
++          bool has_pending = false;
++          napi_value ignored = nullptr;
++          if (napi_is_exception_pending(env, &has_pending) == napi_ok && has_pending) {
++            (void)napi_get_and_clear_last_exception(env, &ignored);
++          }
++          return CreateContextifyCjsLoaderResult(env, nullptr, true);
++        }
++        return nullptr;  // Preserve the compile error.
++      }
++      edge_compile_cache::ReportCompiled(cache_entry, has_cache, cache_rejected);
++      if (!has_cache || cache_rejected) {
++        napi_value cache_buffer = nullptr;
++        if (cjs_bytecode.Serialize(&cache_buffer) == napi_ok && cache_buffer != nullptr) {
++          EdgeBufferLease bytes;
++          if (AcquireArrayBufferView(env, cache_buffer, &bytes) && bytes.size() > 0) {
++            edge_compile_cache::Save(cache_entry, bytes.data(), bytes.size());
++          }
++        }
++      }
++    }
++  }
+   std::string sidecar_source_path;
+   std::string sidecar_source_utf8;
+-  if (edge_bytecode_cache::Enabled()) {
++  if (!cjs_bytecode && edge_bytecode_cache::Enabled()) {
+     std::string filename_utf8 = ValueToUtf8(env, filename);
+     fs::path filename_path(filename_utf8);
+     if (filename_path.is_absolute() && PathExistsRegularFile(filename_path)) {
+@@ -4733,6 +4846,9 @@ static napi_value CreateContextifyBinding(napi_env env) {
+ static napi_value CreateModulesBinding(napi_env env) {
+   napi_value undefined = nullptr;
+   napi_get_undefined(env, &undefined);
++  // iwci: NODE_COMPILE_CACHE takes effect before any user module is loaded,
++  // as Node's does at start-up.
++  edge_compile_cache::InitializeFromEnvironment(env);
+ 
+   napi_value out = nullptr;
+   if (napi_create_object(env, &out) != napi_ok || out == nullptr) return undefined;
+diff --git a/src/internal_binding/binding_module_wrap.cc b/src/internal_binding/binding_module_wrap.cc
+index 87694a2d..a81a2888 100644
+--- a/src/internal_binding/binding_module_wrap.cc
++++ b/src/internal_binding/binding_module_wrap.cc
+@@ -14,6 +14,7 @@
+ #include "internal_binding/helpers.h"
+ #include "unofficial_napi.h"
+ #include "../edge_bytecode_cache.h"
++#include "../edge_compile_cache.h"
+ #include "../edge_module_loader.h"
+ #include "../edge_path.h"
+ #if defined(EDGE_WEBCONTAINER_COMPAT)
+@@ -512,6 +513,52 @@ napi_value ModuleWrapCtor(napi_env env, napi_callback_info info) {
+           delete instance;
+           return nullptr;
+         }
++      } else if (edge_compile_cache::Active() && (argc < 2 || IsNullishValue(env, argv[1])) &&
++                 line_offset == 0 && column_offset == 0) {
++        // iwci: Node's compile cache (NODE_COMPILE_CACHE,
++        // module.enableCompileCache()) for file-backed modules of the default
++        // loader, under the same conditions as the sidecars below, which it
++        // takes the place of while it is on.
++        const std::string url_utf8 = argc >= 1 && argv[0] != nullptr ? ValueToUtf8(env, argv[0]) : "";
++        const std::string source_utf8 = ValueToUtf8(env, argv[2]);
++        edge_compile_cache::Entry cache_entry;
++        if (edge_compile_cache::Prepare(url_utf8, source_utf8, edge_compile_cache::CodeType::kESM, &cache_entry)) {
++          edge_bytecode_cache::SidecarPayload payload;
++          const bool has_cache = edge_compile_cache::Read(cache_entry, &payload);
++          bool cache_rejected = false;
++          if (module_bytecode.Open(env,
++                                   argv[2],
++                                   argv[0],
++                                   unofficial_napi_bytecode_shape_module,
++                                   nullptr,
++                                   host_defined_option,
++                                   line_offset,
++                                   column_offset,
++                                   has_cache ? payload.data() : nullptr,
++                                   has_cache ? payload.payload_size : 0,
++                                   has_cache,
++                                   &cache_rejected) == napi_ok &&
++              module_bytecode) {
++            edge_compile_cache::ReportCompiled(cache_entry, has_cache, cache_rejected);
++            if (!has_cache || cache_rejected) {
++              napi_value cache_buffer = nullptr;
++              if (module_bytecode.Serialize(&cache_buffer) == napi_ok && cache_buffer != nullptr) {
++                EdgeBufferLease data;
++                if (AcquireArrayBufferView(env, cache_buffer, &data) && data.size() > 0) {
++                  edge_compile_cache::Save(cache_entry, data.data(), data.size());
++                }
++              }
++            }
++          } else {
++            // A syntax error: the text path below reports it.
++            bool has_pending = false;
++            napi_value ignored = nullptr;
++            if (napi_is_exception_pending(env, &has_pending) == napi_ok && has_pending) {
++              (void)napi_get_and_clear_last_exception(env, &ignored);
++            }
++            module_bytecode.Reset();
++          }
++        }
+       } else if (edge_bytecode_cache::Enabled() && (argc < 2 || IsNullishValue(env, argv[1])) &&
+                  line_offset == 0 && column_offset == 0) {
+         // Bytecode sidecar cache for file-backed modules loaded by the default
