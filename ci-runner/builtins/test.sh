@@ -1869,9 +1869,10 @@ jobs:
       '
       test "$(NODE_DISABLE_COMPILE_CACHE=1 NODE_COMPILE_CACHE=/tmp/cc/off node main.js)" = undefined
       test ! -e /tmp/cc/off
-      # A directory that cannot be made is no cache (and no error).
+      # A directory that cannot be made (here, under a file) is no cache, and
+      # no error. Not under /opt: since #1087 a job can write anywhere in its
+      # own file system, the environment's directories included.
       test "$(NODE_COMPILE_CACHE=/tmp/cc/file/sub node main.js)" = undefined
-      test "$(NODE_COMPILE_CACHE=/opt/cc node main.js)" = undefined
       # A portable cache is keyed by paths relative to it, so it moves with
       # the tree.
       mkdir /tmp/cc/one
