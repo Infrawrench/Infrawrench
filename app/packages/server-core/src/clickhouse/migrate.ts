@@ -152,15 +152,62 @@ function addColumnSQL(table: ClickHouseTable, column: ClickHouseColumn): string 
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Dimensions outside the sorting key.
+ *
+ * `metric_points_1m` and `metric_points_1h` keep `unit` beside their sort key
+ * rather than in it: a series has one unit, so the value a merge keeps is the
+ * value (see the materialized view above). ClickHouse 26.7 started rejecting
+ * that at CREATE (#1116): an AggregatingMergeTree column that is neither in
+ * the sorting key nor an aggregate state needs the MergeTree setting
+ * `allow_dimensions_outside_sorting_key = 1`, which 26.7 turned off by
+ * default. Servers before the setting existed (24.8) reject it as unknown, so
+ * the clause is added only where `system.merge_tree_settings` lists it.
+ *
+ * Only CREATE checks, so tables that already exist keep loading on any
+ * version, and no ALTER is needed for them. The alternative, making `unit` a
+ * `SimpleAggregateFunction(anyLast, ...)`, would be a MODIFY COLUMN on tables
+ * that already exist, which rewrites their parts and which the rules for
+ * additive migrations above do not allow.
+ * ------------------------------------------------------------------ */
+
+const DIMENSIONS_SETTING = "allow_dimensions_outside_sorting_key";
+
+/** Appends the setting to a CREATE of an AggregatingMergeTree table. Exported for tests. */
+export function withDimensionsOutsideSortingKey(stmt: string): string {
+  if (!/ENGINE = AggregatingMergeTree\b/.test(stmt)) return stmt;
+  return `${stmt} SETTINGS ${DIMENSIONS_SETTING} = 1`;
+}
+
+/** Whether the server has the MergeTree setting at all (26.x does, 24.8 does not). */
+async function serverHasMergeTreeSetting(name: string): Promise<boolean> {
+  const result = await getClickHouseClient().query({
+    query: "SELECT count() AS n FROM system.merge_tree_settings WHERE name = {name:String}",
+    query_params: { name },
+    format: "JSONEachRow",
+  });
+  const rows = await result.json<{ n: number | string }>();
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+export interface MigrationOptions {
+  /** The server has `allow_dimensions_outside_sorting_key` (see above). */
+  allowDimensionsOutsideSortingKey?: boolean;
+}
+
 /**
  * Every statement `migrateMetrics` issues, in order: tables, then the views that
  * read them, then the columns the tables gained after shipping.
  *
  * Exported for the tests, which assert that each one is idempotent.
  */
-export function migrationStatements(): string[] {
+export function migrationStatements(options: MigrationOptions = {}): string[] {
+  const create = (table: ClickHouseTable) => {
+    const stmt = createTableSQL(table, { ifNotExists: true });
+    return options.allowDimensionsOutsideSortingKey ? withDimensionsOutsideSortingKey(stmt) : stmt;
+  };
   return [
-    ...CLICKHOUSE_TABLES.map((table) => createTableSQL(table, { ifNotExists: true })),
+    ...CLICKHOUSE_TABLES.map(create),
     MV_METRIC_POINTS_1M,
     MV_METRIC_POINTS_1H,
     ...ADDITIVE_COLUMNS.map(([table, column]) => addColumnSQL(table, column)),
@@ -202,8 +249,9 @@ export async function migrateMetrics(): Promise<void> {
     return;
   }
   const replicated = process.env["CLICKHOUSE_METRICS_REPLICATED"] === "1";
+  const allowDimensionsOutsideSortingKey = await serverHasMergeTreeSetting(DIMENSIONS_SETTING);
   const ch = getClickHouseClient();
-  for (const stmt of migrationStatements()) {
+  for (const stmt of migrationStatements({ allowDimensionsOutsideSortingKey })) {
     await ch.command({ query: replicated ? withReplicatedEngines(stmt) : stmt });
   }
 }
