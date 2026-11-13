@@ -34,6 +34,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-key/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get-api-key"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/block-storage": {
         parameters: {
             query?: never;
@@ -474,6 +490,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get-focus-report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam-role/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get-iam-role"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2091,6 +2123,46 @@ export interface components {
         "enum-service-state": "running" | "rebuilding" | "rebalancing" | "poweroff";
         /** @enum {string} */
         "enum-sort-order": "desc" | "asc";
+        "iam-api-key": {
+            key?: string;
+            name?: string;
+            /** Format: uuid */
+            "role-id"?: string;
+        };
+        "iam-assume-role-policy": {
+            rules?: components["schemas"]["iam-service-policy-rule"][];
+        };
+        "iam-policy": {
+            /** @enum {string} */
+            "default-service-strategy": "allow" | "deny";
+            services: {
+                [key: string]: components["schemas"]["iam-service-policy"];
+            };
+        };
+        "iam-role": {
+            "assume-role-policy"?: components["schemas"]["iam-assume-role-policy"];
+            description?: string;
+            editable?: boolean;
+            /** Format: uuid */
+            readonly id?: string;
+            labels?: components["schemas"]["labels"];
+            /** Format: int64 */
+            "max-session-ttl"?: number;
+            name?: string;
+            permissions?: ("bypass-governance-retention" | "reset-iam-organization-policy")[];
+            policy?: components["schemas"]["iam-policy"];
+        };
+        "iam-service-policy": {
+            rules?: components["schemas"]["iam-service-policy-rule"][];
+            /** @enum {string} */
+            type?: "rules" | "allow" | "deny";
+        };
+        "iam-service-policy-rule": {
+            /** @enum {string} */
+            action?: "allow" | "deny";
+            expression?: string;
+            resources?: string[];
+        };
         instance: {
             "anti-affinity-groups"?: components["schemas"]["anti-affinity-group-ref"][];
             "application-consistent-snapshot-enabled"?: boolean;
@@ -3173,6 +3245,27 @@ export interface operations {
             };
         };
     };
+    "get-api-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["iam-api-key"];
+                };
+            };
+        };
+    };
     "list-block-storage-volumes": {
         parameters: {
             query?: {
@@ -4071,6 +4164,27 @@ export interface operations {
                         expires_in?: number;
                         presigned_url?: string;
                     };
+                };
+            };
+        };
+    };
+    "get-iam-role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["iam-role"];
                 };
             };
         };

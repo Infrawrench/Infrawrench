@@ -5,6 +5,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { DIGITALOCEAN_FOCUS } from "./focus-services.js";
+import { DO_CI_EXECUTOR } from "./ci-executor.js";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
 import { digitaloceanRemediationCommands } from "./remediation.js";
@@ -131,6 +132,8 @@ export const manifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: DIGITALOCEAN_TRANSFER_RATES,
+  // CI jobs on a fresh Droplet per job. See ci-executor.ts.
+  ciExecutor: DO_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

@@ -41,6 +41,21 @@ import { type PriceCatalogCache, createPriceCatalogCache } from "./pricing.js";
 import { buildLkeNodeRates } from "./lke-node-rates.js";
 import { dashboardStats, renderDetail, renderSidebarItem } from "./render.js";
 import { applyUpdate } from "./update.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  linodeCiListTagged,
+  linodeCiPreflight,
+  linodeCiStart,
+  linodeCiStatus,
+  linodeCiTeardown,
+} from "./ci-executor.js";
 
 type Lister = (api: LinodeApi, accountId: string) => Promise<ResourceInstance[]>;
 
@@ -401,6 +416,26 @@ export class LinodeClient implements PluginClient {
           "This file grants full administrative access to the cluster. Regenerate the kubeconfig from the cluster page if it leaks.",
       };
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => linodeCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => linodeCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => linodeCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => linodeCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => linodeCiListTagged(this.api, tagKey));
   }
 
   listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {

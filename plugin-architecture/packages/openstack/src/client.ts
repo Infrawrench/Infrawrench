@@ -74,6 +74,21 @@ import {
   openstackUpdate,
 } from "./ops.js";
 import { fetchOpenStackQuotas, fetchServerMetrics } from "./extras.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  openstackCiListTagged,
+  openstackCiPreflight,
+  openstackCiStart,
+  openstackCiStatus,
+  openstackCiTeardown,
+} from "./ci-executor.js";
 
 type Fields = Record<string, string | number | boolean>;
 type Obj = Record<string, unknown>;
@@ -1228,6 +1243,26 @@ export class OpenStackClient implements PluginClient {
   // ---------------------------------------------------------------------------
   // Mutations
   // ---------------------------------------------------------------------------
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => openstackCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => openstackCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => openstackCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => openstackCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => openstackCiListTagged(this.api, tagKey));
+  }
 
   getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {

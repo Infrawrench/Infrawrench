@@ -685,6 +685,7 @@
   "paths": {
     "/account": ["get"],
     "/account/keys": ["get", "post"],
+    "/account/keys/{ssh_key_identifier}": ["delete"],
     "/actions/{action_id}": ["get"],
     "/apps": ["get"],
     "/apps/{app_id}/deployments": ["get", "post"],
@@ -845,7 +846,8 @@
     "/snapshots": ["get"],
     "/snapshots/{snapshot_id}": ["delete"],
     "/spaces/keys": ["post"],
-    "/tags": ["get"],
+    "/tags": ["get", "post"],
+    "/tags/{tag_id}": ["get", "delete"],
     "/uptime/checks": ["get", "post"],
     "/uptime/checks/{check_id}": ["get", "put", "delete"],
     "/uptime/checks/{check_id}/alerts": ["get", "post"],

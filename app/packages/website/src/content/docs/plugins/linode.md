@@ -87,6 +87,20 @@ Every create form shows the monthly price as you fill it in, at the rate for the
 - **Domains**: Linode DNS Manager zones and records appear in the cross-provider [Domains](../features/domains.md) view, and records pointing at a bucket or NodeBalancer hostname nobody owns are flagged as dangling.
 - **Export to Terraform** (`linode/linode` provider): Linodes, volumes, NodeBalancers, LKE clusters, buckets, firewalls, domains and records, VPCs, StackScripts, Managed Databases and reserved IPs, each with its import ID.
 
+## Run CI jobs
+
+A Linode connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Linode in the job's `cloud.region` (`us-east` when it names none), started with the job's bootstrap as Metadata service (cloud-init) user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on  | Default `machine` | Default `image`      |
+| ------------ | -------- | ----------------- | -------------------- |
+| `vm`         | A Linode | `g6-standard-2`   | `linode/ubuntu24.04` |
+
+The Linode holds no Linode credentials: no token and no SSH key. Linode won't make an instance without a way in, so each one gets a random root password that is never kept. If backups are on for the whole account, Linode turns them on for the job's Linode too.
+
+As a backstop the Linode powers itself off when the job's time is up. Linode bills a powered-off Linode, by the hour, rounded up: a job of a few minutes costs a full hour. The Linode has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by tag.
+
+Opting in reads the token's scopes from Linode's answer: it needs `linodes:read_write`. For a restricted user it also checks the `add_linodes` grant.
+
 ## Tips and limits
 
 - The current month's breakdown is priced from what exists now, at list rates. Only the total comes from Linode. Charges with no resource behind them (transfer overage, deleted resources) are grouped into one line until the invoice arrives.

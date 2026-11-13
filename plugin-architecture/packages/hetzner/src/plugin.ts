@@ -24,6 +24,7 @@ import { CertificateResourceType } from "./resources/certificate.js";
 import { DnsZoneResourceType } from "./resources/dns-zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { StorageBoxResourceType } from "./resources/storage-box.js";
+import { HETZNER_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "hetzner",
@@ -78,6 +79,8 @@ export const manifest = {
   statusFeed,
   // Server type list prices, net of VAT, from /server_types. See price-catalog.ts.
   priceCatalog: hetznerPriceCatalog,
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: HETZNER_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

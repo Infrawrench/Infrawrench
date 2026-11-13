@@ -21,6 +21,7 @@ import { VolumeSnapshotResourceType } from "./resources/volume-snapshot.js";
 import { ContainerRegistryResourceType } from "./resources/container-registry.js";
 import { ovhTerraformExport } from "./terraform.js";
 import { ovhRemediationCommands } from "./remediation.js";
+import { OVH_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "ovh",
@@ -87,6 +88,8 @@ export const manifest = {
     restatementDays: 5,
     periodNative: true,
   },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: OVH_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

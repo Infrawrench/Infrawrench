@@ -44,6 +44,20 @@ Create API credentials on the [OVH API token page](https://www.ovh.com/auth/api/
 - **Public Cloud Load Balancers** show lifetime counters (active and total connections, bytes in and out, request errors) on their dashboard.
 - **Database client tabs**: PostgreSQL, MySQL, MongoDB, Redis, Kafka and [OpenSearch](./opensearch.md) clusters open the matching client tab with the endpoint filled in. OVH never returns user passwords after creation, so the tab works for users whose password Infrawrench saw when it created them. For older users, reset the password and paste it in.
 
+## Run CI jobs
+
+A OVHcloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Public Cloud instance in the job's `cloud.region` (`GRA11` when it names none), started with the job's bootstrap as user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                       | Default `machine` | Default `image` |
+| ------------ | --------------------------------------------- | ----------------- | --------------- |
+| `vm`         | A Public Cloud instance on the public network | `b3-8`            | Ubuntu 24.04    |
+
+The instance holds no OVHcloud credentials: your API keys never leave Infrawrench, and the instance gets no SSH key. Instances take no tags through the OVH API, so a job's instance is named `iwci-` followed by its tags.
+
+As a backstop the instance powers itself off when the job's time is up. OVHcloud bills a stopped instance like a running one, by the second after the first minute. The instance has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by name.
+
+Opting in reads the consumer key's access rules and names each call they don't allow: `POST`, `GET` and `DELETE` on `/cloud/project/{id}/instance`, and `GET` on its `flavor` and `image`. OVHcloud IAM policies can still refuse a call the rules allow.
+
 ## Tips & limits
 
 - OVH's API is split by region (eu, us, ca). Make sure your token covers every region you plan to use.

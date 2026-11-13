@@ -54,6 +54,20 @@ Incidents from [status.upcloud.com](https://status.upcloud.com) show against you
 
 Servers, storage, networks, routers, floating IPs, Kubernetes clusters and node groups, databases, load balancers and Object Storage export to the official `UpCloudLtd/upcloud` provider. Servers export without their boot template, so add it before applying.
 
+## Run CI jobs
+
+A UpCloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Cloud Server in the job's `cloud.region` (`de-fra1` when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                                                            | Default `machine`       | Default `image`         |
+| ------------ | ---------------------------------------------------------------------------------- | ----------------------- | ----------------------- |
+| `vm`         | A Cloud Server cloned from the Ubuntu 24.04 cloud-init template, with a 30 GB disk | `CLOUDNATIVE-2xCPU-4GB` | Ubuntu Server 24.04 LTS |
+
+The server holds no UpCloud credentials. A cloud-init template needs an SSH key, so each server gets a throwaway public key whose private half is never kept, and no password is delivered. When the job ends the server is stopped and deleted with its disk.
+
+As a backstop the server powers itself off when the job's time is up. On the default Cloud Native plan that ends the compute bill, but the disk is billed until it is deleted; Starter and Premium plans bill a stopped server in full. Billing is by the hour. The server has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by label.
+
+UpCloud tokens carry no permissions of their own, so opting in checks with harmless reads: the account, the servers, the zone and the template.
+
 ## Limits
 
 - File Storage, network gateways, network peering, server groups and load balancer TLS configuration aren't covered yet.

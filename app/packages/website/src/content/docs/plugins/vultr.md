@@ -61,6 +61,20 @@ Incidents from [status.vultr.com](https://status.vultr.com) show against your re
 
 Instances, block storage, Kubernetes clusters, databases, load balancers, firewall groups, VPCs, reserved IPs, DNS domains and records, Object Storage, SSH keys and startup scripts export to the official `vultr/vultr` provider, each with its import id.
 
+## Run CI jobs
+
+A Vultr connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Cloud Compute instance in the job's `cloud.region` (`ewr` when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                  | Default `machine` | Default `image`             |
+| ------------ | ------------------------ | ----------------- | --------------------------- |
+| `vm`         | A Cloud Compute instance | `vc2-2c-4gb`      | Ubuntu 24.04 (`os_id` 2284) |
+
+`cloud.image` takes an OS id from Vultr's OS list or a Marketplace image id. The instance holds no Vultr credentials: no API key and no SSH key.
+
+As a backstop the instance powers itself off when the job's time is up. Vultr bills a stopped instance, by the hour, at least an hour per instance. The instance has no way to destroy itself, so billing stops only when Infrawrench destroys it at the end of the job, or when its cleanup later finds it by tag.
+
+Opting in reads the API user's permissions from the account: a user who isn't an administrator needs `provisioning` and `subscriptions`.
+
 ## Limits
 
 - Container Registry, CDN, Serverless Inference, ISOs and organization and IAM settings aren't covered yet.

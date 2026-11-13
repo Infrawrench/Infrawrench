@@ -304,6 +304,20 @@ Connection strings and CA certificates work the same way as other managed databa
 - **File browser** on Spaces.
 - **Secret export to K8s** for managed databases and Spaces.
 
+## Run CI jobs
+
+A DigitalOcean connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh Droplet in the job's `cloud.region` (`nyc3` when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on   | Default `machine` | Default `image`    |
+| ------------ | --------- | ----------------- | ------------------ |
+| `vm`         | A Droplet | `s-2vcpu-4gb`     | `ubuntu-24-04-x64` |
+
+The Droplet holds no DigitalOcean credentials: no token, and no SSH key from your team. DigitalOcean emails a root password for every Droplet made without an SSH key, so each job adds a throwaway public key (its private half is never kept), names it when the Droplet is made, and removes it straight after. The job's run and job tags are removed with the Droplet; `iwci` and the organization's tag stay, shared by every job.
+
+As a backstop the Droplet powers itself off when the job's time is up. DigitalOcean keeps billing a powered-off Droplet, and the Droplet has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by tag. Droplets are billed by the second, at least a minute.
+
+DigitalOcean can't tell a token its own scopes, so opting in sends requests that can't change anything (an empty create, deletes of ids that don't exist) and names each scope they are refused for: `droplet:create`, `droplet:read`, `droplet:delete`, `tag:create`, `tag:read`, `tag:delete`, `ssh_key:create`, `ssh_key:read` and `ssh_key:delete`.
+
 ## Tips & limits
 
 - Creating a Droplet needs at least one SSH key. Upload one in DigitalOcean under **Settings > SSH keys** (not in Infrawrench), or use an existing key.

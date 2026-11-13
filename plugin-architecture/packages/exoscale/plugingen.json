@@ -672,6 +672,7 @@
   ],
   "paths": {
     "/anti-affinity-group": ["get", "post"],
+    "/api-key/{id}": ["get"],
     "/anti-affinity-group/{id}": ["delete"],
     "/block-storage": ["get", "post"],
     "/block-storage-snapshot": ["get"],
@@ -701,6 +702,7 @@
     "/elastic-ip/{id}:attach": ["put"],
     "/elastic-ip/{id}:detach": ["put"],
     "/focus-report/{period}": ["get"],
+    "/iam-role/{id}": ["get"],
     "/instance": ["get", "post"],
     "/instance-pool": ["get"],
     "/instance-pool/{id}": ["put", "delete"],

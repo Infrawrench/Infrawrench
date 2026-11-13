@@ -23378,5 +23378,21 @@
   "cb3fc66344bb18f8": "在团队中创建 Paperspace API 密钥",
   "9cf4f4ca976a4d2e": "Crusoe 虚拟机",
   "07ea07abe3244852": "为密钥的用户授予该项目的 Editor 角色",
-  "dbdd14ce9dae5116": "创建具有实例读写权限和用户读取权限的 Vast.ai API 密钥"
+  "dbdd14ce9dae5116": "创建具有实例读写权限和用户读取权限的 Vast.ai API 密钥",
+  "fd9009fb2ffeb540": "Cloud Compute 实例",
+  "7d0fd62407bbd3b7": "云服务器",
+  "326e71b8679a0857": "Cloud Server",
+  "7ca99c0d2b65126a": "计算实例",
+  "f3e0d7642869eba9": "Nova 服务器",
+  "8ae5294453f0d6a7": "Public Cloud 实例",
+  "9fbf3623958c8b4a": "Serverless Jobs 运行",
+  "58a9c5551f0888aa": "检查 API 用户的权限",
+  "36872d0e45cc89b7": "创建具有这些权限的 API 密钥",
+  "8fe0ee2818e1a262": "为 API 密钥的应用程序授予这些权限集",
+  "b828b04bcaa6d9ec": "为 API 密钥的角色授予计算访问权限",
+  "60baec214b51fd2c": "为 API 用户授予这些权限",
+  "4b37a3a8a263e631": "为凭据授予该项目的成员角色",
+  "f7869c64ce902b34": "在项目中创建 Read & Write API 令牌",
+  "5593dd92988f9fcc": "创建具有 Linodes 读写权限的令牌",
+  "ac835c2ee2f47708": "创建具有这些作用域的令牌"
 }

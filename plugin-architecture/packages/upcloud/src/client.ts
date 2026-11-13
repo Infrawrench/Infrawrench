@@ -44,6 +44,21 @@ import {
 } from "./metrics.js";
 import { dashboardStats, renderDetail, renderSidebarItem } from "./render.js";
 import { applyUpdate } from "./update.js";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  upcloudCiListTagged,
+  upcloudCiPreflight,
+  upcloudCiStart,
+  upcloudCiStatus,
+  upcloudCiTeardown,
+} from "./ci-executor.js";
 
 type Lister = (api: UpCloudApi, accountId: string) => Promise<ResourceInstance[]>;
 
@@ -447,6 +462,26 @@ export class UpCloudClient implements PluginClient {
     return attempt(async () => {
       return fetchCredits(this.api);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => upcloudCiPreflight(this.api, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => upcloudCiStart(this.api, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => upcloudCiStatus(this.api, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => upcloudCiTeardown(this.api, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => upcloudCiListTagged(this.api, tagKey));
   }
 
   fetchQuotas(): PluginEffect<QuotaUsage[]> {

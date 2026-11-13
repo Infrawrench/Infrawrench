@@ -34,6 +34,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/account/keys/{ssh_key_identifier}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["sshKeys_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/actions/{action_id}": {
         parameters: {
             query?: never;
@@ -2640,8 +2656,24 @@ export interface paths {
         };
         get: operations["tags_list"];
         put?: never;
-        post?: never;
+        post: operations["tags_create"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["tags_get"];
+        put?: never;
+        post?: never;
+        delete: operations["tags_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5267,6 +5299,11 @@ export interface components {
             message: string;
             request_id?: string;
         };
+        error_with_root_causes: {
+            error: string;
+            messages?: string[] | null;
+            root_causes: string[];
+        };
         events_logs: {
             cluster_name?: string;
             create_time?: string;
@@ -7305,6 +7342,20 @@ export interface components {
                 } & components["schemas"]["pages_pagination"] & components["schemas"]["meta"];
             };
         };
+        tags_bad_request: {
+            headers: {
+                "ratelimit-limit": components["headers"]["ratelimit-limit"];
+                "ratelimit-remaining": components["headers"]["ratelimit-remaining"];
+                "ratelimit-reset": components["headers"]["ratelimit-reset"];
+                "x-request-id": components["headers"]["x-request-id"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["error_with_root_causes"];
+            };
+        };
+        tags_existing: tags_existing_2eb22ce9;
+        tags_new: tags_existing_2eb22ce9;
         too_many_requests: bad_request_7ce0d056;
         unauthorized: bad_request_7ce0d056;
         unexpected_error: bad_request_7ce0d056;
@@ -7498,6 +7549,8 @@ export interface components {
         parameters_region: string;
         "parameters_region-2": string;
         "parameters_region-4": components["schemas"]["region_slug"];
+        parameters_sort: "created_at" | "updated_at" | "ip" | "id" | "droplet_id";
+        parameters_sort_direction: "asc" | "desc";
         parameters_x_dangerous: boolean;
         price_hourly_maximum: string;
         price_hourly_minimum: string;
@@ -7511,8 +7564,10 @@ export interface components {
         reserved_ip: string;
         snapshot_id: number | string;
         snapshot_resource_type: "droplet" | "volume";
+        ssh_key_identifier: components["schemas"]["ssh_key_id"] | components["schemas"]["ssh_key_fingerprint"];
         start_date: string;
         tag: string;
+        tag_id: string;
         tag_name: string;
         time_wait: string;
         type: "application" | "distribution";
@@ -7534,6 +7589,7 @@ export interface components {
         "ratelimit-limit": number;
         "ratelimit-remaining": number;
         "ratelimit-reset": number;
+        "x-request-id": string;
     };
     pathItems: never;
 }
@@ -7580,6 +7636,20 @@ export interface operations {
         };
         responses: {
             201: components["responses"]["sshKeys_new"];
+        };
+    };
+    sshKeys_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ssh_key_identifier: components["parameters"]["ssh_key_identifier"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: components["responses"]["no_content"];
         };
     };
     actions_get: {
@@ -10266,6 +10336,8 @@ export interface operations {
             query?: {
                 page?: components["parameters"]["page"];
                 per_page?: components["parameters"]["parameters_per_page"];
+                sort?: components["parameters"]["parameters_sort"];
+                sort_direction?: components["parameters"]["parameters_sort_direction"];
             };
             header?: never;
             path?: never;
@@ -10409,6 +10481,50 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["tags_all"];
+        };
+    };
+    tags_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["tags"];
+            };
+        };
+        responses: {
+            201: components["responses"]["tags_new"];
+        };
+    };
+    tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: components["parameters"]["tag_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["tags_existing"];
+        };
+    };
+    tags_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: components["parameters"]["tag_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: components["responses"]["no_content"];
         };
     };
     uptime_list_checks: {
@@ -11187,6 +11303,19 @@ type Shared_7a46f51e = {
     requestBody?: never;
     responses: {
         200: components["responses"]["metric_response"];
+    };
+};
+type tags_existing_2eb22ce9 = {
+    headers: {
+        "ratelimit-limit": components["headers"]["ratelimit-limit"];
+        "ratelimit-remaining": components["headers"]["ratelimit-remaining"];
+        "ratelimit-reset": components["headers"]["ratelimit-reset"];
+        [name: string]: unknown;
+    };
+    content: {
+        "application/json": {
+            tag?: components["schemas"]["tags"];
+        };
     };
 };
 type volumes_ext4_6b98aa69 = components["schemas"]["volume_base"] & components["schemas"]["volume_snapshot_id"] & components["schemas"]["volume_write_file_system_type"] & {

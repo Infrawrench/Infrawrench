@@ -85,6 +85,20 @@ The estimate can differ from your invoice in these ways:
 
 Amounts are shown in the currency of the project's rate card, usually EUR.
 
+## Run CI jobs
+
+A Hetzner Cloud connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a fresh server in the job's `cloud.region` (`fsn1` when it names none), started with the job's bootstrap as cloud-init user data, and deleted when the job ends:
+
+| `cloud.kind` | Runs on                                  | Default `machine` | Default `image` |
+| ------------ | ---------------------------------------- | ----------------- | --------------- |
+| `vm`         | A cloud server with its own IPv4 address | `cpx22`           | `ubuntu-24.04`  |
+
+The server holds no Hetzner credentials: no API token, and no SSH key of yours. Each job gets a throwaway SSH key (its private half is never kept, so no root password is made) that is removed as soon as the server exists, and an IPv4 Primary IP with auto delete, so the address goes with the server. Everything is labelled `infrawrench-ci`, so an address a failed start left behind is found and removed too.
+
+As a backstop the server powers itself off when the job's time is up. Hetzner bills a server until it is deleted, whatever its state, and by the hour, rounded up: a job of a few minutes costs a full hour. The server has no way to delete itself, so billing stops only when Infrawrench deletes it at the end of the job, or when its cleanup later finds it by label.
+
+Opting in needs a **Read & Write** token. A token can't tell what it may do, so the check reads the project and asks to delete an SSH key that doesn't exist: a read-only token is refused, which names the missing permission.
+
 ## Tips and limits
 
 - Hetzner's API has a limit of 3600 requests per hour per project, so refreshing a large account may briefly slow down.

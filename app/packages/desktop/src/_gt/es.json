@@ -23174,5 +23174,21 @@
   "cb3fc66344bb18f8": "Cree una clave de API de Paperspace en el equipo",
   "9cf4f4ca976a4d2e": "VM de Crusoe",
   "07ea07abe3244852": "Asigne al usuario de la clave el rol Editor en el proyecto",
-  "dbdd14ce9dae5116": "Cree una clave de API de Vast.ai con lectura y escritura de instancias, y lectura de usuario"
+  "dbdd14ce9dae5116": "Cree una clave de API de Vast.ai con lectura y escritura de instancias, y lectura de usuario",
+  "fd9009fb2ffeb540": "Instancia de Cloud Compute",
+  "7d0fd62407bbd3b7": "Servidor en la nube",
+  "326e71b8679a0857": "Cloud Server",
+  "7ca99c0d2b65126a": "Instancia de cómputo",
+  "f3e0d7642869eba9": "Servidor Nova",
+  "8ae5294453f0d6a7": "Instancia de Public Cloud",
+  "9fbf3623958c8b4a": "Ejecución de Serverless Jobs",
+  "58a9c5551f0888aa": "Compruebe los permisos del usuario de la API",
+  "36872d0e45cc89b7": "Cree claves de API con estos derechos",
+  "8fe0ee2818e1a262": "Asigne estos conjuntos de permisos a la aplicación de la clave de API",
+  "b828b04bcaa6d9ec": "Conceda acceso de cómputo al rol de la clave de API",
+  "60baec214b51fd2c": "Conceda estos permisos al usuario de la API",
+  "4b37a3a8a263e631": "Asigne a la credencial el rol de miembro en el proyecto",
+  "f7869c64ce902b34": "Cree un token de API Read & Write en el proyecto",
+  "5593dd92988f9fcc": "Cree un token con lectura y escritura en Linodes",
+  "ac835c2ee2f47708": "Cree un token con estos ámbitos"
 }

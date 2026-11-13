@@ -23392,5 +23392,21 @@
   "cb3fc66344bb18f8": "Erstellen Sie im Team einen Paperspace-API-Schlüssel",
   "9cf4f4ca976a4d2e": "Crusoe-VM",
   "07ea07abe3244852": "Geben Sie dem Benutzer des Schlüssels die Rolle Editor für das Projekt",
-  "dbdd14ce9dae5116": "Erstellen Sie einen Vast.ai-API-Schlüssel mit Lese- und Schreibzugriff auf Instanzen und Lesezugriff auf das Benutzerkonto"
+  "dbdd14ce9dae5116": "Erstellen Sie einen Vast.ai-API-Schlüssel mit Lese- und Schreibzugriff auf Instanzen und Lesezugriff auf das Benutzerkonto",
+  "fd9009fb2ffeb540": "Cloud Compute-Instanz",
+  "7d0fd62407bbd3b7": "Cloud-Server",
+  "326e71b8679a0857": "Cloud Server",
+  "7ca99c0d2b65126a": "Compute-Instanz",
+  "f3e0d7642869eba9": "Nova-Server",
+  "8ae5294453f0d6a7": "Public Cloud-Instanz",
+  "9fbf3623958c8b4a": "Serverless Jobs-Ausführung",
+  "58a9c5551f0888aa": "Prüfen Sie die Berechtigungen des API-Benutzers",
+  "36872d0e45cc89b7": "Erstellen Sie API-Schlüssel mit diesen Rechten",
+  "8fe0ee2818e1a262": "Weisen Sie der Anwendung des API-Schlüssels diese Berechtigungssätze zu",
+  "b828b04bcaa6d9ec": "Gewähren Sie der Rolle des API-Schlüssels Compute-Zugriff",
+  "60baec214b51fd2c": "Erteilen Sie dem API-Benutzer diese Berechtigungen",
+  "4b37a3a8a263e631": "Weisen Sie den Anmeldedaten die Mitgliedsrolle im Projekt zu",
+  "f7869c64ce902b34": "Erstellen Sie im Projekt ein API-Token mit Read & Write",
+  "5593dd92988f9fcc": "Erstellen Sie ein Token mit Lese- und Schreibzugriff auf Linodes",
+  "ac835c2ee2f47708": "Erstellen Sie ein Token mit diesen Scopes"
 }

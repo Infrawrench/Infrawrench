@@ -57,6 +57,22 @@ import { Instancev1 } from "@scaleway/sdk-instance";
 import { K8Sv1 } from "@scaleway/sdk-k8s";
 import { Rdbv1 } from "@scaleway/sdk-rdb";
 import { Blockv1 } from "@scaleway/sdk-block";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
+import {
+  scalewayCiListTagged,
+  scalewayCiPreflight,
+  scalewayCiStart,
+  scalewayCiStatus,
+  scalewayCiTeardown,
+} from "./ci-executor.js";
+import type { ScwCiContext } from "./ci-shared.js";
 
 /**
  * Scaleway plugin client.
@@ -238,6 +254,11 @@ export class ScalewayClient implements PluginClient {
         return body;
       },
     };
+  }
+
+  /** What the CI executors call: the REST surface and the access key IAM knows the key by. */
+  private get ciContext(): ScwCiContext {
+    return { rest: this.rest, accessKey: this.accessKey };
   }
 
   /** The zones of the Instance API (instances, flexible IPs) and load balancers. */
@@ -2738,6 +2759,26 @@ export class ScalewayClient implements PluginClient {
       const cfg = await this.getObjectStorageConfig(bucket);
       return deleteS3Object(cfg, bucket, key);
     });
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => scalewayCiPreflight(this.ciContext, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => scalewayCiStart(this.ciContext, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => scalewayCiStatus(this.ciContext, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => scalewayCiTeardown(this.ciContext, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => scalewayCiListTagged(this.ciContext, tagKey, regions));
   }
 
   getManifest(resourceId: string, _accountId: string): PluginEffect<string> {

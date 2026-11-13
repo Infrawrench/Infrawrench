@@ -34,6 +34,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchLinodePriceCatalog, linodePriceCatalog } from "./price-catalog.js";
 import { linodeTerraformExport } from "./terraform.js";
 import { linodeRemediationCommands } from "./remediation.js";
+import { LINODE_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
   id: "linode",
@@ -83,6 +84,8 @@ export const manifest = {
   priceCatalog: linodePriceCatalog,
   // Linode rate-limits per token and per endpoint; listers fan out at most 8 wide.
   rateLimit: { capacity: 40, refillPerSecond: 10 },
+  // CI jobs on a fresh machine per job. See ci-executor.ts.
+  ciExecutor: LINODE_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

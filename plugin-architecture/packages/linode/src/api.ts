@@ -141,7 +141,11 @@ function transport(http: HttpHostServices | undefined): HttpHostServices {
           // The client only ever sends JSON text.
           ...(typeof body === "string" ? { body } : {}),
         });
-        return { status: res.status, headers: {}, body: await res.text() };
+        return {
+          status: res.status,
+          headers: Object.fromEntries(res.headers.entries()),
+          body: await res.text(),
+        };
       };
   return {
     request: async (req) => {
@@ -155,9 +159,10 @@ function transport(http: HttpHostServices | undefined): HttpHostServices {
         },
       });
       const empty = res.status >= 200 && res.status < 300 && (res.status === 204 || !res.body);
+      // Headers pass through: `X-OAuth-Scopes` is how a token learns its own scopes.
       return empty
-        ? { status: 200, headers: {}, body: "{}" }
-        : { status: res.status, headers: {}, body: res.body };
+        ? { status: 200, headers: res.headers, body: "{}" }
+        : { status: res.status, headers: res.headers, body: res.body };
     },
   };
 }
