@@ -744,6 +744,14 @@ included (`exec 3>&1`,
 [#1019](https://github.com/Infrawrench/Infrawrench/issues/1019)), which
 are WASIX's preopens underneath.
 
+A process outlives its parent, as on Linux, so a helper a subshell
+detaches (`( ssh -N -L ... bastion & )`) or a `node` starts `detached`
+keeps running after the subshell or `node` has exited
+([#1105](https://github.com/Infrawrench/Infrawrench/issues/1105)). It does
+not outlive the job: whatever a job leaves running is stopped when the
+job's script ends, as a container's processes end with the container
+([#1106](https://github.com/Infrawrench/Infrawrench/issues/1106)).
+
 An argument with a line feed in it reaches the program whole, so a
 multi-line `node -e`, `python -c` or `bash -c` runs every line
 ([#1003](https://github.com/Infrawrench/Infrawrench/issues/1003)). bash

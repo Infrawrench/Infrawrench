@@ -1341,10 +1341,11 @@ pub(crate) fn run(
         (result, Some(stopped))
     });
     // The job is over, so are its services; what they printed last is
-    // still theirs to say. The signals that stops them are not the job's.
+    // still theirs to say. The signals that stop them, and what the job
+    // left running, are not the job's.
     services.report_exits(&stderr);
+    control.signals.close();
     if !services.is_empty() {
-        control.signals.close();
         services.stop(&interrupt);
     }
     let timed_out = stopped == Some(Stop::Timeout);
@@ -1361,6 +1362,9 @@ pub(crate) fn run(
         .unwrap_or_else(|e| e.into_inner())
         .take();
     let trapped = trap.clone();
+    // After the trap is read: stopping a process that spins in Wasm traps
+    // it, and that is not the job's crash.
+    stop_left_behind(&control_plane, &interrupt);
     let (exit_code, error) = match result {
         Ok(code) if code.raw() == ENOEXEC && trap.is_some() => (CRASH_EXIT_CODE, trap),
         Ok(code) => (code.raw(), None),
@@ -1501,6 +1505,45 @@ pub(crate) fn for_each_process(
     f: impl FnMut(wasmer_wasix::WasiProcess),
 ) {
     control_plane.processes().into_iter().for_each(f);
+}
+
+/// Stops whatever a job left running once its first process has ended: a
+/// background command (`cmd &`), one a subshell started (`( cmd & )`) and
+/// outlived (#1105), a detached `node` child. Each outlives its parent, as
+/// on Linux, but not the job, as a container's processes do not outlive the
+/// container: left alone, one kept running on the runner after its job and
+/// wrote into the next job's files (#1106). SIGKILL and `interrupt` (for
+/// one that spins in Wasm and makes no syscall to see the signal) are
+/// repeated for [`KILL_GRACE`], and whatever is still running is then
+/// marked finished.
+fn stop_left_behind(control_plane: &wasmer_wasix::WasiControlPlane, interrupt: &dyn Fn()) {
+    let alive = || {
+        let mut any = false;
+        for_each_process(control_plane, |process| any |= process.try_join().is_none());
+        any
+    };
+    if !alive() {
+        return;
+    }
+    let grace = Instant::now() + KILL_GRACE;
+    loop {
+        for_each_process(control_plane, |process| {
+            if process.try_join().is_none() {
+                process.signal_process(Signal::Sigkill);
+            }
+        });
+        interrupt();
+        std::thread::sleep(KILL_POLL);
+        if !alive() {
+            return;
+        }
+        if Instant::now() >= grace {
+            break;
+        }
+    }
+    for_each_process(control_plane, |process| {
+        process.terminate(ExitCode::from(TIMEOUT_EXIT_CODE as u16))
+    });
 }
 
 /// Treats a command's `wasi.env` annotation as defaults: an entry whose key
