@@ -264,9 +264,59 @@ pub extern "C" fn snapi_host_invoke_wasm_callback(
         None => {
             // The import that entered V8 did not lend its store, so there is
             // no way back into the guest from here.
-            eprintln!("[callback trampoline] no store lent to this thread");
+            storeless_callback("callback", wasm_fn_ptr);
             0
         }
+    }
+}
+
+/// Guest callbacks V8 called inside an import that lent no store, which
+/// therefore never ran. Every import that can run JavaScript lends it, so
+/// anything but 0 is a bridge bug.
+static STORELESS_CALLBACKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Whether a dropped callback aborts the process instead of reading as
+/// `undefined`: in debug builds, and wherever
+/// `WASMER_NAPI_STRICT_STORE_LENDING` is set to anything but `0`, so a test
+/// cannot pass over one.
+fn strict_store_lending() -> bool {
+    static STRICT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *STRICT.get_or_init(|| {
+        cfg!(debug_assertions)
+            || std::env::var_os("WASMER_NAPI_STRICT_STORE_LENDING")
+                .is_some_and(|v| !v.is_empty() && v != "0")
+    })
+}
+
+/// Reports a guest callback or finalizer dropped for want of a store: which, and
+/// the guest frames that called the import (the innermost first), which name
+/// the import's caller.
+#[cold]
+fn storeless_callback(kind: &str, wasm_fn_ptr: u32) {
+    let dropped = STORELESS_CALLBACKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let probe = wasmer::RuntimeError::new("");
+    let frames: Vec<String> = probe
+        .trace()
+        .iter()
+        .take(4)
+        .map(|frame| match frame.function_name() {
+            Some(name) => format!("{name}+{:#x}", frame.module_offset()),
+            None => format!("func[{}]+{:#x}", frame.func_index(), frame.module_offset()),
+        })
+        .collect();
+    eprintln!(
+        "[{kind} trampoline] no store lent to this thread: guest {kind} {wasm_fn_ptr} \
+         did not run, {dropped} in this process (an N-API import ran JavaScript without \
+         lending its store; guest frames: {})",
+        if frames.is_empty() {
+            "none".to_string()
+        } else {
+            frames.join(" < ")
+        }
+    );
+    if strict_store_lending() {
+        eprintln!("[{kind} trampoline] aborting: strict store lending is on");
+        std::process::abort();
     }
 }
 
@@ -315,5 +365,8 @@ pub extern "C" fn snapi_host_invoke_wasm_finalizer(
         func_env.as_mut(store).leave_callback();
         result
     })
-    .unwrap_or(0)
+    .unwrap_or_else(|| {
+        storeless_callback("finalizer", wasm_fn_ptr);
+        0
+    })
 }

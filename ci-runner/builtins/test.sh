@@ -2087,6 +2087,74 @@ jobs:
       console.log("cached data ok");
       JS
       for i in 1 2 3; do test "$(node /tmp/cache.js)" = "cached data ok"; done
+  # JavaScript that V8 runs inside a bridge call reaches Edge.js's own
+  # functions (#1090): a `toString` the bridge coerces, a getter on a
+  # sandbox `vm.createContext` copies, `Error.prepareStackTrace` for a
+  # SyntaxError, the unhandled-rejection handler. Those imports did not
+  # lend the guest's store, so each such call returned `undefined` without
+  # running (`os.hostname()` then threw). Every call here goes through one
+  # of them; the run's own stderr must not say "no store lent" either.
+  store-lending-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 2m
+    run: |
+      cat > /tmp/lend.js <<'JS'
+      const assert = require("node:assert");
+      const os = require("node:os");
+      const vm = require("node:vm");
+      const fs = require("node:fs");
+      const host = os.hostname();
+      // A call that was dropped returned undefined, which os.hostname() throws on.
+      const probe = () => { try { return os.hostname(); } catch (e) { return "threw " + e.code; } };
+      // napi_coerce_to_string
+      process.env.IWCI_LEND = { toString: probe };
+      assert.equal(process.env.IWCI_LEND, host);
+      // unofficial_napi_contextify_make_context
+      const sandbox = { get host() { return probe(); } };
+      vm.createContext(sandbox);
+      assert.equal(vm.runInContext("host", sandbox), host);
+      // unofficial_napi_contextify_compile_function and contains_module_syntax
+      fs.writeFileSync("/tmp/bad.js", "module.exports = {;\n");
+      const seen = [];
+      Error.prepareStackTrace = (error) => (seen.push(probe()), "stack of " + error.name);
+      assert.throws(() => require("/tmp/bad.js"), SyntaxError);
+      Error.prepareStackTrace = undefined;
+      assert.ok(seen.length > 0 && seen.every((h) => h === host), JSON.stringify(seen));
+      console.log("lending ok");
+      JS
+      test "$(node /tmp/lend.js)" = "lending ok"
+      # unofficial_napi_module_wrap_create
+      printf 'export const a = {;\n' > /tmp/bad.mjs
+      cat > /tmp/lend.mjs <<'JS'
+      import assert from "node:assert";
+      import os from "node:os";
+      const probe = () => { try { return os.hostname(); } catch (e) { return "threw " + e.code; } };
+      const seen = [];
+      Error.prepareStackTrace = (error) => (seen.push(probe()), "stack of " + error.name);
+      await assert.rejects(import("/tmp/bad.mjs"), SyntaxError);
+      Error.prepareStackTrace = undefined;
+      assert.ok(seen.length > 0 && seen.every((h) => h === os.hostname()), JSON.stringify(seen));
+      console.log("lending ok");
+      JS
+      test "$(node /tmp/lend.mjs)" = "lending ok"
+      # napi_reject_deferred: the binding rejects at once, before anything
+      # handles the promise, so the unhandled-rejection handler runs inside
+      # the call and records the async context, which is Edge.js's to give
+      # (`fs.promises.access` of a missing file did this on every call).
+      cat > /tmp/reject.js <<'JS'
+      const { internalBinding } = require("internal/test/binding");
+      const { AsyncLocalStorage } = require("node:async_hooks");
+      const fs = internalBinding("fs");
+      const als = new AsyncLocalStorage();
+      const seen = [];
+      process.on("unhandledRejection", (error) => seen.push(`${als.getStore()} ${error.code}`));
+      als.run("first", () => fs.access("/missing", 0, fs.kUsePromises));
+      als.run("second", () => setTimeout(() => fs.access("/missing", 0, fs.kUsePromises), 1));
+      require("node:fs/promises").access("/missing").catch(() => {});
+      setTimeout(() => console.log(seen.join(", ")), 50);
+      JS
+      test "$(node --no-warnings --expose-internals /tmp/reject.js)" = "first ENOENT, second ENOENT"
   # Edge.js's built-ins come from a code cache the runner made with its own
   # V8 (#996, iwci-runtime/src/builtins.rs), not from source, in `node`,
   # in worker threads and in ES modules; the job can read the file but not
@@ -3355,8 +3423,20 @@ JSON
     lent="$SCRATCH/openssh-lent.json"
     openssh_lent >"$lent"
   fi
-  out="$(IWCI_LENT_FILE="$lent" "$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
-    --store "$SCRATCH/store" --cache "$SCRATCH/cache" --stall-after "$stall_after")" || status=$?
+  # iwci's own stderr goes on to ours as it comes, and to a file that is
+  # checked below.
+  out="$({
+    IWCI_LENT_FILE="$lent" "$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
+      --store "$SCRATCH/store" --cache "$SCRATCH/cache" --stall-after "$stall_after" \
+      2>&1 1>&3 3>&- | tee "$SCRATCH/$name.err" >&2
+    exit "${PIPESTATUS[0]}"
+  } 3>&1)" || status=$?
+  # A guest callback V8 ran inside a bridge call that lent no store never
+  # ran, and read as `undefined` (#1090). A debug iwci aborts on the first.
+  if dropped="$(grep -c 'no store lent to this thread' "$SCRATCH/$name.err")"; then
+    echo "  FAIL $dropped guest callbacks did not run for want of a store (\"no store lent\" in iwci's stderr)"
+    failed=1
+  fi
   if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null 2>&1 <<<"$out"; then
     if ((status > 128)); then
       echo "error: iwci was killed by signal $((status - 128)) before reporting" >&2
