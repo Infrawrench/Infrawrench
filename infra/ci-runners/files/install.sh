@@ -42,6 +42,18 @@ if [[ -f /usr/lib/sysctl.d/50-coredump.conf ]]; then
   sysctl -q -p /usr/lib/sysctl.d/50-coredump.conf
 fi
 
+# Unattended upgrades run needrestart, which restarts every service using an
+# upgraded library. For iwci that is a drain to stop: it takes no new jobs
+# until its longest job ends, and a release that arrives meanwhile waits for
+# it. iwci moves only through its own release channel, so needrestart leaves
+# it alone.
+if [[ -d /etc/needrestart ]]; then
+  install -d -m 0755 /etc/needrestart/conf.d
+  # shellcheck disable=SC2016 # Perl, not shell: the $ is literal.
+  printf '%s\n' '# Written by the iwci install script: iwci updates through its release channel.' \
+    '$nrconf{override_rc}{qr(^iwci\.service$)} = 0;' >/etc/needrestart/conf.d/iwci.conf
+fi
+
 # An optional Cloudflare Tunnel, so the runner needs no open port.
 if [[ -s /tmp/iwci-tunnel-token ]]; then
   if ! command -v cloudflared >/dev/null; then
