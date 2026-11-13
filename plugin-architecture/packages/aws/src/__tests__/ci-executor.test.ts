@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { AwsRequestError } from "../aws-errors.js";
+import type { AwsCiCalls } from "../ci-calls.js";
 import {
+  AWS_CI_EXECUTOR,
+  awsCiListTagged,
   ciListTagged,
   ciPreflight,
   ciStart,
@@ -167,5 +170,41 @@ describe("the instance's life", () => {
   it("asks for an instance type when a GPU is wanted", async () => {
     const { call } = fakeEc2({});
     await expect(ciStart(call, "eu-west-1", { ...spec, gpu: "a10g" })).rejects.toThrow("g5.xlarge");
+  });
+});
+
+describe("awsCiListTagged", () => {
+  it("lists EC2, ECS and CodeBuild, and a kind the key may not read hides nothing", async () => {
+    const { call } = fakeEc2({
+      DescribeInstances: () => ({
+        reservationSet: {
+          item: {
+            instancesSet: {
+              item: {
+                instanceId: "i-2",
+                instanceState: { name: "running" },
+                tagSet: { item: [{ key: "infrawrench-ci", value: "org" }] },
+              },
+            },
+          },
+        },
+      }),
+    });
+    const calls: AwsCiCalls = {
+      ec2: call,
+      json: async () => {
+        throw err("AccessDeniedException");
+      },
+      query: async () => {
+        throw new Error("no IAM");
+      },
+      simulate: async () => null,
+    };
+    const tagged = await awsCiListTagged(call, calls, "eu-west-1", "infrawrench-ci", []);
+    expect(tagged.map((t) => t.handle.id)).toEqual(["i-2"]);
+  });
+
+  it("declares the three kinds with sizes the rest of the code accepts", () => {
+    expect(AWS_CI_EXECUTOR.kinds.map((k) => k.kind)).toEqual(["vm", "container", "build"]);
   });
 });

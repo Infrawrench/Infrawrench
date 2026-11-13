@@ -117,6 +117,31 @@ Once a day, Infrawrench checks your load balancers, NAT gateways and application
 
 The fixes offered are `az network lb delete`, `az network nat gateway delete`, and `az network application-gateway stop` (then `delete`). Azure has no credential check in Infrawrench yet, so a missing-permission message appears on the Idle rules form instead.
 
+## Run CI jobs
+
+An Azure connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each job gets a resource group of its own (`iwci-<kind>-<id>`), in the job's `cloud.region` (`eastus` when it names none), and the group and everything in it is deleted when the job ends:
+
+| `cloud.kind` | Runs on                            | Default `machine` | Default `image`                               |
+| ------------ | ---------------------------------- | ----------------- | --------------------------------------------- |
+| `vm`         | A virtual machine with a public IP | `Standard_D2s_v5` | Ubuntu 24.04                                  |
+| `container`  | A Container Instances group        | `2vcpu-4gb`       | `docker.io/library/buildpack-deps:noble-curl` |
+| `build`      | An ACR Tasks run, with Docker      | `2vcpu`           | `docker.io/library/docker:cli`                |
+
+A `vm` image other than the default is `publisher:offer:sku[:version]`. A container `machine` is `<vCPUs>vcpu-<GB>gb`. Container Instances runs x64 images only.
+
+Nothing a job runs on has a managed identity. A VM's admin password is random and never kept, and no rule lets anything in to use it. An ACR Tasks run needs a registry, so each `build` job makes an empty Basic registry in its resource group, and the run is signed in only to that registry. A Basic registry is billed by the day, so each `build` job adds one day of a Basic registry to its cost. An ACR Tasks run lasts at most 8 hours.
+
+Every job also stops on its own when its time is up: a VM has an auto-shutdown schedule at the job's deadline (for jobs under 23 hours), a container's command ends itself, and a run has ACR Tasks' own timeout. Azure free trial subscriptions can't run ACR Tasks.
+
+Opting a connection in checks the roles assigned to the app registration at the subscription (or above) and names any action that is missing. Roles it holds through a group, or only on one resource group, aren't seen. **Contributor** on the subscription covers everything. The actions are:
+
+- **Every kind**: `Microsoft.Resources/subscriptions/resourceGroups/write`, `/read` and `/delete`.
+- **`vm`**: `Microsoft.Resources/deployments/write` and `/read`, `Microsoft.Network/virtualNetworks/write`, `Microsoft.Network/virtualNetworks/subnets/join/action`, `Microsoft.Network/publicIPAddresses/write` and `/join/action`, `Microsoft.Network/networkInterfaces/write` and `/join/action`, `Microsoft.Compute/virtualMachines/write` and `/read`, and `Microsoft.DevTestLab/schedules/write`.
+- **`container`**: `Microsoft.ContainerInstance/containerGroups/write`, `/read` and `/delete`.
+- **`build`**: `Microsoft.ContainerRegistry/registries/write`, `/read` and `/delete`, `Microsoft.ContainerRegistry/registries/scheduleRun/action`, `Microsoft.ContainerRegistry/registries/runs/read` and `Microsoft.ContainerRegistry/registries/runs/cancel/action`.
+
+The check also names any resource provider the subscription hasn't registered (`Microsoft.Compute`, `Microsoft.Network`, `Microsoft.ContainerInstance` or `Microsoft.ContainerRegistry`).
+
 ## Tips and limits
 
 - One account connects to one subscription. For tenants with several subscriptions, add one Infrawrench account per subscription.

@@ -7,6 +7,7 @@ import type {
 import { GCP_IDLE_FINDINGS } from "./idle-findings.js";
 import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
+import { GCP_CI_EXECUTOR } from "./ci-executor.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gcpPriceCatalog } from "./price-catalog.js";
 import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
@@ -186,6 +187,12 @@ export const manifest = {
   // project (Project IAM Admin), iam.roles.list for the picker and
   // resourcemanager.projects.list to offer more than the key's own project.
   jitAccess: GCP_JIT_ACCESS,
+  // CI jobs on a fresh Compute Engine instance, a Cloud Run job or a Cloud
+  // Build build per job, none of them holding a useful credential. Needs
+  // the compute.instances.*, run.jobs.* or cloudbuild.builds.* permissions
+  // `ciPreflight` names, and, for Cloud Run and Cloud Build, actAs on the
+  // `infrawrench-ci-runner` service account. See `ci-executor.ts`.
+  ciExecutor: GCP_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

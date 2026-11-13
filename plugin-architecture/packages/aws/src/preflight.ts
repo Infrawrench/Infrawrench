@@ -305,11 +305,13 @@ async function simulateActions(
   creds: AwsCredentials,
   principalArn: string,
   actions: string[],
+  resourceArn?: string,
 ): Promise<Map<string, boolean>> {
   const params: Record<string, string> = { PolicySourceArn: principalArn };
   actions.forEach((a, i) => {
     params[`ActionNames.member.${i + 1}`] = a;
   });
+  if (resourceArn) params["ResourceArns.member.1"] = resourceArn;
   const raw = await queryPostCall<Record<string, unknown>>(
     creds,
     "iam",
@@ -318,6 +320,30 @@ async function simulateActions(
     params,
   );
   return parseSimulationResults(raw);
+}
+
+/**
+ * Whether the credential may call each of `actions`, from the policy
+ * simulator: allowed or not per action, every action allowed for the account
+ * root, or null when the credential may not run the simulator. Used where a
+ * write has no dry run (ECS, CodeBuild, IAM). `resource` names the one
+ * resource they act on, from the account id, when a policy may scope them
+ * to it (`iam:PassRole` on one role).
+ */
+export async function simulateCallerActions(
+  creds: AwsCredentials,
+  actions: readonly string[],
+  resource?: (account: string) => string,
+): Promise<Map<string, boolean> | null> {
+  const identity = await getCallerIdentity(creds);
+  const principalArn = principalArnForSimulation(identity.arn);
+  if (principalArn === null) return new Map(actions.map((a) => [a, true]));
+  try {
+    return await simulateActions(creds, principalArn, [...actions], resource?.(identity.account));
+  } catch (e) {
+    if (isAccessDenied(e)) return null;
+    throw e;
+  }
 }
 
 function isAccessDenied(e: unknown): boolean {
