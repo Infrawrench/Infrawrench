@@ -23410,5 +23410,11 @@
   "4b37a3a8a263e631": "Asigne a la credencial el rol de miembro en el proyecto",
   "f7869c64ce902b34": "Cree un token de API Read & Write en el proyecto",
   "5593dd92988f9fcc": "Cree un token con lectura y escritura en Linodes",
-  "ac835c2ee2f47708": "Cree un token con estos ámbitos"
+  "ac835c2ee2f47708": "Cree un token con estos ámbitos",
+  "47a6ed2db0156a4d": "Dyno puntual en una app desechable",
+  "0836914ff2f58959": "Use la clave de API de una cuenta verificada con el ámbito global",
+  "d2174349bfa83fe3": "Ejecución de trabajo de Northflank",
+  "0fc574243b970932": "Conceda al rol de API del token Create, Run, Update y Delete en trabajos y proyectos",
+  "dbc781c5dd14fb60": "Despliegue puntual en un proyecto desechable",
+  "e6264d4999d06424": "Use un token de cuenta o de espacio de trabajo de un miembro que pueda crear proyectos"
 }

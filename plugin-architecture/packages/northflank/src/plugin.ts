@@ -8,6 +8,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { nfFetch, nfList } from "./api.js";
+import { NORTHFLANK_CI_EXECUTOR } from "./ci-executor.js";
 import { NorthflankClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { northflankRemediationCommands } from "./remediation.js";
@@ -57,6 +58,8 @@ export const manifest = {
   statusFeed,
   // Documented default: 1000 requests per hour per account.
   rateLimit: { capacity: 30, refillPerSecond: 0.25 },
+  // CI jobs as manual job runs in a CI project per region. See ci-executor.ts.
+  ciExecutor: NORTHFLANK_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

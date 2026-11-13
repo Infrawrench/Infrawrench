@@ -8,6 +8,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HerokuApi } from "./api.js";
+import { HEROKU_CI_EXECUTOR } from "./ci-executor.js";
 import { HerokuClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
@@ -20,8 +21,9 @@ import { herokuDeployEvents } from "./deploy-events.js";
 
 export const manifest = {
   id: "heroku",
-  // *.heroku.com covers the one-off log session URLs the API returns
-  egressHosts: ["api.heroku.com", "*.heroku.com"],
+  // *.heroku.com covers the one-off log session URLs the API returns, and
+  // the S3 host the slug of a CI job's throwaway app is uploaded to.
+  egressHosts: ["api.heroku.com", "*.heroku.com", "s3-external-1.amazonaws.com"],
   displayName: "Heroku",
   description:
     "Application platform. Manage apps, dyno formations and scaling, releases with rollback, config vars, add-ons and plans, domains and SSL certificates, pipelines with promotions and review apps, log drains and Private Spaces, with logs, invoices and credits.",
@@ -76,6 +78,8 @@ export const manifest = {
     topUpUrl: "https://dashboard.heroku.com/account/billing",
   },
   statusFeed,
+  // CI jobs as one-off dynos, each on a throwaway app. See ci-executor.ts.
+  ciExecutor: HEROKU_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostFetchRange,
   CostFetchResult,
   CostRow,
@@ -26,6 +32,13 @@ import {
 } from "@infrawrench/plugin-base";
 import type { NorthflankContext, Query } from "./api.js";
 import { nfFetch, nfList, statusOf } from "./api.js";
+import {
+  northflankCiListTagged,
+  northflankCiPreflight,
+  northflankCiStart,
+  northflankCiStatus,
+  northflankCiTeardown,
+} from "./ci-executor.js";
 import { fetchDailyUsage, fetchNorthflankCostData } from "./cost-data.js";
 import type { FanOut } from "./fan-out.js";
 import { fanOutWindow, readPerParent, reportUnreadParents } from "./fan-out.js";
@@ -147,6 +160,28 @@ export class NorthflankClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+  }
+
+  // ── CI jobs (a manual job run per CI job; see ci-executor.ts) ─────────
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => northflankCiPreflight(this.ctx, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => northflankCiStart(this.ctx, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => northflankCiStatus(this.ctx, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => northflankCiTeardown(this.ctx, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => northflankCiListTagged(this.ctx, tagKey));
   }
 
   private cached<V>(key: string, load: () => Promise<V>): Promise<V> {

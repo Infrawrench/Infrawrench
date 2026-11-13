@@ -8,6 +8,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RailwayApi } from "./api.js";
+import { RAILWAY_CI_EXECUTOR } from "./ci-executor.js";
 import { RailwayClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
@@ -71,6 +72,8 @@ export const manifest = {
   statusFeed,
   // "Connect with Railway". Pasted account and workspace tokens keep working.
   oauth: railwayOAuth,
+  // CI jobs as one-off deployments, each in a throwaway project. See ci-executor.ts.
+  ciExecutor: RAILWAY_CI_EXECUTOR,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

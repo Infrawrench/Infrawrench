@@ -23188,5 +23188,11 @@
   "4b37a3a8a263e631": "Weisen Sie den Anmeldedaten die Mitgliedsrolle im Projekt zu",
   "f7869c64ce902b34": "Erstellen Sie im Projekt ein API-Token mit Read & Write",
   "5593dd92988f9fcc": "Erstellen Sie ein Token mit Lese- und Schreibzugriff auf Linodes",
-  "ac835c2ee2f47708": "Erstellen Sie ein Token mit diesen Scopes"
+  "ac835c2ee2f47708": "Erstellen Sie ein Token mit diesen Scopes",
+  "47a6ed2db0156a4d": "Einmaliger Dyno in einer Wegwerf-App",
+  "0836914ff2f58959": "Verwenden Sie den API-Schlüssel eines verifizierten Kontos mit dem Scope „global“",
+  "d2174349bfa83fe3": "Northflank-Jobausführung",
+  "0fc574243b970932": "Geben Sie der API-Rolle des Tokens Create, Run, Update und Delete für Jobs und Projekte",
+  "dbc781c5dd14fb60": "Einmaliges Deployment in einem Wegwerf-Projekt",
+  "e6264d4999d06424": "Verwenden Sie ein Konto- oder Workspace-Token eines Workspace-Mitglieds, das Projekte erstellen darf"
 }

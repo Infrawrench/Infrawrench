@@ -23189,5 +23189,11 @@
   "4b37a3a8a263e631": "Attribuez à l'identifiant le rôle de membre sur le projet",
   "f7869c64ce902b34": "Créez un jeton d'API Read & Write dans le projet",
   "5593dd92988f9fcc": "Créez un jeton avec lecture et écriture sur Linodes",
-  "ac835c2ee2f47708": "Créez un jeton avec ces portées"
+  "ac835c2ee2f47708": "Créez un jeton avec ces portées",
+  "47a6ed2db0156a4d": "Dyno ponctuel sur une app jetable",
+  "0836914ff2f58959": "Utilisez la clé d'API d'un compte vérifié avec la portée global",
+  "d2174349bfa83fe3": "Exécution de job Northflank",
+  "0fc574243b970932": "Accordez au rôle d'API du jeton Create, Run, Update et Delete sur les jobs et les projets",
+  "dbc781c5dd14fb60": "Déploiement ponctuel dans un projet jetable",
+  "e6264d4999d06424": "Utilisez un jeton de compte ou d'espace de travail d'un membre autorisé à créer des projets"
 }

@@ -61,3 +61,7 @@ If your plan includes minutes or storage, the [quota radar](../features/quota-ra
 ## Status
 
 Incidents from [status.depot.dev](https://status.depot.dev) appear on the account through [provider status](../features/provider-status.md). Incidents on a builder region are matched to the projects in that region.
+
+## CI jobs
+
+Depot isn't offered for [CI](../features/ci.md) cloud jobs. A Depot build is driven by a BuildKit client that stays connected for the whole build and reports its health every few minutes, and Depot removes the builder once it stops; Infrawrench starts a job and checks on it later, so nothing would keep the build alive.

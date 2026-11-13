@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostFetchRange,
   CostRow,
   CreateFieldConfig,
@@ -27,6 +33,14 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { RailwayApi, allNodes, asConn, nodes } from "./api.js";
+import {
+  railwayCiListTagged,
+  railwayCiPreflight,
+  railwayCiStart,
+  railwayCiStatus,
+  railwayCiTeardown,
+  type RailwayCiContext,
+} from "./ci-executor.js";
 import { fetchEstimatedBill, fetchRailwayCostData, type NameMaps } from "./cost-data.js";
 import { cached, externalOf, isStatus, mapLimit, parseFormArg, str, type Cached } from "./kit.js";
 import { fetchRailwayLogs } from "./logs.js";
@@ -170,6 +184,32 @@ export class RailwayClient implements PluginClient {
     this.oauth = isRailwayOAuth(credentials);
     this.api = new RailwayApi(token, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
+  }
+
+  // ── CI jobs (a one-off deployment in a throwaway project; see ci-executor.ts)
+
+  private get ci(): RailwayCiContext {
+    return { api: this.api, workspaceId: this.workspaceId, oauth: this.oauth };
+  }
+
+  ciPreflight(kind: CiExecutorKind, _region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => railwayCiPreflight(this.ci, kind));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => railwayCiStart(this.ci, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => railwayCiStatus(this.ci, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => railwayCiTeardown(this.ci, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => railwayCiListTagged(this.ci, tagKey));
   }
 
   // ── Discovery ────────────────────────────────────────────────────────

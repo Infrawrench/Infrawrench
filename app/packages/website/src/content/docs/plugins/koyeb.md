@@ -52,3 +52,4 @@ In the Koyeb control panel, go to **Settings > API > Create API access token**. 
 - **Set Instances** sets a fixed instance count. To change autoscaling, edit min and max instances instead.
 - Organizations on the free Hobby plan have no invoice, so no costs show for them.
 - Koyeb marks its invoice API as experimental.
+- Koyeb isn't offered for [CI](../features/ci.md) cloud jobs. Its services have no restart policy, no state for a container that has finished and no exit code, so a job's container can't be run once to its end; Koyeb starts a failed instance again.
