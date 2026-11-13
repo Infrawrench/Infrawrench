@@ -23170,9 +23170,9 @@
   "61ac67d047a62316": "Instancia de GPU bajo demanda",
   "e92c65b4959c198c": "Asigne a la identidad de la clave de API el rol Workspace Member",
   "1ddda4402d919609": "Instancia (contenedor con GPU)",
-  "9455d88ac12cf270": "Cree una clave de API de Vast.ai con lectura y escritura de instancias",
   "3d232e11a2731788": "Máquina de Paperspace",
   "cb3fc66344bb18f8": "Cree una clave de API de Paperspace en el equipo",
   "9cf4f4ca976a4d2e": "VM de Crusoe",
-  "07ea07abe3244852": "Asigne al usuario de la clave el rol Editor en el proyecto"
+  "07ea07abe3244852": "Asigne al usuario de la clave el rol Editor en el proyecto",
+  "dbdd14ce9dae5116": "Cree una clave de API de Vast.ai con lectura y escritura de instancias, y lectura de usuario"
 }

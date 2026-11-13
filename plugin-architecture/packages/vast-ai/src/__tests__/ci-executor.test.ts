@@ -131,6 +131,7 @@ describe("Vast.ai CI executor", () => {
   it("rents the cheapest fitting offer, moving on when one is taken", async () => {
     const { api, sent } = vast([
       ["GET /api/v1/instances/", () => page([])],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: {} })],
       [
         "POST /api/v0/bundles/",
         () => ({ offers: [offer({ cpu_ram: 1000 }), offer({ id: 502 }), offer({ id: 503 })] }),
@@ -166,6 +167,7 @@ describe("Vast.ai CI executor", () => {
     let searches = 0;
     const { api } = vast([
       ["GET /api/v1/instances/", () => page([])],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: {} })],
       [
         "POST /api/v0/bundles/",
         () => ({ offers: searches++ === 0 ? [] : [offer({ gpu_name: "H100 SXM", num_gpus: 8 })] }),
@@ -179,6 +181,7 @@ describe("Vast.ai CI executor", () => {
   it("says so when nothing fits", async () => {
     const { api } = vast([
       ["GET /api/v1/instances/", () => page([])],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: {} })],
       ["POST /api/v0/bundles/", () => ({ offers: [] })],
     ]);
     await expect(vastCiStart(api, { ...spec, gpu: "B200:8" })).rejects.toThrow(
@@ -247,6 +250,7 @@ describe("Vast.ai CI executor", () => {
       ["GET /api/v1/instances/", () => page([])],
       ["DELETE /api/v0/instances/0/", () => new FakeHttpReply(403, { msg: "forbidden" })],
       ["GET /api/v0/users/current/", () => ({ credit: 0 })],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: {} })],
     ]);
     const result = await vastCiPreflight(api, "container");
     expect(result.ok).toBe(false);
@@ -263,11 +267,69 @@ describe("Vast.ai CI executor", () => {
         () => new FakeHttpReply(404, { success: false, error: "not_found" }),
       ],
       ["GET /api/v0/users/current/", () => ({ credit: 12.5 })],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: {} })],
     ]);
     expect(await vastCiPreflight(api, "container")).toEqual({
       ok: true,
       missing: [],
       problems: [],
     });
+  });
+
+  it("blocks the opt-in while the account has environment variables, naming only their names", async () => {
+    const { api } = vast([
+      ["GET /api/v1/instances/", () => page([])],
+      [
+        "DELETE /api/v0/instances/0/",
+        () => new FakeHttpReply(404, { success: false, error: "not_found" }),
+      ],
+      ["GET /api/v0/users/current/", () => ({ credit: 12.5 })],
+      [
+        "GET /api/v0/secrets/",
+        () => ({ success: true, secrets: { HF_TOKEN: "hf_value_1", AWS_SECRET: "aws_value_2" } }),
+      ],
+    ]);
+    const result = await vastCiPreflight(api, "container");
+    expect(result.ok).toBe(false);
+    expect(result.missing).toEqual([]);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toContain("`AWS_SECRET`, `HF_TOKEN`");
+    expect(result.problems[0]).toContain("separate Vast.ai account for CI");
+    expect(JSON.stringify(result)).not.toMatch(/hf_value_1|aws_value_2/);
+  });
+
+  it("names user_read when the key cannot see the account's environment variables", async () => {
+    const { api } = vast([
+      ["GET /api/v1/instances/", () => page([])],
+      [
+        "DELETE /api/v0/instances/0/",
+        () => new FakeHttpReply(404, { success: false, error: "not_found" }),
+      ],
+      ["GET /api/v0/users/current/", () => new FakeHttpReply(403, { msg: "forbidden" })],
+      ["GET /api/v0/secrets/", () => new FakeHttpReply(403, { msg: "forbidden" })],
+    ]);
+    const result = await vastCiPreflight(api, "container");
+    expect(result.ok).toBe(false);
+    expect(result.missing.map((m) => m.permission)).toEqual(["user_read"]);
+  });
+
+  it("refuses to start once the account has gained environment variables", async () => {
+    const { api, sent } = vast([
+      ["GET /api/v1/instances/", () => page([])],
+      ["GET /api/v0/secrets/", () => ({ success: true, secrets: { DB_PASSWORD: "pw_value_3" } })],
+    ]);
+    const start = vastCiStart(api, spec);
+    await expect(start).rejects.toThrow("environment variables (`DB_PASSWORD`)");
+    await expect(start).rejects.not.toThrow("pw_value_3");
+    expect(sent.some((c) => c.method === "POST" || c.method === "PUT")).toBe(false);
+  });
+
+  it("refuses to start when it cannot check the environment variables", async () => {
+    const { api, sent } = vast([
+      ["GET /api/v1/instances/", () => page([])],
+      ["GET /api/v0/secrets/", () => new FakeHttpReply(403, { msg: "forbidden" })],
+    ]);
+    await expect(vastCiStart(api, spec)).rejects.toThrow("did not start the job");
+    expect(sent.some((c) => c.method === "PUT")).toBe(false);
   });
 });

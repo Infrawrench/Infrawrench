@@ -39,8 +39,16 @@
  * stop, or destroy that specific instance". The instance's command keeps it
  * out of the job's environment and uses it to destroy its own instance when
  * the job ends or its time is up (a job running as root can still read it
- * from `/proc/1/environ`). Account-level environment variables set in the
- * Vast console are injected into every instance, this one included.
+ * from `/proc/1/environ`).
+ *
+ * **Account environment variables.** Vast "automatically injects" the
+ * account's environment variables (`GET /api/v0/secrets/`, `{success,
+ * secrets: {name: value}}`, readable with `user_read`) into every container,
+ * and they are typically secrets, so a job would get credentials nobody lent
+ * it. Preflight reports any by name (never by value) and so blocks the
+ * opt-in, and every start checks again before renting, since the account can
+ * change after it. A key that cannot read them fails both: without the list
+ * there is no telling the job would get nothing.
  *
  * **Backstop.** Vast has no time limit for an instance, so the job runs under
  * `ciContainerCommand`'s watchdog and the instance destroys itself
@@ -109,12 +117,16 @@ export const VAST_CI_EXECUTOR = {
     },
   ],
   helpLink: {
-    label: "Create a Vast.ai API key with instance read and write",
+    label: "Create a Vast.ai API key with instance read and write, and user read",
     url: "https://cloud.vast.ai/manage-keys/",
   },
 } as const satisfies CiExecutorDeclaration;
 
 export const CI_PERMISSIONS = {
+  account: {
+    permission: "user_read",
+    label: "Check the account has no environment variables a job would get",
+  },
   read: { permission: "instance_read", label: "Follow the job's instance and find leftovers" },
   write: {
     permission: "instance_write",
@@ -311,6 +323,25 @@ function isGone(err: unknown): boolean {
   return typeof body === "string" && /not[_ ]found|no_such_instance/i.test(body);
 }
 
+/** The names of the account's environment variables, which Vast puts in every instance. */
+export async function accountEnvNames(api: VastApi): Promise<string[]> {
+  const res = await api.get("/api/v0/secrets/");
+  const secrets = res?.secrets;
+  if (secrets === undefined || secrets === null) return [];
+  if (typeof secrets !== "object" || Array.isArray(secrets)) {
+    throw new Error("Vast.ai answered the environment variable list with something else");
+  }
+  return Object.keys(secrets).sort();
+}
+
+/** Why a job may not run on this account while it has environment variables. Names only. */
+export function accountEnvProblem(names: readonly string[]): string {
+  const shown = names.slice(0, 10).map((n) => `\`${n}\``);
+  const list =
+    names.length > 10 ? `${shown.join(", ")} and ${names.length - 10} more` : shown.join(", ");
+  return `This Vast.ai account has environment variables (${list}), and Vast copies them into every instance, so a CI job would get them. Remove them under Account, Environment Variables, or connect a separate Vast.ai account for CI.`;
+}
+
 export async function vastCiPreflight(
   api: VastApi,
   kind: CiExecutorKind,
@@ -341,7 +372,18 @@ export async function vastCiPreflight(
       );
     }
   } catch {
-    // A key without user_read cannot see its credit: no reason to refuse.
+    // The variables check below names user_read when the key lacks it.
+  }
+  try {
+    const names = await accountEnvNames(api);
+    if (names.length > 0) problems.push(accountEnvProblem(names));
+  } catch (err) {
+    if (denied(err)) missing.push(CI_PERMISSIONS.account);
+    else {
+      problems.push(
+        `Infrawrench could not check this Vast.ai account's environment variables, which Vast copies into every instance: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
   return {
     ok: missing.length === 0 && problems.length === 0,
@@ -364,6 +406,17 @@ export async function vastCiStart(api: VastApi, spec: CiStartSpec): Promise<CiHa
       (job === undefined || tagsOfInstance(i)?.[CI_JOB_TAG] === job),
   );
   if (found?.id !== undefined) return handleOf(found.id);
+  // The account can have gained environment variables since it was opted in.
+  let envNames: string[];
+  try {
+    envNames = await accountEnvNames(api);
+  } catch (err) {
+    throw new Error(
+      `Infrawrench could not check this Vast.ai account's environment variables, which Vast copies into every instance, so it did not start the job: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+  if (envNames.length > 0) throw new Error(accountEnvProblem(envNames));
   const needs = offerNeeds(spec);
   const offers = await findOffers(api, needs);
   if (offers.length === 0) {

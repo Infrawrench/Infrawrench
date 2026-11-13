@@ -4020,7 +4020,7 @@ export const PLUGIN_STRINGS: readonly string[] = [
   msg("Create a temporary environment for every pull request."),
   msg("Create a token in the UpCloud Control Panel under Account, API Tokens (it is shown once and lasts up to 365 days). Leave empty to sign in with an API user below instead."),
   msg("Create a token with these scopes"),
-  msg("Create a Vast.ai API key with instance read and write"),
+  msg("Create a Vast.ai API key with instance read and write, and user read"),
   msg("Create an access policy"),
   msg("Create an access token"),
   msg("Create an AccessKey"),

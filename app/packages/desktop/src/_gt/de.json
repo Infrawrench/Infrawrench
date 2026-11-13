@@ -23168,9 +23168,9 @@
   "61ac67d047a62316": "On-Demand-GPU-Instanz",
   "e92c65b4959c198c": "Geben Sie der Identität des API-Schlüssels die Rolle Workspace Member",
   "1ddda4402d919609": "Instanz (GPU-Container)",
-  "9455d88ac12cf270": "Erstellen Sie einen Vast.ai-API-Schlüssel mit Lese- und Schreibzugriff auf Instanzen",
   "3d232e11a2731788": "Paperspace-Maschine",
   "cb3fc66344bb18f8": "Erstellen Sie im Team einen Paperspace-API-Schlüssel",
   "9cf4f4ca976a4d2e": "Crusoe-VM",
-  "07ea07abe3244852": "Geben Sie dem Benutzer des Schlüssels die Rolle Editor für das Projekt"
+  "07ea07abe3244852": "Geben Sie dem Benutzer des Schlüssels die Rolle Editor für das Projekt",
+  "dbdd14ce9dae5116": "Erstellen Sie einen Vast.ai-API-Schlüssel mit Lese- und Schreibzugriff auf Instanzen und Lesezugriff auf das Benutzerkonto"
 }

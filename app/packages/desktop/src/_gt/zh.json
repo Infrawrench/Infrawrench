@@ -23154,9 +23154,9 @@
   "61ac67d047a62316": "按需 GPU 实例",
   "e92c65b4959c198c": "为 API 密钥的身份授予 Workspace Member 角色",
   "1ddda4402d919609": "实例（GPU 容器）",
-  "9455d88ac12cf270": "创建具有实例读写权限的 Vast.ai API 密钥",
   "3d232e11a2731788": "Paperspace 机器",
   "cb3fc66344bb18f8": "在团队中创建 Paperspace API 密钥",
   "9cf4f4ca976a4d2e": "Crusoe 虚拟机",
-  "07ea07abe3244852": "为密钥的用户授予该项目的 Editor 角色"
+  "07ea07abe3244852": "为密钥的用户授予该项目的 Editor 角色",
+  "dbdd14ce9dae5116": "创建具有实例读写权限和用户读取权限的 Vast.ai API 密钥"
 }
