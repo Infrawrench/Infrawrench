@@ -36,13 +36,13 @@
 # - ClickHouse database tests: server-core's tests against a real ClickHouse
 #   (`env:clickhouse`, ClickHouse 26.11) as a service, and the mocked
 #   ClickHouse suites shadow-run against it.
+# - Postgres database tests: server-core's tests against `env:postgres`
+#   (pglite-server, PostgreSQL 18.4) after migrating it, and the mocked
+#   Postgres suites shadow-run against it.
 # - Editor extensions (once .github/workflows/editor-extensions.yml): the
 #   VS Code extension's .vsix and the Raycast extension's tarball, kept as
 #   the run's downloads.
-#
-# Still on GitHub Actions only (.github/workflows/test.yml):
-# - Database tests, until their Postgres half runs here too: the job there
-#   runs both halves against PostgreSQL 16 and ClickHouse 24.8.
+
 name: Test
 
 on:
@@ -355,12 +355,12 @@ jobs:
     memory: 3GiB
     timeout: 20m
 
-  # The ClickHouse half of test.yml's `db-tests`: `test:db`'s ClickHouse
-  # files (DDL from migrateMetrics, inserts, the materialized-view rollups,
-  # the cost and network-flow SQL) and `test:clickhouse:shadow` (every
-  # statement the mocked suites capture, also run against the server).
-  # ClickHouse 26.11 is newer than the 24.8 GitHub Actions runs, so this is
-  # also where a release's changed defaults show up first (#1114, #1116).
+  # `test:db`'s ClickHouse files (DDL from migrateMetrics, inserts, the
+  # materialized-view rollups, the cost and network-flow SQL) and
+  # `test:clickhouse:shadow` (every statement the mocked suites capture, also
+  # run against the server). ClickHouse 26.11 is newer than production's
+  # 26.3, so this is also where a release's changed defaults show up first
+  # (#1114, #1116).
   clickhouse-db:
     name: ClickHouse tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
@@ -387,6 +387,40 @@ jobs:
       root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
     memory: 6GiB
     timeout: 20m
+
+  # The Postgres integration suites against `env:postgres` (pglite-server,
+  # PostgreSQL 18.4; production runs 18.6), migrated first. It runs the whole
+  # `vitest.db.config.ts`, so a new file in src/__tests__/db/ is picked up;
+  # the ClickHouse files there skip themselves without CLICKHOUSE_METRICS_*,
+  # and `clickhouse-db` runs them. pglite-server has one backend: transactions
+  # run one at a time, row locks never contend, and pgcrypto is partial
+  # (README, "PostgreSQL"). A test of real lock contention needs a real server.
+  postgres-db:
+    name: Postgres tests ${{ package.name }}
+    packages: { only: [app/packages/server-core] }
+    needs: [prep, "^bundle"]
+    using: env:bash-node@24.0.15
+    services:
+      postgres:
+        using: env:postgres@18.4.2
+        run: pglite-server
+        ready: { port: 5432 }
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
+    run: |
+      (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
+      node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts
+      node node_modules/vitest/vitest.mjs run --config vitest.shadow-postgres.config.ts
+    task-cache:
+      root-inputs:
+        - tsconfig.base.json
+        - .infrawrench/ci/node-preload.cjs
+        - .infrawrench/ci/stubs/**
+        - app/packages/web/drizzle.config.ts
+        - app/packages/web/src/db/migrations/**
+    memory: 6GiB
+    timeout: 30m
 
   # The editor extensions, packaged for people to install by hand or submit
   # (KNOWLEDGE.md, "Editor extensions"): the VS Code extension's .vsix and
