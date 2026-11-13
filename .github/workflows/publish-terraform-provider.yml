@@ -104,10 +104,10 @@ jobs:
           go-version-file: terraform-provider-infrawrench/go.mod
           cache-dependency-path: terraform-provider-infrawrench/go.sum
 
-      # Verify before mirroring. terraform-provider.yml runs on the same push,
-      # but nothing guarantees it finished — and shipping a version whose tests
-      # were never run against these exact bytes is the failure this exists to
-      # prevent.
+      # Verify before mirroring. Infrawrench CI runs the same checks on the same
+      # push (.infrawrench/ci/terraform-provider.yml), but nothing guarantees it
+      # finished, and shipping a version whose tests were never run against
+      # these exact bytes is the failure this exists to prevent.
       - name: Verify
         working-directory: terraform-provider-infrawrench
         run: |

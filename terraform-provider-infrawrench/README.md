@@ -870,8 +870,11 @@ is a version number somebody already paid for.
 ## Repository notes
 
 - This module is **not** in the pnpm workspace or `turbo.json`. It is a Go
-  module with its own toolchain and its own test command, and
-  `.github/workflows/terraform-provider.yml` is its CI.
+  module with its own toolchain and its own test command. Its CI is a pipeline
+  of its own on Infrawrench CI, `.infrawrench/ci/terraform-provider.yml`
+  (gofmt, build and test), plus `.github/workflows/terraform-provider.yml` on
+  GitHub Actions for the two checks that need native tools: `go vet`, and that
+  `docs/` matches what tfplugindocs generates with a real Terraform.
 - It is **not** added to `cliff.toml`'s `include_paths`. That list scopes the
   desktop changelog to the desktop app and the workspace packages it
   transitively depends on; a standalone Go module is outside that closure, and

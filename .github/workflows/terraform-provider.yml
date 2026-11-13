@@ -1,7 +1,16 @@
-name: Terraform provider
+name: Terraform provider (native)
 
-# The provider is a standalone Go module outside the pnpm workspace, so nothing
-# in Test.yml reaches it. This is its whole CI.
+# The provider's gofmt, build and tests run on Infrawrench CI
+# (.infrawrench/ci/terraform-provider.yml). These two checks are left here
+# because neither runs in a WebAssembly job yet:
+# - go vet: vet compiled for WebAssembly traps in its errorsas and hostport
+#   analyzers on this module's packages (an upstream Go bug: go.dev's own
+#   toolchain does the same under wasmtime), and a `go` process there can
+#   start only 511 children (#1082), fewer than `go vet ./...` needs.
+# - The docs check: tfplugindocs reads the schema by running a real
+#   Terraform, which loads the provider through go-plugin over a Unix domain
+#   socket, and a WASIX job has no Unix domain sockets (nor a Terraform built
+#   for WebAssembly).
 #
 # The two path lists are duplicated because GitHub Actions does not support YAML
 # anchors in workflow files. Keep them in step.
@@ -11,26 +20,19 @@ on:
     paths:
       - "terraform-provider-infrawrench/**"
       - ".github/workflows/terraform-provider.yml"
-      # The wire drift test reads the checked-in spec and fails when a schema
-      # property is neither decoded nor excused. A spec regeneration that adds a
-      # property is therefore a change that can break this module without
-      # touching a single file in it — which is exactly the case the test exists
-      # to catch, and exactly the case a folder-only filter would let through.
-      - "app/packages/web/openapi.json"
   pull_request:
     branches: [main]
     paths:
       - "terraform-provider-infrawrench/**"
       - ".github/workflows/terraform-provider.yml"
-      - "app/packages/web/openapi.json"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  go:
-    name: Build, vet and test
+  native:
+    name: Vet and docs
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     defaults:
@@ -46,29 +48,14 @@ jobs:
           go-version-file: terraform-provider-infrawrench/go.mod
           cache-dependency-path: terraform-provider-infrawrench/go.sum
 
-      # gofmt first: it is the cheapest check and the one most likely to fail,
-      # and `gofmt -l` exits 0 whatever it finds, so the file list has to be
-      # turned into the failure itself.
-      - name: gofmt
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "These files are not gofmt'd:"
-            echo "$unformatted"
-            echo
-            echo "Run: cd terraform-provider-infrawrench && gofmt -w ."
-            exit 1
-          fi
-
-      - name: go build
-        run: go build ./...
-
+      # Every analyzer, as on a laptop. Infrawrench CI's `go test` runs with
+      # -vet=off, so this is the module's only vet.
       - name: go vet
         run: go vet ./...
 
       # The Registry renders `docs/` from the release tag and nothing else. A
       # schema change that never reached the generated pages ships a provider
-      # whose documentation describes the previous version — silently, because
+      # whose documentation describes the previous version, silently, because
       # the docs still exist and still look right.
       #
       # tfplugindocs drives a real Terraform to read the served schema, so it
@@ -87,10 +74,3 @@ jobs:
             git diff --stat -- docs
             exit 1
           fi
-
-      # Acceptance tests are skipped without TF_ACC, which is deliberate: they
-      # create and destroy real objects in a real organization. `-count=1`
-      # defeats Go's test cache so a green run always means the tests actually
-      # ran against this commit.
-      - name: go test
-        run: go test ./... -count=1

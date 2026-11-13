@@ -1293,6 +1293,13 @@ What to know:
   thread, and the go command waits for each compile before it starts the
   next, so a build uses one CPU.
 - Each process has at most 4 GiB of memory (wasm32).
+- **`go vet` can trap** ("out of bounds memory access" in
+  `runtime.mapaccess2`) in its `errorsas` and `hostport` analyzers on some
+  packages. That is upstream Go's WebAssembly port: go.dev's own `vet` built
+  for `wasip1` does the same under wasmtime. Turning both off gets past it:
+  `go vet -errorsas=false -hostport=false`. On a module with a few hundred
+  dependencies `go vet ./...` also needs more children than a process can
+  start ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
 
 ### Rust
 
