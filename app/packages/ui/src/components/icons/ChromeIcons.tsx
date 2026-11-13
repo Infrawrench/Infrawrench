@@ -171,6 +171,16 @@ export function CloseIcon(props: ChromeIconProps) {
   );
 }
 
+/** A search field's leading icon (Lucide `search`). */
+export function SearchIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </StrokeIcon>
+  );
+}
+
 /** Duplicate or copy (Lucide `copy`). */
 export function CopyIcon(props: ChromeIconProps) {
   return (
