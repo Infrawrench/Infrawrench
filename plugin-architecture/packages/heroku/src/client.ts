@@ -2,6 +2,12 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
   CostFetchRange,
   CostRow,
   CreateFieldConfig,
@@ -24,6 +30,14 @@ import {
   rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
 import { HerokuApi } from "./api.js";
+import {
+  herokuCiListTagged,
+  herokuCiPreflight,
+  herokuCiStart,
+  herokuCiStatus,
+  herokuCiTeardown,
+  type HerokuCiContext,
+} from "./ci-executor.js";
 import { fetchHerokuCostData } from "./cost-data.js";
 import {
   cached,
@@ -97,6 +111,7 @@ export class HerokuClient implements PluginClient {
   private appsCache: Cached<HkApp[]> | undefined;
   private addonsCache: Cached<HkAddon[]> | undefined;
   private teamsCache: Cached<HkTeam[]> | undefined;
+  private readonly ci: HerokuCiContext;
 
   constructor(
     credentials: Credentials,
@@ -108,6 +123,29 @@ export class HerokuClient implements PluginClient {
     this.team = str(credentials["team"]);
     this.api = new HerokuApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
+    this.ci = { api: this.api, team: this.team, services };
+  }
+
+  // ── CI jobs (one-off dynos on throwaway apps; see ci-executor.ts) ────
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => herokuCiPreflight(this.ci, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => herokuCiStart(this.ci, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => herokuCiStatus(this.ci, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => herokuCiTeardown(this.ci, handle));
+  }
+
+  ciListTagged(tagKey: string, _regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => herokuCiListTagged(this.ci, tagKey));
   }
 
   // ── Discovery ────────────────────────────────────────────────────────

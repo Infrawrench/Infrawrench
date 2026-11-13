@@ -56,3 +56,4 @@ sidebar_order: 21
 - Creating a service needs a repository Render's connected Git provider can read, or a public image. Private registries need a registry credential set up in the Render dashboard.
 - Disks can only grow, and a resize applies while the service is running.
 - Environment variable values are fetched when you need them and never stored with the resource.
+- Render isn't offered for [CI](../features/ci.md) cloud jobs. A one-off job runs on an existing service's build with all of that service's environment variables, so it can't run a job's own image without handing it your secrets; a cron job made per CI job may carry Render's $1 monthly minimum for each one.

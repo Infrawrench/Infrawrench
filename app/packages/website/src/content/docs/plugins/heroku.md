@@ -50,6 +50,20 @@ Connect Heroku to scale and roll back apps, manage config vars, add-ons, domains
 - **Savings**: an add-on that isn't attached to any app is listed as an orphan.
 - **Export to Terraform** writes `heroku_app`, `heroku_formation`, `heroku_addon`, `heroku_domain`, `heroku_pipeline`, `heroku_pipeline_coupling`, `heroku_space` and `heroku_drain` blocks for the official `heroku/heroku` provider, each with its import id. Config vars and certificates aren't included.
 
+## Run CI jobs
+
+A Heroku connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each `container` job gets an app of its own, named `iwci-` and 25 more characters, in the job's `cloud.region` (`us` or `eu`, `us` when it names none, or the connection's team when it is limited to one). Infrawrench puts a slug holding only the job's script on it and runs that as one detached one-off dyno; when the job ends it deletes the app, and the slug, release and dyno go with it.
+
+| `cloud.kind` | Runs on                       | Default `machine` | Default `image` |
+| ------------ | ----------------------------- | ----------------- | --------------- |
+| `container`  | A one-off dyno on its own app | `standard-1X`     | `heroku-24`     |
+
+`machine` is a dyno size as Heroku names it (`basic`, `standard-1X`, `standard-2X`, `performance-M`, `performance-L` and up); Performance dynos need an account with a payment history. `image` is the stack (`heroku-24` or `heroku-26`): a dyno runs on Heroku's stack image rather than a container image of your choosing, and has `bash`, `curl`, `tar` and `gzip`. It runs as a non-root user, and the job's checkout and files live in its ephemeral file system. Dynos have no GPUs.
+
+The app's only config var is `INFRAWRENCH_CI_TAGS`, the job's tags, which is how Infrawrench finds its apps again; nothing secret is set, no add-on is attached, and a dyno gets no Heroku credential. The dyno's `time_to_live` is the job's time limit, so Heroku stops it then even if Infrawrench can't. Dyno time is billed by the second at the size's rate, and the app counts toward Heroku's 100 apps per account (or per team) while the job runs.
+
+Heroku has no call that says what an API key may do, so opting the connection in checks that the account is verified (Heroku only lets verified accounts create apps and run dynos) and that the key can list apps. Use the account's API key, or a token from `heroku authorizations:create` with no `--scope`; a key made with a read scope passes the check and fails when a job starts.
+
 ## Tips and limits
 
 - Heroku allows 4,500 API requests an hour per user. Infrawrench leaves 1,000 of them for your own tools, so on an account with many apps each sync reads process types, dynos, releases, config vars, domains, certificates, log drains, pipeline stages and review apps for as many apps and pipelines as fit, starting somewhere different each time. The rest keep their last values until their turn comes. The desktop app reads them all each time.

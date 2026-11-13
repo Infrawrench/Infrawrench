@@ -45,6 +45,22 @@ The Costs page shows daily Northflank spend split by **project** and by CPU, mem
 
 Incidents on [status.northflank.com](https://status.northflank.com) show on your Northflank resources: an Addons incident on addons, a Builds incident on services and jobs, and an API, app or networking incident on everything.
 
+## Run CI jobs
+
+A Northflank connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each `container` job is a manual job named `iwci-` and 32 more characters, run once in a project named `infrawrench-ci-<region>` that Infrawrench makes the first time a job runs in that region and keeps. When the job ends, Infrawrench aborts the run if it's still going and deletes the job.
+
+| `cloud.kind` | Runs on              | Default `machine` | Default `image`             | Default `region` |
+| ------------ | -------------------- | ----------------- | --------------------------- | ---------------- |
+| `container`  | A Northflank job run | `nf-compute-200`  | `buildpack-deps:noble-curl` | `europe-west`    |
+
+`machine` is a Northflank compute plan, such as `nf-compute-100-2`, `nf-compute-200`, `nf-compute-400-16` or `nf-compute-800-16`. `region` is a Northflank region such as `us-central` or `europe-west-netherlands`; teams that only deploy to their own cloud (BYOC) aren't supported yet. The image needs `sh` and `base64`: the job's script reaches the container as a runtime file, encoded so Northflank's `${...}` templating leaves it alone. Jobs here have no GPUs.
+
+The job's `activeDeadlineSeconds` is its time limit, so Northflank fails the run then even if Infrawrench can't. A job gets no Northflank token and no runtime variables; its tags are kept in its description, which is how Infrawrench finds its jobs again. Jobs are billed by the second at the plan's rate.
+
+Northflank doesn't publish the permission names an API role carries, so opting the connection in checks that the token can read projects, that an organisation token has a team picked, and that its role isn't restricted to some projects. Give the token's API role, under Project: **Projects** Create and Read, and **Jobs** Create, Read, Run Job, Update and Delete.
+
+Northflank builds aren't offered as a `build` kind. A build runs your commands as `RUN` steps of a Dockerfile, where there's no Docker daemon to build or push with, and it needs its source from a linked repository or an archive URL. Run Docker builds as a job on a provider that offers `build` or `vm`.
+
 ## Tips and limits
 
 - Northflank allows 1000 API requests per hour per account by default (ask Northflank support for more). Infrawrench keeps well inside that, even for a large team, by loading details such as builds, deployments, ports and backups only when you open a resource.

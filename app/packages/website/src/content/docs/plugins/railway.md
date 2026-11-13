@@ -58,6 +58,20 @@ Billing data (usage, credits and usage limits) is only visible to workspace admi
 - **Expiry**: custom domain certificates show their expiry on the expiry radar.
 - **Savings**: a volume no service mounts is listed as an orphan, since you still pay for its storage.
 
+## Run CI jobs
+
+A Railway connection can run [Infrawrench CI](../features/ci.md) cloud jobs once an organization admin opts it in. Each `container` job gets a project of its own, named `iwci-` and 32 more characters, in the connection's workspace (pick one on the connection when the token reaches several). It holds one service that deploys the job's image once with the restart policy **Never**, so when the job's script ends the container stops and isn't restarted. When the job ends, Infrawrench deletes the project.
+
+| `cloud.kind` | Runs on                                 | Default `machine` | Default `image`             |
+| ------------ | --------------------------------------- | ----------------- | --------------------------- |
+| `container`  | A one-off deployment in its own project | `2vcpu-4gb`       | `buildpack-deps:noble-curl` |
+
+`machine` is the service's CPU and memory limits as `<vCPUs>vcpu-<GB>gb`, within your plan's per-service maximum. `region` is a Railway region such as `us-west2`, `us-east4-eqdc4a`, `europe-west4-drams3a` or `asia-southeast1-eqsg3a`; without one the job runs in your workspace's preferred region. The image needs `sh` and `base64`. Railway services have no GPUs.
+
+The service's only variable is the job's script; a container gets Railway's own `RAILWAY_*` names and no token. Railway has no time limit for a deployment, so the job runs under a watchdog that stops it when its time is up. Railway bills the CPU and memory the container uses, by the minute. Its tags are kept in the project's description, which is how Infrawrench finds its projects again.
+
+Railway tokens have no scopes to check, so opting the connection in reads the workspace's projects. The token's owner needs a workspace role that can create projects (Member or Admin); a workspace token can.
+
 ## Tips & limits
 
 - Railway's API allows 100 requests an hour on the Free plan, 1,000 on Hobby and 10,000 on Pro, so large Hobby workspaces update more slowly.
