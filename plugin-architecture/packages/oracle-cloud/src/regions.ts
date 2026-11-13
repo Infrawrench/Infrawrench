@@ -270,7 +270,8 @@ export type OciService =
   | "usageapi"
   | "usage"
   | "limits"
-  | "query";
+  | "query"
+  | "compute-containers";
 
 const UNDER_OCI = new Set<OciService>([
   "identity",
@@ -279,6 +280,7 @@ const UNDER_OCI = new Set<OciService>([
   "usage",
   "limits",
   "query",
+  "compute-containers",
 ]);
 
 export function serviceHost(service: OciService, region: string): string {

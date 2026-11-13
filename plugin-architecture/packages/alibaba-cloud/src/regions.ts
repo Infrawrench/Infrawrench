@@ -152,7 +152,8 @@ export type AliProduct =
   | "alidns"
   | "bss"
   | "ram"
-  | "quotas";
+  | "quotas"
+  | "eci";
 
 export const API_VERSIONS: Record<AliProduct, string> = {
   ecs: "2014-05-26",
@@ -169,6 +170,7 @@ export const API_VERSIONS: Record<AliProduct, string> = {
   bss: "2017-12-14",
   ram: "2015-05-01",
   quotas: "2020-05-10",
+  eci: "2018-08-08",
 };
 
 const PUBLIC = ALI_REGIONS.map((r) => r.id);
@@ -212,6 +214,16 @@ const PRODUCT_REGIONS: Partial<Record<AliProduct, Set<string>>> = {
   ]),
   cms: without("sa-east-1", "eu-west-3"),
   sts: without("ap-southeast-6", "us-southeast-1", "eu-west-3"),
+  // Elastic Container Instance (Eci endpoints.json, 2026-11).
+  eci: without(
+    "cn-zhongwei",
+    "ap-southeast-8",
+    "us-southeast-1",
+    "na-south-1",
+    "sa-east-1",
+    "eu-west-2",
+    "eu-west-3",
+  ),
 };
 
 export function productInRegion(product: AliProduct, region: string): boolean {

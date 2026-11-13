@@ -31,7 +31,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_project"];
         put?: never;
         post?: never;
         delete: operations["delete_project"];
@@ -79,6 +79,47 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_app"];
+        trace?: never;
+    };
+    "/projects/{project_id}/job_runs": {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["list_job_runs"];
+        put?: never;
+        post: operations["create_job_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/job_runs/{name}": {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                name: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["get_job_run"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_job_run"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -348,6 +389,153 @@ export interface components {
             /** @enum {string} */
             type: "field" | "parameter" | "header";
         };
+        IndexDetails: {
+            readonly finished_at?: string;
+            readonly last_failure_reason?: string;
+            /** Format: int64 */
+            readonly retries?: number;
+            readonly started_at?: string;
+            /** @enum {string} */
+            readonly status: "pending" | "running" | "succeeded" | "failed" | "unknown";
+        };
+        JobRun: {
+            computed_env_variables: components["schemas"]["EnvVar"][];
+            readonly created_at?: string;
+            readonly href?: string;
+            readonly id?: string;
+            image_reference?: string;
+            image_secret?: string;
+            job_name?: string;
+            name?: string;
+            readonly project_id: string;
+            readonly region?: string;
+            /** @enum {string} */
+            readonly resource_type: "job_run_v2";
+            run_arguments: string[];
+            /**
+             * Format: int64
+             * @default 0
+             */
+            run_as_user?: number;
+            run_commands: string[];
+            /** @default false */
+            run_compute_resource_token_enabled?: boolean;
+            run_env_variables: components["schemas"]["EnvVar"][];
+            /**
+             * @default task
+             * @enum {string}
+             */
+            run_mode?: "task" | "daemon";
+            /**
+             * @default default
+             * @enum {string}
+             */
+            run_service_account?: "default" | "manager" | "reader" | "writer" | "none";
+            run_volume_mounts: components["schemas"]["VolumeMount"][];
+            /** Format: int64 */
+            scale_array_size_variable_override?: number;
+            /** @default 0 */
+            scale_array_spec?: string;
+            /** @default 1 */
+            scale_cpu_limit?: string;
+            /** @default 400M */
+            scale_ephemeral_storage_limit?: string;
+            /**
+             * Format: int64
+             * @default 7200
+             */
+            scale_max_execution_time?: number;
+            /** @default 4G */
+            scale_memory_limit?: string;
+            /**
+             * Format: int64
+             * @default 3
+             */
+            scale_retry_limit?: number;
+            /** @enum {string} */
+            readonly status: "failed" | "completed" | "running" | "pending";
+            status_details?: components["schemas"]["JobRunStatus"];
+        };
+        JobRunList: {
+            first?: components["schemas"]["ListFirstMetadata"];
+            job_runs: components["schemas"]["JobRun"][];
+            /**
+             * Format: int32
+             * @default 50
+             */
+            limit: number;
+            next?: components["schemas"]["ListNextMetadata"];
+        };
+        JobRunPrototype: {
+            image_reference?: string;
+            image_secret?: string;
+            job_name?: string;
+            name?: string;
+            run_arguments?: string[];
+            /**
+             * Format: int64
+             * @default 0
+             */
+            run_as_user?: number;
+            run_commands?: string[];
+            /** @default false */
+            run_compute_resource_token_enabled?: boolean;
+            run_env_variables?: components["schemas"]["EnvVarPrototype"][];
+            /**
+             * @default task
+             * @enum {string}
+             */
+            run_mode?: "task" | "daemon";
+            /**
+             * @default default
+             * @enum {string}
+             */
+            run_service_account?: "default" | "manager" | "reader" | "writer" | "none";
+            run_volume_mounts?: components["schemas"]["VolumeMountPrototype"][];
+            /** Format: int64 */
+            scale_array_size_variable_override?: number;
+            /** @default 0 */
+            scale_array_spec?: string;
+            /** @default 1 */
+            scale_cpu_limit?: string;
+            /** @default 400M */
+            scale_ephemeral_storage_limit?: string;
+            /**
+             * Format: int64
+             * @default 7200
+             */
+            scale_max_execution_time?: number;
+            /** @default 4G */
+            scale_memory_limit?: string;
+            /**
+             * Format: int64
+             * @default 3
+             */
+            scale_retry_limit?: number;
+        };
+        JobRunStatus: {
+            readonly completion_time?: string;
+            /** Format: int32 */
+            readonly failed?: number;
+            readonly failed_indices?: string;
+            indices_details?: {
+                [key: string]: components["schemas"]["IndexDetails"];
+            };
+            /** Format: int32 */
+            readonly pending?: number;
+            readonly pending_indices?: string;
+            /** Format: int32 */
+            readonly requested?: number;
+            /** Format: int32 */
+            readonly running?: number;
+            readonly running_indices?: string;
+            readonly start_time?: string;
+            /** Format: int32 */
+            readonly succeeded?: number;
+            readonly succeeded_indices?: string;
+            /** Format: int32 */
+            readonly unknown?: number;
+        };
         ListFirstMetadata: {
             href?: string;
         };
@@ -513,6 +701,29 @@ export interface operations {
             };
         };
     };
+    get_project: {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+        };
+    };
     delete_project: {
         parameters: {
             query?: {
@@ -663,6 +874,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["App"];
                 };
+            };
+        };
+    };
+    list_job_runs: {
+        parameters: {
+            query?: {
+                job_name?: string;
+                limit?: number;
+                start?: string;
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRunList"];
+                };
+            };
+        };
+    };
+    create_job_run: {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobRunPrototype"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRun"];
+                };
+            };
+        };
+    };
+    get_job_run: {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                name: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRun"];
+                };
+            };
+        };
+    };
+    delete_job_run: {
+        parameters: {
+            query?: {
+                version?: components["parameters"]["version"];
+            };
+            header?: never;
+            path: {
+                name: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

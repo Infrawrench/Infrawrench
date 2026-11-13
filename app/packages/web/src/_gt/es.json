@@ -23369,5 +23369,14 @@
   "2a4c6b9ed65f375b": "Instale lo que le falta al host, como el usuario de la conexión",
   "1d6230589a6d0682": "Job de Kubernetes",
   "057446363226b9c1": "Job por lotes de Nomad",
-  "ab3389ba9a31b405": "VM clonada a partir de una plantilla"
+  "ab3389ba9a31b405": "VM clonada a partir de una plantilla",
+  "584a2af925fbcb25": "Instancia de OCI Compute",
+  "450e3291c73f84fb": "Instancia de contenedor de OCI",
+  "d16ed1e756eb7d9e": "Añada estas sentencias a una política del compartimento raíz",
+  "7dd90c95cc8d5476": "Servidor virtual de VPC",
+  "c4b628f414fe40f8": "Ejecución de trabajo de Code Engine",
+  "14476ebbfd84570e": "Asigne estos roles al propietario de la clave de API",
+  "6562ed75abe44f4b": "Instancia de ECS",
+  "2ffe7d973871677d": "Grupo de contenedores de ECI",
+  "cc24d50c52d5e269": "Conceda estas acciones al usuario de RAM"
 }

@@ -23148,5 +23148,14 @@
   "2a4c6b9ed65f375b": "Installez ce qui manque sur l'hôte, en tant qu'utilisateur de la connexion",
   "1d6230589a6d0682": "Job Kubernetes",
   "057446363226b9c1": "Job batch Nomad",
-  "ab3389ba9a31b405": "VM clonée à partir d'un modèle"
+  "ab3389ba9a31b405": "VM clonée à partir d'un modèle",
+  "584a2af925fbcb25": "Instance OCI Compute",
+  "450e3291c73f84fb": "Instance de conteneur OCI",
+  "d16ed1e756eb7d9e": "Ajoutez ces instructions à une stratégie du compartiment racine",
+  "7dd90c95cc8d5476": "Serveur virtuel VPC",
+  "c4b628f414fe40f8": "Exécution de job Code Engine",
+  "14476ebbfd84570e": "Attribuez ces rôles au propriétaire de la clé d'API",
+  "6562ed75abe44f4b": "Instance ECS",
+  "2ffe7d973871677d": "Groupe de conteneurs ECI",
+  "cc24d50c52d5e269": "Accordez ces actions à l'utilisateur RAM"
 }

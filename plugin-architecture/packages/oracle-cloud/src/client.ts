@@ -19,7 +19,23 @@ import type {
   StorageObject,
 } from "@infrawrench/plugin-base";
 import { externalIdOf, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import type {
+  CiComputeStatus,
+  CiExecutorKind,
+  CiHandle,
+  CiPreflightResult,
+  CiStartSpec,
+  CiTaggedCompute,
+} from "@infrawrench/plugin-base";
 import { OciApi, isAuthorizationGap } from "./api.js";
+import {
+  oracleCiListTagged,
+  oracleCiPreflight,
+  oracleCiStart,
+  oracleCiStatus,
+  oracleCiTeardown,
+} from "./ci-executor.js";
+import type { OciCiContext } from "./ci-shared.js";
 import { fetchCarbonReport, fetchCommitmentBalances, fetchServiceLimits } from "./billing.js";
 import { fetchOciCostData, monthToDateWithForecast } from "./cost-data.js";
 import { createResource, getCreateConfig, listShapes, type CreateContext } from "./create.js";
@@ -706,6 +722,33 @@ export class OracleCloudClient implements PluginClient {
       const rates = await priceRates(this.services?.http);
       return estimateFor(rates, typeId, fields);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // CI jobs (see ci-executor.ts)
+
+  private get ciContext(): OciCiContext {
+    return { api: this.api, inventory: this.inventory };
+  }
+
+  ciPreflight(kind: CiExecutorKind, region?: string): PluginEffect<CiPreflightResult> {
+    return attempt(() => oracleCiPreflight(this.ciContext, kind, region));
+  }
+
+  ciStart(spec: CiStartSpec): PluginEffect<CiHandle> {
+    return attempt(() => oracleCiStart(this.ciContext, spec));
+  }
+
+  ciStatus(handle: CiHandle): PluginEffect<CiComputeStatus> {
+    return attempt(() => oracleCiStatus(this.ciContext, handle));
+  }
+
+  ciTeardown(handle: CiHandle): PluginEffect<void> {
+    return attempt(() => oracleCiTeardown(this.ciContext, handle));
+  }
+
+  ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
+    return attempt(() => oracleCiListTagged(this.ciContext, tagKey, regions));
   }
 
   // -------------------------------------------------------------------------

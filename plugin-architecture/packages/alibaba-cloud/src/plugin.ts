@@ -9,6 +9,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AliApi } from "./api.js";
+import { ALIBABA_CI_EXECUTOR } from "./ci-executor.js";
 import { AlibabaCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { ALI_REGIONS, DEFAULT_REGION, HOME_REGION_OPTIONS, regionInfo } from "./regions.js";
@@ -86,6 +87,8 @@ export const manifest = {
     increaseUrl: "https://quotas.console.alibabacloud.com/",
     partial: true,
   },
+  // CI jobs on a fresh instance or container group per job. See ci-executor.ts.
+  ciExecutor: ALIBABA_CI_EXECUTOR,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 8 },
 } satisfies PluginManifest;

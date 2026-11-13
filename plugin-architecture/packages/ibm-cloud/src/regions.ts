@@ -84,6 +84,8 @@ export const RESOURCE_CONTROLLER = "https://resource-controller.cloud.ibm.com";
 export const CONTAINERS = "https://containers.cloud.ibm.com/global";
 export const BILLING = "https://billing.cloud.ibm.com";
 export const COS_CONFIG = "https://config.cloud-object-storage.cloud.ibm.com/v1";
+/** Global Tagging: user tags on any resource, by CRN. */
+export const TAGGING = "https://tags.global-search-tagging.cloud.ibm.com";
 
 /**
  * COS S3 endpoint for a bucket location. `LocationConstraint` values are a

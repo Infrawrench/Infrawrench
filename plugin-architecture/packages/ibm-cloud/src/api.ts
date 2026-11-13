@@ -13,6 +13,7 @@ import type { paths as DatabasesPaths } from "./api-types.databases.gen.js";
 import type { operations as IamOperations } from "./api-types.iam.gen.js";
 import type { paths as ResourceControllerPaths } from "./api-types.resource-controller.gen.js";
 import type { paths as ResourceManagerPaths } from "./api-types.resource-manager.gen.js";
+import type { paths as TaggingPaths } from "./api-types.tagging.gen.js";
 import type { paths as UsagePaths } from "./api-types.usage.gen.js";
 import type { paths as VpcPaths } from "./api-types.vpc.gen.js";
 import {
@@ -20,6 +21,7 @@ import {
   CONTAINERS,
   COS_CONFIG,
   RESOURCE_CONTROLLER,
+  TAGGING,
   codeEngineBase,
   databasesBase,
   vpcBase,
@@ -169,6 +171,7 @@ export class IbmApi {
   readonly containers: ApiClient<ContainersPaths>;
   readonly usage: ApiClient<UsagePaths>;
   readonly cosConfig: ApiClient<CosConfigPaths>;
+  readonly tagging: ApiClient<TaggingPaths>;
 
   constructor(
     private readonly apiKey: string,
@@ -180,6 +183,7 @@ export class IbmApi {
     this.containers = this.client<ContainersPaths>(CONTAINERS);
     this.usage = this.client<UsagePaths>(BILLING);
     this.cosConfig = this.client<CosConfigPaths>(COS_CONFIG);
+    this.tagging = this.client<TaggingPaths>(TAGGING);
   }
 
   private client<P>(baseUrl: string): ApiClient<P> {
