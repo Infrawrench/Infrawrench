@@ -15,7 +15,13 @@ import { PRODUCT_IDS } from "@infrawrench/client-core";
 import { minLength } from "../schemas";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
-import { BadRequest, InternalServerError, NotFound, PaymentRequired } from "../http/errors";
+import {
+  BadRequest,
+  Conflict,
+  InternalServerError,
+  NotFound,
+  PaymentRequired,
+} from "../http/errors";
 import { OrgAuth } from "../http/middleware-tags";
 import {
   IsoDateTime,
@@ -517,6 +523,7 @@ export class AccountsGroup extends HttpApiGroup.make("accounts")
     HttpApiEndpoint.delete("delete", "/:id", {
       params: OrgIdParams,
       success: Ok,
+      error: Conflict,
     })
       .annotate(RequiredPermission, "accounts:delete")
       .annotate(OpenApi.Summary, "Delete an account")

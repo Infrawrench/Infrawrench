@@ -2,6 +2,11 @@ import type { CiClient } from "@infrawrench/ui/ci";
 import {
   ciLogEvent,
   parseSseFrames,
+  type CiAccessOverview,
+  type CiConnectionAccess,
+  type CiResourceGrant,
+  type CiResourceOutputs,
+  type SearchResult,
   type CiAccount,
   type CiCacheCleared,
   type CiCaches,
@@ -101,6 +106,44 @@ export function createWebCiClient(orgId: string): CiClient {
       await apiDelete(
         `${base}/values/${kind}/${encodeURIComponent(name)}?${scopeQuery(installationId, repo)}`,
       );
+    },
+    access: () => apiGet<CiAccessOverview>(`${base}/access`),
+    setConnectionAccess: (accountId, settings) =>
+      apiPut<CiConnectionAccess>(
+        `${base}/access/connections/${encodeURIComponent(accountId)}`,
+        settings,
+      ),
+    preflightConnection: (accountId, kind) =>
+      apiPost<CiConnectionAccess>(
+        `${base}/access/connections/${encodeURIComponent(accountId)}/preflight`,
+        { kind },
+      ),
+    searchResources: (query) =>
+      apiGet<SearchResult[]>(
+        `/api/org/${org}/search?${new URLSearchParams({ q: query, kinds: "resource" })}`,
+      ),
+    resourceOutputs: (resourceId) =>
+      apiGet<CiResourceOutputs>(
+        `${base}/access/resource-outputs?${new URLSearchParams({ resourceId })}`,
+      ),
+    createGrant: (input) => apiPost<CiResourceGrant>(`${base}/access/grants`, input),
+    updateGrant: (id, input) =>
+      apiPut<CiResourceGrant>(`${base}/access/grants/${encodeURIComponent(id)}`, input),
+    deleteGrant: async (id) => {
+      await apiDelete(`${base}/access/grants/${encodeURIComponent(id)}`);
+    },
+    revokeSshKeyLending: async (sshKeyId) => {
+      await apiDelete(`${base}/access/ssh-keys/${encodeURIComponent(sshKeyId)}`);
+    },
+    listAllRepos: async () => {
+      const [{ repos }, status] = await Promise.all([
+        apiGet<{ repos: Array<{ installationId: number; fullName: string }> }>(
+          `/api/org/${org}/github/repos`,
+        ),
+        apiGet<CiStatus>(base),
+      ]);
+      const ci = new Set(status.accounts.filter((a) => a.ciEnabled).map((a) => a.installationId));
+      return repos.filter((r) => ci.has(r.installationId)).map((r) => r.fullName);
     },
   };
 }

@@ -1,6 +1,13 @@
 // The wire types come from `@infrawrench/client-core`; this module only adds
 // the client seam a host must provide.
 import type {
+  CiAccessOverview,
+  CiConnectionAccess,
+  CiConnectionAccessSettings,
+  CiExecutorKindId,
+  CiResourceGrant,
+  CiResourceOutputs,
+  SearchResult,
   CiAccount,
   CiCacheCleared,
   CiCaches,
@@ -63,4 +70,32 @@ export interface CiClient {
     kind: "secrets" | "variables",
     name: string,
   ): Promise<void>;
+  /** What CI jobs may use: connections, resource grants, lent SSH keys. */
+  access(): Promise<CiAccessOverview>;
+  setConnectionAccess(
+    accountId: string,
+    settings: CiConnectionAccessSettings,
+  ): Promise<CiConnectionAccess>;
+  /** Checks, through the provider, whether the connection can run jobs of a kind. */
+  preflightConnection(accountId: string, kind: CiExecutorKindId): Promise<CiConnectionAccess>;
+  /** Resources by name, for the grant picker (never a typed id). */
+  searchResources(query: string): Promise<SearchResult[]>;
+  resourceOutputs(resourceId: string): Promise<CiResourceOutputs>;
+  createGrant(input: CiGrantInput): Promise<CiResourceGrant>;
+  updateGrant(id: string, input: CiGrantInput): Promise<CiResourceGrant>;
+  deleteGrant(id: string): Promise<void>;
+  /** Stops CI jobs using someone's SSH key (admins). */
+  revokeSshKeyLending(sshKeyId: string): Promise<void>;
+  /** Every repository (`owner/name`) of the accounts that run CI, for the repository pickers. */
+  listAllRepos(): Promise<string[]>;
+}
+
+/** A resource grant as the form sends it. */
+export interface CiGrantInput {
+  resourceId: string;
+  ciName: string;
+  outputs: string[];
+  secretVersion: string | null;
+  repos: string[] | null;
+  branchPattern: string | null;
 }

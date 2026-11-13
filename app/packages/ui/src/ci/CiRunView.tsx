@@ -4,6 +4,7 @@ import {
   ciLiveJobKey,
   emptyCiLiveRun,
   reduceCiLogEvents,
+  type CiCloudJob,
   type CiJobOutput,
   type CiJobSummary,
   type CiLiveJobStatus,
@@ -301,9 +302,93 @@ function useStickToBottom(dependency: unknown) {
   return { ref, onScroll };
 }
 
+function cloudStateLabel(job: CiCloudJob, gt: Gt): string {
+  switch (job.state) {
+    case "claiming":
+      return gt("Claiming");
+    case "starting":
+      return gt("Starting machine");
+    case "running":
+      return gt("Running on its machine");
+    case "tearing_down":
+      return gt("Tearing down");
+    case "done":
+      return gt("Torn down");
+  }
+}
+
+/** Where a cloud job ran: its connection, kind, machine and state. */
+export function CiCloudBadge({
+  cloud,
+  summary,
+}: {
+  cloud: CiCloudJob | null;
+  summary: CiJobSummary["cloud"];
+}) {
+  const gt = useGT();
+  if (!cloud && !summary) return null;
+  const parts = [
+    cloud?.accountName ?? summary?.provider ?? cloud?.pluginId,
+    cloud?.kind ?? summary?.kind,
+    cloud?.machine ?? summary?.machine,
+    cloud?.region ?? summary?.region,
+  ].filter((p): p is string => Boolean(p));
+  const executor = cloud?.label ?? summary?.executor ?? null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs">
+      <span className="inline-flex items-center gap-1 rounded bg-info/15 px-1.5 py-0.5 text-info">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+        </svg>
+        {gt("Cloud job")}
+      </span>
+      <span className="font-mono text-on-surface-muted">{parts.join(" · ")}</span>
+      {cloud ? <span className="text-on-surface-faint">{cloudStateLabel(cloud, gt)}</span> : null}
+      {executor ? <span className="font-mono text-on-surface-faint">{executor}</span> : null}
+      {cloud?.reason ? <span className="w-full text-on-surface-muted">{cloud.reason}</span> : null}
+    </div>
+  );
+}
+
+/** What a job was lent, by name. */
+function LentNames({ access }: { access: CiJobSummary["access"] }) {
+  const gt = useGT();
+  if (!access) return null;
+  const rows: Array<[string, string[] | undefined]> = [
+    [gt("Connections"), access.connections],
+    [gt("SSH keys"), access.sshKeys],
+    [gt("Resources"), access.resources],
+    [gt("Environment from"), access.envFrom],
+  ];
+  const shown = rows.filter(([, names]) => names && names.length > 0);
+  if (shown.length === 0) return null;
+  return (
+    <dl className="flex flex-wrap gap-x-4 gap-y-1 border-b border-border px-4 py-2 text-xs">
+      <dt className="sr-only">{gt("Lent to this job")}</dt>
+      {shown.map(([label, names]) => (
+        <div key={label} className="flex gap-1.5">
+          <dt className="text-on-surface-faint">{label}</dt>
+          <dd className="font-mono text-on-surface-muted">{names!.join(", ")}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function JobLog({
   job,
   output,
+  cloud,
   live,
   truncated,
   now,
@@ -311,6 +396,7 @@ function JobLog({
 }: {
   job: GraphJob;
   output: CiJobOutput | null;
+  cloud: CiCloudJob | null;
   live: CiLiveRun | null;
   truncated: boolean;
   now: number;
@@ -333,6 +419,8 @@ function JobLog({
         <span className="text-xs text-on-surface-faint">{ciJobStatusLabel(job.status, gt)}</span>
         <span className="ml-auto text-xs tabular-nums text-on-surface-faint">{time}</span>
       </header>
+      <CiCloudBadge cloud={cloud} summary={output?.cloud} />
+      <LentNames access={output?.access} />
       {output?.reason ? (
         <p className="border-b border-border px-4 py-2 text-xs text-on-surface-muted">
           {output.reason}
@@ -404,8 +492,11 @@ export function CiRunView({
   live,
   liveError,
   onDownload,
+  cloudJobs,
 }: {
   run: CiRun;
+  /** Where its cloud jobs ran, from the run's detail. */
+  cloudJobs?: readonly CiCloudJob[] | undefined;
   /** A finished run's jobs, with their output when it could be read. */
   jobs: readonly (CiJobOutput | CiJobSummary)[] | null;
   live: CiLiveRun | null;
@@ -470,6 +561,13 @@ export function CiRunView({
           <JobLog
             job={selectedJob}
             output={output}
+            cloud={
+              cloudJobs?.find(
+                (c) => c.jobId === selectedJob.id && c.pipeline === selectedJob.pipeline,
+              ) ??
+              cloudJobs?.find((c) => c.jobId === selectedJob.id) ??
+              null
+            }
             live={live}
             truncated={live?.truncated ?? false}
             now={now}

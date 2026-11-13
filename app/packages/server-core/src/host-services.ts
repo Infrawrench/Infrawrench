@@ -20,6 +20,7 @@ import {
   type OAuthHostServices,
   type PluginManifest,
   type SecretHostServices,
+  type SshHostServices,
 } from "@infrawrench/plugin-base";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
@@ -504,6 +505,27 @@ function warehouseHostServices(): Pick<HostServices, "instancePricing"> {
   };
 }
 
+/**
+ * `HostServices.ssh` for an account of a `jumpHost` plugin: a script run on
+ * its own host, connected the way the terminal connects (pinned host keys,
+ * the account's jump hosts). `ssh-exec.ts` holds the socket code and is
+ * loaded on first use, so the edge never imports ssh2.
+ */
+function sshHostServices(organizationId: string, accountId: string): SshHostServices {
+  return {
+    async exec(script, options) {
+      const { accountResolver, execOnAccountHost } = await import("./ssh-exec");
+      return execOnAccountHost(
+        organizationId,
+        accountId,
+        script,
+        options?.timeoutMs ?? 300_000,
+        accountResolver(organizationId),
+      );
+    },
+  };
+}
+
 export async function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
@@ -526,6 +548,9 @@ export async function buildPluginHostServices(
     ...warehouseHostServices(),
     secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
     ...(oauth ? { oauth } : {}),
+    ...(manifest.jumpHost && options.accountId && options.organizationId
+      ? { ssh: sshHostServices(options.organizationId, options.accountId) }
+      : {}),
   };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";

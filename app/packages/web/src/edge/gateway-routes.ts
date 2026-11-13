@@ -98,6 +98,12 @@ const NODE_ROUTES: readonly RegExp[] = [
   // carry (authorize: `registerOAuthClient`, `buildOAuthAuthorizeUrl`;
   // callback: `exchangeOAuthCode`, `completeOAuthConnection`).
   /^\/api\/provider-oauth\/[^/]+\/callback$/,
+  // A CI cloud job's machine calling back: the relay holds the job's sealed
+  // claim (Node crypto) and the source redirect signs as the GitHub App.
+  /^\/api\/ci-jobs\//,
+  // CI access: checking a connection's permissions and listing a secret's
+  // versions are plugin calls for the connection's account.
+  new RegExp(`${ORG}/ci/access/(connections/[^/]+/preflight|resource-outputs)$`),
   // The org grade reads the posture and backup feeds, which bind plugin
   // functions the edge registry only stubs: every attempt there would replay.
   // Its history (`/scorecards/org/history`) is Postgres only and stays.

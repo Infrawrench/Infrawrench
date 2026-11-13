@@ -22,6 +22,7 @@ import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
+  type CiCloudJob,
   type CiDownload,
   type CiDownloadLink,
   type CiJobOutput,
@@ -32,7 +33,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { ciAccounts, ciRuns, githubInstallations } from "../db/schema.js";
+import { accounts, ciAccounts, ciCloudJobs, ciRuns, githubInstallations } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
@@ -48,6 +49,8 @@ import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
+import { pluginCodeAvailable } from "../plugin-loader.js";
+import type { CiJobAccess } from "../db/schema.js";
 
 type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -200,6 +203,20 @@ async function finish(
     .update(ciRuns)
     .set({ status, statusReason: reason, finishedAt: now, updatedAt: now, ...extra })
     .where(eq(ciRuns.id, row.id));
+  // Its cloud jobs' machines go with it: the executor's pass tears them down.
+  await db
+    .update(ciCloudJobs)
+    .set({
+      state: "tearing_down",
+      outcome: sql`coalesce(${ciCloudJobs.outcome}, 'cancelled')`,
+      reason: sql`coalesce(${ciCloudJobs.reason}, 'The run ended.')`,
+      encryptedClaim: null,
+      claimIv: null,
+      finishedAt: now,
+      nextAttemptAt: now,
+      updatedAt: now,
+    })
+    .where(and(eq(ciCloudJobs.runId, row.id), inArray(ciCloudJobs.state, ["starting", "running"])));
 }
 
 /** Shows a fork's run on GitHub as waiting for a maintainer. */
@@ -296,6 +313,13 @@ export async function dispatchRun(id: string): Promise<void> {
     return;
   }
 
+  // A run whose jobs are lent something is sent where plugin code runs; on
+  // the edge it waits for the gateway's pass, before spending a token on it.
+  if (!row.fromFork && namesSomethingLent(row.access) && !pluginCodeAvailable()) {
+    await deferToGateway(row);
+    return;
+  }
+
   let token: string;
   try {
     token = await getInstallationToken(row.installationId);
@@ -305,17 +329,41 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   const body = dispatchBody(row, token);
 
-  // Its pipelines' concurrency groups, read once, before it first goes.
+  // Its pipelines' concurrency groups, and what its jobs name to be lent,
+  // read once, before it first goes.
+  let access = row.access;
   if (row.concurrency === null) {
-    const entries = await resolveConcurrency(body);
-    if (!Array.isArray(entries)) {
-      await retryLater(row, entries.retry);
+    const resolved = await resolveConcurrency(body);
+    if ("retry" in resolved) {
+      await retryLater(row, resolved.retry);
       return;
     }
+    const { entries } = resolved;
+    access = resolved.access;
+    await db.update(ciRuns).set({ access }).where(eq(ciRuns.id, row.id));
     if (entries.some((e) => e.group !== null)) {
       if (!(await admitRun(row, entries))) return;
     } else {
       await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
+    }
+  }
+
+  // Connections, SSH keys and resources its jobs name, checked and read now
+  // (never for a fork's run). Reading them calls plugins, which the edge
+  // cannot: there the run waits for the gateway's pass to send it.
+  if (!row.fromFork && namesSomethingLent(access)) {
+    if (!pluginCodeAvailable()) {
+      await deferToGateway(row);
+      return;
+    }
+    // Loaded here: lending reaches plugin code, which only this branch needs.
+    const { auditLends, buildLent, fitLent } = await import("./lend.js");
+    const built = await buildLent(row, access);
+    if (built) {
+      // Audited as soon as it is minted or read, whatever happens to the
+      // request next (a proxy that times out, a cancel while it is sent).
+      await auditLends(row, built.records);
+      body["lent"] = fitLent(built.lent, Buffer.byteLength(JSON.stringify(body), "utf8"));
     }
   }
 
@@ -362,6 +410,30 @@ export async function dispatchRun(id: string): Promise<void> {
     title: "Running",
     summary: row.fromFork ? "Running a fork's pull request, without secrets." : "Running.",
   });
+}
+
+/** Leaves a run for the gateway's `ci-cloud` pass, without counting an attempt. */
+async function deferToGateway(row: CiRunRow): Promise<void> {
+  await db
+    .update(ciRuns)
+    .set({
+      attempts: sql`greatest(${ciRuns.attempts} - 1, 0)`,
+      nextAttemptAt: new Date(),
+      statusReason: "Waiting for the gateway to read what its jobs are lent.",
+      updatedAt: new Date(),
+    })
+    .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")));
+}
+
+/** A job of the run names a connection, SSH key or resource to be lent. */
+export function namesSomethingLent(access: readonly CiJobAccess[] | null): boolean {
+  return (access ?? []).some(
+    (j) =>
+      (j.connections?.length ?? 0) > 0 ||
+      (j.sshKeys?.length ?? 0) > 0 ||
+      Object.keys(j.resources ?? {}).length > 0 ||
+      (j.envFrom?.length ?? 0) > 0,
+  );
 }
 
 async function retryLater(row: CiRunRow, reason: string): Promise<void> {
@@ -443,6 +515,8 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
         ...(Array.isArray(job.needs) && job.needs.every((n) => typeof n === "string")
           ? { needs: job.needs }
           : {}),
+        ...accessOf(job.access),
+        ...cloudOf(job.cloud),
       };
       if (!withOutput) {
         out.push(summary);
@@ -460,6 +534,46 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
     }
   }
   return out;
+}
+
+function names(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  // `resources` may come as a map of name to outputs.
+  if (typeof value === "object" && value !== null) return Object.keys(value);
+  return [];
+}
+
+/** A job report's `access`, as the run page lists it (names only). */
+export function accessOf(
+  access: Record<string, unknown> | undefined,
+): Pick<CiJobSummary, "access"> {
+  if (!access) return {};
+  const out: NonNullable<CiJobSummary["access"]> = {};
+  const connections = names(access["connections"]);
+  const sshKeys = names(access["ssh-keys"]);
+  const resources = names(access["resources"]);
+  const envFrom = names(access["env-from"]);
+  if (connections.length > 0) out.connections = connections;
+  if (sshKeys.length > 0) out.sshKeys = sshKeys;
+  if (resources.length > 0) out.resources = resources;
+  if (envFrom.length > 0) out.envFrom = envFrom;
+  return Object.keys(out).length > 0 ? { access: out } : {};
+}
+
+/** A job report's `cloud`. */
+export function cloudOf(cloud: Record<string, unknown> | undefined): Pick<CiJobSummary, "cloud"> {
+  if (!cloud || typeof cloud["provider"] !== "string" || typeof cloud["kind"] !== "string")
+    return {};
+  const str = (k: string) => (typeof cloud[k] === "string" ? { [k]: cloud[k] as string } : {});
+  return {
+    cloud: {
+      provider: cloud["provider"],
+      kind: cloud["kind"],
+      ...str("machine"),
+      ...str("region"),
+      ...str("executor"),
+    },
+  };
 }
 
 /** Failures first, then skips, so a summary cut to fit still shows them. */
@@ -884,7 +998,39 @@ export async function getRun(organizationId: string, id: string): Promise<CiRunD
       console.warn(`[ci] could not read the output of run ${row.id}:`, err);
     }
   }
-  return { run: toWire(row, retries.get(row.id) ?? null), jobs };
+  const cloudJobs = await cloudJobsOfRun(organizationId, row.id);
+  return {
+    run: toWire(row, retries.get(row.id) ?? null),
+    jobs,
+    ...(cloudJobs.length > 0 ? { cloudJobs } : {}),
+  };
+}
+
+/** A run's cloud jobs, for the run page (no secrets: the sealed claim is never read here). */
+async function cloudJobsOfRun(organizationId: string, runId: string): Promise<CiCloudJob[]> {
+  const rows = await db
+    .select({ job: ciCloudJobs, accountName: accounts.displayName })
+    .from(ciCloudJobs)
+    .leftJoin(accounts, eq(accounts.id, ciCloudJobs.accountId))
+    .where(and(eq(ciCloudJobs.organizationId, organizationId), eq(ciCloudJobs.runId, runId)))
+    .orderBy(ciCloudJobs.claimedAt);
+  return rows.map(({ job, accountName }) => ({
+    jobId: job.jobId,
+    jobName: job.jobName,
+    pipeline: job.pipeline,
+    accountId: job.accountId,
+    accountName,
+    pluginId: job.pluginId,
+    kind: job.kind,
+    machine: job.machine,
+    region: job.region,
+    state: job.state,
+    outcome: job.outcome,
+    reason: job.reason,
+    label: job.handle?.label ?? null,
+    claimedAt: job.claimedAt.toISOString(),
+    finishedAt: job.finishedAt?.toISOString() ?? null,
+  }));
 }
 
 /**

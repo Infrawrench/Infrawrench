@@ -83,6 +83,8 @@ export const NOMAD_CI_EXECUTOR = {
       typicalStartSeconds: 15,
       gpus: true,
       machineSuggestions: ["1vcpu-2gb", "2vcpu-4gb", "4vcpu-8gb", "8vcpu-16gb"],
+      // `cloud.region` names the namespace the job runs in.
+      regionLabel: "Namespace",
     },
   ],
   helpLink: {

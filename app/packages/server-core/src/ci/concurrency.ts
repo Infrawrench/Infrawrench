@@ -24,7 +24,7 @@
 import { and, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { ciRuns, type CiConcurrencyEntry } from "../db/schema.js";
+import { ciRuns, type CiConcurrencyEntry, type CiJobAccess } from "../db/schema.js";
 import { upsertCheck } from "./checks.js";
 import { proxyFetch } from "./proxy.js";
 
@@ -157,7 +157,63 @@ interface ResolvedPipelines {
     file?: unknown;
     name?: unknown;
     concurrency?: { group?: unknown; "cancel-in-progress"?: unknown } | null;
+    /** Jobs that name something to be lent, or run in the cloud (runners from 0.3.16). */
+    jobs?: unknown;
   }>;
+}
+
+const isString = (v: unknown): v is string => typeof v === "string";
+
+/**
+ * What each job names to be lent and its `cloud:` block, as the runners'
+ * answer lists them. Read leniently: anything malformed is left out, and a
+ * runner from before lists nothing.
+ */
+export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
+  const out: CiJobAccess[] = [];
+  for (const p of answer.pipelines ?? []) {
+    if (typeof p.file !== "string" || !Array.isArray(p.jobs)) continue;
+    for (const raw of p.jobs as unknown[]) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const job = raw as Record<string, unknown>;
+      if (typeof job["key"] !== "string") continue;
+      const entry: CiJobAccess = { pipeline: p.file, job: job["key"] };
+      if (Array.isArray(job["connections"])) {
+        const connections = (job["connections"] as unknown[]).flatMap((c) => {
+          if (typeof c === "string") return [{ name: c }];
+          if (typeof c !== "object" || c === null) return [];
+          const { name, namespace } = c as { name?: unknown; namespace?: unknown };
+          if (!isString(name)) return [];
+          return [isString(namespace) ? { name, namespace } : { name }];
+        });
+        if (connections.length > 0) entry.connections = connections;
+      }
+      if (Array.isArray(job["ssh-keys"])) {
+        const keys = (job["ssh-keys"] as unknown[]).filter(isString);
+        if (keys.length > 0) entry.sshKeys = keys;
+      }
+      if (typeof job["resources"] === "object" && job["resources"] !== null) {
+        const resources: Record<string, string[]> = {};
+        for (const [name, outputs] of Object.entries(job["resources"] as Record<string, unknown>)) {
+          if (Array.isArray(outputs)) resources[name] = outputs.filter(isString);
+        }
+        if (Object.keys(resources).length > 0) entry.resources = resources;
+      }
+      if (Array.isArray(job["env-from"])) {
+        const envFrom = (job["env-from"] as unknown[]).filter(isString);
+        if (envFrom.length > 0) entry.envFrom = envFrom;
+      }
+      if (typeof job["cloud"] === "object" && job["cloud"] !== null) {
+        const cloud: Record<string, string> = {};
+        for (const [k, v] of Object.entries(job["cloud"] as Record<string, unknown>)) {
+          if (isString(v)) cloud[k] = v;
+        }
+        entry.cloud = cloud;
+      }
+      out.push(entry);
+    }
+  }
+  return out;
 }
 
 export function entriesFrom(answer: ResolvedPipelines): CiConcurrencyEntry[] {
@@ -184,7 +240,7 @@ export function entriesFrom(answer: ResolvedPipelines): CiConcurrencyEntry[] {
  */
 export async function resolveConcurrency(
   body: Record<string, unknown>,
-): Promise<CiConcurrencyEntry[] | { retry: string }> {
+): Promise<{ entries: CiConcurrencyEntry[]; access: CiJobAccess[] } | { retry: string }> {
   let res: Response;
   try {
     res = await proxyFetch("/v1/concurrency", { method: "POST", body: JSON.stringify(body) });
@@ -197,9 +253,10 @@ export async function resolveConcurrency(
   }
   if (!res.ok) {
     await res.body?.cancel();
-    return [];
+    return { entries: [], access: [] };
   }
-  return entriesFrom((await res.json().catch(() => ({}))) as ResolvedPipelines);
+  const answer = (await res.json().catch(() => ({}))) as ResolvedPipelines;
+  return { entries: entriesFrom(answer), access: accessFrom(answer) };
 }
 
 /**

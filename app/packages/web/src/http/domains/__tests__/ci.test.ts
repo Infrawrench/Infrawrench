@@ -58,6 +58,20 @@ vi.mock("@infrawrench/server-core/ci/caches", () => ({
   listCiCaches: (...a: unknown[]) => mockListCaches(...a),
   clearCiCache: (...a: unknown[]) => mockClearCache(...a),
 }));
+const mockSetConnectionAccess = vi.fn();
+const mockCreateGrant = vi.fn();
+const mockSetSshKeyLending = vi.fn();
+vi.mock("@infrawrench/server-core/ci/access", () => ({
+  ciAccessOverview: vi.fn(),
+  setConnectionAccess: (...a: unknown[]) => mockSetConnectionAccess(...a),
+  preflightConnection: vi.fn(),
+  resourceOutputs: vi.fn(),
+  createGrant: (...a: unknown[]) => mockCreateGrant(...a),
+  updateGrant: vi.fn(),
+  deleteGrant: vi.fn(),
+  setSshKeyLending: (...a: unknown[]) => mockSetSshKeyLending(...a),
+  revokeSshKeyLending: vi.fn(),
+}));
 const mockLogAudit = vi.fn();
 vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
 
@@ -185,6 +199,80 @@ describe("CI routes", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "This run is not waiting for approval." });
     expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("changes what CI jobs may use under ci-access:write only, never ci:write", async () => {
+    const settings = {
+      jobsEnabled: false,
+      jobKinds: [],
+      maxConcurrentJobs: 2,
+      maxJobMinutes: 60,
+      jobRepos: null,
+      jobBranchPattern: null,
+      lendEnabled: true,
+      lendRepos: null,
+      lendBranchPattern: null,
+    };
+    const grant = {
+      resourceId: "r1",
+      ciName: "prod-db",
+      outputs: ["url"],
+      secretVersion: null,
+      repos: null,
+      branchPattern: null,
+    };
+    for (const [path, method, body] of [
+      ["/access/connections/acc-1", "PUT", settings],
+      ["/access/grants", "POST", grant],
+      ["/access/grants/g1", "PUT", grant],
+      ["/access/connections/acc-1/preflight", "POST", { kind: "vm" }],
+    ] as const) {
+      const denied = await app(["ci:read", "ci:write", "ci:approve"]).request(path, {
+        method,
+        body: JSON.stringify(body),
+      });
+      expect(denied.status).toBe(403);
+    }
+    expect(mockSetConnectionAccess).not.toHaveBeenCalled();
+    expect(mockCreateGrant).not.toHaveBeenCalled();
+
+    mockSetConnectionAccess.mockResolvedValue({
+      accountId: "acc-1",
+      accountName: "Prod",
+      pluginId: "kubernetes",
+      pluginName: "Kubernetes",
+      executor: null,
+      credential: { description: "x", shortLived: false, namespaces: true },
+      settings,
+      preflight: {},
+      updatedAt: null,
+    });
+    const ok = await app(["ci:read", "ci-access:write"]).request("/access/connections/acc-1", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  it("lends one's own SSH key under ssh-keys:write, not ci:read", async () => {
+    const body = JSON.stringify({
+      enabled: true,
+      ciName: "deploy",
+      repos: null,
+      branchPattern: null,
+    });
+    const denied = await app(["ci:read", "ci:write"]).request("/access/ssh-keys/k1", {
+      method: "PUT",
+      body,
+    });
+    expect(denied.status).toBe(403);
+    expect(mockSetSshKeyLending).not.toHaveBeenCalled();
+    mockSetSshKeyLending.mockResolvedValue(null);
+    const ok = await app(["ssh-keys:write"]).request("/access/ssh-keys/k1", {
+      method: "PUT",
+      body,
+    });
+    expect(ok.status).toBe(200);
   });
 
   it("switches an account under ci:write, refusing one that is not the org's", async () => {

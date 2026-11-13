@@ -49,6 +49,13 @@ export const ALL_PERMISSIONS = [
   "ci:read",
   "ci:write",
   "ci:approve",
+  // What CI jobs may use: lending a connection's credentials to jobs,
+  // granting a resource's outputs, and running cloud jobs on a connection.
+  // Its own family, not `ci:*`, so a custom role or key that manages CI's
+  // accounts, values and caches does not also hand the organization's
+  // credentials to every pipeline with push access. Admins and owners hold
+  // it; API keys and agents never reach its routes (`API_KEY_DENY_RULES`).
+  "ci-access:write",
   // Declared incidents (incident mode), not provider status incidents, which
   // ride `resources:read` with the rest of the correlation feeds.
   //

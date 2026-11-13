@@ -301,6 +301,151 @@ Names are letters, digits and `_`, not starting with a digit. Managing them take
 
 <insert [The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below] here>
 
+## CI access
+
+Jobs can use what your organization has connected to Infrawrench, once someone turns it on: run on a cloud connection, use a connection's credentials, read a resource's outputs, or use an SSH key. Everything is off until then, and each permission says which repositories and branches it holds for. A run from a fork's pull request gets none of it.
+
+Everyone who can see runs can see the **CI access** card. Lending a connection, granting a resource and running cloud jobs on a connection take `ci-access:write`, which admins and owners hold; `ci:write` alone can only remove a grant or revoke a lent key. An SSH key is lent by its owner, with `ssh-keys:write`. None of this can be changed with an API key or by an agent: a person decides what CI jobs may use. Every change, and every time a run is lent something, is recorded in the [audit log](../team-and-billing/audit-log.md), with who allowed it.
+
+<insert [The CI access card: an AWS connection "Production" with "Run jobs on it" ticked, EC2 instance ticked and "Ready", 2 jobs at once and 60 minutes per job, and a Kubernetes connection "Production cluster" with "Lend its credentials to jobs" ticked for acme/web on main] here>
+
+### Repositories and branches
+
+Each permission holds for **every repository CI runs for**, or the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster.
+
+### Cloud jobs
+
+A job with `cloud:` runs on a fresh machine in one of your connected cloud accounts instead of on the runners, and the machine is removed when the job ends:
+
+```yaml
+jobs:
+  build-image:
+    cloud:
+      provider: aws # the provider of an opted-in connection
+      kind: vm # vm, container, build, host or cluster
+      machine: c7i.2xlarge # optional: the provider's size name
+      region: eu-west-1 # optional
+      connection: Production # optional: when several connections can run it
+    needs: [test]
+    timeout: 30m
+    run: docker build -t app .
+    outputs: [digest]
+```
+
+`cloud: aws/vm` is the short form. To let jobs run on a connection, tick **Run jobs on it** on its row, then **Check permissions** for each kind. The check asks the provider without starting anything, and says exactly which permission the connection's credential lacks and where to grant it; a kind that fails it cannot be turned on. Then set how many of its jobs may run at once and how long one may take.
+
+- The machine gets the job's own environment and what the job is lent, never the connection's own credentials.
+- The machine starts with a one-time token for its job in its start-up script (on AWS, the instance's user data), which anyone who can read that in your cloud account can see until the job fetches its script; the token is spent on that first fetch, and it never appears in a URL.
+- It starts from the commit's source (without git history), with the artifacts of the jobs it needs, and hands its own artifacts on like any job.
+- Its output streams to the run page like any job's, with a badge naming the connection, the kind and the machine, and its state: **Starting machine**, **Running on its machine**, **Tearing down**.
+- It is removed when the job finishes, fails, times out or is cancelled. Infrawrench also tags everything it starts (`infrawrench-ci`) and removes tagged machines no live job owns. On AWS the instance also shuts itself down, and so terminates, once the job's time is up.
+- The provider bills your account for the machine.
+
+Supported so far:
+
+| Provider              | Kind        | Runs on                                                         |
+| --------------------- | ----------- | --------------------------------------------------------------- |
+| Alibaba Cloud         | `vm`        | ECS instance (default `ecs.g8i.large`)                          |
+| Alibaba Cloud         | `container` | ECI container group (default `2vcpu-4gb`)                       |
+| Amazon Web Services   | `vm`        | EC2 instance (default `t3.large`)                               |
+| Amazon Web Services   | `container` | ECS task on Fargate (default `2vcpu-4gb`)                       |
+| Amazon Web Services   | `build`     | CodeBuild build (default `BUILD_GENERAL1_MEDIUM`)               |
+| boat                  | `vm`        | boat sandbox (default `default`)                                |
+| Civo                  | `vm`        | Compute instance (default `g4s.medium`)                         |
+| Crusoe Cloud          | `vm`        | Crusoe VM (default `c1a.4x`)                                    |
+| DigitalOcean          | `vm`        | Droplet (default `s-2vcpu-4gb`)                                 |
+| Docker                | `container` | Container on the daemon (default `2vcpu-4gb`)                   |
+| Docker                | `build`     | Docker build container (privileged) (default `2vcpu-4gb`)       |
+| Exoscale              | `vm`        | Compute instance (default `standard.medium`)                    |
+| Fly.io                | `container` | Fly Machine (default `performance-2x`)                          |
+| Google Cloud          | `vm`        | Compute Engine instance (default `e2-standard-2`)               |
+| Google Cloud          | `container` | Cloud Run job (default `2vcpu-4gb`)                             |
+| Google Cloud          | `build`     | Cloud Build build (default `e2-standard-2`)                     |
+| HashiCorp Nomad       | `cluster`   | Nomad batch job (default `2vcpu-4gb`)                           |
+| Heroku                | `container` | One-off dyno on a throwaway app (default `standard-1X`)         |
+| Hetzner Cloud         | `vm`        | Cloud server (default `cpx22`)                                  |
+| IBM Cloud             | `vm`        | VPC virtual server (default `bx2-2x8`)                          |
+| IBM Cloud             | `container` | Code Engine job run (default `2vcpu-4gb`)                       |
+| Kubernetes            | `cluster`   | Kubernetes Job (default `2vcpu-4gb`)                            |
+| Lambda Cloud          | `vm`        | On-demand GPU instance (default `gpu_1x_a10`)                   |
+| Linode (Akamai Cloud) | `vm`        | Linode (default `g6-standard-2`)                                |
+| Microsoft Azure       | `vm`        | Azure virtual machine (default `Standard_D2s_v5`)               |
+| Microsoft Azure       | `container` | Container Instances group (default `2vcpu-4gb`)                 |
+| Microsoft Azure       | `build`     | ACR Tasks run (default `2vcpu`)                                 |
+| Modal                 | `container` | Modal Sandbox (default `2vcpu-4gb`)                             |
+| Northflank            | `container` | Northflank job run (default `nf-compute-200`)                   |
+| OpenStack             | `vm`        | Nova server                                                     |
+| Oracle Cloud          | `vm`        | OCI Compute instance (default `VM.Standard.E5.Flex/1/8`)        |
+| Oracle Cloud          | `container` | OCI Container Instance (default `2vcpu-8gb`)                    |
+| OVHcloud              | `vm`        | Public Cloud instance (default `b3-8`)                          |
+| Paperspace            | `vm`        | Paperspace machine (default `C5`)                               |
+| Proxmox VE            | `vm`        | VM cloned from a template (default `2vcpu-4gb`)                 |
+| Railway               | `container` | One-off deployment in a throwaway project (default `2vcpu-4gb`) |
+| Runpod                | `container` | Pod (GPU or CPU) (default `cpu3c-2`)                            |
+| Scaleway              | `vm`        | Instance (default `PLAY2-NANO`)                                 |
+| Scaleway              | `container` | Serverless Jobs run (default `2vcpu-4gb`)                       |
+| SSH                   | `host`      | Existing SSH host                                               |
+| UpCloud               | `vm`        | Cloud Server (default `CLOUDNATIVE-2xCPU-4GB`)                  |
+| Vast.ai               | `container` | Instance (GPU container) (default `4vcpu-16gb`)                 |
+| VMware vSphere        | `vm`        | VM cloned from a template                                       |
+| Vultr                 | `vm`        | Cloud Compute instance (default `vc2-2c-4gb`)                   |
+
+`cloud.region` is the provider's region (or zone), except on Kubernetes and Nomad, where it names the namespace the job runs in. Without it a job runs in the connection's own region or namespace.
+
+The check on each connection's row names what that provider's credential needs, and links to where to grant it. A container or build image needs `bash`, `curl`, `tar`, `gzip` and `base64`; where they are missing, most container kinds install them with the image's package manager first.
+
+An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. Because `ssh` reads its configuration from the user's real home directory, a job on an SSH host that is lent another SSH connection uses it with `ssh -F "$HOME/.ssh/config"`.
+
+<insert [A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below] here>
+
+### Connections
+
+`connections:` lends a job a connection's credentials, as files and environment variables written before it runs:
+
+```yaml
+jobs:
+  deploy:
+    tools: [builtin:kubectl@1.37, builtin:ssh@10.6]
+    connections: [Production cluster, web-1, { name: staging, namespace: web }]
+    run: |
+      kubectl rollout restart deploy/web
+      ssh web-1 'sudo systemctl reload nginx'
+```
+
+Names are the connections' names in Infrawrench. To lend one, tick **Lend its credentials to jobs** on its row.
+
+- **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
+- **SSH:** an entry in `/root/.ssh/config` named after the connection, with its key, user and port, a check against the host key Infrawrench pinned for it, and the jump host it connects through, which must be lent too. A host with no pinned key is not lent: open a terminal to it from Infrawrench once first.
+
+<insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
+
+### SSH keys
+
+`ssh-keys: [deploy]` writes one of your SSH keys to `/root/.ssh/id_deploy`, used for every host. Only a key's owner can lend it: under **Settings**, **SSH keys**, choose **Use in CI jobs** on your key, give it its name in pipelines, and say which repositories and branches may use it. Only keys Infrawrench generated can be lent, since an imported key's private half is not stored. Admins can revoke a lent key from the CI access card.
+
+<insert [The SSH keys settings page with "Use in CI jobs" on the caller's own generated key, and the dialog open with its name in pipelines "deploy" and branches "main"] here>
+
+### Resources
+
+A job can read a resource's outputs, granted one resource at a time under **Resources jobs may read**: choose **Grant a resource**, find it by name, and tick the outputs jobs may read. Sensitive outputs start unticked. For a secret in a secret manager, choose its latest enabled version or a pinned one, read as `value`.
+
+```yaml
+jobs:
+  migrate:
+    env:
+      DATABASE_URL: ${{ resources.prod-db.connectionString }}
+      API_KEY: ${{ resources.stripe-key.value }}
+    env-from: [r2-assets] # every granted output, as the resource's usual variable names
+```
+
+`${{ resources.<name>.<output> }}` works where `${{ secrets.NAME }}` does, in `env:` values. Values are read fresh for every run, so a rotated secret takes effect on the next one, and they are masked in every log and output.
+
+<insert [The "Grant a resource" form with the database "prod-db" chosen, connectionString ticked, the sensitive adminPassword unticked, its name in pipelines "prod-db", and the branch pattern "main"] here>
+
+### When a job is refused
+
+A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
+
 ## Caches
 
 The **Caches** card lists what each repository's jobs have saved, with `cache:` and `task-cache:`, across every branch and pull request: how many entries and how much space, largest first, under each GitHub account with its total against its storage quota.
@@ -327,4 +472,5 @@ Complimentary organizations are never billed. See [Billing and plans](../team-an
 
 - CI runs for GitHub repositories, through the Infrawrench GitHub App.
 - The mobile app does not show CI.
+- Cloud jobs run on the providers in the [table above](#cloud-jobs); more follow.
 - The pipeline format, the builtin tools and the limits on each job are described in the runner's reference (`ci-runner/README.md` in the Infrawrench repository).

@@ -9,7 +9,7 @@
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
-import { CI_JOB_STATUSES, CI_RUN_STATUSES } from "@infrawrench/client-core";
+import { CI_EXECUTOR_KIND_IDS, CI_JOB_STATUSES, CI_RUN_STATUSES } from "@infrawrench/client-core";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
 import { BadRequest, Conflict, NotFound } from "../http/errors";
@@ -32,6 +32,32 @@ export const CiJobSummarySchema = Schema.Struct({
     Schema.Array(Schema.String).annotate({
       description:
         "The job keys it waited for, as the pipeline's `needs:` expanded them. Absent from runs before runner 0.3.1.",
+    }),
+  ),
+  access: Schema.optionalKey(
+    Schema.Struct({
+      connections: Schema.optionalKey(Schema.Array(Schema.String)),
+      sshKeys: Schema.optionalKey(Schema.Array(Schema.String)),
+      resources: Schema.optionalKey(Schema.Array(Schema.String)),
+      envFrom: Schema.optionalKey(Schema.Array(Schema.String)),
+    }).annotate({
+      identifier: "CiJobAccessNames",
+      description:
+        "What the job was lent, by name only: connections, SSH keys, resources and `env-from:` grants.",
+    }),
+  ),
+  cloud: Schema.optionalKey(
+    Schema.Struct({
+      provider: Schema.String,
+      kind: Schema.String,
+      machine: Schema.optionalKey(Schema.String),
+      region: Schema.optionalKey(Schema.String),
+      executor: Schema.optionalKey(
+        Schema.String.annotate({ description: "What ran it, e.g. `aws ec2 i-0abc (eu-west-1)`." }),
+      ),
+    }).annotate({
+      identifier: "CiJobCloud",
+      description: "A cloud job's `cloud:` block and what ran it.",
     }),
   ),
 }).annotate({ identifier: "CiJobSummary" });
@@ -119,10 +145,182 @@ export const CiRunSchema = Schema.Struct({
   ),
 }).annotate({ identifier: "CiRun" });
 
+export const CiCloudJobSchema = Schema.Struct({
+  jobId: Schema.String,
+  jobName: Schema.String,
+  pipeline: Schema.String,
+  accountId: Schema.NullOr(Schema.String),
+  accountName: Schema.NullOr(Schema.String),
+  pluginId: Schema.String,
+  kind: Schema.String,
+  machine: Schema.NullOr(Schema.String),
+  region: Schema.NullOr(Schema.String),
+  state: Schema.Literals(["claiming", "starting", "running", "tearing_down", "done"]).annotate({
+    description:
+      "`claiming`: Infrawrench is claiming it from the runner (retried when the runner pool is busy). `starting`: the machine is coming up. `running`: it called back. `tearing_down`: the job ended and its compute is being removed. `done`: removed.",
+  }),
+  outcome: Schema.NullOr(Schema.String),
+  reason: Schema.NullOr(Schema.String),
+  label: Schema.NullOr(
+    Schema.String.annotate({ description: "The provider's name for what runs it." }),
+  ),
+  claimedAt: IsoDateTime,
+  finishedAt: Schema.NullOr(IsoDateTime),
+}).annotate({ identifier: "CiCloudJob" });
+
 export const CiRunDetailSchema = Schema.Struct({
   run: CiRunSchema,
   jobs: Schema.NullOr(Schema.Array(CiJobOutputSchema)),
+  cloudJobs: Schema.optionalKey(
+    Schema.Array(CiCloudJobSchema).annotate({
+      description: "Where each of its cloud jobs ran. Absent when it has none.",
+    }),
+  ),
 }).annotate({ identifier: "CiRunDetail" });
+
+const KindSchema = Schema.Literals(CI_EXECUTOR_KIND_IDS);
+const ReposSchema = Schema.NullOr(Schema.Array(Schema.String)).annotate({
+  description: "Repositories (`owner/name`). Null: every repository the organization runs CI for.",
+});
+const BranchPatternSchema = Schema.NullOr(Schema.String).annotate({
+  description:
+    "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch.",
+});
+
+export const CiPreflightRecordSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  missing: Schema.Array(Schema.Struct({ permission: Schema.String, label: Schema.String })),
+  problems: Schema.Array(Schema.String),
+  region: Schema.optionalKey(Schema.String),
+  checkedAt: IsoDateTime,
+}).annotate({ identifier: "CiPreflightRecord" });
+
+export const CiConnectionAccessSettingsSchema = Schema.Struct({
+  jobsEnabled: Schema.Boolean.annotate({
+    description: "Cloud jobs may run on this connection. Needs a passing check for every kind.",
+  }),
+  jobKinds: Schema.Array(KindSchema),
+  maxConcurrentJobs: Schema.Int,
+  maxJobMinutes: Schema.Int,
+  jobRepos: ReposSchema,
+  jobBranchPattern: BranchPatternSchema,
+  lendEnabled: Schema.Boolean.annotate({
+    description: "Jobs may be lent this connection's credentials (`connections:`).",
+  }),
+  lendRepos: ReposSchema,
+  lendBranchPattern: BranchPatternSchema,
+}).annotate({ identifier: "CiConnectionAccessSettings" });
+
+export const CiConnectionAccessSchema = Schema.Struct({
+  accountId: Schema.String,
+  accountName: Schema.String,
+  pluginId: Schema.String,
+  pluginName: Schema.String,
+  executor: Schema.NullOr(
+    Schema.Struct({
+      kinds: Schema.Array(
+        Schema.Struct({
+          kind: KindSchema,
+          label: Schema.String,
+          defaults: Schema.Struct({
+            machine: Schema.optionalKey(Schema.String),
+            image: Schema.optionalKey(Schema.String),
+            region: Schema.optionalKey(Schema.String),
+          }),
+          typicalStartSeconds: Schema.optionalKey(Schema.Number),
+          minimumBillingSeconds: Schema.optionalKey(Schema.Number),
+          gpus: Schema.optionalKey(Schema.Boolean),
+          machineSuggestions: Schema.optionalKey(Schema.Array(Schema.String)),
+          regionLabel: Schema.optionalKey(
+            Schema.String.annotate({
+              description: "What `cloud.region` means for this kind, when it is not a region.",
+            }),
+          ),
+        }),
+      ),
+      helpLink: Schema.NullOr(Schema.Struct({ label: Schema.String, url: Schema.String })),
+    }),
+  ),
+  credential: Schema.NullOr(
+    Schema.Struct({
+      description: Schema.String,
+      shortLived: Schema.Boolean,
+      namespaces: Schema.Boolean,
+    }),
+  ),
+  settings: CiConnectionAccessSettingsSchema,
+  preflight: Schema.Record(Schema.String, CiPreflightRecordSchema),
+  updatedAt: Schema.NullOr(IsoDateTime),
+}).annotate({ identifier: "CiConnectionAccess" });
+
+export const CiResourceGrantSchema = Schema.Struct({
+  id: Schema.String,
+  accountId: Schema.String,
+  accountName: Schema.String,
+  pluginId: Schema.String,
+  resourceId: Schema.String,
+  resourceTypeId: Schema.String,
+  resourceName: Schema.String,
+  ciName: Schema.String,
+  outputs: Schema.Array(Schema.String),
+  secretVersion: Schema.NullOr(Schema.String),
+  repos: ReposSchema,
+  branchPattern: BranchPatternSchema,
+  createdAt: IsoDateTime,
+}).annotate({ identifier: "CiResourceGrant" });
+
+export const CiResourceGrantInputSchema = Schema.Struct({
+  resourceId: Schema.String,
+  ciName: Schema.String.annotate({
+    description:
+      "The name pipelines use: `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`, unique in the organization.",
+  }),
+  outputs: Schema.Array(Schema.String),
+  secretVersion: Schema.NullOr(
+    Schema.String.annotate({
+      description:
+        "For a secret with versions: `latest`, or a version id. Read as the output `value`.",
+    }),
+  ),
+  repos: ReposSchema,
+  branchPattern: BranchPatternSchema,
+}).annotate({ identifier: "CiResourceGrantInput" });
+
+export const CiSshKeyLendingSchema = Schema.Struct({
+  sshKeyId: Schema.String,
+  keyName: Schema.String,
+  ownerUserId: Schema.String,
+  ownerName: Schema.NullOr(Schema.String),
+  ciName: Schema.String,
+  repos: ReposSchema,
+  branchPattern: BranchPatternSchema,
+  mine: Schema.Boolean,
+  createdAt: IsoDateTime,
+}).annotate({ identifier: "CiSshKeyLending" });
+
+export const CiAccessOverviewSchema = Schema.Struct({
+  viewerUserId: Schema.NullOr(
+    Schema.String.annotate({ description: "The caller: only a key's owner can lend it." }),
+  ),
+  connections: Schema.Array(CiConnectionAccessSchema),
+  grants: Schema.Array(CiResourceGrantSchema),
+  sshKeys: Schema.Array(CiSshKeyLendingSchema),
+}).annotate({ identifier: "CiAccessOverview" });
+
+export const CiResourceOutputsSchema = Schema.Struct({
+  outputs: Schema.Array(
+    Schema.Struct({ key: Schema.String, label: Schema.String, sensitive: Schema.Boolean }),
+  ),
+  secretVersions: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        state: Schema.String,
+        createdAt: Schema.NullOr(Schema.String),
+      }),
+    ),
+  ),
+}).annotate({ identifier: "CiResourceOutputs" });
 
 export const CiAccountSchema = Schema.Struct({
   installationId: Schema.Int,
@@ -383,6 +581,113 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:write")
       .annotate(OpenApi.Summary, "Remove a CI secret or variable")
       .annotate(SuccessDescription, "Removed"),
+    HttpApiEndpoint.get("access", "/access", {
+      params: OrgParams,
+      success: CiAccessOverviewSchema,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "What CI jobs may use: connections, resources and SSH keys")
+      .annotate(
+        OpenApi.Description,
+        "Every connection whose provider can run CI jobs or lend its credentials, with what it is allowed; the resources granted to CI; and the SSH keys their owners lend. Nothing secret.",
+      )
+      .annotate(SuccessDescription, "CI access"),
+    HttpApiEndpoint.put("setConnectionAccess", "/access/connections/:accountId", {
+      params: { orgId: OrgId, accountId: Schema.String },
+      payload: CiConnectionAccessSettingsSchema,
+      success: CiConnectionAccessSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci-access:write")
+      .annotate(OpenApi.Summary, "Set what CI may do with a connection")
+      .annotate(
+        OpenApi.Description,
+        "Run cloud jobs on it (kinds, limits, repositories, branches) and lend its credentials to jobs (repositories, branches). Turning cloud jobs on needs a passing permission check for every kind.",
+      )
+      .annotate(SuccessDescription, "The connection's CI access"),
+    HttpApiEndpoint.post("preflightConnection", "/access/connections/:accountId/preflight", {
+      params: { orgId: OrgId, accountId: Schema.String },
+      payload: Schema.Struct({ kind: KindSchema, region: Schema.optionalKey(Schema.String) }),
+      success: CiConnectionAccessSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci-access:write")
+      .annotate(OpenApi.Summary, "Check whether a connection can run cloud jobs of a kind")
+      .annotate(
+        OpenApi.Description,
+        "Asks the provider without starting anything (a dry run or a permission test) and keeps the answer: what is missing and how to grant it. A failing check turns that kind off.",
+      )
+      .annotate(SuccessDescription, "The connection's CI access, with the check"),
+    HttpApiEndpoint.get("resourceOutputs", "/access/resource-outputs", {
+      params: OrgParams,
+      query: {
+        resourceId: documentedAs(Schema.String).annotate({ description: "The resource's id." }),
+      },
+      success: CiResourceOutputsSchema,
+      error: [BadRequest, NotFound],
+    })
+      .annotate(RequiredPermission, "ci-access:write")
+      .annotate(OpenApi.Summary, "What a resource can be granted to CI")
+      .annotate(SuccessDescription, "Its outputs and, for a secret, its versions"),
+    HttpApiEndpoint.post("createGrant", "/access/grants", {
+      params: OrgParams,
+      payload: CiResourceGrantInputSchema,
+      success: CiResourceGrantSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci-access:write")
+      .annotate(OpenApi.Summary, "Grant CI jobs a resource's outputs")
+      .annotate(
+        OpenApi.Description,
+        "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. Only for the listed repositories and branches, and never for a fork's pull request.",
+      )
+      .annotate(SuccessDescription, "The grant"),
+    HttpApiEndpoint.put("updateGrant", "/access/grants/:grantId", {
+      params: { orgId: OrgId, grantId: Schema.String },
+      payload: CiResourceGrantInputSchema,
+      success: CiResourceGrantSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci-access:write")
+      .annotate(OpenApi.Summary, "Change a resource grant")
+      .annotate(SuccessDescription, "The grant"),
+    HttpApiEndpoint.delete("deleteGrant", "/access/grants/:grantId", {
+      params: { orgId: OrgId, grantId: Schema.String },
+      success: Ok,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:write")
+      .annotate(OpenApi.Summary, "Remove a resource grant")
+      .annotate(SuccessDescription, "Removed"),
+    HttpApiEndpoint.put("setSshKeyLending", "/access/ssh-keys/:sshKeyId", {
+      params: { orgId: OrgId, sshKeyId: Schema.String },
+      payload: Schema.Struct({
+        enabled: Schema.Boolean,
+        ciName: Schema.String.annotate({
+          description: "The name pipelines use in `ssh-keys:`; unique in the organization.",
+        }),
+        repos: ReposSchema,
+        branchPattern: BranchPatternSchema,
+      }),
+      success: Schema.Struct({ lending: Schema.NullOr(CiSshKeyLendingSchema) }),
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ssh-keys:write")
+      .annotate(OpenApi.Summary, "Lend one of your SSH keys to CI jobs, or stop")
+      .annotate(
+        OpenApi.Description,
+        "Only the key's owner can, and only for a key whose private half Infrawrench holds. Jobs name it in `ssh-keys:`.",
+      )
+      .annotate(SuccessDescription, "The key's lending, or null once stopped"),
+    HttpApiEndpoint.delete("revokeSshKeyLending", "/access/ssh-keys/:sshKeyId", {
+      params: { orgId: OrgId, sshKeyId: Schema.String },
+      success: Ok,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:write")
+      .annotate(OpenApi.Summary, "Stop CI jobs using someone's SSH key")
+      .annotate(SuccessDescription, "No longer lent"),
     HttpApiEndpoint.get("usage", "/usage", {
       params: OrgParams,
       query: {

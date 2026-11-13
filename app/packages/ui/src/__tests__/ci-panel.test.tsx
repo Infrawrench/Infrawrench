@@ -1,6 +1,14 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { CiJobOutput, CiLogEvent, CiRun, CiStatus } from "@infrawrench/client-core";
+import {
+  CI_DEFAULT_CONNECTION_ACCESS,
+  type CiAccessOverview,
+  type CiConnectionAccessSettings,
+  type CiJobOutput,
+  type CiLogEvent,
+  type CiRun,
+  type CiStatus,
+} from "@infrawrench/client-core";
 
 // gt-react's `gt` is not referentially stable: a fresh function on every
 // render. The panel once listed it in its fetch effects' deps, which
@@ -123,6 +131,55 @@ function client() {
       url: "https://ci-proxy.example/v1/artifacts/o/r/run/1-x?n=report.html&e=1&s=x",
       expiresAt: "2026-11-09T10:15:00.000Z",
     })),
+    access: vi.fn(async () => accessOverview()),
+    setConnectionAccess: vi.fn(async (accountId: string, settings: CiConnectionAccessSettings) => ({
+      ...accessOverview().connections[0]!,
+      accountId,
+      settings,
+    })),
+    preflightConnection: vi.fn(async () => ({
+      ...accessOverview().connections[0]!,
+      preflight: {
+        vm: {
+          ok: false,
+          missing: [{ permission: "ec2:RunInstances", label: "Start the job's instance" }],
+          problems: [],
+          region: "eu-west-1",
+          checkedAt: "2026-11-13T00:00:00.000Z",
+        },
+      },
+    })),
+    searchResources: vi.fn(async () => []),
+    resourceOutputs: vi.fn(async () => ({ outputs: [], secretVersions: null })),
+    createGrant: vi.fn(),
+    updateGrant: vi.fn(),
+    deleteGrant: vi.fn(async () => {}),
+    revokeSshKeyLending: vi.fn(async () => {}),
+    listAllRepos: vi.fn(async () => ["acme/web"]),
+  };
+}
+
+function accessOverview(): CiAccessOverview {
+  return {
+    viewerUserId: "u1",
+    connections: [
+      {
+        accountId: "acc-aws",
+        accountName: "Production",
+        pluginId: "aws",
+        pluginName: "Amazon Web Services",
+        executor: {
+          kinds: [{ kind: "vm", label: "EC2 instance", defaults: { machine: "t3.large" } }],
+          helpLink: { label: "Add these permissions", url: "https://example.test/iam" },
+        },
+        credential: null,
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+        preflight: {},
+        updatedAt: null,
+      },
+    ],
+    grants: [],
+    sshKeys: [],
   };
 }
 
@@ -136,6 +193,40 @@ const output = (id: string, name: string, needs: string[], stdout: string): CiJo
   needs,
   stdout,
   stderr: "",
+});
+
+describe("CI access", () => {
+  it("names what a connection lacks after its check, and keeps the kind off", async () => {
+    const c = client();
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canManageAccess
+        canApprove
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Production")).toBeTruthy());
+    fireEvent.click(screen.getByText("Check permissions for EC2 instance"));
+    await waitFor(() => expect(screen.getByText("ec2:RunInstances")).toBeTruthy());
+    expect(c.preflightConnection).toHaveBeenCalledWith("acc-aws", "vm");
+    expect(screen.getByText("Not ready")).toBeTruthy();
+    const kind = screen.getByRole("checkbox", { name: /EC2 instance/ }) as HTMLInputElement;
+    expect(kind.disabled).toBe(true);
+  });
+});
+
+describe("CI access without ci-access:write", () => {
+  it("shows the connections but offers no change, even with ci:write", async () => {
+    const c = client();
+    render(<CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />);
+    await waitFor(() => expect(screen.getByText("Production")).toBeTruthy());
+    expect(screen.queryByText("Grant a resource")).toBeNull();
+    const check = screen.getByText("Check permissions for EC2 instance").closest("button");
+    expect(check?.closest("fieldset")?.disabled).toBe(true);
+  });
 });
 
 describe("CiPanel", () => {

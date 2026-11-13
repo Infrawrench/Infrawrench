@@ -21,6 +21,7 @@
  * broken pass never stops the next, on either runtime.
  */
 import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
+import { runCiCloudPass } from "@infrawrench/server-core/ci/cloud-jobs";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -593,6 +594,19 @@ export const PASSES: readonly Pass[] = [
     name: "ci-upkeep",
     runtime: "edge",
     run: guarded("[ci] upkeep failed:", () => runCiUpkeepPass()),
+  },
+  // CI cloud jobs and lending: claims cloud jobs and starts their compute
+  // through the connection's plugin, keeps them alive while they boot, tears
+  // them down when they end and reaps tagged leftovers; and sends runs whose
+  // jobs are lent connections, SSH keys or resources, which the edge cannot
+  // read. Plugin code for arbitrary accounts, so the gateway, on a loop of
+  // its own so a job waiting for its machine does not wait for the tick.
+  {
+    kind: "periodic",
+    name: "ci-cloud",
+    runtime: "gateway",
+    ownLoopMs: CI_STATUS_LOOP_MS * 2,
+    run: guarded("[ci-cloud] tick failed:", () => runCiCloudPass()),
   },
 
   // Retention: idempotent prunes, at most hourly.

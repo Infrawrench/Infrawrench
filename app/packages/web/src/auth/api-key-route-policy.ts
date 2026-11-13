@@ -117,6 +117,21 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
       "They may read requests and manage policies.",
   },
   {
+    // What CI jobs may use: lending a connection's credentials, granting a
+    // resource's outputs, running cloud jobs on a connection, and lending an
+    // SSH key. Each hands an organization's credentials to every pipeline
+    // with push access to the repositories it names, which is a person's
+    // decision on the organization's behalf, never an unattended one: a key
+    // holding `ci-access:write` (or `ssh-keys:write`) could otherwise switch
+    // lending on and read the material back through a job of its own. Reads
+    // stay open (`ci:read`), so a monitor can audit what is lent.
+    prefix: "/ci/access",
+    methods: MUTATING,
+    reason:
+      "API keys cannot change what CI jobs may use (lent connections, resource grants, cloud jobs, lent SSH keys). " +
+      "Change it from the CI tab or Settings, SSH keys. They may read it.",
+  },
+  {
     // Shared consoles, by the same argument as break-glass one entry up. A
     // share is a person deciding to put a named colleague on a live shell for
     // the length of a conversation; joining one is that colleague accepting.
