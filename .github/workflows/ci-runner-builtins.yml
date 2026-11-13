@@ -5,8 +5,9 @@ name: CI runner builtins
 # source with wasixcc, run under the runner's V8, `--features node`), and the
 # language environments, whose tests install packages from the internet
 # (pip, Composer, Go modules), Go's built from source for each minor,
-# kubectl, built with that Go from modules it downloads, and OpenSSH's
-# clients, built from source with wasixcc and OpenSSL.
+# kubectl, built with that Go from modules it downloads, OpenSSH's
+# clients, built from source with wasixcc and OpenSSL, and ClickHouse,
+# built from CloudHouse with Emscripten (hours, so cached by its inputs).
 # Each job builds one with its own script in ci-runner/builtins/, then runs
 # builtins/test.sh, which publishes it to a throwaway store and runs
 # pipelines through `iwci run`. gofmt and bash are
@@ -242,6 +243,91 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/environment/bash-node/*
+
+  clickhouse:
+    name: clickhouse (CloudHouse for WebAssembly)
+    # Its environment carries Edge.js, and its jobs run Node (the runner with
+    # V8, which wasmer-napi has no Linux arm64 build of), as bash-node's do.
+    runs-on: ubuntu-24.04
+    # A build from scratch is about 6,900 objects: two to three hours on
+    # this runner's four cores. Pull requests and nightly runs reuse the
+    # cached package (below) until something it is built from changes.
+    timeout-minutes: 330
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      - name: Build the runner with V8
+        run: cargo build -p iwci --features node
+
+      # See the bash-node job.
+      - name: Cache the Edge.js package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/edgejs
+          key: edgejs-${{ hashFiles('ci-runner/builtins/environments/edgejs/**', 'ci-runner/builtins/lib.sh') }}
+
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+
+      # builtins/environments/clickhouse/build.sh pins CloudHouse, its
+      # submodules, emsdk, CMake and Ninja, and builds at a fixed path, so the
+      # package is reproducible and the next step checks it against the hash
+      # pinned in environments/build.sh: a cached one is as good as a fresh
+      # one, and a wrong one fails either way.
+      - name: Cache the ClickHouse package
+        id: clickhouse-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/clickhouse
+          key: clickhouse-${{ hashFiles('ci-runner/builtins/environments/clickhouse/**', 'ci-runner/builtins/lib.sh') }}
+
+      # The sources, emsdk and the build take about 12 GB.
+      - name: Make room for the build
+        if: steps.clickhouse-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build the environment
+        env:
+          CLICKHOUSE_JOBS: "4"
+        run: bash builtins/environments/build.sh clickhouse
+
+      - name: Publish and run it through iwci
+        run: SKIP_BUILD=1 bash builtins/test.sh clickhouse
+
+      # A build that came out different, kept to compare with the pinned one.
+      - name: Keep the package
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: clickhouse-package
+          path: ci-runner/dist/package/clickhouse
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/environment/clickhouse/*
 
   python:
     name: python (CPython on WASIX)
