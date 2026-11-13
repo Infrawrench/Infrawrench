@@ -37,9 +37,19 @@ pub fn fd_readdir<M: MemorySize>(
     let working_dir = wasi_try_ok!(state.fs.get_fd(fd));
     let mut buf_idx = 0usize;
 
-    let entries: Vec<(String, Filetype, u64)> = {
+    // A cookie past 0 goes on through the listing the read from 0 made, in
+    // which it stays put whatever was added or removed since
+    // (`DirListing`). Only a descriptor that never read from 0 lists the
+    // directory here for another cookie.
+    let listed = match cookie {
+        0 => None,
+        _ => working_dir.inner.dir_listing.lock().unwrap().clone(),
+    };
+    let entries: Arc<Vec<(String, Filetype, u64)>> = if let Some(listed) = listed {
+        listed
+    } else {
         let guard = working_dir.inode.read();
-        match guard.deref() {
+        let listed: Vec<(String, Filetype, u64)> = match guard.deref() {
             Kind::Dir { path, entries, .. } => {
                 trace!("reading dir {:?}", path);
                 // TODO: refactor this code
@@ -115,7 +125,11 @@ pub fn fd_readdir<M: MemorySize>(
             | Kind::DuplexPipe { .. }
             | Kind::EventNotifications { .. }
             | Kind::Epoll { .. } => return Ok(Errno::Notdir),
-        }
+        };
+        drop(guard);
+        let listed = Arc::new(listed);
+        *working_dir.inner.dir_listing.lock().unwrap() = Some(listed.clone());
+        listed
     };
 
     for (cur_cookie, (entry_path_str, wasi_file_type, ino)) in

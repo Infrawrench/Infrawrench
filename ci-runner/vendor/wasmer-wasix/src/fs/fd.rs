@@ -2,11 +2,11 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, atomic::AtomicU64},
+    sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, atomic::AtomicU64},
 };
 
 use virtual_fs::{Pipe, PipeRx, PipeTx, VirtualFile};
-use wasmer_wasix_types::wasi::{Fdflags, Fdflagsext, Filestat, Rights};
+use wasmer_wasix_types::wasi::{Fdflags, Fdflagsext, Filestat, Filetype, Rights};
 
 use crate::net::socket::InodeSocket;
 use crate::os::epoll::EpollState;
@@ -37,7 +37,21 @@ pub struct FdInner {
     pub flags: Fdflags,         // This is file table related flags, not fd flags
     pub offset: Arc<AtomicU64>, // This also belongs in the file table
     pub fd_flags: Fdflagsext,   // This is the actual FD flags that belongs here
+    /// The entries `fd_readdir` serves a directory's cookies from, shared
+    /// like the offset (see [`DirListing`]).
+    pub dir_listing: DirListing,
 }
+
+/// A directory's entries (name, type, inode) as `fd_readdir` listed them
+/// for a read from cookie 0, sorted by name. A cookie is a position in this
+/// list, so the cookies a reader holds keep naming the same entries while
+/// the directory changes: re-listing on every call shifted every later
+/// entry down by one for each one removed meanwhile, and `rm -rf`, which
+/// unlinks what it has read before reading on, skipped as many as it had
+/// removed and failed with "Directory not empty". Reading from cookie 0
+/// lists the directory again (`rewinddir`), so entries added or removed
+/// since show up then, as POSIX allows.
+pub type DirListing = Arc<Mutex<Option<Arc<Vec<(String, Filetype, u64)>>>>>;
 
 impl Fd {
     /// This [`Fd`] can be used with read system calls.

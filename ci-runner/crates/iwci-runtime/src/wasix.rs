@@ -32,13 +32,14 @@ use std::time::{Duration, Instant};
 use futures::future::BoxFuture;
 use sha2::Digest;
 use virtual_fs::{
-    FileSystem, MountFileSystem, NullFile, RootFileSystemBuilder, TmpFileSystem, VirtualFile,
+    ArcFileSystem, FileSystem, MountFileSystem, NullFile, OverlayFileSystem, RootFileSystemBuilder,
+    TmpFileSystem, VirtualFile,
 };
 use wasmer::sys::NativeEngineExt;
 use wasmer::{Engine, Interrupter, Module};
 use wasmer_config::package::{PackageHash, PackageId};
 use wasmer_wasix::bin_factory::{
-    BinaryPackage, BinaryPackageCommand, spawn_exec, spawn_exec_module,
+    BinaryPackage, BinaryPackageCommand, BinaryPackageMounts, spawn_exec, spawn_exec_module,
 };
 use wasmer_wasix::http::DynHttpClient;
 use wasmer_wasix::os::TtyBridge;
@@ -687,6 +688,84 @@ fn job_root(
     Ok(root)
 }
 
+/// The user database of an environment job: `root`, who a job runs as
+/// (uid 0, `HOME=/root`), and `nobody`.
+const PASSWD: &str = "root:x:0:0:root:/root:/bin/bash\n\
+                      nobody:x:65534:65534:nobody:/nonexistent:/bin/false\n";
+const GROUP: &str = "root:x:0:\nnogroup:x:65534:\n";
+
+/// A file system holding the user database in the directory `etc`.
+fn user_database(etc: &Path) -> Result<Arc<dyn FileSystem + Send + Sync>> {
+    let err = |e: &dyn std::fmt::Display| Error::Setup(format!("writing the user database: {e}"));
+    let fs = TmpFileSystem::new();
+    iwci_vfs::create_dir_all(&fs, etc).map_err(|e| err(&e))?;
+    for (name, text) in [("passwd", PASSWD), ("group", GROUP)] {
+        fs.new_open_options_ext()
+            .insert_ro_file(
+                &etc.join(name),
+                shared_buffer::OwnedBuffer::from_bytes(bytes::Bytes::from_static(text.as_bytes())),
+            )
+            .map_err(|e| err(&e))?;
+    }
+    Ok(Arc::new(fs))
+}
+
+/// The packages of an environment job with a user database in `/etc`
+/// (#1077). The isolate had none, so nothing answered for the root a job is
+/// told it is: Node's `os.userInfo()` threw (ENOENT from
+/// `uv_os_get_passwd`), and with it anything that asks for the user's shell
+/// that way, such as oclif's command lines.
+///
+/// It is a package of its own, with no commands, used after the
+/// environment's, so its files sit under theirs in the root file system and
+/// a package that brings its own `/etc/passwd` wins. A package that mounts a
+/// volume at `/etc` (Edge.js's `hosts` and `resolv.conf`) hides what the
+/// root file system has there, so the database goes under that volume too.
+fn with_user_database(packages: &[BinaryPackage]) -> Result<Vec<BinaryPackage>> {
+    let etc = Path::new("/etc");
+    let mut out = Vec::with_capacity(packages.len() + 1);
+    for package in packages {
+        let mut package = package.clone();
+        if let Some(mounts) = &package.package_mounts
+            && mounts.mounts.iter().any(|m| m.guest_path == etc)
+        {
+            let mut mounts = BinaryPackageMounts::clone(mounts);
+            for mount in mounts.mounts.iter_mut().filter(|m| m.guest_path == etc) {
+                let users = user_database(&mount.source_path)?;
+                mount.fs = Arc::new(OverlayFileSystem::new(
+                    ArcFileSystem::new(mount.fs.clone()),
+                    [ArcFileSystem::new(users)],
+                ));
+            }
+            package.package_mounts = Some(Arc::new(mounts));
+        }
+        out.push(package);
+    }
+    let id = PackageId::new_named(
+        "iwci/user-database",
+        "1.0.0"
+            .parse()
+            .map_err(|e| Error::Setup(format!("the user database's version: {e}")))?,
+    );
+    out.push(BinaryPackage {
+        id: id.clone(),
+        package_ids: vec![id],
+        webc_version: webc::Version::V3,
+        when_cached: None,
+        entrypoint_cmd: None,
+        hash: Default::default(),
+        package_mounts: Some(Arc::new(BinaryPackageMounts {
+            root_layer: Some(user_database(etc)?),
+            mounts: Vec::new(),
+        })),
+        commands: Vec::new(),
+        uses: Vec::new(),
+        file_system_memory_footprint: 0,
+        additional_host_mapped_directories: Vec::new(),
+    });
+    Ok(out)
+}
+
 /// Writes `bytes` as the executable file `/<name>` of `fs`.
 fn write_command(fs: &TmpFileSystem, name: &str, bytes: &[u8]) -> Result<()> {
     use virtual_fs::AsyncWriteExt;
@@ -914,8 +993,8 @@ impl Starter<'_> {
                 .enable_asynchronous_threading = false;
         }
         if let Program::Command { uses, .. } = &process.program {
-            for package in uses {
-                builder.add_webc(package.clone());
+            for package in with_user_database(uses)? {
+                builder.add_webc(package);
             }
         }
         let env = builder.build().map_err(|e| Error::Setup(e.to_string()))?;
@@ -1444,4 +1523,79 @@ fn binary_packages(
             .push(package);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod user_database_tests {
+    use super::*;
+    use wasmer_wasix::bin_factory::BinaryPackageMount;
+
+    fn package(name: &str, mounts: Option<BinaryPackageMounts>) -> BinaryPackage {
+        let id = PackageId::new_named(name, "1.0.0".parse().unwrap());
+        BinaryPackage {
+            id: id.clone(),
+            package_ids: vec![id],
+            webc_version: webc::Version::V3,
+            when_cached: None,
+            entrypoint_cmd: None,
+            hash: Default::default(),
+            package_mounts: mounts.map(Arc::new),
+            commands: Vec::new(),
+            uses: Vec::new(),
+            file_system_memory_footprint: 0,
+            additional_host_mapped_directories: Vec::new(),
+        }
+    }
+
+    fn text(fs: &(dyn FileSystem + Send + Sync), path: &str) -> String {
+        String::from_utf8(iwci_vfs::read_file(fs, path).unwrap()).unwrap()
+    }
+
+    /// The database is a root layer under the packages', and goes under a
+    /// package's own `/etc` volume, which would hide it, keeping that
+    /// volume's files and any user database it has.
+    #[test]
+    fn the_user_database_is_under_the_packages_and_their_etc() {
+        let etc = TmpFileSystem::new();
+        iwci_vfs::write_file(&etc, "/etc/hosts", b"127.0.0.1 localhost\n").unwrap();
+        let own = TmpFileSystem::new();
+        iwci_vfs::write_file(&own, "/passwd", b"theirs\n").unwrap();
+        let mount = |fs: TmpFileSystem, source: &str| BinaryPackageMount {
+            guest_path: "/etc".into(),
+            fs: Arc::new(fs),
+            source_path: source.into(),
+        };
+        let packages = vec![
+            package("a/plain", None),
+            package(
+                "a/etc",
+                Some(BinaryPackageMounts {
+                    root_layer: None,
+                    mounts: vec![mount(etc, "/etc")],
+                }),
+            ),
+            package(
+                "a/own",
+                Some(BinaryPackageMounts {
+                    root_layer: None,
+                    mounts: vec![mount(own, "/")],
+                }),
+            ),
+        ];
+        let out = with_user_database(&packages).unwrap();
+        assert_eq!(out.len(), 4);
+        assert!(out[0].package_mounts.is_none());
+        let etc = &out[1].package_mounts.as_ref().unwrap().mounts[0];
+        assert_eq!(text(etc.fs.as_ref(), "/etc/hosts"), "127.0.0.1 localhost\n");
+        assert_eq!(text(etc.fs.as_ref(), "/etc/passwd"), PASSWD);
+        assert_eq!(text(etc.fs.as_ref(), "/etc/group"), GROUP);
+        let own = &out[2].package_mounts.as_ref().unwrap().mounts[0];
+        assert_eq!(text(own.fs.as_ref(), "/passwd"), "theirs\n");
+        assert_eq!(text(own.fs.as_ref(), "/group"), GROUP);
+        let database = out[3].package_mounts.as_ref().unwrap();
+        assert!(database.mounts.is_empty());
+        let root = database.root_layer.as_ref().unwrap();
+        assert_eq!(text(root.as_ref(), "/etc/passwd"), PASSWD);
+        assert!(out[3].commands.is_empty());
+    }
 }

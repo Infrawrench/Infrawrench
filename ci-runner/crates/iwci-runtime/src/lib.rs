@@ -630,6 +630,7 @@ impl Runtime {
         if !inv.env.iter().any(|(k, _)| k == "PATH") {
             inv.env.push(("PATH".into(), DEFAULT_PATH.into()));
         }
+        script_shell(&mut inv.env, entry);
         #[cfg(feature = "node")]
         let node = Some(node::NodeHooks::new(inv.limits.memory_bytes));
         #[cfg(not(feature = "node"))]
@@ -663,6 +664,16 @@ impl Runtime {
             node.as_ref(),
             builtins,
         )
+    }
+}
+
+/// `SHELL` for a script `entry` runs (`/bin/bash`), unless the job or its
+/// environment set one (#1077). bash sets it for itself without exporting
+/// it, so nothing the script started had one, and a program that asks for
+/// the user's shell (oclif's command lines) went on to the user database.
+pub(crate) fn script_shell(env: &mut Vec<(String, String)>, entry: &str) {
+    if !env.iter().any(|(k, _)| k == "SHELL") {
+        env.push(("SHELL".into(), format!("/bin/{entry}")));
     }
 }
 

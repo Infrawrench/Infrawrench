@@ -637,6 +637,30 @@ jobs:
       rm -rf go ts
       test ! -e go && test ! -e ts
       mkdir go && test -z "$(ls -A go)"
+  # `rm -rf` of a directory of three or more entries (#1078): each read of
+  # the directory listed it afresh and took the cookie as a position in
+  # that listing, so every entry removed since skipped one, and rm left
+  # some and failed with "Directory not empty".
+  rm-rf-passes:
+    using: env:bash@5
+    run: |
+      for n in 3 5 12 200; do
+        mkdir -p /tmp/f$n; for i in $(seq 1 $n); do echo x > /tmp/f$n/file$i; done
+        rm -rf /tmp/f$n
+        test ! -e /tmp/f$n
+      done
+      mkdir -p tree/a/b
+      for d in tree tree/a tree/a/b; do for i in $(seq 1 30); do echo x > $d/longer-file-name-$i; done; done
+      rm -rf tree go
+      test ! -e tree && test ! -e go
+  # A job is root, and the isolate says so (#1077): /etc/passwd and
+  # /etc/group have root, and SHELL is exported to what a script starts.
+  user-database-passes:
+    using: env:bash@5
+    run: |
+      grep -qx 'root:x:0:0:root:/root:/bin/bash' /etc/passwd
+      grep -qx 'root:x:0:' /etc/group
+      test "$(env | grep '^SHELL=')" = SHELL=/bin/bash
   stat-missing-fails:
     using: env:bash@5
     run: stat no-such-file
@@ -963,6 +987,49 @@ jobs:
       JS
       test "$(node /tmp/rm.js)" = "rm ok"
       test ! -e go
+  # A directory renamed out of one that is then removed can be listed
+  # (#1079): it kept the old one as its `..`, which `scandir` stats, so
+  # `fs.readdirSync` threw EACCES. `ray build` moves its output out of a
+  # temporary directory that way.
+  moved-dir-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/moved.js <<'JS'
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const assert = require("node:assert");
+      const root = "/tmp/q";
+      fs.mkdirSync(root, { recursive: true });
+      const m = fs.mkdtempSync(path.join(root, ".b-"));
+      fs.mkdirSync(path.join(m, "assets", "deep"), { recursive: true });
+      fs.writeFileSync(path.join(m, "assets", "f"), "x");
+      fs.mkdirSync(path.join(root, "dist"));
+      fs.renameSync(path.join(m, "assets"), path.join(root, "dist", "assets"));
+      fs.rmSync(m, { recursive: true, force: true });
+      assert.deepStrictEqual(fs.readdirSync(path.join(root, "dist", "assets")).sort(), ["deep", "f"]);
+      assert.deepStrictEqual(fs.readdirSync(path.join(root, "dist", "assets", "deep")), []);
+      assert.equal(fs.readFileSync(path.join(root, "dist", "assets", "f"), "utf8"), "x");
+      console.log("moved ok");
+      JS
+      test "$(node /tmp/moved.js)" = "moved ok"
+  # `fs.cpSync` of a directory (#1075), which Node copies in C++ with
+  # `std::filesystem::copy_file`, which copies with `sendfile`: that only
+  # sent to sockets, and answered EACCES for a file.
+  cp-sync-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/a/b && echo x > /tmp/a/b/f && echo y > /tmp/a/g
+      node -e 'require("fs").cpSync("/tmp/a", "/tmp/c", { recursive: true })'
+      test "$(cat /tmp/c/b/f /tmp/c/g)" = "$(printf 'x\ny')"
+      node -e 'require("fs").cpSync("go", "/tmp/go", { recursive: true })'
+      test "$(cat /tmp/go/dirty/main.go)" = "$(cat go/dirty/main.go)"
+  # `os.userInfo()` answers for root (#1077), which oclif asks for when
+  # `SHELL` is not set; it threw for want of a user database.
+  user-info-passes:
+    using: env:bash-node@24
+    run: |
+      test "$(node -e 'const u = require("os").userInfo(); console.log(u.username, u.uid, u.gid, u.homedir, u.shell)')" = "root 0 0 /root /bin/bash"
+      test "$(node -e 'console.log(process.env.SHELL)')" = /bin/bash
   # `fs.linkSync` fails with EPERM and leaves one name (#1052): it used to
   # succeed, and `unlinkSync` of either name then removed nothing.
   links-passes:

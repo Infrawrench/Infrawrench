@@ -1597,7 +1597,13 @@ Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
 `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
-[Known limitations](#known-limitations)). Installers add their own: Go
+[Known limitations](#known-limitations)). A `run:` script and what it starts
+also see `SHELL=/bin/bash` (unless the job or its environment sets one), and
+a user database that agrees: `/etc/passwd` and `/etc/group` with `root`
+(uid and gid 0, home `/root`, shell `/bin/bash`) and `nobody`, so Node's
+`os.userInfo()`, Python's `pwd` and Go's `os/user` answer for the root a job
+runs as. They sit under the environment's own files, so an environment that
+brings a user database keeps it. Installers add their own: Go
 jobs get `GOMODCACHE`, `GOPROXY=off`, `GOFLAGS=-mod=readonly` and friends,
 Cargo jobs `CARGO_NET_OFFLINE=true`.
 

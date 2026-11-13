@@ -587,6 +587,195 @@ fn a_renamed_file_has_the_inode_number_of_its_new_path() {
     );
 }
 
+/// Lists `/work/d` as Rust's standard library does, 128 bytes of entries
+/// a call, removing each entry it reads before it reads on, as `rm -rf`
+/// does, then removes the directory. Exits 10 to 13 when a call fails, and
+/// 20 plus the number removed when that is not 6.
+const READDIR_UNLINK: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_readdir" (func $readdir (param i32 i32 i32 i64 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/d")
+  (func (export "_start")
+    (local $fd i32) (local $cookie i64) (local $used i32) (local $at i32) (local $len i32)
+    (local $removed i32)
+    ;; a directory, with every right but FD_WRITE (64)
+    (if (call $path_open (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 7)
+          (i32.const 2) (i64.const -65) (i64.const -1) (i32.const 0) (i32.const 24))
+      (then (call $proc_exit (i32.const 10))))
+    (local.set $fd (i32.load (i32.const 24)))
+    ;; entries at 1024: d_next (u64) at +0, d_namlen (u32) at +16, the name at +24
+    (block $done
+      (loop $read
+        (if (call $readdir (local.get $fd) (i32.const 1024) (i32.const 128) (local.get $cookie)
+              (i32.const 28))
+          (then (call $proc_exit (i32.const 11))))
+        (local.set $used (i32.load (i32.const 28)))
+        (local.set $at (i32.const 0))
+        (block $batch
+          (loop $entry
+            (br_if $batch (i32.gt_u (i32.add (local.get $at) (i32.const 24)) (local.get $used)))
+            (local.set $len (i32.load (i32.add (i32.const 1040) (local.get $at))))
+            (br_if $batch (i32.gt_u (i32.add (i32.add (local.get $at) (i32.const 24)) (local.get $len))
+              (local.get $used)))
+            ;; `.` and `..` start with a dot; the files do not
+            (if (i32.ne (i32.load8_u (i32.add (i32.const 1048) (local.get $at))) (i32.const 46))
+              (then
+                (if (call $unlink (local.get $fd) (i32.add (i32.const 1048) (local.get $at))
+                      (local.get $len))
+                  (then (call $proc_exit (i32.const 12))))
+                (local.set $removed (i32.add (local.get $removed) (i32.const 1)))))
+            (local.set $cookie (i64.load (i32.add (i32.const 1024) (local.get $at))))
+            (local.set $at (i32.add (local.get $at) (i32.add (i32.const 24) (local.get $len))))
+            (br $entry)))
+        (br_if $done (i32.lt_u (local.get $used) (i32.const 128)))
+        (br $read)))
+    (drop (call $fd_close (local.get $fd)))
+    (if (i32.ne (local.get $removed) (i32.const 6))
+      (then (call $proc_exit (i32.add (i32.const 20) (local.get $removed)))))
+    (if (call $rmdir (i32.const 3) (i32.const 100) (i32.const 7))
+      (then (call $proc_exit (i32.const 13))))))
+"#;
+
+/// A directory read a few entries a call while its entries are removed
+/// gives every entry once (#1078). Each `fd_readdir` listed the directory
+/// afresh and took the cookie as a position in that listing, so each entry
+/// removed since moved the rest down by one and as many were skipped:
+/// `rm -rf` of a directory of three or more files removed some and failed
+/// with "Directory not empty".
+#[test]
+fn reading_a_directory_while_removing_its_entries_misses_none() {
+    let rt = runtime();
+    let files: Vec<(String, &str)> = (1..=6).map(|i| (format!("/work/d/f{i}"), "x")).collect();
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (p.as_str(), *t)).collect();
+    let job = snapshot(&files).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("readdir-unlink", READDIR_UNLINK),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert!(job.as_dyn().metadata(Path::new("/work/d")).is_err());
+}
+
+/// Makes `/work/m/a` with a file in it, renames it to `/work/dist/a`,
+/// removes `/work/m`, then stats `..` from a descriptor of the moved
+/// directory, as `scandir` does for every entry it reads. Exits with a code
+/// from 10 up naming the first call that fails, 19 when `..` is not
+/// `/work/dist`.
+const MOVED_DIR_PARENT: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_rename" (func $rename (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_create_directory" (func $mkdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/m")
+  (data (i32.const 110) "/work/m/a")
+  (data (i32.const 120) "/work/m/a/f")
+  (data (i32.const 140) "/work/dist")
+  (data (i32.const 160) "/work/dist/a")
+  (data (i32.const 180) "..")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (local $fd i32)
+    (call $check (call $mkdir (i32.const 3) (i32.const 100) (i32.const 7)) (i32.const 10))
+    (call $check (call $mkdir (i32.const 3) (i32.const 110) (i32.const 9)) (i32.const 11))
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 11)
+      (i32.const 1) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 12))
+    (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 12))
+    (call $check (call $mkdir (i32.const 3) (i32.const 140) (i32.const 10)) (i32.const 13))
+    (call $check (call $rename (i32.const 3) (i32.const 110) (i32.const 9)
+      (i32.const 3) (i32.const 160) (i32.const 12)) (i32.const 14))
+    (call $check (call $rmdir (i32.const 3) (i32.const 100) (i32.const 7)) (i32.const 15))
+    ;; the moved directory, with every right but FD_WRITE (64)
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 160) (i32.const 12)
+      (i32.const 2) (i64.const -65) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 16))
+    (local.set $fd (i32.load (i32.const 24)))
+    ;; filestats at 400 (`..`) and 512 (/work/dist): st_ino at +8
+    (call $check (call $stat (local.get $fd) (i32.const 0) (i32.const 180) (i32.const 2) (i32.const 400))
+      (i32.const 17))
+    (call $check (call $stat (i32.const 3) (i32.const 0) (i32.const 140) (i32.const 10) (i32.const 512))
+      (i32.const 18))
+    (if (i64.ne (i64.load (i32.const 408)) (i64.load (i32.const 520)))
+      (then (call $proc_exit (i32.const 19))))
+    (call $check (call $fd_close (local.get $fd)) (i32.const 20))))
+"#;
+
+/// A directory renamed into another has that one as its `..` (#1079). It
+/// kept its old parent, which only holds it weakly, so once that was
+/// removed `..` could not be looked up (EACCES), and neither could the
+/// moved directory be listed with `scandir`, which stats every entry it
+/// reads, `..` included: Node's `fs.readdirSync` threw.
+#[test]
+fn a_directory_moved_out_of_a_removed_one_has_its_new_parent() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("moved-dir-parent", MOVED_DIR_PARENT),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(job.read("/work/dist/a/f").unwrap(), b"");
+}
+
+/// Sends `/work/src` into a new `/work/dst` with `sock_send_file`, asking
+/// for more than the file holds, and exits with a code from 10 up naming the
+/// first call that fails, 13 when it did not send the whole file.
+const SENDFILE_TO_FILE: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasix_32v1" "sock_send_file" (func $send_file (param i32 i32 i64 i64 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "/work/src")
+  (data (i32.const 120) "/work/dst")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 9)
+      (i32.const 0) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 10))
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 9)
+      (i32.const 1) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 28)) (i32.const 11))
+    (call $check (call $send_file (i32.load (i32.const 28)) (i32.load (i32.const 24))
+      (i64.const 0) (i64.const 1000) (i32.const 32)) (i32.const 12))
+    (if (i64.ne (i64.load (i32.const 32)) (i64.const 14))
+      (then (call $proc_exit (i32.const 13))))
+    (call $check (call $fd_close (i32.load (i32.const 28))) (i32.const 14))
+    (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 15))))
+"#;
+
+/// `sendfile` copies into a file, as on Linux (#1075). wasmer-wasix sent
+/// only to sockets and answered EACCES for anything else, and libc++'s
+/// `std::filesystem::copy_file` copies with it, so Node's `fs.cpSync` of a
+/// directory (which copies in C++) threw.
+#[test]
+fn sendfile_copies_into_a_file() {
+    let rt = runtime();
+    let job = snapshot(&[("/work/src", "hello sendfile")]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("sendfile-to-file", SENDFILE_TO_FILE),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(job.read("/work/dst").unwrap(), b"hello sendfile");
+}
+
 /// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
 /// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
 /// one `fd_fdstat_get` gives stdin once that pipe is put in its place and
@@ -1507,6 +1696,51 @@ fn a_bash_script_can_rm_rf_and_recreate_snapshot_directories() {
             },
         ]
     );
+}
+
+/// `rm -rf` removes a directory of many files, created by the job or in
+/// the snapshot, in one go (#1078).
+#[test]
+fn a_bash_script_can_rm_rf_a_directory_of_many_files() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let files: Vec<(String, &str)> = (1..=40)
+        .map(|i| (format!("/work/old/file-{i}.js"), "x"))
+        .collect();
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (p.as_str(), *t)).collect();
+    let job = snapshot(&files).fork();
+    let script = "mkdir new\nfor i in $(seq 1 40); do echo x > new/file-$i.js; done\n\
+                  rm -rf new old\nls\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "");
+}
+
+/// A script's job has a user database that says who it is, and `SHELL` is
+/// in the environment of what it starts (#1077).
+#[test]
+fn a_bash_script_has_a_user_database_and_a_shell() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let script = "head -n 1 /etc/passwd\nhead -n 1 /etc/group\nenv | grep '^SHELL='\n";
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&outcome.stdout),
+        "root:x:0:0:root:/root:/bin/bash\nroot:x:0:\nSHELL=/bin/bash\n"
+    );
+    assert_eq!(job.changes("/"), Vec::new());
 }
 
 #[derive(Debug)]

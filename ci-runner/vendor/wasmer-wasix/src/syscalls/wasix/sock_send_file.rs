@@ -61,6 +61,15 @@ pub(crate) fn sock_send_file_internal(
     let tasks = env.tasks().clone();
     let state = env.state.clone();
     let fd_entry = wasi_try_ok_ok!(state.fs.get_fd(in_fd));
+    // sendfile(2) writes to any descriptor, not only a socket: libc++'s
+    // `std::filesystem::copy_file` copies a file into another with it, which
+    // failed with EACCES here (the file has no right to send), and so did
+    // Node's `fs.cpSync` of a directory. Anything else is written as
+    // `fd_write` would write it, as `sock_send` does for a pipe.
+    let to_socket = {
+        let out = wasi_try_ok_ok!(state.fs.get_fd(sock));
+        matches!(out.inode.read().deref(), Kind::Socket { .. })
+    };
 
     // Set the offset of the file
     fd_entry.inner.offset.store(offset, Ordering::Release);
@@ -220,6 +229,28 @@ pub(crate) fn sock_send_file_internal(
                 }
             }
         };
+
+        // The end of the file: there is nothing more to send.
+        if data.is_empty() {
+            break;
+        }
+
+        if !to_socket {
+            let out = wasi_try_ok_ok!(ctx.data().state.fs.get_fd(sock));
+            let out_offset = out.inner.offset.load(Ordering::Acquire);
+            let bytes_written = wasi_try_ok_ok!(fd_write_internal::<Memory64>(
+                ctx,
+                sock,
+                out,
+                FdWriteSource::Buffer(Cow::Owned(data)),
+                out_offset,
+                true,
+                false,
+            )?);
+            env = ctx.data();
+            total_written += bytes_written as u64;
+            continue;
+        }
 
         // Write it down to the socket
         let tasks = ctx.data().tasks().clone();
