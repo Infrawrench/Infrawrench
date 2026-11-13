@@ -1,5 +1,6 @@
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { CiCredentialRequest, CiLentMaterial, PluginEffect } from "@infrawrench/plugin-base";
+import { lendSshHost } from "./ci-credential.js";
 import type {
   PluginClient,
   ResourceInstance,
@@ -14,6 +15,7 @@ export interface SshCredentials {
   username?: string;
   privateKey?: string;
   password?: string;
+  connectThroughAccountId?: string;
 }
 
 function shellQuote(value: string): string {
@@ -23,6 +25,10 @@ function shellQuote(value: string): string {
 
 export class SshClient implements PluginClient {
   constructor(private readonly creds: SshCredentials) {}
+
+  lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(() => lendSshHost(this.creds, request));
+  }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {

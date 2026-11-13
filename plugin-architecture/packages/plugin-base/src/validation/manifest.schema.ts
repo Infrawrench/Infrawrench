@@ -5,6 +5,7 @@ import {
   isValidFocusClassification,
   type FocusServiceClassification,
 } from "../focus.js";
+import { CI_EXECUTOR_KINDS } from "../ci.js";
 import { PRODUCT_IDS } from "../preflight.js";
 import { findUnsafeSvgConstructs } from "../svg-safety.js";
 import {
@@ -452,6 +453,33 @@ export const pluginManifestSchema = Schema.Struct({
       description: Schema.optional(Schema.String),
       canResolve: Schema.Boolean,
       returnsSecretValue: Schema.Boolean,
+    }),
+  ),
+  ciExecutor: Schema.optional(
+    Schema.Struct({
+      kinds: Schema.Array(
+        Schema.Struct({
+          kind: Schema.Literals(CI_EXECUTOR_KINDS),
+          label: NonEmpty,
+          defaults: Schema.Struct({
+            machine: Schema.optional(NonEmpty),
+            image: Schema.optional(NonEmpty),
+            region: Schema.optional(NonEmpty),
+          }),
+          typicalStartSeconds: Schema.optional(PositiveInt),
+          minimumBillingSeconds: Schema.optional(PositiveInt),
+          gpus: Schema.optional(Schema.Boolean),
+          machineSuggestions: Schema.optional(Schema.Array(NonEmpty)),
+        }),
+      ).check(Schema.isMinLength(1)),
+      helpLink: Schema.optional(Schema.Struct({ label: NonEmpty, url: Url })),
+    }),
+  ),
+  ciCredential: Schema.optional(
+    Schema.Struct({
+      description: NonEmpty,
+      shortLived: Schema.Boolean,
+      namespaces: Schema.optional(Schema.Boolean),
     }),
   ),
   tokenFormats: Schema.optional(

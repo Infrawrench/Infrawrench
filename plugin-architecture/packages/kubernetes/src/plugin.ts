@@ -180,6 +180,14 @@ export const manifest = {
   // Just-in-time access: one RoleBinding / ClusterRoleBinding per grant,
   // deleted when the window ends. See `jit-access.ts`.
   jitAccess: KUBERNETES_JIT_ACCESS,
+  // Lend the cluster to a CI job (`connections:` in a pipeline): a
+  // self-contained kubeconfig for one context. See `ci-credential.ts`.
+  ciCredential: {
+    description:
+      "A kubeconfig for this cluster in /root/.kube, named after the connection, with KUBECONFIG pointing at it. A service account token is swapped for a short-lived one where the cluster allows it.",
+    shortLived: false,
+    namespaces: true,
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;
