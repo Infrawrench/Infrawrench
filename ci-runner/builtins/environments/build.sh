@@ -236,6 +236,11 @@ build_env() {
   done
   local joined
   joined="$(IFS=,; printf '%s' "${packages[*]}")"
+  # Built here: inside the heredoc, `${CACHES:+...}` would strip its quotes.
+  local caches=""
+  if [[ -n "${CACHES:-}" ]]; then
+    caches=$'\n  "caches": ['"$CACHES"'],'
+  fi
   cat >"$out/build.json" <<JSON
 {
   "kind": "environment",
@@ -243,8 +248,7 @@ build_env() {
   "version": "$version",
   "entry": "bash",
   "packages": [$joined],
-  "env": { $env },${CACHES:+
-  "caches": [$CACHES],}
+  "env": { $env },$caches
   "description": "$description"
 }
 JSON
