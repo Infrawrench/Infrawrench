@@ -1784,6 +1784,102 @@ jobs:
       EDGE_BUILTINS_CACHE=/tmp/mine EDGE_BUILTINS_CACHE_RECORD=1 node -e 'require("node:http2")'
       test -s /tmp/mine
       test "$(sha256sum <"$cache")" = "$before"
+  # Node's module compile cache (edgejs-compile-cache.patch), which Edge.js
+  # stubbed out: the first `node` writes the engine's code cache of each
+  # module it compiles, CommonJS and ES, in workers too, and the next takes
+  # every one. A changed source or a damaged entry is a miss, never a crash,
+  # and a directory that cannot be made is no cache, never an error.
+  compile-cache-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 3m
+    run: |
+      mkdir -p /tmp/cc/app && cd /tmp/cc/app
+      printf 'module.exports = (a) => a + 1;\n' >dep.js
+      printf 'export const twice = (a) => a * 2;\n' >dep.mjs
+      printf 'require("node:worker_threads").parentPort.postMessage(require("./dep.js")(41));\n' >worker.js
+      cat >main.js <<'JS'
+      const assert = require("node:assert");
+      const { Worker } = require("node:worker_threads");
+      assert.equal(require("./dep.js")(1), 2);
+      import("./dep.mjs").then(({ twice }) => {
+        assert.equal(twice(2), 4);
+        new Worker(__dirname + "/worker.js").once("message", (n) => {
+          assert.equal(n, 42);
+          console.log(require("node:module").getCompileCacheDir());
+        });
+      });
+      JS
+      # What the engine did with each of this tree's modules, as
+      # NODE_DEBUG_NATIVE=COMPILE_CACHE reports it.
+      report() {
+        NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null |
+          sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' |
+          sort | tr '\n' ';'
+      }
+      test "$(node -p 'require("node:module").getCompileCacheDir()')" = undefined
+      export NODE_COMPILE_CACHE=/tmp/cc/cache
+      dir="$(node main.js)"
+      case "$dir" in /tmp/cc/cache/v24.*-wasm32-*-0) ;; *) echo "unexpected cache directory: $dir" >&2; exit 1 ;; esac
+      test "$(find "$dir" -type f | wc -l)" -ge 4
+      # The worker requires dep.js after the main thread has written it.
+      hits="CommonJS dep.js accepted;CommonJS dep.js accepted;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
+      test "$(report)" = "$hits"
+      # A changed module is compiled again and its entry replaced.
+      printf 'module.exports = (a) => a + 1; // changed\n' >dep.js
+      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
+      test "$(report)" = "$hits"
+      # A damaged entry is a miss.
+      for f in "$dir"/*; do printf 'garbage' | dd of="$f" bs=1 seek=60 conv=notrunc 2>/dev/null; done
+      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
+      test "$(report)" = "$hits"
+      # An entry that cannot be written is no error (each is a directory now).
+      for f in "$dir"/*; do rm "$f" && mkdir -p "$f/in-the-way"; done
+      test "$(node main.js)" = "$dir"
+      # Workers compiling the same modules at once write the same entries,
+      # which renaming over them would turn into an aborted runner (#1092).
+      mkdir /tmp/cc/many
+      for i in $(seq 300); do printf 'module.exports = %d;\n' "$i" >"/tmp/cc/many/m$i.js"; done
+      cat >/tmp/cc/many.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      const code = 'let s = 0; for (let i = 1; i <= 300; i++) s += require("/tmp/cc/many/m" + i + ".js"); require("node:worker_threads").parentPort.postMessage(s);';
+      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) process.exit(1); });
+      JS
+      node /tmp/cc/many.js
+      test "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" = 1200
+      # The API.
+      unset NODE_COMPILE_CACHE
+      node -e '
+        const assert = require("node:assert");
+        const fs = require("node:fs");
+        const m = require("node:module");
+        const { ENABLED, ALREADY_ENABLED, FAILED } = m.constants.compileCacheStatus;
+        fs.writeFileSync("/tmp/cc/file", "");
+        const failed = m.enableCompileCache("/tmp/cc/file/sub");
+        assert.equal(failed.status, FAILED, JSON.stringify(failed));
+        assert.match(failed.message, /^Cannot create cache directory/);
+        assert.equal(m.getCompileCacheDir(), undefined);
+        const result = m.enableCompileCache("/tmp/cc/api");
+        assert.deepEqual([result.status, result.directory], [ENABLED, "/tmp/cc/api"]);
+        assert.ok(m.getCompileCacheDir().startsWith("/tmp/cc/api/v24."));
+        assert.equal(m.enableCompileCache("/tmp/cc/other").status, ALREADY_ENABLED);
+        require("/tmp/cc/app/dep.js");
+        m.flushCompileCache();
+        assert.equal(fs.readdirSync(m.getCompileCacheDir()).length, 1);
+      '
+      test "$(NODE_DISABLE_COMPILE_CACHE=1 NODE_COMPILE_CACHE=/tmp/cc/off node main.js)" = undefined
+      test ! -e /tmp/cc/off
+      # A directory that cannot be made is no cache (and no error).
+      test "$(NODE_COMPILE_CACHE=/tmp/cc/file/sub node main.js)" = undefined
+      test "$(NODE_COMPILE_CACHE=/opt/cc node main.js)" = undefined
+      # A portable cache is keyed by paths relative to it, so it moves with
+      # the tree.
+      mkdir /tmp/cc/one
+      cp /tmp/cc/app/*.js /tmp/cc/app/*.mjs /tmp/cc/one/
+      NODE_COMPILE_CACHE=/tmp/cc/one/.cache NODE_COMPILE_CACHE_PORTABLE=1 node /tmp/cc/one/main.js >/dev/null
+      mv /tmp/cc/one /tmp/cc/two
+      cd /tmp/cc/two
+      test "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" = "$hits"
   # CPU time is CPU time (#1038): the C library read the monotonic clock
   # (days, and a sleep counted as work), and the host's clocks would be the
   # whole runner's. Now `process.cpuUsage()` starts near zero, grows with

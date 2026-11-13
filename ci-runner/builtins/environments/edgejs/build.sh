@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, and with eleven fixes to
-# Edge.js itself and its built-ins code cache turned on.
+# and file modes and CPU time read from the runner, with eleven fixes to
+# Edge.js itself and its built-ins code cache turned on, and with Node's
+# module compile cache.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
 # rebuild of that module. Each is one patch here and one or two objects of
@@ -42,7 +43,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And twelve patches to Edge.js's own source, applied to its checkout:
+# And thirteen patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -184,6 +185,27 @@
 #     the task until it has let go of the reference. Ours; drafted for
 #     Edge.js.
 #
+#   edgejs-compile-cache.patch. Node's module compile cache
+#     (`NODE_COMPILE_CACHE`, `module.enableCompileCache()`,
+#     `getCompileCacheDir()`, `flushCompileCache()`,
+#     `NODE_DISABLE_COMPILE_CACHE`, `NODE_COMPILE_CACHE_PORTABLE`) was stubbed
+#     out as disabled. It is now Node 24's, in `edge_compile_cache.cc`: a
+#     CommonJS or ES module the default loaders compile from a file is
+#     looked up in the directory, and the engine's code cache for it is
+#     written there when there was none or the engine refused it. Entries
+#     live under a directory named for this Node version, the engine's code
+#     cache version and flags (read from the header of a code cache it
+#     makes, as N-API has no CachedDataVersionTag) and the user, are named
+#     by a hash of the module's path and kind, and carry the size and hash
+#     of the source and of the payload, so a changed file, an entry from
+#     another engine or flags, or a damaged one costs only the compile. They are written as they are made rather than at exit, so
+#     `flushCompileCache()` has nothing left to do and a process killed by
+#     its test runner keeps what it compiled, and in place (remove, then
+#     create exclusively) rather than renamed over, since renames onto one
+#     name from two threads at once abort the runner (#1092); a reader that
+#     meets a half-written entry finds its hashes wrong. A directory that
+#     cannot be made is no cache, never an error. Ours; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -235,10 +257,10 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
 # the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
 # child exit poll, 9 postMessage, 10 the worker report state, 11 the
-# worker task free.
-VERSION="0.2.5-iwci.11"
+# worker task free, 12 the compile cache.
+VERSION="0.2.5-iwci.12"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its

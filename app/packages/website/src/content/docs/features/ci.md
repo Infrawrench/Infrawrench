@@ -85,6 +85,20 @@ jobs:
       go test ./...
 ```
 
+In `env:bash-node`, Node's module compile cache works: with `NODE_COMPILE_CACHE` set to a directory, each `node` keeps the compiled code of the modules it loads there, and the next one reuses it instead of compiling them again. To keep it between runs, put it inside the repository's directory (jobs start in `/app`, where the repository is checked out) and cache it, which keeps a pull request's copy apart from your branches':
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env: { NODE_COMPILE_CACHE: /app/.node-compile-cache }
+    cache:
+      key: node-compile-cache-${{ hashFiles('pnpm-lock.yaml') }}
+      restore-keys: [node-compile-cache-]
+      paths: [.node-compile-cache]
+    run: pnpm test
+```
+
 ### Background services
 
 `services:` starts programs a job's tests need, such as a database or your own API server, before the job runs, and stops them when it ends. Each runs inside the job, on the job's private network, so its name works as a host name (`postgres:5432`) and its ports never clash with another job's:
