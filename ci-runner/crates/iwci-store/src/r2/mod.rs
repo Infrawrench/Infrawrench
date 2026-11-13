@@ -3,9 +3,9 @@
 //! Endpoint `https://<account_id>.r2.cloudflarestorage.com`, region `auto`
 //! (developers.cloudflare.com/r2/api/s3/api/). The operations used are
 //! GetObject, HeadObject, PutObject (with `If-None-Match: *` for
-//! create-only writes) and ListObjectsV2 with `continuation-token`,
-//! `encoding-type=url`, `max-keys` and `prefix`, all of which that page lists
-//! as supported.
+//! create-only writes), DeleteObject and ListObjectsV2 with
+//! `continuation-token`, `encoding-type=url`, `max-keys` and `prefix`, all of
+//! which that page lists as supported.
 
 mod sigv4;
 mod xml;
@@ -347,6 +347,11 @@ impl R2Store {
 
     /// One signed request, with retries. `label` is the key or prefix used in
     /// error messages, never the URL.
+    ///
+    /// `limit` caps a 2xx response's body. It must be positive for anything
+    /// but HEAD (whose body is never read): ureq's limit reader fails the
+    /// first read once nothing is left, so a limit of 0 fails even an empty
+    /// body, such as the 204 that R2 and S3 answer a DELETE with.
     #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
@@ -358,6 +363,10 @@ impl R2Store {
         headers: &[(&str, &str)],
         limit: u64,
     ) -> Result<Exchange, StoreError> {
+        debug_assert!(
+            method == "HEAD" || limit > 0,
+            "{method} with a body limit of 0"
+        );
         let (host, path) = self.locate(key);
         let url = self.url(&host, &path, query);
         let payload_sha256 = match body {
@@ -653,9 +662,11 @@ impl ObjectStore for R2Store {
 
     fn delete(&self, key: &str) -> Result<(), StoreError> {
         validate_key(key)?;
-        let x = self.request("DELETE", key, Some(key), "", None, &[], 0)?;
+        // R2 answers 204 with no body, but the body is still read (and found
+        // empty), so the limit is the small one PUT uses, not 0.
+        let x = self.request("DELETE", key, Some(key), "", None, &[], ERROR_BODY_LIMIT)?;
         match x.status {
-            // S3 answers 204 whether or not the key existed.
+            // S3 and R2 answer 204 whether or not the key existed.
             200 | 204 | 404 => Ok(()),
             _ => Err(Self::http_error("DELETE", key, &x)),
         }
