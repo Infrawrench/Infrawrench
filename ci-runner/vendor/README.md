@@ -441,6 +441,32 @@ Drop this with a V8 built with multiple cages
 `IsolateGroup::Create` gives each job a cage of its own) or without pointer
 compression.
 
+**And: the isolate group's main isolate is the bridge's (#1134).** The
+account above counts heaps, and the cage held more than heaps: the isolate
+group's page pool keeps a disposed isolate's young-generation pages
+(`SemiSpace::TearDown` frees them to the pool, V8 13.6), reserved in the
+cage, until a task posted 8 s later to the group's main isolate frees them
+(`PagePool::ReleaseOnTearDown`, `IsolateGroup::FindAnotherIsolateLocked`)
+or a new young generation takes them back. The main isolate is the first
+one created and stays main until it is disposed. A `node` blocked in one
+call or idle in its event loop (a delayed task does not wake it) ran that
+task only when it next pumped its queue, and an isolate abandoned after
+running out of memory (above) is never disposed, so once main it ran it
+never. On ci-2 that filled the cage while the account showed room: a
+heap's next old-generation or large-object page found no address space, V8
+failed "CALL_AND_RETRY_LAST" in heaps of 23 to 568 MB with nothing
+refused, and each lost isolate kept its heap and stayed in the group, 19
+in 75 minutes. With 24 young generations of 128 MiB ended under a
+`node` blocked in `Atomics.wait` (or idle in `setTimeout`), the next
+`node` got 500 (200) MB of heap before it was lost; with no `node` left
+behind it got 3.4 GB. `v8/src/unofficial_napi.cc` now makes an isolate of
+its own when the runtime is configured, before any env's, so it is main
+for the life of the process; it runs no JavaScript and its thread pumps its
+foreground tasks every 250 ms, so the pool is freed 8 s after each
+disposal. The same two runs then got 3.4 GB. `builtins/test.sh
+bash-node-pool` is that run. Drop this with a V8 whose pool does not wait
+on another isolate's thread.
+
 **And: cloning and reading a message lend the store (#1061).** A backing
 store the bridge makes for V8 lives in the guest heap, which can grow the
 guest's memory only with the store that owns it, and only imports that run

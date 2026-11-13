@@ -12,6 +12,7 @@
 #   builtins/test.sh go              every Go minor; go@1.25 for one
 #   builtins/test.sh python postgres
 #   builtins/test.sh clickhouse      ClickHouse as a service, from Node
+#   builtins/test.sh bash-node-pool  V8 heap room after other `node`s end
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #
@@ -21,6 +22,10 @@
 # `clickhouse` runs ClickHouse as a service (`services:`) and talks to it
 # over its HTTP interface from Node, so it needs an iwci built with
 # `--features node`, like bash-node.
+# `bash-node-pool` runs bash-node's environment in a pipeline of its own,
+# so that its runner's V8 holds only its heaps: one `node` needs most of the
+# V8 heap space after two dozen others ended. It needs an iwci built with
+# `--features node`, about 6 GB of memory and 3 minutes.
 # `kubectl` runs kubectl from bash scripts against a small API server its
 # build makes (`kubectl/fake-apiserver.go`), on the job's loopback, with a
 # kubeconfig lent the way the app lends a connection (`IWCI_LENT_FILE`), so
@@ -113,8 +118,15 @@ for name in "$@"; do
       # Uses what gofmt and bash published.
       continue
       ;;
+    bash-node-pool)
+      # Runs on bash-node's environment, built here unless it already is.
+      if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/bash-node/*" >/dev/null; then
+        bash "$here/environments/build.sh" bash-node
+      fi
+      dirs=("$dist"/environment/bash-node/*)
+      ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh" >&2
       exit 2
       ;;
   esac
@@ -3198,6 +3210,94 @@ jobs:
   git-passes:
     using: env:postgres@18
     run: git --version
+YAML
+      ;;
+    bash-node-pool)
+      # Alone in its runner, so the 4 GiB V8 cage has only its own heaps.
+      # A `node` that outlives other `node`s, here blocked in one call, was
+      # the isolate group's main isolate, and V8 frees a disposed isolate's
+      # young-generation pages only from a task on that isolate's thread.
+      # Until then they stay in the cage, in no heap and in no account
+      # (#1134): 24 young generations of 128 MiB left a later `node` 200 to
+      # 500 MB of heap, where V8 failed "CALL_AND_RETRY_LAST" and the
+      # isolate was lost. The bridge's own isolate is main now and frees
+      # them 8 s after each one goes.
+      cat <<'YAML'
+name: bash-node-pool
+jobs:
+  main-passes:
+    using: env:bash-node@24
+    memory: 1GiB
+    timeout: 5m
+    run: node -e 'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 120000)'
+  churn-1-passes:
+    using: env:bash-node@24
+    memory: 3GiB
+    timeout: 5m
+    run: |
+      cat > /tmp/churn.js <<'JS'
+      let keep = [];
+      for (let i = 0; i < 6e6; i++) {
+        keep.push({ a: i, b: [i, i + 1] });
+        if (keep.length > 4e5) keep = keep.slice(2e5);
+      }
+      JS
+      sleep 15
+      for k in 1 2 3 4 5 6; do node /tmp/churn.js & done
+      wait
+  churn-2-passes:
+    using: env:bash-node@24
+    memory: 3GiB
+    timeout: 5m
+    run: |
+      cat > /tmp/churn.js <<'JS'
+      let keep = [];
+      for (let i = 0; i < 6e6; i++) {
+        keep.push({ a: i, b: [i, i + 1] });
+        if (keep.length > 4e5) keep = keep.slice(2e5);
+      }
+      JS
+      sleep 15
+      for k in 1 2 3 4 5 6; do node /tmp/churn.js & done
+      wait
+  churn-3-passes:
+    using: env:bash-node@24
+    memory: 3GiB
+    timeout: 5m
+    run: |
+      cat > /tmp/churn.js <<'JS'
+      let keep = [];
+      for (let i = 0; i < 6e6; i++) {
+        keep.push({ a: i, b: [i, i + 1] });
+        if (keep.length > 4e5) keep = keep.slice(2e5);
+      }
+      JS
+      sleep 15
+      for k in 1 2 3 4 5 6; do node /tmp/churn.js & done
+      wait
+  churn-4-passes:
+    using: env:bash-node@24
+    memory: 3GiB
+    timeout: 5m
+    run: |
+      cat > /tmp/churn.js <<'JS'
+      let keep = [];
+      for (let i = 0; i < 6e6; i++) {
+        keep.push({ a: i, b: [i, i + 1] });
+        if (keep.length > 4e5) keep = keep.slice(2e5);
+      }
+      JS
+      sleep 15
+      for k in 1 2 3 4 5 6; do node /tmp/churn.js & done
+      wait
+  probe-passes:
+    using: env:bash-node@24
+    needs: [churn-1-passes, churn-2-passes, churn-3-passes, churn-4-passes]
+    memory: 6GiB
+    timeout: 5m
+    run: |
+      sleep 12
+      node -e 'const a = []; for (let i = 0; i < 30; i++) a.push(new Array(12.5e6).fill(i + 0.5)); console.log(a.length * 100, "MB")'
 YAML
       ;;
     clickhouse)
