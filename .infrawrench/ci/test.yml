@@ -33,12 +33,16 @@
 #
 # - Database migrations: `db:migrate` twice against a fresh database, the
 #   second run proving it a no-op.
+# - ClickHouse database tests: server-core's tests against a real ClickHouse
+#   (`env:clickhouse`, ClickHouse 26.11) as a service, and the mocked
+#   ClickHouse suites shadow-run against it.
 # - Editor extensions (once .github/workflows/editor-extensions.yml): the
 #   VS Code extension's .vsix and the Raycast extension's tarball, kept as
 #   the run's downloads.
 #
 # Still on GitHub Actions only (.github/workflows/test.yml):
-# - Database tests: they need a ClickHouse service.
+# - Database tests, until their Postgres half runs here too: the job there
+#   runs both halves against PostgreSQL 16 and ClickHouse 24.8.
 name: Test
 
 on:
@@ -349,6 +353,39 @@ jobs:
         - app/packages/web/src/db/migrations/**
         - .infrawrench/ci/node-preload.cjs
     memory: 3GiB
+    timeout: 20m
+
+  # The ClickHouse half of test.yml's `db-tests`: `test:db`'s ClickHouse
+  # files (DDL from migrateMetrics, inserts, the materialized-view rollups,
+  # the cost and network-flow SQL) and `test:clickhouse:shadow` (every
+  # statement the mocked suites capture, also run against the server).
+  # ClickHouse 26.11 is newer than the 24.8 GitHub Actions runs, so this is
+  # also where a release's changed defaults show up first (#1114, #1116).
+  clickhouse-db:
+    name: ClickHouse tests ${{ package.name }}
+    packages: { only: [app/packages/server-core] }
+    needs: [prep, "^bundle"]
+    using: env:bash-node@24
+    services:
+      clickhouse:
+        using: env:clickhouse@26.11
+        run: clickhouse-server
+        env:
+          CLICKHOUSE_DB: infrawrench
+          CLICKHOUSE_PASSWORD: infrawrench
+        ready: { port: 8123, timeout: 120s }
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      CLICKHOUSE_METRICS_URL: http://clickhouse:8123
+      CLICKHOUSE_METRICS_USER: default
+      CLICKHOUSE_METRICS_PASSWORD: infrawrench
+      CLICKHOUSE_METRICS_DATABASE: infrawrench
+    run: |
+      node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts src/__tests__/db/clickhouse.test.ts src/__tests__/db/clickhouse-cost.test.ts
+      node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
+    task-cache:
+      root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs]
+    memory: 6GiB
     timeout: 20m
 
   # The editor extensions, packaged for people to install by hand or submit
