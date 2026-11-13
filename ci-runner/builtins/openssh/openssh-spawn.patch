@@ -1,0 +1,434 @@
+diff --git a/misc.c b/misc.c
+index d49c710..e9cbf5a 100644
+--- a/misc.c
++++ b/misc.c
+@@ -66,6 +66,11 @@
+ #include "ssherr.h"
+ #include "platform.h"
+ 
++#ifdef __wasi__
++#include <spawn.h>
++extern char **environ;
++#endif
++
+ /* remove newline at end of string */
+ char *
+ chop(char *s)
+@@ -3350,3 +3355,54 @@ mkdir_path(const char *target, mode_t mode)
+ 	return ret;
+ #endif
+ }
++
++#ifdef __wasi__
++/*
++ * WASIX built with wasm exception handling has no fork(), so the programs
++ * start a child with posix_spawn() where they would fork and exec: `file`
++ * (looked up on PATH unless it has a slash) with `argv`, its stdin and
++ * stdout duplicated from `in` and `out` (-1 leaves the parent's), then the
++ * descriptors in `closefds` (ending with -1) closed, as the forked child
++ * did before its exec. Only descriptors that are open may be named: WASIX
++ * fails the spawn on closing one that is not. Returns the child's pid, or
++ * -1 with errno set.
++ */
++pid_t
++spawn_command(const char *file, char *const argv[], int in, int out,
++    const int *closefds)
++{
++	posix_spawn_file_actions_t actions;
++	pid_t pid;
++	int r;
++
++	if ((r = posix_spawn_file_actions_init(&actions)) != 0) {
++		errno = r;
++		return -1;
++	}
++	if (in != -1 && in != STDIN_FILENO)
++		r = posix_spawn_file_actions_adddup2(&actions, in,
++		    STDIN_FILENO);
++	if (r == 0 && out != -1 && out != STDOUT_FILENO)
++		r = posix_spawn_file_actions_adddup2(&actions, out,
++		    STDOUT_FILENO);
++	for (; r == 0 && closefds != NULL && *closefds != -1; closefds++) {
++		if (*closefds > STDERR_FILENO)
++			r = posix_spawn_file_actions_addclose(&actions,
++			    *closefds);
++	}
++	if (r == 0) {
++		if (strchr(file, '/') != NULL)
++			r = posix_spawn(&pid, file, &actions, NULL, argv,
++			    environ);
++		else
++			r = posix_spawnp(&pid, file, &actions, NULL, argv,
++			    environ);
++	}
++	posix_spawn_file_actions_destroy(&actions);
++	if (r != 0) {
++		errno = r;
++		return -1;
++	}
++	return pid;
++}
++#endif /* __wasi__ */
+diff --git a/misc.h b/misc.h
+index 0784f37..b08716e 100644
+--- a/misc.h
++++ b/misc.h
+@@ -130,6 +130,9 @@ typedef void privrestore_fn(void);
+ #define	SSH_SUBPROCESS_STDERR_DISCARD	(1<<2)  /* Discard stderr */
+ #define	SSH_SUBPROCESS_UNSAFE_PATH	(1<<3)	/* Don't check for safe cmd */
+ #define	SSH_SUBPROCESS_PRESERVE_ENV	(1<<4)	/* Keep parent environment */
++#ifdef __wasi__
++pid_t	 spawn_command(const char *, char *const [], int, int, const int *);
++#endif
+ pid_t subprocess(const char *, const char *, int, char **, FILE **, u_int,
+     struct passwd *, privdrop_fn *, privrestore_fn *);
+ 
+diff --git a/openbsd-compat/bsd-misc.c b/openbsd-compat/bsd-misc.c
+index de5ac21..9e522c0 100644
+--- a/openbsd-compat/bsd-misc.c
++++ b/openbsd-compat/bsd-misc.c
+@@ -538,3 +538,17 @@ const char *__msan_default_options(void) {
+ 	return MSAN_OPTIONS;
+ }
+ #endif
++
++#ifdef __wasi__
++/*
++ * No fork() on WASIX with exception handling: ssh -f, ControlPersist,
++ * LocalCommand's background and the like fail as on a system without
++ * processes, with a message saying so.
++ */
++pid_t
++fork(void)
++{
++	errno = ENOSYS;
++	return -1;
++}
++#endif
+diff --git a/openbsd-compat/openbsd-compat.h b/openbsd-compat/openbsd-compat.h
+index 930cf1f..e3fdc77 100644
+--- a/openbsd-compat/openbsd-compat.h
++++ b/openbsd-compat/openbsd-compat.h
+@@ -392,4 +392,13 @@ int kludge_FD_ISSET(int, fd_set *);
+ # endif /* __GNU_LIBRARY__ && __GLIBC_PREREQ */
+ #endif /* HAVE_FEATURES_H && _FORTIFY_SOURCE */
+ 
++#ifdef __wasi__
++/*
++ * WASIX built with wasm exception handling has no fork(). The programs
++ * start their children with posix_spawn() instead (spawn_command() in
++ * misc.c); what still forks fails with ENOSYS (bsd-misc.c).
++ */
++pid_t fork(void);
++#endif
++
+ #endif /* _OPENBSD_COMPAT_H */
+diff --git a/readconf.c b/readconf.c
+index 9b557de..605318e 100644
+--- a/readconf.c
++++ b/readconf.c
+@@ -539,6 +539,30 @@ execute_in_shell(const char *cmd)
+ 
+ 	debug("Executing command: '%.500s'", cmd);
+ 
++#ifdef __wasi__
++	/*
++	 * No fork() on WASIX: spawn the shell with /dev/null as its stdin and
++	 * stdout, as the forked child below has (see spawn_command()).
++	 */
++	{
++		char *argv[4];
++		int devnull;
++
++		if ((devnull = open(_PATH_DEVNULL, O_RDWR)) == -1)
++			fatal_f("open %s: %s", _PATH_DEVNULL, strerror(errno));
++		argv[0] = shell;
++		argv[1] = "-c";
++		argv[2] = (char *)cmd;
++		argv[3] = NULL;
++		pid = spawn_command(shell, argv, devnull, devnull, NULL);
++		close(devnull);
++		if (pid == -1) {
++			error("Unable to execute '%.100s': %s", cmd,
++			    strerror(errno));
++			return -1;
++		}
++	}
++#else
+ 	/* Fork and execute the command. */
+ 	if ((pid = fork()) == 0) {
+ 		char *argv[4];
+@@ -562,6 +586,7 @@ execute_in_shell(const char *cmd)
+ 	/* Parent. */
+ 	if (pid == -1)
+ 		fatal_f("fork: %.100s", strerror(errno));
++#endif /* __wasi__ */
+ 
+ 	while (waitpid(pid, &status, 0) == -1) {
+ 		if (errno != EINTR && errno != EAGAIN)
+diff --git a/scp.c b/scp.c
+index 54ada85..d82fc62 100644
+--- a/scp.c
++++ b/scp.c
+@@ -224,6 +224,13 @@ do_local_cmd(arglist *a)
+ 		fmprintf(stderr, "Executing: %s\n", cp);
+ 		free(cp);
+ 	}
++#ifdef __wasi__
++	/* No fork() on WASIX: spawn it (see spawn_command()). */
++	if ((pid = spawn_command(a->list[0], a->list, -1, -1, NULL)) == -1) {
++		error("%s: %s", a->list[0], strerror(errno));
++		return (-1);
++	}
++#else
+ 	if ((pid = fork()) == -1)
+ 		fatal("do_local_cmd: fork: %s", strerror(errno));
+ 
+@@ -232,6 +239,7 @@ do_local_cmd(arglist *a)
+ 		perror(a->list[0]);
+ 		exit(1);
+ 	}
++#endif
+ 
+ 	do_cmd_pid = pid;
+ 	ssh_signal(SIGTERM, killchild);
+@@ -288,6 +296,49 @@ do_cmd(char *program, char *host, char *remuser, int port, int subsystem,
+ 	ssh_signal(SIGTTIN, suspchild);
+ 	ssh_signal(SIGTTOU, suspchild);
+ 
++#if defined(__wasi__) && defined(USE_PIPES)
++	/*
++	 * No fork() on WASIX: spawn ssh with the pipes as its stdin and stdout
++	 * (see spawn_command()). Its arguments are a copy, which the forked
++	 * child below changes in its own memory.
++	 */
++	{
++		arglist a;
++		u_int i;
++		int closefds[] = { pin[0], pin[1], pout[0], pout[1], -1 };
++
++		memset(&a, '\0', sizeof(a));
++		for (i = 0; i < args.num; i++)
++			addargs(&a, "%s", args.list[i]);
++		replacearg(&a, 0, "%s", program);
++		if (port != -1) {
++			addargs(&a, "-p");
++			addargs(&a, "%d", port);
++		}
++		if (remuser != NULL) {
++			addargs(&a, "-l");
++			addargs(&a, "%s", remuser);
++		}
++		if (subsystem)
++			addargs(&a, "-s");
++		addargs(&a, "--");
++		addargs(&a, "%s", host);
++		addargs(&a, "%s", cmd);
++		*pid = spawn_command(program, a.list, pin[0], pout[1],
++		    closefds);
++		if (*pid == -1)
++			fatal("%s: %s", program, strerror(errno));
++		freeargs(&a);
++	}
++	close(pin[0]);
++	close(pout[1]);
++	*fdout = pin[1];
++	*fdin = pout[0];
++	ssh_signal(SIGTERM, killchild);
++	ssh_signal(SIGINT, killchild);
++	ssh_signal(SIGHUP, killchild);
++	return 0;
++#else
+ 	/* Fork a child to execute the command on the remote host using ssh. */
+ 	*pid = fork();
+ 	switch (*pid) {
+@@ -349,6 +400,7 @@ do_cmd(char *program, char *host, char *remuser, int port, int subsystem,
+ 		ssh_signal(SIGHUP, killchild);
+ 		return 0;
+ 	}
++#endif /* __wasi__ && USE_PIPES */
+ }
+ 
+ /*
+@@ -372,6 +424,38 @@ do_cmd2(char *host, char *remuser, int port, char *cmd,
+ 	if (port == -1)
+ 		port = sshport;
+ 
++#ifdef __wasi__
++	/*
++	 * No fork() on WASIX: spawn ssh (see spawn_command()) with a copy of
++	 * the arguments, which the forked child below changes in its own
++	 * memory.
++	 */
++	{
++		arglist a;
++		u_int i;
++
++		memset(&a, '\0', sizeof(a));
++		for (i = 0; i < args.num; i++)
++			addargs(&a, "%s", args.list[i]);
++		replacearg(&a, 0, "%s", ssh_program);
++		if (port != -1) {
++			addargs(&a, "-p");
++			addargs(&a, "%d", port);
++		}
++		if (remuser != NULL) {
++			addargs(&a, "-l");
++			addargs(&a, "%s", remuser);
++		}
++		addargs(&a, "-oBatchMode=yes");
++		addargs(&a, "--");
++		addargs(&a, "%s", host);
++		addargs(&a, "%s", cmd);
++		pid = spawn_command(ssh_program, a.list, fdin, fdout, NULL);
++		if (pid == -1)
++			fatal("%s: %s", ssh_program, strerror(errno));
++		freeargs(&a);
++	}
++#else
+ 	/* Fork a child to execute the command on the remote host using ssh. */
+ 	pid = fork();
+ 	if (pid == 0) {
+@@ -400,6 +484,7 @@ do_cmd2(char *host, char *remuser, int port, char *cmd,
+ 	} else if (pid == -1) {
+ 		fatal("fork: %s", strerror(errno));
+ 	}
++#endif /* __wasi__ */
+ 	while (waitpid(pid, &status, 0) == -1)
+ 		if (errno != EINTR)
+ 			fatal("do_cmd2: waitpid: %s", strerror(errno));
+diff --git a/sftp.c b/sftp.c
+index ecbaefd..a1303f1 100644
+--- a/sftp.c
++++ b/sftp.c
+@@ -323,6 +323,20 @@ local_do_shell(const char *args)
+ 	if ((shell = getenv("SHELL")) == NULL || *shell == '\0')
+ 		shell = _PATH_BSHELL;
+ 
++#ifdef __wasi__
++	/* No fork() on WASIX: spawn it (see spawn_command()). */
++	{
++		char *argv[] = { shell, "-c", (char *)args, NULL };
++
++		if (args == NULL)
++			argv[1] = NULL;
++		if ((pid = spawn_command(shell, argv, -1, -1, NULL)) == -1) {
++			error("Couldn't execute \"%s\": %s", shell,
++			    strerror(errno));
++			return;
++		}
++	}
++#else
+ 	if ((pid = fork()) == -1)
+ 		fatal("Couldn't fork: %s", strerror(errno));
+ 
+@@ -338,6 +352,7 @@ local_do_shell(const char *args)
+ 		    strerror(errno));
+ 		_exit(1);
+ 	}
++#endif /* __wasi__ */
+ 	while (waitpid(pid, &status, 0) == -1)
+ 		if (errno != EINTR)
+ 			fatal("Couldn't wait for child: %s", strerror(errno));
+@@ -2452,6 +2467,23 @@ connect_to_server(char *path, char **args, int *in, int *out)
+ 	FD_CLOSEONEXEC(*in);
+ 	FD_CLOSEONEXEC(*out);
+ 
++#ifdef __wasi__
++	/*
++	 * No fork() on WASIX: spawn ssh with the child's ends of the pipes as
++	 * its stdin and stdout (see spawn_command()). Our ends are close-on-
++	 * exec, so it never has them. It gets SIGINT as sftp does, where the
++	 * forked child below ignores it.
++	 */
++	{
++		int closefds[] = { c_in, c_out, -1 };
++
++		if (c_in == c_out)
++			closefds[1] = -1;
++		if ((sshpid = spawn_command(path, args, c_in, c_out,
++		    closefds)) == -1)
++			fatal("exec: %s: %s", path, strerror(errno));
++	}
++#else
+ 	if ((sshpid = fork()) == -1)
+ 		fatal("fork: %s", strerror(errno));
+ 	else if (sshpid == 0) {
+@@ -2478,6 +2510,7 @@ connect_to_server(char *path, char **args, int *in, int *out)
+ 		fprintf(stderr, "exec: %s: %s\n", path, strerror(errno));
+ 		_exit(1);
+ 	}
++#endif /* __wasi__ */
+ 
+ 	ssh_signal(SIGTERM, killchild);
+ 	ssh_signal(SIGINT, killchild);
+diff --git a/sshconnect.c b/sshconnect.c
+index 3349d8e..59518f7 100644
+--- a/sshconnect.c
++++ b/sshconnect.c
+@@ -242,6 +242,25 @@ ssh_proxy_connect(struct ssh *ssh, const char *host, const char *host_arg,
+ 	    host, host_arg, port);
+ 	debug("Executing proxy command: %.500s", command_string);
+ 
++#ifdef __wasi__
++	/*
++	 * No fork() on WASIX: spawn the shell with the pipes as its stdin and
++	 * stdout, as the forked child below does. Its stderr is the user's.
++	 */
++	{
++		char *argv[4];
++		int closefds[] = { pin[0], pin[1], pout[0], pout[1], -1 };
++
++		argv[0] = shell;
++		argv[1] = "-c";
++		argv[2] = command_string;
++		argv[3] = NULL;
++		pid = spawn_command(shell, argv, pin[0], pout[1], closefds);
++		if (pid == -1)
++			fatal("Could not start the proxy command with %s: %.100s",
++			    shell, strerror(errno));
++	}
++#else
+ 	/* Fork and execute the proxy command. */
+ 	if ((pid = fork()) == 0) {
+ 		char *argv[10];
+@@ -284,8 +303,8 @@ ssh_proxy_connect(struct ssh *ssh, const char *host, const char *host_arg,
+ 	/* Parent. */
+ 	if (pid == -1)
+ 		fatal("fork failed: %.100s", strerror(errno));
+-	else
+-		proxy_command_pid = pid; /* save pid to clean up later */
++#endif /* __wasi__ */
++	proxy_command_pid = pid; /* save pid to clean up later */
+ 
+ 	/* Close child side of the descriptors. */
+ 	close(pin[0]);
+@@ -1754,6 +1773,20 @@ ssh_local_cmd(const char *args)
+ 		shell = _PATH_BSHELL;
+ 
+ 	osighand = ssh_signal(SIGCHLD, SIG_DFL);
++#ifdef __wasi__
++	{
++		/* No fork() on WASIX: spawn it (see spawn_command()). */
++		char *argv[] = { shell, "-c", (char *)args, NULL };
++
++		debug3("Executing %s -c \"%s\"", shell, args);
++		if ((pid = spawn_command(shell, argv, -1, -1, NULL)) == -1) {
++			error("Couldn't execute %s -c \"%s\": %s",
++			    shell, args, strerror(errno));
++			ssh_signal(SIGCHLD, osighand);
++			return (1);
++		}
++	}
++#else
+ 	pid = fork();
+ 	if (pid == 0) {
+ 		ssh_signal(SIGPIPE, SIG_DFL);
+@@ -1764,6 +1797,7 @@ ssh_local_cmd(const char *args)
+ 		_exit(1);
+ 	} else if (pid == -1)
+ 		fatal("fork failed: %.100s", strerror(errno));
++#endif /* __wasi__ */
+ 	while (waitpid(pid, &status, 0) == -1)
+ 		if (errno != EINTR)
+ 			fatal("Couldn't wait for child: %s", strerror(errno));

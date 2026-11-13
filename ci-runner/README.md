@@ -288,9 +288,10 @@ jobs:
     env-from: [r2-assets] # every key the resource exports, as variables
     env:
       DATABASE_URL: ${{ resources.prod-db.connectionString }}
-    tools: [builtin:kubectl@1.37] # see kubectl, below
+    tools: [builtin:kubectl@1.37, builtin:ssh@10.6] # see kubectl and OpenSSH, below
     run: |
       kubectl rollout restart deploy/web
+      ssh web-1 sudo systemctl restart worker # a Host entry the connection wrote
       node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
@@ -696,12 +697,17 @@ change what an old commit runs.
 
 Builtins:
 
-| Builtin          | ABI        | Built from                                                                                                                                   |
-| ---------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `typescript@7.1` | `tsc-host` | [tsc-rs] v0.8.0 (TypeScript 7.1) for `wasm32-wasip1`. Reads files through two host imports the runner serves from the in-memory file system. |
-| `gofmt@1.27`     | `wasi`     | Go 1.27.3's `cmd/gofmt`, `GOOS=wasip1`.                                                                                                      |
-| `oxfmt@0.69`     | `wasix`    | Oxc `apps_v1.84.0`'s pure-Rust CLI for WASIX (it needs threads).                                                                             |
-| `kubectl@1.37`   | `wasix`    | kubectl 1.37.2, built with `env:go`'s toolchain for WASIX, so it reaches a cluster over the job's network. See [kubectl](#kubectl).          |
+| Builtin            | ABI        | Built from                                                                                                                                   |
+| ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `typescript@7.1`   | `tsc-host` | [tsc-rs] v0.8.0 (TypeScript 7.1) for `wasm32-wasip1`. Reads files through two host imports the runner serves from the in-memory file system. |
+| `gofmt@1.27`       | `wasi`     | Go 1.27.3's `cmd/gofmt`, `GOOS=wasip1`.                                                                                                      |
+| `oxfmt@0.69`       | `wasix`    | Oxc `apps_v1.84.0`'s pure-Rust CLI for WASIX (it needs threads).                                                                             |
+| `kubectl@1.37`     | `wasix`    | kubectl 1.37.2, built with `env:go`'s toolchain for WASIX, so it reaches a cluster over the job's network. See [kubectl](#kubectl).          |
+| `ssh@10.6`         | `wasix`    | OpenSSH 10.6p2's `ssh`, built for WASIX with OpenSSL 3.5.9. See [OpenSSH](#openssh).                                                         |
+| `scp@10.6`         | `wasix`    | OpenSSH 10.6p2's `scp`, which runs `ssh`: list both.                                                                                         |
+| `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
+| `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
+| `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
 
 Environments:
 
@@ -1135,6 +1141,65 @@ attach -it` run without a TTY, as from any CI. Three vendored packages
   token, and a lent kubeconfig whose token is masked in the log. Streams
   that upgrade the connection (`exec`, `logs -f`, `port-forward`) are not
   tested yet.
+
+### OpenSSH
+
+`tools: [builtin:ssh@10.6]` puts OpenSSH's own `ssh` on an environment's
+`PATH`; `scp`, `sftp`, `ssh-keygen` and `ssh-keyscan` are builtins of their
+own, at the same version, and `scp` and `sftp` start `ssh`, so a job that
+copies lists both. They are OpenSSH portable 10.6p2, built from its release
+by `builtins/openssh/build.sh` for WASIX with OpenSSL 3.5.9, and read what a
+[lent connection or SSH key](#connections-ssh-keys-and-resources) writes:
+`~/.ssh/config`, `~/.ssh/known_hosts` and the key.
+
+```yaml
+deploy:
+  using: env:bash@5
+  tools: [builtin:ssh@10.6, builtin:scp@10.6]
+  connections: [web-1] # a Host entry, its pinned host key, ProxyJump if any
+  ssh-keys: [deploy]
+  run: |
+    scp dist/app.tar.gz web-1:/tmp/
+    ssh web-1 'tar -xzf /tmp/app.tar.gz -C /srv/app && sudo systemctl restart app'
+```
+
+What to know:
+
+- **Host keys are checked.** A host whose key is not in `known_hosts` fails
+  ("Host key verification failed"), since there is no terminal to ask, and
+  so does one whose key changed. A lent connection pins its key; for any
+  other host, add its key to `~/.ssh/known_hosts` from a variable or the
+  repository. `ssh-keyscan` is there, but trusting what it reads is trusting
+  the network.
+- **Every key type and algorithm OpenSSH has**, OpenSSL's included: Ed25519,
+  RSA and ECDSA keys (user and host, and certificates), the ML-KEM,
+  sntrup761, Curve25519 and NIST curve key exchanges, ChaCha20-Poly1305 and
+  AES-GCM/CTR. No security keys (`sk-` types, there is no USB) and no
+  compression (`-C` is accepted and changes nothing).
+- **Keys are held to their modes, as on Linux.** A private key a job writes
+  itself needs `chmod 600`, or ssh refuses it as "UNPROTECTED PRIVATE KEY
+  FILE"; a lent one already is (see [File modes](#file-modes)). A private
+  key file must end with a line feed.
+- **ProxyJump and ProxyCommand work**, through the job's shell, as do `Match
+exec` and `LocalCommand`. A jump host must be public, like any host a job
+  reaches (see [Networking](#networking)).
+- **Tunnels work**: `ssh -N -L 5432:db.internal:5432 bastion &` in a job's
+  script, then `wait-for-port 5432`, reaches a database behind a bastion.
+- **No terminal.** `ssh -t` says so and runs without one, as from any CI.
+- **No background ssh.** WASIX built this way has no `fork()`, so OpenSSH
+  starts its children with `posix_spawn()` (`openssh-spawn.patch`), and
+  what can only fork fails with "Function not implemented": `ssh -f`,
+  `ControlPersist`, `KnownHostsCommand`, `ssh-askpass`. A job has no Unix
+  sockets, so no `ControlMaster` either. There is no `ssh-agent` (`-A`
+  forwards nothing) and no `sshd`.
+- Tested end to end (`builtins/test.sh bash openssh`) against small SSH
+  servers on the job's own loopback (`builtins/openssh/sshd-fixture`):
+  commands with stdin and exit status, `scp` both ways and `sftp`, ProxyJump
+  through a second server, a `-L` tunnel, RSA host and user keys, `ssh-keygen` and
+  `ssh-keyscan`, and as failures a changed host key, an unknown host, a key
+  without `chmod 600`, a refused connection and a connection the app did
+  not lend. The lent key is printed and must come out masked. Remote (`-R`)
+  and dynamic (`-D`) forwarding are not tested.
 
 ### Git
 
@@ -2665,6 +2730,7 @@ bash builtins/test.sh typescript oxfmt       # needs their toolchains
 bash builtins/test.sh python php             # need the internet (pip, Composer)
 bash builtins/test.sh go                     # every minor; go@1.27 for one
 bash builtins/test.sh bash kubectl           # needs Go's archive and modules
+bash builtins/test.sh bash openssh           # needs ssh-keygen here, and the internet
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 
@@ -2680,7 +2746,7 @@ its cache, keyed by that directory.
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
 which each need a large toolchain, python and php, whose tests install
-from the internet, and each Go minor, on x86_64 and on ARM64, on changes to
+from the internet, each Go minor and OpenSSH, on x86_64 and on ARM64, on changes to
 the builtins, the runtime or the store, and
 nightly, because those builds resolve crates and a WASIX toolchain that
 this repository does not pin byte for byte. The Node job

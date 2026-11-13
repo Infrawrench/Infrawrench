@@ -4,8 +4,9 @@ name: CI runner builtins
 # (binaryen, Node), oxfmt (the WASIX Rust toolchain) and Edge.js (built from
 # source with wasixcc, run under the runner's V8, `--features node`), and the
 # language environments, whose tests install packages from the internet
-# (pip, Composer, Go modules), Go's built from source for each minor, and
-# kubectl, built with that Go from modules it downloads.
+# (pip, Composer, Go modules), Go's built from source for each minor,
+# kubectl, built with that Go from modules it downloads, and OpenSSH's
+# clients, built from source with wasixcc and OpenSSL.
 # Each job builds one with its own script in ci-runner/builtins/, then runs
 # builtins/test.sh, which publishes it to a throwaway store and runs
 # pipelines through `iwci run`. gofmt and bash are
@@ -389,6 +390,64 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/builtin/kubectl/*
+
+  openssh:
+    name: openssh (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both architectures: the modules' hashes are pinned, so a build
+        # on either must come out the same.
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Its jobs are bash scripts, and every environment carries Git
+      # (see the php job).
+      - name: Cache the Git package
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ci-runner/dist/package/git
+          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+
+      - name: Build the bash environment
+        run: bash builtins/environments/build.sh bash
+
+      # OpenSSH and OpenSSL from source on Git's toolchain and C library,
+      # each module checked against its pinned hash, and the test server
+      # with env:go's toolchain (a few minutes).
+      - name: Build OpenSSH
+        run: bash builtins/openssh/build.sh
+
+      # Against SSH servers on the job's own loopback, with connections and
+      # keys lent as the app lends them. The fixture's keys are made here.
+      - name: Publish and run them through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh bash openssh
+
+      # Main only: what passed above becomes what runners resolve. Once,
+      # from x86_64; the ARM64 build above is the same bytes.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && matrix.runner == 'ubuntu-24.04'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/builtin/{ssh,scp,sftp,ssh-keygen,ssh-keyscan}/*
 
   go:
     name: go ${{ matrix.minor }} (${{ matrix.runner }})

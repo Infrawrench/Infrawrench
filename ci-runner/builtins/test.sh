@@ -12,6 +12,7 @@
 #   builtins/test.sh go              every Go minor; go@1.25 for one
 #   builtins/test.sh python postgres
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
+#   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -21,6 +22,11 @@
 # kubeconfig lent the way the app lends a connection (`IWCI_LENT_FILE`), so
 # it needs bash in the same list and Go's archive and modules from the
 # internet to build.
+# `openssh` runs OpenSSH's clients from bash scripts against small SSH
+# servers its build makes (`openssh/sshd-fixture`), on the job's loopback,
+# with connections and keys lent the same way, so it needs bash in the
+# same list, ssh-keygen on this machine for the fixture's keys, and the
+# internet to build (OpenSSH, OpenSSL, the toolchains, Go modules).
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
@@ -77,6 +83,13 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/kubectl/build.sh" 1.37
       dirs=("$dist"/builtin/kubectl/*)
       ;;
+    openssh)
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/openssh/build.sh"
+      dirs=()
+      for program in ssh scp sftp ssh-keygen ssh-keyscan; do
+        dirs+=("$dist"/builtin/"$program"/*)
+      done
+      ;;
     bash | bash-node | python | php | go@* | postgres)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
@@ -97,7 +110,7 @@ for name in "$@"; do
       continue
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools, kubectl" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, python, php, go (or go@<minor>), postgres, tools, kubectl, openssh" >&2
       exit 2
       ;;
   esac
@@ -393,6 +406,29 @@ ln -s data.txt "$repo/data-link"
 if [[ -f "$dist/test/kubectl/fake-apiserver.wasm" ]]; then
   mkdir -p "$repo/k8s"
   cp "$dist/test/kubectl/fake-apiserver.wasm" "$repo/k8s/"
+fi
+# OpenSSH's test server, from its build, and keys made here: host keys of
+# three types for three servers, another the wrong server holds, and the
+# users' keys it accepts. The users' private halves are lent, never
+# committed (openssh_lent, below).
+if [[ -f "$dist/test/openssh/sshd-fixture.wasm" ]]; then
+  mkdir -p "$repo/ssh" "$SCRATCH/ssh-keys"
+  cp "$dist/test/openssh/sshd-fixture.wasm" "$repo/ssh/"
+  for key in "host_a ed25519" "host_jump ecdsa" "host_rsa rsa" "host_other ed25519" "deploy ed25519" "deploy_rsa rsa"; do
+    read -r file type <<<"$key"
+    ssh-keygen -q -t "$type" -N '' -C "$file" -f "$SCRATCH/ssh-keys/$file"
+  done
+  cp "$SCRATCH"/ssh-keys/host_{a,jump,rsa,other} "$repo/ssh/"
+  cat "$SCRATCH/ssh-keys/deploy.pub" "$SCRATCH/ssh-keys/deploy_rsa.pub" >"$repo/ssh/authorized_keys"
+  # `serve <name> <port> <host key>`, sourced by the jobs: a server in the
+  # background, logging to /tmp/<name>.log, ready once it listens.
+  cat >"$repo/ssh/serve.sh" <<'SH'
+serve() {
+  /app/ssh/sshd-fixture.wasm -listen "127.0.0.1:$2" -host-key "/app/ssh/$3" \
+    -authorized /app/ssh/authorized_keys -name "$1" >"/tmp/$1.log" 2>&1 &
+  wait-for-port "$2"
+}
+SH
 fi
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
@@ -950,6 +986,148 @@ jobs:
     tools: [builtin:kubectl@1.37]
     connections: [staging]
     run: kubectl get namespaces
+YAML
+      ;;
+    openssh)
+      # Connections and keys are lent as the app lends them (openssh_lent,
+      # below): a Host entry in ~/.ssh/config, its pinned host key in
+      # ~/.ssh/known_hosts, a key at mode 0600 named as an IdentityFile.
+      # Servers: `web` on 2222 (Ed25519 host key), `jump` on 2223 (ECDSA),
+      # `legacy` on 2224 (RSA). Each job is lent only what it names, so the
+      # wrong host key is never next to the right one.
+      cat <<'YAML'
+name: openssh
+jobs:
+  exec-passes:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [web]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      ssh -V 2>&1 | grep -q '^OpenSSH_10.6p2, OpenSSL 3'
+      test "$(stat -c %a ~/.ssh/id_deploy)" = 600
+      test "$(ssh web echo hello)" = hello
+      test "$(echo piped | ssh web 'tr a-z A-Z')" = PIPED
+      status=0
+      ssh web 'exit 3' || status=$?
+      test "$status" = 3
+      grep -q 'exec "tr a-z A-Z"' /tmp/web.log
+      # The lent key, which must come out masked in the report.
+      cat ~/.ssh/id_deploy
+  copy-passes:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6, builtin:scp@10.6, builtin:sftp@10.6]
+    connections: [web]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      head -c 300000 /dev/urandom > /tmp/up.bin
+      scp /tmp/up.bin web:/tmp/remote.bin
+      scp web:/tmp/remote.bin /tmp/down.bin
+      test "$(sha256sum < /tmp/up.bin)" = "$(sha256sum < /tmp/down.bin)"
+      printf 'put /tmp/up.bin /tmp/sftp.bin\nget /tmp/sftp.bin /tmp/back.bin\n' | sftp -b - web
+      test "$(sha256sum < /tmp/up.bin)" = "$(sha256sum < /tmp/back.bin)"
+      test "$(grep -c 'subsystem sftp' /tmp/web.log)" = 3
+  jump-passes:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6, builtin:scp@10.6]
+    connections: [web-via-jump]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      serve jump 2223 host_jump
+      test "$(ssh web-via-jump echo through)" = through
+      echo payload > /tmp/up.txt
+      scp /tmp/up.txt web-via-jump:/tmp/jumped.txt
+      test "$(cat /tmp/jumped.txt)" = payload
+      test "$(grep -c 'direct-tcpip to 127.0.0.1:2222' /tmp/jump.log)" = 2
+      grep -q 'exec "echo through"' /tmp/web.log
+  # A tunnel in the background, as a job reaches a database behind a
+  # bastion: here, through `web` to its own port.
+  forward-passes:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [web]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      ssh -N -L 127.0.0.1:2290:127.0.0.1:2222 web &
+      wait-for-port 2290
+      test "$(ssh -o HostKeyAlias='[127.0.0.1]:2222' -p 2290 deploy@127.0.0.1 echo tunnelled)" = tunnelled
+      grep -q 'direct-tcpip to 127.0.0.1:2222' /tmp/web.log
+  rsa-passes:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [legacy]
+    ssh-keys: [deploy-rsa]
+    run: |
+      source /app/ssh/serve.sh
+      serve legacy 2224 host_rsa
+      ssh -v legacy echo rsa > /tmp/out 2> /tmp/err
+      test "$(cat /tmp/out)" = rsa
+      grep -q 'Server host key: ssh-rsa' /tmp/err
+      grep -q 'accepted ssh-rsa key' /tmp/legacy.log
+  keygen-passes:
+    using: env:bash@5
+    tools: [builtin:ssh-keygen@10.6, builtin:ssh-keyscan@10.6]
+    connections: [web]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      ssh-keygen -q -t ed25519 -N '' -C job -f /tmp/new
+      test "$(stat -c %a /tmp/new)" = 600
+      ssh-keygen -l -f /tmp/new.pub | grep -q '(ED25519)$'
+      ssh-keyscan -q -p 2222 -t ed25519 127.0.0.1 | grep -v '^#' | cut -d' ' -f2- > /tmp/scanned
+      test "$(cat /tmp/scanned)" = "$(cut -d' ' -f2- ~/.ssh/known_hosts)"
+      ssh-keygen -F '[127.0.0.1]:2222' | grep -q ssh-ed25519
+  # The server holds another key than the one pinned for it.
+  wrong-host-key-fails:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [web]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_other
+      ssh web echo reached
+  # No key pinned for it, and no terminal to ask: never trusted on first use.
+  unknown-host-fails:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      ssh -p 2222 deploy@127.0.0.1 echo reached
+  # A key a job wrote without chmod 600 is refused, as on Linux.
+  loose-key-fails:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [web]
+    ssh-keys: [deploy]
+    run: |
+      source /app/ssh/serve.sh
+      serve web 2222 host_a
+      cat ~/.ssh/id_deploy > /tmp/loose
+      ssh -F none -i /tmp/loose -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/known_hosts \
+        -p 2222 deploy@127.0.0.1 echo reached
+  refused-fails:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [closed]
+    ssh-keys: [deploy]
+    run: ssh closed echo reached
+  # A connection the app refused: the job never starts, with its reason.
+  not-lent-fails:
+    using: env:bash@5
+    tools: [builtin:ssh@10.6]
+    connections: [staging]
+    run: ssh staging echo reached
 YAML
       ;;
     tools)
@@ -3021,6 +3199,8 @@ want_reason() {
     bash/git-fatal-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
+    openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
+    openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
@@ -3042,6 +3222,10 @@ want_stderr() {
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
+    openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
+    openssh/unknown-host-fails) echo "Host key verification failed" ;;
+    openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;
+    openssh/refused-fails) echo "ssh: connect to host 127.0.0.1 port 2299: Connection refused" ;;
     postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
@@ -3051,6 +3235,39 @@ want_stderr() {
     bash-node/workers-refused-fails) echo "ERR_WORKER_INIT_FAILED.*iwci: the job ran out of its 512 MiB of memory.*worker threads could not start" ;;
     *) echo "" ;;
   esac
+}
+
+# What the app would lend the openssh pipeline (a run request's `lent`):
+# connections as a Host entry in ~/.ssh/config with its pinned host key in
+# ~/.ssh/known_hosts (and, behind a jump host, both keys and ProxyJump),
+# and keys as a file at mode 0600 named as an IdentityFile.
+openssh_lent() {
+  local keys="$SCRATCH/ssh-keys"
+  pub() { cut -d' ' -f1,2 "$keys/$1.pub"; }
+  jq -n --arg a "$(pub host_a)" --arg jump "$(pub host_jump)" --arg rsa "$(pub host_rsa)" \
+    --rawfile deploy "$keys/deploy" --rawfile deploy_rsa "$keys/deploy_rsa" '
+    def host($name; $config; $known): { files: [
+      { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host \($name)\n\($config)" }] },
+      { path: "/root/.ssh/known_hosts", mode: "644", content: [{ text: $known }] } ] };
+    {
+      connections: {
+        web: host("web"; "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n"; "[127.0.0.1]:2222 \($a)\n"),
+        "web-via-jump": host("web-via-jump";
+          "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n  ProxyJump hop@127.0.0.1:2223\n";
+          "[127.0.0.1]:2222 \($a)\n[127.0.0.1]:2223 \($jump)\n"),
+        legacy: host("legacy"; "  HostName 127.0.0.1\n  Port 2224\n  User deploy\n"; "[127.0.0.1]:2224 \($rsa)\n"),
+        closed: host("closed"; "  HostName 127.0.0.1\n  Port 2299\n  User deploy\n"; "[127.0.0.1]:2299 \($a)\n"),
+        staging: { refused: "staging is not lent to CI for this fixture" }
+      },
+      "ssh-keys": {
+        deploy: { files: [
+          { path: "/root/.ssh/id_deploy", content: $deploy },
+          { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host *\n  IdentityFile /root/.ssh/id_deploy\n" }] } ] },
+        "deploy-rsa": { files: [
+          { path: "/root/.ssh/id_deploy_rsa", content: $deploy_rsa },
+          { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host *\n  IdentityFile /root/.ssh/id_deploy_rsa\n" }] } ] }
+      }
+    }'
 }
 
 failed=0
@@ -3083,6 +3300,9 @@ for name in "$@"; do
   }
 }
 JSON
+  elif [[ "$name" == openssh ]]; then
+    lent="$SCRATCH/openssh-lent.json"
+    openssh_lent >"$lent"
   fi
   out="$(IWCI_LENT_FILE="$lent" "$IWCI" run --repo "$repo" --branch main --pipeline "$file" --json \
     --store "$SCRATCH/store" --cache "$SCRATCH/cache" --stall-after "$stall_after")" || status=$?
@@ -3135,6 +3355,16 @@ JSON
   if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
+  fi
+  # Every line of a lent private key is masked (exec-passes prints one).
+  if [[ "$name" == openssh ]]; then
+    while read -r line; do
+      if [[ "$line" != -----* ]] && grep -qF "$line" <<<"$out"; then
+        echo "  FAIL a line of the lent private key appears in the report"
+        failed=1
+        break
+      fi
+    done <"$SCRATCH/ssh-keys/deploy"
   fi
   if [[ "$failed" == 1 ]]; then
     # The whole report, for the tool's own output.
