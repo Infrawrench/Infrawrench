@@ -365,10 +365,10 @@ jobs:
     name: ClickHouse tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
     needs: [prep, "^bundle"]
-    using: env:bash-node@24
+    using: env:bash-node@24.0.15
     services:
       clickhouse:
-        using: env:clickhouse@26.11
+        using: env:clickhouse@26.11.0
         run: clickhouse-server
         env:
           CLICKHOUSE_DB: infrawrench
@@ -384,7 +384,7 @@ jobs:
       node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts src/__tests__/db/clickhouse.test.ts src/__tests__/db/clickhouse-cost.test.ts
       node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
     task-cache:
-      root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs]
+      root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
     memory: 6GiB
     timeout: 20m
 
