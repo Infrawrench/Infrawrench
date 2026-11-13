@@ -748,24 +748,25 @@ fn guest_unofficial_napi_get_own_non_index_properties(
     value: i32,
     filter_bits: i32,
     result_out_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     if value <= 0 || result_out_ptr <= 0 {
-        return 1;
+        return Ok(1);
     }
     let env_handle = snapi_env(&env, napi_env);
     let mut out = 0u32;
-    let status = unsafe {
+    // A proxy's ownKeys and getOwnPropertyDescriptor traps run JavaScript.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_get_own_non_index_properties(
             env_handle,
             value as u32,
             filter_bits.max(0) as u32,
             &mut out,
         )
-    };
+    })?;
     if status == 0 {
         write_guest_u32(&mut env, result_out_ptr as u32, out);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_set_promise_hooks(
@@ -824,7 +825,7 @@ fn guest_unofficial_napi_get_error_metadata(
     error: i32,
     mode: i32,
     metadata_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let error_id = if error > 0 { error as u32 } else { 0 };
     let mut source_line_id = 0u32;
@@ -834,7 +835,9 @@ fn guest_unofficial_napi_get_error_metadata(
     let mut line_number = 0i32;
     let mut start_column = 0i32;
     let mut end_column = 0i32;
-    let status = unsafe {
+    // The stderr line asks the source-map callback for the original
+    // source, which is JavaScript.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_get_error_metadata(
             env_handle,
             error_id,
@@ -847,9 +850,9 @@ fn guest_unofficial_napi_get_error_metadata(
             &mut start_column,
             &mut end_column,
         )
-    };
+    })?;
     if status != 0 {
-        return status;
+        return Ok(status);
     }
     if metadata_ptr > 0 {
         write_guest_u32(&mut env, metadata_ptr as u32, source_line_id);
@@ -860,7 +863,7 @@ fn guest_unofficial_napi_get_error_metadata(
         write_guest_i32(&mut env, metadata_ptr as u32 + 20, start_column);
         write_guest_i32(&mut env, metadata_ptr as u32 + 24, end_column);
     }
-    0
+    Ok(0)
 }
 
 fn guest_unofficial_napi_configure_source_maps(
@@ -875,23 +878,30 @@ fn guest_unofficial_napi_configure_source_maps(
 }
 
 fn guest_unofficial_napi_preserve_error_source_message(
-    env: FunctionEnvMut<NapiEnv>,
+    mut env: FunctionEnvMut<NapiEnv>,
     napi_env: i32,
     error: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let error_id = if error > 0 { error as u32 } else { 0 };
-    unsafe { snapi_bridge_unofficial_preserve_error_source_message(env_handle, error_id) }
+    // As get_error_metadata: the source-map callback is JavaScript.
+    with_cb_context(&mut env, napi_env, || unsafe {
+        snapi_bridge_unofficial_preserve_error_source_message(env_handle, error_id)
+    })
 }
 
 fn guest_unofficial_napi_mark_promise_as_handled(
-    env: FunctionEnvMut<NapiEnv>,
+    mut env: FunctionEnvMut<NapiEnv>,
     napi_env: i32,
     promise: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let promise_id = if promise > 0 { promise as u32 } else { 0 };
-    unsafe { snapi_bridge_unofficial_mark_promise_as_handled(env_handle, promise_id) }
+    // Tells the promise-reject callback (JavaScript) that a rejected
+    // promise has a handler now.
+    with_cb_context(&mut env, napi_env, || unsafe {
+        snapi_bridge_unofficial_mark_promise_as_handled(env_handle, promise_id)
+    })
 }
 
 fn guest_unofficial_napi_get_heap_statistics(
@@ -1133,7 +1143,7 @@ fn guest_unofficial_napi_contextify_contains_module_syntax(
     resource_name_or_undefined: i32,
     cjs_var_in_scope: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let code_id = if code > 0 { code as u32 } else { 0 };
     let filename_id = if filename > 0 { filename as u32 } else { 0 };
@@ -1143,7 +1153,9 @@ fn guest_unofficial_napi_contextify_contains_module_syntax(
         0
     };
     let mut result = 0i32;
-    let status = unsafe {
+    // A SyntaxError gets its arrow message through the error's `stack`,
+    // which runs the prepareStackTrace callback.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_contextify_contains_module_syntax(
             env_handle,
             code_id,
@@ -1152,11 +1164,11 @@ fn guest_unofficial_napi_contextify_contains_module_syntax(
             cjs_var_in_scope,
             &mut result,
         )
-    };
+    })?;
     if status == 0 && result_ptr > 0 {
         write_guest_u8(&mut env, result_ptr as u32, (result != 0) as u8);
     }
-    status
+    Ok(status)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1171,10 +1183,12 @@ fn guest_unofficial_napi_contextify_make_context(
     own_microtask_queue: i32,
     host_defined_option_id: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let mut result_id = 0u32;
-    let status = unsafe {
+    // The sandbox's own properties are read and written back with Get and
+    // Set, so its accessors run.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_contextify_make_context(
             env_handle,
             sandbox_or_symbol as u32,
@@ -1194,11 +1208,11 @@ fn guest_unofficial_napi_contextify_make_context(
             },
             &mut result_id,
         )
-    };
+    })?;
     if status == 0 && result_ptr > 0 {
         write_guest_u32(&mut env, result_ptr as u32, result_id);
     }
-    status
+    Ok(status)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1266,13 +1280,14 @@ fn guest_unofficial_napi_contextify_compile_function(
     params_or_undefined: i32,
     host_defined_option_id: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let Some((source_text, source_bytecode)) = abi::read_js_source(&mut env, source) else {
-        return 1;
+        return Ok(1);
     };
     let env_handle = snapi_env(&env, napi_env);
     let mut result_id = 0u32;
-    let status = unsafe {
+    // As contains_module_syntax: a SyntaxError reads its `stack`.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_contextify_compile_function(
             env_handle,
             source_text,
@@ -1302,11 +1317,11 @@ fn guest_unofficial_napi_contextify_compile_function(
             },
             &mut result_id,
         )
-    };
+    })?;
     if status == 0 && result_ptr > 0 {
         write_guest_u32(&mut env, result_ptr as u32, result_id);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_bytecode_open(
@@ -1314,18 +1329,20 @@ fn guest_unofficial_napi_bytecode_open(
     napi_env: i32,
     options_ptr: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let Some(options) = abi::read_bytecode_open(&mut env, options_ptr) else {
-        return 1;
+        return Ok(1);
     };
     if result_ptr <= 0 {
-        return 1;
+        return Ok(1);
     }
     let env_handle = snapi_env(&env, napi_env);
     let mut bytecode_id = 0u32;
     let mut cache_rejected = 0u8;
     let mut can_parse_as_module = 0u8;
-    let status = unsafe {
+    // A SyntaxError gets its arrow message through the error's `stack`,
+    // which runs the prepareStackTrace callback.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_bytecode_open(
             env_handle,
             options.source_text,
@@ -1347,11 +1364,11 @@ fn guest_unofficial_napi_bytecode_open(
             &mut cache_rejected,
             &mut can_parse_as_module,
         )
-    };
+    })?;
     write_guest_u32(&mut env, result_ptr as u32, bytecode_id);
     write_guest_u8(&mut env, result_ptr as u32 + 4, cache_rejected);
     write_guest_u8(&mut env, result_ptr as u32 + 5, can_parse_as_module);
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_bytecode_serialize(
@@ -1385,18 +1402,19 @@ fn guest_unofficial_napi_module_wrap_create(
     napi_env: i32,
     options_ptr: i32,
     result_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let Some(options) = abi::read_module_create(&mut env, options_ptr) else {
-        return 1;
+        return Ok(1);
     };
     if result_ptr <= 0 {
-        return 1;
+        return Ok(1);
     }
     let env_handle = snapi_env(&env, napi_env);
     let mut handle_id = 0u32;
     let mut requests_id = 0u32;
     let mut has_top_level_await = 0u8;
-    let status = unsafe {
+    // As bytecode_open: a SyntaxError reads its `stack`.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_module_wrap_create(
             env_handle,
             options.kind,
@@ -1414,13 +1432,13 @@ fn guest_unofficial_napi_module_wrap_create(
             &mut requests_id,
             &mut has_top_level_await,
         )
-    };
+    })?;
     if status == 0 {
         write_guest_u32(&mut env, result_ptr as u32, handle_id);
         write_guest_u32(&mut env, result_ptr as u32 + 4, requests_id);
         write_guest_bytes(&mut env, result_ptr as u32 + 8, &[has_top_level_await]);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_module_wrap_destroy(
@@ -2257,25 +2275,51 @@ guest_is_check!(guest_napi_is_dataview, snapi_bridge_is_dataview);
 guest_is_check!(guest_napi_is_date, snapi_bridge_is_date);
 guest_is_check!(guest_napi_is_promise, snapi_bridge_is_promise);
 
+// Symbol.hasInstance and a proxy's getPrototypeOf trap can run author code,
+// which may call back into the guest: this lends the store.
 fn guest_napi_instanceof(
     mut env: FunctionEnvMut<NapiEnv>,
     e: i32,
     obj: i32,
     ctor: i32,
     rp: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let mut r: i32 = 0;
-    let s = unsafe { snapi_bridge_instanceof(snapi_env(&env, e), obj as u32, ctor as u32, &mut r) };
+    let snapi = snapi_env(&env, e);
+    let s = with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_instanceof(snapi, obj as u32, ctor as u32, &mut r)
+    })?;
     if s == 0 {
         write_guest_u8(&mut env, rp as u32, r as u8);
     }
-    s
+    Ok(s)
 }
 
 // --- Coercion ---
 
 macro_rules! guest_coerce {
+    // ToNumber and ToString may call valueOf, toString or Symbol.toPrimitive,
+    // which may call back into the guest.
     ($name:ident, $bridge:ident) => {
+        fn $name(
+            mut env: FunctionEnvMut<NapiEnv>,
+            e: i32,
+            vh: i32,
+            rp: i32,
+        ) -> Result<i32, WasiError> {
+            let mut out: u32 = 0;
+            let snapi = snapi_env(&env, e);
+            let s = with_cb_context(&mut env, e, || unsafe {
+                $bridge(snapi, vh as u32, &mut out)
+            })?;
+            if s == 0 {
+                write_guest_u32(&mut env, rp as u32, out);
+            }
+            Ok(s)
+        }
+    };
+    // ToBoolean and ToObject run no JS.
+    (no_js $name:ident, $bridge:ident) => {
         fn $name(mut env: FunctionEnvMut<NapiEnv>, e: i32, vh: i32, rp: i32) -> i32 {
             let mut out: u32 = 0;
             let s = unsafe { $bridge(snapi_env(&env, e), vh as u32, &mut out) };
@@ -2287,10 +2331,10 @@ macro_rules! guest_coerce {
     };
 }
 
-guest_coerce!(guest_napi_coerce_to_bool, snapi_bridge_coerce_to_bool);
+guest_coerce!(no_js guest_napi_coerce_to_bool, snapi_bridge_coerce_to_bool);
 guest_coerce!(guest_napi_coerce_to_number, snapi_bridge_coerce_to_number);
 guest_coerce!(guest_napi_coerce_to_string, snapi_bridge_coerce_to_string);
-guest_coerce!(guest_napi_coerce_to_object, snapi_bridge_coerce_to_object);
+guest_coerce!(no_js guest_napi_coerce_to_object, snapi_bridge_coerce_to_object);
 
 // --- Object operations ---
 
@@ -2564,12 +2608,28 @@ fn guest_napi_get_prototype(mut env: FunctionEnvMut<NapiEnv>, e: i32, o: i32, rp
     s
 }
 
-fn guest_napi_object_freeze(env: FunctionEnvMut<NapiEnv>, e: i32, o: i32) -> i32 {
-    unsafe { snapi_bridge_object_freeze(snapi_env(&env, e), o as u32) }
+// Freezing or sealing a proxy runs its preventExtensions, ownKeys and
+// defineProperty traps.
+fn guest_napi_object_freeze(
+    mut env: FunctionEnvMut<NapiEnv>,
+    e: i32,
+    o: i32,
+) -> Result<i32, WasiError> {
+    let snapi = snapi_env(&env, e);
+    with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_object_freeze(snapi, o as u32)
+    })
 }
 
-fn guest_napi_object_seal(env: FunctionEnvMut<NapiEnv>, e: i32, o: i32) -> i32 {
-    unsafe { snapi_bridge_object_seal(snapi_env(&env, e), o as u32) }
+fn guest_napi_object_seal(
+    mut env: FunctionEnvMut<NapiEnv>,
+    e: i32,
+    o: i32,
+) -> Result<i32, WasiError> {
+    let snapi = snapi_env(&env, e);
+    with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_object_seal(snapi, o as u32)
+    })
 }
 
 // --- Comparison ---
@@ -2684,36 +2744,67 @@ fn guest_napi_get_and_clear_last_exception(
     mut env: FunctionEnvMut<NapiEnv>,
     e: i32,
     rp: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let mut out: u32 = 0;
-    let s = unsafe { snapi_bridge_get_and_clear_last_exception(snapi_env(&env, e), &mut out) };
+    let snapi = snapi_env(&env, e);
+    // An exception taken here for the first time gets its source line,
+    // which asks the source-map callback (JavaScript) when maps are on.
+    let s = with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_get_and_clear_last_exception(snapi, &mut out)
+    })?;
     if s == 0 {
         write_guest_u32(&mut env, rp as u32, out);
     }
-    s
+    Ok(s)
 }
 
 // --- Promise ---
 
-fn guest_napi_create_promise(mut env: FunctionEnvMut<NapiEnv>, e: i32, dp: i32, rp: i32) -> i32 {
+// Promise hooks (async_hooks) run JavaScript when a promise is made and when
+// it settles; settling also reads a thenable's `then`, which may be a getter,
+// and rejecting a promise nothing handles calls the promise-reject callback,
+// which is JavaScript that calls back into the guest.
+fn guest_napi_create_promise(
+    mut env: FunctionEnvMut<NapiEnv>,
+    e: i32,
+    dp: i32,
+    rp: i32,
+) -> Result<i32, WasiError> {
     let mut deferred_id: u32 = 0;
     let mut promise_id: u32 = 0;
-    let s = unsafe {
-        snapi_bridge_create_promise(snapi_env(&env, e), &mut deferred_id, &mut promise_id)
-    };
+    let snapi = snapi_env(&env, e);
+    let s = with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_create_promise(snapi, &mut deferred_id, &mut promise_id)
+    })?;
     if s == 0 {
         write_guest_u32(&mut env, dp as u32, deferred_id);
         write_guest_u32(&mut env, rp as u32, promise_id);
     }
-    s
+    Ok(s)
 }
 
-fn guest_napi_resolve_deferred(env: FunctionEnvMut<NapiEnv>, e: i32, d: i32, v: i32) -> i32 {
-    unsafe { snapi_bridge_resolve_deferred(snapi_env(&env, e), d as u32, v as u32) }
+fn guest_napi_resolve_deferred(
+    mut env: FunctionEnvMut<NapiEnv>,
+    e: i32,
+    d: i32,
+    v: i32,
+) -> Result<i32, WasiError> {
+    let snapi = snapi_env(&env, e);
+    with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_resolve_deferred(snapi, d as u32, v as u32)
+    })
 }
 
-fn guest_napi_reject_deferred(env: FunctionEnvMut<NapiEnv>, e: i32, d: i32, v: i32) -> i32 {
-    unsafe { snapi_bridge_reject_deferred(snapi_env(&env, e), d as u32, v as u32) }
+fn guest_napi_reject_deferred(
+    mut env: FunctionEnvMut<NapiEnv>,
+    e: i32,
+    d: i32,
+    v: i32,
+) -> Result<i32, WasiError> {
+    let snapi = snapi_env(&env, e);
+    with_cb_context(&mut env, e, || unsafe {
+        snapi_bridge_reject_deferred(snapi, d as u32, v as u32)
+    })
 }
 
 // --- ArrayBuffer ---
@@ -2980,17 +3071,19 @@ fn guest_node_api_create_sharedarraybuffer(
     s
 }
 
+// Setting a proxy's prototype runs its setPrototypeOf trap.
 fn guest_node_api_set_prototype(
-    env: FunctionEnvMut<NapiEnv>,
+    mut env: FunctionEnvMut<NapiEnv>,
     napi_env: i32,
     object: i32,
     prototype: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let object_id = if object > 0 { object as u32 } else { 0 };
     let prototype_id = if prototype > 0 { prototype as u32 } else { 0 };
-    unsafe {
-        snapi_bridge_node_api_set_prototype(snapi_env(&env, napi_env), object_id, prototype_id)
-    }
+    let snapi = snapi_env(&env, napi_env);
+    with_cb_context(&mut env, napi_env, || unsafe {
+        snapi_bridge_node_api_set_prototype(snapi, object_id, prototype_id)
+    })
 }
 
 // --- TypedArray ---
@@ -3730,17 +3823,18 @@ fn guest_napi_define_class(
     0
 }
 
+// Defining a property on a proxy runs its defineProperty trap.
 fn guest_napi_define_properties(
     mut env: FunctionEnvMut<NapiEnv>,
     e: i32,
     obj: i32,
     prop_count: i32,
     props_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let snapi = snapi_env(&env, e);
     let pc = prop_count as u32;
     if pc == 0 {
-        return unsafe {
+        return Ok(unsafe {
             snapi_bridge_define_properties(
                 snapi,
                 obj as u32,
@@ -3754,12 +3848,12 @@ fn guest_napi_define_properties(
                 std::ptr::null(),
                 std::ptr::null(),
             )
-        };
+        });
     }
 
     let total_bytes = pc as usize * PROP_DESC_SIZE;
     let Some(raw) = read_guest_bytes(&mut env, props_ptr, total_bytes) else {
-        return 1;
+        return Ok(1);
     };
 
     let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
@@ -3882,7 +3976,7 @@ fn guest_napi_define_properties(
         prop_names_ptrs.push(cn.as_ptr());
     }
 
-    unsafe {
+    with_cb_context(&mut env, e, || unsafe {
         snapi_bridge_define_properties(
             snapi,
             obj as u32,
@@ -3896,7 +3990,7 @@ fn guest_napi_define_properties(
             prop_setter_reg_ids.as_ptr(),
             prop_attributes.as_ptr(),
         )
-    }
+    })
 }
 
 // --- Script execution ---

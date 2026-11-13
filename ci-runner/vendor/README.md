@@ -471,19 +471,57 @@ turns a panic into a pending guest exit with status 134, which the
 enclosing import raises as it does a guest's own `proc_exit`. Upstream
 main has the same trampolines (checked November 2026).
 
+**And: every import that can run JavaScript lends the store (#1090).** A
+guest function V8 calls (a binding, a getter, the prepare-stack-trace
+handler) can only run while the import V8 is running under has lent its
+store; otherwise `snapi_host_invoke_wasm_callback` printed "no store lent
+to this thread" and returned `undefined` without running it. Both runners
+printed that about twice a minute under the Test pipeline: a run on ci-1
+had 123 in 23 minutes, every one `napi_reject_deferred` inside the event
+loop checkpoint, from `fs.promises.access` of a missing file: Edge.js's
+binding rejects the promise at once, before `access` handles it, so the
+promise-reject callback runs Node's unhandled-rejection handler there, and
+its call to Edge.js for the async context came back `undefined` (an
+`unhandledRejection` listener lost the AsyncLocalStorage store of a
+promise rejected that way). Probing the rest found
+more that a job can reach: `napi_coerce_to_string` (a `process.env`
+value's `toString`), `unofficial_napi_contextify_make_context` (the
+sandbox's getters), and `compile_function`, `contains_module_syntax` and
+`module_wrap_create` (a SyntaxError's `stack`, read for its arrow
+message, runs `Error.prepareStackTrace`). `src/guest/napi.rs` now runs
+each import that can reach JavaScript inside `with_cb_context`, with the
+reason beside it: those, `napi_coerce_to_number`, `napi_instanceof`,
+`napi_create_promise`, `napi_resolve_deferred`,
+`unofficial_napi_mark_promise_as_handled`, `bytecode_open`,
+`napi_get_and_clear_last_exception`, `get_error_metadata` and
+`preserve_error_source_message` (the source-map callback),
+`get_own_non_index_properties`, `napi_object_freeze`/`seal`,
+`node_api_set_prototype` and `napi_define_properties` (proxy traps).
+ToBoolean, ToObject, `napi_get_prototype` and `napi_strict_equals` run
+none. `src/guest/callback.rs` now names the guest frames that called the
+import when it drops one (and a finalizer, which it dropped silently),
+counts them, and aborts instead in a debug build or with
+`WASMER_NAPI_STRICT_STORE_LENDING=1`, so a test cannot pass over one;
+`builtins/test.sh` fails a run whose iwci printed the line, and
+`store-lending-passes` goes through each import a job can reach. Upstream
+main lends the store for `napi_instanceof` and the coercions (e5660a3),
+not for the others (checked November 2026).
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
-and #146's fix, and either a guest's event loop is kept alive and woken
+and #146's fix, lends the store in the imports #1090 names, and either a
+guest's event loop is kept alive and woken
 for its isolate's background work or the pinned Edge.js does that itself,
 the stall check has another way to count V8's worker threads or goes
 without, and a panic in a guest callback no longer aborts the process: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs, one that compiles WebAssembly
-in the background, one that makes code cache (`cached-data-passes`) and
-one that posts large values and buffers (`post-message-passes`), which are
-the checks; check the heap sizes against a Worker pool too.
+in the background, one that makes code cache (`cached-data-passes`), one
+that posts large values and buffers (`post-message-passes`) and one that
+calls back into Edge.js from inside bridge calls (`store-lending-passes`),
+which are the checks; check the heap sizes against a Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels, as the existing patch is.
