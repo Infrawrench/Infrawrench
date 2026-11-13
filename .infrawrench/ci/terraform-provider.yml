@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# The Terraform provider (terraform-provider-infrawrench/), a standalone Go
+# module outside the pnpm workspace, so nothing in test.yml reaches it. A
+# pipeline of its own keeps it that way.
+#
+# Two checks stay on GitHub Actions (.github/workflows/terraform-provider.yml):
+# - `go vet`: vet compiled for WebAssembly traps in its errorsas and hostport
+#   analyzers on this module's packages, an upstream Go bug (it does the same
+#   under wasmtime with go.dev's own toolchain), and a `go` process here can
+#   start only 511 children (#1082), fewer than `go vet ./...` needs.
+# - The docs check: tfplugindocs reads the schema by running a real
+#   Terraform, which loads the provider through go-plugin over a Unix domain
+#   socket, and WASIX has no Unix domain sockets.
+name: Terraform provider
+
+# The checked-in spec is an input as well as the module: the wire drift test
+# reads it and fails when a schema property is neither decoded nor excused,
+# so a spec regeneration can break this module without touching a file in it.
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - terraform-provider-infrawrench/**
+      - app/packages/web/openapi.json
+      - .infrawrench/ci/terraform-provider.yml
+  pull-request:
+    paths: *inputs
+
+workspace:
+  deps:
+    - go: { dir: terraform-provider-infrawrench }
+
+jobs:
+  # `gofmt -l` exits 0 whatever it finds, so the file list has to be turned
+  # into the failure itself.
+  gofmt:
+    name: gofmt
+    using: env:go@1.27
+    cwd: /app/terraform-provider-infrawrench
+    deps: false
+    network: false
+    run: |
+      unformatted="$(gofmt -l .)"
+      if [ -n "$unformatted" ]; then
+        echo "These files are not gofmt'd:"
+        echo "$unformatted"
+        echo
+        echo "Run: cd terraform-provider-infrawrench && gofmt -w ."
+        exit 1
+      fi
+    task-cache: { inputs: [terraform-provider-infrawrench/**/*.go] }
+    timeout: 5m
+    memory: 1GiB
+
+  # Acceptance tests are skipped without TF_ACC, which is deliberate: they
+  # create and destroy real objects in a real organization. `-count=1`
+  # defeats Go's test cache, so a run that is not a task-cache hit always
+  # runs the tests against this commit. `-vet=off` because vet runs on
+  # GitHub Actions (above); `go test`'s own vet includes errorsas.
+  #
+  # Go compiles one package at a time here, so most of a run is compiling
+  # the dependencies. Their build cache is not kept between runs: a job
+  # cache of GOCACHE (/root/.cache/go-build) saves nothing yet (#1083).
+  go:
+    name: Build and test
+    using: env:go@1.27
+    cwd: /app/terraform-provider-infrawrench
+    network: false
+    run: |
+      go build ./...
+      go test -vet=off -count=1 ./...
+    task-cache:
+      inputs: *inputs
+    timeout: 20m
+    memory: 4GiB
