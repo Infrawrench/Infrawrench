@@ -61,10 +61,9 @@ jobs:
   # GitHub Actions (above); `go test`'s own vet includes errorsas.
   #
   # Go compiles one package at a time here, so most of a cold run is
-  # compiling the dependencies. Their build cache is not kept between runs
-  # yet: `env:go` keeps it on its own once the Go environments declare it
-  # (ci-runner/README.md, "Environment caches"), which waits for a runner
-  # release that reads that declaration.
+  # compiling the dependencies. From `env:go` 1.27.6 the environment keeps
+  # the build cache between runs on its own (ci-runner/README.md,
+  # "Environment caches"), so a run compiles only what changed.
   go:
     name: Build and test
     using: env:go@1.27
