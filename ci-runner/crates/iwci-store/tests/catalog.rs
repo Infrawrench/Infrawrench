@@ -529,6 +529,56 @@ fn a_matrix_lists_and_fetches_once() {
     assert_eq!(counting.lists.load(Ordering::SeqCst), 1);
 }
 
+/// #1112: what a task cache key holds. A pin names the exact version a
+/// range picks and its manifest's digest, fetches no blob, and agrees with
+/// a later `resolve` on the same catalog.
+#[test]
+fn a_pin_is_the_resolved_version_by_content_without_its_blobs() {
+    let f = fixture();
+    f.publish(&Namespace::Builtin, "tsc", &["7.0.0"]);
+    let counting = Arc::new(CountingStore {
+        inner: f.store.clone(),
+        lists: AtomicUsize::new(0),
+        gets: AtomicUsize::new(0),
+    });
+    let first = Catalog::new(counting.clone());
+    let old = first.pin(&r("builtin:tsc@7"), &repo("r")).unwrap();
+    assert_eq!(old.version.to_string(), "7.0.0");
+    assert_eq!(
+        old.to_string(),
+        format!("builtin:tsc@7.0.0 sha256:{}", old.manifest_sha256)
+    );
+    // The listing and the manifest, no module or data file.
+    assert_eq!(counting.lists.load(Ordering::SeqCst), 1);
+    assert_eq!(counting.gets.load(Ordering::SeqCst), 1);
+    // The exact version pins to the same thing as the range.
+    assert_eq!(first.pin(&r("builtin:tsc@7.0.0"), &repo("r")).unwrap(), old);
+
+    // Published under the same range: the run that pinned keeps its pin,
+    // and resolves what it pinned; the next run pins the new version.
+    f.publish(&Namespace::Builtin, "tsc", &["7.0.1"]);
+    assert_eq!(first.pin(&r("builtin:tsc@7"), &repo("r")).unwrap(), old);
+    let resolved = first.resolve(&r("builtin:tsc@7"), &repo("r")).unwrap();
+    assert_eq!(resolved_version(&resolved), "7.0.0");
+    let Resolved::Tool {
+        manifest_sha256, ..
+    } = &resolved
+    else {
+        panic!("a tool");
+    };
+    assert_eq!(manifest_sha256, &old.manifest_sha256);
+
+    let next = f.catalog().pin(&r("builtin:tsc@7"), &repo("r")).unwrap();
+    assert_eq!(next.version.to_string(), "7.0.1");
+    assert_ne!(next.manifest_sha256, old.manifest_sha256);
+    assert_ne!(next.to_string(), old.to_string());
+
+    assert!(matches!(
+        f.catalog().pin(&r("builtin:tsc@8"), &repo("r")),
+        Err(Error::NoMatchingVersion { .. })
+    ));
+}
+
 #[test]
 fn tool_ref_round_trip() {
     for s in [

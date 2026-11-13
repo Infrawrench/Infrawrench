@@ -587,18 +587,23 @@ task-cache:
   artifacts: false # what it is handed is not part of its key (below)
 ```
 
-- **The key** is a hash of the job's definition (tool and version,
-  arguments or script, `env:`, `cwd`, `tools:`, `artifacts:`, `outputs:`,
-  `network:`, `changes:`), its workspace's settings and lockfiles
-  (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `go.mod`, `go.sum`,
-  `Cargo.lock`), the files its inputs match as the commit has them, and the
-  bytes of every artifact it is handed. A job downstream of one that
-  changed is handed different files, so its key changes too; one whose
-  upstream rebuilt the same files is not. The tool's version is the one
-  `using:` names, not the one it resolves to: `env:bash-node@24` keeps its
-  key when a new `24.x` is published, and runs on the new one only once
-  something else changes the key. Name an exact version (`@24.0.8`) for
-  the key to follow it.
+- **The key** is a hash of the job's definition (`using:`, arguments or
+  script, `env:`, `cwd`, `tools:`, `services:`, `artifacts:`, `outputs:`,
+  `network:`, `changes:`), what each of its tools, its `tools:` and its
+  services' environments resolves to, its workspace's settings and
+  lockfiles (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `go.mod`,
+  `go.sum`, `Cargo.lock`), the files its inputs match as the commit has
+  them, and the bytes of every artifact it is handed. A job downstream of
+  one that changed is handed different files, so its key changes too; one
+  whose upstream rebuilt the same files is not. A tool counts as the
+  exact version its range picks and the SHA-256 of that version's
+  manifest, which names every blob by its own hash: when a new `24.x` is
+  published, every job on `env:bash-node@24` gets a new key and runs on
+  it, while one on `@24.0.8` keeps its key. Working that out reads the
+  version listing and the manifest (once per tool per run, as resolving
+  it does), never the tool's blobs, so a hit still downloads no tool. A
+  job whose tool does not resolve is not looked up: it runs, and fails
+  with the reason.
 - **`artifacts: false`** leaves the artifacts a job is handed out of its
   key, for a job that has them only to pass them on, such as a bundler
   that keeps its workspace dependencies external but must hand their
