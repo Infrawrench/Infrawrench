@@ -1,4 +1,4 @@
-//! The shared engine and the compiled-module cache.
+//! The engines and the compiled-module cache.
 //!
 //! Compiling a large module (the TypeScript compiler is over 4 MB of wasm)
 //! takes seconds, and jobs must start in milliseconds, so every module is
@@ -6,13 +6,13 @@
 //! sha256 and a fingerprint of everything that decides whether native code
 //! is still valid (wasmer version, artifact format, compiler settings, target
 //! and wasm features). Loading an artifact from disk takes tens of
-//! milliseconds; within a process a bounded set of loaded `Module`s also
-//! stays in memory, where a clone is a reference count.
+//! milliseconds; within a process the modules jobs use most also stay in
+//! memory (below), where getting one is a reference count.
 //!
-//! Nothing is compiled with the shared engine itself. wasmer holds an
-//! engine's lock for the whole of a compile, and every job needs that lock
-//! to start a process, so a compile on the shared engine stopped every job
-//! until it ended (#963). See [`ModuleStore::compile`].
+//! Nothing is compiled with an engine a job uses. wasmer holds an engine's
+//! lock for the whole of a compile, and a compile on the engine every job
+//! shared stopped every job until it ended (#963). See
+//! [`ModuleStore::compile`].
 //!
 //! Loading an artifact runs `Module::deserialize`, which in wasmer 7.5 trusts
 //! its input completely: the bytes become executable code. The cache
@@ -23,31 +23,53 @@
 //! authenticity: whoever can write the cache directory can write both
 //! files, and that directory must be as trusted as the runner binary.
 //!
-//! # Generations (#1035)
+//! # Engines, pinning and the LRU
 //!
 //! wasmer 7.5 keeps the native code of every module loaded into an engine
 //! until the engine itself is dropped (`EngineInner::code_memory` only ever
 //! grows), so dropping a `Module` frees its copy of the artifact but never
-//! its code, and loading it again copies the code in a second time. Memory
-//! is therefore bounded by engine, not by module: modules are loaded into a
-//! [`Generation`], an engine that a set of jobs shares, and once the
-//! modules loaded into the current generation pass the store's limit
-//! (`Runtime::with_module_memory`), new jobs get a fresh one. The old one,
-//! with every module and all the code in it, is freed when the last job
-//! that started on it ends. A job uses one generation from start to finish,
-//! for every process, service and module it loads: modules of different
-//! engines must never meet in one store, where their signature indices
-//! would not agree. The jobs hold the engine (every store does), so a
-//! module is never freed from under a job that runs it. At most two
-//! generations are kept: while a retired one still has jobs, the current
-//! one is not retired again, and grows past the limit instead.
+//! its code. What can be freed on its own is an engine, so every module is
+//! loaded into an engine of its own ([`Compiled`]), and freeing the module
+//! is dropping the two together.
+//!
+//! A job's stores are made from an engine of the job's own ([`JobModules`]),
+//! which holds the signatures of host functions and of the modules the job
+//! loaded, not their code. Modules of different engines meet in one store
+//! safely because wasmer 7.5 identifies a function signature by a hash of
+//! its type (`FunctionType::signature_hash`), the same in every engine, not
+//! by an index into one engine's registry. What a store's engine must still
+//! know is every signature a funcref in it can have (host code reading a
+//! table looks the hash up there and panics on a miss), so a module's
+//! signatures are registered with the job's engine when the job gets it.
+//! Side modules a job links at run time go through the same path.
+//!
+//! The job holds every module it got until the last of its stores is gone:
+//! the job's engine carries a reference to them in its tunables
+//! (`LimitingTunables`), which every store of the job holds. So a module is
+//! never freed while anything of a job can still run its code.
+//!
+//! The store keeps modules in memory between jobs in two ways:
+//!
+//! - **Pinned**: a module whose artifact is at most `pin_under` bytes stays
+//!   loaded for the life of the process, while the pinned modules together
+//!   stay within `pinned_budget`. tsc-rs, gofmt, oxfmt, bash and git are
+//!   tens of megabytes each, and a job of any environment starts several.
+//! - **The LRU**: every other module. When the modules in it pass
+//!   `lru_budget`, the least recently used of those no job is using are
+//!   freed until they fit again. A module in use is never freed, so the
+//!   LRU can be over its budget while jobs use more than it holds; the
+//!   next load or idle sweep brings it back within it.
+//!
+//! Both are counted as the size of the modules' artifacts, and both are
+//! reported (`/v1/capacity`), pinned and LRU apart.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 use wasmer::sys::{Cranelift, EngineBuilder, NativeEngineExt};
@@ -57,42 +79,112 @@ use wasmer_wasix::runtime::module_cache::{CacheError, ModuleCache};
 
 use crate::{Error, Result};
 
-/// How much compiled code a runner keeps loaded by default, counted as the
-/// size of the artifacts (their native code takes about a third again).
-pub const DEFAULT_MODULE_MEMORY: u64 = 1 << 30;
+/// How many bytes of artifacts the LRU keeps by default (see the module
+/// comment). Two or three Edge.js versions with Python, PHP, Go and
+/// ClickHouse beside them.
+pub const DEFAULT_MODULE_MEMORY: u64 = 2 << 30;
+
+/// The largest artifact pinned by default.
+pub const DEFAULT_PIN_UNDER: u64 = 64 << 20;
+
+/// How many bytes of artifacts are pinned at most by default.
+pub const DEFAULT_PINNED_MEMORY: u64 = 512 << 20;
 
 /// The wasm sha256 that identifies a module.
 pub(crate) type WasmHash = [u8; 32];
 
-/// The engine one job runs on from start to finish, with every module it
-/// loads (see the module comment). Cloning it is cheap; holding a clone
-/// keeps the generation's code alive.
-#[derive(Clone)]
-pub(crate) struct Generation {
-    engine: Engine,
-    id: u64,
-    /// Held by everyone using the generation; the store sees through a
-    /// `Weak` when the last of them is gone.
-    alive: Arc<()>,
+/// One compiled module, loaded into an engine of its own: dropping it frees
+/// its native code.
+pub(crate) struct Compiled {
+    // Declared before `_engine`, so the module is dropped before the code
+    // it points into.
+    module: Module,
+    _engine: Engine,
+    /// Artifact bytes, what the budgets count.
+    bytes: u64,
 }
 
-impl Generation {
-    fn new(id: u64) -> Self {
-        Self {
+/// The engine one job's stores are made from, and every module the job has
+/// loaded, which it holds until the job and all of its stores are gone (see
+/// the module comment). Cloning it is cheap.
+#[derive(Clone)]
+pub(crate) struct JobModules(Arc<JobModulesInner>);
+
+struct JobModulesInner {
+    /// Holds signatures, and code only when wasmer-wasix compiles on it
+    /// itself (a linked module the disk cache does not have), which goes
+    /// with the job. Every store of the job is made from a clone of it with
+    /// the job's tunables, which hold this.
+    engine: Engine,
+    held: Mutex<HashMap<WasmHash, Arc<Compiled>>>,
+}
+
+impl JobModules {
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(JobModulesInner {
             engine: build_engine(),
-            id,
-            alive: Arc::new(()),
-        }
+            held: Mutex::default(),
+        }))
     }
 
     pub(crate) fn engine(&self) -> &Engine {
-        &self.engine
+        &self.0.engine
+    }
+
+    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<WasmHash, Arc<Compiled>>> {
+        self.0.held.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn module(&self, key: &WasmHash) -> Option<Module> {
+        self.held().get(key).map(|c| c.module.clone())
+    }
+
+    /// Keeps `compiled` for the job and teaches the job's engine its
+    /// signatures, so a store of the job can run it.
+    fn hold(&self, key: WasmHash, compiled: Arc<Compiled>) -> Module {
+        let mut held = self.held();
+        if let Some(already) = held.get(&key) {
+            return already.module.clone();
+        }
+        let engine = self.0.engine.as_sys();
+        // `Module::info` is wasmer's own view of the module (doc-hidden,
+        // and its shape changes between releases): a wasmer bump checks
+        // this still lists every signature the module's code uses.
+        for (_, signature) in compiled.module.info().signatures.iter() {
+            engine.register_signature(signature);
+        }
+        let module = compiled.module.clone();
+        held.insert(key, compiled);
+        module
     }
 }
 
-impl fmt::Debug for Generation {
+impl fmt::Debug for JobModules {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Generation").field("id", &self.id).finish()
+        f.debug_struct("JobModules")
+            .field("modules", &self.held().len())
+            .finish()
+    }
+}
+
+/// How the store keeps modules in memory (see the module comment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleLimits {
+    /// Bytes of artifacts the LRU keeps.
+    pub lru_budget: u64,
+    /// A module whose artifact is at most this is pinned; 0 pins nothing.
+    pub pin_under: u64,
+    /// Bytes of artifacts pinned at most.
+    pub pinned_budget: u64,
+}
+
+impl Default for ModuleLimits {
+    fn default() -> Self {
+        Self {
+            lru_budget: DEFAULT_MODULE_MEMORY,
+            pin_under: DEFAULT_PIN_UNDER,
+            pinned_budget: DEFAULT_PINNED_MEMORY,
+        }
     }
 }
 
@@ -100,9 +192,7 @@ pub(crate) struct ModuleStore {
     dir: PathBuf,
     fingerprint: String,
     resident: Mutex<Resident>,
-    /// Bytes of artifacts the current generation may load before new jobs
-    /// get a fresh one.
-    limit: AtomicU64,
+    limits: Mutex<ModuleLimits>,
     /// One lock per module being loaded, so two jobs that need the same
     /// uncached module wait for one compile instead of running two.
     loading: Mutex<HashMap<WasmHash, Arc<Mutex<()>>>>,
@@ -114,52 +204,101 @@ pub(crate) struct ModuleStore {
     stats: Stats,
 }
 
-/// The modules in memory, by generation.
+/// The modules in memory.
+#[derive(Default)]
 struct Resident {
-    current: Generation,
-    /// The current generation's modules and a retired one's while it still
-    /// has jobs. Never more than two.
-    generations: Vec<Loaded>,
+    pinned: HashMap<WasmHash, Kept>,
+    lru: HashMap<WasmHash, Kept>,
+    /// Ticks on every use, for the LRU's order.
+    clock: u64,
 }
 
-/// The modules loaded into one generation.
-struct Loaded {
-    // Declared before `engine`, so the modules are dropped before the code
-    // they point into.
-    modules: HashMap<WasmHash, Module>,
-    _engine: Engine,
-    id: u64,
-    alive: Weak<()>,
-    /// Artifact bytes loaded into it.
-    bytes: u64,
+struct Kept {
+    compiled: Arc<Compiled>,
+    /// The clock at its last use.
+    used: u64,
+    used_at: Instant,
+    /// What it was last loaded as, for `/v1/capacity`.
+    name: String,
+}
+
+impl Kept {
+    /// Whether a job holds it: the store's is then not the only reference.
+    fn in_use(&self) -> bool {
+        Arc::strong_count(&self.compiled) > 1
+    }
 }
 
 impl Resident {
-    /// Forgets retired generations whose jobs have all ended. Their engine
-    /// (and its code) goes with the last job's store.
-    fn prune(&mut self) {
-        let current = self.current.id;
-        self.generations
-            .retain(|g| g.id == current || g.alive.strong_count() > 0);
+    fn bytes(map: &HashMap<WasmHash, Kept>) -> u64 {
+        map.values().map(|k| k.compiled.bytes).sum()
     }
 
-    fn loaded(&mut self, id: u64) -> Option<&mut Loaded> {
-        self.generations.iter_mut().find(|g| g.id == id)
+    fn find(&mut self, key: &WasmHash, name: Option<&str>) -> Option<Arc<Compiled>> {
+        self.clock += 1;
+        let clock = self.clock;
+        let kept = match self.pinned.get_mut(key) {
+            Some(kept) => kept,
+            None => self.lru.get_mut(key)?,
+        };
+        kept.used = clock;
+        kept.used_at = Instant::now();
+        if let Some(name) = name {
+            name.clone_into(&mut kept.name);
+        }
+        Some(kept.compiled.clone())
     }
 
-    fn bytes(&self) -> u64 {
-        self.generations.iter().map(|g| g.bytes).sum()
+    /// Takes in a module just loaded: pinned when it is small enough and
+    /// there is room, into the LRU otherwise.
+    fn admit(&mut self, key: WasmHash, compiled: Arc<Compiled>, name: &str, limits: &ModuleLimits) {
+        self.clock += 1;
+        let pin = compiled.bytes <= limits.pin_under
+            && Self::bytes(&self.pinned) + compiled.bytes <= limits.pinned_budget;
+        let kept = Kept {
+            compiled,
+            used: self.clock,
+            used_at: Instant::now(),
+            name: name.to_owned(),
+        };
+        if pin {
+            self.pinned.insert(key, kept);
+        } else {
+            self.lru.insert(key, kept);
+        }
+    }
+
+    /// Takes the least recently used modules no job is using out of the
+    /// LRU until it is within `budget`, or only modules in use are left.
+    /// The caller drops them, outside the lock: dropping an engine unmaps
+    /// its code.
+    fn evict(&mut self, budget: u64) -> Vec<Arc<Compiled>> {
+        let mut bytes = Self::bytes(&self.lru);
+        let mut freed = Vec::new();
+        while bytes > budget {
+            let Some(key) = self
+                .lru
+                .iter()
+                .filter(|(_, kept)| !kept.in_use())
+                .min_by_key(|(_, kept)| kept.used)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            let kept = self.lru.remove(&key).expect("just found");
+            bytes -= kept.compiled.bytes;
+            freed.push(kept.compiled);
+        }
+        freed
     }
 }
 
 /// Held while a module is loaded or compiled.
 ///
-/// Loading an artifact into an engine holds the engine's lock, and so does
-/// every instantiation: another job that starts a process meanwhile waits
-/// on that lock, using no CPU and printing nothing. A compile no longer
-/// holds it (see [`ModuleStore::compile`]), but the load at its end does,
-/// so the stall check (stall.rs) still treats every job as busy while this
-/// is held by anyone.
+/// Loading an artifact holds its engine's lock while its code is copied in.
+/// Each module has an engine of its own, so that no longer stops other
+/// jobs, but the stall check (stall.rs) still treats every job as busy
+/// while this is held by anyone, as it did when it did.
 pub(crate) struct Working(Arc<ModuleStore>);
 
 impl Drop for Working {
@@ -174,7 +313,7 @@ struct Stats {
     from_disk: AtomicU64,
     from_memory: AtomicU64,
     rejected: AtomicU64,
-    retired: AtomicU64,
+    evicted: AtomicU64,
 }
 
 /// Counters for tests and the orchestrator's logs.
@@ -189,10 +328,33 @@ pub struct CacheStats {
     /// Artifacts on disk that failed verification or deserialisation and
     /// were discarded.
     pub rejected: u64,
-    /// Generations retired for passing the memory limit.
-    pub retired: u64,
-    /// Artifact bytes loaded into the generations still in memory.
+    /// Modules the LRU freed to stay within its budget.
+    pub evicted: u64,
+    /// Artifact bytes of the pinned modules.
+    pub pinned_bytes: u64,
+    /// Artifact bytes of the modules in the LRU, in use or not.
+    pub lru_bytes: u64,
+    /// The part of `lru_bytes` jobs are using now.
+    pub lru_in_use_bytes: u64,
+    /// Every module in memory: `pinned_bytes` plus `lru_bytes`.
     pub resident_bytes: u64,
+}
+
+/// One module in memory, for `/v1/capacity`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResidentModule {
+    /// The command or module it was last loaded as (`node`, `bash`), or
+    /// empty when the loader did not say.
+    pub name: String,
+    /// The wasm's sha256, in hex.
+    pub sha256: String,
+    /// Its artifact's size.
+    pub bytes: u64,
+    pub pinned: bool,
+    /// Whether a job is using it now.
+    pub in_use: bool,
+    /// Seconds since a job last got it.
+    pub idle_secs: u64,
 }
 
 impl fmt::Debug for ModuleStore {
@@ -237,22 +399,11 @@ impl ModuleStore {
             path: dir.clone(),
             source: e,
         })?;
-        let current = Generation::new(0);
-        let loaded = Loaded {
-            modules: HashMap::new(),
-            _engine: current.engine.clone(),
-            id: current.id,
-            alive: Arc::downgrade(&current.alive),
-            bytes: 0,
-        };
         Ok(Self {
             dir,
             fingerprint,
-            resident: Mutex::new(Resident {
-                current,
-                generations: vec![loaded],
-            }),
-            limit: AtomicU64::new(DEFAULT_MODULE_MEMORY),
+            resident: Mutex::default(),
+            limits: Mutex::new(ModuleLimits::default()),
             loading: Mutex::default(),
             on_disk: Mutex::default(),
             working: AtomicUsize::new(0),
@@ -260,10 +411,15 @@ impl ModuleStore {
         })
     }
 
-    /// Sets how many bytes of artifacts the current generation loads before
-    /// new jobs get a fresh one.
-    pub(crate) fn set_limit(&self, bytes: u64) {
-        self.limit.store(bytes, Ordering::Relaxed);
+    /// Sets how modules are kept in memory; the LRU is brought within its
+    /// new budget at once. Pinned modules stay pinned.
+    pub(crate) fn set_limits(&self, limits: ModuleLimits) {
+        *self.limits.lock().unwrap_or_else(|e| e.into_inner()) = limits;
+        self.release_idle();
+    }
+
+    pub(crate) fn limits(&self) -> ModuleLimits {
+        *self.limits.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Marks a module as being loaded or compiled until the guard drops.
@@ -277,34 +433,74 @@ impl ModuleStore {
         self.working.load(Ordering::Acquire) > 0
     }
 
-    /// The generation a job starting now runs on.
-    pub(crate) fn generation(&self) -> Generation {
-        self.resident().current.clone()
-    }
-
     fn resident(&self) -> std::sync::MutexGuard<'_, Resident> {
         self.resident.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Forgets a retired generation whose jobs have all ended.
+    /// Frees the least recently used modules no job is using, while the
+    /// LRU is over its budget.
     pub(crate) fn release_idle(&self) {
-        self.resident().prune();
+        let budget = self.limits().lru_budget;
+        let freed = self.resident().evict(budget);
+        self.stats
+            .evicted
+            .fetch_add(freed.len() as u64, Ordering::Relaxed);
+        drop(freed);
     }
 
     pub(crate) fn stats(&self) -> CacheStats {
-        let resident_bytes = {
-            let mut resident = self.resident();
-            resident.prune();
-            resident.bytes()
+        self.release_idle();
+        let (pinned_bytes, lru_bytes, lru_in_use_bytes) = {
+            let resident = self.resident();
+            let in_use = resident
+                .lru
+                .values()
+                .filter(|k| k.in_use())
+                .map(|k| k.compiled.bytes)
+                .sum();
+            (
+                Resident::bytes(&resident.pinned),
+                Resident::bytes(&resident.lru),
+                in_use,
+            )
         };
         CacheStats {
             compiled: self.stats.compiled.load(Ordering::Relaxed),
             from_disk: self.stats.from_disk.load(Ordering::Relaxed),
             from_memory: self.stats.from_memory.load(Ordering::Relaxed),
             rejected: self.stats.rejected.load(Ordering::Relaxed),
-            retired: self.stats.retired.load(Ordering::Relaxed),
-            resident_bytes,
+            evicted: self.stats.evicted.load(Ordering::Relaxed),
+            pinned_bytes,
+            lru_bytes,
+            lru_in_use_bytes,
+            resident_bytes: pinned_bytes + lru_bytes,
         }
+    }
+
+    /// Every module in memory, pinned ones first, then the LRU from the
+    /// most recently used.
+    pub(crate) fn modules(&self) -> Vec<ResidentModule> {
+        let resident = self.resident();
+        let describe = |key: &WasmHash, kept: &Kept, pinned: bool| ResidentModule {
+            name: kept.name.clone(),
+            sha256: hex::encode(key),
+            bytes: kept.compiled.bytes,
+            pinned,
+            in_use: kept.in_use(),
+            idle_secs: kept.used_at.elapsed().as_secs(),
+        };
+        let mut pinned: Vec<_> = resident.pinned.iter().collect();
+        pinned.sort_by_key(|(_, k)| std::cmp::Reverse(k.used));
+        let mut lru: Vec<_> = resident.lru.iter().collect();
+        lru.sort_by_key(|(_, k)| std::cmp::Reverse(k.used));
+        pinned
+            .into_iter()
+            .map(|(key, kept)| describe(key, kept, true))
+            .chain(
+                lru.into_iter()
+                    .map(|(key, kept)| describe(key, kept, false)),
+            )
+            .collect()
     }
 
     fn artifact_path(&self, key: &WasmHash) -> PathBuf {
@@ -327,40 +523,42 @@ impl ModuleStore {
             .remove(key);
     }
 
-    /// The compiled module for `wasm`, whose sha256 is `key`, in `generation`.
+    /// The compiled module for `wasm`, whose sha256 is `key`, for `job`,
+    /// which holds it from now until it ends. `name` is what the module is
+    /// run as, for `/v1/capacity`.
     pub(crate) fn get(
         self: &Arc<Self>,
-        generation: &Generation,
+        job: &JobModules,
         key: WasmHash,
         wasm: &[u8],
+        name: Option<&str>,
     ) -> Result<Module> {
-        if let Some(module) = self.in_memory(generation, &key) {
+        if let Some(module) = self.in_memory(job, &key, name) {
             return Ok(module);
         }
         let _working = self.working();
         let slot = self.slot(&key);
         let _guard = slot.lock().unwrap_or_else(|e| e.into_inner());
         // Whoever held the slot before us may have finished the work.
-        if let Some(module) = self.in_memory(generation, &key) {
+        if let Some(module) = self.in_memory(job, &key, name) {
             return Ok(module);
         }
-        let result = match self.on_disk(generation, &key) {
+        let result = match self.on_disk(&key) {
             Some(loaded) => Ok(loaded),
             None => self.check_and_compile(&key, wasm).and_then(|artifact| {
-                let compiled = self.load_compiled(generation, &key, wasm, artifact);
+                let compiled = self.load_compiled(&key, wasm, artifact);
                 self.stats.compiled.fetch_add(1, Ordering::Relaxed);
                 compiled
             }),
         };
+        let result = result.map(|compiled| self.keep(job, key, compiled, name));
         self.release_slot(&key);
-        let (module, bytes) = result?;
-        self.keep(generation, key, &module, bytes);
-        Ok(module)
+        result
     }
 
     /// Makes sure `wasm`'s artifact is on disk, compiling it if it is not,
-    /// without loading it into any generation: warming fills the disk
-    /// cache, and a job loads what it uses.
+    /// without loading it: warming fills the disk cache, and a job loads
+    /// what it uses.
     pub(crate) fn ensure_compiled(self: &Arc<Self>, key: WasmHash, wasm: &[u8]) -> Result<()> {
         if self.known_on_disk(&key) {
             return Ok(());
@@ -406,19 +604,15 @@ impl ModuleStore {
         self.compile(key, wasm)
     }
 
-    /// Compiles `wasm` without holding any engine a job uses, and writes the
-    /// artifact to disk. `None` when the artifact could not be serialised,
-    /// which is not expected; the caller then compiles in place.
+    /// Compiles `wasm` on an engine of its own and writes the artifact to
+    /// disk. `None` when the artifact could not be serialised, which is not
+    /// expected; the caller then compiles in place.
     ///
     /// wasmer 7.5's `Engine::compile` holds its engine's lock from start to
     /// finish (`Artifact::new` takes `inner_mut()` for the compiler and keeps
-    /// it), and every instantiation, signature registration and artifact
-    /// load takes the same lock. So the compile runs on an engine of its
-    /// own, built as the jobs' are (same compiler, target and features,
-    /// which the fingerprint describes), and its artifact is loaded into a
-    /// job's generation exactly as one from disk would be, which holds that
-    /// engine's lock only while the code is copied in and registered. The
-    /// private engine, and the code it kept, go when this returns.
+    /// it), so the compile must not hold an engine anyone else uses. The
+    /// artifact is then loaded as one from disk would be, and the compile's
+    /// engine, with the code it kept, goes when this returns.
     fn compile(&self, key: &WasmHash, wasm: &[u8]) -> Result<Option<bytes::Bytes>> {
         let engine = build_engine();
         let module = Module::new(&engine, wasm).map_err(Error::Compile)?;
@@ -431,66 +625,72 @@ impl ModuleStore {
         Ok(Some(artifact))
     }
 
-    /// Loads a fresh artifact into `generation`.
+    /// Loads a fresh artifact into an engine of its own.
     fn load_compiled(
         &self,
-        generation: &Generation,
         key: &WasmHash,
         wasm: &[u8],
         artifact: Option<bytes::Bytes>,
-    ) -> Result<(Module, u64)> {
+    ) -> Result<Compiled> {
+        let engine = build_engine();
         if let Some(artifact) = artifact {
             let bytes = artifact.len() as u64;
             // SAFETY: the bytes are what `Module::serialize` produced a
-            // moment ago, in this process, for an engine built as every
-            // generation's is.
-            if let Ok(module) = unsafe { Module::deserialize(&generation.engine, artifact) } {
-                return Ok((module, bytes));
+            // moment ago, in this process, for an engine built as this one
+            // is.
+            if let Ok(module) = unsafe { Module::deserialize(&engine, artifact) } {
+                return Ok(Compiled {
+                    module,
+                    _engine: engine,
+                    bytes,
+                });
             }
         }
-        let module = Module::new(&generation.engine, wasm).map_err(Error::Compile)?;
+        let module = Module::new(&engine, wasm).map_err(Error::Compile)?;
         let _ = self.to_disk(key, &module);
-        Ok((module, wasm.len() as u64))
+        Ok(Compiled {
+            module,
+            _engine: engine,
+            bytes: wasm.len() as u64,
+        })
     }
 
-    fn in_memory(&self, generation: &Generation, key: &WasmHash) -> Option<Module> {
-        let module = self
-            .resident()
-            .loaded(generation.id)?
-            .modules
-            .get(key)?
-            .clone();
+    fn in_memory(&self, job: &JobModules, key: &WasmHash, name: Option<&str>) -> Option<Module> {
+        let module = match job.module(key) {
+            Some(module) => module,
+            None => {
+                let compiled = self.resident().find(key, name)?;
+                job.hold(*key, compiled)
+            }
+        };
         self.stats.from_memory.fetch_add(1, Ordering::Relaxed);
         Some(module)
     }
 
-    /// Remembers `module`, loaded into `generation`, and retires the
-    /// current generation once it holds more than the limit.
-    fn keep(&self, generation: &Generation, key: WasmHash, module: &Module, bytes: u64) {
-        let limit = self.limit.load(Ordering::Relaxed);
-        let mut resident = self.resident();
-        resident.prune();
-        let Some(loaded) = resident.loaded(generation.id) else {
-            return;
+    /// Keeps `compiled`, just loaded, in memory and gives it to `job`; the
+    /// LRU then frees what it must to stay within its budget.
+    fn keep(
+        &self,
+        job: &JobModules,
+        key: WasmHash,
+        compiled: Compiled,
+        name: Option<&str>,
+    ) -> Module {
+        let limits = self.limits();
+        let compiled = Arc::new(compiled);
+        // The job holds it before the LRU looks for something to free, so
+        // it is never the module freed.
+        let module = job.hold(key, compiled.clone());
+        let freed = {
+            let mut resident = self.resident();
+            resident.admit(key, compiled, name.unwrap_or_default(), &limits);
+            resident.evict(limits.lru_budget)
         };
-        if loaded.modules.insert(key, module.clone()).is_none() {
-            loaded.bytes += bytes;
-        }
-        let full = loaded.bytes > limit;
-        if generation.id == resident.current.id && full && resident.generations.len() == 1 {
-            let next = Generation::new(generation.id + 1);
-            resident.generations.push(Loaded {
-                modules: HashMap::new(),
-                _engine: next.engine.clone(),
-                id: next.id,
-                alive: Arc::downgrade(&next.alive),
-                bytes: 0,
-            });
-            resident.current = next;
-            // Without jobs, the old generation goes now.
-            resident.prune();
-            self.stats.retired.fetch_add(1, Ordering::Relaxed);
-        }
+        self.stats
+            .evicted
+            .fetch_add(freed.len() as u64, Ordering::Relaxed);
+        drop(freed);
+        module
     }
 
     /// The artifact for `key` if it is on disk and its digest matches;
@@ -508,20 +708,25 @@ impl ModuleStore {
         Some(artifact)
     }
 
-    /// The verified artifact for `key`, loaded into `generation`, with its
-    /// size; `None` when there is none or it failed verification (in which
-    /// case it is deleted).
-    fn on_disk(&self, generation: &Generation, key: &WasmHash) -> Option<(Module, u64)> {
+    /// The verified artifact for `key`, loaded into an engine of its own;
+    /// `None` when there is none or it failed verification (in which case
+    /// it is deleted).
+    fn on_disk(&self, key: &WasmHash) -> Option<Compiled> {
         let artifact = self.read_verified(key)?;
         let bytes = artifact.len() as u64;
+        let engine = build_engine();
         // SAFETY: the bytes are an artifact this runner serialised with an
         // engine of the same fingerprint (the directory name), and their
         // digest matches the one written alongside them, so they are the
         // bytes `Module::serialize` produced.
-        match unsafe { Module::deserialize(&generation.engine, artifact) } {
+        match unsafe { Module::deserialize(&engine, artifact) } {
             Ok(module) => {
                 self.stats.from_disk.fetch_add(1, Ordering::Relaxed);
-                Some((module, bytes))
+                Some(Compiled {
+                    module,
+                    _engine: engine,
+                    bytes,
+                })
             }
             Err(_) => {
                 self.reject(&self.artifact_path(key), &self.digest_path(key));
@@ -551,20 +756,27 @@ impl ModuleStore {
         write_atomically(&self.digest_path(key), digest.as_bytes())
     }
 
-    /// The module for `key` in `generation` if it is already compiled, in
-    /// memory or on disk. The wasix cache adapter uses this: it has only
-    /// the hash.
-    fn lookup(&self, generation: &Generation, key: &WasmHash) -> Option<Module> {
-        if let Some(module) = self.in_memory(generation, key) {
+    /// The module for `key` for `job` if it is already compiled, in memory
+    /// or on disk. The wasix cache adapter uses this: it has only the hash.
+    fn lookup(self: &Arc<Self>, job: &JobModules, key: &WasmHash) -> Option<Module> {
+        if let Some(module) = self.in_memory(job, key, None) {
             return Some(module);
         }
-        let (module, bytes) = self.on_disk(generation, key)?;
-        self.keep(generation, *key, &module, bytes);
-        Some(module)
+        let _working = self.working();
+        let slot = self.slot(key);
+        let _guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(module) = self.in_memory(job, key, None) {
+            return Some(module);
+        }
+        let module = self
+            .on_disk(key)
+            .map(|compiled| self.keep(job, *key, compiled, None));
+        self.release_slot(key);
+        module
     }
 
     /// A module wasmer-wasix compiled itself, with an engine it chose: it
-    /// goes to disk only, and a job loads it into its own generation.
+    /// goes to disk only, and a job loads it into an engine of its own.
     fn store(&self, key: &WasmHash, module: &Module) {
         self.stats.compiled.fetch_add(1, Ordering::Relaxed);
         let _ = self.to_disk(key, module);
@@ -588,10 +800,10 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// The same cache, seen through wasmer-wasix's `ModuleCache`, for the
-/// commands an environment's shell spawns: one job's, so modules load into
-/// that job's generation, whatever engine wasix passes (a clone of it).
+/// commands an environment's shell spawns: one job's, so the job holds what
+/// it loads, whatever engine wasix passes (one of the job's).
 #[derive(Debug, Clone)]
-pub(crate) struct WasixCache(pub(crate) Arc<ModuleStore>, pub(crate) Generation);
+pub(crate) struct WasixCache(pub(crate) Arc<ModuleStore>, pub(crate) JobModules);
 
 #[async_trait::async_trait]
 impl ModuleCache for WasixCache {
@@ -638,7 +850,7 @@ mod tests {
         (Sha256::digest(&wasm).into(), wasm)
     }
 
-    fn store(limit: u64) -> (PathBuf, Arc<ModuleStore>) {
+    fn store(limits: ModuleLimits) -> (PathBuf, Arc<ModuleStore>) {
         static N: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "iwci-module-store-{}-{}",
@@ -646,21 +858,47 @@ mod tests {
             N.fetch_add(1, Ordering::Relaxed)
         ));
         let store = Arc::new(ModuleStore::new(fingerprint(), &dir).unwrap());
-        store.set_limit(limit);
+        store.set_limits(limits);
         (dir, store)
+    }
+
+    /// Only the LRU, with `budget`.
+    fn lru(budget: u64) -> ModuleLimits {
+        ModuleLimits {
+            lru_budget: budget,
+            pin_under: 0,
+            pinned_budget: 0,
+        }
+    }
+
+    /// Runs export `f0` of `module` in a store of `job`'s, as a job would.
+    fn call(job: &JobModules, module: &Module) -> i32 {
+        let (engine, _) = crate::wasix::job_engine(job, 1 << 20, 1 << 20);
+        let mut store = wasmer::Store::new(engine);
+        let instance = wasmer::Instance::new(&mut store, module, &wasmer::imports! {}).unwrap();
+        let f = instance.exports.get_function("f0").unwrap();
+        f.call(&mut store, &[]).unwrap()[0].unwrap_i32()
+    }
+
+    /// The artifact size of the module `wasm`, loaded alone.
+    fn artifact_bytes(key: WasmHash, wasm: &[u8]) -> u64 {
+        let (dir, store) = store(lru(u64::MAX));
+        store.get(&JobModules::new(), key, wasm, None).unwrap();
+        let bytes = store.stats().lru_bytes;
+        let _ = std::fs::remove_dir_all(dir);
+        bytes
     }
 
     #[test]
     fn warming_fills_the_disk_and_nothing_stays_in_memory() {
-        let (dir, store) = store(u64::MAX);
+        let (dir, store) = store(lru(u64::MAX));
         let (key, wasm) = sample(1, 4);
         store.ensure_compiled(key, &wasm).unwrap();
         store.ensure_compiled(key, &wasm).unwrap();
         let stats = store.stats();
         assert_eq!((stats.compiled, stats.resident_bytes), (1, 0), "{stats:?}");
         // A job then loads the artifact rather than compiling.
-        let generation = store.generation();
-        store.get(&generation, key, &wasm).unwrap();
+        store.get(&JobModules::new(), key, &wasm, None).unwrap();
         let stats = store.stats();
         assert_eq!((stats.compiled, stats.from_disk), (1, 1), "{stats:?}");
         assert!(stats.resident_bytes > 0);
@@ -672,83 +910,212 @@ mod tests {
     }
 
     #[test]
-    fn memory_is_bounded_by_retiring_a_generation_and_modules_reload_from_disk() {
-        let (dir, store) = store(0);
+    fn under_the_budget_the_lru_keeps_a_module_between_jobs() {
+        let (dir, store) = store(lru(u64::MAX));
         let (key, wasm) = sample(1, 4);
-        let (other, other_wasm) = sample(2, 4);
-        store.ensure_compiled(key, &wasm).unwrap();
-        store.ensure_compiled(other, &other_wasm).unwrap();
-
-        // Over a zero limit, one module retires the generation that loaded
-        // it, and with no job left on it, it is freed at once.
-        let first = store.generation();
-        store.get(&first, key, &wasm).unwrap();
-        drop(first);
-        let stats = store.stats();
-        assert_eq!((stats.retired, stats.resident_bytes), (1, 0), "{stats:?}");
-
-        // The next job gets a new generation and loads from disk again.
-        let second = store.generation();
-        store.get(&second, key, &wasm).unwrap();
-        assert_eq!(store.stats().from_disk, 2);
-        assert_eq!(store.stats().compiled, 2, "only the two warming compiles");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_running_job_keeps_its_generation_and_its_modules() {
-        let (dir, store) = store(0);
-        let (key, wasm) = sample(1, 4);
-        let (other, other_wasm) = sample(2, 4);
-        // A job on the generation about to be retired.
-        let running = store.generation();
-        let module = store.get(&running, key, &wasm).unwrap();
-        assert_eq!(store.stats().retired, 1);
-        // Its modules stay in memory for it, and what it loads next joins
-        // them, in its own generation.
-        let again = store.get(&running, key, &wasm).unwrap();
-        assert_eq!(store.stats().from_memory, 1);
-        store.get(&running, other, &other_wasm).unwrap();
-        assert!(store.stats().resident_bytes > 0);
-        // While it runs, the generation after it is not retired in turn:
-        // at most two are kept.
-        let next = store.generation();
-        store.get(&next, key, &wasm).unwrap();
-        store.get(&next, other, &other_wasm).unwrap();
-        assert_eq!(store.stats().retired, 1);
-        // The job's module still runs.
-        let mut s = wasmer::Store::new(running.engine().clone());
-        let instance = wasmer::Instance::new(&mut s, &module, &wasmer::imports! {}).unwrap();
-        let f = instance.exports.get_function("f0").unwrap();
-        assert_eq!(f.call(&mut s, &[]).unwrap()[0].unwrap_i32(), 65);
-        drop((s, instance, module, again, running));
-        // Once it ends, its generation goes, and the current one retires
-        // on its next load; when the last job on that one ends, nothing is
-        // left in memory.
-        let (third, third_wasm) = sample(3, 1);
-        store.get(&next, third, &third_wasm).unwrap();
-        assert_eq!(store.stats().retired, 2);
-        drop(next);
-        let stats = store.stats();
-        assert_eq!(stats.resident_bytes, 0, "{stats:?}");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn under_the_limit_a_generation_keeps_its_modules() {
-        let (dir, store) = store(u64::MAX);
-        let (key, wasm) = sample(1, 4);
-        let generation = store.generation();
-        store.get(&generation, key, &wasm).unwrap();
-        drop(generation);
-        let later = store.generation();
-        store.get(&later, key, &wasm).unwrap();
+        store
+            .get(&JobModules::new(), key, &wasm, Some("tool"))
+            .unwrap();
+        let later = JobModules::new();
+        let module = store.get(&later, key, &wasm, None).unwrap();
+        assert_eq!(call(&later, &module), 65);
         let stats = store.stats();
         assert_eq!(
-            (stats.compiled, stats.from_memory, stats.retired),
+            (stats.compiled, stats.from_memory, stats.evicted),
             (1, 1, 0),
             "{stats:?}"
         );
+        let modules = store.modules();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "tool", "the name it was first loaded as");
+        assert_eq!(modules[0].sha256, hex::encode(key));
+        assert!(!modules[0].pinned);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_lru_frees_the_least_recently_used_module_first() {
+        let a = sample(1, 8);
+        let b = sample(2, 8);
+        let c = sample(3, 8);
+        let size = artifact_bytes(a.0, &a.1);
+        // Room for two of the three.
+        let (dir, store) = store(lru(size * 2 + size / 2));
+        for (key, wasm) in [&a, &b] {
+            store.get(&JobModules::new(), *key, wasm, None).unwrap();
+        }
+        // `a` is used again, so `b` is now the least recently used.
+        store.get(&JobModules::new(), a.0, &a.1, None).unwrap();
+        store.get(&JobModules::new(), c.0, &c.1, None).unwrap();
+        let kept: HashSet<String> = store.modules().into_iter().map(|m| m.sha256).collect();
+        let expected: HashSet<String> = [hex::encode(a.0), hex::encode(c.0)].into();
+        assert_eq!(kept, expected);
+        let stats = store.stats();
+        assert_eq!(stats.evicted, 1, "{stats:?}");
+        assert!(stats.lru_bytes <= size * 2 + size / 2, "{stats:?}");
+        // `b` comes back from disk, and `a`, least recently used now, goes.
+        store.get(&JobModules::new(), b.0, &b.1, None).unwrap();
+        let kept: HashSet<String> = store.modules().into_iter().map(|m| m.sha256).collect();
+        let expected: HashSet<String> = [hex::encode(b.0), hex::encode(c.0)].into();
+        assert_eq!(kept, expected);
+        assert_eq!(store.stats().from_disk, 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_module_in_use_is_never_freed() {
+        // Nothing fits, so every module goes as soon as no job uses it.
+        let (dir, store) = store(lru(0));
+        let (key, wasm) = sample(1, 4);
+        let (other, other_wasm) = sample(2, 4);
+        let running = JobModules::new();
+        let module = store.get(&running, key, &wasm, None).unwrap();
+        // Other jobs load and free modules meanwhile, and the idle sweep
+        // runs: the running job's module stays, in the LRU and in use.
+        store
+            .get(&JobModules::new(), other, &other_wasm, None)
+            .unwrap();
+        store.release_idle();
+        let stats = store.stats();
+        assert_eq!(stats.evicted, 1, "only the other one: {stats:?}");
+        assert!(stats.lru_in_use_bytes > 0, "{stats:?}");
+        assert_eq!(stats.lru_in_use_bytes, stats.lru_bytes, "{stats:?}");
+        assert!(store.modules()[0].in_use);
+        // Another job that starts now shares it rather than loading it.
+        let second = JobModules::new();
+        let shared = store.get(&second, key, &wasm, None).unwrap();
+        assert_eq!(store.stats().from_disk, 0);
+        assert_eq!(call(&second, &shared), 65);
+        drop((shared, second));
+        // The job's module still runs, from a store that outlives the job's
+        // own handle: the store holds the job's modules.
+        let (engine, _) = crate::wasix::job_engine(&running, 1 << 20, 1 << 20);
+        drop(running);
+        let mut s = wasmer::Store::new(engine);
+        let instance = wasmer::Instance::new(&mut s, &module, &wasmer::imports! {}).unwrap();
+        store.release_idle();
+        assert!(store.stats().lru_in_use_bytes > 0);
+        let f = instance.exports.get_function("f0").unwrap();
+        assert_eq!(f.call(&mut s, &[]).unwrap()[0].unwrap_i32(), 65);
+        // Once the last store of the job is gone, it is freed.
+        drop((instance, module, s));
+        let stats = store.stats();
+        assert_eq!((stats.resident_bytes, stats.evicted), (0, 2), "{stats:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn small_modules_are_pinned_and_never_freed() {
+        let small = sample(1, 2);
+        let large = sample(2, 32);
+        let small_bytes = artifact_bytes(small.0, &small.1);
+        let large_bytes = artifact_bytes(large.0, &large.1);
+        assert!(small_bytes < large_bytes);
+        let (dir, store) = store(ModuleLimits {
+            lru_budget: 0,
+            pin_under: small_bytes,
+            pinned_budget: u64::MAX,
+        });
+        store
+            .get(&JobModules::new(), small.0, &small.1, None)
+            .unwrap();
+        store
+            .get(&JobModules::new(), large.0, &large.1, None)
+            .unwrap();
+        store.release_idle();
+        let stats = store.stats();
+        assert_eq!(
+            (stats.pinned_bytes, stats.lru_bytes, stats.evicted),
+            (small_bytes, 0, 1),
+            "{stats:?}"
+        );
+        // Each job after that gets it from memory, however long it was idle.
+        for _ in 0..3 {
+            let job = JobModules::new();
+            let module = store.get(&job, small.0, &small.1, None).unwrap();
+            assert_eq!(call(&job, &module), 65);
+            store.release_idle();
+        }
+        let stats = store.stats();
+        assert_eq!((stats.compiled, stats.from_memory), (2, 3), "{stats:?}");
+        assert!(store.modules()[0].pinned);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pinning_stops_at_its_budget_and_the_rest_go_to_the_lru() {
+        let a = sample(1, 2);
+        let b = sample(2, 2);
+        let size = artifact_bytes(a.0, &a.1);
+        let (dir, store) = store(ModuleLimits {
+            lru_budget: u64::MAX,
+            pin_under: size * 2,
+            pinned_budget: size + size / 2,
+        });
+        store.get(&JobModules::new(), a.0, &a.1, None).unwrap();
+        store.get(&JobModules::new(), b.0, &b.1, None).unwrap();
+        let stats = store.stats();
+        assert!(stats.pinned_bytes > 0 && stats.lru_bytes > 0, "{stats:?}");
+        assert_eq!(stats.resident_bytes, stats.pinned_bytes + stats.lru_bytes);
+        let pinned: Vec<bool> = store.modules().iter().map(|m| m.pinned).collect();
+        assert_eq!(pinned, [true, false]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Modules of different engines run together in one job's store: a
+    /// host function, a function of one module and one of another meet in
+    /// one table and are called through it, and the host reads them back
+    /// out of it, which looks their signatures up in the store's engine.
+    #[test]
+    fn modules_of_different_engines_link_in_one_store() {
+        let (dir, store) = store(lru(u64::MAX));
+        let lib = wat::parse_str(
+            r#"(module
+                (table (export "table") 3 funcref)
+                (func (export "double") (param i64) (result i64)
+                    local.get 0 i64.const 2 i64.mul))"#,
+        )
+        .unwrap();
+        let main = wat::parse_str(
+            r#"(module
+                (import "env" "host" (func $host (param f64) (result f64)))
+                (import "lib" "double" (func $double (param i64) (result i64)))
+                (import "lib" "table" (table 3 funcref))
+                (elem (i32.const 0) $host $double)
+                (type $h (func (param f64) (result f64)))
+                (type $d (func (param i64) (result i64)))
+                (func (export "f0") (result i32)
+                    f64.const 20 i32.const 0 call_indirect (type $h)
+                    i32.trunc_f64_s
+                    i64.const 11 i32.const 1 call_indirect (type $d)
+                    i32.wrap_i64
+                    i32.add))"#,
+        )
+        .unwrap();
+        let job = JobModules::new();
+        let lib_key: WasmHash = Sha256::digest(&lib).into();
+        let main_key: WasmHash = Sha256::digest(&main).into();
+        let lib = store.get(&job, lib_key, &lib, None).unwrap();
+        let main = store.get(&job, main_key, &main, None).unwrap();
+        let (engine, _) = crate::wasix::job_engine(&job, 1 << 20, 1 << 20);
+        let mut s = wasmer::Store::new(engine);
+        let host = wasmer::Function::new_typed(&mut s, |x: f64| x + 1.0);
+        let lib = wasmer::Instance::new(&mut s, &lib, &wasmer::imports! {}).unwrap();
+        let table = lib.exports.get_table("table").unwrap().clone();
+        let double = lib.exports.get_function("double").unwrap().clone();
+        let imports = wasmer::imports! {
+            "env" => { "host" => host },
+            "lib" => { "double" => double, "table" => table.clone() },
+        };
+        let main = wasmer::Instance::new(&mut s, &main, &imports).unwrap();
+        let f = main.exports.get_function("f0").unwrap();
+        assert_eq!(f.call(&mut s, &[]).unwrap()[0].unwrap_i32(), 21 + 22);
+        for i in 0..2 {
+            let Some(wasmer::Value::FuncRef(Some(function))) = table.get(&mut s, i) else {
+                panic!("slot {i} holds no function");
+            };
+            assert_eq!(function.ty(&s).params().len(), 1);
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 }

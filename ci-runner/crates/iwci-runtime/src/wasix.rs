@@ -18,9 +18,10 @@
 //! - the file system is the job's virtual file system with scratch mounts
 //!   for `/dev`, `/tmp` and the command directories, and nothing from the
 //!   host (no host preopen, no mapped host commands, stdin is empty);
-//! - stores come from a clone of the shared engine whose tunables enforce
-//!   the job's memory limit and stack size, and every store registers an
-//!   interrupter so the watchdog can stop all of the job's processes.
+//! - stores come from a clone of the job's own engine whose tunables enforce
+//!   the job's memory limit and stack size and hold the modules it loaded
+//!   (cache.rs), and every store registers an interrupter so the watchdog
+//!   can stop all of the job's processes.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -59,7 +60,7 @@ use wasmer_wasix::{Runtime as WasixRuntime, SpawnError, WasiControlPlane, WasiEn
 use webc::Container;
 
 use crate::background::Services;
-use crate::cache::{Generation, ModuleStore, WasixCache, WasmHash};
+use crate::cache::{JobModules, ModuleStore, WasixCache, WasmHash};
 use crate::capture::Capture;
 use crate::limits::LimitingTunables;
 use crate::stall::{CpuMeter, JobTasks, StallWatch};
@@ -218,8 +219,8 @@ pub(crate) struct JobRuntime {
     control: Arc<JobControl>,
     /// The module store, to say when a module is being loaded (stall.rs).
     modules: Arc<ModuleStore>,
-    /// The generation every module of the job is loaded into (cache.rs).
-    generation: Generation,
+    /// The job's engine and the modules it holds (cache.rs).
+    job_modules: JobModules,
     /// What the job listens on, for `wait-for-port` (services.rs).
     listeners: crate::network::Listeners,
 }
@@ -228,7 +229,7 @@ impl JobRuntime {
     #[allow(clippy::too_many_arguments)]
     fn new(
         shared: &WasixShared,
-        generation: &Generation,
+        job_modules: &JobModules,
         engine: Engine,
         packages: Option<&PackageSet>,
         #[cfg_attr(not(feature = "node"), allow(unused_variables))] node: Option<
@@ -250,7 +251,7 @@ impl JobRuntime {
         let listeners = network.listeners();
         inner.set_networking_implementation(network);
         inner.http_client = None;
-        inner.set_module_cache(WasixCache(shared.store.clone(), generation.clone()));
+        inner.set_module_cache(WasixCache(shared.store.clone(), job_modules.clone()));
         let packages = packages.cloned().unwrap_or_default();
         inner.set_source(packages.source.clone());
         inner.set_package_loader(packages);
@@ -262,7 +263,7 @@ impl JobRuntime {
             inner,
             control: Arc::default(),
             modules: shared.store.clone(),
-            generation: generation.clone(),
+            job_modules: job_modules.clone(),
             listeners,
         }
     }
@@ -271,10 +272,9 @@ impl JobRuntime {
 #[cfg(test)]
 impl JobRuntime {
     pub(crate) fn for_tests(shared: &WasixShared, engine: Engine) -> Self {
-        let generation = shared.store.generation();
         Self::new(
             shared,
-            &generation,
+            &JobModules::new(),
             engine,
             None,
             None,
@@ -311,15 +311,15 @@ impl WasixRuntime for JobRuntime {
     }
 
     /// Every way wasmer-wasix loads a module for a job comes through here:
-    /// from the cache, or compiled on a miss. Loading holds the shared
-    /// engine's lock, so the store is told for as long as it takes, however
-    /// it ends (stall.rs).
+    /// from memory, from the disk cache, or compiled on a miss. The store is
+    /// told for as long as a load takes, however it ends (stall.rs).
     ///
     /// The module store does the work, rather than wasmer-wasix's own
-    /// `load_module`, which compiles with the engine it is given: a job's
-    /// engine shares its lock with every other job's (#963). Only a caller
-    /// that names an engine or wants progress reports (wasmer-wasix itself
-    /// does neither) goes the old way.
+    /// `load_module`, which compiles with the engine it is given, and the
+    /// job holds what it gets until it ends (cache.rs). Only a caller that
+    /// names an engine or wants progress reports goes the old way: the
+    /// dynamic linker names the job's, and its lookups reach the store
+    /// through the job's `WasixCache` all the same.
     fn resolve_module<'a>(
         &'a self,
         input: ModuleInput<'a>,
@@ -335,8 +335,12 @@ impl WasixRuntime for JobRuntime {
                     .as_bytes()
                     .try_into()
                     .map_err(|_| SpawnError::Other("a module hash that is not a sha256".into()))?;
+                let name = match &input {
+                    ModuleInput::Command(command) => Some(command.name()),
+                    _ => None,
+                };
                 self.modules
-                    .get(&self.generation, key, input.wasm())
+                    .get(&self.job_modules, key, input.wasm(), name)
                     .map_err(|e| match e {
                         Error::Compile(error) => SpawnError::CompileError { module_hash, error },
                         other => SpawnError::Other(Box::new(other)),
@@ -852,19 +856,19 @@ fn write_command(fs: &TmpFileSystem, name: &str, bytes: &[u8]) -> Result<()> {
     .map_err(|e| err(&e))
 }
 
-/// The engine clone and tunables of one job.
+/// The engine of one job's stores: a clone of the job's engine with
+/// tunables that enforce its limits and hold its modules, so no module is
+/// freed while a store of the job can run it (cache.rs).
 pub(crate) fn job_engine(
-    base: &Engine,
+    job_modules: &JobModules,
     memory_bytes: u64,
     stack_bytes: usize,
 ) -> (Engine, Arc<AtomicBool>) {
     let hit = Arc::new(AtomicBool::new(false));
-    let mut engine = base.clone();
-    engine.set_tunables(LimitingTunables::new(
-        memory_bytes,
-        stack_bytes,
-        hit.clone(),
-    ));
+    let mut engine = job_modules.engine().clone();
+    engine.set_tunables(
+        LimitingTunables::new(memory_bytes, stack_bytes, hit.clone()).holding(job_modules.clone()),
+    );
     (engine, hit)
 }
 
@@ -920,7 +924,7 @@ pub(crate) struct Caps {
 pub(crate) fn builtins(
     shared: &WasixShared,
     tokio: &tokio::runtime::Runtime,
-    generation: &Generation,
+    job_modules: &JobModules,
     packages: &[WebcPackage],
     output_bytes: usize,
 ) -> Option<bytes::Bytes> {
@@ -938,7 +942,7 @@ pub(crate) fn builtins(
                 run(
                     shared,
                     tokio,
-                    generation,
+                    job_modules,
                     Entry::Command {
                         packages,
                         name: "bash",
@@ -965,8 +969,8 @@ pub(crate) fn builtins(
 /// job's files.
 pub(crate) struct Starter<'a> {
     pub(crate) shared: &'a WasixShared,
-    /// The job's generation, which its services load their modules into.
-    pub(crate) generation: &'a Generation,
+    /// The job's engine and modules, which its services share.
+    pub(crate) job_modules: &'a JobModules,
     pub(crate) tokio: &'a tokio::runtime::Runtime,
     pub(crate) runtime: &'a Arc<dyn WasixRuntime + Send + Sync>,
     pub(crate) fs: &'a crate::DynFs,
@@ -1114,8 +1118,8 @@ impl Starter<'_> {
         let set = PackageSet::new(self.shared, packages, true)?;
         let loader = JobRuntime::new(
             self.shared,
-            self.generation,
-            self.generation.engine().clone(),
+            self.job_modules,
+            self.job_modules.engine().clone(),
             Some(&set),
             None,
             false,
@@ -1133,7 +1137,7 @@ impl Starter<'_> {
 pub(crate) fn run(
     shared: &WasixShared,
     tokio: &tokio::runtime::Runtime,
-    generation: &Generation,
+    job_modules: &JobModules,
     entry: Entry<'_>,
     program_name: &str,
     inv: Invocation,
@@ -1145,8 +1149,7 @@ pub(crate) fn run(
     let started = Instant::now();
     let _enter = tokio.enter();
 
-    let (engine, hit_memory) =
-        job_engine(generation.engine(), inv.limits.memory_bytes, WASIX_STACK);
+    let (engine, hit_memory) = job_engine(job_modules, inv.limits.memory_bytes, WASIX_STACK);
 
     let package_set = match &entry {
         Entry::Module(_) => None,
@@ -1159,7 +1162,7 @@ pub(crate) fn run(
     let service_names: Vec<String> = inv.services.iter().map(|s| s.name.clone()).collect();
     let runtime = JobRuntime::new(
         shared,
-        generation,
+        job_modules,
         engine,
         package_set.as_ref(),
         node,
@@ -1197,7 +1200,7 @@ pub(crate) fn run(
 
     let starter = Starter {
         shared,
-        generation,
+        job_modules,
         tokio,
         runtime: &runtime,
         fs: &inv.fs,
@@ -1459,11 +1462,11 @@ pub(crate) fn prepare(
 ) -> Result<()> {
     let _enter = tokio.enter();
     let set = PackageSet::new(shared, packages, false)?;
-    let generation = shared.store.generation();
+    let job_modules = JobModules::new();
     let runtime = JobRuntime::new(
         shared,
-        &generation,
-        generation.engine().clone(),
+        &job_modules,
+        job_modules.engine().clone(),
         Some(&set),
         None,
         false,

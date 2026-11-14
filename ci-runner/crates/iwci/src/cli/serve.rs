@@ -3,7 +3,8 @@
 //! ```text
 //! IWCI_SERVER_KEY=<32+ chars> iwci serve [--listen 127.0.0.1:8547]
 //!     [--cpus <n>] [--jobs-per-cpu 4] [--memory <size>] [--stall-after 5m]
-//!     [--memory-reserve 4GiB] [--module-memory 1GiB]
+//!     [--memory-reserve 5GiB] [--module-memory 2GiB]
+//!     [--pin-module-under 64MiB] [--pinned-module-memory 512MiB]
 //!     [--storage-quota 10GiB] [--store <dir>] [--cache <dir>]
 //!     [--warm-every 10m | --no-warm] [--keep-installs-unpacked 24h]
 //!     [--update-channel stable [--update-every 5m]]
@@ -73,6 +74,20 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
             .ok_or_else(|| format!("--memory-reserve takes a size such as `4GiB`, not `{text}`"))?,
         None => crate::memory::DEFAULT_RESERVE,
     };
+    // Compiled modules kept between jobs live in the reserve, outside the
+    // job budget, so budgets that do not fit it would only hide there.
+    let modules = limits
+        .modules
+        .pinned_budget
+        .saturating_add(limits.modules.lru_budget);
+    if modules >= reserve {
+        eprintln!(
+            "iwci serve: the compiled modules kept in memory (--pinned-module-memory {} MiB and --module-memory {} MiB) do not fit in --memory-reserve ({} MiB), which they count against",
+            limits.modules.pinned_budget >> 20,
+            limits.modules.lru_budget >> 20,
+            reserve >> 20,
+        );
+    }
     let host = crate::memory::host_memory();
     let asked = limits.memory;
     limits.memory = crate::memory::job_budget(asked, host, reserve)?;

@@ -2098,9 +2098,10 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
          [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
-         [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 1GiB] \
+         [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
+         [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
-IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 4GiB]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -2198,9 +2199,10 @@ whole pipeline.
   snapshots are not counted: they are built once and shared. Default: no
   budget for `iwci run`; see `--memory-reserve` for `iwci serve`.
 - **`--memory-reserve`** (or `IWCI_MEMORY_RESERVE`, `iwci serve` only,
-  default `4GiB`) is what the server keeps for itself outside the job
-  budget: the compiled modules and environments jobs are using, workspace
-  snapshots, logs. Jobs run inside the server's process, so the job budget
+  default `5GiB`) is what the server keeps for itself outside the job
+  budget: the compiled modules it keeps in memory (below; the server says
+  so at start when their budgets do not fit in it), the environments jobs
+  are using, workspace snapshots, logs. Jobs run inside the server's process, so the job budget
   is held to the host's memory (or the service's cgroup `memory.max`, if
   lower) less this reserve, and without `--memory` it is all of that. A
   `--memory` larger than that is lowered, and the server says so when it
@@ -2235,17 +2237,38 @@ whole pipeline.
   promotion failed", "CALL_AND_RETRY_LAST"), losing the isolate. The log
   line and `/v1/capacity` say how much of the account is used. More
   `--memory` does not buy more JavaScript heap.
-- **`--module-memory`** (or `IWCI_MODULE_MEMORY`, default `1GiB`) bounds
-  the compiled modules kept in memory, counted as the size of their
-  artifacts (their native code takes about a third again). Past it, a job
-  that starts loads what it uses from the disk cache, which on ci-1 made a
-  `node`, `python3` or `php` job start 0.15 to 0.25 s later and a `go run`,
-  which loads several modules, about 0.45 s later. Wasmer frees a module's native code only with the engine it
-  was loaded into, so modules are kept by generation: a set of jobs shares
-  an engine, and once the modules loaded into it pass the limit, jobs that
-  start get a fresh one; the old one is freed when its last job ends. A
-  job never loses a module it is using. While an old generation still has
-  jobs, the current one is not retired again, so at most two are kept.
+- **Compiled modules in memory.** A module a job starts that is not in
+  memory loads from the disk cache: on ci-1 that adds about 0.5 s to a
+  `node` start (Edge.js is a 92 MiB artifact) and tens of milliseconds to a
+  `bash` or `tsc` one. Wasmer frees a module's native code only with the
+  engine it was loaded into, so every module is loaded into an engine of
+  its own and can be freed on its own. Two settings decide what stays,
+  both counted as the size of the modules' artifacts:
+  - **`--pin-module-under`** (or `IWCI_PIN_MODULE_UNDER`, default `64MiB`,
+    `0` for none) and **`--pinned-module-memory`** (or
+    `IWCI_PINNED_MODULE_MEMORY`, default `512MiB`): a module whose artifact
+    is no larger than the first is pinned, loaded once and kept for the
+    life of the process, while the pinned modules together stay within
+    the second. bash (10 MiB), coreutils (34 MiB), tsc-rs (33 MiB), git,
+    gofmt and oxfmt are all under it, and every job of an environment
+    starts several of them. A small module past the pinned budget joins
+    the LRU instead.
+  - **`--module-memory`** (or `IWCI_MODULE_MEMORY`, default `2GiB`): every
+    other module (each Edge.js version, Python, PHP, Go, ClickHouse) is in
+    one LRU, weighed by its size. Once the modules in it pass this, the
+    least recently used of those no job is using are freed until it fits;
+    the default holds several Node versions beside the other environments
+    a runner sees. One budget rather than one per kind, so a runner that
+    runs mostly Node keeps more Node versions, and one that runs Python
+    keeps Python, with nothing set aside for whatever is idle.
+
+  A job never loses a module it is using: it holds every module it got
+  until its last process ends, so the LRU can be over its budget while
+  jobs use more than it holds, and frees the excess once they end (at the
+  next load or within 30 seconds). Both budgets count against
+  `--memory-reserve`, and `/v1/capacity` reports each module, pinned or
+  in the LRU, in use or not (see [HTTP API](#http-api-iwci-serve)).
+
 - **A task cache lookup takes neither.** A `task-cache:` job holds a slot
   and its `memory:` only if it misses and runs (see
   [The task cache](#the-task-cache)).
@@ -2259,8 +2282,8 @@ whole pipeline.
   pool, `worker_threads`), the one driving the job, and V8's worker
   threads while they run its garbage collection or background
   compilation. A process being instantiated counts as work as well, and
-  so does a module being compiled, for every job at once: a compile holds
-  the engine all jobs share, so the others wait for it. So a silent
+  so does a module being loaded or compiled, for every job at once: a job
+  that needs the same module waits for it. So a silent
   compile or test run keeps using CPU and is never stopped, and a process
   waiting on a wake-up that never comes (#938) is. Under 2% of one core
   over the window (six seconds in five minutes) counts as none: a hung
@@ -2468,6 +2491,16 @@ it is masked, and an untrusted run is given none of it:
   that is not backed by a file, jobs included) and `modules_resident` (the
   compiled modules in memory, counted as their artifacts' size). All in
   bytes. See [Limits](#limits).
+- **Compiled modules.** `modules_pinned` and `modules_lru` split
+  `modules_resident` into the pinned modules and the LRU's, against
+  `modules_pinned_budget` and `modules_lru_budget`; `modules_lru_in_use`
+  is the part of the LRU jobs are using now, which it cannot free, and
+  `modules_pin_under` the largest artifact pinned. `modules` lists each
+  one (`name` as a job last ran it, `sha256` of its wasm, `bytes`,
+  `pinned`, `in_use`, `idle_secs`), pinned ones first, then the LRU from
+  the most recently used. `modules_loaded_from_memory`,
+  `modules_loaded_from_disk` and `modules_evicted` count since the process
+  started.
 - **V8 heap space.** `v8_heap_space_total` and `v8_heap_space_used` are
   what the Node jobs' V8 heaps may use together and what the account says
   they use now (every heap's committed memory and promised growth, and lost
@@ -2674,8 +2707,8 @@ which covers every pin a pipeline can write. Blobs stay in the disk cache
 in front of R2 (`<cache>/objects`) and compiled code in the module cache
 (`<cache>/modules-*`); neither is ever evicted, so give the cache directory
 a persistent disk. Warming does not keep anything in memory: a job loads
-the modules it uses from the disk cache, and they stay in memory within
-`--module-memory` (see [Limits](#limits)). Before #1035 every warmed
+the modules it uses from the disk cache, and they stay in memory, pinned or
+in the LRU (see [Limits](#limits)). Before #1035 every warmed
 module stayed in memory for the life of the process, 4.6 GB with the 16
 builtins and environments published then. Repository tools warm on first use.
 `/v1/capacity` reports the last round under `warm`. `--no-warm` turns it
