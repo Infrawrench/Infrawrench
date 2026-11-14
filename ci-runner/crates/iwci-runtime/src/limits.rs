@@ -1,10 +1,12 @@
 //! Per-job resource limits, enforced through wasmer's `Tunables`.
 //!
 //! Tunables belong to an engine, but compiled code only depends on the
-//! memory and table *styles* they choose. A clone of the shared engine with
+//! memory and table *styles* they choose. A clone of a job's engine with
 //! different tunables therefore runs the same compiled artifacts while
 //! creating memories with a different ceiling and running guests on a
-//! different native stack. Every store of a job is built on such a clone.
+//! different native stack. Every store of a job is built on such a clone,
+//! and since every store holds its engine's tunables, they also hold the
+//! job's compiled modules (cache.rs).
 
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -17,6 +19,8 @@ use wasmer::sys::vm::{
 use wasmer::sys::{BaseTunables, Tunables};
 use wasmer::{MemoryType, Pages, TableType, WASM_PAGE_SIZE};
 
+use crate::cache::JobModules;
+
 /// Tunables that cap every linear memory at `max_pages` and run guests on a
 /// native stack of `stack_bytes`.
 pub(crate) struct LimitingTunables {
@@ -26,6 +30,8 @@ pub(crate) struct LimitingTunables {
     /// Set when a memory could not be created or grown because of the cap,
     /// which is how a job learns it ran out of memory rather than crashed.
     hit_limit: Arc<AtomicBool>,
+    /// The job's modules, kept for as long as any of its stores.
+    _modules: Option<JobModules>,
 }
 
 impl LimitingTunables {
@@ -38,7 +44,14 @@ impl LimitingTunables {
                 wasm_stack_size: Some(stack_bytes),
             },
             hit_limit,
+            _modules: None,
         }
+    }
+
+    /// Keeps `modules` alive for as long as any store made with these.
+    pub(crate) fn holding(mut self, modules: JobModules) -> Self {
+        self._modules = Some(modules);
+        self
     }
 
     /// `ty` with its maximum lowered to the cap, or an error when even its

@@ -1129,9 +1129,8 @@ fn a_job_that_waits_on_nothing_is_stopped_as_stalled() {
     assert!(outcome.duration < Duration::from_secs(20), "{outcome:?}");
 }
 
-/// A compile holds the shared engine's lock, which a job needs to start a
-/// process: a job waiting behind another job's compile is not hung, however
-/// long the compile takes.
+/// A job waiting behind another job's compile or load is not hung, however
+/// long it takes.
 #[cfg(target_os = "linux")]
 #[test]
 fn a_module_loading_for_any_job_keeps_every_job_from_stalling() {
@@ -1351,7 +1350,7 @@ fn find(dir: &Path, suffix: &str) -> PathBuf {
 #[test]
 fn jobs_get_a_private_loopback_and_nothing_else() {
     let rt = runtime();
-    let (engine, _) = wasix::job_engine(rt.store.generation().engine(), 1 << 20, 1 << 20);
+    let (engine, _) = wasix::job_engine(&cache::JobModules::new(), 1 << 20, 1 << 20);
     let job = wasix::JobRuntime::for_tests(&rt.wasix, engine);
     use wasmer_wasix::Runtime as _;
     let net = job.networking();
@@ -1797,6 +1796,71 @@ echo unreachable
         "{:?}",
         rt.cache_stats()
     );
+}
+
+/// Each command a script runs has an engine of its own (cache.rs): bash
+/// and the coreutils it spawns run together in one job, and with nothing
+/// kept between jobs both are freed once the job ends and load from disk
+/// for the next. Pinned, the next job gets them from memory.
+#[test]
+fn a_scripts_commands_are_freed_between_jobs_unless_pinned() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let base = runtime();
+    let script = "echo ok | cat; ls / > /dev/null";
+    let run = |rt: &Runtime| {
+        let job = snapshot(&[]).fork();
+        let outcome = rt
+            .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+            .unwrap();
+        assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+        assert_eq!(outcome.stdout, b"ok\n");
+    };
+    // What the job held goes with its last store, which wasmer-wasix may
+    // drop a moment after the job reports.
+    let settled = |rt: &Runtime, done: &dyn Fn(&CacheStats) -> bool| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let stats = rt.cache_stats();
+            if done(&stats) || std::time::Instant::now() > deadline {
+                return stats;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+
+    let none = Runtime::new(base.dir.join("none"))
+        .unwrap()
+        .with_module_limits(ModuleLimits {
+            lru_budget: 0,
+            pin_under: 0,
+            pinned_budget: 0,
+        });
+    for _ in 0..2 {
+        run(&none);
+        let stats = settled(&none, &|s| s.resident_bytes == 0);
+        assert_eq!(stats.resident_bytes, 0, "{stats:?}");
+    }
+    let stats = none.cache_stats();
+    assert!(
+        stats.compiled >= 2 && stats.from_disk >= 2 && stats.evicted >= 4,
+        "{stats:?}"
+    );
+
+    let pinned = Runtime::new(base.dir.join("none"))
+        .unwrap()
+        .with_module_limits(ModuleLimits {
+            lru_budget: 0,
+            pin_under: u64::MAX,
+            pinned_budget: u64::MAX,
+        });
+    run(&pinned);
+    let first = pinned.cache_stats();
+    run(&pinned);
+    let stats = pinned.cache_stats();
+    assert_eq!(stats.from_disk, first.from_disk, "{stats:?}");
+    assert!(stats.pinned_bytes > 0 && stats.evicted == 0, "{stats:?}");
 }
 
 /// An argument with a line feed in it reaches a program bash runs whole
@@ -2629,7 +2693,7 @@ fn bench_process_starts_during_a_compile() {
     summary(&format!("during the compile, {starters} jobs"), during);
 
     // The artifact is on disk now: a fresh runtime over the same cache
-    // loads it, which still takes the shared engine for a moment.
+    // loads it, into an engine of its own.
     let again = Runtime::new(rt.dir.clone()).unwrap();
     let started = Instant::now();
     again.prepare(&big).unwrap();
