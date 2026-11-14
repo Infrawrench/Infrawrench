@@ -994,6 +994,10 @@ void StartPoolKeeper(EdgeV8Platform* platform) {
   started->cv.wait(lock, [&] { return started->done; });
 }
 
+// iwci patch: the embedder configures the runtime, with its own engine
+// flags (snapi_bridge_host_configure_runtime), before any guest runs. A
+// guest's request goes through ConfigureRuntimeForGuest, which never
+// passes it flags.
 napi_status ConfigureRuntime(const char* engine_flags,
                              size_t engine_flags_length) {
   if ((engine_flags_length > 0 && engine_flags == nullptr) ||
@@ -1015,37 +1019,6 @@ napi_status ConfigureRuntime(const char* engine_flags,
     v8::V8::SetFlagsFromString(engine_flags,
                                static_cast<int>(engine_flags_length));
   }
-  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
-  // process-wide JS dispatch table with a protection key and grants access to
-  // it in the PKRU register of the thread that first initialises V8, and of
-  // threads that thread later creates. PKRU is per thread, so an isolate made
-  // on a thread from an older pool (a second CI job's `node`) faulted reading
-  // that table in Isolate::Init (SIGSEGV, PK set in the error code) and took
-  // the whole runner down. Without the keys V8 protects those pages with
-  // mprotect, which every thread sees the same. Set last, so no guest flag
-  // can turn them back on.
-  {
-    static const char kNoPkeys[] = "--no-memory-protection-keys";
-    v8::V8::SetFlagsFromString(kNoPkeys, static_cast<int>(sizeof(kNoPkeys) - 1));
-  }
-  // iwci patch (#970): no garbage collection of WebAssembly code. V8 13.6
-  // keeps the compiled wasm-to-JS wrappers in one cache for the process,
-  // and a lookup there adds a wrapper to the caller's WasmCodeRefScope
-  // before it checks that the wrapper is dying. When a code GC cycle then
-  // frees the wrapper on another isolate's thread, the scope frees it again
-  // on its way out (WasmCode::DecrementRefCount on a deleted WasmCode) and
-  // the process segfaults in WasmEngine::FreeDeadCode. It takes two isolates
-  // on two threads, which is any two jobs here. V8 fixed the lookup in
-  // 9b8ca54d5 (13.7); this V8 is prebuilt, so until it is newer the cycle
-  // that frees a dying wrapper never runs. A stopgap: dead code then stays
-  // until its module goes, and a dead wrapper for as long as the process
-  // lives (vendor/README.md has the numbers). Set last, so no guest flag
-  // can turn it back on.
-  {
-    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
-    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
-                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
-  }
   v8::V8::InitializeICUDefaultLocation("");
   v8::V8::InitializeExternalStartupData("");
   g_runtime.platform = EdgeV8Platform::Create();
@@ -1060,6 +1033,19 @@ napi_status ConfigureRuntime(const char* engine_flags,
   g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                 engine_flags_length);
   return napi_ok;
+}
+
+// iwci patch: a guest's request for a runtime. It gets the one the embedder
+// configured, or, when none did, one with the defaults alone; its own flags
+// are never applied, and asking again always succeeds.
+napi_status ConfigureRuntimeForGuest() {
+  {
+    RuntimeLock lock;
+    if (g_runtime.platform != nullptr) return napi_ok;
+  }
+  const napi_status status = ConfigureRuntime(nullptr, 0);
+  // Configured meanwhile, with other flags.
+  return status == napi_invalid_arg ? napi_ok : status;
 }
 
 napi_status AcquireRuntime(EdgeV8Platform** platform_out) {
@@ -2059,6 +2045,15 @@ void snapi_bridge_out_of_memory_losses(uint64_t* lost_isolates,
   if (parked_worker_threads != nullptr) *parked_worker_threads = g_parked_worker_threads;
 }
 
+// iwci patch: the embedder configures the process's runtime with its engine
+// flags. Host-only; never called by a guest.
+int snapi_bridge_host_configure_runtime(const char* engine_flags,
+                                        uint32_t engine_flags_length) {
+  return ConfigureRuntime(engine_flags, engine_flags_length);
+}
+
+// iwci patch: a guest's request. Its engine flags are not applied
+// (ConfigureRuntimeForGuest); the embedder's are the process's.
 napi_status NAPI_CDECL unofficial_napi_configure_runtime(
     const unofficial_napi_runtime_options* options) {
   if (options != nullptr &&
@@ -2066,8 +2061,7 @@ napi_status NAPI_CDECL unofficial_napi_configure_runtime(
        options->version != UNOFFICIAL_NAPI_RUNTIME_OPTIONS_VERSION)) {
     return napi_invalid_arg;
   }
-  return ConfigureRuntime(options != nullptr ? options->engine_flags : nullptr,
-                          options != nullptr ? options->engine_flags_length : 0);
+  return ConfigureRuntimeForGuest();
 }
 
 napi_status NAPI_CDECL unofficial_napi_create_guest_backed_typedarray(

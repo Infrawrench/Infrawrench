@@ -199,12 +199,16 @@ fn guest_unofficial_napi_configure_runtime(
     let Some(flags) = abi::read_runtime_options(&mut env, options_ptr) else {
         return 1;
     };
-    let Ok(flags) = CString::new(flags) else {
-        return 1;
-    };
-    unsafe {
-        snapi_bridge_unofficial_configure_runtime(flags.as_ptr(), flags.as_bytes().len() as u32)
+    // iwci patch: the embedder configures V8 (`crate::configure_v8_runtime`).
+    // A guest's engine flags are read, so a malformed request fails as it
+    // did, and then dropped; the guest gets the embedder's runtime.
+    if !flags.is_empty() {
+        tracing::debug!(
+            flags = %String::from_utf8_lossy(&flags),
+            "engine flags from a guest are not applied"
+        );
     }
+    unsafe { snapi_bridge_unofficial_configure_runtime(std::ptr::null(), 0) }
 }
 
 fn guest_unofficial_napi_create_env(

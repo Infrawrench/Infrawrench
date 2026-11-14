@@ -66,6 +66,11 @@ unsafe extern "C" {
         parked_threads: *mut u64,
         parked_worker_threads: *mut u64,
     );
+    // iwci patch: the embedder's runtime configuration.
+    pub fn snapi_bridge_host_configure_runtime(
+        engine_flags: *const std::ffi::c_char,
+        engine_flags_length: u32,
+    ) -> i32;
     pub fn snapi_bridge_unofficial_configure_runtime(
         engine_flags: *const std::ffi::c_char,
         engine_flags_length: u32,

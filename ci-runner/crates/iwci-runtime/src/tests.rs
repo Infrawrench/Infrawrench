@@ -3670,6 +3670,72 @@ http.createServer((req, res) => res.end("hello from " + process.env.WHO))
     }
 }
 
+/// Asks the bridge for a runtime twice, as Edge.js does at every start, with
+/// two different engine flag strings (`--stack-size=64`, then `=65`, in
+/// KiB), and exits with 10 or 20 plus the status of a request that failed.
+#[cfg(feature = "node")]
+const CONFIGURE_V8: &str = r#"
+(module
+  ;; Shared, as a WASIX program's memory is when it imports it.
+  (import "env" "memory" (memory 1 16 shared))
+  (import "napi_extension_wasmer_v0" "unofficial_napi_configure_runtime"
+    (func $configure (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  ;; unofficial_napi_runtime_options: size, version, flags, flags length
+  (data (i32.const 16) "\10\00\00\00\01\00\00\00\40\00\00\00\0f\00\00\00")
+  (data (i32.const 32) "\10\00\00\00\01\00\00\00\50\00\00\00\0f\00\00\00")
+  (data (i32.const 64) "--stack-size=64")
+  (data (i32.const 80) "--stack-size=65")
+  (func (export "_start")
+    (local $status i32)
+    (local.set $status (call $configure (i32.const 16)))
+    (if (local.get $status)
+      (then (call $proc_exit (i32.add (i32.const 10) (local.get $status)))))
+    (local.set $status (call $configure (i32.const 32)))
+    (if (local.get $status)
+      (then (call $proc_exit (i32.add (i32.const 20) (local.get $status)))))
+    (call $proc_exit (i32.const 0))))
+"#;
+
+/// V8's engine flags are the runner's: a job's own module asking the
+/// bridge for others gets the runner's runtime, every time it asks, and a
+/// `node` after it recurses as deep as V8's default stack allows (about
+/// 10,000 frames for this function; a 64 KiB stack gives a few hundred).
+/// Run alone to see it in a process whose V8 the module could have been
+/// first to configure.
+#[cfg(feature = "node")]
+#[test]
+fn a_job_cannot_choose_the_engine_flags() {
+    let Some(packages) = node_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.memory_bytes = 1 << 30;
+    inv.limits.timeout = Duration::from_secs(120);
+    inv.commands = vec![PathCommand {
+        name: "configure-v8".into(),
+        module: wat_module("configure-v8", CONFIGURE_V8),
+    }];
+    let outcome = rt
+        .run_script(
+            &packages,
+            "bash",
+            r#"configure-v8
+node -e 'let depth = 0; const f = () => { depth++; f(); }; try { f(); } catch {} console.log(depth)'"#,
+            inv,
+        )
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{outcome:?} {stderr}");
+    let depth: u64 = String::from_utf8_lossy(&outcome.stdout)
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("{e}: {outcome:?} {stderr}"));
+    assert!(depth > 4_000, "depth {depth}: {stderr}");
+}
+
 /// Cancels `cancel` after `after`, from another thread, as the server does
 /// when `POST /v1/runs/{id}/cancel` comes in.
 fn cancel_after(cancel: &Cancel, after: Duration) {

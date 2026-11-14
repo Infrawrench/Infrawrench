@@ -87,6 +87,51 @@ pub fn set_v8_worker_threads(count: Option<u32>) -> Result<(), WorkerThreadsAlre
     Ok(())
 }
 
+/// iwci patch: configures the process's V8 from the embedder, with the
+/// bridge's defaults and then `engine_flags` (V8's command-line syntax).
+///
+/// Call it once, after [`set_v8_worker_threads`] and
+/// [`set_worker_task_hooks`] and before any guest runs. A guest's own
+/// request (`unofficial_napi_configure_runtime`, which Edge.js makes at
+/// every start) gets this runtime and never applies flags of its own.
+/// Calling it again with the same flags succeeds; with others, or after a
+/// guest started a runtime with the defaults alone, it returns
+/// [`V8RuntimeError::AlreadyConfigured`].
+pub fn configure_v8_runtime(engine_flags: &str) -> Result<(), V8RuntimeError> {
+    let length = u32::try_from(engine_flags.len()).map_err(|_| V8RuntimeError::Failed)?;
+    // Safety: the callee reads `length` bytes from the pointer during the
+    // call and copies what it keeps.
+    let status = unsafe {
+        snapi::snapi_bridge_host_configure_runtime(engine_flags.as_ptr().cast(), length)
+    };
+    match status {
+        0 => Ok(()),
+        // napi_invalid_arg
+        1 => Err(V8RuntimeError::AlreadyConfigured),
+        _ => Err(V8RuntimeError::Failed),
+    }
+}
+
+/// See [`configure_v8_runtime`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V8RuntimeError {
+    /// The runtime already exists with other engine flags.
+    AlreadyConfigured,
+    /// V8's platform could not be made.
+    Failed,
+}
+
+impl Display for V8RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::AlreadyConfigured => "the V8 runtime is already configured with other flags",
+            Self::Failed => "the V8 runtime could not be configured",
+        })
+    }
+}
+
+impl std::error::Error for V8RuntimeError {}
+
 /// iwci patch (#938): how an embedder learns whose work a V8 worker task is.
 ///
 /// V8's background tasks (garbage collection, compilation) run on one

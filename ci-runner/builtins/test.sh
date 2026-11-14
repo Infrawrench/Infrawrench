@@ -1246,6 +1246,20 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'throw new Error("expected")'
+  # V8's engine flags are the runner's, the same for every job: a `node`
+  # started with V8 options of its own runs, and so does every later one,
+  # in this job or the next, whatever options each was given.
+  node-options-passes:
+    using: env:bash-node@24
+    run: |
+      test "$(node --harmony-import-attributes -e 'console.log(1)')" = 1
+      test "$(node --max-old-space-size=256 --stack-size=100 -e 'console.log(6 * 7)')" = 42
+  node-after-options-passes:
+    using: env:bash-node@24
+    needs: [node-options-passes]
+    run: |
+      test "$(node --js-source-phase-imports -e 'console.log(2)')" = 2
+      test "$(node -e 'console.log(6 * 7)')" = 42
   # An ES module that does not parse says where once, with its caret, as
   # Node does (#1097): it printed the file, line, source and caret two or
   # three times, one of them naming line 1 with no caret. Caught, the
