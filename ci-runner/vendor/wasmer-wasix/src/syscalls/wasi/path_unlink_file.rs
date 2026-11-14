@@ -55,6 +55,23 @@ pub(crate) fn path_unlink_file_internal(
     let env = ctx.data();
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
+    // iwci patch (#1139): one unlink or rename at a time in this inode tree,
+    // from the lookup below to the file's removal from the file system. The
+    // name's entry used to leave the cache, its link count drop and the file
+    // leave the file system in three steps any other unlink or rename of
+    // the name could run between: an unlink that had looked the name up
+    // before another unlinked it and a third thread put a new file there
+    // found the new file's entry, `debug_assert!`ed on the old inode's count
+    // of 0 and panicked, and one that found a file renamed there `assert!`ed
+    // that it was the inode it had looked up. The lock `path_rename` (and a
+    // creating open) holds makes them atomic, as on Linux: one unlink takes
+    // the name, a racing one gets `ENOENT`, and a rename or a creation lands
+    // wholly before or after.
+    let rename_lock = state.fs.rename_lock.clone();
+    let _one_at_a_time = rename_lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
     let inode = wasi_try_ok!(state.fs.get_inode_at_path(inodes, fd, path, false));
     let (parent_inode, child_name) = wasi_try_ok!(state.fs.get_parent_inode_at_path(
         inodes,
@@ -85,7 +102,16 @@ pub(crate) fn path_unlink_file_internal(
     let removed_inode = {
         let mut guard = parent_inode.write();
         let entry = match guard.deref_mut() {
-            Kind::Dir { entries, .. } => entries.remove(&child_name),
+            Kind::Dir { entries, .. } => {
+                // iwci patch (#1139): what the name holds now is what goes,
+                // as on Linux; a directory stays where it is (see above).
+                if entries.get(&child_name).is_some_and(|entry| {
+                    matches!(entry.read().deref(), Kind::Dir { .. } | Kind::Root { .. })
+                }) {
+                    return Ok(Errno::Isdir);
+                }
+                entries.remove(&child_name)
+            }
             Kind::Root { .. } => return Ok(Errno::Access),
             _ => unreachable!(
                 "Internal logic error in wasi::path_unlink_file, parent is not a directory"
@@ -105,16 +131,19 @@ pub(crate) fn path_unlink_file_internal(
             }
             return Ok(state.fs.remove_symlink_file(host_adjusted_path.as_path()));
         };
-        // TODO: make this a debug assert in the future
-        assert!(inode.ino() == removed_inode.ino());
-        debug_assert!(inode.stat.read().unwrap().st_nlink > 0);
         removed_inode
     };
 
+    // iwci patch (#1139): a count already at 0 is an entry some earlier
+    // unlink left behind, not a link to remove; never take it below 0 (a
+    // `u64` would wrap and the file's handle would never be released).
     let st_nlink = {
         let mut guard = removed_inode.stat.write().unwrap();
-        guard.st_nlink -= 1;
-        guard.st_nlink
+        let Some(st_nlink) = guard.st_nlink.checked_sub(1) else {
+            return Ok(Errno::Noent);
+        };
+        guard.st_nlink = st_nlink;
+        st_nlink
     };
     if st_nlink == 0 {
         {

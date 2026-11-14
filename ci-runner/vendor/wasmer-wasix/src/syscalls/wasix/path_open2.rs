@@ -167,6 +167,19 @@ pub(crate) fn path_open_internal(
     fd_flags: Fdflagsext,
     with_fd: Option<WasiFd>,
 ) -> Result<Result<WasiFd, Errno>, WasiError> {
+    // iwci patch (#1139): an open that may create the file holds the lock
+    // `path_rename` and `path_unlink_file` hold, from its lookup to the new
+    // inode's place in the directory's cached entries. Between the two, an
+    // unlink could look the new file up and remove it from the file system
+    // while the open went on to cache it (the next unlink then failed with
+    // `ENOTDIR`), and a rename could put a file at the name the lookup found
+    // free, which the `create_new` below then refused with `EPERM`.
+    let rename_lock = env.state.fs.rename_lock.clone();
+    let _one_at_a_time = o_flags.contains(Oflags::CREATE).then(|| {
+        rename_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    });
     path_open_internal_with_symlink_depth(
         env,
         dirfd,

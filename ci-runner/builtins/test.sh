@@ -1330,6 +1330,61 @@ jobs:
       JS
       test "$(node /tmp/race.js)" = "rename race ok"
       test "$(ls /tmp/rr)" = target
+  # Threads and processes unlinking one name while others rename and write
+  # onto it (#1139), as a compile cache's writers and its pruning do: an
+  # unlink that lost the race to another asserted on an inode it had not
+  # looked up, or one already unlinked, and the `node` exited with 134.
+  # Every unlink succeeds or says ENOENT, and the name is left gone or
+  # holding one writer's whole contents.
+  unlink-race-passes:
+    using: env:bash-node@24
+    timeout: 5m
+    run: |
+      cat > /tmp/unlink-race.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const { spawn } = require("node:child_process");
+      const { Worker, isMainThread, workerData } = require("node:worker_threads");
+      const dir = "/tmp/ur";
+      const target = `${dir}/target`;
+      const N = 2000;
+      const hammer = (who) => {
+        for (let i = 0; i < N; i++) {
+          if (who.startsWith("u")) {
+            try {
+              fs.unlinkSync(target);
+            } catch (e) {
+              if (e.code !== "ENOENT") throw e;
+            }
+            if (who === "u1") fs.writeFileSync(target, `${who}.${i}`);
+          } else {
+            const tmp = `${dir}/${who}.${i}.tmp`;
+            fs.writeFileSync(tmp, `${who}.${i}`);
+            fs.renameSync(tmp, target);
+          }
+        }
+      };
+      if (process.argv[2]) {
+        hammer(process.argv[2]);
+      } else if (!isMainThread) {
+        hammer(workerData);
+      } else {
+        fs.mkdirSync(dir, { recursive: true });
+        const exited = (child) => new Promise((resolve, reject) => child.on("exit", resolve).on("error", reject));
+        const all = [
+          ...["r1", "u1"].map((who) => exited(spawn(process.execPath, [__filename, who], { stdio: "inherit" }))),
+          ...["r2", "r3", "u2", "u3"].map((who) => exited(new Worker(__filename, { workerData: who }))),
+        ];
+        Promise.all(all).then((codes) => {
+          assert.deepStrictEqual(codes, [0, 0, 0, 0, 0, 0]);
+          const left = fs.readdirSync(dir);
+          assert.ok(left.length === 0 || (left.length === 1 && left[0] === "target"), left.join());
+          if (left.length) assert.match(fs.readFileSync(target, "utf8"), /^(r[123]|u1)\.[0-9]+$/);
+          console.log("unlink race ok");
+        });
+      }
+      JS
+      test "$(node /tmp/unlink-race.js)" = "unlink race ok"
   # `fs.rmSync(dir, { recursive: true })` removes the tree (#1049). Its
   # `remove` tries `unlink` before `rmdir`, and WASIX's unlink of a
   # directory dropped it from its directory cache before refusing, so the

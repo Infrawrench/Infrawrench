@@ -363,12 +363,14 @@
      state::{Stderr, Stdin, Stdout},
  };
  use futures::{Future, future::BoxFuture};
-@@ -575,6 +576,12 @@
+@@ -575,6 +576,14 @@
      pub root_inode: InodeGuard,
      pub has_unioned: Mutex<HashSet<PackageId>>,
      ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
-+    /// iwci patch (#1092): held by `path_rename` for the whole rename, and
-+    /// shared, like the inode tree, with a forked process.
++    /// iwci patch (#1092, #1139): held by `path_rename` for the whole
++    /// rename, by `path_unlink_file` for the whole unlink and by an open
++    /// that may create its file, and shared, like the inode tree, with a
++    /// forked process.
 +    pub(crate) rename_lock: Arc<Mutex<()>>,
 +    /// Preopens the program has put something else in place of, by the
 +    /// number they had (see `get_dir_fd`). Taken after `fd_map`.
@@ -376,7 +378,7 @@
  
      // TODO: remove
      // using an atomic is a hack to enable customization after construction,
-@@ -709,6 +716,8 @@
+@@ -709,6 +718,8 @@
              root_inode: self.root_inode.clone(),
              has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
              ephemeral_symlinks: self.ephemeral_symlinks.clone(),
@@ -385,7 +387,7 @@
              init_preopens: self.init_preopens.clone(),
              init_vfs_preopens: self.init_vfs_preopens.clone(),
          }
-@@ -735,6 +744,9 @@
+@@ -735,6 +746,9 @@
              let mut flush_targets = Vec::new();
              for fd in to_close {
                  let outcome = Self::close_fd_locked(&mut fd_map, fd);
@@ -395,7 +397,7 @@
                  if let Some(target) = outcome.flush_target {
                      flush_targets.push(target);
                  }
-@@ -869,6 +881,8 @@
+@@ -869,6 +883,8 @@
              root_inode,
              has_unioned: Mutex::new(HashSet::new()),
              ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
@@ -404,7 +406,7 @@
              init_preopens: Default::default(),
              init_vfs_preopens: Default::default(),
          };
-@@ -1096,7 +1110,7 @@
+@@ -1096,7 +1112,7 @@
  
      /// refresh size from filesystem
      pub fn filestat_resync_size(&self, fd: WasiFd) -> Result<Filesize, Errno> {
@@ -413,7 +415,7 @@
          let mut guard = inode.write();
          match guard.deref_mut() {
              Kind::File { handle, .. } => {
-@@ -1758,7 +1772,13 @@
+@@ -1758,7 +1774,13 @@
          path: &str,
          follow_symlinks: bool,
      ) -> Result<InodeGuard, Errno> {
@@ -428,7 +430,7 @@
          let mut symlink_count = 0;
          self.get_inode_at_path_inner(
              inodes,
-@@ -1797,7 +1817,7 @@
+@@ -1797,7 +1819,7 @@
      ) -> Result<(InodeGuard, String), Errno> {
          let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
          if parent_dir.as_str().is_empty() {
@@ -437,7 +439,7 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1816,9 +1836,51 @@
+@@ -1816,9 +1838,51 @@
              Ok(Self::virtual_root_fd(self.root_inode.clone()))
          } else {
              ret
@@ -453,9 +455,9 @@
 +            Ok(Self::virtual_root_fd(self.root_inode.clone()))
 +        } else {
 +            self.get_dir_fd(fd)
-         }
-     }
- 
++        }
++    }
++
 +    /// The directory a path call given `fd` resolves a relative path from:
 +    /// what is on `fd`, unless that is not a directory and a preopen used to
 +    /// be there, in which case that preopen (#1019).
@@ -473,13 +475,13 @@
 +            && matches!(*entry.inode.read(), Kind::Dir { .. } | Kind::Root { .. })
 +        {
 +            return current;
-+        }
+         }
 +        match self.displaced_preopens.read().unwrap().get(&fd) {
 +            Some(preopen) => Ok(preopen.clone()),
 +            None => current,
 +        }
-+    }
-+
+     }
+ 
 +    /// Forgets the preopens `dup2_at` kept, with the descriptors they were
 +    /// kept for.
 +    pub(crate) fn clear_displaced_preopens(&self) {
@@ -489,7 +491,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,57 +1895,83 @@
+@@ -1833,57 +1897,83 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -609,7 +611,7 @@
                  Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
                      InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
                      InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
-@@ -1905,10 +1993,21 @@
+@@ -1905,10 +1995,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -632,7 +634,7 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2125,7 @@
+@@ -2026,6 +2127,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -640,7 +642,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2194,7 @@
+@@ -2094,6 +2196,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -648,7 +650,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2233,7 @@
+@@ -2132,6 +2235,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -656,7 +658,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2273,29 @@
+@@ -2171,18 +2275,29 @@
                  return Ok(None);
              }
  
@@ -689,7 +691,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2712,7 @@
+@@ -2599,6 +2714,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -697,7 +699,7 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,9 +2788,26 @@
+@@ -2674,9 +2790,26 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -1895,7 +1897,31 @@
      Span::current().record("path", path_str.as_str());
  
      let ret = path_unlink_file_internal(&mut ctx, fd, &path_str)?;
-@@ -73,6 +73,15 @@
+@@ -55,6 +55,23 @@
+     let env = ctx.data();
+     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+ 
++    // iwci patch (#1139): one unlink or rename at a time in this inode tree,
++    // from the lookup below to the file's removal from the file system. The
++    // name's entry used to leave the cache, its link count drop and the file
++    // leave the file system in three steps any other unlink or rename of
++    // the name could run between: an unlink that had looked the name up
++    // before another unlinked it and a third thread put a new file there
++    // found the new file's entry, `debug_assert!`ed on the old inode's count
++    // of 0 and panicked, and one that found a file renamed there `assert!`ed
++    // that it was the inode it had looked up. The lock `path_rename` (and a
++    // creating open) holds makes them atomic, as on Linux: one unlink takes
++    // the name, a racing one gets `ENOENT`, and a rename or a creation lands
++    // wholly before or after.
++    let rename_lock = state.fs.rename_lock.clone();
++    let _one_at_a_time = rename_lock
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++
+     let inode = wasi_try_ok!(state.fs.get_inode_at_path(inodes, fd, path, false));
+     let (parent_inode, child_name) = wasi_try_ok!(state.fs.get_parent_inode_at_path(
+         inodes,
+@@ -73,10 +90,28 @@
          }
      };
  
@@ -1911,9 +1937,68 @@
      let removed_inode = {
          let mut guard = parent_inode.write();
          let entry = match guard.deref_mut() {
+-            Kind::Dir { entries, .. } => entries.remove(&child_name),
++            Kind::Dir { entries, .. } => {
++                // iwci patch (#1139): what the name holds now is what goes,
++                // as on Linux; a directory stays where it is (see above).
++                if entries.get(&child_name).is_some_and(|entry| {
++                    matches!(entry.read().deref(), Kind::Dir { .. } | Kind::Root { .. })
++                }) {
++                    return Ok(Errno::Isdir);
++                }
++                entries.remove(&child_name)
++            }
+             Kind::Root { .. } => return Ok(Errno::Access),
+             _ => unreachable!(
+                 "Internal logic error in wasi::path_unlink_file, parent is not a directory"
+@@ -96,16 +131,19 @@
+             }
+             return Ok(state.fs.remove_symlink_file(host_adjusted_path.as_path()));
+         };
+-        // TODO: make this a debug assert in the future
+-        assert!(inode.ino() == removed_inode.ino());
+-        debug_assert!(inode.stat.read().unwrap().st_nlink > 0);
+         removed_inode
+     };
+ 
++    // iwci patch (#1139): a count already at 0 is an entry some earlier
++    // unlink left behind, not a link to remove; never take it below 0 (a
++    // `u64` would wrap and the file's handle would never be released).
+     let st_nlink = {
+         let mut guard = removed_inode.stat.write().unwrap();
+-        guard.st_nlink -= 1;
+-        guard.st_nlink
++        let Some(st_nlink) = guard.st_nlink.checked_sub(1) else {
++            return Ok(Errno::Noent);
++        };
++        guard.st_nlink = st_nlink;
++        st_nlink
+     };
+     if st_nlink == 0 {
+         {
 --- a/src/syscalls/wasix/path_open2.rs
 +++ b/src/syscalls/wasix/path_open2.rs
-@@ -226,7 +226,7 @@
+@@ -167,6 +167,19 @@
+     fd_flags: Fdflagsext,
+     with_fd: Option<WasiFd>,
+ ) -> Result<Result<WasiFd, Errno>, WasiError> {
++    // iwci patch (#1139): an open that may create the file holds the lock
++    // `path_rename` and `path_unlink_file` hold, from its lookup to the new
++    // inode's place in the directory's cached entries. Between the two, an
++    // unlink could look the new file up and remove it from the file system
++    // while the open went on to cache it (the next unlink then failed with
++    // `ENOTDIR`), and a rename could put a file at the name the lookup found
++    // free, which the `create_new` below then refused with `EPERM`.
++    let rename_lock = env.state.fs.rename_lock.clone();
++    let _one_at_a_time = o_flags.contains(Oflags::CREATE).then(|| {
++        rename_lock
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++    });
+     path_open_internal_with_symlink_depth(
+         env,
+         dirfd,
+@@ -226,7 +239,7 @@
          dirfd
      };
      let path_arg = std::path::PathBuf::from(path);
