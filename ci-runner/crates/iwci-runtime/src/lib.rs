@@ -41,7 +41,10 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
 
-pub use cache::{CacheStats, DEFAULT_MODULE_MEMORY};
+pub use cache::{
+    CacheStats, DEFAULT_MODULE_MEMORY, DEFAULT_PIN_UNDER, DEFAULT_PINNED_MEMORY, ModuleLimits,
+    ResidentModule,
+};
 pub use cancel::Cancel;
 pub use iwci_vfs::DynFs;
 pub use stall::DEFAULT_STALL_AFTER;
@@ -565,13 +568,13 @@ impl Runtime {
         self
     }
 
-    /// Keeps about `bytes` of compiled modules in memory (default
-    /// [`DEFAULT_MODULE_MEMORY`], counted as the size of their artifacts):
-    /// past it, jobs that start get a fresh engine and load what they use
-    /// from the disk cache, and the old engine's code is freed when its last
-    /// job ends (see `cache.rs`).
-    pub fn with_module_memory(self, bytes: u64) -> Self {
-        self.store.set_limit(bytes);
+    /// Sets how compiled modules stay in memory between jobs (see
+    /// `cache.rs`): small ones pinned for the life of the process, the rest
+    /// in an LRU that frees the least recently used of those no job is
+    /// using once it passes its budget. Counted as the size of the modules'
+    /// artifacts.
+    pub fn with_module_limits(self, limits: ModuleLimits) -> Self {
+        self.store.set_limits(limits);
         self
     }
 
@@ -591,10 +594,10 @@ impl Runtime {
     }
 
     /// Lets go of what no job uses any more: parsed packages unused for a
-    /// couple of minutes, an old generation of compiled modules whose last
-    /// job has ended, and the Wasm stacks of threads that have ended. A
-    /// server calls this now and then, so an idle runner holds next to
-    /// nothing.
+    /// couple of minutes, compiled modules the LRU holds past its budget
+    /// that no job is using, and the Wasm stacks of threads that have
+    /// ended. A server calls this now and then, so an idle runner holds
+    /// only its pinned modules and what the LRU's budget allows.
     pub fn release_idle(&self) {
         self.wasix.release_idle();
         self.store.release_idle();
@@ -609,11 +612,27 @@ impl Runtime {
         self.store.stats()
     }
 
+    /// How compiled modules stay in memory ([`Runtime::with_module_limits`]).
+    pub fn module_limits(&self) -> ModuleLimits {
+        self.store.limits()
+    }
+
+    /// The compiled modules in memory: pinned ones first, then the LRU's
+    /// from the most recently used.
+    pub fn resident_modules(&self) -> Vec<ResidentModule> {
+        self.store.modules()
+    }
+
     /// Runs a WASI (`wasi_snapshot_preview1`) or WASIX command module's
     /// `_start` with `inv`.
     pub fn run_command(&self, module: &WasmModule, inv: Invocation) -> Result<Outcome> {
-        let generation = self.store.generation();
-        let compiled = self.store.get(&generation, module.sha256, &module.bytes)?;
+        let job_modules = cache::JobModules::new();
+        let compiled = self.store.get(
+            &job_modules,
+            module.sha256,
+            &module.bytes,
+            Some(&module.name),
+        )?;
         // A tool job has no Node of its own, but a service in an
         // environment may run one.
         #[cfg(feature = "node")]
@@ -627,7 +646,7 @@ impl Runtime {
         wasix::run(
             &self.wasix,
             &self.tokio,
-            &generation,
+            &job_modules,
             wasix::Entry::Module(compiled),
             &module.name,
             inv,
@@ -649,10 +668,15 @@ impl Runtime {
         inv: Invocation,
         diagnostics_json: bool,
     ) -> Result<TscOutcome> {
-        let generation = self.store.generation();
-        let compiled = self.store.get(&generation, module.sha256, &module.bytes)?;
+        let job_modules = cache::JobModules::new();
+        let compiled = self.store.get(
+            &job_modules,
+            module.sha256,
+            &module.bytes,
+            Some(&module.name),
+        )?;
         tsc::run(
-            generation.engine(),
+            &job_modules,
             &compiled,
             inv,
             diagnostics_json,
@@ -685,12 +709,12 @@ impl Runtime {
         let node: Option<node::NodeHooks> = None;
         // Made before the first job of the environment in this process,
         // which waits for it, as do any that start meanwhile.
-        let generation = self.store.generation();
+        let job_modules = cache::JobModules::new();
         let builtins = node.as_ref().and_then(|_| {
             wasix::builtins(
                 &self.wasix,
                 &self.tokio,
-                &generation,
+                &job_modules,
                 packages,
                 self.output_cap,
             )
@@ -698,7 +722,7 @@ impl Runtime {
         wasix::run(
             &self.wasix,
             &self.tokio,
-            &generation,
+            &job_modules,
             wasix::Entry::Command {
                 packages,
                 name: entry,

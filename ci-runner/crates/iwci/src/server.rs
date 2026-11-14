@@ -249,21 +249,22 @@ impl Server {
     fn memory_line(&self) -> Option<(String, bool)> {
         let me = crate::memory::process_memory()?;
         let reserved = self.runner.memory.as_ref().map_or(0, |m| m.used());
-        let modules = self.runner.runtime.cache_stats().resident_bytes;
+        let modules = self.runner.runtime.cache_stats();
         // Jobs rarely use all they reserve, so this is the least the
         // runner itself holds.
         let own = me.anonymous.saturating_sub(reserved);
         let over = self.memory_reserve.is_some_and(|r| own > r);
         let heap = iwci_runtime::v8_heap_space();
         let line = format!(
-            "iwci serve: memory: {} MiB resident ({} MiB anonymous), jobs reserve {} of {} MiB, V8 heaps {} of {} MiB, compiled modules {} MiB, host {} MiB, runner reserve {} MiB{}",
+            "iwci serve: memory: {} MiB resident ({} MiB anonymous), jobs reserve {} of {} MiB, V8 heaps {} of {} MiB, compiled modules {} MiB pinned and {} MiB in the LRU, host {} MiB, runner reserve {} MiB{}",
             me.resident >> 20,
             me.anonymous >> 20,
             reserved >> 20,
             self.runner.memory.as_ref().map_or(0, |m| m.total()) >> 20,
             heap.used >> 20,
             heap.total >> 20,
-            modules >> 20,
+            modules.pinned_bytes >> 20,
+            modules.lru_bytes >> 20,
             self.memory_host.unwrap_or(0) >> 20,
             self.memory_reserve.unwrap_or(0) >> 20,
             if over {
@@ -276,7 +277,7 @@ impl Server {
     }
 
     /// Every half minute, lets go of what no job uses (parsed packages,
-    /// an old generation of compiled modules, finished runs' reports and
+    /// compiled modules past the LRU's budget, finished runs' reports and
     /// logs, the allocator's free memory),
     /// then logs the process's memory against the job budget every ten
     /// minutes, and at once (at most once a minute) when the anonymous
@@ -427,6 +428,8 @@ impl Server {
         let v8 = iwci_runtime::v8_losses();
         let heap = iwci_runtime::v8_heap_space();
         let process = crate::memory::process_memory();
+        let modules = self.runner.runtime.cache_stats();
+        let limits = self.runner.runtime.module_limits();
         json!({
             "version": lifecycle::VERSION,
             "draining": self.draining.load(Ordering::SeqCst),
@@ -445,7 +448,26 @@ impl Server {
             "memory_reserve": self.memory_reserve,
             "memory_resident": process.map(|p| p.resident),
             "memory_anonymous": process.map(|p| p.anonymous),
-            "modules_resident": self.runner.runtime.cache_stats().resident_bytes,
+            "modules_resident": modules.resident_bytes,
+            // Compiled modules in memory: pinned for the life of the
+            // process, or in the LRU, with each module.
+            "modules_pinned": modules.pinned_bytes,
+            "modules_pinned_budget": limits.pinned_budget,
+            "modules_pin_under": limits.pin_under,
+            "modules_lru": modules.lru_bytes,
+            "modules_lru_in_use": modules.lru_in_use_bytes,
+            "modules_lru_budget": limits.lru_budget,
+            "modules_loaded_from_memory": modules.from_memory,
+            "modules_loaded_from_disk": modules.from_disk,
+            "modules_evicted": modules.evicted,
+            "modules": self.runner.runtime.resident_modules().into_iter().map(|m| json!({
+                "name": m.name,
+                "sha256": m.sha256,
+                "bytes": m.bytes,
+                "pinned": m.pinned,
+                "in_use": m.in_use,
+                "idle_secs": m.idle_secs,
+            })).collect::<Vec<_>>(),
             // What V8 out-of-memory has cost this process (#990).
             "v8_lost_isolates": v8.lost_isolates,
             "v8_parked_threads": v8.parked_threads,

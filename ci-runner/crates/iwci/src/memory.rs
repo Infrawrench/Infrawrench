@@ -7,10 +7,10 @@
 //! rest (#1035): a busy moment then cannot take the host past what it has.
 
 /// What a server keeps for itself by default, outside the job budget: room
-/// for two generations of compiled modules at the default
-/// `--module-memory`, the environments jobs are using, workspace snapshots
-/// and logs.
-pub const DEFAULT_RESERVE: u64 = 4 << 30;
+/// for the compiled modules kept in memory at the default
+/// `--pinned-module-memory` and `--module-memory`, the environments jobs
+/// are using, workspace snapshots and logs.
+pub const DEFAULT_RESERVE: u64 = 5 << 30;
 
 /// The memory the process may use: the host's, or its cgroup's limit when
 /// that is lower (a systemd `MemoryMax=`). `None` where neither can be

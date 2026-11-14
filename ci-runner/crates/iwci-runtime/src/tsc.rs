@@ -113,7 +113,7 @@ struct TscEnv {
 }
 
 pub(crate) fn run(
-    engine: &wasmer::Engine,
+    job_modules: &crate::cache::JobModules,
     module: &wasmer::Module,
     inv: Invocation,
     diagnostics_json: bool,
@@ -130,7 +130,7 @@ pub(crate) fn run(
         }
     }
     let started = Instant::now();
-    let (engine, hit_memory) = job_engine(engine, inv.limits.memory_bytes, TSC_STACK);
+    let (engine, hit_memory) = job_engine(job_modules, inv.limits.memory_bytes, TSC_STACK);
     let mut store = Store::new(engine);
     let interrupter = store.interrupter();
 
