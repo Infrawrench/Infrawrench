@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, with eleven fixes to
+# and file modes and CPU time read from the runner, with twelve fixes to
 # Edge.js itself and its built-ins code cache turned on, and with Node's
 # module compile cache.
 #
@@ -43,7 +43,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And thirteen patches to Edge.js's own source, applied to its checkout:
+# And fourteen patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -206,6 +206,19 @@
 #     meets a half-written entry finds its hashes wrong. A directory that
 #     cannot be made is no cache, never an error. Ours; drafted for Edge.js.
 #
+#   edgejs-module-syntax-arrow.patch (#1097). An ES module that does not
+#     parse printed where, the file, line, source and caret, two or three
+#     times, one of them without the caret, where Node prints it once.
+#     Creating the module wrap prepended a block of its own to the error's
+#     stack: always line 1, the module's first line and no caret, skipped
+#     only when the stack already began with that same block. The engine
+#     had already given the error its arrow (and the bridge put that on the
+#     stack too), so the stack began with the engine's block instead and got
+#     the caretless one in front of it, and the fatal exception handler,
+#     which leaves the arrow out only when the stack begins with it, printed
+#     the arrow above both. The block is now added only to an error the
+#     engine gave no arrow. Ours; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -257,10 +270,10 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
 # the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
 # child exit poll, 9 postMessage, 10 the worker report state, 11 the
-# worker task free, 12 the compile cache.
-VERSION="0.2.5-iwci.12"
+# worker task free, 12 the compile cache, 13 the module syntax arrow.
+VERSION="0.2.5-iwci.13"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its

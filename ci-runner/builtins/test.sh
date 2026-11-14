@@ -1233,6 +1233,44 @@ jobs:
     using: env:bash-node@24
     run: |
       node -e 'throw new Error("expected")'
+  # An ES module that does not parse says where once, with its caret, as
+  # Node does (#1097): it printed the file, line, source and caret two or
+  # three times, one of them naming line 1 with no caret. Caught, the
+  # error's stack has the place at most once, and never without its caret.
+  module-syntax-error-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      printf 'export const a = 1;\n\nexport const b = {;\n' >/tmp/bad.mjs
+      printf 'import "/tmp/bad.mjs";\n' >/tmp/imports-bad.mjs
+      want="$(printf 'file:///tmp/bad.mjs:3\nexport const b = {;\n%18s^\n\nSyntaxError: Unexpected token %s' '' "';'")"
+      for main in /tmp/bad.mjs /tmp/imports-bad.mjs; do
+        if node "$main" 2>/tmp/err; then exit 1; fi
+        test "$(head -n 5 /tmp/err)" = "$want"
+        test "$(grep -c 'export const b' /tmp/err)" = 1
+        test "$(grep -c '^file://' /tmp/err)" = 1
+      done
+      cat >/tmp/catch.mjs <<'JS'
+      try {
+        await import("/tmp/bad.mjs");
+      } catch (e) {
+        const lines = e.stack.split("\n");
+        const at = lines.flatMap((line, i) => (line === "export const b = {;" ? [i] : []));
+        if (!(e instanceof SyntaxError) || at.length > 1 || at.some((i) => lines[i + 1].trim() !== "^")) {
+          console.error(e.stack);
+          process.exit(1);
+        }
+        console.log("caught");
+      }
+      JS
+      test "$(node /tmp/catch.mjs)" = caught
+  # Its stderr begins with the one block and then the error (want_stderr).
+  module-syntax-error-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      printf 'export const a = {;\n' >/tmp/bad.mjs
+      node /tmp/bad.mjs
   # `fs.renameSync` of a checked-out file and directory (#985), which threw
   # ENOENT in a job that had not written them, and of a checked-out symlink
   # (#1005), which WASIX could not find to move.
@@ -3522,7 +3560,7 @@ want_reason() {
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
     openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
-    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
@@ -3553,6 +3591,7 @@ want_stderr() {
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
+    bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;

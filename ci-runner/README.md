@@ -1099,6 +1099,18 @@ to 60 ms. `client-core`'s Vitest suite took 21.2 to 22.4 s without and
 against 1.87 s): its time is rolldown's WebAssembly. `ui`'s suite writes
 about 2,800 entries.
 
+24.0.16 adds `edgejs-module-syntax-arrow.patch` (#1097): an ES module that
+does not parse says where once, the file and line, the source line and a
+caret, above `SyntaxError: ...`, as Node does. It printed that block three
+times, the middle one naming line 1 and the module's first line with no
+caret: Edge.js put a block of its own in front of the one the engine had
+already put on the error's stack, and the fatal exception handler, which
+leaves the engine's arrow out only when the stack begins with it, printed
+the arrow above both. Caught (`await import()`), the error's stack now has
+the engine's block once; Node's has none, since Node puts the arrow on a
+module's SyntaxError only for the fatal exception handler. The same
+Edge.js build is in `env:clickhouse` 26.11.1.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
