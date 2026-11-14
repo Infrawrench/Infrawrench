@@ -446,6 +446,11 @@ impl LinearMemory for VMOwnedMemory {
         Ok(())
     }
 
+    /// iwci patch (#996)
+    fn claim_data_mapping(&self) -> bool {
+        self.mmap.alloc.claim_data_mapping()
+    }
+
     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm code.
     fn vmmemory(&self) -> NonNull<VMMemoryDefinition> {
         self.mmap.vm_memory_definition.as_ptr()
@@ -628,6 +633,12 @@ impl LinearMemory for VMSharedMemory {
         Ok(())
     }
 
+    /// iwci patch (#996)
+    fn claim_data_mapping(&self) -> bool {
+        let guard = self.mmap.read().unwrap_or_else(|e| e.into_inner());
+        guard.alloc.claim_data_mapping()
+    }
+
     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm code.
     ///
     /// iwci patch (#994): without `mmap`'s lock, see `definition`.
@@ -726,6 +737,11 @@ impl LinearMemory for VMMemory {
     fn reset(&mut self) -> Result<(), MemoryError> {
         self.0.reset()?;
         Ok(())
+    }
+
+    /// iwci patch (#996)
+    fn claim_data_mapping(&self) -> bool {
+        self.0.claim_data_mapping()
     }
 
     /// Returns the memory style for this memory.
@@ -904,6 +920,14 @@ where
 
     /// Attempts to clone this memory (if its cloneable)
     fn try_clone(&self) -> Result<Box<dyn LinearMemory + Send + Sync + 'static>, MemoryError>;
+
+    /// iwci patch (#996): whether `memory.init` may map a data segment over
+    /// this memory copy-on-write now (memory_image.rs): its accessible pages
+    /// are an anonymous private mapping that nothing else maps over, and it
+    /// has not been mapped over too often. A `true` counts as one mapping.
+    fn claim_data_mapping(&self) -> bool {
+        false
+    }
 
     #[doc(hidden)]
     /// # Safety
