@@ -22,6 +22,9 @@ pub struct Mmap {
     accessible_size: usize,
     #[cfg_attr(target_os = "windows", allow(dead_code))]
     sync_on_drop: bool,
+    // iwci patch (#996): an anonymous private mapping, which a data segment
+    // may be mapped over (memory_image.rs).
+    anonymous_private: bool,
 }
 
 /// The type of mmap to create
@@ -46,6 +49,7 @@ impl Mmap {
             total_size: 0,
             accessible_size: 0,
             sync_on_drop: false,
+            anonymous_private: false,
         }
     }
 
@@ -156,6 +160,7 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
+                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
             }
         } else {
             // Reserve the mapping size.
@@ -182,6 +187,7 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
+                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
             };
 
             if accessible_size != 0 {
@@ -238,6 +244,7 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: false,
+                anonymous_private: false,
             }
         } else {
             // Reserve the mapping size.
@@ -252,6 +259,7 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: false,
+                anonymous_private: false,
             };
 
             if accessible_size != 0 {
@@ -356,6 +364,11 @@ impl Mmap {
     /// Return the length of the allocated memory.
     pub fn len(&self) -> usize {
         self.total_size
+    }
+
+    /// iwci patch (#996): whether this is an anonymous private mapping.
+    pub(crate) fn is_anonymous_private(&self) -> bool {
+        self.anonymous_private
     }
 
     /// Return whether any memory has been allocated.

@@ -878,6 +878,19 @@ impl Instance {
         {
             return Err(Trap::lib(TrapCode::HeapAccessOutOfBounds));
         }
+        // iwci patch (#996): a large segment is mapped copy-on-write rather
+        // than copied (memory_image.rs).
+        if len as usize >= crate::memory_image::MIN_MAPPED_BYTES
+            && memory.maps_data_copy_on_write()
+            && let Some(Some(segment)) = passive_data.get(&data_index)
+        {
+            let base = unsafe { memory.vmmemory().as_ref().base };
+            if unsafe {
+                crate::memory_image::map(base, dst as usize, segment, src as usize, len as usize)
+            } {
+                return Ok(());
+            }
+        }
         let src_slice = &data[src as usize..(src + len) as usize];
         unsafe { memory.initialize_with_data(dst as usize, src_slice) }
     }
