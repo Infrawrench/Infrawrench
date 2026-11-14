@@ -1,23 +1,28 @@
 /**
- * Estimated Depot spend, priced from `UsageService/GetUsage`.
+ * Depot spend: billed amounts from finalized invoices where Depot has invoiced, and an
+ * estimate priced from `UsageService/GetUsage` everywhere else.
  *
- * GetUsage answers one aggregate for whatever `[start_at, end_at]` window it
- * is asked about: container build minutes per project, GitHub Actions minutes
- * per repository broken down by workflow and runner label, storage per
- * storage type, agent sandbox minutes per agent type, and Depot CI vCPU-minutes
- * per repository, workflow and runner. There are no daily
- * buckets, so a daily cost row is one request per UTC day.
+ * **Invoiced cycles** come from `BillingService` (see `invoices.ts`): a billing cycle
+ * with a finalized invoice gets that invoice's lines, which is what Depot actually
+ * charged, sandbox compute and discounts included. Those days are never estimated.
+ * When the organization cannot read invoices (the service is not deployed for it, or
+ * refuses the token), every day is estimated, as before the service existed.
  *
- * It reports quantities, never money, and Depot has no billing endpoint, so
- * every amount here is a quantity times a rate from `rates.ts` (the plan the
- * user picked plus their overrides) and the manifest declares
- * `estimated: true`.
+ * **The estimate** covers the open cycle and any cycle without a finalized invoice.
+ * GetUsage answers one aggregate for whatever `[start_at, end_at]` window it is asked
+ * about: container build minutes per project, GitHub Actions minutes per repository
+ * broken down by workflow and runner label, storage per storage type, agent sandbox
+ * minutes per agent type, and Depot CI vCPU-minutes per repository, workflow and
+ * runner. There are no daily buckets, so a daily cost row is one request per UTC day.
+ * It reports quantities, never money, so every estimated amount is a quantity times a
+ * rate from `rates.ts` (the plan the user picked plus their overrides), and the
+ * manifest declares `estimated: true`.
  *
  * **Included minutes are a per-cycle pool.** A Startup plan's first 5,000
  * build minutes each cycle cost nothing beyond the plan fee, so pricing a day
  * needs the cycle-to-date total *before* it. The collector therefore always
- * fetches from the start of the billing cycle containing `fromDate`, even
- * when the host only asked for the last two days, and walks forward
+ * fetches from the start of the billing cycle containing each estimated day,
+ * even when the host only asked for the last two days, and walks forward
  * accumulating. Within a day the billable fraction is shared pro rata across
  * that day's rows, so per-project and per-repository amounts still sum to
  * the day's total. Rows inside the allowance are still emitted (amount 0,
@@ -27,7 +32,9 @@
  * 1/(days in cycle) share of the monthly GB rate on whatever GB the window
  * reports beyond the included storage. The plan fee is spread the same way,
  * and only across cycles that show any usage at all, so history from before
- * the organization subscribed is not charged a fee.
+ * the organization subscribed is not charged a fee. A day an invoice already
+ * bills a subscription fee for (paid in advance for the open cycle) gets no
+ * estimated fee.
  */
 
 import { CostSetupError, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
@@ -38,21 +45,14 @@ import {
   type DepotTransport,
   type WireUsage,
 } from "./api.js";
+import { fetchInvoiceCosts } from "./invoices.js";
 import { cycleBounds, cycleLengthDays, type DepotRates } from "./rates.js";
+import { SERVICE } from "./services.js";
+
+export { SERVICE };
 
 const DAY_MS = 86_400_000;
 const CONCURRENCY = 4;
-
-export const SERVICE = {
-  builds: "Container builds",
-  actions: "GitHub Actions runners",
-  macos: "GitHub Actions runners (macOS)",
-  cache: "Cache storage",
-  registry: "Registry storage",
-  sandboxes: "Agent sandboxes",
-  ci: "Depot CI",
-  plan: "Depot plan",
-} as const;
 
 export interface DepotCostContext {
   transport: DepotTransport;
@@ -344,14 +344,32 @@ export async function fetchDepotCostData(
   const now = (ctx.now ?? (() => new Date()))();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const fromMs = parseIsoDate(range.fromDate);
-  // Today is partial; `restatementDays` re-reads it once it closes.
+  // Today is partial; `restatementDays` re-reads it once it closes, and re-reads a
+  // closed cycle's days once its invoice is finalized.
   const toMs = Math.min(parseIsoDate(range.toDate), todayMs);
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) return [];
 
+  // Billed days first: whatever an invoice settles is not estimated, nor read from GetUsage.
+  let billed: Awaited<ReturnType<typeof fetchInvoiceCosts>>;
+  try {
+    billed = await fetchInvoiceCosts(ctx.transport, fromMs, toMs);
+  } catch (err) {
+    throw asCostSetupError(err);
+  }
+  const out: CostRow[] = billed ? [...billed.rows] : [];
+  const covered = billed?.coveredDays ?? new Set<number>();
+  const feeBilled = billed?.feeBilledDays ?? new Set<number>();
+
   const { cycleStartDay } = ctx.rates;
-  const fetchFromMs = cycleBounds(fromMs, cycleStartDay).startMs;
-  const days: number[] = [];
-  for (let d = fetchFromMs; d <= toMs; d += DAY_MS) days.push(d);
+  const estimated = new Set<number>();
+  for (let d = fromMs; d <= toMs; d += DAY_MS) if (!covered.has(d)) estimated.add(d);
+  if (estimated.size === 0) return out;
+  // Each estimated day needs its cycle read from the start, for the included pools.
+  const fetched = new Set<number>();
+  for (const d of estimated) {
+    for (let x = cycleBounds(d, cycleStartDay).startMs; x <= d; x += DAY_MS) fetched.add(x);
+  }
+  const days = [...fetched].sort((a, b) => a - b);
 
   let usages: DayUsage[];
   try {
@@ -374,7 +392,6 @@ export async function fetchDepotCostData(
     if (hasUsage(usages[i]!)) activeCycles.add(cycleBounds(d, cycleStartDay).startMs);
   });
 
-  const out: CostRow[] = [];
   let cycleStart = -1;
   let before: CycleUsed = { builds: 0, actions: 0, ci: 0 };
   days.forEach((d, i) => {
@@ -385,10 +402,10 @@ export async function fetchDepotCostData(
       before = { builds: 0, actions: 0, ci: 0 };
     }
     const cycleDays = cycleLengthDays(d, cycleStartDay);
-    if (d >= fromMs) {
+    if (estimated.has(d)) {
       const date = isoDate(d);
       out.push(...priceDay(date, day, ctx.rates, before, cycleDays, projectIds));
-      if (ctx.rates.planFee > 0 && activeCycles.has(cycle)) {
+      if (ctx.rates.planFee > 0 && activeCycles.has(cycle) && !feeBilled.has(d)) {
         out.push({
           date,
           service: SERVICE.plan,

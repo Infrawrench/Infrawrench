@@ -71,26 +71,36 @@ export const manifest = {
     caCertCredentialField,
   ]),
   /**
-   * Estimated spend from `UsageService/GetUsage` (see `cost-data.ts`).
+   * Billed spend from finalized invoices for every cycle Depot has invoiced, and
+   * estimated spend from `UsageService/GetUsage` for the open cycle and any cycle
+   * without a finalized invoice (see `cost-data.ts` and `invoices.ts`).
    *
    * `service` is the product (container builds, GitHub Actions runners,
    * macOS runners, cache and registry storage, agent sandboxes, Depot CI, the
-   * plan fee); `resource` is the project for build minutes; `tag` carries
-   * project, repo, workflow, runner, storage type and agent type, which is
-   * how runner minutes are broken down by repository.
+   * plan fee; an invoice line with no estimate equivalent keeps its own
+   * description); `resource` is the project for estimated build minutes; `tag`
+   * carries project, repo, workflow, runner, storage type and agent type, which
+   * is how runner minutes are broken down by repository, and the invoice number
+   * on billed rows.
    *
-   * `estimated: true`: Depot meters usage but has no billing API, so amounts
-   * are quantities times the plan and rates on the account.
+   * `estimated: true`: the open cycle, and every cycle when invoices cannot be
+   * read, is quantities times the plan and rates on the account.
+   * `chargeTypes: true`: invoice tax, discounts, credits and proration
+   * adjustments are their own charge types.
    *
-   * `maxHistoryDays: 90` because the endpoint has no daily buckets: a day of
-   * history is a request, and pricing a day against the included-minutes
-   * pool means reading its cycle from the start too. `restatementDays: 2`
-   * re-reads today (partial) and yesterday once they close.
+   * `maxHistoryDays: 90` because the usage endpoint has no daily buckets: an
+   * estimated day of history is a request, and pricing a day against the
+   * included-minutes pool means reading its cycle from the start too.
+   * `restatementDays: 40` keeps the whole previous cycle inside every
+   * incremental window, so when its invoice is finalized (shortly after the
+   * cycle closes) the invoice replaces that cycle's estimate. It also re-reads
+   * today (partial) and yesterday once they close.
    */
   costs: {
     dimensions: ["service", "resource", "tag"],
     maxHistoryDays: 90,
-    restatementDays: 2,
+    restatementDays: 40,
+    chargeTypes: true,
     estimated: true,
   },
   // Included build minutes, Actions minutes and storage for the plan on the

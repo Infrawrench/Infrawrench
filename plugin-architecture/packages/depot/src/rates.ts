@@ -6,7 +6,9 @@
  * the account carries two editable credential fields: the plan (a picker) and
  * optional rate overrides, for a Business contract or a price change. Both
  * are editable later from the account's credentials, which is how a user
- * corrects the estimate without anyone touching code.
+ * corrects the estimate without anyone touching code. A cycle Depot has
+ * already invoiced takes its amounts from the invoice (`invoices.ts`), so the
+ * rates only price the open cycle and cycles without a finalized invoice.
  *
  * Verified against https://depot.dev/pricing and
  * https://depot.dev/docs/github-actions/runner-types (October 2026):

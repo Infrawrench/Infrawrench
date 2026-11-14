@@ -159,6 +159,61 @@ export interface WireUsage {
   depotCi?: WireDepotCiUsage[];
 }
 
+/**
+ * An int64 field. proto3 JSON writes 64-bit integers as decimal strings; a reader
+ * accepts a number too, since the mapping allows either on the way in.
+ */
+export type WireInt64 = string | number;
+
+/**
+ * `depot.core.v1.Invoice` (`BillingService`, `src/gen/depot/core/v1/billing_pb.ts` in
+ * `github.com/depot/sdk-node`, v2.3.2). A finalized Stripe invoice; every amount is in
+ * the smallest unit of `currency`, which is a lowercase ISO code. Only the fields the
+ * cost collector reads are listed.
+ */
+export interface WireInvoice {
+  id?: string;
+  number?: string;
+  /** `open`, `paid`, `uncollectible` or `void`. */
+  status?: string;
+  currency?: string;
+  /** Empty for a standalone invoice. */
+  subscriptionId?: string;
+  createdAt?: string;
+  finalizedAt?: string;
+  /** The invoice's item accrual period: for a renewal, the cycle that just closed. */
+  periodStart?: string;
+  periodEnd?: string;
+  /** After discounts and tax, before customer balance and credit notes. */
+  total?: WireInt64;
+  discountAmount?: WireInt64;
+  taxAmount?: WireInt64;
+}
+
+/** `depot.core.v1.InvoiceLineItem`. Amounts are signed, in the invoice's smallest currency unit. */
+export interface WireInvoiceLineItem {
+  id?: string;
+  description?: string;
+  currency?: string;
+  /** Before discounts and exclusive tax. Negative for an adjustment. */
+  amount?: WireInt64;
+  /** Excluding tax and discounts. Unset when Stripe does not report it. */
+  amountExcludingTax?: WireInt64;
+  quantity?: WireInt64;
+  unitAmountDecimal?: string;
+  /** The line's service period; the end is inclusive, Stripe's convention. */
+  periodStart?: string;
+  periodEnd?: string;
+  priceId?: string;
+  productId?: string;
+  /** Whether the line prorates a subscription change. */
+  proration?: boolean;
+  /** Discounts applied to `amount`. */
+  discountAmount?: WireInt64;
+  /** Inclusive and exclusive tax on the line. */
+  taxAmount?: WireInt64;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Transport                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -245,7 +300,23 @@ export const RPC = {
   deleteImage: "depot.build.v1.RegistryService/DeleteImage",
   listProjectUsage: "depot.core.v1.UsageService/ListProjectUsage",
   getUsage: "depot.core.v1.UsageService/GetUsage",
+  listInvoices: "depot.core.v1.BillingService/ListInvoices",
+  listInvoiceLineItems: "depot.core.v1.BillingService/ListInvoiceLineItems",
 } as const;
+
+/**
+ * Whether a call failed because the route is not there for this organization, rather
+ * than for a passing reason: not deployed (404, which a Connect router answers for an
+ * unknown procedure), `unimplemented` (501) or `permission_denied` (403).
+ */
+export function isRouteUnavailable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = new RegExp(`^${VENDOR} API error (\\d{3}) `).exec(err.message)?.[1];
+  if (status === "404" || status === "501" || status === "403") return true;
+  return (
+    status !== undefined && /"code"\s*:\s*"(unimplemented|permission_denied)"/.test(err.message)
+  );
+}
 
 export interface ListPagesOptions<TItem> {
   /** The field holding the list, for the error when it is not one. */
@@ -329,4 +400,42 @@ export async function getUsage(
   requireListPage(usage.agentSandbox ?? null, { ...place, key: "agentSandbox" });
   requireListPage(usage.depotCi ?? null, { ...place, key: "depotCi" });
   return usage;
+}
+
+/**
+ * Finalized invoices created at or after `createdSinceMs`, via
+ * `BillingService/ListInvoices`. Depot lists them newest first, 100 at most a page,
+ * and a page holding only drafts comes back empty with a token, so the walk stops at
+ * the first invoice older than the bound rather than at an empty page.
+ */
+export async function listInvoices(
+  transport: DepotTransport,
+  createdSinceMs: number,
+): Promise<WireInvoice[]> {
+  const isOlder = (invoice: WireInvoice) => Date.parse(invoice.createdAt ?? "") < createdSinceMs;
+  const invoices = await listAllPages<
+    WireInvoice,
+    { invoices?: WireInvoice[]; nextPageToken?: string }
+  >(transport, RPC.listInvoices, {}, (r) => r.invoices, {
+    key: "invoices",
+    pageSize: 100,
+    maxPages: 50,
+    stop: (items) => items.some(isOlder),
+  });
+  return invoices.filter((invoice) => !isOlder(invoice));
+}
+
+/** Every line of one invoice, via `BillingService/ListInvoiceLineItems`, all pages. */
+export function listInvoiceLineItems(
+  transport: DepotTransport,
+  invoiceId: string,
+): Promise<WireInvoiceLineItem[]> {
+  return listAllPages<
+    WireInvoiceLineItem,
+    { lineItems?: WireInvoiceLineItem[]; nextPageToken?: string }
+  >(transport, RPC.listInvoiceLineItems, { invoiceId }, (r) => r.lineItems, {
+    key: "lineItems",
+    pageSize: 100,
+    maxPages: 50,
+  });
 }

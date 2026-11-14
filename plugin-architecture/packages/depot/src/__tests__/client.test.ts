@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DepotClient } from "../client.js";
 import { buildSeries, dayBuckets } from "../metrics.js";
 import { fetchDepotQuotas } from "../quotas.js";
@@ -47,6 +47,12 @@ function installApi(routes: Record<string, (body: Record<string, unknown>) => un
   return calls;
 }
 
+// No request leaves a test: anything a test does not route itself throws.
+beforeEach(() => {
+  vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+    throw new Error(`unexpected request to ${String(url)}`);
+  }) as unknown as typeof fetch);
+});
 afterEach(() => vi.restoreAllMocks());
 
 const client = () => hostClient(new DepotClient({ token: "org-token", plan: "startup" }));

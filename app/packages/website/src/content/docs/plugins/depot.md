@@ -1,6 +1,6 @@
 ---
 title: Depot
-description: Estimate Depot spend by project and product (container builds, GitHub Actions runners, cache and registry storage, agent sandboxes), track plan allowances, chart build minutes and cache hit rate, and manage projects, project tokens, OIDC trust relationships and registry images.
+description: Track Depot spend, billed from finalized invoices for closed cycles and estimated for the open one, by project and product (container builds, GitHub Actions runners, cache and registry storage, agent sandboxes), track plan allowances, chart build minutes and cache hit rate, and manage projects, project tokens, OIDC trust relationships and registry images.
 sidebar_order: 50
 ---
 
@@ -44,15 +44,25 @@ You can change the plan or the overrides at any time from the account's **Edit c
 
 ## Costs
 
-Depot spend appears in [cost graphs and budgets](../features/cloud-costs.md). The amounts are **estimates**: Depot reports usage but not prices, so Infrawrench multiplies your usage by your plan's rates. Each day is broken down by:
+Depot spend appears in [cost graphs and budgets](../features/cloud-costs.md). It comes from two places:
 
-- **Service**: Container builds, GitHub Actions runners, GitHub Actions runners (macOS), Cache storage, Registry storage, Agent sandboxes, Depot CI, and Depot plan (the monthly fee spread across the days of the cycle).
-- **Resource**: the project, for container build minutes.
-- **Tags**: `project`, `repo`, `workflow`, `runner`, `storageType` and `agentType`, so you can filter or group runner spend by repository or workflow.
+- **Closed billing cycles use your finalized invoices.** Once Depot has finalized the invoice for a cycle, that cycle's amounts are the invoice's line items: what Depot actually charged, including sandbox compute, discounts, credits, proration and tax. They replace the estimate for those days within a day or so of the invoice being finalized, and each billed row carries the invoice number as an `invoice` tag. Invoices in a currency other than USD keep their own currency.
+- **The open cycle is an estimate.** Depot reports usage but not prices until it invoices, so for the current cycle (and any cycle without a finalized invoice) Infrawrench multiplies your usage by your plan's rates. If your plan fee was invoiced in advance for the current cycle, the invoiced fee is shown instead of an estimated one.
+
+If Depot doesn't answer invoice requests for your organization yet, or refuses them to the token, every cycle is estimated.
+
+Each day is broken down by:
+
+- **Service**: Container builds, GitHub Actions runners, GitHub Actions runners (macOS), Cache storage, Registry storage, Agent sandboxes, Depot CI, and Depot plan (the monthly fee spread across the days of the cycle). An invoice line with none of these equivalents, such as sandbox compute, keeps the name on the invoice, and anything the invoice total holds beyond its lines is **Invoice adjustments**.
+- **Resource**: the project, for estimated container build minutes.
+- **Tags**: `project`, `repo`, `workflow`, `runner`, `storageType` and `agentType` on estimated days, so you can filter or group runner spend by repository or workflow, and `invoice` on billed days.
+- **Charge type**: tax, discounts and credits, and proration adjustments on an invoice are kept apart from usage.
+
+Invoiced amounts are spread evenly over the days each line covers, and each invoice adds up to its total. Credit notes issued after an invoice, and account balance applied to it, aren't subtracted.
 
 Included minutes are a pool per billing cycle. Build and runner minutes cost nothing beyond the plan fee until the cycle's allowance runs out, and the days after that are priced at the overage rate. Usage inside the allowance still appears with a zero amount, so you can see which projects and repositories use it up. Billed runner minutes already include Depot's runner-size multiplier (a 16-CPU runner bills 8 minutes per minute). macOS runners are priced at their flat per-minute rate and don't use the included pool. Storage is priced from the GB Depot reports each day, spread across the days of the month.
 
-The estimate can't see discounts, credits, tax, or custom terms you haven't entered as overrides. Up to 90 days of history are collected.
+The estimate can't see discounts, credits, tax, or custom terms you haven't entered as overrides; the invoice picks them up once the cycle closes. Set `cycleStartDay` to the day your Depot billing cycle starts, so the estimated cycle begins where the last invoice ends. Up to 90 days of history are collected.
 
 ## Plan allowances
 
