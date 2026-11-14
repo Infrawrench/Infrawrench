@@ -2834,7 +2834,9 @@ downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
 [Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
 `runs/<owner>/`, and releases of `iwci` itself under
 `releases/iwci/<version>/<target>` (immutable) with signed channel
-manifests at `releases/iwci/channels/<channel>.json`.
+manifests at `releases/iwci/channels/<channel>.json`. CI's builds of
+builtins and packages are under `build-cache/main/` and
+`build-cache/pr/<number>/` (see [The build cache](#the-build-cache)).
 
 ## Crates
 
@@ -2889,7 +2891,7 @@ fail; a tool that will not resolve or start is an error and fails the test.
 Every environment carries Git, which `builtins/environments/git/build.sh`
 builds from source (two or three minutes); a build already in
 `dist/package/git/` is used as it is, and CI keeps one per architecture in
-its cache, keyed by that directory.
+[the build cache](#the-build-cache).
 
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
@@ -2901,3 +2903,78 @@ this repository does not pin byte for byte. The Node job
 runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the
 `node` feature on ARM64 on every change, so the second architecture cannot
 break unnoticed.
+
+### The build cache
+
+The slow builds CI makes (ClickHouse takes three to four hours, Edge.js
+about ten minutes, Git, each Go minor, kubectl, OpenSSH, tsc-rs and oxfmt a
+few each) go through `builtins/build-cache.sh`, which keeps each one in the
+runner pool's bucket under `build-cache/`, keyed by what it is built from.
+A job asks for the build of its key: one already there is downloaded and
+checked, and anything else is built and stored.
+
+```sh
+bash builtins/build-cache.sh build edgejs git   # restore each, or build and store it
+bash builtins/build-cache.sh fetch clickhouse   # restore only; sets `hit` for the step
+bash builtins/build-cache.sh key clickhouse     # the key and what went into it
+```
+
+The key is the SHA-256 of a listing that is stored beside each entry as
+`inputs.txt`:
+
+- `BUILD_CACHE_VERSION` in the script, a salt;
+- the build's spec (its inputs, outputs and command, and the variables its
+  script reads as overrides);
+- the platform: `uname -s -m` and `/etc/os-release`'s `ID` and
+  `VERSION_ID`, so each architecture has its own builds;
+- `BUILD_CACHE_TOOLCHAIN`, what the workflow job installs for the build;
+- the path, mode and SHA-256 of every file under the spec's inputs. Every
+  build script pins its upstream sources and toolchains by commit, tag or
+  hash, so those pins are in the key with it.
+
+| Build             | Inputs (with `builtins/lib.sh`, the platform and the salt)                                                | Checked after a restore against             |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `clickhouse`      | `environments/clickhouse/` (build script, `cloudhouse-ci.patch`, `server.mjs`)                            | `CLICKHOUSE_PKG` in `environments/build.sh` |
+| `edgejs`          | `environments/edgejs/` (build script and every patch), `EDGEJS_VERIFY`                                    | `EDGEJS_PKG`                                |
+| `git`             | `environments/git/`, `environments/edgejs/wasix-libc-*.patch`                                             | `GIT_PKG`                                   |
+| `go@<minor>`      | `environments/go/build.sh`, `environments/go/<minor>/`                                                    | that minor's `go_pkgs` line                 |
+| `kubectl@<minor>` | `kubectl/`, `environments/go/`                                                                            | `release()` in `kubectl/build.sh`           |
+| `openssh`         | `openssh/`, `environments/git/`, `environments/edgejs/wasix-libc-*.patch`, `environments/go/`             | `PROGRAMS` in `openssh/build.sh`            |
+| `typescript`      | `typescript/`, `rust-toolchain.toml`, `TSC_RS_TAG`, `TS_VERSION`; the job's Binaryen and Node versions    | nothing pinned; rebuilt nightly             |
+| `oxfmt`           | `oxfmt/`, `rust-toolchain.toml`, `OXC_TAG`, `OXFMT_VERSION`; the job's cargo-wasix version and Ubuntu lld | nothing pinned; rebuilt nightly             |
+
+Too much in a key costs a rebuild; too little serves a stale build, so a
+spec lists every file its build reads, its own directory whole. A new slow
+build is a new case in the script's `spec`.
+
+**Scopes.** A push, schedule or manual run on `main` reads and writes
+`build-cache/main/`. A pull request from this repository reads `main/` and
+then its own `build-cache/pr/<number>/`, and writes only that, so nothing a
+pull request builds is ever read by `main` or another pull request; a
+lifecycle rule on the bucket (`expire-build-cache-pr`) removes `pr/`
+entries after 14 days. A pull request from a fork has no secrets and builds
+everything, as it would with no cache. A run with credentials on any other
+ref reads `main/` and writes nothing. The build itself runs without the
+bucket's credentials in its environment, since it runs third-party code.
+
+**An entry** is `build-cache/<scope>/<name>/<key>/`: the outputs (paths
+under `dist/`) as `payload-<sha256>.tar.gz`, `inputs.txt`, and
+`manifest.json`, written last, which names the payload and records the
+commit and the run that built it. A restore checks the payload against the
+hash in its name, refuses an archive with anything but plain files and
+directories under the spec's outputs, and then checks each pinned output
+against its pin; an entry that fails any of these is treated as a miss
+and built again. `environments/build.sh` checks every package against its
+pin once more when it assembles an environment.
+
+**The nightly run** rebuilds `typescript` and `oxfmt` rather than reading
+them, and stores the result over the old entry: their builds resolve crates
+and a WASIX toolchain this repository does not pin byte for byte, which is
+what that run is there to notice. Everything else it reads from the cache.
+
+**To rebuild**, bump `BUILD_CACHE_VERSION` in `builtins/build-cache.sh` (every
+build), or delete one entry (`build-cache/main/<name>/<key>/`, the key from
+`build-cache.sh key <name>` on the runner's platform), or set
+`BUILD_CACHE=off` on a step to build without reading or writing. Published
+builtin and environment versions stay immutable either way: the cache only
+decides whether CI builds, never what a version holds.

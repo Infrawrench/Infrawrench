@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
@@ -121,13 +121,17 @@ jobs:
       # Every environment carries Git, built from source
       # (builtins/environments/git/build.sh: two or three minutes). The build
       # is reproducible and environments/build.sh checks the package against
-      # the hash it pins, so a cached one is as good as a fresh one. One per
-      # architecture, so each architecture's build is checked against the pin.
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # the hash it pins, so a restored one is as good as a fresh one. The
+      # build cache (builtins/build-cache.sh, as in ci-runner-builtins.yml)
+      # keys it by git/, Edge.js's wasix-libc-*.patch, lib.sh and the
+      # platform, so each architecture's build is checked against the pin.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       # Downloads are checked against the content hashes pinned in the
       # scripts, so a changed upstream package fails here. Only bash:
