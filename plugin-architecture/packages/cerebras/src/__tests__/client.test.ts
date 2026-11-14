@@ -94,6 +94,19 @@ describe("batches and files", () => {
     expect(calls[1]?.url).toContain("after=batch_1");
   });
 
+  it("cancels a batch with DELETE on the batch, as Cerebras documents (#1064)", async () => {
+    const { http, calls } = host(() => ({ body: { id: "batch_1", status: "cancelling" } }));
+    await hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http })).invokeAction(
+      "cerebras-batch",
+      `${ACCOUNT}:cerebras-batch:batch_1`,
+      "cancel",
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("DELETE");
+    expect(calls[0]?.url).toBe("https://api.cerebras.ai/v1/batches/batch_1");
+  });
+
   it("reads a Private Preview 403 as an empty list and keeps the status elsewhere", async () => {
     const { http } = host(() => ({ status: 403, body: { message: "not enabled" } }));
     const client = hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http }));

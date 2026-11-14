@@ -790,7 +790,9 @@ export class CerebrasClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId, accountId, typeId);
       if (typeId === "cerebras-batch" && actionId === "cancel") {
-        await this.api(`/batches/${enc(id)}/cancel`, { method: "POST" });
+        // Cerebras cancels with DELETE on the batch itself, not OpenAI's
+        // POST .../cancel; the batch then reads `cancelling` (#1064).
+        await this.api(`/batches/${enc(id)}`, { method: "DELETE" });
         return;
       }
       throw new Error(`Cerebras plugin: unknown action "${actionId}" for ${typeId}`);
