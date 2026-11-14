@@ -880,6 +880,27 @@ kept as the target's entry with the moved file's name and size, so a later
 open of the target shared its handle and read the old contents. Upstream
 main still has the `assert!` (checked November 2026).
 
+**Unlinks of a name are atomic with its renames (#1139).**
+`path_unlink_file` looked the name up, took its entry out of the
+directory's cached entries, lowered the inode's link count and removed the
+file, in steps another unlink or rename of the name could run between. One
+that had looked up an inode another unlink then removed, and found a file
+created there since, `debug_assert!`ed on the old inode's count of 0; one
+that found a file renamed there `assert!`ed that it was the inode it had
+looked up. Either ended the process with 134 (see below):
+`compile-cache-passes`, whose `node` and its worker write into one cache
+directory, failed so. `src/syscalls/wasi/path_unlink_file.rs` now holds
+`WasiFs::rename_lock` for the whole unlink, removes whatever the name holds
+by then (a directory stays where it is), and takes a count already at 0 as
+`ENOENT` instead of taking it below 0. An open with `O_CREAT` raced them
+the same way: a rename that filled the name its lookup had found free made
+its `create_new` fail, which it reports as `EPERM`, and an unlink of the
+file it was creating left the cache holding a file the file system no
+longer had (the next unlink failed with `ENOTDIR`), so
+`src/syscalls/wasix/path_open2.rs` holds the lock too when `O_CREAT` is
+set. Upstream main has both asserts and the unlocked create (checked
+November 2026).
+
 **A panic in a syscall ends the process, not the thread (#1092).** Wasmer
 resumes a host function's panic where the guest was entered, which for
 every WASIX process and thread is `run_main_context`
@@ -920,7 +941,8 @@ unchanged, a directory's cookies hold while it changes, a moved
 directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
-once replace each other in the cache, a panic in a syscall ends only its
+once replace each other in the cache, an unlink of a name is atomic with
+its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, and once the runner finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
@@ -936,6 +958,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
+`bash-node/unlink-race-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,
@@ -956,7 +979,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_bash_script_can_rm_rf_a_directory_of_many_files`,
 `a_directory_moved_out_of_a_removed_one_has_its_new_parent`,
 `sendfile_copies_into_a_file`,
-`concurrent_renames_onto_one_name_all_succeed` and
+`concurrent_renames_onto_one_name_all_succeed`,
+`racing_unlinks_renames_and_creations_of_one_name_all_succeed` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
 To regenerate after editing: `diff -u` each changed file against the crate

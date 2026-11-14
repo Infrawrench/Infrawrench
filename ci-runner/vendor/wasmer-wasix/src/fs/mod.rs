@@ -576,8 +576,10 @@ pub struct WasiFs {
     pub root_inode: InodeGuard,
     pub has_unioned: Mutex<HashSet<PackageId>>,
     ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
-    /// iwci patch (#1092): held by `path_rename` for the whole rename, and
-    /// shared, like the inode tree, with a forked process.
+    /// iwci patch (#1092, #1139): held by `path_rename` for the whole
+    /// rename, by `path_unlink_file` for the whole unlink and by an open
+    /// that may create its file, and shared, like the inode tree, with a
+    /// forked process.
     pub(crate) rename_lock: Arc<Mutex<()>>,
     /// Preopens the program has put something else in place of, by the
     /// number they had (see `get_dir_fd`). Taken after `fd_map`.

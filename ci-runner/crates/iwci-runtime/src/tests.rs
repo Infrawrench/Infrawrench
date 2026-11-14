@@ -2695,6 +2695,109 @@ fn concurrent_renames_onto_one_name_all_succeed() {
     );
 }
 
+/// A WASIX command that `unlinks` times unlinks `/work/rr/target`, taking
+/// `ENOENT` as a lost race, and with `create` then writes its `id` there
+/// afresh, exiting with a code from 20 up naming the first call that fails.
+fn unlinker(id: char, unlinks: u32, create: bool) -> WasmModule {
+    let create = if create {
+        r#"
+      ;; O_CREAT | O_TRUNC
+      (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 140) (i32.const 15)
+        (i32.const 9) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 21))
+      (call $check (call $fd_write (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40)) (i32.const 22))
+      (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 23))"#
+    } else {
+        ""
+    };
+    wat_module(
+        &format!("unlinker-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/target")
+  (data (i32.const 160) "{id}")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (i32.store (i32.const 32) (i32.const 160))
+    (i32.store (i32.const 36) (i32.const 1))
+    (loop $again
+      (local.set $errno (call $unlink (i32.const 3) (i32.const 140) (i32.const 15)))
+      ;; ENOENT
+      (if (i32.ne (local.get $errno) (i32.const 44))
+        (then (call $check (local.get $errno) (i32.const 20)))){create}
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {unlinks}))))))
+"#
+        ),
+    )
+}
+
+/// Unlinks racing renames and creations of one name (#1139), as a compile
+/// cache's writers and its pruning do. An unlink looked the name up, then
+/// took its entry out of the directory's cache, then lowered the link
+/// count and removed the file, and other unlinks and renames of the name
+/// ran in between: it found another inode in the entry than it had looked
+/// up and `assert!`ed, or the one it had looked up already unlinked by
+/// another and `debug_assert!`ed on its count of 0, either of which ended
+/// the process with 134 (since #1092). A creating open raced them too: it
+/// failed with `EPERM` when a rename filled the name it had found free, and
+/// an unlink of a file it was creating left the cache holding a file the
+/// file system no longer had, which the next unlink failed on (`ENOTDIR`).
+/// As on Linux, every call succeeds or loses the race with `ENOENT`, and the
+/// name ends up either gone or holding one writer's byte, the same in the
+/// job as in its file system.
+#[test]
+fn racing_unlinks_renames_and_creations_of_one_name_all_succeed() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(300);
+    inv.commands = ['a', 'b', 'c']
+        .iter()
+        .map(|&id| PathCommand {
+            name: format!("renamer-{id}"),
+            module: renamer(id, 2000),
+        })
+        .chain(
+            [('x', false), ('y', false), ('z', true)].map(|(id, create)| PathCommand {
+                name: format!("unlinker-{id}"),
+                module: unlinker(id, 2000, create),
+            }),
+        )
+        .collect();
+    let script = "mkdir rr\npids=\n\
+                  for c in renamer-a renamer-b renamer-c unlinker-x unlinker-y unlinker-z; do\n\
+                  $c & pids=\"$pids $!\"\ndone\n\
+                  for pid in $pids; do wait $pid || exit $?; done\n\
+                  ls rr\nif test -e rr/target; then cat rr/target; fi\n";
+    let outcome = rt.run_script(&packages, "bash", script, inv).unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    let stdout = String::from_utf8_lossy(&outcome.stdout).into_owned();
+    match job.read("/work/rr/target") {
+        Ok(left) => {
+            assert!(
+                matches!(left.as_slice(), [b'a' | b'b' | b'c' | b'z']),
+                "{left:?}"
+            );
+            assert_eq!(stdout, format!("target\n{}", left[0] as char), "{stderr:?}");
+        }
+        Err(_) => assert_eq!(stdout, "", "{stderr:?}"),
+    }
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.
