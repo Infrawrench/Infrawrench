@@ -9,7 +9,7 @@ use std::{
     convert::TryInto,
     ops::Range,
     sync::{
-        Arc, Condvar, Mutex, MutexGuard, RwLock, Weak,
+        Arc, Condvar, Mutex, MutexGuard, Weak,
         atomic::{AtomicU32, Ordering},
     },
     task::Waker,
@@ -94,8 +94,11 @@ pub struct WasiProcess {
     pub(crate) pid: WasiProcessId,
     /// Hash of the module that this process is using
     pub(crate) module_hash: ModuleHash,
-    /// List of all the children spawned from this thread
-    pub(crate) parent: Option<Weak<RwLock<WasiProcessInner>>>,
+    /// iwci patch (#1107): the process that forked or spawned this one, and
+    /// the one it is reparented to when that exits. It was a weak reference
+    /// to a type no process has (its lock is a `Mutex`), so nothing set it
+    /// and `getppid()` answered 0 for every process.
+    pub(crate) parent: Option<WasiProcessParent>,
     /// The inner protected region of the process with a conditional
     /// variable that is used for coordination such as snapshots.
     pub(crate) inner: LockableWasiProcessInner,
@@ -111,6 +114,20 @@ pub struct WasiProcess {
     /// the exponential backoff of CPU is halted (as in CPU
     /// is allowed to run freely)
     pub(crate) cpu_run_tokens: Arc<AtomicU32>,
+}
+
+/// iwci patch (#1107): where a process came from, for `getppid()`.
+#[derive(Debug, Clone)]
+pub(crate) struct WasiProcessParent {
+    /// The process that forked or spawned this one.
+    pid: WasiProcessId,
+    /// Its exit status, set once it has exited. A control plane keeps every
+    /// process it made, so a reference to the process itself would hold
+    /// whether or not it is still running.
+    finished: Weak<OwnedTaskStatus>,
+    /// The first process of the tree, which takes in an orphan as `init`
+    /// does on Linux: the job's own command, in the runner.
+    init: WasiProcessId,
 }
 
 /// Represents a freeze of all threads to perform some action
@@ -499,14 +516,31 @@ impl WasiProcess {
         self.pid
     }
 
-    /// Gets the process ID of the parent process
+    /// Gets the process ID of the parent process: the one that forked or
+    /// spawned this one while it runs, then the first process of the tree,
+    /// as on Linux, where an orphan is reparented to `init`. The first
+    /// process itself has no parent, 0, as `init` has.
     pub fn ppid(&self) -> WasiProcessId {
-        self.parent
-            .iter()
-            .filter_map(|parent| parent.upgrade())
-            .map(|parent| parent.read().unwrap().pid)
-            .next()
-            .unwrap_or(WasiProcessId(0))
+        match &self.parent {
+            None => WasiProcessId(0),
+            Some(parent) => match parent.finished.upgrade() {
+                Some(finished) if !finished.status().is_finished() => parent.pid,
+                _ => parent.init,
+            },
+        }
+    }
+
+    /// iwci patch (#1107): makes this process a child of `parent`, before
+    /// anything else holds a copy of it.
+    pub(crate) fn set_parent(&mut self, parent: &WasiProcess) {
+        self.parent = Some(WasiProcessParent {
+            pid: parent.pid,
+            finished: Arc::downgrade(&parent.finished),
+            init: parent
+                .parent
+                .as_ref()
+                .map_or(parent.pid, |grandparent| grandparent.init),
+        });
     }
 
     /// Gains access to the process internals

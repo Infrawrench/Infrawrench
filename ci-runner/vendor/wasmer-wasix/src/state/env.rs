@@ -254,7 +254,10 @@ impl WasiEnv {
 
     /// Forking the WasiState is used when either fork or vfork is called
     pub fn fork(&self) -> Result<(Self, WasiThreadHandle), ControlPlaneError> {
-        let process = self.control_plane.new_process(self.process.module_hash)?;
+        // iwci patch (#1107): the forked or spawned process is this one's child.
+        let process = self
+            .control_plane
+            .new_process_with_parent(self.process.module_hash, Some(&self.process))?;
         let handle = process.new_thread(self.layout.clone(), ThreadStartType::MainThread)?;
 
         let thread = handle.as_thread();
@@ -335,11 +338,14 @@ impl WasiEnv {
         }
 
         // The process and thread state need to be reset
+        // (iwci patch (#1107): keeping the parent the process had)
+        let parent = self.process.parent.clone();
         self.process = WasiProcess::new(
             self.process.pid,
             self.process.module_hash,
             self.process.compute.clone(),
         );
+        self.process.parent = parent;
         self.thread = WasiThread::new(
             self.thread.pid(),
             self.thread.tid(),

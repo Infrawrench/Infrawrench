@@ -2581,6 +2581,75 @@ fn a_command_a_subshell_started_outlives_the_subshell() {
     assert!(!stderr.contains("fatal signal"), "{stderr:?}");
 }
 
+/// Prints its parent's pid and its parent's parent's, as `getppid()` and
+/// `proc_parent` of another process answer them.
+const PPID: &str = r#"
+(module
+  (import "wasix_32v1" "proc_id" (func $proc_id (param i32) (result i32)))
+  (import "wasix_32v1" "proc_parent" (func $proc_parent (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  ;; `n` in decimal and then `end`, on stdout
+  (func $print (param $n i32) (param $end i32)
+    (local $p i32)
+    (i32.store8 (i32.const 127) (local.get $end))
+    (local.set $p (i32.const 127))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p) (i32.add (i32.const 48) (i32.rem_u (local.get $n) (i32.const 10))))
+      (local.set $n (i32.div_u (local.get $n) (i32.const 10)))
+      (br_if $digit (local.get $n)))
+    (i32.store (i32.const 16) (local.get $p))
+    (i32.store (i32.const 20) (i32.sub (i32.const 128) (local.get $p)))
+    (drop (call $fd_write (i32.const 1) (i32.const 16) (i32.const 1) (i32.const 24))))
+  (func (export "_start")
+    (if (call $proc_id (i32.const 0)) (then (call $proc_exit (i32.const 10))))
+    (if (call $proc_parent (i32.load (i32.const 0)) (i32.const 4)) (then (call $proc_exit (i32.const 11))))
+    (if (call $proc_parent (i32.load (i32.const 4)) (i32.const 8)) (then (call $proc_exit (i32.const 12))))
+    (call $print (i32.load (i32.const 4)) (i32.const 32))
+    (call $print (i32.load (i32.const 8)) (i32.const 10))))
+"#;
+
+/// A process's parent pid is the process that started it, and an orphan's
+/// is the job's first process, which takes it in as `init` does on Linux
+/// (#1107). `getppid()` was 0 for every process: wasmer-wasix never set a
+/// process's parent, and `proc_parent` of another process answered that
+/// process's own pid.
+#[test]
+fn a_process_knows_its_parent_and_an_orphan_the_jobs_first_process() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.commands = vec![PathCommand {
+        name: "ppid".into(),
+        module: wat_module("ppid", PPID),
+    }];
+    let script = "echo \"$$ $PPID\"\n\
+                  bash -c 'echo \"$$ $PPID\"'\n\
+                  ppid\n\
+                  bash -c 'echo $$; ppid; true'\n\
+                  ( bash -c 'sleep 1; exec ppid > orphan' & )\n\
+                  sleep 3\ncat orphan\n";
+    let outcome = rt.run_script(&packages, "bash", script, inv).unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stderr:?} {outcome:?}");
+    let stdout = String::from_utf8_lossy(&outcome.stdout).into_owned();
+    // The script, `bash -c`, `ppid` (its parent and grandparent), the
+    // second `bash -c` and its `ppid`, and the orphan's `ppid`.
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 6, "{stdout:?} {stderr:?}");
+    let script_pid = lines[0].strip_suffix(" 0").expect(&stdout);
+    let child_pid = lines[1].strip_suffix(&format!(" {script_pid}"));
+    assert!(child_pid.is_some_and(|pid| pid != script_pid), "{stdout:?}");
+    assert_eq!(lines[2], format!("{script_pid} 0"), "{stdout:?}");
+    assert_eq!(lines[4], format!("{} {script_pid}", lines[3]), "{stdout:?}");
+    assert_eq!(lines[5], format!("{script_pid} 0"), "{stdout:?}");
+}
+
 /// What a job leaves running ends with it (#1106): a command a subshell
 /// started (#1105) and a plain background command, one sleeping between
 /// writes and one spinning. Both outlive their parent, as on Linux, but

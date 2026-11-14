@@ -791,7 +791,36 @@
              _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)
 --- a/src/os/task/control_plane.rs
 +++ b/src/os/task/control_plane.rs
-@@ -167,6 +167,19 @@
+@@ -132,6 +132,18 @@
+     // FIXME: De-register terminated processes!
+     // Currently they just accumulate.
+     pub fn new_process(&self, module_hash: ModuleHash) -> Result<WasiProcess, ControlPlaneError> {
++        self.new_process_with_parent(module_hash, None)
++    }
++
++    /// iwci patch (#1107): creates a new process that `parent` forked or
++    /// spawned, so its `getppid()` answers `parent`'s pid. The parent is
++    /// set before the process goes in the map, whose copy
++    /// `proc_parent` reads for any pid but the caller's own.
++    pub(crate) fn new_process_with_parent(
++        &self,
++        module_hash: ModuleHash,
++        parent: Option<&WasiProcess>,
++    ) -> Result<WasiProcess, ControlPlaneError> {
+         if let Some(max) = self.state.config.max_task_count
+             && self.active_task_count() >= max
+         {
+@@ -142,6 +154,9 @@
+ 
+         // Create the process first to do all the allocations before locking.
+         let mut proc = WasiProcess::new(WasiProcessId::from(0), module_hash, self.handle());
++        if let Some(parent) = parent {
++            proc.set_parent(parent);
++        }
+ 
+         let mut mutable = self.state.mutable.write().unwrap();
+ 
+@@ -167,6 +182,19 @@
              .get(&pid)
              .cloned()
      }
@@ -813,7 +842,90 @@
  impl MutableState {
 --- a/src/os/task/process.rs
 +++ b/src/os/task/process.rs
-@@ -615,6 +615,20 @@
+@@ -9,7 +9,7 @@
+     convert::TryInto,
+     ops::Range,
+     sync::{
+-        Arc, Condvar, Mutex, MutexGuard, RwLock, Weak,
++        Arc, Condvar, Mutex, MutexGuard, Weak,
+         atomic::{AtomicU32, Ordering},
+     },
+     task::Waker,
+@@ -94,8 +94,11 @@
+     pub(crate) pid: WasiProcessId,
+     /// Hash of the module that this process is using
+     pub(crate) module_hash: ModuleHash,
+-    /// List of all the children spawned from this thread
+-    pub(crate) parent: Option<Weak<RwLock<WasiProcessInner>>>,
++    /// iwci patch (#1107): the process that forked or spawned this one, and
++    /// the one it is reparented to when that exits. It was a weak reference
++    /// to a type no process has (its lock is a `Mutex`), so nothing set it
++    /// and `getppid()` answered 0 for every process.
++    pub(crate) parent: Option<WasiProcessParent>,
+     /// The inner protected region of the process with a conditional
+     /// variable that is used for coordination such as snapshots.
+     pub(crate) inner: LockableWasiProcessInner,
+@@ -111,6 +114,20 @@
+     /// the exponential backoff of CPU is halted (as in CPU
+     /// is allowed to run freely)
+     pub(crate) cpu_run_tokens: Arc<AtomicU32>,
++}
++
++/// iwci patch (#1107): where a process came from, for `getppid()`.
++#[derive(Debug, Clone)]
++pub(crate) struct WasiProcessParent {
++    /// The process that forked or spawned this one.
++    pid: WasiProcessId,
++    /// Its exit status, set once it has exited. A control plane keeps every
++    /// process it made, so a reference to the process itself would hold
++    /// whether or not it is still running.
++    finished: Weak<OwnedTaskStatus>,
++    /// The first process of the tree, which takes in an orphan as `init`
++    /// does on Linux: the job's own command, in the runner.
++    init: WasiProcessId,
+ }
+ 
+ /// Represents a freeze of all threads to perform some action
+@@ -499,14 +516,31 @@
+         self.pid
+     }
+ 
+-    /// Gets the process ID of the parent process
++    /// Gets the process ID of the parent process: the one that forked or
++    /// spawned this one while it runs, then the first process of the tree,
++    /// as on Linux, where an orphan is reparented to `init`. The first
++    /// process itself has no parent, 0, as `init` has.
+     pub fn ppid(&self) -> WasiProcessId {
+-        self.parent
+-            .iter()
+-            .filter_map(|parent| parent.upgrade())
+-            .map(|parent| parent.read().unwrap().pid)
+-            .next()
+-            .unwrap_or(WasiProcessId(0))
++        match &self.parent {
++            None => WasiProcessId(0),
++            Some(parent) => match parent.finished.upgrade() {
++                Some(finished) if !finished.status().is_finished() => parent.pid,
++                _ => parent.init,
++            },
++        }
++    }
++
++    /// iwci patch (#1107): makes this process a child of `parent`, before
++    /// anything else holds a copy of it.
++    pub(crate) fn set_parent(&mut self, parent: &WasiProcess) {
++        self.parent = Some(WasiProcessParent {
++            pid: parent.pid,
++            finished: Arc::downgrade(&parent.finished),
++            init: parent
++                .parent
++                .as_ref()
++                .map_or(parent.pid, |grandparent| grandparent.init),
++        });
+     }
+ 
+     /// Gains access to the process internals
+@@ -615,6 +649,20 @@
      /// Signals all the threads in this process
      pub fn signal_process(&self, signal: Signal) {
          signal_process_internal(&self.inner, signal);
@@ -834,7 +946,7 @@
      }
  
      /// Registers the shared memory used by this process.
-@@ -855,6 +869,36 @@
+@@ -855,6 +903,36 @@
              res.unwrap_or_else(|e| e.as_exit_code().unwrap_or_else(|| Errno::Canceled.into()));
  
          Ok(Some((child.pid, code)))
@@ -1189,7 +1301,19 @@
          let result = match &result {
 --- a/src/state/env.rs
 +++ b/src/state/env.rs
-@@ -317,6 +317,7 @@
+@@ -254,7 +254,10 @@
+ 
+     /// Forking the WasiState is used when either fork or vfork is called
+     pub fn fork(&self) -> Result<(Self, WasiThreadHandle), ControlPlaneError> {
+-        let process = self.control_plane.new_process(self.process.module_hash)?;
++        // iwci patch (#1107): the forked or spawned process is this one's child.
++        let process = self
++            .control_plane
++            .new_process_with_parent(self.process.module_hash, Some(&self.process))?;
+         let handle = process.new_thread(self.layout.clone(), ThreadStartType::MainThread)?;
+ 
+         let thread = handle.as_thread();
+@@ -317,6 +320,7 @@
                  map.clear();
              }
              self.state.fs.preopen_fds.write().unwrap().clear();
@@ -1197,7 +1321,22 @@
              *self.state.fs.current_dir.lock().unwrap() = "/".to_string();
  
              // We need to rebuild the basic file descriptors
-@@ -1319,7 +1320,9 @@
+@@ -334,11 +338,14 @@
+         }
+ 
+         // The process and thread state need to be reset
++        // (iwci patch (#1107): keeping the parent the process had)
++        let parent = self.process.parent.clone();
+         self.process = WasiProcess::new(
+             self.process.pid,
+             self.process.module_hash,
+             self.process.compute.clone(),
+         );
++        self.process.parent = parent;
+         self.thread = WasiThread::new(
+             self.thread.pid(),
+             self.thread.tid(),
+@@ -1319,7 +1326,9 @@
                      // Otherwise a pending Sigquit can win the status race and
                      // make waiters observe a successful exit.
                      process.terminate(process_exit_code);
@@ -2132,6 +2271,21 @@
          None => {
              let mut process = ctx.data_mut().process.clone();
  
+--- a/src/syscalls/wasix/proc_parent.rs
++++ b/src/syscalls/wasix/proc_parent.rs
+@@ -17,9 +17,10 @@
+         wasi_try_mem!(ret_parent.write(&memory, env.process.ppid().raw() as Pid));
+         Errno::Success
+     } else if let Some(process) = env.control_plane.get_process(pid) {
++        // iwci patch (#1107): another process's parent, not its own pid.
+         let memory = unsafe { env.memory_view(&ctx) };
+-        Span::current().record("parent", process.pid().raw());
+-        wasi_try_mem!(ret_parent.write(&memory, process.pid().raw() as Pid));
++        Span::current().record("parent", process.ppid().raw());
++        wasi_try_mem!(ret_parent.write(&memory, process.ppid().raw() as Pid));
+         Errno::Success
+     } else {
+         Errno::Badf
 --- a/src/syscalls/wasix/proc_spawn.rs
 +++ b/src/syscalls/wasix/proc_spawn.rs
 @@ -251,7 +251,7 @@

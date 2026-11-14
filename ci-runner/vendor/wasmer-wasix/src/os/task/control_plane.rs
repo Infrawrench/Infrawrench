@@ -132,6 +132,18 @@ impl WasiControlPlane {
     // FIXME: De-register terminated processes!
     // Currently they just accumulate.
     pub fn new_process(&self, module_hash: ModuleHash) -> Result<WasiProcess, ControlPlaneError> {
+        self.new_process_with_parent(module_hash, None)
+    }
+
+    /// iwci patch (#1107): creates a new process that `parent` forked or
+    /// spawned, so its `getppid()` answers `parent`'s pid. The parent is
+    /// set before the process goes in the map, whose copy
+    /// `proc_parent` reads for any pid but the caller's own.
+    pub(crate) fn new_process_with_parent(
+        &self,
+        module_hash: ModuleHash,
+        parent: Option<&WasiProcess>,
+    ) -> Result<WasiProcess, ControlPlaneError> {
         if let Some(max) = self.state.config.max_task_count
             && self.active_task_count() >= max
         {
@@ -142,6 +154,9 @@ impl WasiControlPlane {
 
         // Create the process first to do all the allocations before locking.
         let mut proc = WasiProcess::new(WasiProcessId::from(0), module_hash, self.handle());
+        if let Some(parent) = parent {
+            proc.set_parent(parent);
+        }
 
         let mut mutable = self.state.mutable.write().unwrap();
 
