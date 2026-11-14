@@ -2268,6 +2268,7 @@ whole pipeline.
   next load or within 30 seconds). Both budgets count against
   `--memory-reserve`, and `/v1/capacity` reports each module, pinned or
   in the LRU, in use or not (see [HTTP API](#http-api-iwci-serve)).
+
 - **A task cache lookup takes neither.** A `task-cache:` job holds a slot
   and its `memory:` only if it misses and runs (see
   [The task cache](#the-task-cache)).
