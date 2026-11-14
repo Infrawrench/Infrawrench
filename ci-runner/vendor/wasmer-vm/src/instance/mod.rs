@@ -878,6 +878,25 @@ impl Instance {
         {
             return Err(Trap::lib(TrapCode::HeapAccessOutOfBounds));
         }
+        // iwci patch (#996): a large segment initialized whole is mapped
+        // copy-on-write rather than copied (memory_image.rs).
+        if src == 0
+            && len as usize == data.len()
+            && data.len() >= crate::memory_image::MIN_MAPPED_BYTES
+            && let Some(Some(segment)) = passive_data.get(&data_index)
+        {
+            use crate::memory_image::Init;
+            let base = unsafe { memory.vmmemory().as_ref().base };
+            match unsafe {
+                crate::memory_image::init(base, dst as usize, segment, || {
+                    memory.claim_data_mapping()
+                })
+            } {
+                Init::Mapped => return Ok(()),
+                Init::Copy => {}
+                Init::Failed => return Err(Trap::lib(TrapCode::HeapAccessOutOfBounds)),
+            }
+        }
         let src_slice = &data[src as usize..(src + len) as usize];
         unsafe { memory.initialize_with_data(dst as usize, src_slice) }
     }

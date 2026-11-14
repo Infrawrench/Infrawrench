@@ -22,6 +22,10 @@ pub struct Mmap {
     accessible_size: usize,
     #[cfg_attr(target_os = "windows", allow(dead_code))]
     sync_on_drop: bool,
+    // iwci patch (#996): an anonymous private mapping, which a data segment
+    // may be mapped over (memory_image.rs), and how many times one has been.
+    anonymous_private: bool,
+    data_mappings: std::sync::atomic::AtomicU32,
 }
 
 /// The type of mmap to create
@@ -46,6 +50,8 @@ impl Mmap {
             total_size: 0,
             accessible_size: 0,
             sync_on_drop: false,
+            anonymous_private: false,
+            data_mappings: std::sync::atomic::AtomicU32::new(0),
         }
     }
 
@@ -156,6 +162,8 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
+                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
+                data_mappings: std::sync::atomic::AtomicU32::new(0),
             }
         } else {
             // Reserve the mapping size.
@@ -182,6 +190,8 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
+                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
+                data_mappings: std::sync::atomic::AtomicU32::new(0),
             };
 
             if accessible_size != 0 {
@@ -238,6 +248,8 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: false,
+                anonymous_private: false,
+                data_mappings: std::sync::atomic::AtomicU32::new(0),
             }
         } else {
             // Reserve the mapping size.
@@ -252,6 +264,8 @@ impl Mmap {
                 total_size: mapping_size,
                 accessible_size,
                 sync_on_drop: false,
+                anonymous_private: false,
+                data_mappings: std::sync::atomic::AtomicU32::new(0),
             };
 
             if accessible_size != 0 {
@@ -356,6 +370,21 @@ impl Mmap {
     /// Return the length of the allocated memory.
     pub fn len(&self) -> usize {
         self.total_size
+    }
+
+    /// iwci patch (#996): whether `memory.init` may map a data segment over
+    /// this memory now: only an anonymous private mapping, and only
+    /// [`crate::memory_image::MAX_MAPPINGS_PER_MEMORY`] times, after which
+    /// it copies.
+    pub(crate) fn claim_data_mapping(&self) -> bool {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.anonymous_private
+            && self
+                .data_mappings
+                .fetch_update(Relaxed, Relaxed, |n| {
+                    (n < crate::memory_image::MAX_MAPPINGS_PER_MEMORY).then_some(n + 1)
+                })
+                .is_ok()
     }
 
     /// Return whether any memory has been allocated.

@@ -186,6 +186,12 @@ impl LinearMemory for TrackedMemory {
         unsafe { self.inner.initialize_with_data(start, data) }
     }
 
+    /// Forwarded too, or `memory.init` would copy a large data segment
+    /// rather than map it (#996, vendor/README.md).
+    fn claim_data_mapping(&self) -> bool {
+        self.inner.claim_data_mapping()
+    }
+
     fn copy(&self) -> Result<Box<dyn LinearMemory + Send + Sync + 'static>, MemoryError> {
         Ok(Box::new(TrackedMemory {
             inner: self.inner.copy()?,

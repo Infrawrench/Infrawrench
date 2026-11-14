@@ -776,6 +776,222 @@ fn sendfile_copies_into_a_file() {
     assert_eq!(job.read("/work/dst").unwrap(), b"hello sendfile");
 }
 
+/// A large passive data segment: what Edge.js's start copies into its
+/// memory with `memory.init` (45 MB of it).
+fn segment_bytes(len: usize) -> Vec<u8> {
+    (0..len)
+        .map(|i| (i as u32).wrapping_mul(2_654_435_761).to_le_bytes()[3])
+        .collect()
+}
+
+/// The hash a module of [`data_segment_module`] prints: `h * 31 + byte`,
+/// from 0, over the bytes it initialized.
+fn segment_hash(bytes: &[u8]) -> u32 {
+    bytes
+        .iter()
+        .fold(0u32, |h, &b| h.wrapping_mul(31).wrapping_add(u32::from(b)))
+}
+
+/// Copies its passive segment of `len` bytes to address `dst` with
+/// `memory.init`, then, when its first argument is `write`, writes 0xff
+/// into the middle of it, and prints the hash of `dst..dst + len` as four
+/// little-endian bytes.
+fn data_segment_module(len: usize, dst: u32) -> WasmModule {
+    let data: String = segment_bytes(len)
+        .iter()
+        .map(|b| format!("\\{b:02x}"))
+        .collect();
+    let pages = (dst as usize + len).div_ceil(65536) + 1;
+    let middle = dst as usize + len / 2;
+    wat_module(
+        "data-segment",
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "args_sizes_get" (func $args_sizes_get (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "args_get" (func $args_get (param i32 i32) (result i32)))
+  (memory (export "memory") {pages})
+  (data $segment "{data}")
+  (func (export "_start")
+    (local $i i32) (local $h i32)
+    (memory.init $segment (i32.const {dst}) (i32.const 0) (i32.const {len}))
+    (data.drop $segment)
+    ;; argv: pointers at 64, strings at 128; `write` is argv[1]
+    (drop (call $args_sizes_get (i32.const 16) (i32.const 20)))
+    (drop (call $args_get (i32.const 64) (i32.const 128)))
+    (if (i32.ge_u (i32.load (i32.const 16)) (i32.const 2))
+      (then (if (i32.eq (i32.load8_u (i32.load (i32.const 68))) (i32.const 119))
+        (then (i32.store8 (i32.const {middle}) (i32.const 255))))))
+    (local.set $i (i32.const {dst}))
+    (block $done (loop $next
+      (br_if $done (i32.ge_u (local.get $i) (i32.const {end})))
+      (local.set $h (i32.add (i32.mul (local.get $h) (i32.const 31))
+                             (i32.load8_u (local.get $i))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $next)))
+    (i32.store (i32.const 0) (local.get $h))
+    (i32.store (i32.const 4) (i32.const 0))
+    (i32.store (i32.const 8) (i32.const 4))
+    (drop (call $fd_write (i32.const 1) (i32.const 4) (i32.const 1) (i32.const 12)))))
+"#,
+            end = dst as usize + len,
+        ),
+    )
+}
+
+/// `memory.init` of a large passive segment maps it copy-on-write rather
+/// than copying it (#996, vendor/README.md): every process reads the
+/// segment's bytes, at an address that is no page boundary, and a write by
+/// one process is its own, not the next one's.
+#[test]
+fn a_large_data_segment_initializes_memory_like_a_copy() {
+    let rt = runtime();
+    let (len, dst) = ((3 << 20) + 4321, 70_000);
+    let module = data_segment_module(len, dst);
+    let bytes = segment_bytes(len);
+    let mut written = bytes.clone();
+    written[len / 2] = 0xff;
+    let run = |args: &[&str]| {
+        let job = snapshot(&[]).fork();
+        let outcome = rt
+            .run_command(&module, invocation(job.as_dyn(), args))
+            .unwrap();
+        assert!(outcome.success(), "{outcome:?}");
+        u32::from_le_bytes(outcome.stdout[..4].try_into().unwrap())
+    };
+    assert_eq!(run(&["write"]), segment_hash(&written));
+    assert_eq!(run(&[]), segment_hash(&bytes));
+    assert_eq!(run(&["write"]), segment_hash(&written));
+    // The segment was mapped, from one image for the module.
+    #[cfg(target_os = "linux")]
+    {
+        let images = std::fs::read_dir("/proc/self/fd")
+            .unwrap()
+            .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+            .filter(|target| target.to_string_lossy().contains("memfd:wasm-data-segment"))
+            .count();
+        assert!(images >= 1, "no memfd image of the segment");
+    }
+}
+
+/// Data segment images and the mappings made from them stay few, whatever
+/// a module does with `memory.init`: one segment many times from a source
+/// one byte further along, then two segments in turn over the same pages a
+/// page further along each time. The memory still ends up as a copy would
+/// leave it.
+#[cfg(target_os = "linux")]
+#[test]
+fn data_segment_images_and_mappings_stay_bounded() {
+    use std::sync::atomic::AtomicBool;
+
+    let rt = runtime();
+    let (len, dst, steps, turns) = ((1usize << 20) + 8192, 65_536usize, 256usize, 128usize);
+    let a = segment_bytes(len);
+    let b: Vec<u8> = a.iter().map(|byte| !byte).collect();
+    let escape = |bytes: &[u8]| -> String { bytes.iter().map(|b| format!("\\{b:02x}")).collect() };
+    let end = dst + (turns - 1) * 4096 + len;
+    let pages = end.div_ceil(65536) + 1;
+    let module = wat_module(
+        "data-segment-pattern",
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "poll_oneoff" (func $poll (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") {pages})
+  (data $a "{a}")
+  (data $b "{b}")
+  (func (export "_start")
+    (local $i i32) (local $h i32) (local $at i32)
+    (block $stepped (loop $step
+      (br_if $stepped (i32.ge_u (local.get $i) (i32.const {steps})))
+      (memory.init $a (i32.const {dst}) (local.get $i) (i32.const {step_len}))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $step)))
+    (local.set $i (i32.const 0))
+    (block $turned (loop $turn
+      (br_if $turned (i32.ge_u (local.get $i) (i32.const {turns})))
+      (local.set $at (i32.add (i32.const {dst}) (i32.mul (local.get $i) (i32.const 4096))))
+      (if (i32.and (local.get $i) (i32.const 1))
+        (then (memory.init $b (local.get $at) (i32.const 0) (i32.const {len})))
+        (else (memory.init $a (local.get $at) (i32.const 0) (i32.const {len}))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $turn)))
+    ;; a 300 ms clock subscription at 256, so the test can look meanwhile
+    (i32.store (i32.const 272) (i32.const 1))
+    (i64.store (i32.const 280) (i64.const 300000000))
+    (drop (call $poll (i32.const 256) (i32.const 320) (i32.const 1) (i32.const 384)))
+    (local.set $i (i32.const {dst}))
+    (block $hashed (loop $hash
+      (br_if $hashed (i32.ge_u (local.get $i) (i32.const {end})))
+      (local.set $h (i32.add (i32.mul (local.get $h) (i32.const 31))
+                             (i32.load8_u (local.get $i))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $hash)))
+    (i32.store (i32.const 0) (local.get $h))
+    (i32.store (i32.const 4) (i32.const 0))
+    (i32.store (i32.const 8) (i32.const 4))
+    (drop (call $fd_write (i32.const 1) (i32.const 4) (i32.const 1) (i32.const 12)))))
+"#,
+            a = escape(&a),
+            b = escape(&b),
+            step_len = len - steps,
+        ),
+    );
+    let mut expected = vec![0u8; end];
+    for i in 0..steps {
+        expected[dst..dst + len - steps].copy_from_slice(&a[i..i + len - steps]);
+    }
+    for i in 0..turns {
+        let at = dst + i * 4096;
+        expected[at..at + len].copy_from_slice(if i % 2 == 1 { &b } else { &a });
+    }
+
+    // The most memfd images, and mappings of them, seen while it runs.
+    let done = Arc::new(AtomicBool::new(false));
+    let watcher = std::thread::spawn({
+        let done = done.clone();
+        move || {
+            let (mut images, mut mappings) = (0, 0);
+            while !done.load(Ordering::Relaxed) {
+                let open = std::fs::read_dir("/proc/self/fd")
+                    .map(|dir| {
+                        dir.filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+                            .filter(|target| target.to_string_lossy().contains("wasm-data-segment"))
+                            .count()
+                    })
+                    .unwrap_or(0);
+                let mapped = std::fs::read_to_string("/proc/self/maps")
+                    .map(|maps| {
+                        maps.lines()
+                            .filter(|l| l.contains("wasm-data-segment"))
+                            .count()
+                    })
+                    .unwrap_or(0);
+                images = images.max(open);
+                mappings = mappings.max(mapped);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            (images, mappings)
+        }
+    });
+    let job = snapshot(&[]).fork();
+    let outcome = rt.run_command(&module, invocation(job.as_dyn(), &[]));
+    done.store(true, Ordering::Relaxed);
+    let (images, mappings) = watcher.join().unwrap();
+    let outcome = outcome.unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+    assert_eq!(
+        u32::from_le_bytes(outcome.stdout[..4].try_into().unwrap()),
+        segment_hash(&expected[dst..])
+    );
+    // Two images (one per segment) and a few mappings of them, give or take
+    // another test's.
+    assert!(images <= 8, "{images} images open at once");
+    assert!(mappings <= 24, "{mappings} mappings of images at once");
+}
+
 /// Prints, as one digit each, the WASI file type `fd_fdstat_get` gives
 /// stdin, stdout and stderr, the one `fd_filestat_get` gives a new pipe, the
 /// one `fd_fdstat_get` gives stdin once that pipe is put in its place and

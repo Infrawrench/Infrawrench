@@ -1027,7 +1027,9 @@ from crates.io with `a/` and `b/` labels.
 
 From crates.io, sha256
 `3b60bc87e4993702174a81a6dd4503d915331b1d50caf868fd0998f61f34afa5`
-(it has no tests), and `wasmer-vm.patch` applied.
+(it has no tests; the patch adds some in `src/memory_image.rs`, which run
+with `cargo test --lib` in a copy of the directory), and `wasmer-vm.patch`
+applied.
 
 **Why (#968).** The runner stops a job's spinning processes with Wasmer's
 host interrupt (`Store::interrupter`, behind `experimental-host-interrupt`):
@@ -1098,11 +1100,54 @@ lock, reading `current_length` as `MemoryView` already does beside it. A
 `grow` still takes the write lock, and a size read without the lock is no
 staler than one read under it, which nothing held once it returned.
 
+**And: a large data segment is mapped, not copied (#996).** A module
+linked for threads keeps its data in passive segments, which its start
+function copies into its shared memory with `memory.init`. Edge.js's is
+one segment of 45.6 MB (its built-in modules' sources, ICU's data and the
+rest of its read-only data), so every `node` copied 45 MB into pages the
+kernel zeroed first, 2 MB at a time (linear memories ask for huge pages),
+and kept all of it resident, though `node -e 0` reads a few MB of it. That
+was 6 of the 9 to 11 ms `node --version` took, and with `node`s starting
+together the page faults and zeroing held the runner's address space lock
+long enough that 20 at once took no less time with 8 CPUs than with 4.
+`memory.init` of a whole segment (source 0, its full length) of at least
+1 MiB of whole pages now maps them privately from a sealed memfd holding
+the segment, made once per segment, destination offset within a page and
+process (`src/memory_image.rs`), and copies only the partial pages at
+either end: a page is shared until the guest writes it, which copies that
+page alone, so the guest sees the same bytes a copy would give it. The
+images are bounded (two per segment, 256 MiB in the process) and so is
+how often one memory is mapped over (four times); any other `memory.init`,
+and any past a bound, copies. The file is mapped elsewhere first and then
+moved over the destination, so a mapping that fails leaves the
+destination's pages in place for the copy. Only for a memory that is
+wasmer-vm's own anonymous private mapping
+(`LinearMemory::claim_data_mapping`, which the runtime's `TrackedMemory`
+forwards), never for one backed by a file or by an embedder's allocation;
+a segment's image is found by the identity of the module's `Arc` and
+dropped once the module is, so a reused address never maps another
+module's bytes. Linux only; elsewhere it copies as before.
+A fork reads the pages like any others, and nothing here frees linear
+memory pages with `madvise`, which would bring a mapped page back to the
+segment's bytes rather than to zero. On ci-1 (4 CPUs, alternating runs)
+`node --version` went from 9 to 11 ms to 3.4 ms, `node -e 0` from 32 to
+34 ms to 27 to 29 ms, 20 `node -e 0` at once from 297 to 321 ms to 200 to
+220 ms (with 8 CPUs from 199 to 206 ms to 135 to 149 ms), and the runner's
+peak RSS over those runs from 1.81 to 1.16 GB. `iwci-runtime`'s
+`a_large_data_segment_initializes_memory_like_a_copy` checks the bytes,
+that a write stays in its own process and that the segment was mapped,
+`data_segment_images_and_mappings_stay_bounded` that other uses of
+`memory.init` leave the memory as a copy would with few images and
+mappings, and `src/memory_image.rs` has unit tests of its own (the
+bounds, and a mapping that fails). wasmerio/wasmer
+`main` still copies (`Instance::memory_init`, November 2026).
+
 **Remove it** when a wasmer-vm release has the interrupt handler leave host
 code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
 of November 2026), reads the interrupted flag without a write lock
-(#7161) and answers a shared memory's size and definition without its
-lock: delete `vendor/wasmer-vm*` and its `[patch.crates-io]` entry. A
+(#7161), answers a shared memory's size and definition without its
+lock and maps large data segments copy-on-write: delete `vendor/wasmer-vm*`
+and its `[patch.crates-io]` entry. A
 release with only the first is still worth taking for the rest of this
 patch's sake; check a `statSync` loop (#994) against the patched build
 before dropping the other two.
