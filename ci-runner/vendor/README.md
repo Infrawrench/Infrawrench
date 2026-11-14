@@ -533,6 +533,26 @@ counts them, and aborts instead in a debug build or with
 main lends the store for `napi_instanceof` and the coercions (e5660a3),
 not for the others (checked November 2026).
 
+**And: a SyntaxError's arrow is Node's (#1143).** The arrow the bridge puts
+on an error (`node:arrowMessage`) ended in an empty line, and Node's own
+JavaScript puts the arrow in front of a stack as it is
+(`decorateErrorStack` in module_job.js), so an import of a name a module
+does not export printed an empty line between the arrow and the error. And
+the bridge gave a module that does not link no arrow at all, and decorated
+the stack of one that does not parse, where Node's `ModuleWrap` sets the
+arrow for both and decorates neither. `BuildSyntaxArrowMessage` now makes
+the line as Node's `GetErrorSource` does (one newline at the end, a tab
+under a tab, no underline where the columns do not fit the line),
+`AttachSyntaxArrowMessage` puts an empty line between the arrow and the
+stack as `DecorateErrorStack` does, so a decorated stack is the same bytes
+as before, and module creation and instantiation set the arrow alone. The
+unsettled top-level await messages add the empty line Node's
+`FormatErrorMessage` has. Upstream main has the same code (checked November
+2026). `src/snapi.rs`'s `arrow_tests` read the arrows back through a real
+isolate; they run with `cargo test --lib arrow_tests` in a copy of the
+directory, and `builtins/test.sh bash-node`'s `error-report-passes` is the
+check through Edge.js.
+
 **Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
 main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),

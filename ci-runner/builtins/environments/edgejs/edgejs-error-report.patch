@@ -1,0 +1,397 @@
+diff --git a/src/edge_errors_binding.cc b/src/edge_errors_binding.cc
+index 32742078..d2f800d9 100644
+--- a/src/edge_errors_binding.cc
++++ b/src/edge_errors_binding.cc
+@@ -354,13 +354,17 @@ napi_value ErrorsTriggerUncaughtException(napi_env env, napi_callback_info info)
+     }
+   };
+ 
++  // Where the exception was thrown, as Node's binding takes it
++  // (Exception::CreateMessage) before anything else runs: once the enhancer
++  // below has formatted an error's stack, the engine no longer knows the
++  // frame it was made in and answers with this call.
++  (void)unofficial_napi_preserve_error_source_message(env, exception);
++
+   auto* state = GetErrorsState(env);
+   if (state != nullptr) {
+     invoke_ref_callback(state->enhance_fatal_stack_before_inspector_ref);
+   }
+ 
+-  (void)unofficial_napi_preserve_error_source_message(env, exception);
+-
+   napi_value global = nullptr;
+   napi_value process = nullptr;
+   if (napi_get_global(env, &global) == napi_ok &&
+diff --git a/src/edge_module_loader.cc b/src/edge_module_loader.cc
+index 197b8aed..3fd5dbb5 100644
+--- a/src/edge_module_loader.cc
++++ b/src/edge_module_loader.cc
+@@ -1560,7 +1560,11 @@ static bool PreservePendingNativeBuiltinExceptionWithContext(napi_env env, const
+     return false;
+   }
+ 
+-  std::fprintf(stderr, "Failed to execute builtin '%s':\n", id.c_str());
++  // A main script's exception is the program's own: it is reported like any
++  // uncaught exception, which Node prints with nothing before it.
++  if (id.rfind("internal/main/", 0) != 0) {
++    std::fprintf(stderr, "Failed to execute builtin '%s':\n", id.c_str());
++  }
+   return false;
+ }
+ 
+diff --git a/src/edge_runtime.cc b/src/edge_runtime.cc
+index b8083cf0..195ac54e 100644
+--- a/src/edge_runtime.cc
++++ b/src/edge_runtime.cc
+@@ -450,6 +450,52 @@ std::string GetErrorSourceLine(napi_env env,
+   return FormatErrorSourceLine(env, metadata, align_internal_assert);
+ }
+ 
++// The value `value` holds under one of internalBinding('util').privateSymbols,
++// or nullptr, which is also the answer for a value that is not an object.
++napi_value GetUtilPrivateSymbolValue(napi_env env, napi_value value, const char* symbol_name) {
++  if (env == nullptr || value == nullptr) return nullptr;
++  napi_valuetype value_type = napi_undefined;
++  if (napi_typeof(env, value, &value_type) != napi_ok ||
++      (value_type != napi_object && value_type != napi_function)) {
++    return nullptr;
++  }
++
++  napi_value global = nullptr;
++  if (napi_get_global(env, &global) != napi_ok || global == nullptr) {
++    return nullptr;
++  }
++
++  napi_value internal_binding = GetRuntimeInternalBinding(env, global);
++  if (internal_binding == nullptr) return nullptr;
++
++  napi_value util_name = nullptr;
++  if (napi_create_string_utf8(env, "util", NAPI_AUTO_LENGTH, &util_name) != napi_ok || util_name == nullptr) {
++    return nullptr;
++  }
++
++  napi_value util_binding = nullptr;
++  napi_value argv[1] = {util_name};
++  if (napi_call_function(env, global, internal_binding, 1, argv, &util_binding) != napi_ok ||
++      util_binding == nullptr) {
++    return nullptr;
++  }
++
++  napi_value private_symbols = nullptr;
++  if (napi_get_named_property(env, util_binding, "privateSymbols", &private_symbols) != napi_ok ||
++      private_symbols == nullptr) {
++    return nullptr;
++  }
++
++  napi_value symbol = nullptr;
++  if (napi_get_named_property(env, private_symbols, symbol_name, &symbol) != napi_ok || symbol == nullptr) {
++    return nullptr;
++  }
++
++  napi_value out = nullptr;
++  if (napi_get_property(env, value, symbol, &out) != napi_ok) return nullptr;
++  return out;
++}
++
+ std::string GetArrowMessageFromError(napi_env env, napi_value exception) {
+   if (env == nullptr || exception == nullptr) return {};
+ 
+@@ -643,36 +689,142 @@ void StripLeadingExceptionLine(std::string* message) {
+   message->erase(0, third_newline + 1);
+ }
+ 
++// An exception line as Node's GetErrorSource makes it: the file and line,
++// the source line and the underline, ending in one newline. Lines from the
++// engine's bridge end in two, and a line marked
++// node-do-not-add-exception-line is no exception line at all.
++std::string NodeExceptionLine(std::string line) {
++  if (line.find("node-do-not-add-exception-line") != std::string::npos) return {};
++  while (!line.empty() && line.back() == '\n') line.pop_back();
++  if (line.empty()) return {};
++  line.push_back('\n');
++  return line;
++}
++
++// What Node's TriggerUncaughtException prints, as its ReportFatalException
++// (src/node_errors.cc) prints it, byte for byte. Its AppendExceptionLine
++// gives a native error the line of where it was thrown as its arrow unless
++// it already has one, and prints that line at once, after an empty line, for
++// any other value, which cannot keep it. An object's report is then its
++// util.inspect() (the fatal stack enhancer), after the arrow unless the
++// error is decorated: its stack already begins with the arrow (a SyntaxError
++// from vm or the CommonJS loader, a module's link error). Anything else is
++// its string with a hint about --trace-uncaught. Edge.js used to put the
++// line it had (often of the native call the exception last crossed) in
++// front of the report unless the report began with it, and to print
++// primitives through inspect().
+ std::string FormatUncaughtExceptionForStderr(napi_env env,
+                                              napi_value exception,
+-                                             const std::string& stack_message,
+                                              const std::string& pending_exception_line = {},
+                                              const std::string& pending_thrown_at = {}) {
+-  if (stack_message.empty()) return stack_message;
+-
+-  std::string formatted = stack_message;
+-  const std::string code = GetNamedStringProperty(env, exception, "code");
+-  const std::string operator_name = GetNamedStringProperty(env, exception, "operator");
+-  const bool prefer_derived_exception_line =
+-      code == "ERR_INTERNAL_ASSERTION" || (code == "ERR_ASSERTION" && operator_name == "throws");
+-  const std::string derived_exception_line = GetExceptionLineForStderr(env, exception);
+-  if (prefer_derived_exception_line &&
+-      (formatted.rfind("node:internal/assert:", 0) == 0 || formatted.rfind("node:assert:", 0) == 0)) {
+-    StripLeadingExceptionLine(&formatted);
+-  }
+-  const std::string exception_line = prefer_derived_exception_line
+-                                         ? derived_exception_line
+-                                         : (pending_exception_line.empty() ? derived_exception_line
+-                                                                           : pending_exception_line);
+-  if (!exception_line.empty() && formatted.rfind(exception_line, 0) != 0) {
+-    std::string prefix = exception_line;
+-    if (!prefix.empty() && prefix.back() == '\n') {
+-      prefix.push_back('\n');
+-    }
+-    formatted = prefix + formatted;
+-  }
+-  StripBuiltinModuleCompileFrame(&formatted);
+-  NormalizeAssertionPropertyBlock(&formatted);
++  napi_valuetype exception_type = napi_undefined;
++  if (env == nullptr || exception == nullptr || napi_typeof(env, exception, &exception_type) != napi_ok) {
++    return {};
++  }
++  const bool is_object = exception_type == napi_object || exception_type == napi_function;
++  bool is_native_error = false;
++  if (is_object) (void)napi_is_error(env, exception, &is_native_error);
++
++  bool decorated = false;
++  if (napi_value value = GetUtilPrivateSymbolValue(env, exception, "decorated_private_symbol");
++      value != nullptr) {
++    (void)napi_get_value_bool(env, value, &decorated);
++  }
++
++  // The fatal message's exception line: the arrow the error already has, else
++  // the line of where it was thrown.
++  std::string source = is_object ? NodeExceptionLine(GetArrowMessageFromError(env, exception)) : "";
++  if (source.empty()) source = NodeExceptionLine(pending_exception_line);
++  if (source.empty()) source = NodeExceptionLine(GetExceptionLineForStderr(env, exception));
++  std::string formatted;
++  std::string arrow;
++  if (is_native_error) {
++    arrow = source;
++  } else if (!source.empty()) {
++    formatted = "\n" + source;
++  }
++
++  std::string trace;
++  if (is_object) {
++    trace = EdgeFormatFatalExceptionAfterInspector(env, exception);
++    if (trace.empty()) {
++      napi_value stack = nullptr;
++      napi_valuetype stack_type = napi_undefined;
++      if (napi_get_named_property(env, exception, "stack", &stack) == napi_ok && stack != nullptr &&
++          napi_typeof(env, stack, &stack_type) == napi_ok && stack_type != napi_undefined) {
++        trace = NapiValueToUtf8(env, stack);
++      }
++    }
++  }
++
++  // assert's own errors keep the line Edge.js has always given them.
++  const std::string code = is_object ? GetNamedStringProperty(env, exception, "code") : "";
++  const std::string operator_name = is_object ? GetNamedStringProperty(env, exception, "operator") : "";
++  if (code == "ERR_INTERNAL_ASSERTION" || (code == "ERR_ASSERTION" && operator_name == "throws")) {
++    const std::string derived = NodeExceptionLine(GetExceptionLineForStderr(env, exception));
++    if (!derived.empty()) {
++      if (trace.rfind("node:internal/assert:", 0) == 0 || trace.rfind("node:assert:", 0) == 0) {
++        StripLeadingExceptionLine(&trace);
++      }
++      arrow = derived;
++      decorated = false;
++    }
++  }
++
++  if (!trace.empty()) {
++    StripBuiltinModuleCompileFrame(&trace);
++    NormalizeAssertionPropertyBlock(&trace);
++    if (!arrow.empty() && !decorated) formatted += arrow + "\n";
++    formatted += trace + "\n";
++  } else {
++    std::string name;
++    std::string message;
++    bool has_name_and_message = false;
++    if (is_object) {
++      napi_value name_value = nullptr;
++      napi_value message_value = nullptr;
++      napi_valuetype name_type = napi_undefined;
++      napi_valuetype message_type = napi_undefined;
++      if (napi_get_named_property(env, exception, "name", &name_value) == napi_ok && name_value != nullptr &&
++          napi_get_named_property(env, exception, "message", &message_value) == napi_ok &&
++          message_value != nullptr && napi_typeof(env, name_value, &name_type) == napi_ok &&
++          napi_typeof(env, message_value, &message_type) == napi_ok && name_type != napi_undefined &&
++          message_type != napi_undefined) {
++        name = NapiValueToUtf8(env, name_value);
++        message = NapiValueToUtf8(env, message_value);
++        has_name_and_message = true;
++      }
++    }
++    if (has_name_and_message) {
++      if (!arrow.empty() && !decorated) formatted += arrow + "\n";
++      formatted += name + ": " + message + "\n";
++    } else {
++      napi_value string_value = nullptr;
++      if (napi_coerce_to_string(env, exception, &string_value) == napi_ok && string_value != nullptr) {
++        formatted += NapiValueToUtf8(env, string_value) + "\n";
++      } else {
++        bool pending = false;
++        napi_value ignored = nullptr;
++        if (napi_is_exception_pending(env, &pending) == napi_ok && pending) {
++          (void)napi_get_and_clear_last_exception(env, &ignored);
++        }
++        formatted += "<toString() threw exception>\n";
++      }
++    }
++    if (!EdgeExecArgvHasFlag("--trace-uncaught")) {
++      std::string argv0 = "node";
++      napi_value global = nullptr;
++      napi_value process = nullptr;
++      if (napi_get_global(env, &global) == napi_ok && global != nullptr &&
++          napi_get_named_property(env, global, "process", &process) == napi_ok && process != nullptr) {
++        std::string from_process = GetNamedStringProperty(env, process, "argv0");
++        const size_t slash = from_process.find_last_of('/');
++        if (slash != std::string::npos) from_process.erase(0, slash + 1);
++        if (!from_process.empty()) argv0 = from_process;
++      }
++      formatted += "(Use `" + argv0 + " --trace-uncaught ...` to show where the exception was thrown)\n";
++    }
++  }
+   if (EdgeExecArgvHasFlag("--trace-uncaught")) {
+     std::string thrown_at = pending_thrown_at;
+     if (thrown_at.empty()) {
+@@ -687,15 +839,13 @@ std::string FormatUncaughtExceptionForStderr(napi_env env,
+       }
+     }
+     if (!thrown_at.empty()) {
+-      if (!formatted.empty()) {
+-        formatted += "\n";
+-      }
+       formatted += thrown_at;
++      if (formatted.back() != '\n') formatted += "\n";
+     }
+   }
+   const std::string version = GetProcessVersion(env);
+   if (!version.empty()) {
+-    formatted += "\n\nNode.js " + version;
++    formatted += "\nNode.js " + version;
+   }
+   return formatted;
+ }
+@@ -763,55 +913,8 @@ std::string GetAndClearPendingException(napi_env env, bool* is_process_exit, int
+     return "";
+   }
+ 
+-  const std::string enhanced_exception = EdgeFormatFatalExceptionAfterInspector(env, pending.exception);
+-  if (!enhanced_exception.empty()) {
+-    return FormatUncaughtExceptionForStderr(
+-        env, pending.exception, enhanced_exception, pending.exception_line, pending.thrown_at);
+-  }
+-
+-  napi_value stack_value = nullptr;
+-  if (napi_get_named_property(env, pending.exception, "stack", &stack_value) == napi_ok &&
+-      stack_value != nullptr) {
+-    napi_value stack_string = nullptr;
+-    if (napi_coerce_to_string(env, stack_value, &stack_string) == napi_ok && stack_string != nullptr) {
+-      size_t stack_len = 0;
+-      if (napi_get_value_string_utf8(env, stack_string, nullptr, 0, &stack_len) == napi_ok && stack_len > 0) {
+-        std::vector<char> stack_buf(stack_len + 1, '\0');
+-        size_t copied = 0;
+-        if (napi_get_value_string_utf8(env, stack_string, stack_buf.data(), stack_buf.size(), &copied) == napi_ok) {
+-          return FormatUncaughtExceptionForStderr(
+-              env,
+-              pending.exception,
+-              std::string(stack_buf.data(), copied),
+-              pending.exception_line,
+-              pending.thrown_at);
+-        }
+-      }
+-    }
+-  }
+-
+-  napi_value exception_string = nullptr;
+-  if (napi_coerce_to_string(env, pending.exception, &exception_string) != napi_ok ||
+-      exception_string == nullptr) {
+-    return "";
+-  }
+-
+-  size_t length = 0;
+-  if (napi_get_value_string_utf8(env, exception_string, nullptr, 0, &length) != napi_ok) {
+-    return "";
+-  }
+-
+-  std::vector<char> buffer(length + 1, '\0');
+-  size_t copied = 0;
+-  if (napi_get_value_string_utf8(env, exception_string, buffer.data(), buffer.size(), &copied) != napi_ok) {
+-    return "";
+-  }
+   return FormatUncaughtExceptionForStderr(
+-      env,
+-      pending.exception,
+-      std::string(buffer.data(), copied),
+-      pending.exception_line,
+-      pending.thrown_at);
++      env, pending.exception, pending.exception_line, pending.thrown_at);
+ }
+ 
+ int GetProcessExitCode(napi_env env, bool* has_exit_code) {
+@@ -1177,52 +1280,8 @@ std::string FormatFatalExceptionMessage(napi_env env,
+                                         const std::string& pending_thrown_at = {}) {
+   if (env == nullptr || exception == nullptr) return "Unhandled async exception";
+ 
+-  std::string exception_message;
+-  const std::string enhanced_exception =
+-      EdgeFormatFatalExceptionAfterInspector(env, exception);
+-  if (!enhanced_exception.empty()) {
+-    exception_message = FormatUncaughtExceptionForStderr(
+-        env, exception, enhanced_exception, pending_exception_line, pending_thrown_at);
+-  }
+-
+-  napi_value stack_value = nullptr;
+-  if (exception_message.empty() &&
+-      napi_get_named_property(env, exception, "stack", &stack_value) == napi_ok &&
+-      stack_value != nullptr) {
+-    napi_value stack_string = nullptr;
+-    if (napi_coerce_to_string(env, stack_value, &stack_string) == napi_ok &&
+-        stack_string != nullptr) {
+-      size_t stack_len = 0;
+-      if (napi_get_value_string_utf8(env, stack_string, nullptr, 0, &stack_len) == napi_ok &&
+-          stack_len > 0) {
+-        std::vector<char> stack_buf(stack_len + 1, '\0');
+-        size_t copied = 0;
+-        if (napi_get_value_string_utf8(
+-                env, stack_string, stack_buf.data(), stack_buf.size(), &copied) == napi_ok) {
+-          exception_message = FormatUncaughtExceptionForStderr(
+-              env,
+-              exception,
+-              std::string(stack_buf.data(), copied),
+-              pending_exception_line,
+-              pending_thrown_at);
+-        }
+-      }
+-    }
+-  }
+-
+-  if (exception_message.empty()) {
+-    napi_value exception_string = nullptr;
+-    if (napi_coerce_to_string(env, exception, &exception_string) == napi_ok &&
+-        exception_string != nullptr) {
+-      exception_message = FormatUncaughtExceptionForStderr(
+-          env,
+-          exception,
+-          NapiValueToUtf8(env, exception_string),
+-          pending_exception_line,
+-          pending_thrown_at);
+-    }
+-  }
+-
++  const std::string exception_message =
++      FormatUncaughtExceptionForStderr(env, exception, pending_exception_line, pending_thrown_at);
+   return exception_message.empty() ? "Unhandled async exception" : exception_message;
+ }
+ 

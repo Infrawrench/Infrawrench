@@ -2519,7 +2519,9 @@ static napi_status CreateSourceTextModule(
                                            v8::ScriptCompiler::NoCacheReason::kNoCacheNoReason)
              .ToLocal(&module)) {
       if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
-        unofficial_napi_internal::AttachSyntaxArrowMessage(
+        // Node's ModuleWrap::New gives a module that does not parse its arrow
+        // and leaves its stack as it is (AppendExceptionLine, MODULE_ERROR).
+        unofficial_napi_internal::SetArrowMessage(
             isolate, context, try_catch.Exception(), try_catch.Message());
         return ThrowTryCatchException(env, try_catch);
       }
@@ -2786,6 +2788,11 @@ napi_status NAPI_CDECL unofficial_napi_module_wrap_instantiate(
   auto maybe = module->InstantiateModule(context, ModuleResolveCallback, ModuleResolveSourceCallback);
   if (maybe.IsNothing()) {
     if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+      // As Node's ModuleWrap::Instantiate: a link error (an import of a name
+      // the module does not export) gets the arrow its loader puts in front of
+      // the stack (decorateErrorStack in module_job.js).
+      unofficial_napi_internal::SetArrowMessage(
+          isolate, context, try_catch.Exception(), try_catch.Message());
       return ThrowTryCatchException(env, try_catch);
     }
     return napi_generic_failure;
@@ -2865,7 +2872,9 @@ napi_status NAPI_CDECL unofficial_napi_module_wrap_evaluate_sync(
   if (module->IsGraphAsync()) {
     auto stalled_messages = std::get<1>(module->GetStalledTopLevelAwaitMessages(isolate));
     for (const auto& message : stalled_messages) {
-      const std::string info = unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message);
+      // Node's FormatErrorMessage: the exception line, then an empty reason.
+      const std::string info =
+          unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message) + "\n\n";
       std::fprintf(stderr, "Error: unexpected top-level await at %s\n", info.c_str());
     }
     ThrowCodeError(env,
@@ -2964,7 +2973,9 @@ napi_status NAPI_CDECL unofficial_napi_module_wrap_check_unsettled_top_level_awa
   if (!warnings) return napi_ok;
 
   for (const auto& message : stalled_messages) {
-    const std::string info = unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message);
+    // Node's FormatErrorMessage: the exception line, then an empty reason.
+    const std::string info =
+        unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message) + "\n\n";
     std::fprintf(stderr, "Warning: Detected unsettled top-level await at %s\n", info.c_str());
   }
   return napi_ok;

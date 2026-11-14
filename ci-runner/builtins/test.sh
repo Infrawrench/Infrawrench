@@ -1249,7 +1249,7 @@ jobs:
   # An ES module that does not parse says where once, with its caret, as
   # Node does (#1097): it printed the file, line, source and caret two or
   # three times, one of them naming line 1 with no caret. Caught, the
-  # error's stack has the place at most once, and never without its caret.
+  # error's stack is Node's: the place is only for the fatal report.
   module-syntax-error-passes:
     using: env:bash-node@24
     needs: [node-passes]
@@ -1267,9 +1267,7 @@ jobs:
       try {
         await import("/tmp/bad.mjs");
       } catch (e) {
-        const lines = e.stack.split("\n");
-        const at = lines.flatMap((line, i) => (line === "export const b = {;" ? [i] : []));
-        if (!(e instanceof SyntaxError) || at.length > 1 || at.some((i) => lines[i + 1].trim() !== "^")) {
+        if (!(e instanceof SyntaxError) || !e.stack.startsWith("SyntaxError: Unexpected token ';'\n")) {
           console.error(e.stack);
           process.exit(1);
         }
@@ -1284,6 +1282,76 @@ jobs:
     run: |
       printf 'export const a = {;\n' >/tmp/bad.mjs
       node /tmp/bad.mjs
+  # An uncaught exception is reported as Node 24 reports it, byte for byte
+  # up to the stack's frames (whose internal line numbers are Edge.js's
+  # library's) and after them. A CommonJS main printed "Failed to execute
+  # builtin" first, a SyntaxError in it a second arrow into the loader, and
+  # every arrow an empty line too many (#1141); an ES module's error, and a
+  # rejection, pointed at the internals that rethrew it (#1142); an import
+  # of a name a module does not export had an empty line after its arrow
+  # (#1143); a thrown string came out quoted, without its hint.
+  error-report-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      mkdir -p /tmp/er && cd /tmp/er
+      # process.version: `node --version` says v24.13.2-pre (#1151).
+      version="$(node -p process.version)"
+      # report <file> <stderr up to the first frame>: the node fails, says
+      # that, and ends with the version as Node does.
+      report() {
+        if node "$1" 2>err; then exit 1; fi
+        if [[ "$(sed '/^    at /,$d' err)" != "$2" || "$(tail -n 2 err)" != "$(printf '\nNode.js %s' "$version")" ]]; then
+          printf -- '--- %s: got\n%s\n--- wanted\n%s\n' "$1" "$(cat err)" "$2" >&2
+          exit 1
+        fi
+      }
+      printf 'const x = 1;\n\nconst a = {;\n' >syntax.cjs
+      report syntax.cjs "$(printf '/tmp/er/syntax.cjs:3\nconst a = {;\n%11s^\n\nSyntaxError: Unexpected token %s' '' "';'")"
+      printf 'const x = 1;\nthrow new Error("boom");\n' >throw.cjs
+      report throw.cjs "$(printf '/tmp/er/throw.cjs:2\nthrow new Error("boom");\n^\n\nError: boom')"
+      printf 'function f() {\n  throw new TypeError("bad thing");\n}\nf();\n' >fn.cjs
+      printf 'require("./fn.cjs");\n' >requires.cjs
+      report requires.cjs "$(printf '/tmp/er/fn.cjs:2\n  throw new TypeError("bad thing");\n  ^\n\nTypeError: bad thing')"
+      printf 'Promise.reject(new Error("rejected"));\n' >reject.cjs
+      report reject.cjs "$(printf '/tmp/er/reject.cjs:1\nPromise.reject(new Error("rejected"));\n%15s^\n\nError: rejected' '')"
+      printf 'setTimeout(() => {\n  throw new Error("later");\n}, 1);\n' >timer.cjs
+      report timer.cjs "$(printf '/tmp/er/timer.cjs:2\n  throw new Error("later");\n  ^\n\nError: later')"
+      printf 'const x = 1;\nthrow new Error("boom");\n' >throw.mjs
+      report throw.mjs "$(printf 'file:///tmp/er/throw.mjs:2\nthrow new Error("boom");\n%6s^\n\nError: boom' '')"
+      printf 'function f() {\n  throw new TypeError("bad thing");\n}\nf();\n' >fn.mjs
+      printf 'import "./fn.mjs";\n' >imports.mjs
+      report imports.mjs "$(printf 'file:///tmp/er/fn.mjs:2\n  throw new TypeError("bad thing");\n%8s^\n\nTypeError: bad thing' '')"
+      printf 'await 1;\nthrow new Error("after await");\n' >tla.mjs
+      report tla.mjs "$(printf 'file:///tmp/er/tla.mjs:2\nthrow new Error("after await");\n%6s^\n\nError: after await' '')"
+      printf 'export const a = 1;\n' >a.mjs
+      printf '// a comment\n\nimport { a, nope } from "./a.mjs";\nconsole.log(a, nope);\n' >missing.mjs
+      want_missing="$(printf 'file:///tmp/er/missing.mjs:3\nimport { a, nope } from "./a.mjs";\n%12s^^^^\nSyntaxError: The requested module %s does not provide an export named %s' '' "'./a.mjs'" "'nope'")"
+      report missing.mjs "$want_missing"
+      printf 'import "./missing.mjs";\n' >imports-missing.mjs
+      report imports-missing.mjs "$want_missing"
+      if node -e 'throw new Error("from eval")' 2>err; then exit 1; fi
+      test "$(sed '/^    at /,$d' err)" = "$(printf '[eval]:1\nthrow new Error("from eval")\n^\n\nError: from eval')"
+      # Values that are not errors carry no arrow: Node prints the line
+      # first, after an empty line, then the value.
+      hint='(Use `node --trace-uncaught ...` to show where the exception was thrown)'
+      printf 'const x = 1;\nthrow "a string";\n' >string.cjs
+      if node string.cjs 2>err; then exit 1; fi
+      test "$(cat err)" = "$(printf '\n/tmp/er/string.cjs:2\nthrow "a string";\n^\na string\n%s\n\nNode.js %s' "$hint" "$version")"
+      printf 'throw { code: "E_X", n: 1 };\n' >object.cjs
+      if node object.cjs 2>err; then exit 1; fi
+      test "$(cat err)" = "$(printf '\n/tmp/er/object.cjs:1\nthrow { code: "E_X", n: 1 };\n^\n{ code: %s, n: 1 }\n\nNode.js %s' "'E_X'" "$version")"
+      printf 'throw 42;\n' >number.mjs
+      if node number.mjs 2>err; then exit 1; fi
+      test "$(cat err)" = "$(printf '\nnode:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n42\n%s\n\nNode.js %s' "$hint" "$version")"
+  # A CommonJS main's error: its stderr begins with its arrow, nothing
+  # before it (want_stderr).
+  error-report-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      printf 'const x = 1;\nthrow new Error("boom");\n' >/tmp/throw.cjs
+      node /tmp/throw.cjs
   # `fs.renameSync` of a checked-out file and directory (#985), which threw
   # ENOENT in a job that had not written them, and of a checked-out symlink
   # (#1005), which WASIX could not find to move.
@@ -2246,7 +2314,9 @@ jobs:
       console.log("lending ok");
       JS
       test "$(node /tmp/lend.js)" = "lending ok"
-      # unofficial_napi_module_wrap_create
+      # unofficial_napi_module_wrap_create, which no longer formats the
+      # stack of a module that does not parse (it sets the arrow alone, as
+      # Node does, #1143), so the stack is formatted when it is read.
       printf 'export const a = {;\n' > /tmp/bad.mjs
       cat > /tmp/lend.mjs <<'JS'
       import assert from "node:assert";
@@ -2254,7 +2324,10 @@ jobs:
       const probe = () => { try { return os.hostname(); } catch (e) { return "threw " + e.code; } };
       const seen = [];
       Error.prepareStackTrace = (error) => (seen.push(probe()), "stack of " + error.name);
-      await assert.rejects(import("/tmp/bad.mjs"), SyntaxError);
+      const error = await import("/tmp/bad.mjs").then(() => null, (e) => e);
+      assert.ok(error instanceof SyntaxError);
+      assert.deepEqual(seen, []);
+      assert.equal(error.stack, "stack of SyntaxError");
       Error.prepareStackTrace = undefined;
       assert.ok(seen.length > 0 && seen.every((h) => h === os.hostname()), JSON.stringify(seen));
       console.log("lending ok");
@@ -3642,7 +3715,7 @@ want_reason() {
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
     openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
-    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
@@ -3674,6 +3747,7 @@ want_stderr() {
     clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
+    bash-node/error-report-fails) echo "^/tmp/throw\.cjs:2 throw new Error\(\"boom\"\); \^  Error: boom     at Object\.<anonymous> \(/tmp/throw\.cjs:2:7\)" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;

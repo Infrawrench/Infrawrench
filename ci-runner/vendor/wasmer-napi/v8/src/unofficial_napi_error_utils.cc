@@ -276,8 +276,12 @@ std::string BuildSyntaxArrowMessage(v8::Isolate* isolate,
   const std::string source_line = V8ValueToUtf8(isolate, source_line_v8);
   if (source_line.empty()) return {};
 
+  // As Node's GetErrorSource (src/node_errors.cc) makes it, which Node's own
+  // JavaScript reads back from the arrow (decorateErrorStack puts it in front
+  // of a stack as it is): one newline at the end, a tab under a tab, and no
+  // underline where the columns do not fit the line.
   int start = message->GetStartColumn(context).FromMaybe(0);
-  int end = message->GetEndColumn(context).FromMaybe(start + 1);
+  int end = message->GetEndColumn(context).FromMaybe(0);
   v8::ScriptOrigin origin = message->GetScriptOrigin();
   const int script_start =
       (line_number - origin.LineOffset()) == 1 ? origin.ColumnOffset() : 0;
@@ -285,16 +289,17 @@ std::string BuildSyntaxArrowMessage(v8::Isolate* isolate,
     end -= script_start;
     start -= script_start;
   }
-  if (end <= start) end = start + 1;
-  if (start < 0) start = 0;
-  if (end < 0) end = 0;
 
-  std::string underline(static_cast<size_t>(start), ' ');
-  underline.append(static_cast<size_t>(std::max(1, end - start)), '^');
-
-  return filename + ":" + std::to_string(line_number) + "\n" +
-         source_line + "\n" +
-         underline + "\n\n";
+  std::string arrow = filename + ":" + std::to_string(line_number) + "\n" + source_line + "\n";
+  if (start > end || start < 0 || static_cast<size_t>(end) > source_line.size()) {
+    return arrow;
+  }
+  for (int i = 0; i < start; ++i) {
+    arrow.push_back(source_line[static_cast<size_t>(i)] == '\t' ? '\t' : ' ');
+  }
+  arrow.append(static_cast<size_t>(end - start), '^');
+  arrow.push_back('\n');
+  return arrow;
 }
 
 void AttachSyntaxArrowMessage(v8::Isolate* isolate,
@@ -324,8 +329,11 @@ void AttachSyntaxArrowMessage(v8::Isolate* isolate,
     return;
   }
 
-  v8::Local<v8::String> decorated_stack =
-      v8::String::Concat(isolate, existing_arrow.As<v8::String>(), stack_value.As<v8::String>());
+  // Node's DecorateErrorStack: the arrow, an empty line, the stack.
+  v8::Local<v8::String> decorated_stack = v8::String::Concat(
+      isolate,
+      v8::String::Concat(isolate, existing_arrow.As<v8::String>(), OneByteString(isolate, "\n")),
+      stack_value.As<v8::String>());
   if (!err_obj->Set(context, OneByteString(isolate, "stack"), decorated_stack).FromMaybe(false)) {
     return;
   }

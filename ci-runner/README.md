@@ -1111,6 +1111,26 @@ the engine's block once; Node's has none, since Node puts the arrow on a
 module's SyntaxError only for the fatal exception handler. The same
 Edge.js build is in `env:clickhouse` 26.11.1.
 
+24.0.17 adds `edgejs-error-report.patch` (#1141, #1142, #1143): an
+uncaught exception is reported as Node 24 reports it, the same bytes up to
+the stack's frames and after them. Compared with Node 24.13 on the same
+host, CommonJS and ES mains, an imported module, an error on a later line,
+a rejection, a timer's throw, `node -e`, and thrown strings, numbers,
+`null`, `undefined` and plain objects now match except for the version
+line and, in some frames, a function's name (V8 11.9 names fewer
+anonymous functions than Node 24's V8, and Edge.js's `-e` runs through
+`evalScript`). Before, a CommonJS main's error came after "Failed to
+execute builtin 'internal/main/run_main_module':", a SyntaxError in one
+had a second arrow into the CommonJS loader, an ES module's error and a
+rejection pointed at the internals that rethrew them, a thrown string was
+quoted and lost its `--trace-uncaught` hint, and every arrow had one empty
+line too many. An import of a name a module does not export also had an
+empty line after its arrow; that one is the runner's (`vendor/wasmer-napi`,
+fixed in the same change and shipped with the next runner release), and so
+is a caught `import()` of a module that does not parse now having Node's
+stack, without the arrow. The same
+Edge.js build is in `env:clickhouse` 26.11.2.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

@@ -1026,3 +1026,236 @@ unsafe extern "C" {
     #[allow(dead_code)]
     pub fn snapi_bridge_dispose();
 }
+
+// The arrow (`node:arrowMessage`) the bridge gives a SyntaxError, read back
+// through a real isolate. Node's own JavaScript puts the arrow in front of a
+// stack as it is (`decorateErrorStack` in module_job.js), so its format is
+// Node's GetErrorSource to the byte: one newline at the end, a tab under a
+// tab. A module that does not parse, or does not link, gets the arrow and
+// keeps its stack; a function that does not compile (the CommonJS loader's
+// compileFunctionForCJSLoader) gets its stack decorated, the arrow and an
+// empty line in front of it, as Node's DecorateErrorStack does.
+#[cfg(test)]
+mod arrow_tests {
+    use super::*;
+
+    const NAPI_OK: i32 = 0;
+    const NAPI_PENDING_EXCEPTION: i32 = 10;
+    const MODULE_SOURCE_TEXT: i32 = 1;
+
+    struct Env(SnapiEnv);
+
+    impl Env {
+        fn new() -> Self {
+            let mut env: SnapiEnv = std::ptr::null_mut();
+            unsafe {
+                snapi_bridge_init();
+                assert_eq!(
+                    snapi_bridge_unofficial_configure_runtime(std::ptr::null(), 0),
+                    NAPI_OK
+                );
+                assert_eq!(
+                    snapi_bridge_unofficial_create_env(8, std::ptr::null(), &mut env),
+                    NAPI_OK
+                );
+            }
+            Env(env)
+        }
+
+        fn string(&self, value: &str) -> u32 {
+            let mut id = 0;
+            let status = unsafe {
+                snapi_bridge_create_string_utf8(
+                    self.0,
+                    value.as_ptr().cast(),
+                    value.len() as u32,
+                    &mut id,
+                )
+            };
+            assert_eq!(status, NAPI_OK);
+            id
+        }
+
+        fn read_string(&self, id: u32) -> String {
+            let mut len = 0usize;
+            unsafe {
+                assert_eq!(
+                    snapi_bridge_get_value_string_utf8(
+                        self.0,
+                        id,
+                        std::ptr::null_mut(),
+                        0,
+                        &mut len
+                    ),
+                    NAPI_OK
+                );
+                let mut buf = vec![0u8; len + 1];
+                assert_eq!(
+                    snapi_bridge_get_value_string_utf8(
+                        self.0,
+                        id,
+                        buf.as_mut_ptr().cast(),
+                        buf.len(),
+                        &mut len
+                    ),
+                    NAPI_OK
+                );
+                buf.truncate(len);
+                String::from_utf8(buf).unwrap()
+            }
+        }
+
+        fn take_exception(&self, status: i32) -> u32 {
+            assert_eq!(status, NAPI_PENDING_EXCEPTION);
+            let mut error = 0;
+            assert_eq!(
+                unsafe { snapi_bridge_get_and_clear_last_exception(self.0, &mut error) },
+                NAPI_OK
+            );
+            error
+        }
+
+        fn arrow(&self, error: u32) -> String {
+            let name = "node:arrowMessage";
+            let (mut key, mut value) = (0, 0);
+            unsafe {
+                assert_eq!(
+                    snapi_bridge_unofficial_create_private_symbol(
+                        self.0,
+                        name.as_ptr().cast(),
+                        name.len() as u32,
+                        &mut key
+                    ),
+                    NAPI_OK
+                );
+                assert_eq!(
+                    snapi_bridge_get_property(self.0, error, key, &mut value),
+                    NAPI_OK
+                );
+            }
+            self.read_string(value)
+        }
+
+        fn stack(&self, error: u32) -> String {
+            let mut stack = 0;
+            assert_eq!(
+                unsafe {
+                    snapi_bridge_get_named_property(self.0, error, c"stack".as_ptr(), &mut stack)
+                },
+                NAPI_OK
+            );
+            self.read_string(stack)
+        }
+
+        fn module(&self, url: &str, source: &str) -> (i32, u32) {
+            let (mut wrapper, mut handle, mut requests, mut tla) = (0, 0, 0, 0u8);
+            assert_eq!(
+                unsafe { snapi_bridge_create_object(self.0, &mut wrapper) },
+                NAPI_OK
+            );
+            let (url, source) = (self.string(url), self.string(source));
+            let status = unsafe {
+                snapi_bridge_unofficial_module_wrap_create(
+                    self.0,
+                    MODULE_SOURCE_TEXT,
+                    wrapper,
+                    url,
+                    0,
+                    source,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    &mut handle,
+                    &mut requests,
+                    &mut tla,
+                )
+            };
+            (status, handle)
+        }
+
+        fn compile_function(&self, filename: &str, source: &str) -> i32 {
+            let (source, filename) = (self.string(source), self.string(filename));
+            let mut result = 0;
+            unsafe {
+                snapi_bridge_unofficial_contextify_compile_function(
+                    self.0,
+                    source,
+                    0,
+                    filename,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    &mut result,
+                )
+            }
+        }
+    }
+
+    impl Drop for Env {
+        fn drop(&mut self) {
+            unsafe { snapi_bridge_unofficial_release_env(self.0) };
+        }
+    }
+
+    #[test]
+    fn syntax_errors_carry_node_s_arrow() {
+        let env = Env::new();
+
+        // A module that does not parse: the arrow, and the stack as it was.
+        let (status, _) = env.module("file:///m.mjs", "export const a = {;\n");
+        let error = env.take_exception(status);
+        assert_eq!(
+            env.arrow(error),
+            format!(
+                "file:///m.mjs:1\nexport const a = {{;\n{}^\n",
+                " ".repeat(18)
+            )
+        );
+        assert!(
+            env.stack(error)
+                .starts_with("SyntaxError: Unexpected token ';'"),
+            "{}",
+            env.stack(error)
+        );
+
+        // A module importing a name its dependency does not export.
+        let (status, a) = env.module("file:///a.mjs", "export const a = 1;\n");
+        assert_eq!(status, NAPI_OK);
+        let (status, b) = env.module("file:///b.mjs", "import { nope } from \"./a.mjs\";\n");
+        assert_eq!(status, NAPI_OK);
+        assert_eq!(
+            unsafe { snapi_bridge_unofficial_module_wrap_link(env.0, b, 1, &a) },
+            NAPI_OK
+        );
+        let error = env
+            .take_exception(unsafe { snapi_bridge_unofficial_module_wrap_instantiate(env.0, b) });
+        assert_eq!(
+            env.arrow(error),
+            "file:///b.mjs:1\nimport { nope } from \"./a.mjs\";\n         ^^^^\n"
+        );
+        assert!(
+            env.stack(error)
+                .starts_with("SyntaxError: The requested module"),
+            "{}",
+            env.stack(error)
+        );
+
+        // A function that does not compile: its stack is decorated, and a tab
+        // in front of the error stays a tab under it.
+        let error = env.take_exception(env.compile_function("/c.cjs", "\tconst a = {;\n"));
+        let arrow = format!("/c.cjs:1\n\tconst a = {{;\n\t{}^\n", " ".repeat(11));
+        assert_eq!(env.arrow(error), arrow);
+        assert_eq!(
+            env.stack(error)
+                .split_once("\n    at ")
+                .map_or(env.stack(error), |(head, _)| head.to_owned()),
+            format!("{arrow}\nSyntaxError: Unexpected token ';'")
+        );
+    }
+}
