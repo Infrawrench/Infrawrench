@@ -7,11 +7,19 @@ name: CI runner builtins
 # (pip, Composer, Go modules), Go's built from source for each minor,
 # kubectl, built with that Go from modules it downloads, OpenSSH's
 # clients, built from source with wasixcc and OpenSSL, and ClickHouse,
-# built from CloudHouse with Emscripten (hours, so cached by its inputs).
-# Each job builds one with its own script in ci-runner/builtins/, then runs
-# builtins/test.sh, which publishes it to a throwaway store and runs
-# pipelines through `iwci run`. gofmt and bash are
-# cheap and are tested on every change by ci-runner.yml.
+# built from CloudHouse with Emscripten (hours). Each job builds one with its
+# own script in ci-runner/builtins/, then runs builtins/test.sh, which
+# publishes it to a throwaway store and runs pipelines through `iwci run`.
+# gofmt and bash are cheap and are tested on every change by ci-runner.yml.
+#
+# The slow builds go through builtins/build-cache.sh, which keeps each in the
+# runner pool's bucket under build-cache/, keyed by a SHA-256 of its build
+# script, patches, lib.sh, the platform and the toolchain the job installs:
+# a key already there is downloaded and checked rather than built. Pushes to
+# main read and write build-cache/main/; a pull request reads main/ and then
+# its own pr/<number>/, and writes only that; a fork's, without secrets,
+# builds everything. The script's header lists what each key holds, and
+# ci-runner/README.md ("The build cache") how to rebuild everything.
 #
 # Nightly as well as on changes, because the builds reach things this
 # repository does not pin byte for byte: the WASIX toolchain cargo-wasix
@@ -71,6 +79,12 @@ jobs:
     defaults:
       run:
         working-directory: ci-runner
+    # The toolchain the build uses beyond what its script pins; the build
+    # cache's key holds these.
+    env:
+      NODE_VERSION: "24"
+      BINARYEN: version_133
+      BINARYEN_SHA256: 89c07ea56faf38d0fbecf36ca8ec0721756716185f265b568e133d427f299bf8
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -84,13 +98,10 @@ jobs:
       # tsc-rs's build orders the module's functions with a Node script.
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
 
       # tsc-rs needs wasm-opt 132 or later; Ubuntu's package is far older.
       - name: Install binaryen
-        env:
-          BINARYEN: version_133
-          BINARYEN_SHA256: 89c07ea56faf38d0fbecf36ca8ec0721756716185f265b568e133d427f299bf8
         run: |
           archive="$RUNNER_TEMP/binaryen.tar.gz"
           curl -fsSL --retry 3 -o "$archive" \
@@ -99,8 +110,18 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/binaryen-$BINARYEN/bin" >> "$GITHUB_PATH"
 
-      - name: Build
-        run: bash builtins/typescript/build.sh
+      # Key: typescript/ (build.sh pins the tsc-rs tag), lib.sh,
+      # rust-toolchain.toml, the platform, Binaryen and Node. The nightly run
+      # builds it afresh: crates and the toolchain tsc-rs resolves are not
+      # pinned byte for byte here.
+      - name: Build, or restore from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          BUILD_CACHE_TOOLCHAIN: binaryen ${{ env.BINARYEN }} ${{ env.BINARYEN_SHA256 }}, node ${{ env.NODE_VERSION }}
+        run: bash builtins/build-cache.sh build typescript
 
       # The runtime's own test of the compiler, #[ignore]d everywhere else.
       - name: Runtime test against the built compiler
@@ -133,6 +154,9 @@ jobs:
     defaults:
       run:
         working-directory: ci-runner
+    # In the build cache's key, with the lld Ubuntu's archive has.
+    env:
+      CARGO_WASIX_VERSION: 0.1.34
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -143,21 +167,41 @@ jobs:
         with:
           workspaces: ci-runner
 
+      # Key: oxfmt/ (build.sh pins the Oxc tag; its patch), lib.sh,
+      # rust-toolchain.toml, the platform and cargo-wasix's version. The
+      # nightly run builds it afresh: the WASIX toolchain cargo-wasix
+      # installs is its newest release, not a pin.
+      - name: Restore from the build cache
+        id: cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          BUILD_CACHE_TOOLCHAIN: cargo-wasix ${{ env.CARGO_WASIX_VERSION }}, lld
+        run: bash builtins/build-cache.sh fetch oxfmt
+
       # The WASIX toolchain links host build scripts with -fuse-ld=lld but
       # does not ship the wrapper that flag looks for; the system lld is it.
       - name: Install lld and cargo-wasix
+        if: steps.cache.outputs.hit != 'true'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q lld
-          cargo install cargo-wasix --version 0.1.34 --locked
+          cargo install cargo-wasix --version "$CARGO_WASIX_VERSION" --locked
 
       # cargo-wasix looks up its toolchain release through the GitHub API,
       # which rate-limits anonymous requests from shared runners; it sends
       # GITHUB_TOKEN when set.
-      - name: Build
+      - name: Build, unless restored
         env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+          BUILD_CACHE_TOOLCHAIN: cargo-wasix ${{ env.CARGO_WASIX_VERSION }}, lld
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash builtins/oxfmt/build.sh
+        run: bash builtins/build-cache.sh build oxfmt
 
       - name: Publish and run it through iwci
         run: |
@@ -208,26 +252,22 @@ jobs:
         run: cargo build -p iwci --features node
 
       # Edge.js is built from source (builtins/environments/edgejs/build.sh:
-      # about ten minutes here, with 600 MB of pinned downloads). The build is
-      # reproducible and the next step checks the package against the hash
-      # pinned in environments/build.sh, so a cached one is as good as a
-      # fresh one and a wrong one fails either way.
-      - name: Cache the Edge.js package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/edgejs
-          key: edgejs-${{ hashFiles('ci-runner/builtins/environments/edgejs/**', 'ci-runner/builtins/lib.sh') }}
-
-      # Every environment carries Git, built from source
-      # (builtins/environments/git/build.sh: two or three minutes). The build
-      # is reproducible and environments/build.sh checks the package against
-      # the hash it pins, so a cached one is as good as a fresh one. One per
-      # architecture, so each architecture's build is checked against the pin.
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # about ten minutes here, with 600 MB of pinned downloads), and every
+      # environment carries Git, also built from source
+      # (builtins/environments/git/build.sh: two or three minutes). Both
+      # builds are reproducible, and both packages are checked against the
+      # hashes environments/build.sh pins, after a restore as after a build,
+      # so a restored one is as good as a fresh one.
+      # Keys: edgejs/ (build.sh and every patch) and lib.sh; git/, Edge.js's
+      # wasix-libc-*.patch and lib.sh; and the platform, so each
+      # architecture's Git is its own build, checked against the pin.
+      - name: Edge.js and Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build edgejs git
 
       - name: Build the environment
         run: bash builtins/environments/build.sh bash-node
@@ -283,40 +323,47 @@ jobs:
         run: cargo build -p iwci --features node
 
       # See the bash-node job.
-      - name: Cache the Edge.js package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/edgejs
-          key: edgejs-${{ hashFiles('ci-runner/builtins/environments/edgejs/**', 'ci-runner/builtins/lib.sh') }}
-
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      - name: Edge.js and Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build edgejs git
 
       # builtins/environments/clickhouse/build.sh pins CloudHouse, its
       # submodules, emsdk, CMake and Ninja, and builds at a fixed path, so the
-      # package is reproducible and the next step checks it against the hash
-      # pinned in environments/build.sh: a cached one is as good as a fresh
-      # one, and a wrong one fails either way.
-      - name: Cache the ClickHouse package
-        id: clickhouse-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/clickhouse
-          key: clickhouse-${{ hashFiles('ci-runner/builtins/environments/clickhouse/**', 'ci-runner/builtins/lib.sh') }}
+      # package is reproducible, and it is checked against the hash pinned in
+      # environments/build.sh after a restore as after a build: a restored
+      # one is as good as a fresh one, and a wrong one fails either way.
+      # Key: clickhouse/ (build.sh, cloudhouse-ci.patch, server.mjs), lib.sh
+      # and the platform.
+      - name: Restore ClickHouse from the build cache
+        id: cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh fetch clickhouse
 
       # The sources, emsdk and the build take about 12 GB.
       - name: Make room for the build
-        if: steps.clickhouse-cache.outputs.cache-hit != 'true'
+        if: steps.cache.outputs.hit != 'true'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      - name: Build the environment
+      - name: Build ClickHouse, unless restored
         env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
           CLICKHOUSE_JOBS: "4"
+        run: bash builtins/build-cache.sh build clickhouse
+
+      - name: Build the environment
         run: bash builtins/environments/build.sh clickhouse
 
       - name: Publish and run it through iwci
@@ -360,15 +407,15 @@ jobs:
           workspaces: ci-runner
 
       # Every environment carries Git, built from source
-      # (builtins/environments/git/build.sh: two or three minutes). The build
-      # is reproducible and environments/build.sh checks the package against
-      # the hash it pins, so a cached one is as good as a fresh one. One per
-      # architecture, so each architecture's build is checked against the pin.
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # (builtins/environments/git/build.sh: two or three minutes). See the
+      # bash-node job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       # And env:postgres, which Python jobs use as a service.
       - name: Build the environments
@@ -408,15 +455,15 @@ jobs:
           workspaces: ci-runner
 
       # Every environment carries Git, built from source
-      # (builtins/environments/git/build.sh: two or three minutes). The build
-      # is reproducible and environments/build.sh checks the package against
-      # the hash it pins, so a cached one is as good as a fresh one. One per
-      # architecture, so each architecture's build is checked against the pin.
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # (builtins/environments/git/build.sh: two or three minutes). See the
+      # bash-node job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       # All five versions, and php-cli (environments/php-cli/build.sh), whose
       # hash is pinned: built here on ARM64, it must come out as it does on
@@ -458,20 +505,30 @@ jobs:
           workspaces: ci-runner
 
       # Its jobs are bash scripts, and every environment carries Git
-      # (see the python job).
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # (see the bash-node job).
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       - name: Build the bash environment
         run: bash builtins/environments/build.sh bash
 
       # Go's archive with env:go's patch series, and kubectl's modules,
-      # pinned by builtins/kubectl/<minor>/go.sum (a few minutes).
-      - name: Build kubectl
-        run: bash builtins/kubectl/build.sh 1.37
+      # pinned by builtins/kubectl/<minor>/go.sum (a few minutes). The module
+      # is checked against the hash kubectl/build.sh pins, after a restore as
+      # after a build. Key: kubectl/, environments/go/ (the toolchain's pins
+      # and patch series), lib.sh and the platform.
+      - name: kubectl, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build kubectl@1.37
 
       # Against the fake API server its build makes, on the job's loopback,
       # with a kubeconfig lent as the app lends a connection.
@@ -514,21 +571,31 @@ jobs:
           workspaces: ci-runner
 
       # Its jobs are bash scripts, and every environment carries Git
-      # (see the php job).
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # (see the bash-node job).
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       - name: Build the bash environment
         run: bash builtins/environments/build.sh bash
 
       # OpenSSH and OpenSSL from source on Git's toolchain and C library,
-      # each module checked against its pinned hash, and the test server
-      # with env:go's toolchain (a few minutes).
-      - name: Build OpenSSH
-        run: bash builtins/openssh/build.sh
+      # each module checked against its pinned hash (after a restore as after
+      # a build), and the test server with env:go's toolchain (a few
+      # minutes). Key: openssh/, environments/git/ (whose pins it reads),
+      # Edge.js's wasix-libc-*.patch, environments/go/, lib.sh and the
+      # platform.
+      - name: OpenSSH, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build openssh
 
       # Against SSH servers on the job's own loopback, with connections and
       # keys lent as the app lends them. The fixture's keys are made here.
@@ -578,20 +645,29 @@ jobs:
           save-if: ${{ matrix.minor == '1.27' }}
 
       # Every environment carries Git, built from source
-      # (builtins/environments/git/build.sh: two or three minutes). The build
-      # is reproducible and environments/build.sh checks the package against
-      # the hash it pins, so a cached one is as good as a fresh one. One per
-      # architecture, so each architecture's build is checked against the pin.
-      - name: Cache the Git package
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ci-runner/dist/package/git
-          key: git-${{ runner.arch }}-${{ hashFiles('ci-runner/builtins/environments/git/**', 'ci-runner/builtins/environments/edgejs/wasix-libc-*.patch', 'ci-runner/builtins/lib.sh') }}
+      # (builtins/environments/git/build.sh: two or three minutes). See the
+      # bash-node job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
 
       # From go.dev's release archive and the patch series in
       # builtins/environments/go/<minor>/ (a minute or two). The build is
-      # reproducible, and environments/build.sh checks both of its packages
-      # against the hashes it pins.
+      # reproducible, and both of its packages are checked against the
+      # hashes environments/build.sh pins, after a restore as after a build.
+      # Key: go/build.sh, go/<minor>/, lib.sh and the platform.
+      - name: Go, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build go@${{ matrix.minor }}
+
       - name: Build the environment
         run: bash builtins/environments/build.sh go@${{ matrix.minor }}
 
