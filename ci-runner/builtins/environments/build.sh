@@ -153,7 +153,7 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.13 db0f9784ef25649f41d2eb108c3a43735387a43be04f48fc71fa36f14e31e199"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.14 aa2df2e7f2bb96aa5a46e0764536d78d66f46540449c02b5712c8d1f7e1aaa5f"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -315,7 +315,9 @@ for env in "$@"; do
       #          `module.enableCompileCache()`) works.
       # 24.0.16: and an ES module that does not parse prints where once,
       #          with its caret (#1097).
-      build_env bash-node 24.0.16 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.17: and an uncaught exception is reported as Node reports it
+      #          (#1141, #1142, #1143).
+      build_env bash-node 24.0.17 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
@@ -366,7 +368,8 @@ for env in "$@"; do
       # Its version is ClickHouse's major and minor, as postgres's is
       # PostgreSQL's; its patch number is the environment's own.
       # 26.11.1: bash-node 24.0.16's Edge.js (#1097).
-      build_env clickhouse 26.11.1 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.2: bash-node 24.0.17's Edge.js (#1141, #1142, #1143).
+      build_env clickhouse 26.11.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     *)

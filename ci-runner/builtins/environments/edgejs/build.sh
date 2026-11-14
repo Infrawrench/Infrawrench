@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, with twelve fixes to
+# and file modes and CPU time read from the runner, with thirteen fixes to
 # Edge.js itself and its built-ins code cache turned on, and with Node's
 # module compile cache.
 #
@@ -43,7 +43,7 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And fourteen patches to Edge.js's own source, applied to its checkout:
+# And fifteen patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -219,6 +219,23 @@
 #     the arrow above both. The block is now added only to an error the
 #     engine gave no arrow. Ours; drafted for Edge.js.
 #
+#   edgejs-error-report.patch (#1141, #1142, #1143). An uncaught exception
+#     is reported as Node's ReportFatalException reports it. The report put
+#     whatever line it had in front of the stack unless the stack began with
+#     it: the line of the native call the exception last crossed, so an ES
+#     module's error and a rejection pointed into node:internal (Node takes
+#     the line from where the error was made, before anything formats its
+#     stack), a SyntaxError in a CommonJS main got a second arrow into the
+#     loader although its stack already had the first (Node leaves out the
+#     arrow of a decorated error), and the bridge's lines, which end in an
+#     empty line, gave every arrow one empty line too many. A thrown
+#     primitive came out through inspect() and without the --trace-uncaught
+#     hint, and a value that is not an error had its line as an arrow, where
+#     Node prints the line first, after an empty line. And a main script's
+#     exception was announced with "Failed to execute builtin
+#     'internal/main/run_main_module':" first, which Node never prints.
+#     Ours; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -270,10 +287,11 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Edge.js one, 4 the second, 5 the modes patch and the third and fourth, 6
 # the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
 # child exit poll, 9 postMessage, 10 the worker report state, 11 the
-# worker task free, 12 the compile cache, 13 the module syntax arrow.
-VERSION="0.2.5-iwci.13"
+# worker task free, 12 the compile cache, 13 the module syntax arrow, 14
+# the error report.
+VERSION="0.2.5-iwci.14"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch edgejs-error-report.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
