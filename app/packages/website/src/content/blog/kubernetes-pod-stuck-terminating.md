@@ -104,6 +104,8 @@ The Kubernetes docs warn against removing finalizers by hand to get past a stuck
 
 Once a deletion is requested you can remove finalizers but not add them, and you cannot undo the deletion. The only way back is to create a new, similar object.
 
+If the whole namespace is stuck in Terminating rather than one pod, the [namespace stuck in Terminating guide](/blog/kubernetes-namespace-stuck-terminating) walks through the conditions it reports and the objects holding it.
+
 ## Step 6: Force delete only when you understand the risk
 
 A force deletion removes the pod from the API server straight away, without waiting for the kubelet to confirm that the containers have stopped:
