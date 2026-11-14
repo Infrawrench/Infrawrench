@@ -66,6 +66,8 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
     // V8's background threads (GC, compilation) for Node jobs, within the
     // same vCPU limit as everything else.
     iwci_runtime::set_node_worker_threads(cpus);
+    // V8's engine flags are the runner's, set before any job runs.
+    iwci_runtime::configure_node_runtime()?;
     // Four jobs share a vCPU unless told otherwise: CI work waits on its
     // own subprocesses and file reads often enough that a core interleaves
     // several jobs better than it runs one.

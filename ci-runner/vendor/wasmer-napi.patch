@@ -1,3 +1,17 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -84,6 +84,11 @@
+ features = ["rt-multi-thread"]
+ optional = true
+ 
++[dependencies.tracing]
++version = "0.1"
++default-features = false
++features = ["std"]
++
+ [dependencies.virtual-fs]
+ version = "=0.705.0"
+ optional = true
 --- a/build.rs
 +++ b/build.rs
 @@ -5,7 +5,21 @@
@@ -2347,7 +2361,29 @@
  }
 --- a/src/guest/napi.rs
 +++ b/src/guest/napi.rs
-@@ -597,8 +597,18 @@
+@@ -199,12 +199,16 @@
+     let Some(flags) = abi::read_runtime_options(&mut env, options_ptr) else {
+         return 1;
+     };
+-    let Ok(flags) = CString::new(flags) else {
+-        return 1;
+-    };
+-    unsafe {
+-        snapi_bridge_unofficial_configure_runtime(flags.as_ptr(), flags.as_bytes().len() as u32)
++    // iwci patch: the embedder configures V8 (`crate::configure_v8_runtime`).
++    // A guest's engine flags are read, so a malformed request fails as it
++    // did, and then dropped; the guest gets the embedder's runtime.
++    if !flags.is_empty() {
++        tracing::debug!(
++            flags = %String::from_utf8_lossy(&flags),
++            "engine flags from a guest are not applied"
++        );
+     }
++    unsafe { snapi_bridge_unofficial_configure_runtime(std::ptr::null(), 0) }
+ }
+ 
+ fn guest_unofficial_napi_create_env(
+@@ -597,8 +601,18 @@
  }
  
  fn guest_unofficial_napi_terminate_execution(env: FunctionEnvMut<NapiEnv>, napi_env: i32) -> i32 {
@@ -2368,7 +2404,7 @@
  }
  
  fn guest_unofficial_napi_cancel_terminate_execution(
-@@ -634,13 +644,19 @@
+@@ -634,13 +648,19 @@
      })
  }
  
@@ -2389,7 +2425,7 @@
      let env_handle = snapi_env(&env, napi_env);
      let value_id = if value > 0 { value as u32 } else { 0 };
      let transfer_list_id = if transfer_list > 0 {
-@@ -649,13 +665,13 @@
+@@ -649,13 +669,13 @@
          0
      };
      let mut out = 0u32;
@@ -2406,7 +2442,7 @@
  }
  
  fn guest_unofficial_napi_message_create(
-@@ -663,19 +679,19 @@
+@@ -663,19 +683,19 @@
      napi_env: i32,
      value: i32,
      payload_out_ptr: i32,
@@ -2431,7 +2467,7 @@
  }
  
  fn guest_unofficial_napi_message_take(
-@@ -683,22 +699,23 @@
+@@ -683,22 +703,23 @@
      napi_env: i32,
      payload: i32,
      result_out_ptr: i32,
@@ -2461,7 +2497,7 @@
  }
  
  fn guest_unofficial_napi_message_drop(_env: FunctionEnvMut<NapiEnv>, payload: i32) {
-@@ -731,24 +748,25 @@
+@@ -731,24 +752,25 @@
      value: i32,
      filter_bits: i32,
      result_out_ptr: i32,
@@ -2492,7 +2528,7 @@
  }
  
  fn guest_unofficial_napi_set_promise_hooks(
-@@ -807,7 +825,7 @@
+@@ -807,7 +829,7 @@
      error: i32,
      mode: i32,
      metadata_ptr: i32,
@@ -2501,7 +2537,7 @@
      let env_handle = snapi_env(&env, napi_env);
      let error_id = if error > 0 { error as u32 } else { 0 };
      let mut source_line_id = 0u32;
-@@ -817,7 +835,9 @@
+@@ -817,7 +839,9 @@
      let mut line_number = 0i32;
      let mut start_column = 0i32;
      let mut end_column = 0i32;
@@ -2512,7 +2548,7 @@
          snapi_bridge_unofficial_get_error_metadata(
              env_handle,
              error_id,
-@@ -830,9 +850,9 @@
+@@ -830,9 +854,9 @@
              &mut start_column,
              &mut end_column,
          )
@@ -2524,7 +2560,7 @@
      }
      if metadata_ptr > 0 {
          write_guest_u32(&mut env, metadata_ptr as u32, source_line_id);
-@@ -843,7 +863,7 @@
+@@ -843,7 +867,7 @@
          write_guest_i32(&mut env, metadata_ptr as u32 + 20, start_column);
          write_guest_i32(&mut env, metadata_ptr as u32 + 24, end_column);
      }
@@ -2533,7 +2569,7 @@
  }
  
  fn guest_unofficial_napi_configure_source_maps(
-@@ -858,23 +878,30 @@
+@@ -858,23 +882,30 @@
  }
  
  fn guest_unofficial_napi_preserve_error_source_message(
@@ -2570,7 +2606,7 @@
  }
  
  fn guest_unofficial_napi_get_heap_statistics(
-@@ -1116,7 +1143,7 @@
+@@ -1116,7 +1147,7 @@
      resource_name_or_undefined: i32,
      cjs_var_in_scope: i32,
      result_ptr: i32,
@@ -2579,7 +2615,7 @@
      let env_handle = snapi_env(&env, napi_env);
      let code_id = if code > 0 { code as u32 } else { 0 };
      let filename_id = if filename > 0 { filename as u32 } else { 0 };
-@@ -1126,7 +1153,9 @@
+@@ -1126,7 +1157,9 @@
          0
      };
      let mut result = 0i32;
@@ -2590,7 +2626,7 @@
          snapi_bridge_unofficial_contextify_contains_module_syntax(
              env_handle,
              code_id,
-@@ -1135,11 +1164,11 @@
+@@ -1135,11 +1168,11 @@
              cjs_var_in_scope,
              &mut result,
          )
@@ -2604,7 +2640,7 @@
  }
  
  #[allow(clippy::too_many_arguments)]
-@@ -1154,10 +1183,12 @@
+@@ -1154,10 +1187,12 @@
      own_microtask_queue: i32,
      host_defined_option_id: i32,
      result_ptr: i32,
@@ -2619,7 +2655,7 @@
          snapi_bridge_unofficial_contextify_make_context(
              env_handle,
              sandbox_or_symbol as u32,
-@@ -1177,11 +1208,11 @@
+@@ -1177,11 +1212,11 @@
              },
              &mut result_id,
          )
@@ -2633,7 +2669,7 @@
  }
  
  #[allow(clippy::too_many_arguments)]
-@@ -1249,13 +1280,14 @@
+@@ -1249,13 +1284,14 @@
      params_or_undefined: i32,
      host_defined_option_id: i32,
      result_ptr: i32,
@@ -2651,7 +2687,7 @@
          snapi_bridge_unofficial_contextify_compile_function(
              env_handle,
              source_text,
-@@ -1285,11 +1317,11 @@
+@@ -1285,11 +1321,11 @@
              },
              &mut result_id,
          )
@@ -2665,7 +2701,7 @@
  }
  
  fn guest_unofficial_napi_bytecode_open(
-@@ -1297,18 +1329,20 @@
+@@ -1297,18 +1333,20 @@
      napi_env: i32,
      options_ptr: i32,
      result_ptr: i32,
@@ -2690,7 +2726,7 @@
          snapi_bridge_unofficial_bytecode_open(
              env_handle,
              options.source_text,
-@@ -1330,11 +1364,11 @@
+@@ -1330,11 +1368,11 @@
              &mut cache_rejected,
              &mut can_parse_as_module,
          )
@@ -2704,7 +2740,7 @@
  }
  
  fn guest_unofficial_napi_bytecode_serialize(
-@@ -1368,18 +1402,19 @@
+@@ -1368,18 +1406,19 @@
      napi_env: i32,
      options_ptr: i32,
      result_ptr: i32,
@@ -2728,7 +2764,7 @@
          snapi_bridge_unofficial_module_wrap_create(
              env_handle,
              options.kind,
-@@ -1397,13 +1432,13 @@
+@@ -1397,13 +1436,13 @@
              &mut requests_id,
              &mut has_top_level_await,
          )
@@ -2744,7 +2780,7 @@
  }
  
  fn guest_unofficial_napi_module_wrap_destroy(
-@@ -1787,7 +1822,7 @@
+@@ -1787,7 +1826,7 @@
      let s = unsafe {
          snapi_bridge_create_string_utf8(
              snapi_env(&env, e),
@@ -2753,7 +2789,7 @@
              sb.len() as u32,
              &mut out,
          )
-@@ -1821,7 +1856,7 @@
+@@ -1821,7 +1860,7 @@
      let s = unsafe {
          snapi_bridge_create_string_latin1(
              snapi_env(&env, e),
@@ -2762,7 +2798,7 @@
              sb.len() as u32,
              &mut out,
          )
-@@ -2032,7 +2067,7 @@
+@@ -2032,7 +2071,7 @@
      if hbs as u64 > guest_data_size(&mut env) {
          return 1;
      }
@@ -2771,7 +2807,7 @@
      let mut rl: usize = 0;
      let s = unsafe {
          snapi_bridge_get_value_string_utf8(
-@@ -2073,7 +2108,7 @@
+@@ -2073,7 +2112,7 @@
      if hbs as u64 > guest_data_size(&mut env) {
          return 1;
      }
@@ -2780,7 +2816,7 @@
      let mut rl: usize = 0;
      let s = unsafe {
          snapi_bridge_get_value_string_latin1(
-@@ -2240,25 +2275,51 @@
+@@ -2240,25 +2279,51 @@
  guest_is_check!(guest_napi_is_date, snapi_bridge_is_date);
  guest_is_check!(guest_napi_is_promise, snapi_bridge_is_promise);
  
@@ -2835,7 +2871,7 @@
          fn $name(mut env: FunctionEnvMut<NapiEnv>, e: i32, vh: i32, rp: i32) -> i32 {
              let mut out: u32 = 0;
              let s = unsafe { $bridge(snapi_env(&env, e), vh as u32, &mut out) };
-@@ -2270,10 +2331,10 @@
+@@ -2270,10 +2335,10 @@
      };
  }
  
@@ -2848,7 +2884,7 @@
  
  // --- Object operations ---
  
-@@ -2547,12 +2608,28 @@
+@@ -2547,12 +2612,28 @@
      s
  }
  
@@ -2881,7 +2917,7 @@
  }
  
  // --- Comparison ---
-@@ -2667,36 +2744,67 @@
+@@ -2667,36 +2748,67 @@
      mut env: FunctionEnvMut<NapiEnv>,
      e: i32,
      rp: i32,
@@ -2961,7 +2997,7 @@
  }
  
  // --- ArrayBuffer ---
-@@ -2963,17 +3071,19 @@
+@@ -2963,17 +3075,19 @@
      s
  }
  
@@ -2986,7 +3022,7 @@
  }
  
  // --- TypedArray ---
-@@ -3560,7 +3670,7 @@
+@@ -3560,7 +3674,7 @@
      };
  
      let mut prop_names_c: Vec<CString> = Vec::with_capacity(pc as usize);
@@ -2995,7 +3031,7 @@
      let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
-@@ -3713,17 +3823,18 @@
+@@ -3713,17 +3827,18 @@
      0
  }
  
@@ -3016,7 +3052,7 @@
              snapi_bridge_define_properties(
                  snapi,
                  obj as u32,
-@@ -3737,16 +3848,16 @@
+@@ -3737,16 +3852,16 @@
                  std::ptr::null(),
                  std::ptr::null(),
              )
@@ -3036,7 +3072,7 @@
      let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
-@@ -3865,7 +3976,7 @@
+@@ -3865,7 +3980,7 @@
          prop_names_ptrs.push(cn.as_ptr());
      }
  
@@ -3045,7 +3081,7 @@
          snapi_bridge_define_properties(
              snapi,
              obj as u32,
-@@ -3879,7 +3990,7 @@
+@@ -3879,7 +3994,7 @@
              prop_setter_reg_ids.as_ptr(),
              prop_attributes.as_ptr(),
          )
@@ -3162,10 +3198,55 @@
  pub use ctx::{
      NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,
      NapiRuntimeHooks, NapiSession,
-@@ -82,6 +87,66 @@
+@@ -82,6 +87,111 @@
      Ok(())
  }
  
++/// iwci patch: configures the process's V8 from the embedder, with the
++/// bridge's defaults and then `engine_flags` (V8's command-line syntax).
++///
++/// Call it once, after [`set_v8_worker_threads`] and
++/// [`set_worker_task_hooks`] and before any guest runs. A guest's own
++/// request (`unofficial_napi_configure_runtime`, which Edge.js makes at
++/// every start) gets this runtime and never applies flags of its own.
++/// Calling it again with the same flags succeeds; with others, or after a
++/// guest started a runtime with the defaults alone, it returns
++/// [`V8RuntimeError::AlreadyConfigured`].
++pub fn configure_v8_runtime(engine_flags: &str) -> Result<(), V8RuntimeError> {
++    let length = u32::try_from(engine_flags.len()).map_err(|_| V8RuntimeError::Failed)?;
++    // Safety: the callee reads `length` bytes from the pointer during the
++    // call and copies what it keeps.
++    let status = unsafe {
++        snapi::snapi_bridge_host_configure_runtime(engine_flags.as_ptr().cast(), length)
++    };
++    match status {
++        0 => Ok(()),
++        // napi_invalid_arg
++        1 => Err(V8RuntimeError::AlreadyConfigured),
++        _ => Err(V8RuntimeError::Failed),
++    }
++}
++
++/// See [`configure_v8_runtime`].
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum V8RuntimeError {
++    /// The runtime already exists with other engine flags.
++    AlreadyConfigured,
++    /// V8's platform could not be made.
++    Failed,
++}
++
++impl Display for V8RuntimeError {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.write_str(match self {
++            Self::AlreadyConfigured => "the V8 runtime is already configured with other flags",
++            Self::Failed => "the V8 runtime could not be configured",
++        })
++    }
++}
++
++impl std::error::Error for V8RuntimeError {}
++
 +/// iwci patch (#938): how an embedder learns whose work a V8 worker task is.
 +///
 +/// V8's background tasks (garbage collection, compilation) run on one
@@ -3962,7 +4043,7 @@
    napi_value result = nullptr;
 --- a/src/snapi.rs
 +++ b/src/snapi.rs
-@@ -53,8 +53,21 @@
+@@ -53,8 +53,26 @@
  unsafe extern "C" {
      pub fn snapi_bridge_init() -> i32;
      pub fn snapi_bridge_set_v8_worker_thread_count(count: u32) -> i32;
@@ -3979,13 +4060,18 @@
 +        parked_threads: *mut u64,
 +        parked_worker_threads: *mut u64,
 +    );
++    // iwci patch: the embedder's runtime configuration.
++    pub fn snapi_bridge_host_configure_runtime(
++        engine_flags: *const std::ffi::c_char,
++        engine_flags_length: u32,
++    ) -> i32;
      pub fn snapi_bridge_unofficial_configure_runtime(
 -        engine_flags: *const i8,
 +        engine_flags: *const std::ffi::c_char,
          engine_flags_length: u32,
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_env(
-@@ -162,7 +175,7 @@
+@@ -162,7 +180,7 @@
      ) -> i32;
      pub fn snapi_bridge_unofficial_create_private_symbol(
          env: SnapiEnv,
@@ -3994,7 +4080,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -181,6 +194,9 @@
+@@ -181,6 +199,9 @@
          accepted_hooks_out: *mut u64,
      ) -> i32;
      pub fn snapi_bridge_unofficial_terminate_execution(env: SnapiEnv) -> i32;
@@ -4004,7 +4090,7 @@
      pub fn snapi_bridge_unofficial_enqueue_microtask(env: SnapiEnv, callback_id: u32) -> i32;
      pub fn snapi_bridge_unofficial_set_promise_reject_callback(
          env: SnapiEnv,
-@@ -431,13 +447,13 @@
+@@ -431,13 +452,13 @@
      pub fn snapi_bridge_get_global(env: SnapiEnv, out_id: *mut u32) -> i32;
      pub fn snapi_bridge_create_string_utf8(
          env: SnapiEnv,
@@ -4020,7 +4106,7 @@
          wasm_length: u32,
          out_id: *mut u32,
      ) -> i32;
-@@ -456,14 +472,14 @@
+@@ -456,14 +477,14 @@
      pub fn snapi_bridge_get_value_string_utf8(
          env: SnapiEnv,
          id: u32,
@@ -4037,7 +4123,7 @@
          bufsize: usize,
          result: *mut usize,
      ) -> i32;
-@@ -521,19 +537,19 @@
+@@ -521,19 +542,19 @@
      pub fn snapi_bridge_set_named_property(
          env: SnapiEnv,
          obj_id: u32,
@@ -4060,7 +4146,7 @@
          result: *mut i32,
      ) -> i32;
      pub fn snapi_bridge_set_element(env: SnapiEnv, obj_id: u32, index: u32, val_id: u32) -> i32;
-@@ -591,9 +607,9 @@
+@@ -591,9 +612,9 @@
          out_id: *mut u32,
      ) -> i32;
      pub fn snapi_bridge_throw(env: SnapiEnv, error_id: u32) -> i32;
@@ -4073,7 +4159,7 @@
      pub fn snapi_bridge_is_exception_pending(env: SnapiEnv, result: *mut i32) -> i32;
      pub fn snapi_bridge_get_and_clear_last_exception(env: SnapiEnv, out_id: *mut u32) -> i32;
      // Symbol
-@@ -941,7 +957,7 @@
+@@ -941,7 +962,7 @@
      // Callback system
      pub fn snapi_bridge_create_function(
          env: SnapiEnv,
@@ -4082,7 +4168,7 @@
          name_len: u32,
          reg_id: u32,
          out_id: *mut u32,
-@@ -979,11 +995,11 @@
+@@ -979,11 +1000,11 @@
      // napi_define_class
      pub fn snapi_bridge_define_class(
          env: SnapiEnv,
@@ -4096,7 +4182,7 @@
          prop_name_ids: *const u32,
          prop_types: *const u32,
          prop_value_ids: *const u32,
-@@ -997,7 +1013,7 @@
+@@ -997,7 +1018,7 @@
          env: SnapiEnv,
          obj_id: u32,
          prop_count: u32,
@@ -4105,10 +4191,11 @@
          prop_name_ids: *const u32,
          prop_types: *const u32,
          prop_value_ids: *const u32,
-@@ -1010,3 +1026,236 @@
+@@ -1009,4 +1030,237 @@
+     // Cleanup
      #[allow(dead_code)]
      pub fn snapi_bridge_dispose();
- }
++}
 +
 +// The arrow (`node:arrowMessage`) the bridge gives a SyntaxError, read back
 +// through a real isolate. Node's own JavaScript puts the arrow in front of a
@@ -4341,7 +4428,7 @@
 +            format!("{arrow}\nSyntaxError: Unexpected token ';'")
 +        );
 +    }
-+}
+ }
 --- a/src/snapi_js.rs
 +++ b/src/snapi_js.rs
 @@ -1447,7 +1447,7 @@
@@ -5203,7 +5290,7 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.oom;
-@@ -687,6 +903,95 @@
+@@ -687,15 +903,108 @@
    if (callback != nullptr) {
      callback(env, location, details.is_heap_oom, details.detail);
    }
@@ -5298,8 +5385,13 @@
 +  started->cv.wait(lock, [&] { return started->done; });
  }
  
++// iwci patch: the embedder configures the runtime, with its own engine
++// flags (snapi_bridge_host_configure_runtime), before any guest runs. A
++// guest's request goes through ConfigureRuntimeForGuest, which never
++// passes it flags.
  napi_status ConfigureRuntime(const char* engine_flags,
-@@ -695,7 +1000,7 @@
+                              size_t engine_flags_length) {
+   if ((engine_flags_length > 0 && engine_flags == nullptr) ||
        engine_flags_length > static_cast<size_t>(std::numeric_limits<int>::max())) {
      return napi_invalid_arg;
    }
@@ -5308,44 +5400,7 @@
    if (g_runtime.platform != nullptr) {
      return g_runtime.engine_flags.size() == engine_flags_length &&
                     (engine_flags_length == 0 ||
-@@ -710,12 +1015,48 @@
-     v8::V8::SetFlagsFromString(engine_flags,
-                                static_cast<int>(engine_flags_length));
-   }
-+  // iwci patch: no memory protection keys. On a CPU with PKU, V8 tags the
-+  // process-wide JS dispatch table with a protection key and grants access to
-+  // it in the PKRU register of the thread that first initialises V8, and of
-+  // threads that thread later creates. PKRU is per thread, so an isolate made
-+  // on a thread from an older pool (a second CI job's `node`) faulted reading
-+  // that table in Isolate::Init (SIGSEGV, PK set in the error code) and took
-+  // the whole runner down. Without the keys V8 protects those pages with
-+  // mprotect, which every thread sees the same. Set last, so no guest flag
-+  // can turn them back on.
-+  {
-+    static const char kNoPkeys[] = "--no-memory-protection-keys";
-+    v8::V8::SetFlagsFromString(kNoPkeys, static_cast<int>(sizeof(kNoPkeys) - 1));
-+  }
-+  // iwci patch (#970): no garbage collection of WebAssembly code. V8 13.6
-+  // keeps the compiled wasm-to-JS wrappers in one cache for the process,
-+  // and a lookup there adds a wrapper to the caller's WasmCodeRefScope
-+  // before it checks that the wrapper is dying. When a code GC cycle then
-+  // frees the wrapper on another isolate's thread, the scope frees it again
-+  // on its way out (WasmCode::DecrementRefCount on a deleted WasmCode) and
-+  // the process segfaults in WasmEngine::FreeDeadCode. It takes two isolates
-+  // on two threads, which is any two jobs here. V8 fixed the lookup in
-+  // 9b8ca54d5 (13.7); this V8 is prebuilt, so until it is newer the cycle
-+  // that frees a dying wrapper never runs. A stopgap: dead code then stays
-+  // until its module goes, and a dead wrapper for as long as the process
-+  // lives (vendor/README.md has the numbers). Set last, so no guest flag
-+  // can turn it back on.
-+  {
-+    static const char kNoWasmCodeGc[] = "--no-wasm-code-gc";
-+    v8::V8::SetFlagsFromString(kNoWasmCodeGc,
-+                               static_cast<int>(sizeof(kNoWasmCodeGc) - 1));
-+  }
-   v8::V8::InitializeICUDefaultLocation("");
-   v8::V8::InitializeExternalStartupData("");
-   g_runtime.platform = EdgeV8Platform::Create();
+@@ -716,14 +1025,32 @@
    if (g_runtime.platform == nullptr) return napi_generic_failure;
    v8::V8::InitializePlatform(g_runtime.platform.get());
    v8::V8::Initialize();
@@ -5357,8 +5412,21 @@
    g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                  engine_flags_length);
    return napi_ok;
-@@ -723,7 +1064,7 @@
+ }
  
++// iwci patch: a guest's request for a runtime. It gets the one the embedder
++// configured, or, when none did, one with the defaults alone; its own flags
++// are never applied, and asking again always succeeds.
++napi_status ConfigureRuntimeForGuest() {
++  {
++    RuntimeLock lock;
++    if (g_runtime.platform != nullptr) return napi_ok;
++  }
++  const napi_status status = ConfigureRuntime(nullptr, 0);
++  // Configured meanwhile, with other flags.
++  return status == napi_invalid_arg ? napi_ok : status;
++}
++
  napi_status AcquireRuntime(EdgeV8Platform** platform_out) {
    if (platform_out == nullptr) return napi_invalid_arg;
 -  std::lock_guard<std::mutex> lock(g_runtime_mu);
@@ -5366,7 +5434,7 @@
    if (g_runtime.platform == nullptr) return napi_invalid_arg;
    g_runtime.refcount++;
    *platform_out = g_runtime.platform.get();
-@@ -731,7 +1072,7 @@
+@@ -731,7 +1058,7 @@
  }
  
  void ReleaseRuntime() {
@@ -5375,7 +5443,7 @@
    if (g_runtime.refcount == 0) return;
    g_runtime.refcount--;
    // Keep shared V8 runtime alive for process lifetime in tests to avoid
-@@ -746,7 +1087,7 @@
+@@ -746,7 +1073,7 @@
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5384,7 +5452,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -856,7 +1197,7 @@
+@@ -856,7 +1183,7 @@
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5393,7 +5461,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -898,7 +1239,7 @@
+@@ -898,7 +1225,7 @@
    std::array<v8::Local<v8::Function>, 4> hooks;
    if (env == nullptr || isolate == nullptr) return hooks;
  
@@ -5402,11 +5470,10 @@
    auto hooks_it = g_promise_hooks.find(isolate);
    if (hooks_it == g_promise_hooks.end()) return hooks;
  
-@@ -1705,6 +2046,18 @@
- }
+@@ -1706,6 +2033,27 @@
  
  extern "C" {
-+
+ 
 +// iwci patch (#990): what confining V8's out-of-memory has cost the process
 +// so far (see `g_oom_mu`): isolates abandoned, threads parked, and how many
 +// of those were V8 worker threads. Host-only; never called by a guest.
@@ -5418,10 +5485,30 @@
 +  if (parked_threads != nullptr) *parked_threads = g_parked_threads;
 +  if (parked_worker_threads != nullptr) *parked_worker_threads = g_parked_worker_threads;
 +}
- 
++
++// iwci patch: the embedder configures the process's runtime with its engine
++// flags. Host-only; never called by a guest.
++int snapi_bridge_host_configure_runtime(const char* engine_flags,
++                                        uint32_t engine_flags_length) {
++  return ConfigureRuntime(engine_flags, engine_flags_length);
++}
++
++// iwci patch: a guest's request. Its engine flags are not applied
++// (ConfigureRuntimeForGuest); the embedder's are the process's.
  napi_status NAPI_CDECL unofficial_napi_configure_runtime(
      const unofficial_napi_runtime_options* options) {
-@@ -1753,7 +2106,7 @@
+   if (options != nullptr &&
+@@ -1713,8 +2061,7 @@
+        options->version != UNOFFICIAL_NAPI_RUNTIME_OPTIONS_VERSION)) {
+     return napi_invalid_arg;
+   }
+-  return ConfigureRuntime(options != nullptr ? options->engine_flags : nullptr,
+-                          options != nullptr ? options->engine_flags_length : 0);
++  return ConfigureRuntimeForGuest();
+ }
+ 
+ napi_status NAPI_CDECL unofficial_napi_create_guest_backed_typedarray(
+@@ -1753,7 +2100,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5430,7 +5517,7 @@
      if (g_runtime.platform != nullptr &&
          !g_runtime.platform->BindForegroundTaskTarget(
              env->isolate,
-@@ -1776,8 +2129,8 @@
+@@ -1776,8 +2123,8 @@
  
    env->isolate->SetFatalErrorHandler(
        hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
@@ -5441,7 +5528,7 @@
    *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
    return napi_ok;
  }
-@@ -1789,7 +2142,7 @@
+@@ -1789,7 +2136,7 @@
    auto* env = new (std::nothrow) napi_env__(context, module_api_version);
    if (env == nullptr) return napi_generic_failure;
    {
@@ -5450,7 +5537,7 @@
      g_env_by_isolate[env->isolate] = env;
    }
    *result = env;
-@@ -1800,8 +2153,9 @@
+@@ -1800,8 +2147,9 @@
    if (env == nullptr) return napi_invalid_arg;
    ProfilerState profiler_state;
    bool has_profiler_state = false;
@@ -5461,7 +5548,7 @@
      if (g_runtime.platform != nullptr) {
        g_runtime.platform->ClearForegroundTaskTarget(env->isolate, env);
      }
-@@ -1829,7 +2183,8 @@
+@@ -1829,7 +2177,8 @@
      }
      unofficial_napi_internal::ResetErrorFormattingState(env);
      g_fatal_error_callbacks.erase(env->isolate);
@@ -5471,7 +5558,7 @@
      auto profiler_it = g_profiler_states.find(env);
      if (profiler_it != g_profiler_states.end()) {
        profiler_state = std::move(profiler_it->second);
-@@ -1845,7 +2200,25 @@
+@@ -1845,7 +2194,25 @@
      env->isolate->SetPromiseHook(nullptr);
      env->isolate->SetPromiseRejectCallback(nullptr);
      env->isolate->SetFatalErrorHandler(nullptr);
@@ -5498,7 +5585,7 @@
    }
    delete env;
    return napi_ok;
-@@ -1865,28 +2238,42 @@
+@@ -1865,28 +2232,42 @@
    if (callback_or_null != nullptr) {
      bool install_provider_callback = false;
      {
@@ -5543,7 +5630,7 @@
    }
    return napi_ok;
  }
-@@ -1966,7 +2353,7 @@
+@@ -1966,7 +2347,7 @@
      return napi_generic_failure;
    }
    {
@@ -5552,7 +5639,7 @@
      g_hash_seeds[isolate] = GenerateHashSeed();
      g_tracking_allocators[allocator.get()] = allocator;
    }
-@@ -1975,7 +2362,7 @@
+@@ -1975,7 +2356,7 @@
    if (scope == nullptr) {
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5561,7 +5648,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -1990,7 +2377,7 @@
+@@ -1990,7 +2371,7 @@
      delete scope;
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5570,7 +5657,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -2007,27 +2394,56 @@
+@@ -2007,27 +2388,56 @@
    if (owner == nullptr) return napi_invalid_arg;
    auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
  
@@ -5634,7 +5721,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
    }
-@@ -2063,7 +2479,7 @@
+@@ -2063,7 +2473,7 @@
  
    bool has_prepare_stack_trace_callback = false;
    {
@@ -5643,7 +5730,7 @@
      PrepareStackTraceState& state = g_prepare_stack_trace_callbacks[env];
      v8::Local<v8::Context> principal_context = env->context();
      const bool use_principal_callback =
-@@ -2121,52 +2537,122 @@
+@@ -2121,34 +2531,95 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -5700,8 +5787,8 @@
 -  env->DrainFinalizerQueue();
 -  PumpPlatformForegroundTasks(env);
 +  return true;
- }
- 
++}
++
 +// iwci patch (#943): how long a host task turn may wait for the platform's
 +// work. With nothing runnable in the loop (it has only timers or I/O that are
 +// not due yet, or it is empty) the turn waits up to kPlatformWaitLimit;
@@ -5753,10 +5840,10 @@
 +  (void)DrainMicrotasksForEnv(env, &ran);
 +  streak.turns = has_runnable_work && !ran ? streak.turns + 1 : 0;
 +  return true;
-+}
-+
+ }
+ 
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-     napi_env env,
+@@ -2156,17 +2627,26 @@
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {
@@ -5788,7 +5875,7 @@
    }
    return napi_ok;
  }
-@@ -2337,7 +2823,7 @@
+@@ -2337,7 +2817,7 @@
    v8::Local<v8::Value> raw = napi_v8_unwrap_value(callback);
    if (!raw->IsFunction()) return napi_function_expected;
    {
@@ -5797,7 +5884,7 @@
      g_env_by_isolate[env->isolate] = env;
      auto& slot = g_promise_reject_callbacks[env->isolate];
      slot.Reset();
-@@ -2371,7 +2857,7 @@
+@@ -2371,7 +2851,7 @@
    const bool has_hooks = HasPromiseHooks(persistent_hooks);
  
    {
@@ -5806,7 +5893,7 @@
      g_env_by_isolate[env->isolate] = env;
  
      auto existing = g_promise_hooks.find(env->isolate);
-@@ -2464,7 +2950,7 @@
+@@ -2464,7 +2944,7 @@
  
    v8::Local<v8::Function> callback;
    {
@@ -5815,7 +5902,7 @@
      const auto cb_it = g_promise_reject_callbacks.find(isolate);
      if (cb_it == g_promise_reject_callbacks.end() || cb_it->second.IsEmpty()) {
        return napi_ok;
-@@ -2702,7 +3188,7 @@
+@@ -2702,7 +3182,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5824,7 +5911,7 @@
      auto it = g_hash_seeds.find(env->isolate);
      if (it != g_hash_seeds.end()) {
        *hash_seed_out = it->second;
-@@ -2746,7 +3232,7 @@
+@@ -2746,7 +3226,7 @@
    stats_out->external_memory = stats.external_memory();
    stats_out->array_buffer_memory = 0;
    {
@@ -5833,7 +5920,7 @@
      auto it = g_tracking_allocators.find(env->isolate->GetArrayBufferAllocator());
      if (it != g_tracking_allocators.end() && it->second) {
        stats_out->array_buffer_memory = it->second->total_mem_usage();
-@@ -2820,7 +3306,7 @@
+@@ -2820,7 +3300,7 @@
  
    if (kind == unofficial_napi_profile_heap) {
      {
@@ -5842,7 +5929,7 @@
        auto it = g_profiler_states.find(env);
        if (it != g_profiler_states.end() &&
            std::any_of(it->second.active_profiles.begin(),
-@@ -2844,7 +3330,7 @@
+@@ -2844,7 +3324,7 @@
      }
      profile->kind = kind;
      {
@@ -5851,7 +5938,7 @@
        EnsureProfilerState(env).active_profiles.push_back(profile);
      }
      *profile_out = profile;
-@@ -2853,7 +3339,7 @@
+@@ -2853,7 +3333,7 @@
  
    v8::CpuProfiler* cpu_profiler = nullptr;
    {
@@ -5860,7 +5947,7 @@
      ProfilerState& state = EnsureProfilerState(env);
      if (state.cpu_profiler == nullptr) {
        state.cpu_profiler = v8::CpuProfiler::New(env->isolate);
-@@ -2883,7 +3369,7 @@
+@@ -2883,7 +3363,7 @@
    profile->kind = kind;
    profile->provider_id = static_cast<uint32_t>(result.id);
    {
@@ -5869,7 +5956,7 @@
      auto it = g_profiler_states.find(env);
      if (it != g_profiler_states.end()) {
        it->second.active_profiles.push_back(profile);
-@@ -2908,7 +3394,7 @@
+@@ -2908,7 +3388,7 @@
    unofficial_napi_profile_kind kind = unofficial_napi_profile_cpu;
    uint32_t provider_id = 0;
    {

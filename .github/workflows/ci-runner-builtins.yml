@@ -280,12 +280,13 @@ jobs:
       - name: V8 heap room after other nodes end
         run: SKIP_BUILD=1 bash builtins/test.sh bash-node-pool
 
-      # A Node server as a service (`services:`), in the runtime's own tests.
-      - name: Runtime tests of Node services
+      # A Node server as a service (`services:`), and V8's engine flags
+      # being the runner's, in the runtime's own tests.
+      - name: Runtime tests of Node services and V8's flags
         run: |
           dir="$(ls -d "$PWD"/dist/environment/bash-node/*)"
           IWCI_TEST_NODE_WEBC_DIR="$dir" IWCI_TEST_WEBC_DIR="$dir" IWCI_REQUIRE_FIXTURES=1 \
-            cargo test -p iwci-runtime --features node service
+            cargo test -p iwci-runtime --features node -- service engine_flags
 
       # Main only: what passed above becomes what runners resolve.
       - name: Publish to the runner pool

@@ -33,9 +33,9 @@ creates later. PKRU is per thread, so a second CI job's `node`, running on a
 thread from an older pool, faulted reading that table in `Isolate::Init`
 (SIGSEGV, PK in the error code) and took the whole runner down: two
 `env:bash-node` jobs started together crashed every time.
-`v8/src/unofficial_napi.cc` sets `--no-memory-protection-keys` before V8
-initialises, after any guest flags, so V8 protects those pages with mprotect,
-which every thread sees the same. Drop it once a release grants the key to
+The runner configures V8 with `--no-memory-protection-keys` (`V8_FLAGS` in
+`iwci-runtime`, below), so V8 protects those pages with mprotect, which
+every thread sees the same. Drop it once a release grants the key to
 every thread that runs an isolate; two `env:bash-node` jobs started together
 on a PKU host are the check.
 
@@ -236,9 +236,9 @@ every job in it (#970: `~WasmCodeRefScope` under
 which is any two jobs that run WebAssembly in Node (rolldown under tsdown
 or Vitest). V8 fixed the lookup in 9b8ca54d5, "Fix lookup of wrappers
 marked is_dying" (13.7, crbug 409379692); the bridge links a prebuilt
-13.6.233, so `v8/src/unofficial_napi.cc` sets `--no-wasm-code-gc` before
-V8 initialises, after any guest flags: the cycle that frees a dying
-wrapper never runs, so nothing frees one twice.
+13.6.233, so the runner configures V8 with `--no-wasm-code-gc`
+(`V8_FLAGS` in `iwci-runtime`): the cycle that frees a dying wrapper never
+runs, so nothing frees one twice.
 
 It is a stopgap, and its cost is memory. Code a module no longer uses
 (Liftoff code replaced by TurboFan's) stays until the module is freed,
@@ -252,8 +252,32 @@ jobs, which it leaves for good; a wrapper is a few hundred bytes of code.
 Drop the flag when the linked V8 is 13.7 or later. The prebuilt releases
 after 11.9.9 are V8 15.9 (`wasmerio/v8-custom-builds` 15.9.111.0 and
 15.9.111.1, linux amd64 and arm64), but wasmerio/napi's main still pins
-11.9.9: when a wasmer-napi release targets 15.9, rebase this patch onto it
-without this hunk.
+11.9.9: when a wasmer-napi release targets 15.9, drop the flag from
+`V8_FLAGS`.
+
+**And: the runner configures the V8 runtime.** V8's engine flags are the
+whole process's, so the runner sets them from the host, once, at start-up
+and before any job's instance exists: `configure_v8_runtime` (new, in
+`src/lib.rs`, over `snapi_bridge_host_configure_runtime`) applies the
+bridge's defaults and then the runner's `V8_FLAGS`
+(`crates/iwci-runtime/src/lib.rs`):
+`--no-memory-protection-keys` and `--no-wasm-code-gc` (above), which the
+bridge used to set itself, and `--js-source-phase-imports
+--harmony-import-attributes`, which Edge.js asks for at every start. Jobs
+can no longer change engine flags: the guest import
+`unofficial_napi_configure_runtime` still reads its options, so a malformed
+request fails as before, then drops the flags (logged at debug level through
+`tracing`, a new dependency already in the tree) and gets the runtime that
+exists, or one with the defaults alone if the embedder made none, and
+answers success every time, so every `node` starts whatever options it was
+given. Edge.js passes V8 no heap or stack sizes (the budget sets each
+isolate's heap, above), so nothing a job could ask for there is lost.
+`builtins/test.sh bash-node` has two jobs that start `node` with different
+options (`node-options-passes`, `node-after-options-passes`), and the
+`iwci-runtime` test `a_job_cannot_choose_the_engine_flags` asks the bridge
+for a small stack from a job and checks that a later `node` has V8's
+default. Keep it when rebasing onto a newer wasmer-napi, unless a release
+lets the embedder own the runtime's configuration.
 
 **And: whose a worker task is.** V8's garbage collection and background
 compilation run on one process-wide worker pool, so their CPU time belongs
@@ -560,7 +584,7 @@ and #146's fix, lends the store in the imports #1090 names, and either a
 guest's event loop is kept alive and woken
 for its isolate's background work or the pinned Edge.js does that itself,
 the stall check has another way to count V8's worker threads or goes
-without, and a panic in a guest callback no longer aborts the process: delete
+without, the embedder owns the runtime's configuration, and a panic in a guest callback no longer aborts the process: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs, one that compiles WebAssembly

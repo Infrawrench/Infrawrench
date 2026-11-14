@@ -23,9 +23,10 @@ mod imp {
     impl NodeHooks {
         /// A context whose V8 heaps together stay under `memory_bytes`.
         pub(crate) fn new(memory_bytes: u64) -> Self {
-            // V8's worker threads are counted for the job whose task they
-            // run (stall.rs).
-            crate::stall::node_hooks::install();
+            // V8 is the runner's, configured before any of the job's
+            // instances can ask for it; a failure here already stopped
+            // start-up (`configure_node_runtime`).
+            let _ = crate::configure_node_runtime();
             Self {
                 ctx: NapiCtx::builder()
                     .max_total_heap_bytes(memory_bytes)

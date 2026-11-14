@@ -64,6 +64,54 @@ pub fn set_node_worker_threads(cpus: usize) {
     let _ = cpus;
 }
 
+/// The engine flags of the V8 that runs every Node job, which the runner
+/// sets and nothing else does: V8's flags are the whole process's, so no
+/// job's `node` chooses them (vendor/README.md).
+///
+/// - `--js-source-phase-imports --harmony-import-attributes`: what Edge.js
+///   asks for at every start unless told otherwise.
+/// - `--no-memory-protection-keys` (#930): on a CPU with PKU, V8 tags the
+///   process-wide JS dispatch table with a protection key and grants access
+///   in the PKRU register of the thread that first initialises V8 and of the
+///   threads that thread creates. PKRU is per thread, so an isolate made on
+///   a thread from an older pool (a second job's `node`) faulted reading
+///   that table in `Isolate::Init` and took the runner down. Without keys,
+///   V8 protects those pages with mprotect, which every thread sees the same.
+/// - `--no-wasm-code-gc` (#970, #976): V8 13.6 keeps compiled wasm-to-JS
+///   wrappers in one cache for the process, and a lookup there adds a
+///   wrapper to the caller's `WasmCodeRefScope` before it checks that the
+///   wrapper is dying, so once a code GC cycle freed it on another
+///   isolate's thread the scope freed it again. V8 fixed the lookup in 13.7
+///   (9b8ca54d5); until the linked V8 is newer, the cycle never runs. Dead
+///   code then stays until its module goes, and a dead wrapper for the life
+///   of the process. Drop this flag with V8 13.7 or later.
+#[cfg(feature = "node")]
+const V8_FLAGS: &str = "--js-source-phase-imports --harmony-import-attributes \
+                        --no-memory-protection-keys --no-wasm-code-gc";
+
+/// Configures the V8 that Node jobs run on, once per process, with
+/// `V8_FLAGS`. It runs at start-up, after [`set_node_worker_threads`]
+/// (the platform it makes fixes the pool's size), and every job that can
+/// run Node calls it again before its first instance, so it always comes
+/// before any job's `node` asks for a runtime. Without the `node` feature
+/// there is no V8 and nothing to configure.
+pub fn configure_node_runtime() -> Result<(), String> {
+    #[cfg(feature = "node")]
+    {
+        static CONFIGURED: std::sync::OnceLock<Result<(), wasmer_napi::V8RuntimeError>> =
+            std::sync::OnceLock::new();
+        (*CONFIGURED.get_or_init(|| {
+            // V8's worker threads are counted for the job whose task they
+            // run (stall.rs), from the platform's first task on.
+            stall::node_hooks::install();
+            wasmer_napi::configure_v8_runtime(V8_FLAGS)
+        }))
+        .map_err(|e| format!("configuring V8: {e}"))
+    }
+    #[cfg(not(feature = "node"))]
+    Ok(())
+}
+
 /// What V8 running out of memory where it cannot recover has cost this
 /// process so far (#990). The bridge keeps each such out-of-memory to its
 /// job by parking the thread that ran out for good and abandoning the
