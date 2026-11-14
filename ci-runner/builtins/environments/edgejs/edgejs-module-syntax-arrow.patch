@@ -1,0 +1,44 @@
+diff --git a/src/internal_binding/binding_module_wrap.cc b/src/internal_binding/binding_module_wrap.cc
+index a81a2888..f3f598ae 100644
+--- a/src/internal_binding/binding_module_wrap.cc
++++ b/src/internal_binding/binding_module_wrap.cc
+@@ -10,6 +10,7 @@
+ 
+ #include "edge_buffer_lease.h"
+ #include "edge_bytecode.h"
++#include "binding_registry/binding_registry.h"
+ #include "edge_environment.h"
+ #include "internal_binding/helpers.h"
+ #include "unofficial_napi.h"
+@@ -272,11 +273,31 @@ std::string GetFirstSourceLine(std::string source_text) {
+   return source_text;
+ }
+ 
++// Whether the engine gave this error its arrow (`node:arrowMessage`): the
++// file and line, the source line and a caret under the error, which the
++// fatal exception handler prints above the stack, as Node's does.
++bool HasArrowMessage(napi_env env, napi_value err) {
++  napi_value util = edge::binding_registry::Get(env, "util");
++  napi_value private_symbols = nullptr;
++  napi_value arrow_symbol = nullptr;
++  napi_value arrow = nullptr;
++  napi_valuetype type = napi_undefined;
++  return util != nullptr && GetNamedProperty(env, util, "privateSymbols", &private_symbols) &&
++         private_symbols != nullptr &&
++         GetNamedProperty(env, private_symbols, "arrow_message_private_symbol", &arrow_symbol) &&
++         arrow_symbol != nullptr && napi_get_property(env, err, arrow_symbol, &arrow) == napi_ok &&
++         arrow != nullptr && napi_typeof(env, arrow, &type) == napi_ok && type == napi_string;
++}
++
+ void DecorateModuleCompileError(napi_env env,
+                                 napi_value err,
+                                 const std::string& resource_name,
+                                 const std::string& source_text) {
+   if (env == nullptr || err == nullptr || resource_name.empty()) return;
++  // An error the engine placed needs nothing more: this block always names
++  // line 1 and has no caret, so on top of the engine's arrow a SyntaxError
++  // printed its location two or three times, once without the caret (#1097).
++  if (HasArrowMessage(env, err)) return;
+ 
+   std::string stack_text;
+   napi_value stack = nullptr;
