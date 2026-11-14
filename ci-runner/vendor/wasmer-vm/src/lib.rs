@@ -22,8 +22,6 @@ mod global;
 mod imports;
 mod instance;
 mod memory;
-// iwci patch (#996)
-mod memory_image;
 mod mmap;
 mod probestack;
 mod sig_registry;
