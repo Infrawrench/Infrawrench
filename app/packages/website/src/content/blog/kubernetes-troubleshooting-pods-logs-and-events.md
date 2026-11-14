@@ -53,6 +53,7 @@ If you already know the status or error you are looking at, jump straight to its
 
 - Deployment rollout never finishes, ProgressDeadlineExceeded: [stuck rollouts](/blog/kubernetes-deployment-rollout-stuck)
 - HorizontalPodAutoscaler shows unknown targets or does not scale: [HPA not scaling](/blog/kubernetes-hpa-not-scaling)
+- Namespace stuck in Terminating after kubectl delete namespace: [namespace stuck in Terminating](/blog/kubernetes-namespace-stuck-terminating)
 
 **Nodes**
 
