@@ -844,6 +844,19 @@ jobs:
       bash -c '( sh -c "sleep 1; echo b > /tmp/b" & ); exit 0'
       sleep 3
       test "$(cat /tmp/a /tmp/b)" = "$(printf 'a\nb')"
+  # A process's parent pid is the process that started it, and an
+  # orphan's is the job's first process, as `init` on Linux (#1107): every
+  # process saw 0. The orphan reads its parent after its subshell has
+  # exited, through an `exec`ed bash (bash reads `$PPID` as it starts).
+  ppid-passes:
+    using: env:bash@5
+    run: |
+      test "$PPID" = 0
+      bash -c 'echo "$PPID"' > /tmp/child
+      test "$(cat /tmp/child)" = "$$"
+      ( bash -c 'sleep 1; exec bash -c "echo \$PPID" > /tmp/orphan' & )
+      sleep 3
+      test "$(cat /tmp/orphan)" = "$$"
   # ...but not the job: what a job leaves running, by `( cmd & )` or
   # `cmd &`, is stopped when it ends (#1106). It used to run on and write
   # here.
@@ -2479,6 +2492,20 @@ jobs:
       before="$(cat /tmp/workflow/left-node)"
       sleep 3
       test "$(cat /tmp/workflow/left-node)" = "$before"
+  # A `node` knows its parent, and a child it starts knows the `node`
+  # (#1107): `process.ppid` and bash's `$PPID` were 0.
+  ppid-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      node -e 'console.log(process.ppid)' > /tmp/ppid
+      test "$(cat /tmp/ppid)" = "$$"
+      node -e '
+      const { execFileSync } = require("node:child_process");
+      const ppid = execFileSync("bash", ["-c", "echo $PPID"], { encoding: "utf8" }).trim();
+      console.log(ppid === String(process.pid) ? "ok" : `${ppid} is not ${process.pid}`);
+      ' > /tmp/child
+      test "$(cat /tmp/child)" = ok
   # A child's exit status reaches a `node` whole (#1053): spawnSync and
   # `exit` read every status from 80 up as 79.
   exit-status-passes:

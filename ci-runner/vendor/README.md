@@ -906,6 +906,21 @@ reparented and keeps running; the runner stops what a job left running
 when the job ends (`stop_left_behind`). Upstream main is unchanged
 (checked November 2026).
 
+**A process knows its parent (#1107).** `WasiProcess::parent`, which
+`proc_parent` reads, was a weak reference to a `RwLock<WasiProcessInner>`,
+a type no process has (its lock is a `Mutex`), so nothing set it and
+`getppid()` was 0 for every process in a job: bash's `$PPID`, Node's
+`process.ppid`. `proc_parent` of another process answered that process's
+own pid. `src/os/task/process.rs` now keeps the parent's pid, a weak
+reference to its exit status, and the pid of the tree's first process;
+`WasiEnv::fork`, which fork, vfork and spawn all go through, sets it with
+`WasiControlPlane::new_process_with_parent` (`src/os/task/control_plane.rs`)
+before the process goes into the control plane's map, and `reinit` keeps
+it. While the parent runs a process sees its pid; after, the tree's first
+process, as an orphan sees `init` on Linux (in the runner, the job's
+command, pid 1), whose own parent is 0. Upstream main has the same unset
+field and the same `proc_parent` (checked November 2026).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -916,7 +931,7 @@ or receive waits with no timeout of its own and still ends for a signal,
 the task manager's idle threads end without queueing a task behind a
 busy one, a link the file system cannot make fails and `rmdir` finds a
 directory nothing looked up, a child's exit status reaches its parent
-unchanged, a directory's cookies hold while it changes, a moved
+unchanged, a process knows its parent, a directory's cookies hold while it changes, a moved
 directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
@@ -928,6 +943,7 @@ its `[patch.crates-io]` entry in `../Cargo.toml`, and check
 `builtins/test.sh`'s `background-passes`, `exit-status-passes`,
 `spawn-many-passes` (bash, bash-node and go),
 `bash/many-processes-checked-passes`, `bash/subshell-background-passes`,
+`ppid-passes` (bash and bash-node),
 `bash-node/detached-child-passes` and
 `shebang-passes` (bash and bash-node), `shebang-missing-interpreter-fails`, `no-terminal-passes`
 (bash and bash-node), `low-fds-passes`, `rename-passes`, `links-passes`
@@ -946,6 +962,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_service_blocked_in_accept_takes_its_sigterm`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
+`a_process_knows_its_parent_and_an_orphan_the_jobs_first_process`,
 `a_process_can_spawn_more_children_than_the_task_limit_one_by_one`,
 `every_process_of_a_control_plane_is_found_whatever_its_id`,
 `a_service_process_started_after_thousands_of_others_is_stopped`,
