@@ -211,12 +211,14 @@ jobs:
   # rather than read them module by module in every file's `node`
   # (server-core/vitest.prebundle.ts). Alone on eight cores that took web
   # from 252 s, 144 s and 122 s at two, four and six workers to 146 s, 92 s
-  # and 72 to 92 s, and server-core from 85 s at four to 49 s. desktop (108 s
-  # and 66 s at two and four) and ui (127 s and 70 s) load theirs as they
-  # did.
+  # and 72 to 92 s, and server-core from 85 s at four to 49 s. desktop's
+  # config has a list of its own (`effect`, gt-react, and the Kubernetes, SQL
+  # Server and Kafka clients its drivers load): on that host while it was
+  # shared, 118 to 138 s at two workers and 112 s at four became 72 s and
+  # 62 s. ui (127 s and 70 s) loads its modules as it did.
   #
   # `memory:` holds the most workers a suite can get. desktop and ui at four
-  # peak at 3.2 and 3.6 GiB and pass at 3 GiB. web at six and server-core at
+  # peak at 3.6 GiB and pass at 3 GiB. web at six and server-core at
   # four pass at 5 GiB, so they are a job of their own (`test-large`) one
   # step above that, with the same script.
   test:
