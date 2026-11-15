@@ -83,8 +83,11 @@ export interface DayUsage {
 export interface CycleUsed {
   builds: number;
   actions: number;
-  /** Depot CI minutes measured at 2 vCPUs, the unit the plan's allowance is in. */
-  ci: number;
+  /**
+   * Sandbox compute minutes measured at 2 vCPUs, the unit the plan's allowance is in:
+   * Depot CI and agent sandboxes, which draw on one pool (#897).
+   */
+  compute: number;
 }
 
 /** Depot CI bills per vCPU, and the plan's included minutes are measured at 2 vCPUs. */
@@ -94,7 +97,9 @@ export function usedInCycle(day: DayUsage): CycleUsed {
   return {
     builds: day.builds.reduce((s, b) => s + b.minutes, 0),
     actions: day.actions.filter((a) => !a.macos).reduce((s, a) => s + a.billed, 0),
-    ci: day.ci.reduce((s, c) => s + c.vcpuMinutes, 0) / CI_VCPUS_PER_INCLUDED_MINUTE,
+    compute:
+      day.ci.reduce((s, c) => s + c.vcpuMinutes, 0) / CI_VCPUS_PER_INCLUDED_MINUTE +
+      day.sandboxes.reduce((s, x) => s + x.minutes, 0),
   };
 }
 
@@ -278,6 +283,12 @@ export function priceDay(
     });
   }
 
+  // Depot CI and agent sandboxes are one pool of sandbox compute, shared pro rata.
+  const computeShare = billableFraction(
+    before.compute,
+    today.compute,
+    rates.includedSandboxMinutes,
+  );
   for (const s of day.sandboxes) {
     if (s.minutes <= 0) continue;
     add({
@@ -285,13 +296,12 @@ export function priceDay(
       service: SERVICE.sandboxes,
       tags: { agentType: s.type },
       currency: "USD",
-      amount: s.minutes * rates.sandboxMinute,
+      amount: s.minutes * computeShare * rates.sandboxMinute,
       usageAmount: s.minutes,
       usageUnit: "billed minutes",
     });
   }
 
-  const ciShare = billableFraction(before.ci, today.ci, rates.includedSandboxMinutes);
   for (const c of day.ci) {
     if (c.vcpuMinutes <= 0) continue;
     const tags: Record<string, string> = { repo: c.repo };
@@ -302,7 +312,7 @@ export function priceDay(
       service: SERVICE.ci,
       tags,
       currency: "USD",
-      amount: c.vcpuMinutes * ciShare * rates.ciVcpuMinute,
+      amount: c.vcpuMinutes * computeShare * rates.ciVcpuMinute,
       usageAmount: c.vcpuMinutes,
       usageUnit: "vCPU-minutes",
     });
@@ -393,13 +403,13 @@ export async function fetchDepotCostData(
   });
 
   let cycleStart = -1;
-  let before: CycleUsed = { builds: 0, actions: 0, ci: 0 };
+  let before: CycleUsed = { builds: 0, actions: 0, compute: 0 };
   days.forEach((d, i) => {
     const day = usages[i]!;
     const cycle = cycleBounds(d, cycleStartDay).startMs;
     if (cycle !== cycleStart) {
       cycleStart = cycle;
-      before = { builds: 0, actions: 0, ci: 0 };
+      before = { builds: 0, actions: 0, compute: 0 };
     }
     const cycleDays = cycleLengthDays(d, cycleStartDay);
     if (estimated.has(d)) {
@@ -418,7 +428,7 @@ export async function fetchDepotCostData(
     before = {
       builds: before.builds + used.builds,
       actions: before.actions + used.actions,
-      ci: before.ci + used.ci,
+      compute: before.compute + used.compute,
     };
   });
   return out;
