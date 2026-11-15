@@ -7,6 +7,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { AZURE_FOCUS } from "./focus-services.js";
 import { AzureClient } from "./client.js";
+import { AZURE_CI_CREDENTIAL } from "./ci-credential.js";
 import { AZURE_CI_EXECUTOR } from "./ci-executor.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
@@ -176,6 +177,9 @@ export const manifest = {
   // managed identity. Needs the actions `ciPreflight` names. See
   // `ci-executor.ts`.
   ciExecutor: AZURE_CI_EXECUTOR,
+  // The service principal for a CI job's `connections:`. The CLI takes no
+  // outside token, so it is the stored secret. See `ci-credential.ts`.
+  ciCredential: AZURE_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;
