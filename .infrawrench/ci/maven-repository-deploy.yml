@@ -30,9 +30,11 @@ concurrency:
   group: maven-repository-deploy-${{ commit.branch }}
   cancel-in-progress: true
 
+# The root importer too: it lists rolldown's WebAssembly build, which
+# rolldown (under Vitest) leaves out of its own optional dependencies.
 workspace:
   deps:
-    - pnpm: { only: [app/packages/maven-repository] }
+    - pnpm: { only: [".", app/packages/maven-repository] }
 
 jobs:
   # As test.yml runs every package's Vitest: the runner writes no
