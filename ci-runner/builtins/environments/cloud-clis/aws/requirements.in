@@ -1,0 +1,3 @@
+# The AWS CLI, version 1: version 2 cannot start without awscrt, which has no
+# build for WASIX (README.md, "AWS CLI"). Lock with lock.sh aws.
+awscli==1.46.3

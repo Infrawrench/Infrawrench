@@ -6,7 +6,8 @@ name: CI runner builtins
 # language environments, whose tests install packages from the internet
 # (pip, Composer, Go modules), Go's built from source for each minor,
 # kubectl, built with that Go from modules it downloads, OpenSSH's
-# clients, built from source with wasixcc and OpenSSL, and ClickHouse,
+# clients, built from source with wasixcc and OpenSSL, the cloud CLIs
+# (installed by env:python's pip from PyPI and Wasmer's index), and ClickHouse,
 # built from CloudHouse with Emscripten (hours). Each job builds one with its
 # own script in ci-runner/builtins/, then runs builtins/test.sh, which
 # publishes it to a throwaway store and runs pipelines through `iwci run`.
@@ -459,6 +460,55 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/environment/python/* dist/environment/postgres/*
+
+  cloud-clis:
+    name: cloud CLIs (aws, az, gcloud on CPython for WASIX)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Every environment carries Git, built from source. See the bash-node
+      # job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
+
+      # Each CLI installed from its lock (PyPI and Wasmer's WASIX index) or
+      # Google's archive by environments/cloud-clis/build.sh, a minute or
+      # two each, and pinned by hash in environments/build.sh.
+      - name: Build the environments
+        run: bash builtins/environments/build.sh aws az gcloud
+
+      # Against the fake cloud, with no network in the jobs.
+      - name: Publish and run them through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh aws az gcloud
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/environment/aws/* dist/environment/az/* dist/environment/gcloud/*
 
   php:
     name: php (phpix on WASIX)

@@ -370,11 +370,11 @@ jobs:
       node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
-| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`). |
-| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                    |
-| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                        |
+| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)). |
+| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 `${{ resources.<name>.<output> }}` reads one output of a granted resource,
 such as a database's `connectionString` or a secret manager entry's
@@ -1046,6 +1046,9 @@ Environments:
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
 | `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                            |
+| `aws@1.46`             | `python@3.13`'s packages plus our `iwci/aws-cli` (the AWS CLI 1.46.3; see [Cloud CLIs](#cloud-clis))                                                                                                                                   |
+| `az@2.92`              | `python@3.13`'s packages plus our `iwci/azure-cli` and `iwci/azure-cli-mgmt` (the Azure CLI 2.92.0; see [Cloud CLIs](#cloud-clis))                                                                                                     |
+| `gcloud@593`           | `python@3.13`'s packages plus our `iwci/gcloud` and `iwci/gcloud-apis` (the Google Cloud CLI 593.0.0, `gcloud` and `bq`; see [Cloud CLIs](#cloud-clis))                                                                                |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -1556,10 +1559,12 @@ deploy:
 
 What to know:
 
-- **No exec credential plugins.** A job has no `aws`, `gcloud` or `doctl`,
-  so a kubeconfig that runs one cannot log in. The app lends a kubeconfig
-  with a short-lived token instead; one you write yourself needs a token or
-  a client certificate.
+- **Exec credential plugins need their CLI.** A lent kubeconfig carries a
+  short-lived token, so it needs none. One that runs `aws eks get-token`
+  finds `aws` in `env:aws` (see [Cloud CLIs](#cloud-clis); kubectl running
+  it is not tested yet); one that runs
+  `gke-gcloud-auth-plugin`, `kubelogin` or `doctl` cannot log in, since a
+  job has none of them.
 - **The cluster's API must be public**, or reached through a public jump
   host: jobs reach public addresses only (see [Networking](#networking)).
 - **No terminal.** A job has none, so `kubectl exec -it` and `kubectl
@@ -1907,6 +1912,95 @@ the wheels it found.
 
 `python -c` (multi-line included), `python - <<EOF` and a script piped to
 `python` work.
+
+### Cloud CLIs
+
+`env:aws@1.46`, `env:az@2.92` and `env:gcloud@593` are `env:python@3.13`
+with a cloud provider's CLI installed beside it: the AWS CLI 1.46.3, the
+Azure CLI 2.92.0, and the Google Cloud CLI 593.0.0 (`gcloud` and `bq`).
+Lend the job a connection and the CLI is signed in:
+
+```yaml
+deploy:
+  using: env:aws@1.46
+  connections: [Production AWS]
+  tools: [builtin:kubectl@1.37]
+  run: |
+    aws s3 sync dist/ s3://my-site --delete
+    aws cloudformation deploy --template-file stack.yml --stack-name web
+    aws eks update-kubeconfig --name prod
+    kubectl rollout restart deploy/web # its kubeconfig runs `aws eks get-token`
+```
+
+What a lent connection gives each CLI (the AWS, GCP and Azure plugins'
+`lendCiCredential`; see [Connections](#connections-ssh-keys-and-resources)):
+
+| CLI      | Lent as                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aws`    | STS session credentials, minted per run from the connection's access key (never the key): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` and `AWS_DEFAULT_REGION`, and a profile named after the connection in `~/.aws/credentials` (`--profile` with two lent).                                                                                      |
+| `gcloud` | An access token for the service account (never its key) in a file `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE` names, which gcloud uses in place of any account, with the project in `CLOUDSDK_CORE_PROJECT`; `GOOGLE_OAUTH_ACCESS_TOKEN` for Terraform. An hour, or the run's length where the organization allows longer tokens.                                                                |
+| `az`     | The service principal: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID` (and `ARM_*`). The Azure CLI reads none of these itself, so the first `az` command of a job that has them and is signed in to nothing runs `az login --service-principal` with them and `az account set` with the subscription; `az login` in the script does it yourself. |
+
+Each environment sets what its CLI needs to run unattended, which a job's
+`env:` can override:
+
+| Variable                                           | Value              | Why                                                                                                                        |
+| -------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `AWS_PAGER`                                        | empty              | No pager: output goes to the log.                                                                                          |
+| `AWS_EC2_METADATA_DISABLED`                        | `true`             | The CLI never asks the instance metadata service for credentials or a region; a job cannot reach it, and would wait on it. |
+| `CLOUDSDK_CORE_DISABLE_PROMPTS`                    | `1`                | No prompts: nobody answers one.                                                                                            |
+| `CLOUDSDK_CORE_CHECK_GCE_METADATA`, `NO_GCE_CHECK` | `false`, `True`    | gcloud's and Google's auth libraries' metadata server probes, off for the same reason.                                     |
+| `CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK`  | `true`             | No check for a newer gcloud, which this one cannot install.                                                                |
+| `CLOUDSDK_PYTHON`                                  | `/usr/bin/python3` | The environment's CPython, for what gcloud starts.                                                                         |
+| `AZURE_CORE_COLLECT_TELEMETRY`                     | `no`               | The Azure CLI uploads usage data from a process it leaves behind.                                                          |
+| `AZURE_CORE_SURVEY_MESSAGE`, `AZURE_CORE_NO_COLOR` | `no`, `true`       | No survey prompt, and plain text in the log.                                                                               |
+
+What to know:
+
+- **Each CLI is apart from the job's packages.** `aws`, `az`, `gcloud` and
+  `bq` run on the environment's CPython with `-I -S`, from their own
+  directories under `/opt`, so what a job installs with `pip` (an older
+  `urllib3`, a `PYTHONPATH`) does not change them, and they do not appear in
+  `pip list`. pip is there for the job's own packages, as in `env:python`.
+- **The AWS CLI is version 1.** Version 2 cannot start without `awscrt`,
+  the AWS Common Runtime's C libraries, which it imports in its core
+  (credentials, checksums, logging) rather than only for the CRT transfer
+  client. No WASIX build of `awscrt` exists (not on Wasmer's index, nor in
+  Wasmer's build recipes), and making one means building the AWS C
+  libraries (`aws-c-io`'s event loop, s2n-tls and AWS-LC, or OpenSSL) as a
+  WASIX extension module for this interpreter. Version 1 is in maintenance
+  mode until July 2027: no new services or APIs, security fixes only. Its
+  commands are version 2's for everything below: `sts`, `s3` and `s3api`,
+  `ecr get-login-password`, `cloudformation deploy`, `lambda
+update-function-code`, `eks update-kubeconfig` and `eks get-token`.
+- **gcloud has no gsutil and no components.** gsutil is left out (`gcloud
+storage` does what it did) and so is everything native: the component
+  manager cannot install anything here, `gke-gcloud-auth-plugin` included,
+  so a kubeconfig from `gcloud container clusters get-credentials` cannot
+  log in. Write one with a token instead (`gcloud auth print-access-token`).
+- **Azure CLI extensions** (`az extension add`) are not tested: pure
+  Python ones should install into the job, and ones with compiled code
+  need a WASIX build on Wasmer's index, as with pip.
+- **Startup.** Each command starts a CPython and imports the CLI, which the
+  job compiles to bytecode as it goes (the packages ship none: it would
+  double them past the store's 256 MiB per file).
+- Tested end to end (`builtins/test.sh aws az gcloud`) against a fake of
+  the calls (`environments/cloud-clis/fake-cloud.py`) on the job's
+  loopback, in jobs with no network, with each connection lent as the app
+  lends it and its secrets masked in the report: every AWS command above, a
+  refused session and no credentials at all; `gcloud projects describe`,
+  `gcloud storage ls` and a refused token; and the Azure CLI signing itself
+  in over HTTPS, `az group list`, `az account show` and a refused secret.
+
+Each CLI is installed by `environments/cloud-clis/build.sh` and pinned by
+hash in `environments/build.sh`. The AWS and Azure CLIs come from a lock of
+every distribution with its SHA-256 (`<tool>/requirements.lock`, made by
+`cloud-clis/lock.sh` with pip inside env:python's own interpreter, so
+markers read `sys_platform` `wasix` and compiled projects are WASIX wheels:
+`cryptography`, `cffi`, `PyNaCl`, `bcrypt`, `psutil`, `PyYAML`); gcloud is
+Google's versioned archive, pinned by hash. To move a CLI to a new
+release, change its version, run `lock.sh`, `build.sh` and the tests, and
+pin the new hashes.
 
 ### PHP
 

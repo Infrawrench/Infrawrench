@@ -14,6 +14,10 @@
 #   env:clickhouse the same as env:bash-node plus ClickHouse 26.11
 #                  (CloudHouse for one-thread WebAssembly) behind its HTTP
 #                  interface, `clickhouse-server`, for a job's `services:`
+##   env:aws        the same as env:python plus the AWS CLI (version 1)
+#   env:az         the same as env:python plus the Azure CLI
+#   env:gcloud     the same as env:python plus the Google Cloud CLI
+#                  (cloud-clis/build.sh, README.md "Cloud CLIs")
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -47,6 +51,9 @@
 #                                      macOS on arm64: patch-module.sh's
 #                                      Wasmer CLI)
 #   environments/build.sh python       the same
+#   environments/build.sh aws          the same as python, and the CLI's
+#                                      packages (cloud-clis/build.sh, Linux,
+#                                      x86_64 or ARM64); likewise az, gcloud
 #   environments/build.sh php          every PHP version (Linux, x86_64 or
 #                                      ARM64, to build php-cli)
 #   environments/build.sh go           every Go minor: builds each with
@@ -166,6 +173,46 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
 #     global install cannot shadow a command the environment ships.
 BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
     "PNPM_HOME": "/root/.local/share/pnpm"'
+# The cloud CLIs, built by cloud-clis/build.sh on env:python's CPython;
+# each hash is its output's, as with Edge.js. The Azure CLI and gcloud are
+# two packages each (the store's 256 MiB per file).
+AWS_CLI_PKG="iwci/aws-cli 1.46.3-iwci.1 260f8eafd1d677e665d829bde36faa827e0f50c5818283b7f4d0c628be8bf3e4"
+AZURE_CLI_PKG="iwci/azure-cli 2.92.0-iwci.1 c83fc9c805b0e2d3b500d03990b914feb0392325fd01cf1846e6827d1d419495"
+AZURE_CLI_MGMT_PKG="iwci/azure-cli-mgmt 2.92.0-iwci.1 59b670548a0b6de0d96378f587405a46d226cfe067c2c15d2dbb03c0eae3c3d8"
+GCLOUD_PKG="iwci/gcloud 593.0.0-iwci.1 53807a9295a97da620ef5f1c600845fa881834e532619a03a22a50c7875140e7"
+GCLOUD_APIS_PKG="iwci/gcloud-apis 593.0.0-iwci.1 74d94ed1d43a7eb1f49ebb23f154f48073f424d84b6bf63efe4920b04cf3a410"
+# What each CLI needs here beyond env:python's defaults (README.md, "Cloud
+# CLIs"): its bin/ on PATH after /usr/local/bin, and:
+#   AWS_PAGER  empty: no pager, the output goes to the log.
+#   AWS_EC2_METADATA_DISABLED  never ask the instance metadata service for
+#     credentials or a region: a job cannot reach it (the network refuses
+#     link-local addresses) and the CLI would wait on it first.
+#   CLOUDSDK_CORE_DISABLE_PROMPTS  no prompts: nobody answers one.
+#   CLOUDSDK_CORE_CHECK_GCE_METADATA, NO_GCE_CHECK  gcloud's and Google's
+#     auth libraries' own metadata server probes, off for the same reason.
+#   CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK  no check for a newer
+#     gcloud, which this one cannot install.
+#   CLOUDSDK_PYTHON  the environment's CPython, for gcloud's own children.
+#   AZURE_CORE_COLLECT_TELEMETRY  the Azure CLI uploads usage data from a
+#     process it leaves behind; off.
+#   AZURE_CORE_SURVEY_MESSAGE, AZURE_CORE_NO_COLOR  no survey prompt, and
+#     plain text in the log.
+cloud_env() {
+  printf '%s' "${PYTHON_ENV/\"PATH\": \"\/usr\/local\/bin:/\"PATH\": \"\/usr\/local\/bin:$1:}"
+}
+AWS_ENV="$(cloud_env /opt/aws-cli/bin)"',
+    "AWS_PAGER": "",
+    "AWS_EC2_METADATA_DISABLED": "true"'
+AZ_ENV="$(cloud_env /opt/azure-cli/bin)"',
+    "AZURE_CORE_COLLECT_TELEMETRY": "no",
+    "AZURE_CORE_SURVEY_MESSAGE": "no",
+    "AZURE_CORE_NO_COLOR": "true"'
+GCLOUD_ENV="$(cloud_env /opt/google-cloud-sdk/bin)"',
+    "CLOUDSDK_CORE_DISABLE_PROMPTS": "1",
+    "CLOUDSDK_CORE_CHECK_GCE_METADATA": "false",
+    "NO_GCE_CHECK": "True",
+    "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
+    "CLOUDSDK_PYTHON": "/usr/bin/python3"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c454e66abf35c24f02f58fcff"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
@@ -220,7 +267,18 @@ fetch() {
     iwci/git) ours=git ;;
     iwci/clickhouse) ours=clickhouse ;;
   esac
-  if [[ -n "$ours" ]]; then
+  local cli=""
+  case "$name" in
+    iwci/aws-cli) cli=aws ;;
+    iwci/azure-cli | iwci/azure-cli-mgmt) cli=az ;;
+    iwci/gcloud | iwci/gcloud-apis) cli=gcloud ;;
+  esac
+  if [[ -n "$cli" ]]; then
+    # Ours: cloud-clis/build.sh makes each CLI's packages.
+    local built="$dist/package/${name#iwci/}/$version/${name#iwci/}.webc"
+    [[ -f "$built" ]] || bash "$here/environments/cloud-clis/build.sh" "$cli" >&2
+    cp "$built" "$file"
+  elif [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
     local built="$dist/package/$ours/$build/$ours.webc"
     [[ -f "$built" ]] || bash "$here/environments/$ours/build.sh" >&2
@@ -286,7 +344,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG" "$GIT_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php go postgres
+  set -- bash bash-node python php go postgres aws az gcloud
 fi
 for env in "$@"; do
   case "$env" in
@@ -360,6 +418,22 @@ for env in "$@"; do
       build_env python 3.13.19 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
+    aws)
+      # Its version is the AWS CLI's major and minor, as python's is
+      # CPython's; its patch number is the environment's own.
+      build_env aws 1.46.0 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
+        "$AWS_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AWS_CLI_PKG"
+      ;;
+    az)
+      build_env az 2.92.0 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
+        "$AZ_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AZURE_CLI_PKG" "$AZURE_CLI_MGMT_PKG"
+      ;;
+    gcloud)
+      # gcloud's releases are one number (593.0.0); the environment's patch
+      # number is its own revision.
+      build_env gcloud 593.0.0 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
+        "$GCLOUD_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$GCLOUD_PKG" "$GCLOUD_APIS_PKG"
+      ;;
     php)
       # phpix 0.3.1 holds PHP 8.1.34, 8.2.35, 8.3.36, 8.4.27 and 8.5.12,
       # which were also the environments' first versions. Each line is the
@@ -392,7 +466,7 @@ for env in "$@"; do
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres and clickhouse" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
       exit 2
       ;;
   esac
