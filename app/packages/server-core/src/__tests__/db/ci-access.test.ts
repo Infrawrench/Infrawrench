@@ -197,6 +197,7 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     proxy.pipelines = pipelines;
     const accepted = await runs.acceptCiEvent({
       kind: "push",
+      baseSha: null,
       installationId,
       repoFullName: "acme/web",
       branch,
