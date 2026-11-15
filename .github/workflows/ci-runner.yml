@@ -102,12 +102,14 @@ jobs:
       - name: gVisor and Bun, pinned
         run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"
 
-      # Built as the runner's user, run as root.
+      # Built as the runner's user, run as root in a scope with a cgroup
+      # subtree of its own, as the runner's unit delegates one on the hosts.
       - name: cargo test --test gvisor
         run: |
           bin=$(cargo test -p iwci-sandbox --test gvisor --no-run --message-format=json \
             | jq -r 'select(.profile.test == true and .target.name == "gvisor") | .executable')
-          sudo env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_BUSYBOX=/bin/busybox \
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_CGROUP=1 IWCI_TEST_BUSYBOX=/bin/busybox \
             IWCI_TEST_GVISOR="$IWCI_TEST_GVISOR" IWCI_TEST_BUN_ROOT="$IWCI_TEST_BUN_ROOT" \
             "$bin" --ignored --test-threads=1 --nocapture
 

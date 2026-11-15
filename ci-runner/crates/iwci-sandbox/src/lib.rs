@@ -12,6 +12,8 @@
 //! Everything here is Linux only.
 
 #[cfg(target_os = "linux")]
+pub mod cgroup;
+#[cfg(target_os = "linux")]
 pub mod lisafs;
 #[cfg(target_os = "linux")]
 pub mod net;

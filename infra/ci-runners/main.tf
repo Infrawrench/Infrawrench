@@ -22,9 +22,10 @@ locals {
   ])) }
 
   unit = { for name, h in local.hosts : name => templatefile("${path.module}/files/iwci.service.tftpl", {
-    listen        = h.listen
-    storage_quota = var.storage_quota
-    update_flags  = local.update_flags
+    listen         = h.listen
+    storage_quota  = var.storage_quota
+    update_flags   = local.update_flags
+    native_sandbox = coalesce(h.native_sandbox, false)
   }) }
 }
 
@@ -39,6 +40,7 @@ resource "terraform_data" "host" {
     file("${path.module}/files/install.sh"),
     each.value.tunnel_token == null ? "" : sha256(each.value.tunnel_token),
     each.value.zram == null ? "" : each.value.zram,
+    coalesce(each.value.native_sandbox, false) ? file("${path.module}/files/apparmor-iwci") : "",
   ]))
 
   # How to reach the host. Read through `self` because the destroy
@@ -78,6 +80,14 @@ resource "terraform_data" "host" {
   provisioner "file" {
     content     = each.value.zram == null ? "" : each.value.zram
     destination = "/tmp/iwci-zram"
+  }
+  provisioner "file" {
+    content     = coalesce(each.value.native_sandbox, false) ? "true" : "false"
+    destination = "/tmp/iwci-native"
+  }
+  provisioner "file" {
+    source      = "${path.module}/files/apparmor-iwci"
+    destination = "/tmp/apparmor-iwci"
   }
   provisioner "file" {
     source      = "${path.module}/files/install.sh"
