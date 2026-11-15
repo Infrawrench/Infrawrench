@@ -59,7 +59,7 @@
 # already in dist/ instead of building. python, php and go need the internet:
 # python and php install packages (from PyPI and Wasmer's wheel index, and
 # from Packagist, in jobs and through `deps:`), and go fetches its fixture's
-# module and an HTTPS page. Needs: git, jq, and
+# module and an HTTPS page. Needs: git, jq, openssl, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -420,6 +420,12 @@ with zipfile.ZipFile(f"{sys.argv[1]}/{dist}-{version}-py3-none-any.whl", "w") as
     record.append(f"{info}/RECORD,,")
     whl.writestr(f"{info}/RECORD", "\n".join(record) + "\n")
 PY
+# A certificate for `localhost` and its key, for the Python job that serves
+# HTTPS (`tls-server-passes`). Made here, so no key is checked in.
+mkdir -p "$repo/py/tls"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 \
+  -subj /CN=localhost -addext subjectAltName=DNS:localhost \
+  -keyout "$repo/py/tls/key.pem" -out "$repo/py/tls/cert.pem" 2>/dev/null
 # A Python project installed by `deps: [pip]`: requests and what it needs
 # from PyPI, and numpy as Wasmer's WASIX wheel, in pip-compile's format
 # with the WASIX wheel's hash beside PyPI's sdist (README, "WASIX wheels in
@@ -3548,6 +3554,46 @@ jobs:
         run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
         ready: { port: 7002 }
     run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
+  # A listening socket is a stream socket with no peer (#1217):
+  # `getsockopt(SO_TYPE)` answered ENOTSOCK for one and `getpeername`
+  # ENOTSUP, so `ssl.wrap_socket` could not wrap a server's socket, the usual
+  # way to serve HTTPS from Python.
+  tls-server-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python - <<'PY'
+      import socket
+      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      types = [s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)]
+      s.bind(("127.0.0.1", 7004))
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      s.listen()
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      assert types == [socket.SOCK_STREAM] * 3, types
+      s.close()
+      PY
+      python - <<'PY' &
+      import http.server, ssl
+      served = []
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header("Content-Length", "8")
+              self.end_headers()
+              self.wfile.write(b"over tls")
+              served.append(True)
+      server = http.server.HTTPServer(("127.0.0.1", 7443), Handler)
+      context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+      context.load_cert_chain("/app/py/tls/cert.pem", "/app/py/tls/key.pem")
+      server.socket = context.wrap_socket(server.socket, server_side=True)
+      while not served:
+          server.handle_request()
+      PY
+      server=$!
+      wait-for-port 7443 --host localhost --timeout 60s
+      test "$(python -c 'import ssl, urllib.request; print(urllib.request.urlopen("https://localhost:7443/", context=ssl.create_default_context(cafile="/app/py/tls/cert.pem")).read().decode())')" = "over tls"
+      wait "$server"
   # pip's three ways to keep packages apart from the interpreter's own, from
   # the local wheel and with no network: the user site, whose console
   # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
