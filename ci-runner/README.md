@@ -1981,9 +1981,12 @@ storage` does what it did) and so is everything native: the component
 - **Azure CLI extensions** (`az extension add`) are not tested: pure
   Python ones should install into the job, and ones with compiled code
   need a WASIX build on Wasmer's index, as with pip.
-- **Startup.** Each command starts a CPython and imports the CLI, which the
-  job compiles to bytecode as it goes (the packages ship none: it would
-  double them past the store's 256 MiB per file).
+- **Startup.** A job's first CLI command took 3 to 4 s on ci-1 (x86_64),
+  most of it CPython's own start (`python -c 0`, a job's first, 2.3 s), and
+  later ones 0.2 to 0.6 s (`az version` 0.16 s, `gcloud version` 0.4 s,
+  `aws sts get-caller-identity` 0.6 s). The packages ship no bytecode,
+  which would double them past the store's 256 MiB per file; a job
+  compiles what it imports into its own copy as it goes.
 - Tested end to end (`builtins/test.sh aws az gcloud`) against a fake of
   the calls (`environments/cloud-clis/fake-cloud.py`) on the job's
   loopback, in jobs with no network, with each connection lent as the app
