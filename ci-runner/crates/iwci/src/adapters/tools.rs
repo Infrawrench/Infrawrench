@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use iwci_runtime::{
-    Invocation as RtInvocation, Limits, PathCommand, Ready, Runtime, Service, ServiceProgram,
-    WasmModule, WebcPackage,
+    Invocation as RtInvocation, Limits, PathCommand, PathTree, Ready, Runtime, Service,
+    ServiceProgram, WasmModule, WebcPackage,
 };
 use iwci_spec::{Action, ReadyCheck, ToolRef};
 use iwci_store::{Abi, Catalog, RepoId, Resolved};
@@ -95,7 +95,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             env.retain(|(existing, _)| *existing != k);
             env.push((k, v));
         }
-        let commands = path_commands(path_tools, inv.fs, &mut env)?;
+        let (commands, trees) = path_commands(path_tools, inv.fs, &mut env)?;
         prepend_path(&mut env, inv.path);
         let services = services
             .iter()
@@ -115,6 +115,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             }),
             scratch: Some(inv.scratch.as_dyn()),
             commands,
+            trees,
             internet: inv.job.network,
             modes: inv.fs.modes(),
             services,
@@ -145,6 +146,9 @@ impl Executor<Resolved> for RuntimeExecutor {
                     module.bytes.clone(),
                 );
                 match manifest.abi {
+                    Abi::Node => {
+                        return Err(node_not_alone(&manifest.name));
+                    }
                     Abi::TscHost if !invocation.services.is_empty() => {
                         return Err(format!(
                             "`{}` runs through the tsc host, which has no network or processes for services; start them for a job in an environment instead",
@@ -283,6 +287,9 @@ fn service(run: &ServiceRun<'_, Resolved>, fs: &iwci_vfs::JobFs) -> Result<Servi
                     manifest.name
                 )));
             }
+            if manifest.abi == Abi::Node {
+                return Err(fail(node_not_alone(&manifest.name)));
+            }
             for (path, blob) in files {
                 fs.write(path, &blob.bytes)
                     .map_err(|e| fail(e.to_string()))?;
@@ -331,16 +338,25 @@ fn service(run: &ServiceRun<'_, Resolved>, fs: &iwci_vfs::JobFs) -> Result<Servi
     })
 }
 
+/// A Node tool (`abi: node`) asked to run as a job or a service of its own.
+fn node_not_alone(name: &str) -> String {
+    format!(
+        "`{name}` runs on Node: list it in `tools:` of a job on an environment that has `node`, such as env:bash-node@24, and run it from the script"
+    )
+}
+
 /// The job's `tools:` as commands for its script: each tool's module,
-/// named after the tool. A tool's data files are written as they would be
-/// for a job of its own, and its default environment fills in variables the
-/// job does not set.
+/// named after the tool, or for a Node tool its directory and the script
+/// that runs it. A tool's data files are written as they would be for a job
+/// of its own, and its default environment fills in variables the job does
+/// not set.
 fn path_commands(
     tools: &[Arc<Resolved>],
     fs: &iwci_vfs::JobFs,
     env: &mut Vec<(String, String)>,
-) -> Result<Vec<PathCommand>, String> {
+) -> Result<(Vec<PathCommand>, Vec<PathTree>), String> {
     let mut commands = Vec::with_capacity(tools.len());
+    let mut trees = Vec::new();
     for tool in tools {
         let Resolved::Tool {
             manifest,
@@ -351,6 +367,15 @@ fn path_commands(
         else {
             return Err("`tools:` takes tools, not environments".into());
         };
+        if manifest.abi == Abi::Node {
+            for (k, v) in &manifest.env {
+                if !env.iter().any(|(existing, _)| existing == k) {
+                    env.push((k.clone(), v.clone()));
+                }
+            }
+            trees.push(super::node_tools::node_tree(manifest, module)?);
+            continue;
+        }
         if manifest.abi == Abi::TscHost {
             return Err(format!(
                 "`{}` reads files through the tsc-host ABI, so it only runs as a job of its own (`using:`), not as a command in a script",
@@ -380,7 +405,7 @@ fn path_commands(
             ),
         });
     }
-    Ok(commands)
+    Ok((commands, trees))
 }
 
 fn lossy(bytes: &[u8]) -> String {

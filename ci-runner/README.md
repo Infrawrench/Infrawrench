@@ -1034,6 +1034,10 @@ Builtins:
 | `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
 | `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
 | `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
+| `vercel@65`        | `node`     | The Vercel CLI 65.16.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
+| `wrangler@4`       | `node`     | Wrangler 4.162.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
+| `cf@1.0.0-beta.32` | `node`     | Cloudflare's CLI, `cf` 1.0.0-beta.32 (a beta: name the exact version). See [Deployment CLIs](#deployment-clis).                              |
+| `neon@9`           | `node`     | The Neon CLI 9.5.0 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
 
 Environments:
 
@@ -1479,7 +1483,9 @@ deploy:
   installs exactly what the lockfile pins and checks every byte against its
   hash, a global install asks the registry for whatever the name and
   version mean at that moment, with its dependencies' ranges resolved fresh.
-  Pin an exact version. A package's install scripts do not run (pnpm's
+  Pin an exact version, or use a [builtin](#tools-and-environments) for the
+  deployment CLIs we publish, which are built from a lockfile and verified
+  like any other builtin. A package's install scripts do not run (pnpm's
   default for dependencies it has not been told to build).
 - **Edge.js's `npm` is pnpm**, so `npm i -g` and `pnpm add -g` are the same
   install: into `PNPM_HOME` (`/root/.local/share/pnpm`, which the
@@ -1536,6 +1542,125 @@ and default environment come with it. Two kinds cannot be commands and are
 refused when the job starts: tools that use the tsc-host ABI
 (`builtin:typescript`, which reads files through its own host interface;
 run it as a job of its own) and tools whose manifest has default arguments.
+
+A tool of the `node` ABI (the [deployment CLIs](#deployment-clis)) is a
+directory rather than a module: its files are mounted read only at
+`/usr/local/lib/iwci/tools/<name>/<version>`, unpacked once per runner and
+shared by every job that uses that build, and its command in
+`/usr/local/bin` is a bash script that runs its script on the
+environment's own `node`. It works only in `tools:`, and only in an
+environment with `node`: in `env:bash` the job fails to start ("`vercel`
+(tools:) runs on `node`, which this environment does not have"), and as a
+job of its own (`using:`) it is refused the same way.
+
+### Deployment CLIs
+
+Four command-line programs from npm are builtins for deploying from a job:
+`builtin:vercel@65`, `builtin:wrangler@4`, `builtin:cf@1.0.0-beta.32`
+(Cloudflare's new CLI, in beta, so only its exact version resolves) and
+`builtin:neon@9`. Each runs on the environment's `node`, so list it in
+`tools:` of a job on `env:bash-node`:
+
+```yaml
+deploy:
+  using: env:bash-node@24
+  tools: [builtin:vercel@65, builtin:wrangler@4, builtin:neon@9]
+  env:
+    VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+  run: |
+    vercel deploy --prebuilt --prod --yes
+    wrangler deploy
+    neon branches create --project-id "$NEON_PROJECT" --name "pr-${{ pull-request.number }}"
+```
+
+- **Built from a lockfile, verified, immutable.** Each is a directory in
+  `builtins/npm-cli/` holding a `package.json` with the program at an exact
+  version and the `package-lock.json` that pins every package under it by
+  integrity hash. `npm-cli/build.sh` installs exactly that (`npm ci`, no
+  install scripts, no optional dependencies: those are the native builds
+  per platform), packs `node_modules` as a tar in a fixed order with fixed
+  owners, times and modes, and checks the tar's SHA-256 against the one
+  pinned in the tool's `builtin.json` before it compresses it. The store
+  publishes the compressed tar by its own hash like any blob, and a version
+  is never republished. Unlike a [global install](#global-installs),
+  nothing is fetched while the job runs.
+- **Tokens from the environment, no prompts.** Each reads its token from a
+  variable: `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` (with
+  `CLOUDFLARE_ACCOUNT_ID`), `NEON_API_KEY`. Set them from secrets, as
+  above, or have a connection lent where its plugin can lend one
+  (`connections:`, see
+  [Connections, SSH keys and resources](#connections-ssh-keys-and-resources));
+  either way the value is masked. No job has a terminal, so none of them
+  prompts; pass `--yes` where a command asks to confirm (`vercel deploy`
+  linking a directory the first time).
+- **No telemetry, no update checks** where the program has a switch: each
+  builtin's default environment sets `VERCEL_TELEMETRY_DISABLED=1` and
+  `NO_UPDATE_NOTIFIER=1` (Vercel), `WRANGLER_SEND_METRICS=false`,
+  `CF_SEND_TELEMETRY=false` and `DO_NOT_TRACK=1` (Cloudflare's), and the
+  Neon CLI runs with `--no-analytics`. A job's own `env:` wins. Wrangler
+  still asks npm's registry for its newest version (three seconds at most,
+  cached for an hour); with `network: false` that fails at once and changes
+  nothing.
+- **Native programs are left out.** A job is a WebAssembly isolate, so a
+  native binary cannot run in it, and npm leaves the per-platform builds out:
+  - The Vercel CLI's own native build (`@vercel/vc-native-*`) gives way to
+    its JavaScript build, which the CLI runs wherever no native one fits.
+    `vercel deploy` (which uploads the source and builds on Vercel) and
+    `vercel deploy --prebuilt` (which uploads `.vercel/output`) work.
+    `vercel build` runs the framework's build in the job, so it works as
+    far as that build does under `node` here (see
+    [Tools and environments](#tools-and-environments)); `vercel dev` is
+    not tested.
+  - Wrangler's esbuild is esbuild-wasm, the same JavaScript API with the
+    compiler as WebAssembly, through an `overrides` entry in its
+    `package.json`, so `wrangler deploy` bundles in the job. `wrangler
+deploy --no-bundle` uploads a Worker built elsewhere as it is, and
+    `wrangler pages deploy <dir>` uploads a directory to Pages.
+  - workerd, Cloudflare's local Workers runtime, is a native program with
+    no build that runs here. Wrangler loads it, through Miniflare, to start
+    at all (the real package throws "Unsupported platform: wasi wasm32 LE"
+    as it loads), so `builtins/npm-cli/stubs/workerd` stands in for it: it
+    exports what the package does, and its `workerd` prints why it cannot
+    run and exits 1. `wrangler dev`, anything with `--local`, `cf dev` and
+    `@cloudflare/vitest-pool-workers` fail, saying so. Use `wrangler dev
+--remote`, which runs the Worker on Cloudflare, or a
+    [cloud job](#cloud-jobs) for the local runtime.
+  - `cf` deploys a directory of static assets as a Worker (`cf deploy
+public`); `--prebuilt` with existing Build Output should too, but is not
+    tested yet. A project with server-side code is built by the project's
+    own Wrangler or Vite, which `cf deploy` delegates to, and only once the project has moved to
+    `cloudflare.config.ts` (`cf migrate`); until then, and for anything `cf`
+    does not cover yet, `builtin:wrangler` deploys a Worker from source.
+  - The Neon CLI's optional esbuild (for Neon Functions) and keyring are
+    left out: `neon branches`, `neon connection-string`, `neon projects`
+    and its other API commands work, `neon psql` needs a `psql` the job does
+    not have, and a keyring does not apply (it reads `NEON_API_KEY`).
+- **What it costs.** The compressed directories are 30 MB (Vercel), 8 MB
+  (Wrangler), 6 MB (`cf`) and 7 MB (Neon); a runner unpacks each once and
+  shares it between jobs. On ci-1, `--version` took 40 ms (Vercel), 120 ms
+  (`cf`), 400 ms (Neon) and 680 ms (Wrangler, which loads Miniflare), and a
+  whole test job (a fake API service started, then the deploy) 1.2 s for
+  `cf deploy`, 3 s for `wrangler deploy` with bundling, and 4.3 s for
+  `vercel deploy`. Bundling 400 modules (2.5 MB of source) took 2.9 s
+  (`wrangler deploy --dry-run`, 0.7 s of it starting Wrangler).
+- **Updating one** is a new version: change the version in its
+  `package.json`, run `npm install --package-lock-only --ignore-scripts
+--install-links` beside it, set the version in `builtin.json`, build with
+  `NPM_CLI_PIN=1 builtins/npm-cli/build.sh <tool>` and pin the hash it
+  prints. A rebuild of a version already published cannot be published.
+- Tested end to end (`builtins/test.sh npm-cli`) against fake
+  Vercel, Cloudflare and Neon APIs on the job's own loopback
+  (`builtins/npm-cli/fake-apis.mjs`, which answers the routes the CLIs use
+  with the shapes the providers' API references give), every job with
+  `network: false`, so nothing can reach a real provider: `vercel deploy`
+  and `--prebuilt --prod`, `wrangler deploy` (bundled, and `--no-bundle`),
+  `wrangler pages deploy`, `cf deploy <dir>`, and a Neon branch made, read
+  and deleted. As failures: a refused Vercel token and Neon key, `wrangler
+dev`, a Node tool in `env:bash`, and one run as a job of its own. The
+  tokens come from lent connections and must come out masked.
 
 ### kubectl
 

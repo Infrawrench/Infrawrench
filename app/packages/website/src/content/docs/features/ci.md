@@ -132,6 +132,42 @@ jobs:
     run: pnpm test
 ```
 
+### Deployment CLIs
+
+The Vercel CLI, Wrangler, Cloudflare's new `cf` and the Neon CLI are built in. List them under `tools:` in a job on `env:bash-node@24` and run them by name:
+
+```yaml
+jobs:
+  deploy:
+    using: env:bash-node@24
+    tools: [builtin:vercel@65, builtin:wrangler@4, builtin:neon@9]
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+    run: |
+      vercel deploy --prebuilt --prod --yes
+      wrangler deploy
+      neon branches create --project-id my-project --name pr-${{ pull-request.number }}
+```
+
+| Tool                       | What it is                                          |
+| -------------------------- | --------------------------------------------------- |
+| `builtin:vercel@65`        | The Vercel CLI 65.16                                |
+| `builtin:wrangler@4`       | Wrangler 4.162, for Workers and Pages               |
+| `builtin:cf@1.0.0-beta.32` | Cloudflare's `cf`, in beta (name the exact version) |
+| `builtin:neon@9`           | The Neon CLI 9.5 (the successor to `neonctl`)       |
+
+Each one is pinned with every package under it, so nothing is downloaded while the job runs, and each reads its token from the environment (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`) and never prompts. Telemetry and update checks are off.
+
+Jobs run in an isolate that cannot start native programs, so a few things work differently:
+
+- `wrangler deploy` bundles your Worker with the WebAssembly build of esbuild. `wrangler deploy --no-bundle` uploads a Worker you built in an earlier job as it is.
+- Anything that runs a Worker locally needs `workerd`, Cloudflare's local runtime, which cannot run here: `wrangler dev`, `--local`, `cf dev` and `@cloudflare/vitest-pool-workers` stop with a message that says so. Use `wrangler dev --remote`, or a [cloud job](#cloud-jobs).
+- `cf deploy <dir>` deploys a folder of static files. For a Worker with server-side code, use `wrangler deploy`, as Cloudflare recommends until a project moves to `cloudflare.config.ts`.
+- `vercel deploy` (which builds on Vercel) and `vercel deploy --prebuilt` both work. `vercel build` runs your framework's build inside the job.
+
 ### Background services
 
 `services:` starts programs a job's tests need, such as a database or your own API server, before the job runs, and stops them when it ends. Each runs inside the job, on the job's private network, so its name works as a host name (`postgres:5432`) and its ports never clash with another job's:

@@ -58,6 +58,14 @@ pub enum Abi {
     Wasix,
     /// The TypeScript compiler host interface.
     TscHost,
+    /// A Node program, such as a deployment CLI from npm: the module is a
+    /// zstd-compressed tar of the program's directory (its `node_modules`,
+    /// installed from a lockfile), which a job's environment runs on its own
+    /// `node` (`tools:` only). `args[0]` is the script to run, relative to
+    /// that directory, and the rest come before the job's own arguments.
+    /// A runner older than this variant refuses such a manifest, so publish
+    /// one only once every runner reads it.
+    Node,
 }
 
 /// A data file mounted read-only into the guest.
@@ -347,6 +355,15 @@ impl ToolManifest {
                 ));
             }
         }
+        if self.abi == Abi::Node {
+            let entry = self.args.first().map(String::as_str).unwrap_or("");
+            if !is_valid_guest_path(&format!("/{entry}")) {
+                return Err(invalid(
+                    "args[0]",
+                    "a node tool's first argument is its script, a relative, normalised path inside it",
+                ));
+            }
+        }
         check_env("env", &self.env)?;
         check_description(&self.description)
     }
@@ -550,6 +567,31 @@ mod tests {
         assert!(ToolManifest::from_json(bad_version.as_bytes()).is_err());
         let empty_module = tool_json("").replace("\"size\":10", "\"size\":0");
         assert!(ToolManifest::from_json(empty_module.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn node_tools_name_their_script() {
+        let node =
+            |args: &str| tool_json(&format!(r#","args":{args}"#)).replace("tsc-host", "node");
+        let m = ToolManifest::from_json(node(r#"["node_modules/x/cli.js","--quiet"]"#).as_bytes())
+            .unwrap();
+        assert_eq!(m.abi, Abi::Node);
+        assert_eq!(ToolManifest::from_json(&m.to_json()).unwrap(), m);
+        for bad in [
+            r#"[]"#,
+            r#"["/abs/cli.js"]"#,
+            r#"["../cli.js"]"#,
+            r#"["a//b.js"]"#,
+            r#"[""]"#,
+        ] {
+            let err = ToolManifest::from_json(node(bad).as_bytes())
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("args[0]"), "{bad}: {err}");
+        }
+        // Without args at all.
+        let none = tool_json("").replace("tsc-host", "node");
+        assert!(ToolManifest::from_json(none.as_bytes()).is_err());
     }
 
     #[test]
