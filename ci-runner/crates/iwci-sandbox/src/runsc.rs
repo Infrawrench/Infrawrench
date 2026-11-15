@@ -67,6 +67,9 @@ pub struct Config {
     pub memory_bytes: u64,
     /// Extra global flags for the Sentry (`--debug`, `--strace`, ...).
     pub extra_flags: Vec<String>,
+    /// The cgroup the Sentry runs in (`crate::cgroup`), joined before it
+    /// runs anything, so everything it does is counted there.
+    pub cgroup: Option<PathBuf>,
 }
 
 /// A started (not yet running) sandbox.
@@ -238,7 +241,13 @@ pub fn boot(
         config.id.clone(),
     ]);
     let env = vec!["GODEBUG=".to_string(), "TMPDIR=/tmp".to_string()];
-    let pid = spawn(&release.sentry(), &args, &env, fds)?;
+    let pid = spawn(
+        &release.sentry(),
+        &args,
+        &env,
+        fds,
+        config.cgroup.as_deref(),
+    )?;
     Ok(Sandbox {
         pid,
         id: config.id.clone(),
@@ -334,12 +343,43 @@ impl Sandbox {
 
     /// Waits for the job's process to end: its wait status.
     pub fn wait(&mut self) -> io::Result<i32> {
-        let status = self.call("containerManager.Wait", json!(self.id))?;
+        self.wait_for(None)?
+            .ok_or_else(|| io::Error::from(io::ErrorKind::TimedOut))
+    }
+
+    /// [`Sandbox::wait`], giving up after `limit`: `None` if the job is
+    /// still running, which the caller then stops (a timeout, a cancel, a
+    /// drain).
+    pub fn wait_for(&mut self, limit: Option<std::time::Duration>) -> io::Result<Option<i32>> {
+        let status = match self.call_timeout("containerManager.Wait", json!(self.id), limit) {
+            Ok(status) => status,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Ok(None);
+            }
+            // The Sentry itself went (killed for memory, or by a signal):
+            // its own wait status says how.
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::UnexpectedEof
+                        | io::ErrorKind::ConnectionReset
+                        | io::ErrorKind::BrokenPipe
+                ) =>
+            {
+                return Ok(Some(self.reap().unwrap_or(e.raw_os_error().unwrap_or(-1))));
+            }
+            Err(e) => return Err(e),
+        };
         let status = status
             .as_u64()
             .ok_or_else(|| io::Error::other(format!("a wait status of {status}")))?;
         self.reap();
-        Ok(status as i32)
+        Ok(Some(status as i32))
     }
 
     /// Stops the sandbox at once.
@@ -352,19 +392,22 @@ impl Sandbox {
         self.reap();
     }
 
-    fn reap(&mut self) {
+    /// Waits for the Sentry's process: its wait status, if it was ours to
+    /// collect.
+    fn reap(&mut self) -> Option<i32> {
         if self.reaped {
-            return;
+            return None;
         }
         let mut status = 0;
-        loop {
+        let r = loop {
             // SAFETY: waiting on our own child.
             let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
             if r >= 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-                break;
+                break r;
             }
-        }
+        };
         self.reaped = true;
+        (r == self.pid).then_some(status)
     }
 
     /// One call to the Sentry's control server: its result.
@@ -375,7 +418,27 @@ impl Sandbox {
     /// A call with descriptors (urpc's `FilePayload`), which ride the
     /// first bytes of the request.
     fn call_with(&self, method: &str, arg: Value, fds: &[RawFd]) -> io::Result<Value> {
+        self.call_full(method, arg, fds, None)
+    }
+
+    fn call_timeout(
+        &self,
+        method: &str,
+        arg: Value,
+        limit: Option<std::time::Duration>,
+    ) -> io::Result<Value> {
+        self.call_full(method, arg, &[], limit)
+    }
+
+    fn call_full(
+        &self,
+        method: &str,
+        arg: Value,
+        fds: &[RawFd],
+        limit: Option<std::time::Duration>,
+    ) -> io::Result<Value> {
         let mut stream = UnixStream::connect(&self.control)?;
+        stream.set_read_timeout(limit)?;
         let request = serde_json::to_vec(&json!({ "method": method, "arg": arg }))?;
         let mut sent = 0;
         if !fds.is_empty() {
@@ -549,6 +612,7 @@ fn spawn(
     args: &[String],
     env: &[String],
     fds: Vec<OwnedFd>,
+    cgroup: Option<&Path>,
 ) -> io::Result<libc::pid_t> {
     let cstr = |s: &[u8]| CString::new(s).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput));
     let exe_fd = fs::OpenOptions::new()
@@ -630,7 +694,13 @@ fn spawn(
         return Err(io::Error::last_os_error());
     }
     drop(sync_r);
-    let mapped = map_user(pid).and_then(|()| {
+    // Into its cgroup while it still waits for its user to be mapped, so
+    // it has run nothing outside it.
+    let joined = match cgroup {
+        Some(dir) => fs::write(dir.join("cgroup.procs"), pid.to_string()),
+        None => Ok(()),
+    };
+    let mapped = joined.and_then(|()| map_user(pid)).and_then(|()| {
         let mut w = fs::File::from(sync_w);
         w.write_all(&[1])
     });

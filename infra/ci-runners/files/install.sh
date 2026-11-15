@@ -22,6 +22,52 @@ install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
 install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
 rm -f /tmp/iwci.env /tmp/iwci.service
 
+# Native jobs (Bun) run in a gVisor sandbox per job, which the runner
+# starts itself (crates/iwci-sandbox): off unless the host's
+# `native_sandbox` is set. It needs the pinned gVisor release, a way for
+# the runner to create user namespaces (an AppArmor profile for its binary
+# only, files/apparmor-iwci) and a cgroup subtree of its own for each
+# sandbox's memory, CPU and process limits (`Delegate=` in the unit, which
+# Terraform writes when the flag is set). Turning it off removes the
+# profile; the release stays, unused.
+native="$(cat /tmp/iwci-native 2>/dev/null || true)"
+rm -f /tmp/iwci-native
+gvisor_release=20261109.0
+case "$(uname -m)" in
+x86_64) gvisor_arch=x86_64 gvisor_sha512=1a6b8f74c37b4931ef473f67ec1f601690855bedc52ac709f2fac965c69677aa0426ef44598d8eee1aed72cfdb9df87a2a5f352cb3348880fc61a7732bc10f2a ;;
+aarch64) gvisor_arch=aarch64 gvisor_sha512=411f2d6f7f98a93643725ce9933ff67a7f96f884c2317be3e2b579b976ceb54065bd1d4292a9d61de38da1940ef21b7e41070127874086b7992fb7b5e7a85897 ;;
+*) gvisor_arch="" ;;
+esac
+if [[ "$native" == "true" ]]; then
+  if [[ -z "$gvisor_arch" ]]; then
+    echo "error: no gVisor pin for $(uname -m)" >&2
+    exit 1
+  fi
+  gvisor_dir="/opt/iwci/lib/gvisor-$gvisor_release"
+  if [[ ! -x "$gvisor_dir/gvisor-bin/gvisor_sentry" ]]; then
+    tmp="$(mktemp -d)"
+    curl -fsSL --retry 3 -o "$tmp/gvisor.tar.bz2" \
+      "https://storage.googleapis.com/gvisor/releases/release/$gvisor_release/$gvisor_arch/gvisor.tar.bz2"
+    echo "$gvisor_sha512  $tmp/gvisor.tar.bz2" | sha512sum -c --quiet
+    install -d -o root -g root -m 0755 /opt/iwci/lib "$gvisor_dir"
+    tar -xjf "$tmp/gvisor.tar.bz2" -C "$gvisor_dir" --no-same-owner
+    chown -R root:root "$gvisor_dir"
+    chmod -R go-w "$gvisor_dir"
+    rm -rf "$tmp"
+    echo "installed gVisor release-$gvisor_release in $gvisor_dir"
+  fi
+  install -o root -g root -m 0644 /tmp/apparmor-iwci /etc/apparmor.d/iwci
+  apparmor_parser -r /etc/apparmor.d/iwci
+  # gVisor runs on its systrap platform, which needs no device; KVM (a
+  # host with /dev/kvm and `iwci` in group `kvm`) is not used.
+  echo "native sandbox enabled: AppArmor profile iwci loaded, gVisor in $gvisor_dir"
+elif [[ -f /etc/apparmor.d/iwci ]]; then
+  apparmor_parser -R /etc/apparmor.d/iwci || true
+  rm -f /etc/apparmor.d/iwci
+  echo "native sandbox disabled: AppArmor profile iwci removed"
+fi
+rm -f /tmp/apparmor-iwci
+
 # Core dumps, so a crash of the runner leaves a backtrace (#947): the unit
 # raises its core limit, systemd-coredump keeps each core compressed in
 # /var/lib/systemd/coredump within its own size limits, and gdb reads them

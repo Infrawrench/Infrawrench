@@ -27,6 +27,12 @@ LimitNOFILE=65536
 # Node job runs in this process, so a fault in one is a crash of the runner,
 # and without a core there is no backtrace (#947).
 LimitCORE=infinity
+%{ if native_sandbox ~}
+# Native jobs run in gVisor sandboxes with a cgroup each, made in this
+# unit's subtree: the runner moves itself into runner/ and makes jobs/<id>
+# beside it (crates/iwci-sandbox, cgroup.rs).
+Delegate=memory cpu pids
+%{ endif ~}
 
 [Install]
 WantedBy=multi-user.target

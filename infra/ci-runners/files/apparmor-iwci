@@ -1,0 +1,18 @@
+# Written by infra/ci-runners (Terraform); edits here are overwritten.
+#
+# Lets the CI runner, and nothing else, create user namespaces, which
+# Ubuntu keeps from unprivileged programs
+# (kernel.apparmor_restrict_unprivileged_userns=1). The runner starts each
+# native job's gVisor sandbox (crates/iwci-sandbox, runsc.rs) in new user,
+# mount, PID, IPC, UTS and network namespaces as an unprivileged user; the
+# sandbox drops every capability before it runs anything of the job's.
+# Otherwise unconfined, as Ubuntu's own profiles for bwrap and the like.
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile iwci /opt/iwci/bin/iwci flags=(unconfined) {
+  userns,
+
+  include if exists <local/iwci>
+}

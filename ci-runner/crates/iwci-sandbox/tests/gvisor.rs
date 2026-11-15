@@ -15,8 +15,9 @@
 
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use iwci_sandbox::cgroup::{Jobs, Limits, Usage};
 use iwci_sandbox::lisafs::{Export, serve, socket_pair};
 use iwci_sandbox::net::{Gateway, Network, Outside};
 use iwci_sandbox::runsc::{Config, Release, boot};
@@ -90,6 +91,8 @@ struct Ran {
     stdout: String,
     stderr: String,
     millis: u128,
+    usage: Option<Usage>,
+    left_behind: bool,
 }
 
 /// Runs `args` in a sandbox over `job`'s file system, with no network
@@ -100,7 +103,38 @@ fn run(release: &Release, job: &JobFs, args: &[&str]) -> Ran {
 
 /// Runs `args` in a sandbox, with `network` its way out if there is one.
 fn run_with(release: &Release, job: &JobFs, args: &[&str], network: Option<Network>) -> Ran {
-    let (gateway, link) = match network {
+    run_opts(
+        release,
+        job,
+        args,
+        Opts {
+            network,
+            ..Opts::default()
+        },
+    )
+}
+
+/// How a test sandbox runs.
+#[derive(Default)]
+struct Opts {
+    network: Option<Network>,
+    /// A cgroup of its own with these limits (`IWCI_TEST_CGROUP`).
+    limits: Option<Limits>,
+    /// Stopped after this long.
+    timeout: Option<Duration>,
+}
+
+fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
+    let cgroup = opts.limits.map(|limits| {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let name = format!(
+            "t{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        );
+        Jobs::delegated().unwrap().create(&name, limits).unwrap()
+    });
+    let (gateway, link) = match opts.network {
         Some(n) => {
             let (g, l) = Gateway::start(n).unwrap();
             (Some(g), Some(l))
@@ -140,6 +174,7 @@ fn run_with(release: &Release, job: &JobFs, args: &[&str], network: Option<Netwo
         extra_flags: std::env::var("IWCI_TEST_SENTRY_FLAGS")
             .map(|f| f.split_whitespace().map(str::to_string).collect())
             .unwrap_or_default(),
+        cgroup: cgroup.as_ref().map(|c| c.path().to_path_buf()),
     };
     let started = Instant::now();
     let mut sandbox = boot(
@@ -157,9 +192,25 @@ fn run_with(release: &Release, job: &JobFs, args: &[&str], network: Option<Netwo
         let tail: Vec<&str> = tail.into_iter().rev().collect();
         panic!("starting the sandbox: {e}\n{}", tail.join("\n"));
     }
-    let status = sandbox.wait().unwrap();
+    let status = match sandbox.wait_for(opts.timeout).unwrap() {
+        Some(status) => status,
+        None => {
+            sandbox.kill();
+            -1
+        }
+    };
     let millis = started.elapsed().as_millis();
+    let usage = cgroup.as_ref().map(|c| c.usage().unwrap());
     drop(sandbox);
+    // Nothing of the sandbox outlives it.
+    let left_behind = cgroup.as_ref().is_some_and(|c| {
+        let until = Instant::now() + Duration::from_secs(5);
+        while c.populated() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        c.populated()
+    });
+    drop(cgroup);
     drop(gateway);
     serving.wait();
     let ran = Ran {
@@ -167,6 +218,8 @@ fn run_with(release: &Release, job: &JobFs, args: &[&str], network: Option<Netwo
         stdout: std::fs::read_to_string(dir.join("stdout")).unwrap(),
         stderr: std::fs::read_to_string(dir.join("stderr")).unwrap(),
         millis,
+        usage,
+        left_behind,
     };
     if ran.status != 0 {
         let log = std::fs::read_to_string(dir.join("sentry.log")).unwrap_or_default();
@@ -554,4 +607,124 @@ fn bun_serves_on_the_loopback_and_fetches_through_the_gateway() {
     );
     assert_eq!(ran.status, 0, "stderr: {}", ran.stderr);
     assert_eq!(ran.stdout, "from Bun.serve\nhello from upstream\nrefused\n");
+}
+
+/// Whether the cgroup tests may run: they need a delegated cgroup subtree
+/// (`systemd-run --scope -p Delegate=yes`), which they move the test
+/// process into a leaf of.
+fn cgroups() -> bool {
+    std::env::var_os("IWCI_TEST_CGROUP").is_some()
+}
+
+const MIB: u64 = 1 << 20;
+
+#[test]
+#[ignore = "needs gVisor, a static busybox and a delegated cgroup; see the module docs"]
+fn a_sandbox_past_its_memory_is_killed_not_swapped() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    if !cgroups() {
+        return;
+    }
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |_| {});
+    let limits = Limits {
+        memory: 256 * MIB,
+        pids: 4096,
+    };
+    // A shell variable of 600 MiB: the Sentry's memory, counted.
+    let script = "a=$(dd if=/dev/zero bs=1048576 count=600 2>/dev/null | tr '\\0' x); echo ${#a}";
+    let ran = run_opts(
+        &release,
+        &job,
+        &["/bin/sh", "-c", script],
+        Opts {
+            limits: Some(limits),
+            timeout: Some(Duration::from_secs(120)),
+            ..Opts::default()
+        },
+    );
+    let usage = ran.usage.unwrap();
+    eprintln!("{usage:?}, status {}", ran.status);
+    assert!(usage.out_of_memory, "killed for memory: {usage:?}");
+    // The kernel charges a little past `memory.max` before it reclaims or
+    // kills; with swap at 0 that is all it gets.
+    assert!(usage.memory_peak <= limits.memory + MIB, "{usage:?}");
+    assert!(
+        usage.memory_peak > limits.memory / 2,
+        "it got close to the limit: {usage:?}"
+    );
+    assert_ne!(ran.stdout.trim(), "629145600", "it did not get its 600 MiB");
+}
+
+#[test]
+#[ignore = "needs gVisor, a static busybox and a delegated cgroup; see the module docs"]
+fn a_sandboxs_cpu_time_and_memory_are_counted() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    if !cgroups() {
+        return;
+    }
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |_| {});
+    let script = "i=0; while [ $i -lt 200000 ]; do i=$((i+1)); done; a=$(dd if=/dev/zero bs=1048576 count=64 2>/dev/null | tr '\\0' x); echo ${#a}";
+    let ran = run_opts(
+        &release,
+        &job,
+        &["/bin/sh", "-c", script],
+        Opts {
+            limits: Some(Limits {
+                memory: 1024 * MIB,
+                pids: 4096,
+            }),
+            timeout: Some(Duration::from_secs(120)),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        (ran.status, ran.stdout.trim()),
+        (0, "67108864"),
+        "{}",
+        ran.stderr
+    );
+    let usage = ran.usage.unwrap();
+    eprintln!("{usage:?} in {} ms", ran.millis);
+    assert!(!usage.out_of_memory);
+    assert!(usage.cpu_usec > 100_000, "{usage:?}");
+    assert!(usage.memory_peak > 64 * MIB, "{usage:?}");
+}
+
+#[test]
+#[ignore = "needs gVisor, a static busybox and a delegated cgroup; see the module docs"]
+fn a_sandbox_past_its_time_is_stopped_whole() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    if !cgroups() {
+        return;
+    }
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |_| {});
+    let started = Instant::now();
+    let ran = run_opts(
+        &release,
+        &job,
+        &["/bin/sh", "-c", "sleep 600 & sleep 600 & wait"],
+        Opts {
+            limits: Some(Limits {
+                memory: 512 * MIB,
+                pids: 4096,
+            }),
+            timeout: Some(Duration::from_secs(2)),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(ran.status, -1, "timed out");
+    assert!(!ran.left_behind, "every process of it is gone");
+    assert!(started.elapsed() < Duration::from_secs(20));
 }
