@@ -19,12 +19,15 @@
 //!   flight does. A marker is only ever held by a job that has started,
 //!   and a started job waits for nothing, so waiting can never go round in
 //!   a circle, whatever two runs wait on of each other's.
-//! - **It stops waiting** when the marker goes (the entry is read again:
-//!   a hit is replayed, a miss runs the job here), when the run that holds
-//!   it stops saying it is alive, or past a deadline: twice that run's
+//! - **It stops waiting** when the holder's own marker goes, or is
+//!   written again by someone else (the entry is read again: a hit is
+//!   replayed, a miss runs the job here), when the run that holds it stops
+//!   saying it is alive or has ended, or past a deadline: twice that run's
 //!   expected time for the job plus a margin, and never longer than the
 //!   job's own `timeout:` plus two leases. Then it runs the job here and
-//!   does not wait again.
+//!   does not wait again; a holder that is gone has its marker taken over.
+//! - **The holder says how its job ended** when it did not save an entry
+//!   ([`Ended`]), so a run that waited says why it runs the job after all.
 //! - **A job that sat in the queue reads its entry again before it
 //!   starts** ([`landed_meanwhile`]): another run may have saved it since
 //!   the lookup, without this run ever seeing its marker, when that run
@@ -46,16 +49,39 @@ pub struct Holder {
     pub run: String,
     /// How long that run expects the job to take, when it has run before.
     pub expected_ms: Option<u64>,
+    /// Where its marker is, as [`Look::markers`] names it.
+    pub at: String,
+    /// What [`Look::markers`] said of that marker when it was found, when
+    /// a look found it.
+    pub version: Option<String>,
 }
 
 /// One look at the markers a run can see and who is alive.
 #[derive(Debug, Clone, Default)]
 pub struct Look {
-    /// The keys being computed, as [`marker_id`] names them.
-    pub markers: HashSet<String>,
-    /// Per run with a marker anywhere this run looks: something that keeps
-    /// changing while that run is alive.
+    /// Every marker, by where it is ([`Holder::at`]), with something that
+    /// changes when it is written again.
+    pub markers: HashMap<String, String>,
+    /// Per run with a sign of life anywhere this run looks: something that
+    /// keeps changing while that run is alive.
     pub alive: HashMap<String, String>,
+    /// Runs whose sign of life is older than a lease by the store's own
+    /// clock: a runner that died without deleting it.
+    pub gone: HashSet<String>,
+}
+
+/// How a job that held a key ended, for the runs that waited for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Ended {
+    /// It passed and its entry is saved.
+    Saved,
+    /// It did not pass.
+    Failed,
+    /// It passed, but the store would not take its entry.
+    Unsaved,
+    /// It was stopped, or did not run at all.
+    Stopped,
 }
 
 /// How often a waiting run looks, and how long it waits.
@@ -86,23 +112,31 @@ impl Default for InFlightTiming {
 /// Which task cache keys other runs are computing now, in the store every
 /// runner reads, scoped as the entries are. `adapters::inflight` keeps it
 /// in the object store; an implementation says this run is alive for as
-/// long as it holds a marker.
+/// long as it holds a marker or waits for one.
 pub trait InFlight: Send + Sync {
     /// Says this run computes `key` from now. `Ok(None)` when it holds the
     /// key's marker now (or another runner of the same run did already);
-    /// `Ok(Some(holder))` when another run does, writing nothing.
-    fn begin(&self, key: &str, expected_ms: Option<u64>) -> Result<Option<Holder>, String>;
-    /// This run is done computing `key` (its entry is saved, or it did not
-    /// pass): the marker goes.
-    fn end(&self, key: &str);
+    /// `Ok(Some(holder))` when another run does, writing nothing. A marker
+    /// of run `replacing`, which is known to be gone, is taken over.
+    fn begin(
+        &self,
+        key: &str,
+        expected_ms: Option<u64>,
+        replacing: Option<&str>,
+    ) -> Result<Option<Holder>, String>;
+    /// This run is done computing `key`, as `ended` says: the marker goes
+    /// if it still names this run. Never waits for the store.
+    fn end(&self, key: &str, ended: Ended);
     /// This runner lost the job's split claim to another runner of the
-    /// same run: the marker is left for that one to delete, unless this
-    /// runner wrote it. The winner began before it claimed, so a marker
-    /// written after that went up once the winner's was gone, and would
-    /// outlive the job.
-    fn leave(&self, key: &str);
+    /// same run. When the run's record says the job is `done`, the marker
+    /// goes (it was written after the winner's own had gone); otherwise it
+    /// is the winner's to delete, and this runner deletes it at the end of
+    /// the run only if it wrote it and it still names the run.
+    fn leave(&self, key: &str, done: bool);
     /// The other run computing `key`, if one is.
     fn holder(&self, key: &str) -> Result<Option<Holder>, String>;
+    /// How `holder`'s job for `key` ended, when it said and saved nothing.
+    fn ended(&self, key: &str, holder: &Holder) -> Option<Ended>;
     fn look(&self) -> Result<Look, String>;
     fn timing(&self) -> InFlightTiming {
         InFlightTiming::default()
@@ -134,12 +168,21 @@ pub(super) struct Awaiting<'p> {
     pub limit: Duration,
 }
 
+/// Why a job stopped waiting.
+pub(super) enum Why {
+    /// The holder's marker went, or was written again.
+    Gone,
+    /// The holder is gone: its marker may be taken over.
+    Dead(String),
+    /// It waited past its limit.
+    Late(String),
+}
+
 /// A job that is done waiting, on its way back to the lookups.
 pub(super) struct Waited {
     pub waiting: Waiting,
     pub since: Instant,
-    /// Why it stopped waiting before the marker went, if it did.
-    pub why: Option<String>,
+    pub why: Why,
 }
 
 /// The run computing `key`, when it is not this one and this run may wait
@@ -185,7 +228,9 @@ pub(super) fn wait<'p>(
 /// The report of a job about to start whose entry another run saved
 /// while it queued: read again once it has queued for
 /// [`InFlightTiming::recheck`], one read of the store against a run of
-/// the job. `None` runs it.
+/// the job. `None` runs it. Not in a split run, where a job the other
+/// runner ran is in the task cache too and must come in as that runner's,
+/// to be billed: its claim says who has it.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn landed_meanwhile(
     job: &PlannedJob,
@@ -229,16 +274,16 @@ pub(super) enum Begun<'a> {
 /// Says a job that is about to start computes its task cache key, unless
 /// another run does already and the job may wait for it. A job that has
 /// waited once, or whose run skips the task cache, runs whatever; a store
-/// that does not answer is a job that runs without a marker.
+/// that does not answer is a job that runs without a marker, and says so.
 pub(super) fn begin<'a>(options: &'a Options, lookup: &mut Lookup) -> Begun<'a> {
     let (Some(inflight), Some(key)) = (options.inflight.as_deref(), lookup.key.as_deref()) else {
         return Begun::Run(None);
     };
-    match inflight.begin(key, lookup.history_ms) {
+    match inflight.begin(key, lookup.history_ms, lookup.replacing.as_deref()) {
         Ok(None) => Begun::Run(Some(Marker {
             inflight,
             key: key.to_string(),
-            left: false,
+            done: false,
         })),
         Ok(Some(holder)) if !options.skip_task_cache && !lookup.waited => Begun::Wait(holder),
         Ok(Some(_)) => Begun::Run(None),
@@ -253,27 +298,44 @@ pub(super) fn begin<'a>(options: &'a Options, lookup: &mut Lookup) -> Begun<'a> 
     }
 }
 
-/// A key this runner computes: the marker goes when this is dropped.
+/// A key this runner computes: the marker goes when [`Marker::end`] says
+/// how the job ended, or when this is dropped.
 pub(super) struct Marker<'a> {
     inflight: &'a dyn InFlight,
     key: String,
-    left: bool,
+    done: bool,
 }
 
 impl Marker<'_> {
-    /// Another runner of the same run claimed the job: the marker is that
-    /// runner's to delete.
-    pub fn leave(mut self) {
-        self.inflight.leave(&self.key);
-        self.left = true;
+    /// Another runner of the same run claimed the job. `done` when the
+    /// run's record says that runner has finished it already.
+    pub fn leave(mut self, done: bool) {
+        self.inflight.leave(&self.key, done);
+        self.done = true;
+    }
+
+    /// The job is over.
+    pub fn end(mut self, ended: Ended) {
+        self.inflight.end(&self.key, ended);
+        self.done = true;
     }
 }
 
 impl Drop for Marker<'_> {
     fn drop(&mut self) {
-        if !self.left {
-            self.inflight.end(&self.key);
+        if !self.done {
+            self.inflight.end(&self.key, Ended::Stopped);
         }
+    }
+}
+
+/// How a job that ran here ended, for the runs waiting for its key.
+pub(super) fn ended(report: &JobReport, saved: Option<&str>) -> Ended {
+    match report.status {
+        Status::Passed if saved.is_some() => Ended::Saved,
+        Status::Passed => Ended::Unsaved,
+        Status::Failed { .. } => Ended::Failed,
+        _ => Ended::Stopped,
     }
 }
 
@@ -312,6 +374,7 @@ pub(super) fn look_again(
         Some(store) => store.restore(&key, &[], plan.scratch_bytes + MAX_TASK_LOG),
         None => Ok(None),
     };
+    let mut replacing = None;
     match found {
         Ok(Some(hit)) => match replay(job, plan, options, shared, &key, hit.entries, started, kept)
         {
@@ -335,16 +398,34 @@ pub(super) fn look_again(
                 "task cache `{short}`: could not use the entry run `{run}` saved ({e}); running it"
             )),
         },
-        Ok(None) => lines.push(match why {
-            None => format!(
-                "task cache `{short}`: waited {} for run `{run}`, which saved no entry (it did not pass); running it",
+        Ok(None) => {
+            let what = match why {
+                Why::Gone => match options
+                    .inflight
+                    .as_ref()
+                    .and_then(|i| i.ended(&key, &holder))
+                {
+                    Some(Ended::Failed) => "which did not pass".to_string(),
+                    Some(Ended::Unsaved) => {
+                        "which passed but could not save its entry".to_string()
+                    }
+                    Some(Ended::Stopped) => "which stopped before it finished".to_string(),
+                    Some(Ended::Saved) => {
+                        "whose entry this run could not find, though it saved one".to_string()
+                    }
+                    None => "which saved no entry and did not say why".to_string(),
+                },
+                Why::Dead(why) => {
+                    replacing = Some(holder.run.clone());
+                    why
+                }
+                Why::Late(why) => why,
+            };
+            lines.push(format!(
+                "task cache `{short}`: waited {} for run `{run}`, {what}; running it",
                 secs(waited_for)
-            ),
-            Some(why) => format!(
-                "task cache `{short}`: waited {} for run `{run}`, which {why}; running it",
-                secs(waited_for)
-            ),
-        }),
+            ));
+        }
         Err(e) => lines.push(format!(
             "task cache `{short}`: waited {} for run `{run}`, then could not read the cache ({e}); running it",
             secs(waited_for)
@@ -354,14 +435,16 @@ pub(super) fn look_again(
         key: Some(key),
         lines,
         waited: true,
+        replacing,
         ..Lookup::default()
     })
 }
 
 /// Follows the markers the run's waiting jobs wait for, once every
-/// [`InFlightTiming::poll`] while any does: a job whose marker went, whose
-/// holder stopped saying it is alive, or that has waited past its limit
-/// goes back to the lookups. Lists the store and reads nothing else.
+/// [`InFlightTiming::poll`] while any does: a job whose holder's marker
+/// went or was written again, whose holder stopped saying it is alive or
+/// has ended, or that has waited past its limit goes back to the lookups.
+/// Lists the store and reads nothing else.
 pub(super) fn watch<'p>(
     inflight: &dyn InFlight,
     state: &Mutex<State<'p>>,
@@ -413,27 +496,45 @@ pub(super) fn watch<'p>(
         let mut back = Vec::new();
         let mut i = 0;
         while i < s.awaiting.len() {
-            let a = &s.awaiting[i];
-            let run = &a.waiting.holder.run;
+            let a = &mut s.awaiting[i];
+            let holder = &mut a.waiting.holder;
             let late = now.saturating_duration_since(a.since) >= a.limit;
             let why = match &look {
-                // Saved, or given up: the entry says which.
-                Ok(look) if !look.markers.contains(&marker_id(&a.waiting.key)) => Some(None),
-                Ok(look) if !look.alive.contains_key(run) => {
-                    Some(Some("is no longer running".to_string()))
-                }
-                Ok(_)
-                    if alive.get(run).is_some_and(|(_, at)| {
-                        now.saturating_duration_since(*at) >= timing.lease
-                    }) =>
-                {
-                    Some(Some(format!(
-                        "had not said it was alive for {}",
-                        secs(timing.lease)
-                    )))
-                }
-                _ if late => Some(Some(format!("had not finished it after {}", secs(a.limit)))),
-                _ => None,
+                Ok(look) => match look.markers.get(&holder.at) {
+                    // Saved, or given up: the entry says which.
+                    None => Some(Why::Gone),
+                    // Written again since: by someone else, after the
+                    // holder's went.
+                    Some(version) if holder.version.as_ref().is_some_and(|v| v != version) => {
+                        Some(Why::Gone)
+                    }
+                    Some(version) => {
+                        holder.version.get_or_insert_with(|| version.clone());
+                        let run = &holder.run;
+                        if look.gone.contains(run) || !look.alive.contains_key(run) {
+                            Some(Why::Dead("which is no longer running".to_string()))
+                        } else if alive.get(run).is_some_and(|(_, at)| {
+                            now.saturating_duration_since(*at) >= timing.lease
+                        }) {
+                            Some(Why::Dead(format!(
+                                "which had not said it was alive for {}",
+                                secs(timing.lease)
+                            )))
+                        } else if late {
+                            Some(Why::Late(format!(
+                                "which had not finished it after {}",
+                                secs(a.limit)
+                            )))
+                        } else {
+                            None
+                        }
+                    }
+                },
+                Err(_) if late => Some(Why::Late(format!(
+                    "which had not finished it after {}",
+                    secs(a.limit)
+                ))),
+                Err(_) => None,
             };
             match why {
                 Some(why) => back.push((s.awaiting.swap_remove(i), why)),

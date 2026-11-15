@@ -40,16 +40,21 @@ impl Counted {
 }
 
 impl InFlight for Counted {
-    fn begin(&self, key: &str, expected_ms: Option<u64>) -> Result<Option<Holder>, String> {
-        let holder = self.inner.begin(key, expected_ms);
+    fn begin(
+        &self,
+        key: &str,
+        expected_ms: Option<u64>,
+        replacing: Option<&str>,
+    ) -> Result<Option<Holder>, String> {
+        let holder = self.inner.begin(key, expected_ms, replacing);
         self.count(&holder);
         holder
     }
-    fn end(&self, key: &str) {
-        self.inner.end(key)
+    fn end(&self, key: &str, ended: Ended) {
+        self.inner.end(key, ended)
     }
-    fn leave(&self, key: &str) {
-        self.inner.leave(key)
+    fn leave(&self, key: &str, done: bool) {
+        self.inner.leave(key, done)
     }
     fn holder(&self, key: &str) -> Result<Option<Holder>, String> {
         if self.blind {
@@ -58,6 +63,9 @@ impl InFlight for Counted {
         let holder = self.inner.holder(key);
         self.count(&holder);
         holder
+    }
+    fn ended(&self, key: &str, holder: &Holder) -> Option<Ended> {
+        self.inner.ended(key, holder)
     }
     fn look(&self) -> Result<Look, String> {
         self.inner.look()
@@ -177,28 +185,20 @@ impl Executor<String> for GateExec {
     }
 }
 
-/// One run of `plan`, with its own slots and memory when given.
-fn go(
-    plan: &Plan,
-    exec: &GateExec,
-    caches: &Arc<MemoryCaches>,
+/// What one run of a test is given.
+fn options_for(
+    caches: Arc<dyn Caches>,
     inflight: &Arc<Counted>,
     budget: Option<&Arc<MemoryBudget>>,
     slots: Option<&Arc<Slots>>,
     parallelism: usize,
-) -> RunReport {
-    let ws = FakeWorkspaces {
-        builds: AtomicUsize::new(0),
-        installs: AtomicUsize::new(0),
-        fail: false,
-        source: "a",
-    };
-    let options = Options {
+) -> Options {
+    Options {
         parallelism,
         changed_paths: None,
         base_env: Vec::new(),
         memory: budget.cloned(),
-        caches: Some(caches.clone()),
+        caches: Some(caches),
         logs: None,
         slots: slots.cloned(),
         secrets: BTreeMap::new(),
@@ -210,6 +210,15 @@ fn go(
         downloads: None,
         cancel: None,
         access: Default::default(),
+    }
+}
+
+fn go_with(plan: &Plan, exec: &GateExec, options: &Options) -> RunReport {
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
     };
     run(
         plan,
@@ -217,8 +226,22 @@ fn go(
         &FakeTools,
         exec,
         &FakeCommitter(Mutex::default()),
-        &options,
+        options,
     )
+}
+
+/// One run of `plan`, with its own slots and memory when given.
+fn go(
+    plan: &Plan,
+    exec: &GateExec,
+    caches: &Arc<MemoryCaches>,
+    inflight: &Arc<Counted>,
+    budget: Option<&Arc<MemoryBudget>>,
+    slots: Option<&Arc<Slots>>,
+    parallelism: usize,
+) -> RunReport {
+    let options = options_for(caches.clone(), inflight, budget, slots, parallelism);
+    go_with(plan, exec, &options)
 }
 
 fn job<'a>(report: &'a RunReport, id: &str) -> &'a JobReport {
@@ -364,9 +387,7 @@ fn a_failure_in_the_first_run_means_the_second_runs_it() {
     let lib = job(&b, "lib");
     assert!(!lib.cached && lib.waited_for.is_none());
     assert!(
-        lib.caches
-            .iter()
-            .any(|l| l.contains("which saved no entry")),
+        lib.caches.iter().any(|l| l.contains("which did not pass")),
         "{:?}",
         lib.caches
     );
@@ -663,5 +684,296 @@ fn an_entry_saved_while_a_job_queued_is_replayed_when_it_would_start() {
     assert_eq!(b_exec.ran(), vec!["slow"]);
     assert_eq!(b_in.waits(), 0);
     drop((a_in, b_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A marker of run `run` for `lib`'s key in `scope`, as another run wrote
+/// it. The key is read off the store, where the run waited for it.
+fn put_marker(store: &Arc<dyn ObjectStore>, scope: &str, id: &str, run: &str) {
+    store
+        .put(
+            &format!("inflight/acme/app/{scope}/keys/{id}"),
+            format!("{{\"run\":\"{run}\",\"runner\":\"ci-9\"}}").as_bytes(),
+            "application/json",
+        )
+        .unwrap();
+}
+
+/// The ids of the markers in `scope`.
+fn marker_ids(store: &Arc<dyn ObjectStore>, scope: &str) -> Vec<String> {
+    let prefix = format!("inflight/acme/app/{scope}/keys/");
+    store
+        .list(&prefix)
+        .unwrap()
+        .into_iter()
+        .filter_map(|k| k.strip_prefix(&prefix).map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn a_waiter_follows_its_holders_own_marker_not_anothers_for_the_same_key() {
+    let (store, dir) = store("follow");
+    let p = plan(LIB);
+    let caches = Arc::new(MemoryCaches::default());
+    let (main_gates, pr_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (main_exec, pr_exec) = (
+        GateExec::new(&main_gates, &["lib"], &[]),
+        GateExec::new(&pr_gates, &[], &[]),
+    );
+    let (main_in, pr_in) = (
+        counted(&store, "run-main", "b-main"),
+        counted(&store, "run-pr", "pr-1"),
+    );
+    let (pr, after) = std::thread::scope(|scope| {
+        let main = scope.spawn(|| go(&p, &main_exec, &caches, &main_in, None, None, 2));
+        eventually("the push to start lib", || main_gates.started("lib"));
+        let pr = scope.spawn(|| go(&p, &pr_exec, &caches, &pr_in, None, None, 2));
+        eventually("the pull request to wait", || pr_in.waits() >= 1);
+        // Another run of the pull request's branch marks the same key in
+        // the pull request's own scope, and stays.
+        let id = marker_ids(&store, "b-main").pop().unwrap();
+        put_marker(&store, "pr-1", &id, "run-pr2");
+        std::thread::sleep(Duration::from_millis(50));
+        let opened = Instant::now();
+        main_gates.open("lib");
+        main.join().unwrap();
+        (pr.join().unwrap(), opened.elapsed())
+    });
+    assert_eq!(job(&pr, "lib").waited_for.as_deref(), Some("run-main"));
+    assert!(after < Duration::from_secs(2), "{after:?}");
+    drop((main_in, pr_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_marker_written_again_by_another_run_ends_the_wait() {
+    let (store, dir) = store("rewritten");
+    let p = plan(LIB);
+    let caches = Arc::new(MemoryCaches::default());
+    let (a_gates, b_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (a_exec, b_exec) = (
+        GateExec::new(&a_gates, &["lib"], &[]),
+        GateExec::new(&b_gates, &[], &[]),
+    );
+    let (a_in, b_in) = (
+        counted(&store, "run-a", "b-main"),
+        counted(&store, "run-b", "b-main"),
+    );
+    let b = std::thread::scope(|scope| {
+        let a = scope.spawn(|| go(&p, &a_exec, &caches, &a_in, None, None, 2));
+        eventually("the first run to start lib", || a_gates.started("lib"));
+        let b = scope.spawn(|| go(&p, &b_exec, &caches, &b_in, None, None, 2));
+        eventually("the second run to wait", || b_in.waits() >= 1);
+        // The holder's marker goes and another run's takes its place, in a
+        // later second than the one the waiter saw (the store's listing
+        // says when an object was written to the second).
+        std::thread::sleep(Duration::from_millis(1100));
+        let id = marker_ids(&store, "b-main").pop().unwrap();
+        put_marker(&store, "b-main", &id, "run-c");
+        let b = b.join().unwrap();
+        a_gates.open("lib");
+        a.join().unwrap();
+        b
+    });
+    let lib = job(&b, "lib");
+    assert!(!lib.cached, "{lib:#?}");
+    assert!(
+        lib.caches
+            .iter()
+            .any(|l| l.contains("which saved no entry and did not say why")),
+        "{:?}",
+        lib.caches
+    );
+    assert_eq!(b_exec.ran(), vec!["lib", "check"]);
+    drop((a_in, b_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_holder_whose_sign_of_life_the_store_dates_long_ago_is_given_up_at_once_and_its_marker_taken_over()
+ {
+    let (store, dir) = store("crashed");
+    let p = plan(
+        "name: x\njobs:\n  lib:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    task-cache: true\n",
+    );
+    let caches = Arc::new(MemoryCaches::default());
+    // Find the key's marker id from a run that marks it.
+    let probe = counted(&store, "run-probe", "b-probe");
+    let gates = Arc::new(Gates::default());
+    let exec = GateExec::new(&gates, &["lib"], &[]);
+    let id = std::thread::scope(|scope| {
+        let run = scope.spawn(|| {
+            let options = options_for(caches.clone(), &probe, None, None, 1);
+            go_with(&p, &exec, &options)
+        });
+        eventually("the probe to start lib", || gates.started("lib"));
+        let id = marker_ids(&store, "b-probe").pop().unwrap();
+        gates.open("lib");
+        run.join().unwrap();
+        id
+    });
+    drop(probe);
+    caches.entries.lock().unwrap().clear();
+    // What a runner that crashed an hour ago left: its marker and its last
+    // sign of life, which nothing deleted.
+    put_marker(&store, "b-main", &id, "run-dead");
+    let beat = "inflight/acme/app/b-main/runs/run-dead/ci-9.7";
+    store.put(beat, b"", "text/plain").unwrap();
+    let file = dir.join(beat);
+    std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(3600))
+        .unwrap();
+    let b_in = counted(&store, "run-b", "b-main");
+    let b_exec = GateExec::new(&Arc::new(Gates::default()), &[], &[]);
+    let started = Instant::now();
+    let b = go(&p, &b_exec, &caches, &b_in, None, None, 1);
+    let took = started.elapsed();
+    assert!(b.passed());
+    let lib = job(&b, "lib");
+    assert!(
+        lib.caches
+            .iter()
+            .any(|l| l.contains("is no longer running")),
+        "{:?}",
+        lib.caches
+    );
+    assert_eq!(b_exec.ran(), vec!["lib"]);
+    assert!(took < FAST.lease, "not a lease: {took:?}");
+    // It took the marker over, and deleted it when it was done.
+    drop(b_in);
+    eventually("the taken-over marker to go", || {
+        marker_ids(&store, "b-main").is_empty()
+    });
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_run_cancelled_while_its_jobs_wait_reports_them_cancelled_at_once() {
+    let (store, dir) = store("cancel");
+    let p = plan(LIB);
+    let caches = Arc::new(MemoryCaches::default());
+    let (a_gates, b_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (a_exec, b_exec) = (
+        GateExec::new(&a_gates, &["lib"], &[]),
+        GateExec::new(&b_gates, &[], &[]),
+    );
+    let (a_in, b_in) = (
+        counted(&store, "run-a", "b-main"),
+        counted(&store, "run-b", "b-main"),
+    );
+    let mut b_options = options_for(caches.clone(), &b_in, None, None, 2);
+    let cancel = iwci_runtime::Cancel::new();
+    b_options.cancel = Some(cancel.clone());
+    let (b, took) = std::thread::scope(|scope| {
+        let a = scope.spawn(|| go(&p, &a_exec, &caches, &a_in, None, None, 2));
+        eventually("the first run to start lib", || a_gates.started("lib"));
+        let b = scope.spawn(|| go_with(&p, &b_exec, &b_options));
+        eventually("the second run to wait", || b_in.waits() >= 1);
+        let at = Instant::now();
+        cancel.cancel();
+        let b = b.join().unwrap();
+        let took = at.elapsed();
+        a_gates.open("lib");
+        a.join().unwrap();
+        (b, took)
+    });
+    assert!(took < Duration::from_secs(2), "{took:?}");
+    assert!(matches!(job(&b, "lib").status, Status::Cancelled { .. }));
+    assert!(matches!(job(&b, "check").status, Status::Cancelled { .. }));
+    assert!(b_exec.ran().is_empty());
+    drop((a_in, b_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A store that will not delete markers.
+struct KeepsMarkers(Arc<dyn ObjectStore>);
+
+impl ObjectStore for KeepsMarkers {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, iwci_store::StoreError> {
+        self.0.get(key)
+    }
+    fn head(&self, key: &str) -> Result<Option<iwci_store::ObjectMeta>, iwci_store::StoreError> {
+        self.0.head(key)
+    }
+    fn put(&self, key: &str, bytes: &[u8], ct: &str) -> Result<(), iwci_store::StoreError> {
+        self.0.put(key, bytes, ct)
+    }
+    fn put_if_absent(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        ct: &str,
+    ) -> Result<bool, iwci_store::StoreError> {
+        self.0.put_if_absent(key, bytes, ct)
+    }
+    fn list(&self, prefix: &str) -> Result<Vec<String>, iwci_store::StoreError> {
+        self.0.list(prefix)
+    }
+    fn list_detailed(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
+        self.0.list_detailed(prefix)
+    }
+    fn delete(&self, key: &str) -> Result<(), iwci_store::StoreError> {
+        if key.contains("/keys/") {
+            return Err(iwci_store::StoreError::Transport {
+                method: "DELETE",
+                key: key.into(),
+                message: "the store did not answer".into(),
+            });
+        }
+        self.0.delete(key)
+    }
+}
+
+#[test]
+fn a_holder_whose_marker_will_not_delete_is_followed_to_the_end_of_its_run() {
+    let (store, dir) = store("undeleted");
+    let p = plan(LIB);
+    let caches = Arc::new(MemoryCaches::default());
+    let (a_gates, b_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (a_exec, b_exec) = (
+        GateExec::new(&a_gates, &["lib"], &[]),
+        GateExec::new(&b_gates, &[], &[]),
+    );
+    let keeps: Arc<dyn ObjectStore> = Arc::new(KeepsMarkers(store.clone()));
+    let a_in = counted_on(
+        &keeps,
+        "run-a",
+        "ci-1",
+        "b-main",
+        Duration::from_millis(20),
+        false,
+    );
+    let b_in = counted(&store, "run-b", "b-main");
+    let b = std::thread::scope(|scope| {
+        let a_options = options_for(caches.clone(), &a_in, None, None, 2);
+        let (plan, exec) = (&p, &a_exec);
+        let a = scope.spawn(move || {
+            let report = go_with(plan, exec, &a_options);
+            // The run is over: its markers would go now, and its sign of
+            // life does.
+            drop(a_options);
+            report
+        });
+        eventually("the first run to start lib", || a_gates.started("lib"));
+        let b = scope.spawn(|| go(&p, &b_exec, &caches, &b_in, None, None, 2));
+        eventually("the second run to wait", || b_in.waits() >= 1);
+        a_gates.open("lib");
+        assert!(a.join().unwrap().passed());
+        // The test's own handle on the first run's markers goes too.
+        drop(a_in);
+        b.join().unwrap()
+    });
+    // The marker never went, but the run that held it ended: the entry it
+    // saved is replayed.
+    assert_eq!(job(&b, "lib").waited_for.as_deref(), Some("run-a"));
+    assert_eq!(b_exec.ran(), vec!["check"]);
+    assert_eq!(marker_ids(&store, "b-main").len(), 1, "left for the sweep");
+    drop(b_in);
     let _ = std::fs::remove_dir_all(dir);
 }

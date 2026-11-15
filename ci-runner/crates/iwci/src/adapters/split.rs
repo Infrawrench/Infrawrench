@@ -93,15 +93,57 @@ pub struct SplitRun {
     beat: Beating,
 }
 
+/// Work a run leaves to do in the store after it ends (deleting its
+/// signs of life and what its jobs did not delete), counted so that a
+/// process about to exit can wait for it a little ([`settle`]) and a server
+/// never has to.
+static PENDING: Mutex<usize> = Mutex::new(0);
+static SETTLED: Condvar = Condvar::new();
+
+/// Runs `work` on a thread of its own, counted until it is done.
+pub(crate) fn in_background(name: &str, work: impl FnOnce() + Send + 'static) {
+    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
+            *pending = pending.saturating_sub(1);
+            SETTLED.notify_all();
+        }
+    }
+    let spawned = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let _done = Done;
+            work();
+        });
+    if spawned.is_err() {
+        drop(Done);
+    }
+}
+
+/// Waits up to `max` for what runs left to do in the store in the
+/// background: for `iwci run`, which exits right after its run and would
+/// otherwise leave it for the sweep. Returns whether it all finished.
+pub fn settle(max: Duration) -> bool {
+    let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
+    let (pending, _) = SETTLED
+        .wait_timeout_while(pending, max, |n| *n > 0)
+        .unwrap_or_else(|e| e.into_inner());
+    *pending == 0
+}
+
 /// A sign of life: `<key>.<n>`, with `<n>` moving on every beat from
 /// when it starts until it is stopped or dropped, when it is deleted. A
 /// reader that lists it and sees `<n>` stand still for a lease, by its own
 /// clock, counts whoever wrote it gone; no clocks are compared and nothing
 /// is read but the listing. Split runs and task cache markers
 /// (`adapters::inflight`) both say they are alive this way.
+///
+/// Stopping it never waits for the store: the last one is deleted in the
+/// background, which [`settle`] waits for.
 pub struct Beating {
     beat: Arc<Beat>,
-    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 struct Beat {
@@ -118,35 +160,30 @@ impl Beating {
             stopped: Condvar::new(),
         });
         let _ = store.put(&format!("{key}.1"), b"", "text/plain");
-        let thread = {
-            let beat = beat.clone();
-            std::thread::Builder::new()
-                .name("iwci-beat".into())
-                .spawn(move || {
-                    let mut n = 1u64;
-                    loop {
-                        let stop = beat.stop.lock().unwrap_or_else(|e| e.into_inner());
-                        let (stop, _) = beat
-                            .stopped
-                            .wait_timeout_while(stop, every, |stop| !*stop)
-                            .unwrap_or_else(|e| e.into_inner());
-                        if *stop {
-                            break;
-                        }
-                        drop(stop);
-                        if store
-                            .put(&format!("{key}.{}", n + 1), b"", "text/plain")
-                            .is_ok()
-                        {
-                            let _ = store.delete(&format!("{key}.{n}"));
-                            n += 1;
-                        }
-                    }
+        let moving = beat.clone();
+        in_background("iwci-beat", move || {
+            let mut n = 1u64;
+            loop {
+                let stop = moving.stop.lock().unwrap_or_else(|e| e.into_inner());
+                let (stop, _) = moving
+                    .stopped
+                    .wait_timeout_while(stop, every, |stop| !*stop)
+                    .unwrap_or_else(|e| e.into_inner());
+                if *stop {
+                    break;
+                }
+                drop(stop);
+                if store
+                    .put(&format!("{key}.{}", n + 1), b"", "text/plain")
+                    .is_ok()
+                {
                     let _ = store.delete(&format!("{key}.{n}"));
-                })
-                .ok()
-        };
-        Self { beat, thread }
+                    n += 1;
+                }
+            }
+            let _ = store.delete(&format!("{key}.{n}"));
+        });
+        Self { beat }
     }
 
     /// Stops moving it, and deletes it, in the background.
@@ -157,13 +194,8 @@ impl Beating {
 }
 
 impl Drop for Beating {
-    /// Waits for the last one to be deleted: a process that exits next
-    /// (`iwci run`) would otherwise leave it for the sweep.
     fn drop(&mut self) {
         self.stop();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
     }
 }
 
@@ -317,15 +349,13 @@ impl SplitRun {
         let end = format!("{}/state/end", self.root);
         let _ = self.store.put(&end, b"", "text/plain");
         let (store, root) = (self.store.clone(), self.root.clone());
-        let _ = std::thread::Builder::new()
-            .name("iwci-split-clear".into())
-            .spawn(move || {
-                let Ok(keys) = store.list(&format!("{root}/")) else {
-                    return;
-                };
-                let keys: Vec<String> = keys.into_iter().filter(|k| *k != end).collect();
-                delete_all(store.as_ref(), &keys);
-            });
+        in_background("iwci-split-clear", move || {
+            let Ok(keys) = store.list(&format!("{root}/")) else {
+                return;
+            };
+            let keys: Vec<String> = keys.into_iter().filter(|k| *k != end).collect();
+            delete_all(store.as_ref(), &keys);
+        });
     }
 }
 

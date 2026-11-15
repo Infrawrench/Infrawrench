@@ -506,6 +506,48 @@ fn the_runners_of_a_split_run_never_wait_for_each_others_task_cache_markers() {
 }
 
 #[test]
+fn a_job_the_helper_ran_is_billed_as_its_even_when_the_primary_queued_it_long() {
+    use super::inflight_tests::{counted_on, store as marker_store};
+    // Forty entries; the primary runs one at a time, so most of them queue
+    // for longer than the task cache re-check waits, while the helper runs
+    // four at a time and saves their entries.
+    let matrix: Vec<String> = (0..40).map(|i| format!("m{i}")).collect();
+    let p = plan(&format!(
+        "name: x\nsplit: true\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [{}]\n    artifacts: [dist]\n    task-cache: true\n",
+        matrix.join(", ")
+    ));
+    let (markers, dir) = marker_store("split-billing");
+    let store = Arc::new(SplitStore::default());
+    let caches: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    let every = Duration::from_millis(20);
+    let one_in = counted_on(&markers, "run-a", "ci-1", "b-main", every, false);
+    let two_in = counted_on(&markers, "run-a", "ci-2", "b-main", every, false);
+    let mut first = options(Some(primary(&store, FAST)), 1);
+    first.caches = Some(caches.clone());
+    first.inflight = Some(one_in.clone());
+    let mut second = options(Some(helper(&store, FAST)), 4);
+    second.caches = Some(caches.clone());
+    second.inflight = Some(two_in.clone());
+    let (one, two) = both(&p, &first, &second);
+
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(!two.ran.is_empty(), "the helper took part");
+    for id in &two.ran {
+        let job = one.job(id);
+        assert_eq!(job.remote.as_deref(), Some("ci-2"), "{id}: {job:#?}");
+        assert!(!job.cached, "{id}");
+    }
+    let mut ran: Vec<String> = one.ran.iter().chain(&two.ran).cloned().collect();
+    ran.sort();
+    ran.dedup();
+    assert_eq!(ran.len(), 40);
+    // Every entry billed once, by the primary.
+    assert_eq!(crate::runner::usage_of(&one.report, 4).jobs, 40);
+    drop((first, second, one_in, two_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_job_that_failed_on_the_helper_blocks_what_needs_it_on_both() {
     let p = plan(
         "name: x\nsplit: true\njobs:\n  bad:\n    using: builtin:fail@1\n  after:\n    using: builtin:ok@1\n    needs: [bad]\n  free:\n    using: builtin:ok@1\n",

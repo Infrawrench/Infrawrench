@@ -47,7 +47,7 @@ pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
 
 #[path = "schedule_inflight.rs"]
 mod inflight;
-pub use inflight::{Holder, InFlight, InFlightTiming, Look, marker_id};
+pub use inflight::{Ended, Holder, InFlight, InFlightTiming, Look, marker_id};
 
 /// Where a job writes its outputs, as `$IWCI_OUTPUT` tells it.
 pub const OUTPUT_PATH: &str = "/iwci/output";
@@ -1808,6 +1808,9 @@ struct Lookup {
     /// How long it took last time, when it has run before, set when it
     /// joins the queue: what its marker tells a run that would wait.
     history_ms: Option<u64>,
+    /// The run whose marker it waited on and that is gone: a marker of
+    /// that run is taken over as the job starts.
+    replacing: Option<String>,
 }
 
 /// How a task cache lookup went.
@@ -2275,16 +2278,20 @@ pub fn run<T: Tools>(
                         continue;
                     }
                     // Saved by another run while it queued: replayed, and
-                    // what it was about to start with given back.
+                    // what it was about to start with given back. Not in a
+                    // split run, whose other runner's jobs are in the task
+                    // cache too and come in through their claims.
                     let mut replayed = Vec::new();
-                    if let Some(report) = inflight::landed_meanwhile(
-                        &job,
-                        plan,
-                        options,
-                        &shared,
-                        &lookup,
-                        &mut replayed,
-                    ) {
+                    if sharing.is_none()
+                        && let Some(report) = inflight::landed_meanwhile(
+                            &job,
+                            plan,
+                            options,
+                            &shared,
+                            &lookup,
+                            &mut replayed,
+                        )
+                    {
                         drop(slot);
                         if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
                             budget.release(lease);
@@ -2326,9 +2333,11 @@ pub fn run<T: Tools>(
                     if let Some(sharing) = sharing
                         && let Err(holder) = sharing.claim(&job, lookup.local)
                     {
-                        // The runner that has the claim computes the key.
+                        // The runner that has the claim computes the key,
+                        // unless its record says it is done already.
                         if let Some(marker) = marker {
-                            marker.leave();
+                            let done = sharing.split.done(&job.id).ok().flatten().is_some();
+                            marker.leave(done);
                         }
                         drop(helped);
                         drop(slot);
@@ -2391,9 +2400,12 @@ pub fn run<T: Tools>(
                     }
                     // After its entry was saved, if it was: a run waiting
                     // for it reads the entry as soon as the marker goes.
-                    drop(marker);
+                    let ended = inflight::ended(&report, saved.as_deref());
                     if let Some(sharing) = sharing {
                         if sharing.hands_back(&report) {
+                            if let Some(marker) = marker {
+                                marker.end(Ended::Stopped);
+                            }
                             // Stopped, or not run at all: the primary
                             // takes it, and this run waits for its word.
                             sharing.hand_back(&job.id);
@@ -2414,6 +2426,13 @@ pub fn run<T: Tools>(
                         sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
+                    // After its entry was saved, if it was, and after the
+                    // jobs that need it here are on their way: a run
+                    // waiting for it reads the entry once the marker goes,
+                    // which happens in the background.
+                    if let Some(marker) = marker {
+                        marker.end(ended);
+                    }
                 }
             });
         }
