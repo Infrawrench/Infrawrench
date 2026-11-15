@@ -10,6 +10,13 @@
  * the worker is terminated, which V8 honours mid-backtrack, and the caller
  * gets a {@link RegexTimeoutError} instead of a frozen event loop.
  *
+ * The deadline times the pattern and nothing else. The worker says when it
+ * has taken a request, and the clock starts there: starting a worker thread
+ * on a host with every core busy can take longer than the deadline itself,
+ * and that is not the pattern's doing. A worker that never takes the request
+ * is stopped by a second, much longer deadline, with an error that does not
+ * blame the pattern.
+ *
  * One worker is kept warm and reused; requests are serialized through it, so
  * a timeout only ever kills the request that caused it. The worker source is
  * an inline string rather than a file so it survives the esbuild bundles of
@@ -20,6 +27,13 @@ import { Worker } from "node:worker_threads";
 
 /** Default per-call deadline. Generous for any sane pattern over a few hundred lines. */
 export const DEFAULT_REGEX_TIMEOUT_MS = 2000;
+
+/**
+ * How long a worker may take to pick a request up before it counts as hung.
+ * Far beyond any start seen on a busy host, and still an answer rather than
+ * a call that never settles.
+ */
+export const REGEX_WORKER_START_TIMEOUT_MS = 30_000;
 
 export class RegexTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -34,6 +48,9 @@ export class RegexTimeoutError extends Error {
 const WORKER_SOURCE = `
 const { parentPort } = require("node:worker_threads");
 parentPort.on("message", (msg) => {
+  // Taken: the caller starts the pattern's deadline on this, before the
+  // match below can hold this thread.
+  parentPort.postMessage({ id: msg.id, taken: true });
   let re;
   try {
     re = new RegExp(msg.source, msg.flags);
@@ -48,6 +65,8 @@ parentPort.on("message", (msg) => {
 
 interface WorkerReply {
   id: number;
+  /** The worker has the request and is about to evaluate it. */
+  taken?: true;
   matched?: boolean[];
   error?: string;
 }
@@ -81,10 +100,23 @@ function runOnce(
   flags: string,
   inputs: string[],
   timeoutMs: number,
+  startTimeoutMs: number,
 ): Promise<boolean[]> {
   return new Promise((resolve, reject) => {
     const w = getWorker();
     const id = nextId++;
+    const stop = (reason: Error) => {
+      cleanup();
+      if (worker === w) worker = null;
+      void w.terminate();
+      reject(reason);
+    };
+    // Until the worker takes the request, only a worker that never comes up
+    // is an error; from then on the pattern is on the clock.
+    let timer = setTimeout(
+      () => stop(new Error(`Regex worker did not start within ${startTimeoutMs} ms`)),
+      startTimeoutMs,
+    );
     const cleanup = () => {
       clearTimeout(timer);
       w.off("message", onMessage);
@@ -93,6 +125,11 @@ function runOnce(
     };
     const onMessage = (reply: WorkerReply) => {
       if (reply.id !== id) return;
+      if (reply.taken) {
+        clearTimeout(timer);
+        timer = setTimeout(() => stop(new RegexTimeoutError(timeoutMs)), timeoutMs);
+        return;
+      }
       cleanup();
       if (reply.error !== undefined) reject(new Error(`Invalid regex: ${reply.error}`));
       else resolve(reply.matched ?? []);
@@ -105,12 +142,6 @@ function runOnce(
       cleanup();
       reject(new Error("Regex worker exited unexpectedly"));
     };
-    const timer = setTimeout(() => {
-      cleanup();
-      if (worker === w) worker = null;
-      void w.terminate();
-      reject(new RegexTimeoutError(timeoutMs));
-    }, timeoutMs);
     w.on("message", onMessage);
     w.on("error", onError);
     w.on("exit", onExit);
@@ -120,8 +151,9 @@ function runOnce(
 
 /**
  * For each input, whether `new RegExp(source, flags)` matches it, evaluated
- * off the calling thread under a deadline that covers the whole batch.
- * Rejects with {@link RegexTimeoutError} past the deadline, or with an
+ * off the calling thread under a deadline that covers the whole batch,
+ * counted from when the worker takes it. Rejects with
+ * {@link RegexTimeoutError} past the deadline, or with an
  * `Invalid regex: …` error when the pattern does not compile. The stateful
  * `g`/`y` flags are dropped, since each input is tested independently.
  */
@@ -129,12 +161,13 @@ export function testRegexBounded(
   source: string,
   flags: string,
   inputs: string[],
-  options?: { timeoutMs?: number },
+  options?: { timeoutMs?: number; startTimeoutMs?: number },
 ): Promise<boolean[]> {
   if (inputs.length === 0) return Promise.resolve([]);
   const timeoutMs = options?.timeoutMs ?? DEFAULT_REGEX_TIMEOUT_MS;
+  const startTimeoutMs = options?.startTimeoutMs ?? REGEX_WORKER_START_TIMEOUT_MS;
   const safeFlags = flags.replace(/[gy]/g, "");
-  const run = queue.then(() => runOnce(source, safeFlags, inputs, timeoutMs));
+  const run = queue.then(() => runOnce(source, safeFlags, inputs, timeoutMs, startTimeoutMs));
   queue = run.catch(() => undefined);
   return run;
 }
