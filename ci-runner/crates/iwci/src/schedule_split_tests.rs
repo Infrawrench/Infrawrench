@@ -1417,6 +1417,7 @@ fn a_job_whose_outputs_a_helper_could_not_mask_is_run_by_the_primary() {
         notes: Vec::new(),
         duration_ms: 5,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         kept: Kept::None,
     };
