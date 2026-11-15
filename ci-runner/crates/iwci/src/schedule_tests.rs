@@ -336,9 +336,17 @@ impl Executor<String> for FakeExecutor {
                 Err(_) => exit_code = 1,
             }
         }
+        // `peak` held 5 MiB of program memory and wrote a 2 MiB file.
+        let mut peak_memory_bytes = 0;
+        if tool.contains(":peak@") {
+            inv.fs.write("/tmp/two.bin", &vec![0u8; 2 << 20]).unwrap();
+            inv.fs.remove_file("/tmp/two.bin").unwrap();
+            peak_memory_bytes = 5 << 20;
+        }
         Ok(Execution {
             exit_code,
             stdout,
+            peak_memory_bytes,
             ..Default::default()
         })
     }
@@ -471,6 +479,25 @@ fn a_stalled_job_fails_naming_the_stall_and_blocks_its_dependents() {
         "stalled: no output and no CPU use for 5 minutes, so it was stopped before its 1200s timeout"
     );
     assert!(matches!(status(&report, "after"), Status::Skipped { .. }));
+}
+
+#[test]
+fn a_report_says_the_most_memory_a_job_held() {
+    let p = plan(
+        "name: x\njobs:\n  big:\n    using: builtin:peak@1\n    memory: 1GiB\n  small:\n    using: builtin:ok@1\n",
+    );
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    let job = |id: &str| report.jobs.iter().find(|j| j.id == id).unwrap();
+    // Its programs' 5 MiB and the 2 MiB file it had written, though the
+    // file was gone by the end; what it reserved is beside it.
+    let peak = job("big").peak_memory_mib;
+    assert!((7..=8).contains(&peak), "{peak}");
+    assert_eq!(job("big").memory_mib, 1024);
+    let json = serde_json::to_value(job("big")).unwrap();
+    assert_eq!(json["peak_memory_mib"], peak);
+    // A job that held nothing to speak of leaves the field out.
+    assert!(job("small").peak_memory_mib <= 1);
 }
 
 #[test]
@@ -706,6 +733,13 @@ fn jobs_that_do_not_fit_the_runners_memory_together_run_one_after_another() {
     assert!(report.passed());
     assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 1);
     assert_eq!(budget.used(), 0, "every reservation is given back");
+    // The ones that waited for the first one's memory say for how long.
+    let waited = report.jobs.iter().filter(|j| j.queued_ms > 0).count();
+    assert!(
+        waited >= 2,
+        "{:?}",
+        report.jobs.iter().map(|j| j.queued_ms).collect::<Vec<_>>()
+    );
 
     // With room for all three, they run together.
     let budget = Arc::new(MemoryBudget::new(4 << 30));

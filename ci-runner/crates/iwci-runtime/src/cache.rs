@@ -873,7 +873,7 @@ mod tests {
 
     /// Runs export `f0` of `module` in a store of `job`'s, as a job would.
     fn call(job: &JobModules, module: &Module) -> i32 {
-        let (engine, _) = crate::wasix::job_engine(job, 1 << 20, 1 << 20);
+        let (engine, _, _) = crate::wasix::job_engine(job, 1 << 20, 1 << 20);
         let mut store = wasmer::Store::new(engine);
         let instance = wasmer::Instance::new(&mut store, module, &wasmer::imports! {}).unwrap();
         let f = instance.exports.get_function("f0").unwrap();
@@ -989,7 +989,7 @@ mod tests {
         drop((shared, second));
         // The job's module still runs, from a store that outlives the job's
         // own handle: the store holds the job's modules.
-        let (engine, _) = crate::wasix::job_engine(&running, 1 << 20, 1 << 20);
+        let (engine, _, _) = crate::wasix::job_engine(&running, 1 << 20, 1 << 20);
         drop(running);
         let mut s = wasmer::Store::new(engine);
         let instance = wasmer::Instance::new(&mut s, &module, &wasmer::imports! {}).unwrap();
@@ -1097,7 +1097,7 @@ mod tests {
         let main_key: WasmHash = Sha256::digest(&main).into();
         let lib = store.get(&job, lib_key, &lib, None).unwrap();
         let main = store.get(&job, main_key, &main, None).unwrap();
-        let (engine, _) = crate::wasix::job_engine(&job, 1 << 20, 1 << 20);
+        let (engine, _, _) = crate::wasix::job_engine(&job, 1 << 20, 1 << 20);
         let mut s = wasmer::Store::new(engine);
         let host = wasmer::Function::new_typed(&mut s, |x: f64| x + 1.0);
         let lib = wasmer::Instance::new(&mut s, &lib, &wasmer::imports! {}).unwrap();

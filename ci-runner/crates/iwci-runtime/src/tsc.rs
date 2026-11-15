@@ -92,6 +92,8 @@ pub struct TscOutcome {
     /// The run was cancelled, and the compile stopped for it.
     pub cancelled: bool,
     pub out_of_memory: bool,
+    /// The most linear memory the compile held at once, in bytes.
+    pub peak_memory_bytes: u64,
     /// The trap, when the module crashed instead of returning or exiting
     /// (core.js throws in that case).
     pub error: Option<String>,
@@ -130,7 +132,7 @@ pub(crate) fn run(
         }
     }
     let started = Instant::now();
-    let (engine, hit_memory) = job_engine(job_modules, inv.limits.memory_bytes, TSC_STACK);
+    let (engine, hit_memory, meter) = job_engine(job_modules, inv.limits.memory_bytes, TSC_STACK);
     let mut store = Store::new(engine);
     let interrupter = store.interrupter();
 
@@ -288,6 +290,7 @@ pub(crate) fn run(
         timed_out,
         cancelled,
         out_of_memory: hit_memory.load(Ordering::Acquire),
+        peak_memory_bytes: meter.peak(),
         error,
     })
 }

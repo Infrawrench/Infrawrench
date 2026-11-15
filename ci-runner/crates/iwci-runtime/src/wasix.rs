@@ -62,7 +62,7 @@ use webc::Container;
 use crate::background::Services;
 use crate::cache::{JobModules, ModuleStore, WasixCache, WasmHash};
 use crate::capture::Capture;
-use crate::limits::LimitingTunables;
+use crate::limits::{LimitingTunables, MemoryMeter};
 use crate::stall::{CpuMeter, JobTasks, StallWatch};
 use crate::{Error, Invocation, Outcome, Result, WebcPackage};
 
@@ -872,18 +872,21 @@ fn write_command(fs: &TmpFileSystem, name: &str, bytes: &[u8]) -> Result<()> {
 
 /// The engine of one job's stores: a clone of the job's engine with
 /// tunables that enforce its limits and hold its modules, so no module is
-/// freed while a store of the job can run it (cache.rs).
+/// freed while a store of the job can run it (cache.rs). With it, whether
+/// a memory was refused growth and the meter of the memories it makes.
 pub(crate) fn job_engine(
     job_modules: &JobModules,
     memory_bytes: u64,
     stack_bytes: usize,
-) -> (Engine, Arc<AtomicBool>) {
+) -> (Engine, Arc<AtomicBool>, Arc<MemoryMeter>) {
     let hit = Arc::new(AtomicBool::new(false));
+    let meter = Arc::new(MemoryMeter::default());
     let mut engine = job_modules.engine().clone();
     engine.set_tunables(
-        LimitingTunables::new(memory_bytes, stack_bytes, hit.clone()).holding(job_modules.clone()),
+        LimitingTunables::new(memory_bytes, stack_bytes, hit.clone(), meter.clone())
+            .holding(job_modules.clone()),
     );
-    (engine, hit)
+    (engine, hit, meter)
 }
 
 fn check_nul(inv: &Invocation) -> Result<()> {
@@ -1163,7 +1166,7 @@ pub(crate) fn run(
     let started = Instant::now();
     let _enter = tokio.enter();
 
-    let (engine, hit_memory) = job_engine(job_modules, inv.limits.memory_bytes, WASIX_STACK);
+    let (engine, hit_memory, meter) = job_engine(job_modules, inv.limits.memory_bytes, WASIX_STACK);
 
     let package_set = match &entry {
         Entry::Module(_) => None,
@@ -1254,6 +1257,7 @@ pub(crate) fn run(
             cancelled,
             stalled_after: None,
             out_of_memory: hit_memory.load(Ordering::Acquire),
+            peak_memory_bytes: meter.peak(),
             error: None,
             service_failure: (!cancelled).then_some(failure),
         });
@@ -1317,6 +1321,9 @@ pub(crate) fn run(
                 return (Some(result), None);
             }
             services.report_exits(&stderr);
+            if let Some(node) = node {
+                meter.set_heaps(node.heap_bytes());
+            }
             if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
                 break Stop::OutOfMemory;
             }
@@ -1396,6 +1403,9 @@ pub(crate) fn run(
     let out = stdout.take();
     let mut err = stderr.take();
     let exhaustion = node.map(|node| node.exhaustion()).unwrap_or_default();
+    if let Some(node) = node {
+        meter.set_heaps(node.heap_bytes());
+    }
     let failed = stopped.is_some() || exit_code != 0;
     // Memory ran short for the job's Node (#964): a stopped heap ends the
     // job; a refused isolate or buffer is the program's to handle, and is
@@ -1449,6 +1459,7 @@ pub(crate) fn run(
         cancelled: was_cancelled,
         stalled_after: caps.stall_after.filter(|_| stalled),
         out_of_memory,
+        peak_memory_bytes: meter.peak(),
         error: if stopped.is_some() { None } else { error },
         service_failure: None,
     })

@@ -444,6 +444,11 @@ pub struct Outcome {
     /// the job, or a `node`, worker thread or buffer was refused and the job
     /// then failed. Its stderr ends with a note saying which.
     pub out_of_memory: bool,
+    /// The most memory the job held at once, in bytes: its linear memories
+    /// (every process of the job and of its services) and the room its V8
+    /// heaps had reserved, read five times a second. What `memory:` has
+    /// to cover, beside the files the job writes.
+    pub peak_memory_bytes: u64,
     /// The trap, when the program crashed rather than exiting.
     pub error: Option<String>,
     /// Why the job never started: a service exited, or was not ready in
