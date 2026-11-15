@@ -429,7 +429,8 @@ export async function admitRun(
           status: "queued",
           statusReason: null,
           concurrency,
-          nextAttemptAt: current.status === "pending" ? now : current.nextAttemptAt,
+          // The database's clock, which the claim compares it with.
+          nextAttemptAt: current.status === "pending" ? sql`now()` : current.nextAttemptAt,
           updatedAt: now,
         })
         .where(eq(ciRuns.id, row.id))
