@@ -371,11 +371,11 @@ jobs:
       node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
-| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)); PostgreSQL, MySQL, Redis and MongoDB set `DATABASE_URL` (`REDIS_URL`, `MONGODB_URI`) and what their clients read. A name may also be a resource the app grants as its peer, such as a GKE cluster lent as a Kubernetes connection or a managed database as PostgreSQL, which is lent exactly as that connection would be. |
-| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its key (`~/.ssh/iw_<name>`), its pinned host key as a `known_hosts` file of its own (`~/.ssh/iw_<name>.known_hosts`) and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)); PostgreSQL, MySQL, Redis and MongoDB set `DATABASE_URL` (`REDIS_URL`, `MONGODB_URI`) and what their clients read. A name may also be a resource the app grants as its peer, such as a GKE cluster lent as a Kubernetes connection or a managed database as PostgreSQL, which is lent exactly as that connection would be. |
+| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 `${{ resources.<name>.<output> }}` reads one output of a granted resource,
 such as a database's `connectionString` or a secret manager entry's
@@ -538,8 +538,8 @@ runs on the GKE cluster granted as `gke-prod`, through its cloud connection. `ma
   published SHA-256) in a directory of the job's on its `PATH` when the
   image has no `kubectl`. Nothing is installed on a `host` job's machine,
   where only the download applies. A tool that could not be had is a line in
-  the job's log, not a failure. Host keys are checked with
-  `KnownHostsCommand`, which takes OpenSSH 8.5 or later.
+  the job's log, not a failure. A lent host's key is a plain `known_hosts`
+  line, so any OpenSSH checks it.
 - **Where lent files land.** `~/.ssh` and the kubeconfig are written to the
   home directory of the user the job runs as, with `HOME` and `KUBECONFIG`
   pointing there: `/root` for root, as on the runner. Where that is not the
@@ -1949,7 +1949,7 @@ own, at the same version, and `scp` and `sftp` start `ssh`, so a job that
 copies lists both. They are OpenSSH portable 10.6p2, built from its release
 by `builtins/openssh/build.sh` for WASIX with OpenSSL 3.5.9, and read what a
 [lent connection or SSH key](#connections-ssh-keys-and-resources) writes:
-`~/.ssh/config`, `~/.ssh/known_hosts` and the key.
+`~/.ssh/config`, the connection's `known_hosts` file and the key.
 
 ```yaml
 deploy:
@@ -1966,9 +1966,12 @@ What to know:
 
 - **Host keys are checked.** A host whose key is not in `known_hosts` fails
   ("Host key verification failed"), since there is no terminal to ask, and
-  so does one whose key changed. A lent connection pins its key; for any
-  other host, add its key to `~/.ssh/known_hosts` from a variable or the
-  repository. `ssh-keyscan` is there, but trusting what it reads is trusting
+  so does one whose key changed. A lent connection brings the key pinned
+  for it in Infrawrench, as a `known_hosts` line its `Host` entry reads
+  (`UserKnownHostsFile ~/.ssh/iw_<name>.known_hosts`); the app reads the
+  key from the host when it lends it and lends nothing if the host offers
+  another. For any other host, add its key to `~/.ssh/known_hosts` from a
+  variable or the repository. `ssh-keyscan` is there, but trusting what it reads is trusting
   the network.
 - **Every key type and algorithm OpenSSH has**, OpenSSL's included: Ed25519,
   RSA and ECDSA keys (user and host, and certificates), the ML-KEM,
@@ -1992,7 +1995,8 @@ exec` and `LocalCommand`. A jump host must be public, like any host a job
   sockets, so no `ControlMaster` either. There is no `ssh-agent` (`-A`
   forwards nothing) and no `sshd`.
 - Tested end to end (`builtins/test.sh bash openssh`) against small SSH
-  servers on the job's own loopback (`builtins/openssh/sshd-fixture`):
+  servers on the job's own loopback (`builtins/openssh/sshd-fixture`), lent
+  connections in the shape the `ssh` plugin lends them:
   commands with stdin and exit status, `scp` both ways and `sftp`, ProxyJump
   through a second server, a `-L` tunnel, RSA host and user keys, `ssh-keygen` and
   `ssh-keyscan`, and as failures a changed host key, an unknown host, a key

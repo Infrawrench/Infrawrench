@@ -58,8 +58,6 @@ interface Case {
   refused?: RegExp;
   /** `ssh` cannot work there at all (a user with no passwd entry). */
   noSsh?: boolean;
-  /** Its OpenSSH is older than 8.5: a lent key works, a lent host is refused. */
-  oldSsh?: boolean;
   /** The job gets a root of its own, so the clone is not in `/app`. */
   ownRoot?: boolean;
 }
@@ -74,8 +72,9 @@ const CASES: Case[] = [
   // curl-minimal and coreutils-single, which conflict with curl and coreutils.
   { name: "ubi-minimal", image: "redhat/ubi9-minimal" },
   // The defaults of the managed build kinds that are public images.
-  // Cloud Build's own image is Ubuntu 20.04, whose OpenSSH is 8.2.
-  { name: "cloud-builders-docker", image: "gcr.io/cloud-builders/docker", oldSsh: true },
+  // Cloud Build's own image is Ubuntu 20.04, whose OpenSSH is 8.2: a lent
+  // host is a known_hosts line, which it reads like any other (#1196).
+  { name: "cloud-builders-docker", image: "gcr.io/cloud-builders/docker" },
   { name: "docker-cli", image: "docker:cli" },
   // A user other than root, who cannot write /root or /app or install anything.
   {
@@ -169,6 +168,8 @@ function merged(entries: LentEntry[]): {
 interface Sshd {
   port: number;
   fingerprint: string;
+  /** Its host key, `<type> <base64>`. */
+  publicKey: string;
   log: () => string;
   stop: () => void;
 }
@@ -247,7 +248,8 @@ describe.skipIf(selected.length === 0)("a cloud job on an image", () => {
     ])
       .toString()
       .split(" ")[1]!;
-    return { port: sshPort, fingerprint, log: () => log, stop: () => child.kill() };
+    const publicKey = readFileSync(join(home, "host.pub"), "utf8").split(" ").slice(0, 2).join(" ");
+    return { port: sshPort, fingerprint, publicKey, log: () => log, stop: () => child.kill() };
   }
 
   function keypair(name: string): { private: string; public: string } {
@@ -366,15 +368,20 @@ describe.skipIf(selected.length === 0)("a cloud job on an image", () => {
       key: string,
       references: Record<string, string> = {},
     ): Promise<CiLentMaterial> => {
-      const client = sshPlugin.createClient({
-        host: "127.0.0.1",
-        port: String(at.port),
-        username: user,
-        privateKey: key,
-        ...(references["connectThroughAccountId"]
-          ? { connectThroughAccountId: "account-bastion" }
-          : {}),
-      });
+      const client = sshPlugin.createClient(
+        {
+          host: "127.0.0.1",
+          port: String(at.port),
+          username: user,
+          privateKey: key,
+          ...(references["connectThroughAccountId"]
+            ? { connectThroughAccountId: "account-bastion" }
+            : {}),
+        },
+        // The host's SSH service hands out the key the host offers when it
+        // is the pinned one (`ssh-exec.test.ts` reads it from a live host).
+        { ssh: { exec: async () => "", hostKey: async () => at.publicKey } },
+      );
       return client.lendCiCredential!({
         name,
         alias: name,
@@ -495,12 +502,12 @@ describe.skipIf(selected.length === 0)("a cloud job on an image", () => {
         ...(testCase.noSsh
           ? ['ssh -o BatchMode=yes web-1 true 2>&1 || echo "ssh-said=$?"']
           : [
-              ...(testCase.oldSsh
-                ? ['ssh -o BatchMode=yes web-1 true 2>&1 || echo "old-ssh-refused=$?"']
-                : ["ssh -o BatchMode=yes web-1 true", "ssh -o BatchMode=yes db-1 true"]),
+              "ssh -o BatchMode=yes web-1 true",
+              "ssh -o BatchMode=yes db-1 true",
               `ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p ${keyOnlyPort} ${user}@127.0.0.1 true`,
-              // A host key other than the pinned one is refused.
-              `if ssh -o BatchMode=yes -o HostKeyAlias=web-1 -p ${keyOnlyPort} web-1 true 2>/dev/null; then echo wrong-host-accepted; else echo wrong-host-refused; fi`,
+              // A host key other than the pinned one is refused: another
+              // server, looked up under web-1's own name in its known_hosts.
+              `if ssh -o BatchMode=yes -o HostKeyAlias='[127.0.0.1]:${sshds[0]!.port}' -p ${keyOnlyPort} web-1 true 2>/dev/null; then echo wrong-host-accepted; else echo wrong-host-refused; fi`,
             ]),
         // What a careless job prints: the runner must be able to mask it.
         'cat "$KUBECONFIG"',
@@ -579,18 +586,10 @@ describe.skipIf(selected.length === 0)("a cloud job on an image", () => {
         if (testCase.noSsh) {
           expect(out).toMatch(/No user exists for uid 12345|ssh-said=/);
         } else {
-          if (testCase.oldSsh) {
-            // It cannot check the pinned key, so it refuses the host, and
-            // only that: the file still reads, and the lent key still works.
-            expect(out).toContain("Host key verification failed");
-            expect(out).toContain("old-ssh-refused=255");
-            expect(out).not.toContain("iwci-ssh-ok:web-1");
-          } else {
-            expect(out).toContain("iwci-ssh-ok:web-1");
-            // Through the jump host: the bastion forwarded to db-1's port.
-            expect(out).toContain("iwci-ssh-ok:db-1");
-            expect(sshds[2]!.log()).toContain(`port ${sshds[1]!.port}`);
-          }
+          expect(out).toContain("iwci-ssh-ok:web-1");
+          // Through the jump host: the bastion forwarded to db-1's port.
+          expect(out).toContain("iwci-ssh-ok:db-1");
+          expect(sshds[2]!.log()).toContain(`port ${sshds[1]!.port}`);
           // The lent key, offered to a host no connection names.
           expect(out).toContain("iwci-ssh-ok:key");
           expect(out).toContain("wrong-host-refused");

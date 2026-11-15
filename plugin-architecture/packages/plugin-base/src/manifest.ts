@@ -460,6 +460,14 @@ export interface SshHostServices {
    * Neither the script nor its output is audit-logged.
    */
   exec(script: string, options?: { timeoutMs?: number }): Promise<string>;
+  /**
+   * The public key the host offers, as `<type> <base64>` (a `known_hosts`
+   * line without its host pattern), read through the same jump hosts. It
+   * resolves only when that key's fingerprint is the one the organization
+   * pinned for the host, and rejects otherwise, so what it answers can be
+   * trusted as the pin. Nothing logs in to the host to read it.
+   */
+  hostKey?(): Promise<string>;
 }
 
 /**
