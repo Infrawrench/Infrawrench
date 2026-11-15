@@ -325,6 +325,7 @@ mod tests {
         poll: Duration::from_millis(20),
         lease: Duration::from_millis(500),
         margin: Duration::from_millis(100),
+        recheck: Duration::from_millis(50),
     };
 
     /// A run on `branch` (`pr` for a pull request), with the scopes the

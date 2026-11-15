@@ -2274,6 +2274,24 @@ pub fn run<T: Tools>(
                         complete(&state, &wake, plan, options, template, report, Vec::new());
                         continue;
                     }
+                    // Saved by another run while it queued: replayed, and
+                    // what it was about to start with given back.
+                    let mut replayed = Vec::new();
+                    if let Some(report) = inflight::landed_meanwhile(
+                        &job,
+                        plan,
+                        options,
+                        &shared,
+                        &lookup,
+                        &mut replayed,
+                    ) {
+                        drop(slot);
+                        if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
+                            budget.release(lease);
+                        }
+                        complete(&state, &wake, plan, options, template, report, replayed);
+                        continue;
+                    }
                     // Another run computing the same task cache key: this
                     // job waits for its entry instead, giving back the
                     // memory (and a helper's slot) it was about to start

@@ -101,6 +101,7 @@ pub struct SplitRun {
 /// (`adapters::inflight`) both say they are alive this way.
 pub struct Beating {
     beat: Arc<Beat>,
+    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 struct Beat {
@@ -117,9 +118,9 @@ impl Beating {
             stopped: Condvar::new(),
         });
         let _ = store.put(&format!("{key}.1"), b"", "text/plain");
-        {
+        let thread = {
             let beat = beat.clone();
-            let _ = std::thread::Builder::new()
+            std::thread::Builder::new()
                 .name("iwci-beat".into())
                 .spawn(move || {
                     let mut n = 1u64;
@@ -142,9 +143,10 @@ impl Beating {
                         }
                     }
                     let _ = store.delete(&format!("{key}.{n}"));
-                });
-        }
-        Self { beat }
+                })
+                .ok()
+        };
+        Self { beat, thread }
     }
 
     /// Stops moving it, and deletes it, in the background.
@@ -155,8 +157,13 @@ impl Beating {
 }
 
 impl Drop for Beating {
+    /// Waits for the last one to be deleted: a process that exits next
+    /// (`iwci run`) would otherwise leave it for the sweep.
     fn drop(&mut self) {
         self.stop();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 

@@ -768,8 +768,11 @@ task-cache:
   never wait for each other. Waiting cannot go round in a circle: only a
   job that has started holds a marker, and a started job waits for
   nothing, so two runs each waiting on keys the other computes both
-  finish. A run that skips the task cache (below) waits for nobody, but
-  still marks what it computes. It costs a run one listing of the markers
+  finish. A job that missed and then queued for more than five seconds
+  reads its entry again just before it starts, since another run may
+  have started and finished it in between without this run ever seeing
+  its marker; a hit is replayed as any other. A run that skips the task
+  cache (below) waits for nobody, but still marks what it computes. It costs a run one listing of the markers
   a second while a job of it waits, a read for a miss whose key is marked,
   and two writes for each job that misses.
 - Entries are kept with the [job caches](#job-caches), scoped and counted

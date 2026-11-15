@@ -10,6 +10,7 @@ const FAST: InFlightTiming = InFlightTiming {
     poll: Duration::from_millis(10),
     lease: Duration::from_millis(300),
     margin: Duration::from_millis(50),
+    recheck: Duration::from_millis(50),
 };
 
 pub(super) fn store(name: &str) -> (Arc<dyn ObjectStore>, std::path::PathBuf) {
@@ -616,6 +617,51 @@ fn two_runs_waiting_on_each_others_keys_both_finish() {
     assert_eq!(sorted(a_exec.ran()), vec!["pre", "x"]);
     assert_eq!(sorted(b_exec.ran()), vec!["pre", "y"]);
     assert!(markers_left(&store).is_empty());
+    drop((a_in, b_in));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_entry_saved_while_a_job_queued_is_replayed_when_it_would_start() {
+    let (store, dir) = store("queued");
+    // `slow` holds the second run's one slot while `lib` queues behind it.
+    let p = plan(
+        "name: x\njobs:\n  slow:\n    using: builtin:ok@1\n  lib:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    task-cache: true\n",
+    );
+    let caches = Arc::new(MemoryCaches::default());
+    let (a_gates, b_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (a_exec, b_exec) = (
+        GateExec::new(&a_gates, &[], &[]),
+        GateExec::new(&b_gates, &["slow"], &[]),
+    );
+    let (a_in, b_in) = (
+        counted(&store, "run-a", "b-main"),
+        counted(&store, "run-b", "b-main"),
+    );
+    let b = std::thread::scope(|scope| {
+        let b = scope.spawn(|| go(&p, &b_exec, &caches, &b_in, None, None, 1));
+        eventually("the second run to start slow", || b_gates.started("slow"));
+        // Its lookup of `lib` missed; the first run now computes and saves
+        // it, never seeing a marker of the second's.
+        std::thread::sleep(Duration::from_millis(100));
+        let a = go(&p, &a_exec, &caches, &a_in, None, None, 2);
+        assert!(a.passed());
+        std::thread::sleep(FAST.recheck);
+        b_gates.open("slow");
+        b.join().unwrap()
+    });
+    assert!(b.passed(), "{:#?}", b.jobs);
+    let lib = job(&b, "lib");
+    assert!(lib.cached && lib.waited_for.is_none(), "{lib:#?}");
+    assert!(
+        lib.caches
+            .iter()
+            .any(|l| l.contains("saved by another run while this one queued")),
+        "{:?}",
+        lib.caches
+    );
+    assert_eq!(b_exec.ran(), vec!["slow"]);
+    assert_eq!(b_in.waits(), 0);
     drop((a_in, b_in));
     let _ = std::fs::remove_dir_all(dir);
 }

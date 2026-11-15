@@ -25,6 +25,11 @@
 //!   expected time for the job plus a margin, and never longer than the
 //!   job's own `timeout:` plus two leases. Then it runs the job here and
 //!   does not wait again.
+//! - **A job that sat in the queue reads its entry again before it
+//!   starts** ([`landed_meanwhile`]): another run may have saved it since
+//!   the lookup, without this run ever seeing its marker, when that run
+//!   started the job after the lookup and finished it while this job
+//!   queued.
 //! - **The runners of a split run count as one run**: they share a run
 //!   identity, the primary's id, so none of them waits for the others'
 //!   markers. Whoever claims the job runs it; the claim is taken after the
@@ -62,6 +67,9 @@ pub struct InFlightTiming {
     pub lease: Duration,
     /// Added to twice the expected time of the job waited for.
     pub margin: Duration,
+    /// How long a job that missed may queue before it reads its entry
+    /// again as it starts.
+    pub recheck: Duration,
 }
 
 impl Default for InFlightTiming {
@@ -70,6 +78,7 @@ impl Default for InFlightTiming {
             poll: Duration::from_secs(1),
             lease: Duration::from_secs(45),
             margin: Duration::from_secs(60),
+            recheck: Duration::from_secs(5),
         }
     }
 }
@@ -171,6 +180,42 @@ pub(super) fn wait<'p>(
         since: Instant::now(),
         limit,
     });
+}
+
+/// The report of a job about to start whose entry another run saved
+/// while it queued: read again once it has queued for
+/// [`InFlightTiming::recheck`], one read of the store against a run of
+/// the job. `None` runs it.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn landed_meanwhile(
+    job: &PlannedJob,
+    plan: &Plan,
+    options: &Options,
+    shared: &RunShared<'_>,
+    lookup: &Lookup,
+    kept: &mut Vec<Entry>,
+) -> Option<JobReport> {
+    let inflight = options.inflight.as_ref()?;
+    let queued = lookup.queued?.elapsed();
+    if options.skip_task_cache || queued < inflight.timing().recheck {
+        return None;
+    }
+    let key = lookup.key.as_deref()?;
+    let started = Instant::now();
+    let hit = options
+        .caches
+        .as_ref()?
+        .restore(key, &[], plan.scratch_bytes + MAX_TASK_LOG)
+        .ok()??;
+    let mut report = replay(job, plan, options, shared, key, hit.entries, started, kept).ok()?;
+    report.queued_ms = millis(queued);
+    report.caches = lookup.lines.clone();
+    report.caches.push(format!(
+        "task cache `{}`: hit, saved by another run while this one queued {}",
+        short_key(key),
+        secs(queued)
+    ));
+    Some(report)
 }
 
 /// What [`begin`] decided for a job about to start.
