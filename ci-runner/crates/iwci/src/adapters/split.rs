@@ -90,13 +90,74 @@ pub struct SplitRun {
     helper: bool,
     asked: AtomicBool,
     timing: Timing,
+    beat: Beating,
+}
+
+/// A sign of life: `<key>.<n>`, with `<n>` moving on every beat from
+/// when it starts until it is stopped or dropped, when it is deleted. A
+/// reader that lists it and sees `<n>` stand still for a lease, by its own
+/// clock, counts whoever wrote it gone; no clocks are compared and nothing
+/// is read but the listing. Split runs and task cache markers
+/// (`adapters::inflight`) both say they are alive this way.
+pub struct Beating {
     beat: Arc<Beat>,
 }
 
-/// The thread that keeps a runner's sign of life moving.
 struct Beat {
     stop: Mutex<bool>,
     stopped: Condvar,
+}
+
+impl Beating {
+    /// Writes `<key>.1` before it returns, so nobody looks for it in vain,
+    /// and moves it on from a thread of its own.
+    pub fn start(store: Arc<dyn ObjectStore>, key: String, every: Duration) -> Self {
+        let beat = Arc::new(Beat {
+            stop: Mutex::new(false),
+            stopped: Condvar::new(),
+        });
+        let _ = store.put(&format!("{key}.1"), b"", "text/plain");
+        {
+            let beat = beat.clone();
+            let _ = std::thread::Builder::new()
+                .name("iwci-beat".into())
+                .spawn(move || {
+                    let mut n = 1u64;
+                    loop {
+                        let stop = beat.stop.lock().unwrap_or_else(|e| e.into_inner());
+                        let (stop, _) = beat
+                            .stopped
+                            .wait_timeout_while(stop, every, |stop| !*stop)
+                            .unwrap_or_else(|e| e.into_inner());
+                        if *stop {
+                            break;
+                        }
+                        drop(stop);
+                        if store
+                            .put(&format!("{key}.{}", n + 1), b"", "text/plain")
+                            .is_ok()
+                        {
+                            let _ = store.delete(&format!("{key}.{n}"));
+                            n += 1;
+                        }
+                    }
+                    let _ = store.delete(&format!("{key}.{n}"));
+                });
+        }
+        Self { beat }
+    }
+
+    /// Stops moving it, and deletes it, in the background.
+    pub fn stop(&self) {
+        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.beat.stopped.notify_all();
+    }
+}
+
+impl Drop for Beating {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 impl SplitRun {
@@ -129,10 +190,6 @@ impl SplitRun {
             repo.as_str(),
             run.as_str()
         );
-        let beat = Arc::new(Beat {
-            stop: Mutex::new(false),
-            stopped: Condvar::new(),
-        });
         let key = if helper {
             format!("{root}/state/helper/{runner}")
         } else {
@@ -140,34 +197,7 @@ impl SplitRun {
         };
         // The first one before anything else, so the other runners never
         // look for this one in vain.
-        let _ = store.put(&format!("{key}.1"), b"", "text/plain");
-        {
-            let (store, beat) = (store.clone(), beat.clone());
-            let _ = std::thread::Builder::new()
-                .name("iwci-split-beat".into())
-                .spawn(move || {
-                    let mut n = 1u64;
-                    loop {
-                        let stop = beat.stop.lock().unwrap_or_else(|e| e.into_inner());
-                        let (stop, _) = beat
-                            .stopped
-                            .wait_timeout_while(stop, BEAT, |stop| !*stop)
-                            .unwrap_or_else(|e| e.into_inner());
-                        if *stop {
-                            break;
-                        }
-                        drop(stop);
-                        if store
-                            .put(&format!("{key}.{}", n + 1), b"", "text/plain")
-                            .is_ok()
-                        {
-                            let _ = store.delete(&format!("{key}.{n}"));
-                            n += 1;
-                        }
-                    }
-                    let _ = store.delete(&format!("{key}.{n}"));
-                });
-        }
+        let beat = Beating::start(store.clone(), key, BEAT);
         Arc::new(Self {
             store,
             root,
@@ -273,8 +303,7 @@ impl SplitRun {
     /// The run is over. The primary says so and clears what the run left,
     /// in the background; either way this runner stops saying it is alive.
     pub fn finish(&self) {
-        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
-        self.beat.stopped.notify_all();
+        self.beat.stop();
         if self.helper {
             return;
         }
@@ -293,14 +322,7 @@ impl SplitRun {
     }
 }
 
-impl Drop for SplitRun {
-    fn drop(&mut self) {
-        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
-        self.beat.stopped.notify_all();
-    }
-}
-
-fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
+pub(crate) fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
     let next = AtomicU64::new(0);
     std::thread::scope(|scope| {
         for _ in 0..CLEAR_THREADS.min(keys.len()) {
@@ -318,8 +340,18 @@ fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
 /// everything of a run whose primary died. Returns how many objects went.
 /// A store that does not say when an object was written is left alone.
 pub fn sweep(store: &dyn ObjectStore, now: u64) -> Result<usize, String> {
+    sweep_under(store, PREFIX, now)
+}
+
+/// Removes every object under `prefix/` written more than
+/// [`SWEEP_AFTER_SECS`] ago.
+pub(crate) fn sweep_under(
+    store: &dyn ObjectStore,
+    prefix: &str,
+    now: u64,
+) -> Result<usize, String> {
     let old: Vec<String> = store
-        .list_detailed(&format!("{PREFIX}/"))
+        .list_detailed(&format!("{prefix}/"))
         .map_err(|e| e.to_string())?
         .into_iter()
         .filter(|o| {

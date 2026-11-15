@@ -69,6 +69,13 @@ impl StoreCaches {
         }
     }
 
+    /// Where this run saves its entries, and where it reads them, in
+    /// order: what a run computing a task cache key marks and looks at
+    /// (`adapters::inflight`).
+    pub fn scopes(&self) -> (&str, &[String]) {
+        (&self.write_scope, &self.read_scopes)
+    }
+
     fn entry_key(&self, scope: &str, key: &str) -> String {
         format!(
             "caches/{}/{}/{scope}/entries/{}.zst",
