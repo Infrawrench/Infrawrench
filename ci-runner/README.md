@@ -2964,9 +2964,11 @@ from the internet, each Go minor and OpenSSH, on x86_64 and on ARM64, on changes
 the builtins, the runtime or the store, and
 nightly, because those builds resolve crates and a WASIX toolchain that
 this repository does not pin byte for byte. The Node job
-runs on x86_64; `ci-runner.yml`'s "Build with Node on ARM64" job builds the
-`node` feature on ARM64 on every change, so the second architecture cannot
-break unnoticed.
+runs on x86_64; `ci-runner.yml`'s "Build and test with Node on ARM64" job
+builds the `node` feature on ARM64 on every change, so the second
+architecture cannot break unnoticed, and runs `iwci`'s and `iwci-runtime`'s
+tests with it (`cargo test -p iwci -p iwci-runtime --features iwci/node`),
+since the feature changes how the crates under them are built.
 
 ### The build cache
 

@@ -538,7 +538,7 @@ impl Runtime {
             .map_err(Error::Async)?;
         let tasks = Arc::new(TokioTaskManager::new(tokio.handle().clone()));
         Ok(Self {
-            wasix: wasix::WasixShared::new(store.clone(), tasks),
+            wasix: wasix::WasixShared::new(store.clone(), tasks, tokio.handle().clone()),
             store,
             tokio,
             output_cap: DEFAULT_OUTPUT_CAP,
