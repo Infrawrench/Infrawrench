@@ -572,6 +572,16 @@ with a pointer-compression cage per isolate group
 bucket holds. A changed build is stored under a new name, never over the
 old one.
 
+The bridge's own C++ is compiled as C++23 where the compiler has it
+(`build.rs` adds `-std=c++23` after `-std=c++20`): 15.9's headers call
+`unique_ptr::get` in a constexpr function (`v8-wasm.h`), which is C++23 and
+needs GCC 12's libstdc++ or later. GCC 13 accepts the header as C++20, so
+builds on Ubuntu 24.04 passed while the release, on 22.04 and its GCC 11,
+did not. The release compiles the bridge with 22.04's GCC 12
+(`../release-build.sh`), the headers the archive itself was built against,
+and `ci-runner-release-build.yml` runs that build on pull requests that
+touch the bridge or its V8.
+
 Per-isolate cages. The release, like 13.6, puts every isolate of the
 process in one 4 GiB cage, which every job's heaps share (#1063 below). V8
 15.9's heaps are larger under the same budget (an allocation-heavy `node`
