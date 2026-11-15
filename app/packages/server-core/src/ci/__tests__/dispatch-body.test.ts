@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 // builder touches neither.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { dispatchBody, retryRefusal } = await import("../runs");
+const { dispatchBody, inputProblemText, manualBranchRefusal, retryRefusal } =
+  await import("../runs");
 
 const base = {
   repoFullName: "acme/web",
@@ -15,6 +16,8 @@ const base = {
   baseSha: "b".repeat(40),
   noTaskCache: false,
   pipelineText: null,
+  pipelineFile: null,
+  inputs: null,
 };
 // Obviously fake, and in no real token format.
 const TOKEN = "installation-token-for-tests";
@@ -128,6 +131,86 @@ describe("dispatchBody", () => {
     );
     expect(body).not.toHaveProperty("trusted");
     expect(body).toMatchObject({ "no-task-cache": true, branch: "pull/9" });
+  });
+});
+
+describe("dispatchBody for a manual run", () => {
+  const manual = {
+    ...base,
+    event: "manual" as const,
+    branch: "feature/x",
+    pullNumber: null,
+    baseSha: null,
+    fromFork: false,
+    pipelineFile: ".infrawrench/ci/purge.yml",
+  };
+
+  it("runs the one file it was started for on its branch, with its inputs as data", () => {
+    const inputs = { urls: "$(touch /tmp/pwned)\n'; rm -rf /", force: "true" };
+    const body = dispatchBody({ ...manual, inputs }, TOKEN);
+    expect(body).toEqual({
+      repo: "https://github.com/acme/web.git",
+      sha: base.sha,
+      branch: "feature/x",
+      event: "manual",
+      owner: "github.com-acme",
+      "repo-id": "web",
+      "default-branch": "main",
+      token: TOKEN,
+      "pipeline-file": ".infrawrench/ci/purge.yml",
+      inputs,
+    });
+    // A branch of the repository itself: trusted like a push, so nothing
+    // to vouch for and no pull request ref.
+    expect(body).not.toHaveProperty("trusted");
+    expect(body).not.toHaveProperty("ref");
+    expect(body).not.toHaveProperty("pipeline");
+  });
+
+  it("leaves out inputs it was not given, and never sends either field for another event", () => {
+    expect(dispatchBody({ ...manual, inputs: {} }, TOKEN)).not.toHaveProperty("inputs");
+    const push = dispatchBody(
+      { ...manual, event: "push", inputs: { a: "b" }, branch: "main" },
+      TOKEN,
+    );
+    expect(push).not.toHaveProperty("inputs");
+    expect(push).not.toHaveProperty("pipeline-file");
+  });
+});
+
+describe("manualBranchRefusal", () => {
+  it("takes Git branch names and refuses anything else", () => {
+    for (const ok of ["main", "feature/x", "release-1.2", "dependabot/npm/a-1.0"]) {
+      expect(manualBranchRefusal(ok)).toBeNull();
+    }
+    for (const bad of [
+      "",
+      "a..b",
+      "-rf",
+      "refs/heads/main",
+      "a b",
+      "a\nb",
+      "x~1",
+      "x^",
+      "x:y",
+      "a//b",
+      "/a",
+      "a/",
+      "a.lock",
+      "a@{1}",
+    ]) {
+      expect(manualBranchRefusal(bad), bad).toMatch(/is not a branch name/);
+    }
+  });
+});
+
+describe("inputProblemText", () => {
+  it("names the input and what it takes", () => {
+    expect(inputProblemText("note", { kind: "required" })).toBe("note is required.");
+    expect(inputProblemText("zone", { kind: "choice", options: ["www", "docs"] })).toBe(
+      "zone is one of www, docs.",
+    );
+    expect(inputProblemText("x", { kind: "unknown" })).toBe("The pipeline declares no input x.");
   });
 });
 

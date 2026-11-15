@@ -479,4 +479,10 @@
 // gains optional `pipelineFile`, and `GET /api/org/:orgId/ci/schedules`
 // (`ci:read`) lists each repository's scheduled pipelines with their next
 // run. Additive (a new enum value, which clients decode leniently).
-export const API_VERSION = "1.108.0";
+// 1.109.0: CI manual runs. `POST /api/org/:orgId/ci/runs` (`ci:approve`)
+// starts a pipeline with `on.manual` on a branch of the repository, with
+// typed inputs, and answers the queued run; `GET /api/org/:orgId/ci/manual`
+// (`ci:read`) lists each repository's manual pipelines and their inputs.
+// `CiRun.event` gains `manual` and `CiRun` gains optional `inputs`.
+// Additive (a new enum value, which clients decode leniently).
+export const API_VERSION = "1.109.0";

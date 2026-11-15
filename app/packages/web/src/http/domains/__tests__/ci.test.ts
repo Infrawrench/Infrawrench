@@ -40,7 +40,9 @@ const mockOpenLogs = vi.fn();
 const mockRetry = vi.fn();
 const mockCancel = vi.fn();
 const mockDownloadLink = vi.fn();
+const mockStartManual = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
+  startManualRun: (...a: unknown[]) => mockStartManual(...a),
   openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
   CiInputError: FakeCiInputError,
   listRuns: (...a: unknown[]) => mockList(...a),
@@ -362,6 +364,91 @@ describe("CI routes", () => {
       body: JSON.stringify({}),
     });
     expect(waiting.status).toBe(409);
+    await settle();
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("starts a pipeline by hand under ci:approve only, dispatching and auditing its inputs", async () => {
+    const MANUAL = "44444444-4444-4444-8444-444444444444";
+    const body = {
+      installationId: 7,
+      repoFullName: "acme/web",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      branch: "feature/x",
+      inputs: { urls: "$(id)\n'x'", force: true, shards: 3 },
+    };
+    const start = (permissions?: string[], payload: unknown = body) =>
+      app(permissions).request("/runs", { method: "POST", body: JSON.stringify(payload) });
+
+    // Watching runs and managing CI's settings is not enough: a manual run
+    // gets the repository's secrets, as a retry does.
+    const denied = await start(["ci:read", "ci:write"]);
+    expect(denied.status).toBe(403);
+    expect(mockStartManual).not.toHaveBeenCalled();
+
+    mockStartManual.mockResolvedValue({
+      id: MANUAL,
+      repoFullName: "acme/web",
+      event: "manual",
+      headRef: "feature/x",
+      sha: "c".repeat(40),
+      pullNumber: null,
+      headRepoFullName: null,
+      fromFork: false,
+      actorLogin: "someone@example.com",
+      status: "queued",
+      statusReason: null,
+      createdAt: "2026-11-15T10:00:00.000Z",
+      startedAt: null,
+      finishedAt: null,
+      jobs: null,
+      vcpuSeconds: null,
+      memoryGibSeconds: null,
+      githubUrl: "https://github.com/acme/web/commit/" + "c".repeat(40),
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      inputs: { urls: "$(id)\n'x'", force: "true", shards: "3" },
+    });
+    const ok = await start(["ci:approve"]);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({
+      id: MANUAL,
+      event: "manual",
+      inputs: { urls: "$(id)\n'x'", force: "true" },
+    });
+    expect(mockStartManual).toHaveBeenCalledWith("org-1", "user-1", expect.any(String), body);
+    await settle();
+    expect(mockDispatch).toHaveBeenCalledWith(MANUAL);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ci.run.start",
+        entityId: MANUAL,
+        metadata: expect.objectContaining({
+          repo: "acme/web",
+          pipeline: ".infrawrench/ci/purge.yml",
+          branch: "feature/x",
+          inputs: { urls: "$(id)\n'x'", force: "true", shards: "3" },
+        }),
+      }),
+    );
+
+    // An input that is not a string, a boolean or a number never reaches it.
+    mockStartManual.mockClear();
+    mockDispatch.mockClear();
+    const nested = await start(undefined, { ...body, inputs: { urls: { $ne: 1 } } });
+    expect(nested.status).toBe(400);
+    const noFile = await start(undefined, { installationId: 7, repoFullName: "acme/web" });
+    expect(noFile.status).toBe(400);
+    expect(mockStartManual).not.toHaveBeenCalled();
+
+    // Its refusals keep their status, and nothing is dispatched.
+    mockStartManual.mockRejectedValueOnce(new FakeCiInputError("note is required.", 400));
+    const missing = await start();
+    expect(missing.status).toBe(400);
+    expect(await missing.text()).toContain("note is required.");
+    mockStartManual.mockRejectedValueOnce(
+      new FakeCiInputError("acme/web has no branch feature/x.", 404),
+    );
+    expect((await start()).status).toBe(404);
     await settle();
     expect(mockDispatch).not.toHaveBeenCalled();
   });

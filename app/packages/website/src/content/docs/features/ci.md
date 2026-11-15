@@ -273,6 +273,46 @@ Schedules are read from the default branch each time you push to it, so the push
 
 A scheduled run starts in the minute it is due. If runs could not be started for a few minutes, the ones missed in the last five start as soon as they can; older ones are skipped rather than run late. A scheduled run can use what [CI access](#ci-access) allows on your default branch, joins its pipeline's [concurrency group](#concurrency-groups) like any other run, and is billed like any other: your plan has to include CI. A repository the GitHub App can no longer read stops running its schedules after a day.
 
+## Start a pipeline by hand
+
+A pipeline with `on.manual` can be started from the CI page, on a branch you choose, with values you fill in. Declare what it asks for under `inputs`:
+
+```yaml
+name: Purge the CDN cache
+on:
+  manual:
+    inputs:
+      urls:
+        description: URLs to purge, one per line. Empty purges everything.
+      zone:
+        type: choice
+        options: [www, docs, app]
+        default: www
+      dry-run: { type: boolean }
+jobs:
+  purge:
+    using: env:bash-node@24
+    if: "!inputs.dry-run"
+    env:
+      URLS: ${{ inputs.urls }}
+      ZONE: ${{ inputs.zone }}
+    run: node scripts/purge.mjs --zone "$ZONE" --urls "$URLS"
+```
+
+An input is a `string` (the default), a `boolean`, a `choice` among its `options`, or a `number`, with an optional `description`, `default` and `required: true`. `manual:` on its own, with no inputs, works too, and a pipeline can have `manual` beside `push`, `pull-request` and `schedule`; in any other run an input reads as its default. `${{ event }}` is `manual` in a run started by hand.
+
+**Inputs are data, never code.** Whoever starts a run types them, so `${{ inputs.<name> }}` is refused in a `run:` script (and in a service's `run:` and `ready.command`, and in a one-line `args:`), and the push that adds one there fails with the reason. Put the input in a variable with `env:`, as above, and quote the variable in the script: a value holding `$(...)`, quotes or new lines is then only ever those characters. Inputs also work in `name`, `cwd`, `if:`, `concurrency:` and as one element of a list `args:`.
+
+The **Manual runs** card on the CI page lists each repository's pipelines with `on.manual`, as read from its default branch. **Run** opens a form built from the inputs: pick the branch (your default branch unless you change it), fill in the values and **Start run**. The values are checked against the inputs before the run starts (a missing required input, a number that is not one), and again by the runner against the pipeline file on the branch you chose, so a branch that changes the inputs gets its own checked. The run opens as soon as it is queued.
+
+<insert [The CI page's Manual runs card listing "Purge the CDN cache" with its inputs and a Run button, and the Run dialog open over it with the branch field, a urls text box, a zone dropdown on "www" and a dry-run checkbox] here>
+
+A run started by hand runs that one pipeline on the head of the branch, the way a push to that branch would: with your secrets, only what [CI access](#ci-access) allows on that branch, and that branch's caches. The runs table shows it as **Started by hand** with the pipeline file, its page lists the inputs it was started with and who started it, and GitHub shows it on the commit as **Infrawrench CI / manual**, a check of its own, so it never stands in for a branch protection rule's required check. It joins its pipeline's [concurrency group](#concurrency-groups) like any other run, can be retried and cancelled, and is billed like any other.
+
+Starting a run takes the `ci:approve` permission, the same as retrying one, and each start is recorded in the audit log with the repository, pipeline, branch, commit and inputs. Inputs are not secret: they are in the run's page and the audit log, so put a secret in [secrets](#secrets-and-variables) instead. Only branches of the repository itself can be started, never a fork's.
+
+Scripts start one with `POST /api/org/{orgId}/ci/runs` (`installationId`, `repoFullName`, `pipelineFile`, optional `branch` and `inputs`), and list what can be started with `GET /api/org/{orgId}/ci/manual`.
+
 ## Downloads
 
 `downloads:` keeps files from a job for you to download from the run: a build, a test report, a coverage page. They are listed on the run's **Summary** under **Downloads**, and on each job's own page, with their size and how long they are kept. **Download** fetches the file; on the desktop app it opens in your browser, which saves it.
@@ -338,7 +378,7 @@ Everyone who can see runs can see the **CI access** card. It lists each connecti
 
 ### Repositories and branches
 
-Each permission holds for **Every repository** CI runs for, or, with **Chosen repositories**, the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster. A [scheduled run](#schedules) is checked by your default branch, which it runs on, so it gets what a push to the default branch gets.
+Each permission holds for **Every repository** CI runs for, or, with **Chosen repositories**, the ones you tick, and for every branch (the branch field left empty) or the branches matching a pattern: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). A pattern of only commas or spaces is refused. A pull request is checked by its head branch, so `main` keeps a pull request from using a production cluster. A [scheduled run](#schedules) is checked by your default branch, which it runs on, so it gets what a push to the default branch gets, and a [run started by hand](#start-a-pipeline-by-hand) by the branch it was started on.
 
 ### Cloud jobs
 
@@ -533,4 +573,5 @@ Complimentary organizations are never billed. See [Billing and plans](../team-an
 - CI runs for GitHub repositories, through the Infrawrench GitHub App.
 - The mobile app does not show CI.
 - Cloud jobs run on the providers in the [table above](#cloud-jobs); more follow.
+- A job runs for at most 6 hours (`timeout:`, 10 minutes unless it says). No plan sets a lower limit: a job is billed for the time it runs. Credentials lent to a job are minted for 4 hours from when its run is sent to a runner, or less where the provider caps them, so a job that runs longer should not need them near its end.
 - The pipeline format, the builtin tools and the limits on each job are described in the runner's reference (`ci-runner/README.md` in the Infrawrench repository).

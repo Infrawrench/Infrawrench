@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.108.0",
+    "version": "1.109.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -63520,9 +63520,10 @@
             "enum": [
               "push",
               "pull-request",
-              "schedule"
+              "schedule",
+              "manual"
             ],
-            "description": "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head."
+            "description": "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head. `manual`: a person, for a pipeline with `on.manual`, on a branch they chose."
           },
           "headRef": {
             "type": "string"
@@ -63684,7 +63685,14 @@
           },
           "pipelineFile": {
             "type": "string",
-            "description": "A scheduled run's pipeline file, whose `on.schedule` cron started it."
+            "description": "A scheduled or manual run's pipeline file: the one it runs."
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "A manual run's inputs as it was started with them, by name, as text (`true`, `4`, `staging`). Inputs left out read as the pipeline's defaults."
           },
           "concurrencyGroups": {
             "type": "array",
@@ -63865,6 +63873,186 @@
           "rejected",
           "cancelled"
         ]
+      },
+      "CiManualPipelines": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiRepoManual"
+            }
+          }
+        },
+        "required": [
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
+      "CiRepoManual": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "repoFullName": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The default branch's commit the pipelines were read from."
+          },
+          "pipelines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiManualPipeline"
+            }
+          },
+          "refreshedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "installationId",
+          "repoFullName",
+          "defaultBranch",
+          "sha",
+          "pipelines",
+          "refreshedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiManualPipeline": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The pipeline file, under `.infrawrench/ci/`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiInput"
+            }
+          }
+        },
+        "required": [
+          "file",
+          "name",
+          "inputs"
+        ],
+        "additionalProperties": false
+      },
+      "CiInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "boolean",
+              "choice",
+              "number"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "A run cannot start without a value; an empty one counts as none."
+          },
+          "default": {
+            "type": "string",
+            "description": "As text: `true` or `false` for a boolean, the number as written."
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A `choice` input's values."
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "required"
+        ],
+        "additionalProperties": false
+      },
+      "CiStartRun": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The GitHub App installation of the account that runs CI for the repository."
+          },
+          "repoFullName": {
+            "type": "string",
+            "description": "`owner/name`."
+          },
+          "pipelineFile": {
+            "type": "string",
+            "description": "The pipeline to run, as `GET /ci/manual` lists it (`.infrawrench/ci/deploy.yml`)."
+          },
+          "branch": {
+            "type": "string",
+            "description": "A branch of the repository itself, whose head runs. The default branch when omitted."
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "maxProperties": 32,
+            "description": "Values for the pipeline's `on.manual.inputs`, by name: a string, a boolean or a number each. Inputs left out read as their defaults."
+          }
+        },
+        "required": [
+          "installationId",
+          "repoFullName",
+          "pipelineFile"
+        ],
+        "additionalProperties": false
       },
       "CiDownloadLink": {
         "type": "object",
@@ -127047,6 +127235,82 @@
         "x-required-permission": "ci:read",
         "operationId": "getOrgOrgIdCiRuns",
         "description": "_Requires permission: `ci:read`._"
+      },
+      "post": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new run, queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Queues a run of one pipeline with `on.manual`, at the head of a branch of the repository itself, with the inputs given. The pipeline must be listed by `GET /ci/manual`, and the inputs are checked against its declaration there; the runner checks them again against the branch's own file. The run is trusted like a push to that branch: it gets the repository's secrets and only what is lent to that branch.\n\n_Requires permission: `ci:approve`._",
+        "summary": "Start a pipeline by hand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CiStartRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "ci:approve",
+        "operationId": "postOrgOrgIdCiRuns"
       }
     },
     "/api/org/{orgId}/ci/runs/{runId}": {
@@ -127335,6 +127599,54 @@
         "x-required-permission": "ci:approve",
         "operationId": "postOrgOrgIdCiRunsRunIdReject",
         "description": "_Requires permission: `ci:approve`._"
+      }
+    },
+    "/api/org/{orgId}/ci/manual": {
+      "get": {
+        "tags": [
+          "CI"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual pipelines per repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiManualPipelines"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Each repository's pipelines with `on.manual` on its default branch, as last read, with their inputs. They are read again on every push to the default branch.\n\n_Requires permission: `ci:read`._",
+        "summary": "Pipelines that can be started by hand",
+        "x-required-permission": "ci:read",
+        "operationId": "getOrgOrgIdCiManual"
       }
     },
     "/api/org/{orgId}/ci/runs/{runId}/retry": {

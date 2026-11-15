@@ -7,7 +7,7 @@
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots and job memory, and the pool's total slots |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, and offers it to the others as helpers (`placeRun`) |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, and offers it to the others as helpers (`placeRun`); a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
@@ -17,7 +17,7 @@
 // | `POST /v1/prepare` | warms a runner for a request |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
 // | `DELETE /v1/storage/{owner}/{repo-id}` | clears a repository's caches, on any runner |
-// | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines, from any runner; stores nothing (the app's schedules) |
+// | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines and its `on.manual` ones (`manual`), from any runner; stores nothing (the app's schedules and manual runs) |
 // | `PUT /v1/schedules` | registers a repository's `on.schedule` pipelines |
 // | `GET /v1/schedules/{owner}` | an owner's registered schedules |
 // | `DELETE /v1/schedules/{owner}/{repo-id}` | stops a repository's scheduled runs |

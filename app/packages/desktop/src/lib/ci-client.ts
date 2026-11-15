@@ -13,6 +13,7 @@ import {
   type CiCaches,
   type CiDownloadLink,
   type CiLogEvent,
+  type CiManualPipelines,
   type CiRun,
   type CiRunDetail,
   type CiSchedules,
@@ -146,6 +147,23 @@ export function createDesktopCiClient(): CiClient {
       runRpc(ci().retryRun({ params: { orgId: requireOrgId(), runId }, payload: { noTaskCache } })),
     cancelRun: (runId): Promise<CiRun> =>
       runRpc(ci().cancelRun({ params: { orgId: requireOrgId(), runId } })),
+    startRun: (request): Promise<CiRun> =>
+      runRpc(ci().startRun({ params: { orgId: requireOrgId() }, payload: request })),
+    listManual: async (): Promise<CiManualPipelines> => {
+      const { repositories } = await runRpc(ci().listManual({ params: { orgId: requireOrgId() } }));
+      return {
+        repositories: repositories.map((r) => ({
+          ...r,
+          pipelines: r.pipelines.map((p) => ({
+            ...p,
+            inputs: p.inputs.map((i) => ({
+              ...i,
+              ...(i.options ? { options: [...i.options] } : {}),
+            })),
+          })),
+        })),
+      };
+    },
     listCaches: async (): Promise<CiCaches> => {
       const { accounts } = await runRpc(ci().listCaches({ params: { orgId: requireOrgId() } }));
       return { accounts: accounts.map((a) => ({ ...a, repos: [...a.repos] })) };

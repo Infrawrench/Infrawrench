@@ -12,6 +12,7 @@ import {
   type CiCaches,
   type CiDownloadLink,
   type CiLogEvent,
+  type CiManualPipelines,
   type CiRun,
   type CiRunDetail,
   type CiSchedules,
@@ -84,6 +85,8 @@ export function createWebCiClient(orgId: string): CiClient {
     retryRun: (id, { noTaskCache }) =>
       apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/retry`, { noTaskCache }),
     cancelRun: (id) => apiPost<CiRun>(`${base}/runs/${encodeURIComponent(id)}/cancel`),
+    startRun: (request) => apiPost<CiRun>(`${base}/runs`, request),
+    listManual: () => apiGet<CiManualPipelines>(`${base}/manual`),
     listCaches: () => apiGet<CiCaches>(`${base}/caches`),
     listSchedules: () => apiGet<CiSchedules>(`${base}/schedules`),
     clearCache: (installationId, repo) =>
