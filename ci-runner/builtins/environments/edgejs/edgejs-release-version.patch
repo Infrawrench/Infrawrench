@@ -1,0 +1,18 @@
+diff --git a/src/node_version.h b/src/node_version.h
+index 6993c74c..967e6d45 100644
+--- a/src/node_version.h
++++ b/src/node_version.h
+@@ -29,7 +29,12 @@
+ #define NODE_VERSION_IS_LTS 1
+ #define NODE_VERSION_LTS_CODENAME "Krypton"
+ 
+-#define NODE_VERSION_IS_RELEASE 0
++// The version Edge.js reports is a release's: `process.version` is built
++// from the numbers alone (NODE_COMPAT_VERSION), and `node --version`, a
++// diagnostic report's nodejsVersion and the compile cache's directory say
++// the same, as they do in Node, rather than adding the "-pre" of a Node
++// tree between releases.
++#define NODE_VERSION_IS_RELEASE 1
+ 
+ #ifndef NODE_STRINGIFY
+ #define NODE_STRINGIFY(n) NODE_STRINGIFY_HELPER(n)
