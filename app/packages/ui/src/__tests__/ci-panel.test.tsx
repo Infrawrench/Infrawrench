@@ -860,6 +860,39 @@ describe("CiPanel", () => {
     expect(screen.getByText("Started by someone@example.com")).toBeTruthy();
   });
 
+  it("lists runs with nothing to run only when asked for, and says why on the run", async () => {
+    const skipped: CiRun = {
+      ...run,
+      id: "33333333-3333-4333-8333-333333333333",
+      status: "skipped",
+      statusReason: "No pipeline runs on this push.",
+      startedAt: null,
+      jobs: [],
+    };
+    const c = client();
+    c.listRuns.mockImplementation(async (status?: string) =>
+      status === "skipped" ? [skipped] : [run],
+    );
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("aaaaaaa")).toBeTruthy());
+    expect(c.listRuns).toHaveBeenLastCalledWith(undefined);
+    fireEvent.change(screen.getByRole("combobox", { name: /Show/ }), {
+      target: { value: "skipped" },
+    });
+    await waitFor(() => expect(c.listRuns).toHaveBeenLastCalledWith("skipped"));
+    await waitFor(() => expect(screen.getAllByText("Nothing to run").length).toBeGreaterThan(1));
+    unmount();
+    c.getRun.mockResolvedValue({ run: skipped, jobs: null });
+    render(
+      <CiPanel client={c} selectedRunId={skipped.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("No pipeline runs on this push.")).toBeTruthy());
+    expect(screen.queryByText("No pipeline ran for this event.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("opens a run from anywhere on its row, but not from the approval buttons", async () => {
     const waiting: CiRun = {
       ...run,

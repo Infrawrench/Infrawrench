@@ -58,7 +58,9 @@ export type CiRunStatus =
   | "failed"
   | "error"
   | "rejected"
-  | "cancelled";
+  | "cancelled"
+  /** Nothing to run: no pipeline runs on the push or pull request. */
+  | "skipped";
 
 /**
  * One pipeline a run triggers, as the runners read it before the run starts

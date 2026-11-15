@@ -634,6 +634,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredPermission, "ci:read")
       .annotate(OpenApi.Summary, "List CI runs, newest first")
+      .annotate(
+        OpenApi.Description,
+        "Runs with nothing to run (`skipped`: no pipeline runs on the push or pull request) are left out unless `status=skipped` asks for them.",
+      )
       .annotate(SuccessDescription, "Runs"),
     HttpApiEndpoint.get("getRun", "/runs/:runId", {
       params: RunParams,

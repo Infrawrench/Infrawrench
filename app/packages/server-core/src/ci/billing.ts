@@ -256,7 +256,9 @@ export async function ciUsage(organizationId: string, month?: string): Promise<C
   const end = new Date(Date.UTC(y ?? now.getUTCFullYear(), m ?? 1, 1));
   const [runs] = await db
     .select({
-      runs: sql<number>`count(*)::int`,
+      // A run with nothing to run is no run (`skipped`); what it used, if a
+      // runner was sent it, still counts.
+      runs: sql<number>`(count(*) filter (where ${ciRuns.status} <> 'skipped'))::int`,
       vcpu: sql<number>`coalesce(sum(${ciRuns.vcpuSeconds}), 0)::float8`,
       memory: sql<number>`coalesce(sum(${ciRuns.memoryGibSeconds}), 0)::float8`,
     })

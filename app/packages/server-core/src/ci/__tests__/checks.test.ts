@@ -77,12 +77,32 @@ describe("CI checks on GitHub", () => {
     expect(checkName("schedule")).toBe("Infrawrench CI / schedule");
   });
 
-  it("concludes a run that matched no pipeline as skipped, not passed", async () => {
+  it("shows nothing on GitHub for a push that matched no pipeline", async () => {
+    // A workflow that does not run posts nothing; a green or grey check for
+    // every branch push nothing runs on is noise beside the pull request's.
     mockProxyJson.mockResolvedValue(finished([]));
     await syncRun(row("push"));
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("closes a push's check as skipped when it already has one", async () => {
+    mockProxyJson.mockResolvedValue(finished([]));
+    await syncRun({ ...row("push"), checkRunId: 99 });
     expect(mockUpsert).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ conclusion: "skipped", title: "No pipeline runs on this push" }),
+    );
+  });
+
+  it("concludes a pull request that matched no pipeline as skipped, not passed", async () => {
+    mockProxyJson.mockResolvedValue(finished([]));
+    await syncRun(row("pull-request"));
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        conclusion: "skipped",
+        title: "No pipeline runs on this pull request",
+      }),
     );
   });
 

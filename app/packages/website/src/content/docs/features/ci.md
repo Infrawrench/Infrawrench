@@ -40,7 +40,9 @@ jobs:
     needs: [typecheck]
 ```
 
-The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. A run whose pipelines all skip that event (for example `on.push` limited to `main`) shows as skipped, not passed. The check's **Details** link opens the run in Infrawrench.
+The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. The check's **Details** link opens the run in Infrawrench.
+
+A push or pull request that no pipeline runs on (every pipeline's `on:` names other branches or events, or its `paths:` leave the change out) is not a run: nothing is sent to the runners, it is not billed, and the runs table leaves it out (pick **Nothing to run** under **Show** to list them). A push like that shows nothing on GitHub, so pushing to a branch with an open pull request leaves only the pull request's check. A pull request like that gets an **Infrawrench CI / pull request** check concluded as skipped, which a branch protection rule requiring that check accepts, so the pull request can still be merged.
 
 Each job has its own check too, named after its pipeline and the event (**Test / build (pull request)**), which turns from waiting to running to passed or failed as the job does. A matrix's entries, or a `packages:` job's packages, share one check that lists each of them. Require the run's check (**Infrawrench CI / pull request**) in a branch protection rule: it covers every job, whichever jobs a change adds or removes.
 
@@ -215,7 +217,7 @@ jobs:
 
 ## Runs
 
-The runs table lists the latest runs, newest first, with their status, where they came from (a branch, or a pull request and its branch) and how long they took. Filter it by status with **Show**.
+The runs table lists the latest runs, newest first, with their status, where they came from (a branch, or a pull request and its branch) and how long they took. Filter it by status with **Show**. Pushes and pull requests no pipeline ran on are left out unless you pick **Nothing to run** there.
 
 Open a run to see its jobs. The sidebar lists every job, with a matrix's entries and a `packages:` job's packages grouped under the job they were written as. **Summary** draws each pipeline as a graph: a box per job, below the jobs it needs, each with its status and how long it took. Drag to move around it, zoom with the buttons (or Ctrl and the scroll wheel), **Fit** to see all of it and **Expand** to fill the window. Click a job, in the graph or the sidebar, to read its output.
 

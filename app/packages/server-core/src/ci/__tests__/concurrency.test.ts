@@ -5,7 +5,8 @@ import type { CiConcurrencyEntry } from "../../db/ci-schema";
 // `concurrency.ts` imports the database client at load; the decision is pure.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { activeGroups, decideAdmission, entriesFrom, groupScope } = await import("../concurrency");
+const { activeGroups, decideAdmission, entriesFrom, groupScope, nothingToRun } =
+  await import("../concurrency");
 type AdmissionRun = Parameters<typeof decideAdmission>[0];
 
 const entry = (
@@ -176,5 +177,22 @@ describe("entriesFrom", () => {
       { file: "x.yml", pipeline: "x.yml", group: null, cancelInProgress: false },
     ]);
     expect(entriesFrom({})).toEqual([]);
+  });
+});
+
+describe("nothingToRun", () => {
+  it("is true only when the runners list no pipeline and no broken file", () => {
+    expect(nothingToRun({ pipelines: [], invalid: [] })).toBe(true);
+    expect(nothingToRun({ pipelines: [{ file: "a.yml" }], invalid: [] })).toBe(false);
+    // A broken file: the run reports it, so it is sent.
+    expect(nothingToRun({ pipelines: [], invalid: [{ file: "a.yml", errors: ["x"] }] })).toBe(
+      false,
+    );
+  });
+
+  it("says nothing for a runner that does not list broken files", () => {
+    expect(nothingToRun({ pipelines: [] })).toBe(false);
+    expect(nothingToRun({})).toBe(false);
+    expect(nothingToRun({ pipelines: [], invalid: null })).toBe(false);
   });
 });

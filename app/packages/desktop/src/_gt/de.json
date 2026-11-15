@@ -23369,5 +23369,6 @@
   "b95bc80742eb717a": "Dieser Cluster meldet sich nur mit lokalen Konten an, deren Anmeldeinformation ein langlebiges Clientzertifikat ist, oft mit Administratorrechten, das sich ohne Rotation der Clusterzertifikate nicht widerrufen lässt. Aktivieren Sie die Microsoft-Entra-ID-Integration, um ihn zu verleihen.",
   "3a277d9bd18447ff": "Bis das Passwort geändert wird: Es ist das gespeicherte Passwort, kein kurzlebiges.",
   "6670d929f2a72bef": "Alles, was dieser Datenbankbenutzer auf diesem Datenbankserver darf. Nichts außerhalb davon.",
-  "59156fa37a426349": "Ob sich Benutzer beim Cluster mit Microsoft Entra ID anmelden (AKS-verwaltete Entra-Integration) statt nur mit den lokalen Konten des Clusters"
+  "59156fa37a426349": "Ob sich Benutzer beim Cluster mit Microsoft Entra ID anmelden (AKS-verwaltete Entra-Integration) statt nur mit den lokalen Konten des Clusters",
+  "6db050abb2649520": "Nichts auszuführen"
 }
