@@ -14,6 +14,8 @@
 #[cfg(target_os = "linux")]
 pub mod cgroup;
 #[cfg(target_os = "linux")]
+pub mod helper;
+#[cfg(target_os = "linux")]
 pub mod lisafs;
 #[cfg(target_os = "linux")]
 pub mod net;

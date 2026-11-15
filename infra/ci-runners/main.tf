@@ -41,6 +41,9 @@ resource "terraform_data" "host" {
     each.value.tunnel_token == null ? "" : sha256(each.value.tunnel_token),
     each.value.zram == null ? "" : each.value.zram,
     coalesce(each.value.native_sandbox, false) ? file("${path.module}/files/apparmor-iwci") : "",
+    # The sandbox helper is a copy of the uploaded binary, so a new upload
+    # reinstalls it where it is used.
+    coalesce(each.value.native_sandbox, false) ? filesha256(coalesce(each.value.iwci_binary_path, var.iwci_binary_path)) : "",
   ]))
 
   # How to reach the host. Read through `self` because the destroy

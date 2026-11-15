@@ -93,6 +93,9 @@ struct Ran {
     millis: u128,
     usage: Option<Usage>,
     left_behind: bool,
+    /// The Sentry's open files after its first poll and before its last,
+    /// when polled (`Opts::poll`).
+    sentry_fds: Option<(usize, usize)>,
 }
 
 /// Runs `args` in a sandbox over `job`'s file system, with no network
@@ -122,6 +125,8 @@ struct Opts {
     limits: Option<Limits>,
     /// Stopped after this long.
     timeout: Option<Duration>,
+    /// Waited for in steps this long, as the runner polls a sandbox.
+    poll: Option<Duration>,
 }
 
 fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
@@ -148,6 +153,7 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
             modes: job.modes(),
             root: "/".into(),
             read_only: false,
+            budget: None,
         },
         ours,
     )
@@ -192,11 +198,41 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
         let tail: Vec<&str> = tail.into_iter().rev().collect();
         panic!("starting the sandbox: {e}\n{}", tail.join("\n"));
     }
-    let status = match sandbox.wait_for(opts.timeout).unwrap() {
-        Some(status) => status,
-        None => {
-            sandbox.kill();
-            -1
+    // The Sentry: the helper's only child.
+    let fds = |pid: libc::pid_t| {
+        let sentry = std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children"))
+            .ok()
+            .and_then(|c| c.split_whitespace().next().map(str::to_string))
+            .unwrap_or_else(|| pid.to_string());
+        std::fs::read_dir(format!("/proc/{sentry}/fd")).map_or(0, |d| d.count())
+    };
+    let mut sentry_fds = None;
+    let status = if let Some(step) = opts.poll {
+        let until = Instant::now() + opts.timeout.unwrap_or(Duration::from_secs(60));
+        let mut first = None;
+        let mut last = 0;
+        let status = loop {
+            match sandbox.wait_for(Some(step)).unwrap() {
+                Some(status) => break status,
+                None if Instant::now() >= until => {
+                    sandbox.kill();
+                    break -1;
+                }
+                None => {
+                    last = fds(sandbox.pid());
+                    first.get_or_insert(last);
+                }
+            }
+        };
+        sentry_fds = first.map(|first| (first, last));
+        status
+    } else {
+        match sandbox.wait_for(opts.timeout).unwrap() {
+            Some(status) => status,
+            None => {
+                sandbox.kill();
+                -1
+            }
         }
     };
     let millis = started.elapsed().as_millis();
@@ -220,6 +256,7 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
         millis,
         usage,
         left_behind,
+        sentry_fds,
     };
     if ran.status != 0 {
         let log = std::fs::read_to_string(dir.join("sentry.log")).unwrap_or_default();
@@ -227,6 +264,15 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
     }
     let _ = std::fs::remove_dir_all(&dir);
     ran
+}
+
+/// The release, started through the helper the runner hosts use
+/// (`iwci_sandbox::helper`), so every test here goes through it.
+fn release(dir: PathBuf) -> Release {
+    Release {
+        dir,
+        helper: Some(env!("CARGO_BIN_EXE_iwci-sandbox-spawn").into()),
+    }
 }
 
 fn tempdir() -> PathBuf {
@@ -282,7 +328,7 @@ fn a_sandboxed_shell_sees_and_changes_the_jobs_files() {
     else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |_| {});
     let expected_view = view_of(&job, "/work");
 
@@ -353,7 +399,7 @@ fn many_files_are_listed_and_read_quickly() {
     else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     const DIRS: usize = 100;
     const FILES: usize = 100;
     let job = snapshot(&busybox, |b| {
@@ -404,7 +450,7 @@ fn bun_maps_writes_and_renames_through_the_server() {
     ) else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |b| copy_tree(b, &bun, Path::new("/")));
     let script = r#"
         const fs = require("fs");
@@ -519,7 +565,7 @@ fn a_sandbox_reaches_allowed_addresses_and_shares_its_loopback() {
     else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |b| {
         b.write("/work/www/index.html", b"hello from the job\n")
             .unwrap();
@@ -557,7 +603,7 @@ fn without_a_network_only_the_loopback_is_there() {
     else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |b| {
         b.write("/work/www/index.html", b"still here\n").unwrap();
     });
@@ -582,7 +628,7 @@ fn bun_serves_on_the_loopback_and_fetches_through_the_gateway() {
     ) else {
         return;
     };
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |b| copy_tree(b, &bun, Path::new("/")));
     let script = r#"
         const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("from Bun.serve\n") });
@@ -628,11 +674,12 @@ fn a_sandbox_past_its_memory_is_killed_not_swapped() {
     if !cgroups() {
         return;
     }
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |_| {});
     let limits = Limits {
         memory: 256 * MIB,
         pids: 4096,
+        cpus: None,
     };
     // A shell variable of 600 MiB: the Sentry's memory, counted.
     let script = "a=$(dd if=/dev/zero bs=1048576 count=600 2>/dev/null | tr '\\0' x); echo ${#a}";
@@ -669,9 +716,10 @@ fn a_sandboxs_cpu_time_and_memory_are_counted() {
     if !cgroups() {
         return;
     }
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |_| {});
-    let script = "i=0; while [ $i -lt 200000 ]; do i=$((i+1)); done; a=$(dd if=/dev/zero bs=1048576 count=64 2>/dev/null | tr '\\0' x); echo ${#a}";
+    // Two busy loops at once, on a sandbox told it has two CPUs.
+    let script = "l() { i=0; while [ $i -lt 200000 ]; do i=$((i+1)); done; }; l & l & wait; a=$(dd if=/dev/zero bs=1048576 count=64 2>/dev/null | tr '\\0' x); echo ${#a}";
     let ran = run_opts(
         &release,
         &job,
@@ -680,6 +728,8 @@ fn a_sandboxs_cpu_time_and_memory_are_counted() {
             limits: Some(Limits {
                 memory: 1024 * MIB,
                 pids: 4096,
+                // One CPU's time at most, gVisor's kernel's included.
+                cpus: Some(1),
             }),
             timeout: Some(Duration::from_secs(120)),
             ..Opts::default()
@@ -695,6 +745,12 @@ fn a_sandboxs_cpu_time_and_memory_are_counted() {
     eprintln!("{usage:?} in {} ms", ran.millis);
     assert!(!usage.out_of_memory);
     assert!(usage.cpu_usec > 100_000, "{usage:?}");
+    // Held to one CPU's time: about twice the time it took otherwise.
+    assert!(
+        usage.cpu_usec <= (ran.millis as u64) * 1000 * 11 / 10 + 100_000,
+        "{usage:?} in {} ms",
+        ran.millis
+    );
     assert!(usage.memory_peak > 64 * MIB, "{usage:?}");
 }
 
@@ -708,7 +764,7 @@ fn a_sandbox_past_its_time_is_stopped_whole() {
     if !cgroups() {
         return;
     }
-    let release = Release { dir: gvisor };
+    let release = release(gvisor);
     let job = snapshot(&busybox, |_| {});
     let started = Instant::now();
     let ran = run_opts(
@@ -719,6 +775,7 @@ fn a_sandbox_past_its_time_is_stopped_whole() {
             limits: Some(Limits {
                 memory: 512 * MIB,
                 pids: 4096,
+                cpus: None,
             }),
             timeout: Some(Duration::from_secs(2)),
             ..Opts::default()
@@ -727,4 +784,37 @@ fn a_sandbox_past_its_time_is_stopped_whole() {
     assert_eq!(ran.status, -1, "timed out");
     assert!(!ran.left_behind, "every process of it is gone");
     assert!(started.elapsed() < Duration::from_secs(20));
+}
+
+#[test]
+#[ignore = "needs gVisor and a static busybox; see the module docs"]
+fn waiting_on_a_sandbox_costs_its_sentry_nothing() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    let release = release(gvisor);
+    let job = snapshot(&busybox, |_| {});
+    // A few hundred polls, as many as a job of a minute gets.
+    let ran = run_opts(
+        &release,
+        &job,
+        &["/bin/sh", "-c", "sleep 6; echo done"],
+        Opts {
+            poll: Some(Duration::from_millis(10)),
+            timeout: Some(Duration::from_secs(60)),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        (ran.status, ran.stdout.trim()),
+        (0, "done"),
+        "{}",
+        ran.stderr
+    );
+    let (first, last) = ran.sentry_fds.expect("polled");
+    assert!(
+        last <= first + 4,
+        "the Sentry went from {first} to {last} open files"
+    );
 }

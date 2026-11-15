@@ -68,7 +68,8 @@ jobs:
   # sandbox whose only file system is a job's, and the test checks what
   # they saw and what they changed. Root, because the sandbox is started
   # in new user namespaces, which Ubuntu's AppArmor keeps from other users
-  # (the runner hosts get a profile for it instead). gVisor and Bun are
+  # (the runner hosts get a profile for the sandbox helper instead, which
+  # these tests go through too). gVisor and Bun are
   # pinned by hash in tests/fixtures.sh.
   sandbox:
     name: Sandbox under gVisor (${{ matrix.arch }})

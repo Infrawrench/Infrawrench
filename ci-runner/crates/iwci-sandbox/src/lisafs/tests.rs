@@ -16,7 +16,7 @@ use super::{Export, MAX_MESSAGE, Serving, serve, socket_pair};
 struct Client {
     sock: Sock,
     channel: Option<Endpoint>,
-    _serving: Serving,
+    serving: Serving,
 }
 
 type Reply = Result<(Vec<u8>, Vec<OwnedFd>), i32>;
@@ -41,7 +41,7 @@ impl Client {
         Self {
             sock: Sock::new(theirs),
             channel: None,
-            _serving: serving,
+            serving,
         }
     }
 
@@ -291,6 +291,7 @@ fn export(job: &JobFs) -> Export {
         modes: job.modes(),
         root: PathBuf::from("/"),
         read_only: false,
+        budget: None,
     }
 }
 
@@ -663,4 +664,101 @@ fn an_open_fd_outlives_its_control_fd() {
     assert_eq!(client.pread(file, 0, 5), b"hello");
     assert_eq!(client.fstat(dir).ino, work.stat.ino);
     assert_eq!(client.getdents(dir, -65536).len(), 4);
+}
+
+fn mkdir(client: &Client, dir: u64, name: &str) -> Result<Inode, i32> {
+    let mut w = Writer::default();
+    create_common(&mut w, dir, 0o755);
+    w.string(name.as_bytes());
+    client
+        .call(mid::MKDIR_AT, &w.buf)
+        .map(|(reply, _)| read_inode(&mut Reader::new(&reply)))
+}
+
+/// What the server keeps for the sandbox stays small and bounded whatever
+/// the sandbox does with paths: a path past `PATH_MAX` is refused, a file
+/// no FD names leaves nothing behind, and nothing outlives the connection.
+#[test]
+fn what_the_server_keeps_stays_bounded() {
+    let job = job(None);
+    let client = Client::new(export(&job));
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+
+    // A chain of long names stops at PATH_MAX, not at the runner's memory.
+    let name = "d".repeat(255);
+    let mut dir = work;
+    let mut depth = 0;
+    let errno = loop {
+        match mkdir(&client, dir.fd, &name) {
+            Ok(inode) => {
+                dir = inode;
+                depth += 1;
+            }
+            Err(errno) => break errno,
+        }
+        assert!(depth < 100, "PATH_MAX holds");
+    };
+    assert_eq!(errno, libc::ENAMETOOLONG);
+    assert!((14..=16).contains(&depth), "{depth}");
+    let (fds, _, bytes) = client.serving.kept();
+    assert!(bytes < 256 << 10, "{fds} FDs, {bytes} bytes");
+
+    // Thousands of files, each opened and closed as the sandbox's kernel
+    // does: nothing of them stays once their FDs are closed.
+    let (_, _, before) = client.serving.kept();
+    for i in 0..3000 {
+        let (inode, open) = client.create(dir.fd, &format!("f{i:05}"), 0o644, libc::O_WRONLY);
+        client.close(&[open, inode.fd]);
+    }
+    let (_, inos, after) = client.serving.kept();
+    assert!(
+        after <= before + 1024,
+        "{before} -> {after} bytes, {inos} numbers"
+    );
+    // Listing them keeps no number for each either.
+    let names = client.list(dir.fd);
+    assert_eq!(
+        names.iter().filter(|(n, _, _)| n.starts_with('f')).count(),
+        3000
+    );
+    let (_, _, listed) = client.serving.kept();
+    assert!(listed <= after + 1024, "{after} -> {listed} bytes");
+}
+
+/// Every entry the sandbox creates is charged to the job's budget, and
+/// given back when it removes it: an empty file is not free.
+#[test]
+fn entries_are_charged_to_the_jobs_budget() {
+    let budget = Arc::new(Budget {
+        left: AtomicU64::new(10_000),
+    });
+    let job = job(None);
+    let mut export = export(&job);
+    export.budget = Some(budget.clone());
+    let client = Client::new(export);
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+    let mut made = 0;
+    let errno = loop {
+        let mut w = Writer::default();
+        create_common(&mut w, work.fd, 0o644);
+        w.u32(libc::O_WRONLY as u32)
+            .string(format!("e{made:04}").as_bytes());
+        match client.call(mid::OPEN_CREATE_AT, &w.buf) {
+            Ok(_) => made += 1,
+            Err(errno) => break errno,
+        }
+        assert!(made < 1000, "the budget holds");
+    };
+    assert_eq!(errno, libc::ENOSPC);
+    // 128 bytes and its five-byte name each.
+    assert_eq!(made, 10_000 / 133);
+    // Removing one gives its share back, so another fits.
+    client.unlink(work.fd, "e0000", 0).unwrap();
+    assert!(budget.left.load(Ordering::SeqCst) >= 133);
+    let mut w = Writer::default();
+    create_common(&mut w, work.fd, 0o644);
+    w.u32(libc::O_WRONLY as u32).string(b"again");
+    client.call(mid::OPEN_CREATE_AT, &w.buf).unwrap();
 }

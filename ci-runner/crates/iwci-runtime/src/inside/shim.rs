@@ -29,6 +29,37 @@ use super::natives::{MAX_REQUEST, Request};
 /// sandbox has a network namespace of its own, so the name is its own.
 const SOCKET: &[u8] = b"iwci/shim";
 
+/// Where the runner's binary is inside a sandbox (`sandbox.rs` puts it
+/// there), and a file only a sandbox has.
+pub(crate) const SANDBOX_RUNNER: &str = "/.iwci/bin/iwci";
+pub(crate) const SANDBOX_MARKER: &str = "/.iwci/job/job.json";
+
+/// Whether this process, the binary at `exe`, is the runner's inside a job's
+/// sandbox, where `exists` says whether a path is a file.
+fn is_sandbox_runner(exe: &std::path::Path, exists: impl Fn(&std::path::Path) -> bool) -> bool {
+    exe == std::path::Path::new(SANDBOX_RUNNER) && exists(std::path::Path::new(SANDBOX_MARKER))
+}
+
+/// Whether the other end of `conn` is the sandbox's first process (the
+/// runner inside), as this process's user.
+fn peer_is_runner(conn: &OwnedFd) -> bool {
+    // SAFETY: zeroed is a valid ucred; the length matches it.
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: reading our own socket's peer credentials into `cred`.
+    let r = unsafe {
+        libc::getsockopt(
+            conn.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut cred as *mut libc::ucred).cast(),
+            &mut len,
+        )
+    };
+    // SAFETY: a plain query.
+    r == 0 && cred.pid == 1 && cred.uid == unsafe { libc::getuid() }
+}
+
 /// The standard streams a shim handed over, as WASIX files.
 pub(crate) struct Stdio {
     pub(crate) stdin: Box<dyn VirtualFile + Send + Sync + 'static>,
@@ -509,6 +540,13 @@ extern "C" fn forward(signal: libc::c_int) {
 /// than `iwci`'s inside a job's sandbox, where the runner listens. Its exit
 /// code then; `None` for the runner's own command line.
 pub fn client() -> Option<i32> {
+    // Only the runner's binary at its place in a sandbox, which the kernel
+    // names (not the caller), and only where the sandbox's marker is: the
+    // runner anywhere else, under whatever name, is never a shim.
+    let exe = std::fs::read_link("/proc/self/exe").ok()?;
+    if !is_sandbox_runner(&exe, |p| p.is_file()) {
+        return None;
+    }
     let mut args: Vec<String> = std::env::args_os()
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
@@ -529,6 +567,12 @@ pub fn client() -> Option<i32> {
     };
     if connected < 0 {
         return None;
+    }
+    // Nothing is sent to anything but the sandbox's first process, the
+    // runner inside, as the same user.
+    if !peer_is_runner(&conn) {
+        eprintln!("{name}: the job's runner is not what answered");
+        return Some(127);
     }
     args[0] = argv0;
     let request = Request {
@@ -593,4 +637,66 @@ fn send(conn: &OwnedFd, body: &[u8]) -> io::Result<()> {
     let mut stream = std::fs::File::from(conn.try_clone()?);
     stream.write_all(body)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// Only the runner's binary at its place in a sandbox, with the
+    /// sandbox's marker, is ever a shim: never the runner on its host,
+    /// under any name, nor a release being checked before it is run.
+    #[test]
+    fn only_the_runner_inside_a_sandbox_is_a_shim() {
+        let marker = |p: &Path| p == Path::new(SANDBOX_MARKER);
+        let none = |_: &Path| false;
+        assert!(is_sandbox_runner(Path::new(SANDBOX_RUNNER), marker));
+        assert!(!is_sandbox_runner(Path::new(SANDBOX_RUNNER), none));
+        for exe in [
+            "/opt/iwci/bin/iwci",
+            "/opt/iwci/bin/.iwci-0.3.34.new",
+            "/usr/bin/git",
+            "/tmp/.iwci/bin/iwci",
+            "/.iwci/bin/iwci-other",
+        ] {
+            assert!(!is_sandbox_runner(Path::new(exe), marker), "{exe}");
+        }
+    }
+
+    /// Outside a sandbox, under a name that is not `iwci`, the shim never
+    /// connects, even with something listening where a sandbox's runner
+    /// would.
+    #[test]
+    fn outside_a_sandbox_nothing_connects() {
+        let listener = socket().unwrap();
+        let (addr, len) = abstract_addr();
+        // SAFETY: a valid address of `len` bytes.
+        let bound = unsafe {
+            libc::bind(
+                listener.as_raw_fd(),
+                (&addr as *const libc::sockaddr_un).cast(),
+                len,
+            )
+        };
+        // Another test binary may hold the name; the check below still
+        // holds for this process.
+        if bound == 0 {
+            // SAFETY: listening on our own bound socket.
+            assert_eq!(unsafe { libc::listen(listener.as_raw_fd(), 4) }, 0);
+        }
+        // This test binary is not named `iwci`.
+        assert_eq!(client(), None);
+        if bound == 0 {
+            // Nothing is waiting to be accepted.
+            let mut fd = libc::pollfd {
+                fd: listener.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: polling our own socket, without waiting.
+            let ready = unsafe { libc::poll(&mut fd, 1, 0) };
+            assert_eq!(ready, 0, "a shim connected from outside a sandbox");
+        }
+    }
 }

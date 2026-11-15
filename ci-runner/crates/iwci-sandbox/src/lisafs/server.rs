@@ -18,7 +18,7 @@
 //! how it supports hard links), so a number may never name two files at
 //! once, which a hash of the path would after `mv a b; touch a`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsStr;
 use std::io::SeekFrom;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -81,6 +81,20 @@ const MAX_CHANNELS: usize = 4;
 /// the bound is far above that and keeps a misbehaving one from growing
 /// the runner's memory without end.
 const MAX_FDS: usize = 1 << 18;
+
+/// The longest path the server keeps or makes: Linux's `PATH_MAX`. A
+/// path past it is refused (ENAMETOOLONG), as Linux refuses one in a
+/// system call, so every path a connection holds is short.
+const MAX_PATH: usize = 4096;
+
+/// What one connection's records (its FDs' paths, the inode numbers it
+/// gave out) may take of the runner's memory. Past it the numbers no FD
+/// names are forgotten, and then a new FD is refused (ENFILE).
+const MAX_STATE_BYTES: usize = 64 << 20;
+
+/// What a new file, directory or symlink is charged to the job's budget
+/// beside its name: what the job's file system keeps for an entry.
+const ENTRY_COST: u64 = 128;
 
 // statx(2) mask bits.
 const STATX_MODE: u32 = 0x2;
@@ -204,12 +218,26 @@ impl Fd {
     }
 }
 
+/// An inode number given out, and how many FDs name its path. One no FD
+/// names may be forgotten (`State::sweep`): the sandbox's kernel then has
+/// no dentry for it, and a later walk gives the file a new number.
+struct Numbered {
+    ino: u64,
+    refs: u32,
+}
+
 struct State {
     fds: HashMap<u64, Fd>,
     next_fd: u64,
     /// Inode numbers of the files this connection has reported, by path.
-    inos: BTreeMap<PathBuf, u64>,
+    inos: BTreeMap<PathBuf, Numbered>,
     next_ino: u64,
+    /// What the paths in `fds` and `inos` take of the runner's memory,
+    /// roughly, held under [`MAX_STATE_BYTES`].
+    bytes: usize,
+    /// Entries this connection created and charged to the job's budget,
+    /// by a hash of their path ([`ENTRY_COST`]).
+    created: HashSet<u64>,
 }
 
 /// One lisafs connection, which is one mount in the sandbox.
@@ -232,6 +260,8 @@ impl Conn {
                 next_fd: 1,
                 inos: BTreeMap::new(),
                 next_ino: 1,
+                bytes: 0,
+                created: HashSet::new(),
             }),
             channels: Mutex::new(Vec::new()),
             closed: AtomicBool::new(false),
@@ -240,6 +270,13 @@ impl Conn {
 
     fn state(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// FDs, inode numbers and the bytes their paths take, for tests.
+    #[cfg(test)]
+    pub(crate) fn kept(&self) -> (usize, usize, usize) {
+        let state = self.state();
+        (state.fds.len(), state.inos.len(), state.bytes)
     }
 
     /// Serves requests from the socket until the peer closes it, then
@@ -269,7 +306,12 @@ impl Conn {
         for (_, thread) in channels {
             let _ = thread.join();
         }
-        self.state().fds.clear();
+        // Nothing of it outlives the sandbox.
+        let mut state = self.state();
+        state.fds = HashMap::new();
+        state.inos = BTreeMap::new();
+        state.created = HashSet::new();
+        state.bytes = 0;
     }
 
     /// Stops the connection from another thread: the serving thread sees
@@ -351,7 +393,7 @@ impl Conn {
                 let ids = r.fd_ids().map_err(eio)?;
                 let mut state = self.state();
                 for id in ids {
-                    state.fds.remove(&id);
+                    state.remove(id);
                 }
                 Ok((Vec::new(), Vec::new()))
             }
@@ -395,7 +437,7 @@ impl Conn {
             return Err(libc::ENOTDIR);
         }
         let mut state = self.state();
-        let ino = state.ino(&root);
+        let ino = state.ino(&root)?;
         let stat = self.statx(&root, &meta, ino);
         let fd = state.insert(Fd::Control(Control {
             path: root,
@@ -628,7 +670,7 @@ impl Conn {
                         status = 2;
                         return Ok(());
                     }
-                    let child = path.join(OsStr::from_bytes(name));
+                    let child = joined(&path, name)?;
                     let meta = match self.export.fs.symlink_metadata(&child) {
                         Ok(meta) => meta,
                         Err(FsError::EntryNotFound) => {
@@ -637,7 +679,7 @@ impl Conn {
                         }
                         Err(e) => return Err(fs_errno(e)),
                     };
-                    let ino = state.ino(&child);
+                    let ino = state.ino(&child)?;
                     let stat = self.statx(&child, &meta, ino);
                     kind = Kind::of(&meta);
                     let fd = state.insert(Fd::Control(Control {
@@ -654,7 +696,7 @@ impl Conn {
             })();
             if let Err(e) = result {
                 for fd in made {
-                    state.fds.remove(&fd);
+                    state.remove(fd);
                 }
                 return Err(e);
             }
@@ -705,13 +747,13 @@ impl Conn {
             let mut path = start_path;
             if !deleted {
                 for name in names {
-                    let child = path.join(OsStr::from_bytes(name));
+                    let child = joined(&path, name)?;
                     let meta = match self.export.fs.symlink_metadata(&child) {
                         Ok(meta) => meta,
                         Err(FsError::EntryNotFound) => break,
                         Err(e) => return Err(fs_errno(e)),
                     };
-                    let ino = state.ino(&child);
+                    let ino = state.ino(&child)?;
                     stats.push(self.statx(&child, &meta, ino));
                     if Kind::of(&meta) == Kind::Symlink {
                         break;
@@ -820,7 +862,28 @@ impl Conn {
         if c.deleted {
             return Err(libc::EINVAL);
         }
-        Ok(c.path.join(OsStr::from_bytes(name)))
+        joined(&c.path, name)
+    }
+
+    /// Charges a new entry at `path` to the job's budget: refused (ENOSPC)
+    /// when the budget has no room, as a write past it is.
+    fn charge(&self, state: &mut State, path: &Path) -> Result<(), Errno> {
+        if let Some(budget) = &self.export.budget {
+            if !budget.take(entry_cost(path)) {
+                return Err(libc::ENOSPC);
+            }
+            state.created.insert(path_hash(path));
+        }
+        Ok(())
+    }
+
+    /// Gives back what [`Self::charge`] took for `path`, when it did.
+    fn uncharge(&self, state: &mut State, path: &Path) {
+        if let Some(budget) = &self.export.budget
+            && state.created.remove(&path_hash(path))
+        {
+            budget.give(entry_cost(path));
+        }
     }
 
     /// Records `perm` for a new file at `path`, unless it is the default
@@ -834,7 +897,7 @@ impl Conn {
     /// A new control FD for what is now at `path`, and its `Inode`.
     fn new_control(&self, state: &mut State, path: PathBuf) -> Result<(u64, Statx), Errno> {
         let meta = self.export.fs.symlink_metadata(&path).map_err(fs_errno)?;
-        let ino = state.ino(&path);
+        let ino = state.ino(&path)?;
         let stat = self.statx(&path, &meta, ino);
         let fd = state.insert(Fd::Control(Control {
             path,
@@ -857,7 +920,8 @@ impl Conn {
             let write = access != libc::O_RDONLY as u32;
             // Opened for writing whatever was asked: creating is a write.
             // The open FD keeps to what was asked.
-            let file = self
+            self.charge(&mut state, &path)?;
+            let file = match self
                 .export
                 .fs
                 .new_open_options()
@@ -865,7 +929,13 @@ impl Conn {
                 .write(true)
                 .create_new(true)
                 .open(&path)
-                .map_err(fs_errno)?;
+            {
+                Ok(file) => file,
+                Err(e) => {
+                    self.uncharge(&mut state, &path);
+                    return Err(fs_errno(e));
+                }
+            };
             self.created_with(&path, mode, DEFAULT_FILE_MODE);
             let (control, stat) = self.new_control(&mut state, path)?;
             let node = state.control(control)?.clone();
@@ -1051,7 +1121,7 @@ impl Conn {
                 .unwrap_or(Kind::Other);
             out.push(Dirent {
                 name: name.as_bytes().to_vec(),
-                ino: state.ino(&child),
+                ino: state.listed_ino(&child),
                 kind: kind.dirent_type(),
             });
         }
@@ -1066,7 +1136,11 @@ impl Conn {
         Ok((|| {
             let mut state = self.state();
             let path = self.child_of(&state, dir, name)?;
-            self.export.fs.create_dir(&path).map_err(fs_errno)?;
+            self.charge(&mut state, &path)?;
+            if let Err(e) = self.export.fs.create_dir(&path) {
+                self.uncharge(&mut state, &path);
+                return Err(fs_errno(e));
+            }
             self.created_with(&path, mode, DEFAULT_DIR_MODE);
             let (fd, stat) = self.new_control(&mut state, path)?;
             let mut w = Writer::default();
@@ -1088,13 +1162,18 @@ impl Conn {
             if mode & S_IFMT != S_IFREG && mode & S_IFMT != 0 {
                 return Err(libc::EPERM);
             }
-            self.export
+            self.charge(&mut state, &path)?;
+            if let Err(e) = self
+                .export
                 .fs
                 .new_open_options()
                 .write(true)
                 .create_new(true)
                 .open(&path)
-                .map_err(fs_errno)?;
+            {
+                self.uncharge(&mut state, &path);
+                return Err(fs_errno(e));
+            }
             self.created_with(&path, mode, DEFAULT_FILE_MODE);
             let (fd, stat) = self.new_control(&mut state, path)?;
             let mut w = Writer::default();
@@ -1118,10 +1197,15 @@ impl Conn {
             if self.export.fs.symlink_metadata(&path).is_ok() {
                 return Err(libc::EEXIST);
             }
-            self.export
+            self.charge(&mut state, &path)?;
+            if let Err(e) = self
+                .export
                 .fs
                 .create_symlink(Path::new(OsStr::from_bytes(target)), &path)
-                .map_err(fs_errno)?;
+            {
+                self.uncharge(&mut state, &path);
+                return Err(fs_errno(e));
+            }
             let (fd, stat) = self.new_control(&mut state, path)?;
             let mut w = Writer::default();
             w.inode(fd, &stat);
@@ -1180,6 +1264,7 @@ impl Conn {
                 }
                 self.export.fs.remove_file(&path).map_err(fs_errno)?;
             }
+            self.uncharge(&mut state, &path);
             state.gone(&path);
             Ok((Vec::new(), Vec::new()))
         })())
@@ -1243,7 +1328,11 @@ impl Conn {
                 Err(e) => return Err(fs_errno(e)),
             }
             if replaced {
+                self.uncharge(&mut state, &to);
                 state.gone(&to);
+            }
+            if state.created.remove(&path_hash(&from)) {
+                state.created.insert(path_hash(&to));
             }
             state.moved(&from, &to);
             Ok((Vec::new(), Vec::new()))
@@ -1264,10 +1353,66 @@ impl State {
         if self.fds.len() >= MAX_FDS {
             return Err(libc::ENFILE);
         }
+        let path = match &fd {
+            Fd::Control(c) => &c.path,
+            Fd::Open(o) => &o.node.path,
+        };
+        let cost = path_cost(path);
+        self.room(cost)?;
+        if let Some(n) = self.inos.get_mut(path) {
+            n.refs += 1;
+        }
+        self.bytes += cost;
         let id = self.next_fd;
         self.next_fd += 1;
         self.fds.insert(id, fd);
         Ok(id)
+    }
+
+    /// Closes FD `id`.
+    fn remove(&mut self, id: u64) {
+        let Some(mut fd) = self.fds.remove(&id) else {
+            return;
+        };
+        let c = fd.node_mut();
+        self.bytes = self.bytes.saturating_sub(path_cost(&c.path));
+        // A file no FD names any more has no dentry in the sandbox's
+        // kernel either: its number goes, and a later walk gives a new one.
+        if !c.deleted
+            && let Some(n) = self.inos.get_mut(&c.path)
+        {
+            n.refs = n.refs.saturating_sub(1);
+            if n.refs == 0 {
+                self.inos.remove(&c.path);
+                self.bytes = self.bytes.saturating_sub(path_cost(&c.path));
+            }
+        }
+    }
+
+    /// Makes room for `cost` more bytes, forgetting the inode numbers no FD
+    /// names if it has to; ENFILE when there is none.
+    fn room(&mut self, cost: usize) -> Result<(), Errno> {
+        if self.bytes + cost > MAX_STATE_BYTES {
+            self.sweep();
+        }
+        if self.bytes + cost > MAX_STATE_BYTES {
+            return Err(libc::ENFILE);
+        }
+        Ok(())
+    }
+
+    /// Forgets every inode number no FD names.
+    fn sweep(&mut self) {
+        let mut freed = 0;
+        self.inos.retain(|path, n| {
+            if n.refs == 0 {
+                freed += path_cost(path);
+                false
+            } else {
+                true
+            }
+        });
+        self.bytes = self.bytes.saturating_sub(freed);
     }
 
     fn control(&self, id: u64) -> Result<&Control, Errno> {
@@ -1287,14 +1432,31 @@ impl State {
     }
 
     /// The inode number of the file at `path`, given one if it has none.
-    fn ino(&mut self, path: &Path) -> u64 {
-        if let Some(ino) = self.inos.get(path) {
-            return *ino;
+    fn ino(&mut self, path: &Path) -> Result<u64, Errno> {
+        if let Some(n) = self.inos.get(path) {
+            return Ok(n.ino);
         }
+        let cost = path_cost(path);
+        self.room(cost)?;
         let ino = self.next_ino;
         self.next_ino += 1;
-        self.inos.insert(path.to_path_buf(), ino);
-        ino
+        self.inos
+            .insert(path.to_path_buf(), Numbered { ino, refs: 0 });
+        self.bytes += cost;
+        Ok(ino)
+    }
+
+    /// The inode number a directory listing gives `path`: its own when it
+    /// has one, else a fresh one, not kept (a listing names every entry of
+    /// a directory, and keeping them all would grow without end).
+    fn listed_ino(&mut self, path: &Path) -> u64 {
+        match self.inos.get(path) {
+            Some(n) => n.ino,
+            None => {
+                self.next_ino += 1;
+                self.next_ino - 1
+            }
+        }
     }
 
     /// What was at `path` (and under it) is gone: its control FDs name a
@@ -1314,34 +1476,68 @@ impl State {
             .collect();
         for p in under {
             self.inos.remove(&p);
+            self.bytes = self.bytes.saturating_sub(path_cost(&p));
         }
     }
 
     /// What was at `from` (and under it) is now at `to`.
     fn moved(&mut self, from: &Path, to: &Path) {
+        let mut bytes = self.bytes;
         for fd in self.fds.values_mut() {
             let c = fd.node_mut();
             if !c.deleted
                 && let Ok(rest) = c.path.strip_prefix(from)
             {
-                c.path = join_rest(to, rest);
+                let new = join_rest(to, rest);
+                bytes = (bytes + path_cost(&new)).saturating_sub(path_cost(&c.path));
+                c.path = new;
             }
         }
-        let under: Vec<(PathBuf, u64)> = self
+        let under: Vec<PathBuf> = self
             .inos
             .range(from.to_path_buf()..)
             .take_while(|(p, _)| p.starts_with(from))
-            .map(|(p, ino)| (p.clone(), *ino))
+            .map(|(p, _)| p.clone())
             .collect();
-        for (p, _) in &under {
-            self.inos.remove(p);
-        }
-        for (p, ino) in under {
+        for p in under {
+            let Some(n) = self.inos.remove(&p) else {
+                continue;
+            };
+            bytes = bytes.saturating_sub(path_cost(&p));
             if let Ok(rest) = p.strip_prefix(from) {
-                self.inos.insert(join_rest(to, rest), ino);
+                let new = join_rest(to, rest);
+                bytes += path_cost(&new);
+                self.inos.insert(new, n);
             }
         }
+        self.bytes = bytes;
     }
+}
+
+/// `dir/name`, refused (ENAMETOOLONG) past [`MAX_PATH`].
+fn joined(dir: &Path, name: &[u8]) -> Result<PathBuf, Errno> {
+    if dir.as_os_str().len() + 1 + name.len() > MAX_PATH {
+        return Err(libc::ENAMETOOLONG);
+    }
+    Ok(dir.join(OsStr::from_bytes(name)))
+}
+
+/// What keeping `path` takes, roughly: its bytes and a map entry.
+fn path_cost(path: &Path) -> usize {
+    path.as_os_str().len() + 64
+}
+
+/// What a new entry at `path` is charged to the job's budget: what the
+/// job's file system keeps for it.
+fn entry_cost(path: &Path) -> u64 {
+    ENTRY_COST + path.file_name().map_or(0, |n| n.len() as u64)
+}
+
+fn path_hash(path: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    h.finish()
 }
 
 fn join_rest(to: &Path, rest: &Path) -> PathBuf {

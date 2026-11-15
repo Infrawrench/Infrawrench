@@ -34,6 +34,12 @@ use serde_json::{Value, json};
 #[derive(Debug, Clone)]
 pub struct Release {
     pub dir: PathBuf,
+    /// The program that starts the Sentry in its namespaces for the runner
+    /// ([`crate::helper`]), when the runner may not create them itself: a
+    /// host that keeps user namespaces from unprivileged programs lets this
+    /// one, root-owned program create them, and nothing else. Without one
+    /// the runner creates them itself.
+    pub helper: Option<PathBuf>,
 }
 
 impl Release {
@@ -93,6 +99,10 @@ pub struct Sandbox {
     reaped: bool,
     /// The sandbox's end of its network link, handed over at start.
     link: Option<OwnedFd>,
+    /// The answer to the one `Wait` call made once the job started, from
+    /// the thread that waits for it: one call for the whole job, so waiting
+    /// costs the sandbox nothing however long the job runs.
+    waiter: Option<std::sync::mpsc::Receiver<io::Result<Value>>>,
 }
 
 /// How long starting a sandbox may take before the runner gives up on it.
@@ -309,19 +319,36 @@ pub fn boot_with(
         config.id.clone(),
     ]);
     let env = vec!["GODEBUG=".to_string(), "TMPDIR=/tmp".to_string()];
-    let pid = spawn(
-        &release.sentry(),
-        &args,
-        &env,
-        fds,
-        config.cgroup.as_deref(),
-    )?;
+    let sentry = release.sentry();
+    let pid = match &release.helper {
+        None => spawn(
+            &sentry,
+            &args,
+            &env,
+            fds,
+            config.cgroup.as_deref(),
+            Namespaces::New,
+        )?,
+        Some(helper) => {
+            let mut through = crate::helper::args(&sentry, fds.len());
+            through.extend(args);
+            spawn(
+                helper,
+                &through,
+                &env,
+                fds,
+                config.cgroup.as_deref(),
+                Namespaces::Same,
+            )?
+        }
+    };
     Ok(Sandbox {
         pid,
         id: config.id.clone(),
         control,
         reaped: false,
         link,
+        waiter: None,
     })
 }
 
@@ -337,7 +364,8 @@ fn host_memory() -> u64 {
 }
 
 impl Sandbox {
-    /// The Sentry's process id, in the runner's PID namespace.
+    /// The Sentry's process id, in the runner's PID namespace (the
+    /// helper's, with a [`Release::helper`], whose only child it is).
     pub fn pid(&self) -> libc::pid_t {
         self.pid
     }
@@ -345,12 +373,29 @@ impl Sandbox {
     /// Configures the sandbox's network (loopback only) and starts the
     /// job's process.
     pub fn start(&mut self) -> io::Result<()> {
-        self.configure_and_start().map_err(|e| match self.exited() {
-            Some(status) => {
-                io::Error::other(format!("{e} (the sandbox exited: {})", describe(status)))
-            }
-            None => e,
-        })
+        self.configure_and_start()
+            .map_err(|e| match self.exited() {
+                Some(status) => {
+                    io::Error::other(format!("{e} (the sandbox exited: {})", describe(status)))
+                }
+                None => e,
+            })?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let control = self.control.clone();
+        let id = self.id.clone();
+        std::thread::Builder::new()
+            .name("iwci-sandbox-wait".into())
+            .spawn(move || {
+                let _ = tx.send(call(
+                    &control,
+                    "containerManager.Wait",
+                    json!(id),
+                    &[],
+                    None,
+                ));
+            })?;
+        self.waiter = Some(rx);
+        Ok(())
     }
 
     /// The sandbox's wait status, if it has exited.
@@ -429,35 +474,40 @@ impl Sandbox {
     /// still running, which the caller then stops (a timeout, a cancel, a
     /// drain).
     pub fn wait_for(&mut self, limit: Option<std::time::Duration>) -> io::Result<Option<i32>> {
-        let status = match self.call_timeout("containerManager.Wait", json!(self.id), limit) {
-            Ok(status) => status,
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                ) =>
-            {
+        let deadline = limit.map(|l| std::time::Instant::now() + l);
+        let Some(waiter) = self.waiter.take() else {
+            return Err(io::Error::other("the sandbox was not started"));
+        };
+        loop {
+            let step = match deadline {
+                Some(at) => at
+                    .saturating_duration_since(std::time::Instant::now())
+                    .min(WAIT_STEP),
+                None => WAIT_STEP,
+            };
+            match waiter.recv_timeout(step) {
+                Ok(Ok(status)) => {
+                    let status = status
+                        .as_u64()
+                        .ok_or_else(|| io::Error::other(format!("a wait status of {status}")))?;
+                    self.reap();
+                    return Ok(Some(status as i32));
+                }
+                // The Sentry itself went (killed for memory, or by a
+                // signal) before it answered: its own wait status says how.
+                Ok(Err(_)) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Ok(Some(self.reap().unwrap_or(-1)));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            if let Some(status) = self.exited() {
+                return Ok(Some(status));
+            }
+            if deadline.is_some_and(|at| std::time::Instant::now() >= at) {
+                self.waiter = Some(waiter);
                 return Ok(None);
             }
-            // The Sentry itself went (killed for memory, or by a signal):
-            // its own wait status says how.
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::UnexpectedEof
-                        | io::ErrorKind::ConnectionReset
-                        | io::ErrorKind::BrokenPipe
-                ) =>
-            {
-                return Ok(Some(self.reap().unwrap_or(e.raw_os_error().unwrap_or(-1))));
-            }
-            Err(e) => return Err(e),
-        };
-        let status = status
-            .as_u64()
-            .ok_or_else(|| io::Error::other(format!("a wait status of {status}")))?;
-        self.reap();
-        Ok(Some(status as i32))
+        }
     }
 
     /// Stops the sandbox at once.
@@ -488,18 +538,6 @@ impl Sandbox {
         (r == self.pid).then_some(status)
     }
 
-    fn call_timeout(
-        &self,
-        method: &str,
-        arg: Value,
-        limit: Option<std::time::Duration>,
-    ) -> io::Result<Value> {
-        self.call_full(method, arg, &[], limit)
-    }
-
-    /// One call to the Sentry's control server: its result. Descriptors
-    /// (urpc's `FilePayload`) ride the first bytes of the request; with a
-    /// `limit`, a call that takes longer fails.
     fn call_full(
         &self,
         method: &str,
@@ -507,25 +545,42 @@ impl Sandbox {
         fds: &[RawFd],
         limit: Option<std::time::Duration>,
     ) -> io::Result<Value> {
-        let mut stream = UnixStream::connect(&self.control)?;
-        stream.set_read_timeout(limit)?;
-        let request = serde_json::to_vec(&json!({ "method": method, "arg": arg }))?;
-        let mut sent = 0;
-        if !fds.is_empty() {
-            sent = send_with_fds(stream.as_raw_fd(), &request, fds)?;
-        }
-        stream.write_all(&request[sent..])?;
-        let reply: Value = read_json(&mut stream)?;
-        if reply.get("success").and_then(Value::as_bool) != Some(true) {
-            let err = reply
-                .get("err")
-                .and_then(Value::as_str)
-                .unwrap_or("no reason given");
-            return Err(io::Error::other(format!("{method}: {err}")));
-        }
-        Ok(reply.get("result").cloned().unwrap_or(Value::Null))
+        call(&self.control, method, arg, fds, limit)
     }
 }
+
+/// One call to the Sentry's control server: its result. Descriptors
+/// (urpc's `FilePayload`) ride the first bytes of the request; with a
+/// `limit`, a call that takes longer fails.
+fn call(
+    control: &Path,
+    method: &str,
+    arg: Value,
+    fds: &[RawFd],
+    limit: Option<std::time::Duration>,
+) -> io::Result<Value> {
+    let mut stream = UnixStream::connect(control)?;
+    stream.set_read_timeout(limit)?;
+    let request = serde_json::to_vec(&json!({ "method": method, "arg": arg }))?;
+    let mut sent = 0;
+    if !fds.is_empty() {
+        sent = send_with_fds(stream.as_raw_fd(), &request, fds)?;
+    }
+    stream.write_all(&request[sent..])?;
+    let reply: Value = read_json(&mut stream)?;
+    if reply.get("success").and_then(Value::as_bool) != Some(true) {
+        let err = reply
+            .get("err")
+            .and_then(Value::as_str)
+            .unwrap_or("no reason given");
+        return Err(io::Error::other(format!("{method}: {err}")));
+    }
+    Ok(reply.get("result").cloned().unwrap_or(Value::Null))
+}
+
+/// How often a wait looks at the Sentry's own process while it waits for
+/// the job's answer.
+const WAIT_STEP: std::time::Duration = std::time::Duration::from_millis(100);
 
 fn describe(status: i32) -> String {
     if libc::WIFEXITED(status) {
@@ -665,6 +720,17 @@ struct Child {
     /// (from, to) pairs; every `from` is above every `to`.
     fds: *const (RawFd, RawFd),
     nfds: usize,
+    namespaces: Namespaces,
+}
+
+/// Where [`spawn`] starts its program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Namespaces {
+    /// In new user, mount, PID, IPC, UTS and network namespaces, as the
+    /// mapped `nobody` with [`CAPS`]: the Sentry.
+    New,
+    /// In the runner's own, as the runner: the helper, which makes them.
+    Same,
 }
 
 /// The capabilities the Sentry starts with: what building its empty root
@@ -675,20 +741,33 @@ const CAPS: [u32; 3] = [
     8,  // CAP_SETPCAP
 ];
 
-/// Starts `exe` in new namespaces with `fds` as its descriptors 0, 1, 2,
-/// ...; its pid.
-fn spawn(
+/// Starts `exe` with `fds` as its descriptors 0, 1, 2, ..., in
+/// `namespaces`; its pid.
+pub(crate) fn spawn(
     exe: &Path,
     args: &[String],
     env: &[String],
     fds: Vec<OwnedFd>,
     cgroup: Option<&Path>,
+    namespaces: Namespaces,
 ) -> io::Result<libc::pid_t> {
-    let cstr = |s: &[u8]| CString::new(s).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput));
     let exe_fd = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_PATH)
         .open(exe)?;
+    spawn_fd(exe_fd, args, env, fds, cgroup, namespaces)
+}
+
+/// [`spawn`] with the program already open (`O_PATH`).
+pub(crate) fn spawn_fd(
+    exe_fd: fs::File,
+    args: &[String],
+    env: &[String],
+    fds: Vec<OwnedFd>,
+    cgroup: Option<&Path>,
+    namespaces: Namespaces,
+) -> io::Result<libc::pid_t> {
+    let cstr = |s: &[u8]| CString::new(s).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput));
     let args_c = args
         .iter()
         .map(|a| cstr(a.as_bytes()))
@@ -703,19 +782,22 @@ fn spawn(
     envp.push(std::ptr::null());
 
     // Move every descriptor well above the numbers it is going to, so the
-    // child's dup2s never overwrite one not yet moved.
+    // child's dup2s never overwrite one not yet moved, nor the program,
+    // which it runs after them.
+    let raise = |fd: RawFd| -> io::Result<OwnedFd> {
+        // SAFETY: duplicating a descriptor we hold; checked below.
+        let raw = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 512) };
+        if raw < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: just created and ours.
+        Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+    };
     let high: Vec<OwnedFd> = fds
         .iter()
-        .map(|fd| {
-            // SAFETY: duplicating a descriptor we hold; checked below.
-            let raw = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 512) };
-            if raw < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            // SAFETY: just created and ours.
-            Ok(unsafe { OwnedFd::from_raw_fd(raw) })
-        })
+        .map(|fd| raise(fd.as_raw_fd()))
         .collect::<io::Result<_>>()?;
+    let exe_fd = raise(exe_fd.as_raw_fd())?;
     drop(fds);
     let pairs: Vec<(RawFd, RawFd)> = high
         .iter()
@@ -739,6 +821,18 @@ fn spawn(
         envp: envp.as_ptr(),
         fds: pairs.as_ptr(),
         nfds: pairs.len(),
+        namespaces,
+    };
+    let flags = match namespaces {
+        Namespaces::New => {
+            libc::CLONE_NEWUSER
+                | libc::CLONE_NEWNS
+                | libc::CLONE_NEWPID
+                | libc::CLONE_NEWIPC
+                | libc::CLONE_NEWUTS
+                | libc::CLONE_NEWNET
+        }
+        Namespaces::Same => 0,
     };
     let mut stack = vec![0u8; 256 * 1024];
     // SAFETY: the stack grows down from its end, aligned to 16; `child`
@@ -750,13 +844,7 @@ fn spawn(
         libc::clone(
             run_child,
             top.cast(),
-            libc::CLONE_NEWUSER
-                | libc::CLONE_NEWNS
-                | libc::CLONE_NEWPID
-                | libc::CLONE_NEWIPC
-                | libc::CLONE_NEWUTS
-                | libc::CLONE_NEWNET
-                | libc::SIGCHLD,
+            flags | libc::SIGCHLD,
             (&child as *const Child).cast_mut().cast(),
         )
     };
@@ -770,10 +858,15 @@ fn spawn(
         Some(dir) => fs::write(dir.join("cgroup.procs"), pid.to_string()),
         None => Ok(()),
     };
-    let mapped = joined.and_then(|()| map_user(pid)).and_then(|()| {
-        let mut w = fs::File::from(sync_w);
-        w.write_all(&[1])
-    });
+    let mapped = joined
+        .and_then(|()| match namespaces {
+            Namespaces::New => map_user(pid),
+            Namespaces::Same => Ok(()),
+        })
+        .and_then(|()| {
+            let mut w = fs::File::from(sync_w);
+            w.write_all(&[1])
+        });
     if let Err(e) = mapped {
         // SAFETY: our own child; reaped right after.
         unsafe {
@@ -823,9 +916,49 @@ extern "C" fn run_child(arg: *mut c_void) -> c_int {
             }
             libc::_exit(120);
         }
-        // Become the mapped `nobody` (the runner's own user is mapped to
-        // it unless the runner is root), keeping the capabilities the
-        // namespace gave us through the change.
+        if child.namespaces == Namespaces::New {
+            become_nobody();
+        }
+        // Gone with the runner.
+        libc::prctl(
+            libc::PR_SET_PDEATHSIG,
+            libc::SIGKILL as libc::c_ulong,
+            0,
+            0,
+            0,
+        );
+        libc::setsid();
+        // What the runner ignores (a broken pipe) is not ignored here.
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        let pairs = std::slice::from_raw_parts(child.fds, child.nfds);
+        for &(from, to) in pairs {
+            if libc::dup2(from, to) < 0 {
+                libc::_exit(124);
+            }
+        }
+        libc::syscall(
+            libc::SYS_execveat,
+            child.exe,
+            c"".as_ptr(),
+            child.argv,
+            child.envp,
+            libc::AT_EMPTY_PATH,
+        );
+        libc::_exit(127)
+    }
+}
+
+/// In the new user namespace: becomes the mapped `nobody` (the runner's
+/// own user is mapped to it unless the runner is root), keeping the
+/// capabilities the namespace gave through the change, and makes the
+/// Sentry's [`CAPS`] ambient so they survive `execve`.
+///
+/// # Safety
+///
+/// Only from [`run_child`]: system calls only.
+unsafe fn become_nobody() {
+    // SAFETY: plain system calls, as the caller's.
+    unsafe {
         const NOBODY: libc::uid_t = 65534;
         libc::prctl(libc::PR_SET_KEEPCAPS, 1 as libc::c_ulong, 0, 0, 0);
         // The system calls, not the C library's wrappers, which are not
@@ -868,30 +1001,6 @@ extern "C" fn run_child(arg: *mut c_void) -> c_int {
                 libc::_exit(123);
             }
         }
-        // Gone with the runner.
-        libc::prctl(
-            libc::PR_SET_PDEATHSIG,
-            libc::SIGKILL as libc::c_ulong,
-            0,
-            0,
-            0,
-        );
-        libc::setsid();
-        let pairs = std::slice::from_raw_parts(child.fds, child.nfds);
-        for &(from, to) in pairs {
-            if libc::dup2(from, to) < 0 {
-                libc::_exit(124);
-            }
-        }
-        libc::syscall(
-            libc::SYS_execveat,
-            child.exe,
-            c"".as_ptr(),
-            child.argv,
-            child.envp,
-            libc::AT_EMPTY_PATH,
-        );
-        libc::_exit(127)
     }
 }
 

@@ -40,6 +40,10 @@ use iwci_sandbox::cgroup::{Cgroup, Jobs, Limits};
 use iwci_sandbox::lisafs::{self, Export, Serving};
 use iwci_sandbox::net::{Gateway, Network};
 use iwci_sandbox::runsc::{self, Mount, Release};
+
+/// The helper that starts a sandbox for a runner that may not create its
+/// namespaces itself (`iwci_sandbox::helper`).
+pub use iwci_sandbox::helper;
 use iwci_vfs::{DynFs, Modes};
 use shared_buffer::OwnedBuffer;
 use virtual_fs::{FileSystem, TmpFileSystem};
@@ -52,7 +56,7 @@ use crate::{Error, Invocation, Outcome, Result, Runtime, WebcPackage};
 
 /// Where the runner's own files are in the sandbox.
 const IWCI_DIR: &str = "/.iwci";
-const RUNNER: &str = "/.iwci/bin/iwci";
+const RUNNER: &str = crate::inside::shim::SANDBOX_RUNNER;
 const OUT_DIR: &str = "/.iwci/out";
 
 /// How often a running sandbox is checked on.
@@ -97,6 +101,9 @@ pub struct SandboxHost {
     system: Vec<Placed>,
     platform: String,
     overhead: u64,
+    /// The CPUs a sandbox may use and is told it has: the runner's own
+    /// (`--cpus`), as a WASIX job's threads share them.
+    cpus: u32,
 }
 
 impl std::fmt::Debug for SandboxHost {
@@ -141,13 +148,17 @@ impl SandboxHost {
         };
         std::fs::create_dir_all(&state_root)?;
         Ok(Self {
-            release: Release { dir: release },
+            release: Release {
+                dir: release,
+                helper: None,
+            },
             jobs,
             state_root,
             runner,
             system,
             platform: "systrap".into(),
             overhead: DEFAULT_OVERHEAD,
+            cpus: std::thread::available_parallelism().map_or(1, |n| n.get() as u32),
         })
     }
 
@@ -155,6 +166,20 @@ impl SandboxHost {
     /// reserves on top of it.
     pub fn overhead(&self) -> u64 {
         self.overhead
+    }
+
+    /// Starts each sandbox through `helper` (`iwci_sandbox::helper`), which
+    /// may create the namespaces the runner may not.
+    pub fn with_helper(mut self, helper: PathBuf) -> Self {
+        self.release.helper = Some(helper);
+        self
+    }
+
+    /// Holds each sandbox to `cpus` CPUs' time (`cpu.max`), which is also
+    /// how many it is told it has: the runner's `--cpus`.
+    pub fn with_cpus(mut self, cpus: u32) -> Self {
+        self.cpus = cpus.max(1);
+        self
     }
 
     pub fn with_overhead(mut self, bytes: u64) -> Self {
@@ -303,11 +328,14 @@ enum Stop {
     Timeout,
     Stalled,
     Cancelled,
+    /// At its memory limit, stuck reclaiming (`cgroup::Reclaiming`).
+    OutOfMemory,
 }
 
 impl Runtime {
     /// [`Runtime::run_script`] in a gVisor sandbox with `natives` on the
     /// script's `PATH` (see the module comment).
+    #[allow(clippy::too_many_arguments)]
     pub fn run_script_sandboxed(
         &self,
         host: &SandboxHost,
@@ -316,6 +344,7 @@ impl Runtime {
         entry: &str,
         script: &str,
         inv: Invocation,
+        budget: Option<Arc<dyn iwci_vfs::WriteBudget>>,
     ) -> Result<Outcome> {
         let started = Instant::now();
         // A Node tool's directory is not one the sandbox is given yet.
@@ -478,7 +507,7 @@ impl Runtime {
             memory_bytes: inv.limits.memory_bytes,
             output_cap: 64 << 10,
             internet: inv.internet,
-            cpus: std::thread::available_parallelism().map_or(1, |n| n.get()),
+            cpus: host.cpus as usize,
             cache_dir: PathBuf::from(IWCI_DIR).join("cache"),
             packages: packages.iter().map(spec_package).collect(),
             tools,
@@ -571,6 +600,7 @@ impl Runtime {
             modes: inv.modes.clone(),
             root: "/".into(),
             read_only: false,
+            budget: budget.clone(),
         })?;
         served.push(root_serving);
         let mut mounts = Vec::new();
@@ -585,6 +615,7 @@ impl Runtime {
                 modes,
                 root: "/".into(),
                 read_only: true,
+                budget: None,
             })?;
             served.push(s);
             mounts.push(Mount {
@@ -598,6 +629,7 @@ impl Runtime {
             modes: Modes::over(Arc::new(iwci_modes)),
             root: "/".into(),
             read_only: true,
+            budget: None,
         })?;
         served.push(s);
         mounts.push(Mount {
@@ -605,14 +637,16 @@ impl Runtime {
             read_only: true,
             gofer,
         });
+        let small: Arc<dyn iwci_vfs::WriteBudget> = Arc::new(Small::default());
         let out = iwci_vfs::SnapshotBuilder::new()
             .freeze()
-            .fork_limited(Arc::new(Small::default()));
+            .fork_limited(small.clone());
         let (s, gofer) = serve(Export {
             fs: out.as_dyn(),
             modes: out.modes(),
             root: "/".into(),
             read_only: false,
+            budget: Some(small),
         })?;
         served.push(s);
         mounts.push(Mount {
@@ -626,6 +660,7 @@ impl Runtime {
                 modes: Modes::default(),
                 root: "/".into(),
                 read_only: false,
+                budget: budget.clone(),
             })?;
             served.push(s);
             mounts.push(Mount {
@@ -659,6 +694,7 @@ impl Runtime {
                     Limits {
                         memory: inv.limits.memory_bytes.saturating_add(host.overhead),
                         pids: PIDS,
+                        cpus: Some(host.cpus),
                     },
                 )
                 .map_err(setup)?,
@@ -744,6 +780,8 @@ impl Runtime {
         // loaded the environment: from then on the job may have its whole
         // `memory:` on top, and no more.
         let mut baseline: Option<u64> = None;
+        let mut reclaiming = iwci_sandbox::cgroup::Reclaiming::default();
+        let mut limit = inv.limits.memory_bytes.saturating_add(host.overhead);
         let (status, stopped) = loop {
             match sandbox.wait_for(Some(POLL)) {
                 Ok(Some(status)) => break (Some(status), None),
@@ -757,9 +795,16 @@ impl Runtime {
             {
                 let own = u.memory.min(host.overhead);
                 baseline = Some(own);
+                limit = inv.limits.memory_bytes.saturating_add(own);
                 if let Some(cgroup) = &cgroup {
-                    let _ = cgroup.set_memory_max(inv.limits.memory_bytes.saturating_add(own));
+                    let _ = cgroup.set_memory_max(limit);
                 }
+            }
+            let now = Instant::now();
+            if let Some(u) = &u
+                && reclaiming.stuck(now, u, limit)
+            {
+                break (None, Some(Stop::OutOfMemory));
             }
             // The whole sandbox, against what the job reserved with it.
             if let Some(u) = u
@@ -770,7 +815,6 @@ impl Runtime {
                     watch(held);
                 }
             }
-            let now = Instant::now();
             if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
                 break (None, Some(Stop::Cancelled));
             }
@@ -801,12 +845,16 @@ impl Runtime {
         let _ = std::fs::remove_dir_all(&state_dir);
         let _ = std::fs::remove_file(&log_path);
 
-        let killed_for_memory = used.out_of_memory;
-        let exit_code = match (&result, status) {
+        // What the runner saw for itself decides how the job ended: the
+        // sandbox's own exit status, its cgroup and its clock. The runner
+        // inside only adds what only it can know (a refused allocation, a
+        // trap, a service that failed), which is the job's to say anyway.
+        let killed_for_memory = used.out_of_memory || stopped == Some(Stop::OutOfMemory);
+        let exit_code = match status {
+            _ if stopped == Some(Stop::OutOfMemory) => 137,
             _ if stopped.is_some() => crate::TIMEOUT_EXIT_CODE,
-            (Some(r), _) => r.exit_code,
-            (None, Some(s)) if libc::WIFEXITED(s) => libc::WEXITSTATUS(s),
-            (None, Some(s)) if libc::WIFSIGNALED(s) => 128 + libc::WTERMSIG(s),
+            Some(s) if libc::WIFEXITED(s) => libc::WEXITSTATUS(s),
+            Some(s) if libc::WIFSIGNALED(s) => 128 + libc::WTERMSIG(s),
             _ => crate::CRASH_EXIT_CODE,
         };
         let out = stdout.take();
@@ -835,8 +883,7 @@ impl Runtime {
             stderr: err.bytes,
             truncated: out.truncated || err.truncated,
             duration: started.elapsed(),
-            timed_out: stopped == Some(Stop::Timeout)
-                || (stopped.is_none() && result.as_ref().is_some_and(|r| r.timed_out)),
+            timed_out: stopped == Some(Stop::Timeout),
             cancelled: stopped == Some(Stop::Cancelled),
             stalled_after: self.stall_after.filter(|_| stopped == Some(Stop::Stalled)),
             out_of_memory: killed_for_memory || result.as_ref().is_some_and(|r| r.out_of_memory),

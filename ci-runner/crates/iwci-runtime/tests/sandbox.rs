@@ -200,6 +200,7 @@ impl Fixture {
                 "bash",
                 script,
                 inv,
+                None,
             )
             .unwrap();
         eprintln!(
@@ -374,7 +375,11 @@ fn a_sandboxed_job_is_stopped_at_its_timeout_and_its_memory() {
     if std::env::var_os("IWCI_TEST_CGROUP").is_none() {
         return;
     }
-    let job = job(&[]);
+    // Compiled first, so the five seconds are the job's alone (a cold
+    // cache, as in CI, takes longer than that to start a sandbox).
+    let job = self::job(&[]);
+    let warm = fx.run(invocation(&job), "true");
+    assert_eq!(warm.exit_code, 0, "{}", text(&warm.stderr));
     let mut inv = invocation(&job);
     inv.limits.timeout = Duration::from_secs(5);
     let started = std::time::Instant::now();

@@ -20,9 +20,10 @@ variable "hosts" {
     - iwci_binary_path: this host's first binary, when its architecture
       differs from `iwci_binary_path`'s (an ARM64 host beside x86_64 ones).
     - native_sandbox: prepare the host for native jobs (Bun) in gVisor
-      sandboxes: the pinned gVisor release in /opt/iwci/lib, an AppArmor
-      profile that lets the runner's binary (only) create user namespaces,
-      and `Delegate=memory cpu pids` in the unit. Off by default; the
+      sandboxes: the pinned gVisor release in /opt/iwci/lib, the sandbox
+      helper (a root-owned copy of the uploaded binary) with an AppArmor
+      profile that lets it (only) create user namespaces, and
+      `Delegate=memory cpu pids` in the unit. Off by default; the
       runner's own flag for native jobs is separate.
     - tunnel_token: optional Cloudflare Tunnel token; when set, cloudflared
       is installed as a service and the tunnel's public hostname should

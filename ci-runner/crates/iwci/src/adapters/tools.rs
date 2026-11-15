@@ -131,6 +131,9 @@ impl Executor<Resolved> for RuntimeExecutor {
             .iter()
             .map(|s| service(s, inv.fs))
             .collect::<Result<Vec<_>, _>>()?;
+        // What a sandbox's new files and directories are charged to, as its
+        // writes are.
+        let budget = inv.fs.budget();
         let mut invocation = RtInvocation {
             args: Vec::new(),
             env,
@@ -250,7 +253,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                         .map_err(|e| e.to_string())?;
                     (o, None)
                 } else {
-                    self.run_sandboxed(&natives, &webcs, entry, script, invocation)?
+                    self.run_sandboxed(&natives, &webcs, entry, script, invocation, budget)?
                 };
                 Execution {
                     exit_code: o.exit_code,
@@ -297,6 +300,7 @@ impl RuntimeExecutor {
         entry: &str,
         script: &str,
         invocation: RtInvocation,
+        budget: Option<Arc<dyn iwci_vfs::WriteBudget>>,
     ) -> Result<(iwci_runtime::Outcome, Option<SandboxUsage>), String> {
         use iwci_runtime::sandbox::{Content, NativeTool, Placed};
         let Some(host) = &self.sandbox else {
@@ -352,7 +356,7 @@ impl RuntimeExecutor {
         }
         let o = self
             .runtime
-            .run_script_sandboxed(host, &tools, webcs, entry, script, invocation)
+            .run_script_sandboxed(host, &tools, webcs, entry, script, invocation, budget)
             .map_err(|e| e.to_string())?;
         let sandbox = o.sandbox.map(|s| SandboxUsage {
             overhead_mib: s.overhead_bytes.div_ceil(1 << 20),
@@ -370,6 +374,7 @@ impl RuntimeExecutor {
         _: &str,
         _: &str,
         _: RtInvocation,
+        _: Option<Arc<dyn iwci_vfs::WriteBudget>>,
     ) -> Result<(iwci_runtime::Outcome, Option<SandboxUsage>), String> {
         Err(format!(
             "`{}` is a native program, which runs in a gVisor sandbox, only on Linux",

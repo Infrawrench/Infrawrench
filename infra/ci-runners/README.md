@@ -116,17 +116,24 @@ script then:
 - downloads gVisor `release-20261109.0` for the host's architecture into
   `/opt/iwci/lib/gvisor-20261109.0`, checked against the SHA-512 pinned in
   the script (the same pins as `crates/iwci-sandbox/tests/fixtures.sh`);
-- loads `files/apparmor-iwci` as `/etc/apparmor.d/iwci`: the runner's
-  binary, and only it, may create user namespaces, which Ubuntu otherwise
-  keeps from unprivileged programs. The runner starts each sandbox in new
-  namespaces as an unprivileged user, and the sandbox drops every
-  capability before it runs the job;
+- installs the sandbox helper, `/opt/iwci/lib/iwci-sandbox-spawn`: a
+  root-owned copy of the uploaded binary (never of the installed one, which
+  its user can replace), which under that name only starts gVisor's
+  root-owned Sentry in new namespaces (`crates/iwci-sandbox/src/helper.rs`).
+  A new upload reinstalls it; a runner whose helper protocol is newer than
+  the helper's runs no native jobs until then, and says so;
+- loads `files/apparmor-iwci` as `/etc/apparmor.d/iwci-sandbox-spawn`: the
+  helper, and only it, may create user namespaces, which Ubuntu otherwise
+  keeps from unprivileged programs. The runner's own binary gets nothing.
+  The sandbox runs as an unprivileged user and drops every capability
+  before it runs the job;
 - writes `Delegate=memory cpu pids` into the unit, so the runner has a
   cgroup subtree of its own: it moves itself into `runner/` and gives each
   sandbox `jobs/<id>`, with `memory.max` at the job's `memory:`,
   `memory.swap.max` 0 (gVisor keeps a job's memory in one file the kernel
   would rather swap than refuse) and `pids.max`;
-- sets `IWCI_NATIVE_SANDBOX` in the unit to that gVisor directory, which
+- sets `IWCI_SANDBOX_HELPER` in the unit to the helper, and
+  `IWCI_NATIVE_SANDBOX` to that gVisor directory, which
   is what makes the runner offer native tools (`tools: [builtin:bun@1.4]`;
   `/v1/capacity` says `native_sandbox: true`).
 

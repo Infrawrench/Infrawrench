@@ -16,20 +16,25 @@ if [[ ! -x /opt/iwci/bin/iwci ]]; then
 else
   echo "keeping iwci $(/opt/iwci/bin/iwci version) (it updates itself)"
 fi
-rm -f /tmp/iwci.upload
 
 install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
 install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
 rm -f /tmp/iwci.env /tmp/iwci.service
 
-# Native jobs (Bun) run in a gVisor sandbox per job, which the runner
-# starts itself (crates/iwci-sandbox): off unless the host's
-# `native_sandbox` is set. It needs the pinned gVisor release, a way for
-# the runner to create user namespaces (an AppArmor profile for its binary
-# only, files/apparmor-iwci) and a cgroup subtree of its own for each
-# sandbox's memory, CPU and process limits (`Delegate=` in the unit, which
-# Terraform writes when the flag is set). Turning it off removes the
-# profile; the release stays, unused.
+# Native jobs (Bun) run in a gVisor sandbox per job (crates/iwci-sandbox):
+# off unless the host's `native_sandbox` is set. It needs the pinned gVisor
+# release, a cgroup subtree of the runner's own for each sandbox's memory,
+# CPU and process limits (`Delegate=` in the unit, which Terraform writes
+# when the flag is set), and a way to create the sandbox's user namespaces.
+# The runner may not create them: its binary belongs to its user, who
+# could replace it. A root-owned copy of the uploaded binary, the sandbox
+# helper, may (an AppArmor profile for that path only,
+# files/apparmor-iwci); under that name the binary is only the helper,
+# which starts nothing but the root-owned Sentry. It is the upload's copy,
+# never the installed binary's (which its user can change), refreshed on
+# every install; a runner of a newer helper protocol leaves native jobs
+# off until then. Turning it off removes the profile and the helper; the
+# release stays, unused.
 native="$(cat /tmp/iwci-native 2>/dev/null || true)"
 rm -f /tmp/iwci-native
 # Also named in iwci.service.tftpl (IWCI_NATIVE_SANDBOX): bump both.
@@ -57,17 +62,28 @@ if [[ "$native" == "true" ]]; then
     rm -rf "$tmp"
     echo "installed gVisor release-$gvisor_release in $gvisor_dir"
   fi
-  install -o root -g root -m 0644 /tmp/apparmor-iwci /etc/apparmor.d/iwci
-  apparmor_parser -r /etc/apparmor.d/iwci
+  install -o root -g root -m 0755 /tmp/iwci.upload /opt/iwci/lib/iwci-sandbox-spawn
+  # The profile of earlier installs, which named the runner's own binary.
+  if [[ -f /etc/apparmor.d/iwci ]]; then
+    apparmor_parser -R /etc/apparmor.d/iwci || true
+    rm -f /etc/apparmor.d/iwci
+  fi
+  install -o root -g root -m 0644 /tmp/apparmor-iwci /etc/apparmor.d/iwci-sandbox-spawn
+  apparmor_parser -r /etc/apparmor.d/iwci-sandbox-spawn
   # gVisor runs on its systrap platform, which needs no device; KVM (a
   # host with /dev/kvm and `iwci` in group `kvm`) is not used.
-  echo "native sandbox enabled: AppArmor profile iwci loaded, gVisor in $gvisor_dir"
-elif [[ -f /etc/apparmor.d/iwci ]]; then
-  apparmor_parser -R /etc/apparmor.d/iwci || true
-  rm -f /etc/apparmor.d/iwci
-  echo "native sandbox disabled: AppArmor profile iwci removed"
+  echo "native sandbox enabled: helper and its AppArmor profile installed, gVisor in $gvisor_dir"
+else
+  for profile in iwci iwci-sandbox-spawn; do
+    if [[ -f "/etc/apparmor.d/$profile" ]]; then
+      apparmor_parser -R "/etc/apparmor.d/$profile" || true
+      rm -f "/etc/apparmor.d/$profile"
+      echo "native sandbox disabled: AppArmor profile $profile removed"
+    fi
+  done
+  rm -f /opt/iwci/lib/iwci-sandbox-spawn
 fi
-rm -f /tmp/apparmor-iwci
+rm -f /tmp/apparmor-iwci /tmp/iwci.upload
 
 # Core dumps, so a crash of the runner leaves a backtrace (#947): the unit
 # raises its core limit, systemd-coredump keeps each core compressed in
