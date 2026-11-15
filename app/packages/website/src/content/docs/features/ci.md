@@ -53,7 +53,7 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | Environment                    | What it has                                                                      |
 | ------------------------------ | -------------------------------------------------------------------------------- |
 | `env:bash@5`                   | bash, coreutils, sed, grep and findutils                                         |
-| `env:bash-node@24`             | the same, plus `node` (Node 24 compatible), `npm` and `pnpm`                     |
+| `env:bash-node@24`             | the same, plus `node` (Node 24 compatible), `npm`, `pnpm` and `npx`              |
 | `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                            |
 | `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
@@ -85,6 +85,20 @@ jobs:
     run: |
       go vet ./...
       go test ./...
+```
+
+In `env:bash-node`, a job can install a command-line tool for itself with `npm i -g`, `pnpm add -g`, `npx` or `pnpm dlx`, and run it by name. These fetch from the npm registry while the job runs and, unlike your repository's dependencies, are not checked against a lockfile, so pin an exact version. The tool is gone when the job ends; to keep it between runs, cache `/root/.local/share/pnpm`, where global installs go:
+
+```yaml
+jobs:
+  deploy:
+    using: env:bash-node@24
+    cache:
+      key: global-clis-1
+      paths: [/root/.local/share/pnpm]
+    run: |
+      npm i -g some-cli@4.2.1
+      some-cli deploy
 ```
 
 In `env:bash-node`, Node's module compile cache works: with `NODE_COMPILE_CACHE` set to a directory, each `node` keeps the compiled code of the modules it loads there, and the next one reuses it instead of compiling them again. To keep it between runs, put it inside the repository's directory (jobs start in `/app`, where the repository is checked out) and cache it, which keeps a pull request's copy apart from your branches':

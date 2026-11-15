@@ -578,6 +578,8 @@ pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
     ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
+    ("pnpm-global.cjs", include_bytes!("../node/pnpm-global.cjs")),
+    ("spawn-path.cjs", include_bytes!("../node/spawn-path.cjs")),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
     ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),
     (
@@ -585,6 +587,17 @@ const NODE_SUPPORT: &[(&str, &[u8])] = &[
         include_bytes!("../node/wasm-util.LICENSE"),
     ),
 ];
+
+/// `npx`, for an environment job with `node`: npm's own, which Edge.js
+/// ships (its `npm` command is pnpm) without putting it on `PATH`. A tool of
+/// the same name wins over it.
+const NPX: &[u8] = b"#!/bin/bash\n\
+# npm's npx, from Edge.js's copy of npm (the runner's node support).\n\
+if [[ ! -f /npm/bin/npx-cli.js ]]; then\n\
+  echo 'npx: this environment has no npm to run it from; try pnpm dlx' >&2\n\
+  exit 127\n\
+fi\n\
+exec node /npm/bin/npx-cli.js \"$@\"\n";
 
 /// `NODE_OPTIONS` for an environment job: the support preload first, then
 /// whatever the job set.
@@ -693,6 +706,9 @@ fn job_root(
                 write_command(&bin, name, bytes)?;
             }
         }
+        if node_support {
+            write_command(&bin, "npx", NPX)?;
+        }
         // A tool of the same name wins over a mode command.
         for command in commands {
             write_command(&bin, &command.name, &command.module.bytes)?;
@@ -746,6 +762,20 @@ fn job_root(
             .map_err(mount_err)?;
     }
     Ok(root)
+}
+
+/// Makes the directory `HOME` names in a shell job's file system. The
+/// runner sets `HOME=/root` for every job, and nothing in an environment
+/// made it: `pnpm dlx` failed with "lstat '/root'", and `pnpm add -g` and
+/// npm's caches had nowhere to start from. Best effort: a `HOME` the job set
+/// somewhere it cannot be made is the job's to sort out.
+fn make_home(fs: &(dyn FileSystem + Send + Sync), env: &[(String, String)]) {
+    let Some((_, home)) = env.iter().rev().find(|(k, _)| k == "HOME") else {
+        return;
+    };
+    if home.starts_with('/') && home.len() > 1 {
+        let _ = iwci_vfs::create_dir_all(fs, home);
+    }
 }
 
 /// The user database of an environment job: `root`, who a job runs as
@@ -1047,6 +1077,9 @@ impl Starter<'_> {
             builder.add_env("PWD", process.cwd);
         }
         builder.set_runtime(self.runtime.clone());
+        if shell {
+            make_home(self.fs.as_ref(), &process.env);
+        }
         let (program, package_dirs) = match process.program {
             Program::Command { uses, name } => {
                 let uses = with_user_database(&uses)?;
