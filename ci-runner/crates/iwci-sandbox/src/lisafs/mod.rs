@@ -104,6 +104,13 @@ impl Drop for Serving {
     }
 }
 
+pub(crate) use sock::{cmsg_space, fill_rights};
+
+/// A `SOCK_SEQPACKET` socket pair, close-on-exec.
+pub(crate) fn seqpacket_pair() -> io::Result<(OwnedFd, OwnedFd)> {
+    sock::socket_pair(libc::SOCK_SEQPACKET)
+}
+
 /// A `SOCK_STREAM` socket pair for one mount: serve the first, give the
 /// sandbox the second.
 pub fn socket_pair() -> io::Result<(OwnedFd, OwnedFd)> {

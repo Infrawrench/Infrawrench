@@ -2950,6 +2950,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.4",
  "hex",
+ "iwci-sandbox",
  "iwci-vfs",
  "libc",
  "regex",
@@ -2981,6 +2982,7 @@ dependencies = [
  "iwci-vfs",
  "libc",
  "serde_json",
+ "smoltcp",
  "virtual-fs",
 ]
 

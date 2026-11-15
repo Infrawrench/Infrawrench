@@ -76,6 +76,8 @@ pub struct Sandbox {
     id: String,
     control: PathBuf,
     reaped: bool,
+    /// The sandbox's end of its network link, handed over at start.
+    link: Option<OwnedFd>,
 }
 
 /// The mount type that keeps gVisor's tmpfs off `/tmp`: see [`spec`].
@@ -145,14 +147,17 @@ pub fn spec(config: &Config) -> Value {
 
 /// Starts the Sentry for `config` with `gofer` as the root file system's
 /// lisafs connection and `stdio` as the job's standard streams. `log` is
-/// the Sentry's own standard output and error. The job does not run until
-/// [`Sandbox::start`].
+/// the Sentry's own standard output and error. `link`, the sandbox's end
+/// of a [`crate::net::Gateway`], is its network; without one it has only
+/// its loopback. The job does not run until [`Sandbox::start`].
+#[allow(clippy::too_many_arguments)]
 pub fn boot(
     release: &Release,
     config: &Config,
     gofer: OwnedFd,
     stdio: [OwnedFd; 3],
     log: OwnedFd,
+    link: Option<OwnedFd>,
 ) -> io::Result<Sandbox> {
     fs::DirBuilder::new()
         .mode(0o700)
@@ -197,7 +202,13 @@ pub fn boot(
         "runsc-sandbox".into(),
         format!("--root={}", config.state_dir.display()),
         format!("--platform={}", config.platform),
-        "--network=none".into(),
+        // With a link, the sandbox's stack gets an interface on it
+        // (`crate::net`); without one, only its loopback.
+        if link.is_some() {
+            "--network=sandbox".into()
+        } else {
+            "--network=none".into()
+        },
         "--file-access=exclusive".into(),
         // No host file access at all: directfs would have the Sentry open
         // host files itself, through descriptors a gofer donates.
@@ -233,6 +244,7 @@ pub fn boot(
         id: config.id.clone(),
         control,
         reaped: false,
+        link,
     })
 }
 
@@ -280,24 +292,42 @@ impl Sandbox {
     }
 
     fn configure_and_start(&self) -> io::Result<()> {
-        self.call(
-            "containerManager.SetNetworkArgs",
-            json!({
-                "LoopbackLinks": [{
-                    "Name": "lo",
-                    "Multicast": false,
-                    "Addresses": [
-                        { "Address": "127.0.0.1", "PrefixLen": 8 },
-                        { "Address": "::1", "PrefixLen": 128 },
-                    ],
-                    "Routes": [
-                        { "Destination": { "IP": "127.0.0.0", "Mask": "/wAAAA==" }, "Gateway": "", "MTU": 0 },
-                        { "Destination": { "IP": "::1", "Mask": "/////////////////////w==" }, "Gateway": "", "MTU": 0 },
-                    ],
-                    "GVisorGRO": false,
-                }],
-            }),
-        )?;
+        let mut args = json!({
+            "LoopbackLinks": [{
+                "Name": "lo",
+                "Multicast": false,
+                "Addresses": [
+                    { "Address": "127.0.0.1", "PrefixLen": 8 },
+                    { "Address": "::1", "PrefixLen": 128 },
+                ],
+                "Routes": [
+                    { "Destination": { "IP": "127.0.0.0", "Mask": "/wAAAA==" }, "Gateway": "", "MTU": 0 },
+                    { "Destination": { "IP": "::1", "Mask": "/////////////////////w==" }, "Gateway": "", "MTU": 0 },
+                ],
+                "GVisorGRO": false,
+            }],
+        });
+        let fds: Vec<RawFd> = self.link.iter().map(|l| l.as_raw_fd()).collect();
+        if !fds.is_empty() {
+            args["FDBasedLinks"] = json!([link_args()]);
+            args["Defaultv4Gateway"] = json!({
+                "Name": "eth0",
+                "Route": {
+                    "Destination": { "IP": "0.0.0.0", "Mask": mask(0, 4) },
+                    "Gateway": crate::net::GATEWAY_V4.to_string(),
+                    "MTU": 0,
+                },
+            });
+            args["Defaultv6Gateway"] = json!({
+                "Name": "eth0",
+                "Route": {
+                    "Destination": { "IP": "::", "Mask": mask(0, 16) },
+                    "Gateway": crate::net::GATEWAY_V6.to_string(),
+                    "MTU": 0,
+                },
+            });
+        }
+        self.call_with("containerManager.SetNetworkArgs", args, &fds)?;
         self.call("containerManager.StartRoot", json!(self.id))?;
         Ok(())
     }
@@ -339,10 +369,19 @@ impl Sandbox {
 
     /// One call to the Sentry's control server: its result.
     fn call(&self, method: &str, arg: Value) -> io::Result<Value> {
+        self.call_with(method, arg, &[])
+    }
+
+    /// A call with descriptors (urpc's `FilePayload`), which ride the
+    /// first bytes of the request.
+    fn call_with(&self, method: &str, arg: Value, fds: &[RawFd]) -> io::Result<Value> {
         let mut stream = UnixStream::connect(&self.control)?;
-        stream.write_all(&serde_json::to_vec(
-            &json!({ "method": method, "arg": arg }),
-        )?)?;
+        let request = serde_json::to_vec(&json!({ "method": method, "arg": arg }))?;
+        let mut sent = 0;
+        if !fds.is_empty() {
+            sent = send_with_fds(stream.as_raw_fd(), &request, fds)?;
+        }
+        stream.write_all(&request[sent..])?;
         let reply: Value = read_json(&mut stream)?;
         if reply.get("success").and_then(Value::as_bool) != Some(true) {
             let err = reply
@@ -363,6 +402,92 @@ fn describe(status: i32) -> String {
     } else {
         format!("status {status}")
     }
+}
+
+/// The sandbox's interface on its link: raw IP packets (no link-layer
+/// address, so no Ethernet header), one per message, the gateway's prefix.
+fn link_args() -> Value {
+    use crate::net::{MTU, PREFIX_V4, PREFIX_V6, SANDBOX_V4, SANDBOX_V6};
+    let v4_net = std::net::Ipv4Addr::from(u32::from(SANDBOX_V4) & (u32::MAX << (32 - PREFIX_V4)));
+    let v6_net =
+        std::net::Ipv6Addr::from(u128::from(SANDBOX_V6) & (u128::MAX << (128 - PREFIX_V6)));
+    json!({
+        "Name": "eth0",
+        "InterfaceIndex": 0,
+        "MTU": MTU,
+        "Multicast": false,
+        "Addresses": [
+            { "Address": SANDBOX_V4.to_string(), "PrefixLen": PREFIX_V4 },
+            { "Address": SANDBOX_V6.to_string(), "PrefixLen": PREFIX_V6 },
+        ],
+        "Routes": [
+            { "Destination": { "IP": v4_net.to_string(), "Mask": mask(PREFIX_V4, 4) }, "Gateway": "", "MTU": 0 },
+            { "Destination": { "IP": v6_net.to_string(), "Mask": mask(PREFIX_V6, 16) }, "Gateway": "", "MTU": 0 },
+        ],
+        "GSOMaxSize": 0,
+        "GVisorGSOEnabled": false,
+        "GVisorGRO": false,
+        "TXChecksumOffload": false,
+        "RXChecksumOffload": false,
+        "LinkAddress": null,
+        "QDisc": 0,
+        "NumChannels": 1,
+        "ProcessorsPerChannel": 0,
+        // A socket pair, not a packet socket: nothing to ask the host.
+        "IsPacket": [false],
+        "PreConfigured": true,
+        "IsProxy": false,
+    })
+}
+
+/// A prefix as Go's `net.IPMask` marshals it: the mask's bytes, base64.
+fn mask(prefix: u8, bytes: usize) -> String {
+    let mut raw = vec![0u8; bytes];
+    for (i, b) in raw.iter_mut().enumerate() {
+        let bits = (prefix as usize).saturating_sub(i * 8).min(8);
+        *b = if bits == 0 { 0 } else { 0xffu8 << (8 - bits) };
+    }
+    base64(&raw)
+}
+
+fn base64(raw: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in raw.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, b)| n | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Sends `bytes` with `fds` attached; how many bytes went.
+fn send_with_fds(sock: RawFd, bytes: &[u8], fds: &[RawFd]) -> io::Result<usize> {
+    let mut control = vec![0u8; crate::lisafs::cmsg_space(fds.len())];
+    let mut iov = libc::iovec {
+        iov_base: bytes.as_ptr() as *mut _,
+        iov_len: bytes.len(),
+    };
+    // SAFETY: zeroed is a valid msghdr; it points at buffers that outlive
+    // the call.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    crate::lisafs::fill_rights(&mut msg, &mut control, fds);
+    // SAFETY: as above.
+    let n = unsafe { libc::sendmsg(sock, &msg, libc::MSG_NOSIGNAL) };
+    if n < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(n as usize)
 }
 
 impl Drop for Sandbox {

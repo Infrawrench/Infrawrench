@@ -28,6 +28,7 @@ iwci-store = { path = "crates/iwci-store" }
 iwci-git = { path = "crates/iwci-git" }
 iwci-deps = { path = "crates/iwci-deps" }
 iwci-runtime = { path = "crates/iwci-runtime" }
+iwci-sandbox = { path = "crates/iwci-sandbox" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
