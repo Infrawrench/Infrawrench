@@ -68,10 +68,13 @@ jobs:
 
       # The build, and its check that the binary asks for no newer glibc or
       # libstdc++ than Ubuntu 22.04 has.
+      # The version is compiled in from IWCI_VERSION, as the release sets it.
       - name: Build
         run: |
+          IWCI_VERSION="$(tr -d '[:space:]' < VERSION)"
+          export IWCI_VERSION
           ./release-build.sh
-          test "$(./target/release/iwci version)" = "$(tr -d '[:space:]' < VERSION)"
+          test "$(./target/release/iwci version)" = "$IWCI_VERSION"
 
       # Kept a few days so the binary can be tried on a host before a
       # release is cut. Never published from here.
