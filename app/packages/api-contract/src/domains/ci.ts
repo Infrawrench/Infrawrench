@@ -5,11 +5,19 @@
  * turns it on, the status endpoint says so and everything else is a 404.
  * Runs come from the GitHub App's push and pull request deliveries; a pull
  * request from a fork waits for someone with `ci:approve`, and runs without
- * secrets once approved.
+ * secrets once approved. Someone with `ci:approve` may also start a
+ * pipeline with `on.manual` by hand, on a branch of the repository itself.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
-import { CI_EXECUTOR_KIND_IDS, CI_JOB_STATUSES, CI_RUN_STATUSES } from "@infrawrench/client-core";
+import {
+  CI_EVENTS,
+  CI_EXECUTOR_KIND_IDS,
+  CI_INPUT_TYPES,
+  CI_JOB_STATUSES,
+  CI_MAX_INPUTS,
+  CI_RUN_STATUSES,
+} from "@infrawrench/client-core";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
 import { BadRequest, Conflict, NotFound } from "../http/errors";
@@ -102,9 +110,9 @@ export const CiJobOutputSchema = Schema.Struct({
 export const CiRunSchema = Schema.Struct({
   id: Schema.String,
   repoFullName: Schema.String,
-  event: Schema.Literals(["push", "pull-request", "schedule"]).annotate({
+  event: Schema.Literals(CI_EVENTS).annotate({
     description:
-      "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head.",
+      "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head. `manual`: a person, for a pipeline with `on.manual`, on a branch they chose.",
   }),
   headRef: Schema.String,
   sha: Schema.String,
@@ -137,7 +145,13 @@ export const CiRunSchema = Schema.Struct({
   ),
   pipelineFile: Schema.optionalKey(
     Schema.String.annotate({
-      description: "A scheduled run's pipeline file, whose `on.schedule` cron started it.",
+      description: "A scheduled or manual run's pipeline file: the one it runs.",
+    }),
+  ),
+  inputs: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description:
+        "A manual run's inputs as it was started with them, by name, as text (`true`, `4`, `staging`). Inputs left out read as the pipeline's defaults.",
     }),
   ),
   concurrencyGroups: Schema.optionalKey(
@@ -424,6 +438,69 @@ export const CiSchedulesSchema = Schema.Struct({
   schedules: Schema.Array(CiRepoScheduleSchema),
 }).annotate({ identifier: "CiSchedules" });
 
+export const CiInputSchema = Schema.Struct({
+  name: Schema.String,
+  type: Schema.Literals(CI_INPUT_TYPES),
+  description: Schema.optionalKey(Schema.String),
+  required: Schema.Boolean.annotate({
+    description: "A run cannot start without a value; an empty one counts as none.",
+  }),
+  default: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "As text: `true` or `false` for a boolean, the number as written.",
+    }),
+  ),
+  options: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({ description: "A `choice` input's values." }),
+  ),
+}).annotate({ identifier: "CiInput" });
+
+export const CiManualPipelineSchema = Schema.Struct({
+  file: Schema.String.annotate({ description: "The pipeline file, under `.infrawrench/ci/`." }),
+  name: Schema.String,
+  inputs: Schema.Array(CiInputSchema),
+}).annotate({ identifier: "CiManualPipeline" });
+
+export const CiRepoManualSchema = Schema.Struct({
+  installationId: Schema.Int,
+  repoFullName: Schema.String,
+  defaultBranch: Schema.String,
+  sha: Schema.NullOr(Schema.String).annotate({
+    description: "The default branch's commit the pipelines were read from.",
+  }),
+  pipelines: Schema.Array(CiManualPipelineSchema),
+  refreshedAt: Schema.NullOr(IsoDateTime),
+}).annotate({ identifier: "CiRepoManual" });
+
+export const CiManualPipelinesSchema = Schema.Struct({
+  repositories: Schema.Array(CiRepoManualSchema),
+}).annotate({ identifier: "CiManualPipelines" });
+
+export const CiStartRunSchema = Schema.Struct({
+  installationId: Schema.Int.annotate({
+    description: "The GitHub App installation of the account that runs CI for the repository.",
+  }),
+  repoFullName: Schema.String.annotate({ description: "`owner/name`." }),
+  pipelineFile: Schema.String.annotate({
+    description:
+      "The pipeline to run, as `GET /ci/manual` lists it (`.infrawrench/ci/deploy.yml`).",
+  }),
+  branch: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "A branch of the repository itself, whose head runs. The default branch when omitted.",
+    }),
+  ),
+  inputs: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Boolean, Schema.Finite]))
+      .check(Schema.isMaxProperties(CI_MAX_INPUTS))
+      .annotate({
+        description:
+          "Values for the pipeline's `on.manual.inputs`, by name: a string, a boolean or a number each. Inputs left out read as their defaults.",
+      }),
+  ),
+}).annotate({ identifier: "CiStartRun" });
+
 export const CiCacheClearedSchema = Schema.Struct({
   installationId: Schema.Int,
   repo: Schema.String,
@@ -533,6 +610,31 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:approve")
       .annotate(OpenApi.Summary, "Decline to run a fork's pull request commit")
       .annotate(SuccessDescription, "Rejected"),
+    HttpApiEndpoint.post("startRun", "/runs", {
+      params: OrgParams,
+      payload: CiStartRunSchema,
+      success: CiRunSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:approve")
+      .annotate(OpenApi.Summary, "Start a pipeline by hand")
+      .annotate(
+        OpenApi.Description,
+        "Queues a run of one pipeline with `on.manual`, at the head of a branch of the repository itself, with the inputs given. The pipeline must be listed by `GET /ci/manual`, and the inputs are checked against its declaration there; the runner checks them again against the branch's own file. The run is trusted like a push to that branch: it gets the repository's secrets and only what is lent to that branch.",
+      )
+      .annotate(SuccessDescription, "The new run, queued"),
+    HttpApiEndpoint.get("listManual", "/manual", {
+      params: OrgParams,
+      success: CiManualPipelinesSchema,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "Pipelines that can be started by hand")
+      .annotate(
+        OpenApi.Description,
+        "Each repository's pipelines with `on.manual` on its default branch, as last read, with their inputs. They are read again on every push to the default branch.",
+      )
+      .annotate(SuccessDescription, "Manual pipelines per repository"),
     HttpApiEndpoint.post("retryRun", "/runs/:runId/retry", {
       params: RunParams,
       payload: Schema.Struct({

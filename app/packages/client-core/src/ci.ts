@@ -85,10 +85,11 @@ export interface CiDownloadLink {
 }
 
 /**
- * What started a run: a push, a pull request, or a pipeline's
- * `on.schedule` cron on the default branch.
+ * What started a run: a push, a pull request, a pipeline's `on.schedule`
+ * cron on the default branch, or a person starting an `on.manual` pipeline
+ * on a branch they chose.
  */
-export const CI_EVENTS = ["push", "pull-request", "schedule"] as const;
+export const CI_EVENTS = ["push", "pull-request", "schedule", "manual"] as const;
 
 export type CiEvent = (typeof CI_EVENTS)[number];
 
@@ -96,7 +97,10 @@ export interface CiRun {
   id: string;
   repoFullName: string;
   event: CiEvent;
-  /** The branch pushed, the pull request's head branch, or the default branch for a schedule. */
+  /**
+   * The branch pushed, the pull request's head branch, the default branch for
+   * a schedule, or the branch a manual run was started on.
+   */
   headRef: string;
   sha: string;
   pullNumber: number | null;
@@ -104,6 +108,7 @@ export interface CiRun {
   headRepoFullName: string | null;
   /** A pull request from a fork: runs only once approved, and without secrets. */
   fromFork: boolean;
+  /** Who pushed or opened the pull request (a GitHub login), or who started a manual run. */
   actorLogin: string | null;
   status: CiRunStatus;
   statusReason: string | null;
@@ -121,8 +126,10 @@ export interface CiRun {
   retriedAsRunId?: string | null;
   /** Run without reading the task cache: every `task-cache:` job ran. */
   noTaskCache?: boolean;
-  /** A scheduled run's pipeline file, whose `on.schedule` cron started it. */
+  /** A scheduled or manual run's pipeline file: the one it runs. */
   pipelineFile?: string;
+  /** A manual run's inputs, by name, as text (`true`, `4`, `staging`). */
+  inputs?: Record<string, string>;
   /**
    * The concurrency groups its pipelines hold or wait for (`concurrency:`),
    * once the runners have read them; absent before then.
@@ -236,6 +243,147 @@ export interface CiRepoSchedule {
 
 export interface CiSchedules {
   schedules: CiRepoSchedule[];
+}
+
+/** What an `on.manual` input takes. */
+export const CI_INPUT_TYPES = ["string", "boolean", "choice", "number"] as const;
+
+export type CiInputType = (typeof CI_INPUT_TYPES)[number];
+
+/** One `on.manual` input of a pipeline, as the runners read it. */
+export interface CiInput {
+  name: string;
+  type: CiInputType;
+  description?: string;
+  /** A run cannot start without a value (an empty one counts as none). */
+  required: boolean;
+  /** As text: `true`/`false` for a boolean, the number as written. */
+  default?: string;
+  /** A `choice` input's values. */
+  options?: string[];
+}
+
+/** A pipeline someone may start by hand, as of its default branch's last read. */
+export interface CiManualPipeline {
+  /** The pipeline file, under `.infrawrench/ci/`. */
+  file: string;
+  name: string;
+  inputs: CiInput[];
+}
+
+/** A repository's pipelines with `on.manual` on its default branch. */
+export interface CiRepoManual {
+  installationId: number;
+  repoFullName: string;
+  defaultBranch: string;
+  /** The default branch's commit the pipelines were read from. */
+  sha: string | null;
+  pipelines: CiManualPipeline[];
+  refreshedAt: string | null;
+}
+
+export interface CiManualPipelines {
+  repositories: CiRepoManual[];
+}
+
+/** A value for an input as a client sends it. */
+export type CiInputValue = string | boolean | number;
+
+/** What starting a manual run takes. */
+export interface CiStartRun {
+  installationId: number;
+  /** `owner/name`. */
+  repoFullName: string;
+  /** The pipeline file, as listed (`.infrawrench/ci/deploy.yml`). */
+  pipelineFile: string;
+  /** A branch of the repository itself; the default branch when omitted. */
+  branch?: string;
+  inputs?: Record<string, CiInputValue>;
+}
+
+/** The most inputs one pipeline declares, and the largest one value (the runner's limits). */
+export const CI_MAX_INPUTS = 32;
+export const CI_MAX_INPUT_BYTES = 16 * 1024;
+
+/** Why an input's value is refused, for a form to say in its own words. */
+export type CiInputProblem =
+  | { kind: "required" }
+  | { kind: "unknown" }
+  | { kind: "boolean" }
+  | { kind: "number" }
+  | { kind: "choice"; options: string[] }
+  | { kind: "too-long"; maxBytes: number }
+  | { kind: "nul" };
+
+/** A value as the run reads it: `true`/`false`, a number's decimal text, or the text. */
+export function ciInputText(value: CiInputValue): string {
+  return typeof value === "string" ? value : String(value);
+}
+
+function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/**
+ * Checks values against a pipeline's inputs, as the runner will: answers
+ * each problem by input name (an unknown name under its own), and the
+ * values the run would read, as text, with every default filled in.
+ * Mirrors `iwci_spec::inputs::resolve`; the runner has the last word, since
+ * a branch's file can declare other inputs than the default branch's.
+ */
+export function checkCiInputs(
+  inputs: readonly CiInput[],
+  given: Readonly<Record<string, CiInputValue>>,
+): { problems: Record<string, CiInputProblem>; values: Record<string, string> } {
+  const problems: Record<string, CiInputProblem> = {};
+  const values: Record<string, string> = {};
+  for (const name of Object.keys(given)) {
+    if (!inputs.some((i) => i.name === name)) problems[name] = { kind: "unknown" };
+  }
+  for (const input of inputs) {
+    const raw = Object.prototype.hasOwnProperty.call(given, input.name)
+      ? ciInputText(given[input.name]!)
+      : undefined;
+    const present =
+      raw !== undefined && !(raw === "" && (input.type !== "string" || input.required));
+    if (!present) {
+      if (input.default !== undefined) values[input.name] = input.default;
+      else {
+        if (input.required) problems[input.name] = { kind: "required" };
+        values[input.name] = input.type === "boolean" ? "false" : "";
+      }
+      continue;
+    }
+    const problem = ciInputProblem(input, raw);
+    if (problem) problems[input.name] = problem;
+    else values[input.name] = input.type === "number" ? raw.trim() : raw;
+  }
+  return { problems, values };
+}
+
+function ciInputProblem(input: CiInput, raw: string): CiInputProblem | null {
+  if (utf8Length(raw) > CI_MAX_INPUT_BYTES) {
+    return { kind: "too-long", maxBytes: CI_MAX_INPUT_BYTES };
+  }
+  if (raw.includes("\u0000")) return { kind: "nul" };
+  switch (input.type) {
+    case "string":
+      return null;
+    case "boolean":
+      return raw === "true" || raw === "false" ? null : { kind: "boolean" };
+    case "number": {
+      const t = raw.trim();
+      // A decimal number with an optional exponent, as Rust's f64 parse
+      // takes it less `inf` and `NaN`.
+      return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) && Number.isFinite(Number(t))
+        ? null
+        : { kind: "number" };
+    }
+    case "choice":
+      return (input.options ?? []).includes(raw)
+        ? null
+        : { kind: "choice", options: input.options ?? [] };
+  }
 }
 
 export interface CiCacheCleared {

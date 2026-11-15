@@ -26,12 +26,30 @@
  * groups, followed, billed and shown like a push to the default branch,
  * whose caches it shares. It checks out the commit the pipelines were read
  * from, which is the default branch's head as of the last push the app saw.
+ *
+ * The same read lists the pipelines with `on.manual` and their inputs
+ * (`ci_schedules.manual`), which is what the CI tab offers to start by hand
+ * (`manual.ts`).
  */
 import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { ciCronDue, nextCiCronDue, type CiSchedules } from "@infrawrench/client-core";
+import {
+  CI_INPUT_TYPES,
+  CI_MAX_INPUTS,
+  ciCronDue,
+  nextCiCronDue,
+  type CiInput,
+  type CiManualPipelines,
+  type CiSchedules,
+} from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { ciAccounts, ciRuns, ciSchedules, type CiScheduleEntry } from "../db/schema.js";
+import {
+  ciAccounts,
+  ciRuns,
+  ciSchedules,
+  type CiManualEntry,
+  type CiScheduleEntry,
+} from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
@@ -94,7 +112,52 @@ export async function noteRepository(input: {
 interface ReadReply {
   commit?: unknown;
   pipelines?: unknown;
+  /** Absent from runners before manual runs. */
+  manual?: unknown;
   problems?: unknown;
+}
+
+const isString = (v: unknown): v is string => typeof v === "string";
+
+/** One input of a read, or `null` when it is not well formed. */
+function inputEntry(raw: unknown): CiInput | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const {
+    name,
+    type,
+    description,
+    required,
+    default: def,
+    options,
+  } = raw as Record<string, unknown>;
+  const kind = CI_INPUT_TYPES.find((t) => t === type);
+  if (!isString(name) || !kind) return null;
+  return {
+    name,
+    type: kind,
+    ...(isString(description) ? { description } : {}),
+    required: required === true,
+    ...(isString(def) ? { default: def } : {}),
+    ...(kind === "choice" && Array.isArray(options) ? { options: options.filter(isString) } : {}),
+  };
+}
+
+/** The `on.manual` pipelines of a read, as far as they are well formed. */
+export function manualEntries(manual: unknown): CiManualEntry[] {
+  if (!Array.isArray(manual)) return [];
+  const out: CiManualEntry[] = [];
+  for (const p of manual as unknown[]) {
+    if (typeof p !== "object" || p === null) continue;
+    const { file, name, inputs } = p as Record<string, unknown>;
+    if (!isString(file)) continue;
+    const parsed = Array.isArray(inputs) ? inputs.slice(0, CI_MAX_INPUTS).map(inputEntry) : [];
+    // A pipeline whose inputs this app cannot read is left out rather than
+    // offered with a form that would leave one out.
+    if (parsed.some((i) => i === null)) continue;
+    out.push({ file, name: isString(name) ? name : file, inputs: parsed as CiInput[] });
+    if (out.length === MAX_PIPELINES) break;
+  }
+  return out;
 }
 
 /** The pipelines of a read, as far as they are well formed; anything else is dropped. */
@@ -129,6 +192,8 @@ async function readSchedules(row: ScheduleRow): Promise<void> {
         error: reason,
         refreshedAt: now,
         refreshAfter: new Date(now.getTime() + READ_RETRY_MS),
+        // Not due again at once for want of a `manual` list: the retry reads it.
+        manual: row.manual ?? [],
       })
       .where(eq(ciSchedules.id, row.id));
   };
@@ -158,6 +223,7 @@ async function readSchedules(row: ScheduleRow): Promise<void> {
     return;
   }
   const pipelines = scheduleEntries(reply.pipelines);
+  const manual = manualEntries(reply.manual);
   const problems = Array.isArray(reply.problems)
     ? reply.problems.filter((p): p is string => typeof p === "string")
     : [];
@@ -166,6 +232,7 @@ async function readSchedules(row: ScheduleRow): Promise<void> {
     .set({
       sha: typeof reply.commit === "string" ? reply.commit : null,
       pipelines,
+      manual,
       error: problems.length > 0 ? problems.join("; ").slice(0, 4000) : null,
       refreshedAt: now,
       readOkAt: now,
@@ -180,7 +247,9 @@ export async function refreshSchedules(limit = READS_PER_PASS): Promise<void> {
   const due = await db
     .select({ id: ciSchedules.id })
     .from(ciSchedules)
-    .where(lte(ciSchedules.refreshAfter, now))
+    // A row not read since manual runs came is due at once: its `manual`
+    // list is what the CI tab offers.
+    .where(or(lte(ciSchedules.refreshAfter, now), isNull(ciSchedules.manual)))
     .orderBy(asc(ciSchedules.refreshAfter))
     .limit(limit);
   for (const { id } of due) {
@@ -188,7 +257,12 @@ export async function refreshSchedules(limit = READS_PER_PASS): Promise<void> {
     const [row] = await db
       .update(ciSchedules)
       .set({ refreshAfter: new Date(now.getTime() + READ_CLAIM_MS) })
-      .where(and(eq(ciSchedules.id, id), lte(ciSchedules.refreshAfter, now)))
+      .where(
+        and(
+          eq(ciSchedules.id, id),
+          or(lte(ciSchedules.refreshAfter, now), isNull(ciSchedules.manual)),
+        ),
+      )
       .returning();
     if (!row) continue;
     await readSchedules(row).catch((err) =>
@@ -337,6 +411,35 @@ export async function listCiSchedules(
         })),
         refreshedAt: r.refreshedAt?.toISOString() ?? null,
         error: r.error,
+      })),
+  };
+}
+
+/** The organization's repositories with pipelines someone may start by hand. */
+export async function listCiManualPipelines(organizationId: string): Promise<CiManualPipelines> {
+  const rows = await db
+    .select({ schedule: ciSchedules })
+    .from(ciSchedules)
+    .innerJoin(
+      ciAccounts,
+      and(
+        eq(ciAccounts.installationId, ciSchedules.installationId),
+        eq(ciAccounts.organizationId, ciSchedules.organizationId),
+      ),
+    )
+    .where(eq(ciSchedules.organizationId, organizationId))
+    .orderBy(asc(ciSchedules.repoFullName));
+  return {
+    repositories: rows
+      .map(({ schedule: r }) => r)
+      .filter((r) => (r.manual ?? []).length > 0)
+      .map((r) => ({
+        installationId: r.installationId,
+        repoFullName: r.repoFullName,
+        defaultBranch: r.defaultBranch,
+        sha: r.sha,
+        pipelines: (r.manual ?? []).map((p) => ({ file: p.file, name: p.name, inputs: p.inputs })),
+        refreshedAt: r.refreshedAt?.toISOString() ?? null,
       })),
   };
 }

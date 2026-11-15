@@ -1,10 +1,13 @@
-//! `POST /v1/schedules/read`: a repository's scheduled pipelines.
+//! `POST /v1/schedules/read`: a repository's scheduled pipelines, and the
+//! ones someone may start by hand.
 //!
 //! Scheduling itself lives in front of the runners (the proxy Worker, whose
 //! Cron Trigger fires once a minute for the whole pool), so runners keep no
 //! schedule state. What needs git and the pipeline parser is here: reading a
 //! branch's pipelines and saying which have `on.schedule`, with their text,
-//! so the proxy can start exactly that pipeline when a cron is due.
+//! so the proxy can start exactly that pipeline when a cron is due. The
+//! pipelines with `on.manual` are listed beside them, with their inputs,
+//! for the form the app starts one from.
 
 use iwci_spec::{Context, Event};
 use serde_json::json;
@@ -41,19 +44,31 @@ impl Server {
             ..Default::default()
         };
         let mut pipelines = Vec::new();
+        let mut manual = Vec::new();
         let mut problems = Vec::new();
         for (file, text) in files {
             match iwci_spec::parse(&text, &ctx) {
-                Ok(plan) if !plan.triggers.schedule.is_empty() => pipelines.push(json!({
-                    "file": file,
-                    "name": plan.name,
-                    "cron": plan.triggers.schedule.iter().map(|c| c.source()).collect::<Vec<_>>(),
-                    "text": text,
-                    // What a scheduled run's group is, for the proxy that
-                    // fires it (it keeps its own fires to their groups).
-                    "concurrency": plan.concurrency,
-                })),
-                Ok(_) => {}
+                Ok(plan) => {
+                    if let Some(m) = &plan.triggers.manual {
+                        manual.push(json!({
+                            "file": file,
+                            "name": plan.name,
+                            "inputs": m.inputs,
+                        }));
+                    }
+                    if !plan.triggers.schedule.is_empty() {
+                        pipelines.push(json!({
+                            "file": file,
+                            "name": plan.name,
+                            "cron": plan.triggers.schedule.iter().map(|c| c.source()).collect::<Vec<_>>(),
+                            "text": text,
+                            // What a scheduled run's group is, for the proxy
+                            // that fires it (it keeps its own fires to their
+                            // groups).
+                            "concurrency": plan.concurrency,
+                        }));
+                    }
+                }
                 Err(e) => problems.push(format!("{file}: {e}")),
             }
         }
@@ -65,6 +80,7 @@ impl Server {
                 "branch": branch,
                 "commit": commit,
                 "pipelines": pipelines,
+                "manual": manual,
                 "problems": problems,
             }),
         )

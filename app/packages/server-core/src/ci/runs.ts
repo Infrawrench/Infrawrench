@@ -17,6 +17,10 @@
  * - A pipeline's `on.schedule` cron starts a run from the poller pass
  *   (`schedules.ts`): trusted like a push to the default branch, whose
  *   caches it shares, and carrying that one pipeline's text.
+ * - A person with `ci:approve` starts an `on.manual` pipeline on a branch
+ *   of the repository itself (`startManualRun`): trusted like a push to that
+ *   branch, whose caches and lending opt-ins it has, running that one file
+ *   as the branch's head has it, with the inputs they gave.
  *
  * Dispatch claims the row first (one UPDATE that only one caller can win),
  * because both the webhook and the poller pass dispatch.
@@ -25,6 +29,10 @@ import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
+  checkCiInputs,
+  ciInputText,
+  type CiInputProblem,
+  type CiStartRun,
   type CiCloudJob,
   type CiDownload,
   type CiDownloadLink,
@@ -36,10 +44,17 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { accounts, ciAccounts, ciCloudJobs, ciRuns, githubInstallations } from "../db/schema.js";
+import {
+  accounts,
+  ciAccounts,
+  ciCloudJobs,
+  ciRuns,
+  ciSchedules,
+  githubInstallations,
+} from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
-import { getInstallationToken } from "../github/app.js";
+import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
 import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
 import {
@@ -62,8 +77,14 @@ type CiRunRow = typeof ciRuns.$inferSelect;
 const CLAIM_MS = 2 * 60_000;
 /** Dispatch attempts (busy or unreachable runners) before a run is given up on. */
 const MAX_ATTEMPTS = 40;
-/** A run the runners have not reported on for this long is given up on. */
+/**
+ * A run the runners have not reported on for this long is given up on,
+ * counted from its last good read: a job may run for six hours, so a run
+ * may outlast this many times over while it reports.
+ */
 const LOST_AFTER_MS = 2 * 60 * 60_000;
+/** How often a good read of a running run is recorded (`updated_at`), which `LOST_AFTER_MS` counts from. */
+const SEEN_EVERY_MS = 5 * 60_000;
 /**
  * A run its runner answers 404 for, this long after it started, is gone:
  * the read names the owner, so a finished run is found in the store, and a
@@ -285,6 +306,8 @@ export function dispatchBody(
     | "fromFork"
     | "noTaskCache"
     | "pipelineText"
+    | "pipelineFile"
+    | "inputs"
   >,
   token: string,
 ): Record<string, unknown> {
@@ -314,6 +337,15 @@ export function dispatchBody(
   // A scheduled run runs the one pipeline whose cron fired, as read from
   // `sha`, not every pipeline of the commit with `on.schedule`.
   if (row.pipelineText !== null) body["pipeline"] = row.pipelineText;
+  // A manual run runs the one file it was started for, as `sha` has it,
+  // with its inputs. Only a manual run sends either: a runner refuses them
+  // on any other event, and runners before manual runs refuse both.
+  if (row.event === "manual") {
+    if (row.pipelineFile !== null && row.pipelineText === null) {
+      body["pipeline-file"] = row.pipelineFile;
+    }
+    if (row.inputs !== null && Object.keys(row.inputs).length > 0) body["inputs"] = row.inputs;
+  }
   // Only when asked: a runner before 0.3.8 refuses fields it does not know.
   if (row.noTaskCache) body["no-task-cache"] = true;
   return body;
@@ -650,13 +682,15 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     );
   } catch (err) {
     const started = (row.startedAt ?? row.createdAt).getTime();
+    // The last good read (recorded every few minutes), or the start.
+    const seen = Math.max(started, row.updatedAt.getTime());
     const gone = err instanceof CiProxyError && err.status === 404;
     if (gone && row.cancelRequestedAt && Date.now() - started > GONE_AFTER_MS) {
       // Asked to stop, and gone: nothing is left to cancel.
       await finish(row, "cancelled", CANCELLED_BY_PERSON);
       await abandonJobChecks(row, CANCELLED_BY_PERSON);
       await upsertCheck(row, cancelledCheck(CANCELLED_BY_PERSON));
-    } else if (Date.now() - started > (gone ? GONE_AFTER_MS : LOST_AFTER_MS)) {
+    } else if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
       const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
       await finish(row, "error", reason);
       // Its jobs' checks would otherwise say "in progress" for good.
@@ -673,6 +707,9 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     return;
   }
   if (run.state === "running") {
+    if (Date.now() - row.updatedAt.getTime() > SEEN_EVERY_MS) {
+      await db.update(ciRuns).set({ updatedAt: new Date() }).where(eq(ciRuns.id, row.id));
+    }
     // Each job's own check, as it starts and finishes.
     if (run.progress && opts.jobChecks !== false) {
       await syncJobChecks(row, groupsFromProgress(run.progress));
@@ -727,7 +764,12 @@ function finishedCheck(
   // No pipeline matched this event (a push to a branch when `on.push` only
   // names main): skipped, not a green pass for code nothing checked.
   if (passed && jobs.length === 0) {
-    const what = row.event === "pull-request" ? "pull request" : "push";
+    const what =
+      row.event === "pull-request"
+        ? "pull request"
+        : row.event === "manual"
+          ? "manual run"
+          : "push";
     return {
       status: "completed",
       conclusion: "skipped",
@@ -928,6 +970,8 @@ export async function retryRun(
       event: original.event,
       pipelineFile: original.pipelineFile,
       pipelineText: original.pipelineText,
+      inputs: original.inputs,
+      startedByUserId: original.event === "manual" ? userId || null : null,
       branch: original.branch,
       headRef: original.headRef,
       defaultBranch: original.defaultBranch,
@@ -947,6 +991,138 @@ export async function retryRun(
     .onConflictDoNothing()
     .returning();
   if (!row) throw new CiInputError("This run is already being retried.", 409);
+  return toWire(row);
+}
+
+/** A Git branch name a manual run may be started on, or why it is not one. */
+export function manualBranchRefusal(branch: string): string | null {
+  const bad =
+    branch.length === 0 ||
+    branch.length > 255 ||
+    /[\u0000-\u0020\u007f~^:?*[\\]/.test(branch) ||
+    branch.includes("..") ||
+    branch.includes("@{") ||
+    branch.includes("//") ||
+    branch.startsWith("-") ||
+    branch.startsWith("/") ||
+    branch.startsWith("refs/") ||
+    branch.endsWith("/") ||
+    branch.endsWith(".") ||
+    branch.endsWith(".lock") ||
+    branch === "@";
+  return bad ? `"${branch}" is not a branch name.` : null;
+}
+
+/** An input's problem in the API's words. */
+export function inputProblemText(name: string, problem: CiInputProblem): string {
+  switch (problem.kind) {
+    case "required":
+      return `${name} is required.`;
+    case "unknown":
+      return `The pipeline declares no input ${name}.`;
+    case "boolean":
+      return `${name} is true or false.`;
+    case "number":
+      return `${name} is a number.`;
+    case "choice":
+      return `${name} is one of ${problem.options.join(", ")}.`;
+    case "too-long":
+      return `${name} is over ${problem.maxBytes / 1024} KiB.`;
+    case "nul":
+      return `${name} contains a NUL character.`;
+  }
+}
+
+/**
+ * Starts an `on.manual` pipeline by hand: the file as the branch's head has
+ * it, with the given inputs, queued and dispatched like any other run. The
+ * pipeline must be one the default branch's last read lists with
+ * `on.manual`, and the inputs are checked against that declaration here (the
+ * runner checks them again against the branch's own file). The branch must
+ * be one of the repository itself, never a fork's, which is why the run is
+ * trusted like a push to it: the repository's secrets, and only what is lent
+ * to that branch. Whoever may do this holds `ci:approve`, as for a retry.
+ */
+export async function startManualRun(
+  organizationId: string,
+  userId: string,
+  actor: string | null,
+  request: CiStartRun,
+): Promise<CiRun> {
+  const [found] = await db
+    .select({ schedule: ciSchedules })
+    .from(ciSchedules)
+    .innerJoin(
+      ciAccounts,
+      and(
+        eq(ciAccounts.installationId, ciSchedules.installationId),
+        eq(ciAccounts.organizationId, ciSchedules.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(ciSchedules.organizationId, organizationId),
+        eq(ciSchedules.installationId, request.installationId),
+        eq(ciSchedules.repoFullName, request.repoFullName),
+      ),
+    )
+    .limit(1);
+  if (!found) {
+    throw new CiInputError(`No repository ${request.repoFullName} runs CI here.`, 404);
+  }
+  const repo = found.schedule;
+  const pipeline = (repo.manual ?? []).find((p) => p.file === request.pipelineFile);
+  if (!pipeline) {
+    throw new CiInputError(
+      `${repo.repoFullName} has no pipeline ${request.pipelineFile} with on.manual on ${repo.defaultBranch}.`,
+      404,
+    );
+  }
+  const branch = request.branch?.trim() || repo.defaultBranch;
+  const refusal = manualBranchRefusal(branch);
+  if (refusal) throw new CiInputError(refusal, 400);
+  const given = request.inputs ?? {};
+  const { problems } = checkCiInputs(pipeline.inputs, given);
+  const names = Object.keys(problems);
+  if (names.length > 0) {
+    throw new CiInputError(
+      names.map((name) => inputProblemText(name, problems[name]!)).join(" "),
+      400,
+    );
+  }
+  const [owner, name] = repo.repoFullName.split("/");
+  const sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  if (!sha) throw new CiInputError(`${repo.repoFullName} has no branch ${branch}.`, 404);
+
+  const id = crypto.randomUUID();
+  const [row] = await db
+    .insert(ciRuns)
+    .values({
+      id,
+      organizationId,
+      installationId: repo.installationId,
+      repoFullName: repo.repoFullName,
+      ownerKey: ownerKey(repo.repoFullName),
+      repoKey: repoKey(repo.repoFullName),
+      event: "manual",
+      pipelineFile: pipeline.file,
+      // What was given, as text: the branch's own file fills in its defaults.
+      inputs: Object.fromEntries(
+        Object.entries(given).map(([key, value]) => [key, ciInputText(value)]),
+      ),
+      // Its own cache scope and lending opt-ins, as a push to it.
+      branch,
+      headRef: branch,
+      defaultBranch: repo.defaultBranch,
+      sha,
+      actorLogin: actor,
+      startedByUserId: userId || null,
+      status: "queued",
+      // Every start is a run of its own.
+      dedupeKey: `manual:${id}`,
+    })
+    .returning();
+  if (!row) throw new CiInputError("The run could not be recorded.", 409);
   return toWire(row);
 }
 
@@ -1002,6 +1178,7 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     retriedAsRunId,
     noTaskCache: row.noTaskCache,
     ...(row.pipelineFile !== null ? { pipelineFile: row.pipelineFile } : {}),
+    ...(row.inputs !== null ? { inputs: row.inputs } : {}),
     ...(row.concurrency !== null
       ? {
           concurrencyGroups: [

@@ -20,7 +20,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import type { CiEvent } from "@infrawrench/client-core";
+import type { CiEvent, CiInput } from "@infrawrench/client-core";
 
 import { accounts, organizations, users } from "./core-schema.js";
 
@@ -114,10 +114,21 @@ export const ciRuns = pgTable(
     /**
      * A scheduled run's pipeline: the file whose `on.schedule` fired, and
      * its text as read from `sha`, which the runner runs instead of the
-     * commit's other pipelines. Null for pushes and pull requests.
+     * commit's other pipelines. A manual run has the file only: the runner
+     * reads it from `sha`. Null for pushes and pull requests.
      */
     pipelineFile: text("pipeline_file"),
     pipelineText: text("pipeline_text"),
+    /**
+     * A manual run's inputs, by name, as text: what the person starting it
+     * gave, checked against the default branch's declaration (the runner
+     * checks them again against the branch's own). Null for other events.
+     */
+    inputs: jsonb("inputs").$type<Record<string, string>>(),
+    /** Who started a manual run. */
+    startedByUserId: text("started_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     /** The branch, or `pull/<n>` for a pull request (its cache scope). */
     branch: text("branch").notNull(),
     /** The head branch's own name, for display. */
@@ -131,7 +142,7 @@ export const ciRuns = pgTable(
     headRepoFullName: text("head_repo_full_name"),
     /** A pull request from a fork: needs a maintainer's approval and never gets secrets. */
     fromFork: boolean("from_fork").notNull().default(false),
-    /** Who opened the pull request or pushed. */
+    /** Who opened the pull request or pushed (a GitHub login), or who started a manual run. */
     actorLogin: text("actor_login"),
     /** The run this one retries: same commit, branch and event. */
     retryOfRunId: text("retry_of_run_id").references((): AnyPgColumn => ciRuns.id, {
@@ -206,6 +217,13 @@ export interface CiScheduleEntry {
   text: string;
 }
 
+/** One pipeline file with `on.manual`, as the runners read it. */
+export interface CiManualEntry {
+  file: string;
+  name: string;
+  inputs: CiInput[];
+}
+
 /**
  * A repository's `on.schedule` pipelines on its default branch, which the
  * `ci` poller pass fires (the runners keep no clock). A row appears with the
@@ -227,6 +245,12 @@ export const ciSchedules = pgTable(
     /** The default branch's head the pipelines were read from; null before the first read. */
     sha: text("sha"),
     pipelines: jsonb("pipelines").$type<CiScheduleEntry[]>().notNull().default([]),
+    /**
+     * Its pipelines with `on.manual`, read with the scheduled ones: what the
+     * CI tab offers to start by hand. Null until the first read that knew
+     * about them, which makes the row due a read.
+     */
+    manual: jsonb("manual").$type<CiManualEntry[]>(),
     /** Why the last read failed, or which files did not parse. */
     error: text("error"),
     /** When to read the default branch again; a push sets it to now. */

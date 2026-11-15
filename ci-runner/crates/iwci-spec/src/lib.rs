@@ -15,6 +15,7 @@
 pub mod cron;
 pub mod expr;
 mod glob;
+pub mod inputs;
 mod interp;
 pub mod packages;
 pub mod plan;
@@ -51,6 +52,11 @@ pub struct Context {
     /// The pipeline's `name:`, for `${{ pipeline.name }}`. [`parse`] sets it
     /// from the file; what a caller passes is ignored.
     pub pipeline_name: String,
+    /// A manual run's inputs as given, by name, for `${{ inputs.<name> }}`.
+    /// [`parse`] checks them against the file's `on.manual.inputs` and
+    /// keeps every declared input's value in the plan's context, its
+    /// default where none was given. Not secret.
+    pub inputs: BTreeMap<String, String>,
 }
 
 impl Context {
@@ -139,7 +145,11 @@ pub const MAX_JOBS: usize = 1024;
 pub const MAX_CONCURRENCY_GROUP: usize = 256;
 pub const MAX_MATRIX_ENTRIES: usize = 64;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 10 * 60;
-pub const MAX_TIMEOUT_SECS: u64 = 60 * 60;
+/// The longest `timeout:` a job may have. Long enough for a data load or a
+/// release build; a job still stops sooner when it stalls (prints nothing
+/// and uses no CPU for 5 minutes). Whatever stops a runner by draining it
+/// (its systemd unit's `TimeoutStopSec`) has to wait at least this long.
+pub const MAX_TIMEOUT_SECS: u64 = 6 * 60 * 60;
 pub const DEFAULT_MEMORY: u64 = 2 << 30;
 /// What the run's shared `/tmp/workflow` holds unless `scratch:` says.
 pub const DEFAULT_SCRATCH: u64 = 1 << 30;
@@ -213,11 +223,19 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
             message: e.to_string(),
         }])
     })?;
+    let mut expand_errors = Vec::new();
+    // Inputs first: every expression after this reads their checked values.
+    let manual = raw
+        .on
+        .as_ref()
+        .and_then(|on| on.manual.as_ref())
+        .map(|m| inputs::declare(m, &mut expand_errors));
+    let resolved = inputs::resolve(manual.as_ref(), &ctx.inputs, ctx.event, &mut expand_errors);
     let ctx = &Context {
         pipeline_name: raw.name.clone(),
+        inputs: resolved,
         ..ctx.clone()
     };
-    let mut expand_errors = Vec::new();
     let generated = packages::expand(&mut raw, &ctx.packages, &mut expand_errors);
     // Each job carries the services it starts with from here on, so a job
     // expanded later (a deferred matrix) needs nothing but itself.
@@ -258,7 +276,8 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         decls: &decls,
         generated: &generated,
     };
-    let plan = v.pipeline(raw);
+    let mut plan = v.pipeline(raw);
+    plan.triggers.manual = manual;
     if v.errors.is_empty() {
         Ok(plan)
     } else {
@@ -633,6 +652,14 @@ impl Validator<'_> {
                             if let Err(msg) = interp::check_name(name, &job.needs, self.decls) {
                                 self.error(format!("{path}.if"), msg);
                             }
+                            if let expr::Name::Input { name } = name
+                                && !self.ctx.inputs.contains_key(name)
+                            {
+                                self.error(
+                                    format!("{path}.if"),
+                                    format!("the pipeline declares no input `{name}`; declare it under `on.manual.inputs`"),
+                                );
+                            }
                         }
                         Some(e)
                     }
@@ -769,6 +796,7 @@ impl Validator<'_> {
             needs: None,
             deferred: std::cell::Cell::new(false),
             hash_files: std::cell::Cell::new(false),
+            text: std::cell::Cell::new(interp::Text::Data),
             package: None,
         };
         let group = match interp::substitute(text, &scope) {
@@ -803,6 +831,7 @@ impl Validator<'_> {
                 push: Some(TriggerFilter::default()),
                 pull_request: None,
                 schedule: Vec::new(),
+                manual: None,
             };
         };
         let mut filter = |name: &str, f: Option<raw::TriggerFilter>| {
@@ -832,13 +861,19 @@ impl Validator<'_> {
                 Err(e) => self.error(format!("on.schedule[{i}].cron"), e),
             }
         }
-        if push.is_none() && pull_request.is_none() && raw.schedule.is_empty() {
+        if push.is_none()
+            && pull_request.is_none()
+            && raw.schedule.is_empty()
+            && raw.manual.is_none()
+        {
             self.error("on", "lists no events, so the pipeline would never run");
         }
         Triggers {
             push,
             pull_request,
             schedule,
+            // Checked before the jobs, in `parse`, and set there.
+            manual: None,
         }
     }
 
@@ -1227,7 +1262,7 @@ impl Validator<'_> {
             Some(t) => match units::parse_duration_secs(t) {
                 Some(s) if (1..=MAX_TIMEOUT_SECS).contains(&s) => s,
                 Some(_) => {
-                    self.error(format!("{path}.timeout"), "must be between 1s and 60m");
+                    self.error(format!("{path}.timeout"), "must be between 1s and 6h");
                     DEFAULT_TIMEOUT_SECS
                 }
                 None => {
@@ -1910,6 +1945,7 @@ impl Validator<'_> {
             needs,
             deferred: std::cell::Cell::new(false),
             hash_files: std::cell::Cell::new(false),
+            text: std::cell::Cell::new(interp::Text::Data),
             package: package.as_ref(),
         };
         let (entries, shape) = self.matrix(&path, job.matrix.as_ref(), &matrix_scope);
@@ -1939,6 +1975,7 @@ impl Validator<'_> {
                 needs,
                 deferred: std::cell::Cell::new(false),
                 hash_files: std::cell::Cell::new(false),
+                text: std::cell::Cell::new(interp::Text::Data),
                 package: package.as_ref(),
             };
             // Errors from this entry, gathered locally because `sub` borrows
@@ -1959,6 +1996,13 @@ impl Validator<'_> {
                     }
                 }
             };
+            // Substitutes with the scope reading its text as `kind`.
+            let as_text = |kind: interp::Text, f: &dyn Fn() -> String| -> String {
+                scope.text.set(kind);
+                let out = f();
+                scope.text.set(interp::Text::Data);
+                out
+            };
             let values: Vec<&str> = entry.iter().map(|(_, v)| v.as_str()).collect();
             let id = if values.is_empty() {
                 key.to_string()
@@ -1978,13 +2022,14 @@ impl Validator<'_> {
             let action_of =
                 |at: &str, args: &Option<raw::Args>, run: &Option<String>| match (args, run) {
                     (_, Some(script)) => Action::Script {
-                        script: sub(&format!("{at}run"), script),
+                        script: as_text(interp::Text::Script, &|| sub(&format!("{at}run"), script)),
                     },
                     (Some(raw::Args::List(list)), None) => Action::Args {
                         args: list.iter().map(|a| sub(&format!("{at}args"), a)).collect(),
                     },
                     (Some(raw::Args::Line(line)), None) => {
-                        let line = sub(&format!("{at}args"), line);
+                        let line =
+                            as_text(interp::Text::Words, &|| sub(&format!("{at}args"), line));
                         match shell::split(&line) {
                             Ok(args) => Action::Args { args },
                             Err(e) => {
@@ -2072,7 +2117,9 @@ impl Validator<'_> {
                         ReadyCheck::Log { pattern }
                     } else if let Some(script) = &ready.command {
                         ReadyCheck::Command {
-                            script: sub(&format!("{at}ready.command"), script),
+                            script: as_text(interp::Text::Script, &|| {
+                                sub(&format!("{at}ready.command"), script)
+                            }),
                         }
                     } else {
                         ReadyCheck::Started

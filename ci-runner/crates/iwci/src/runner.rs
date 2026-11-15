@@ -65,7 +65,7 @@ pub struct RunRequest {
     pub sha: Option<String>,
     #[serde(default)]
     pub branch: Option<String>,
-    /// `push` (the default) or `pull-request`.
+    /// `push` (the default), `pull-request`, `schedule` or `manual`.
     #[serde(default)]
     pub event: Option<String>,
     /// The commit to diff against for `paths:` and `changed()`.
@@ -83,6 +83,16 @@ pub struct RunRequest {
     /// A pipeline file's text, run instead of the repository's own.
     #[serde(default)]
     pub pipeline: Option<String>,
+    /// A manual run's pipeline: the commit's file to run
+    /// (`.infrawrench/ci/deploy.yml`), and none of its others. A manual run
+    /// names this or sends `pipeline`.
+    #[serde(default)]
+    pub pipeline_file: Option<String>,
+    /// A manual run's inputs, by name: a string, a boolean or a number
+    /// each. Checked against the pipeline's `on.manual.inputs` when it is
+    /// parsed. Not secret: they are part of the plan.
+    #[serde(default)]
+    pub inputs: BTreeMap<String, serde_json::Value>,
     /// The owner's storage quota, for a caller that knows the owner's
     /// plan: bytes, or a size such as `"10GiB"`. Overrides the runner's
     /// default for this run's saves.
@@ -217,15 +227,71 @@ impl RunRequest {
             .unwrap_or_else(|| !matches!(self.event(), Ok(Event::PullRequest)))
     }
 
-    fn event(&self) -> Result<Event, String> {
+    pub fn event(&self) -> Result<Event, String> {
         match self.event.as_deref() {
             None | Some("push") => Ok(Event::Push),
             Some("pull-request") => Ok(Event::PullRequest),
             Some("schedule") => Ok(Event::Schedule),
+            Some("manual") => Ok(Event::Manual),
             Some(other) => Err(format!(
-                "event is `push`, `pull-request` or `schedule`, not `{other}`"
+                "event is `push`, `pull-request`, `schedule` or `manual`, not `{other}`"
             )),
         }
+    }
+
+    /// The inputs as the pipeline parser reads them, checked: only a manual
+    /// run has any, by valid names, each a string, a boolean or a number.
+    pub fn inputs(&self) -> Result<BTreeMap<String, String>, String> {
+        let event = self.event()?;
+        if event != Event::Manual {
+            if !self.inputs.is_empty() {
+                return Err("only a manual run (`\"event\": \"manual\"`) has inputs".into());
+            }
+            if self.pipeline_file.is_some() {
+                return Err(
+                    "only a manual run (`\"event\": \"manual\"`) names a `pipeline-file`".into(),
+                );
+            }
+        } else if self.pipeline_file.is_some() == self.pipeline.is_some() {
+            return Err("a manual run names one pipeline: `pipeline-file` or `pipeline`".into());
+        }
+        if let Some(file) = &self.pipeline_file {
+            let ok = file
+                .strip_prefix(&format!("{PIPELINE_DIR}/"))
+                .is_some_and(|name| {
+                    !name.is_empty()
+                        && !name.contains('/')
+                        && (name.ends_with(".yml") || name.ends_with(".yaml"))
+                });
+            if !ok {
+                return Err(format!(
+                    "`pipeline-file` is a file in {PIPELINE_DIR}/, such as {PIPELINE_DIR}/deploy.yml, not `{file}`"
+                ));
+            }
+        }
+        if self.inputs.len() > iwci_spec::inputs::MAX_INPUTS {
+            return Err(format!(
+                "{} inputs; the limit is {}",
+                self.inputs.len(),
+                iwci_spec::inputs::MAX_INPUTS
+            ));
+        }
+        let mut out = BTreeMap::new();
+        for (name, value) in &self.inputs {
+            if !iwci_spec::inputs::is_input_name(name) {
+                return Err(format!("`{name}` is not a valid name for an input"));
+            }
+            let text = match value {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => {
+                    return Err(format!("input `{name}` is a string, a boolean or a number"));
+                }
+            };
+            out.insert(name.clone(), text);
+        }
+        Ok(out)
     }
 
     pub fn owner(&self) -> Result<RepoId, String> {
@@ -465,6 +531,8 @@ struct Target {
     owner: RepoId,
     repo_id: RepoId,
     event: Event,
+    /// A manual run's inputs, as given.
+    inputs: BTreeMap<String, String>,
 }
 
 impl Target {
@@ -484,6 +552,7 @@ impl Target {
                 _ => None,
             },
             pipeline_name: String::new(),
+            inputs: self.inputs.clone(),
         }
     }
 }
@@ -583,6 +652,7 @@ impl Runner {
         check_named("vars", &req.vars)?;
         req.lent.check().map_err(|e| format!("lent: {e}"))?;
         let event = req.event()?;
+        let inputs = req.inputs()?;
         let owner = req.owner()?;
         let repo_id = req.repo_id()?;
         let auth = req
@@ -616,9 +686,17 @@ impl Runner {
             }
         };
         let (files, packages) = read_commit(&remote, &sha)?;
-        let pipelines = match &req.pipeline {
-            Some(text) => vec![("request".to_string(), text.clone())],
-            None => files,
+        let pipelines = match (&req.pipeline, &req.pipeline_file) {
+            (Some(text), _) => vec![("request".to_string(), text.clone())],
+            // A manual run's one file, as the branch has it.
+            (None, Some(file)) => {
+                let found: Vec<_> = files.into_iter().filter(|(f, _)| f == file).collect();
+                if found.is_empty() {
+                    return Err(format!("{sha} has no pipeline file {file}"));
+                }
+                found
+            }
+            (None, None) => files,
         };
         Ok(Target {
             remote,
@@ -631,6 +709,7 @@ impl Runner {
             owner,
             repo_id,
             event,
+            inputs,
         })
     }
 
@@ -867,6 +946,19 @@ impl Runner {
                     continue;
                 }
             };
+            if r.event == Event::Manual && plan.triggers.manual.is_none() {
+                // Someone asked for this one file by hand: say why it did
+                // not run, rather than that nothing matched.
+                passed = false;
+                pipelines.push(PipelineOutput::Invalid {
+                    file: file.clone(),
+                    errors: vec![
+                        "on.manual: this pipeline cannot be started by hand; add `manual:` under its `on:`"
+                            .to_string(),
+                    ],
+                });
+                continue;
+            }
             if !plan
                 .triggers
                 .matches(r.event, &r.branch, changed_paths.as_deref())
@@ -1303,6 +1395,57 @@ mod tests {
                 .no_task_cache
         );
         assert!(parse("{\"repo\": \"r\", \"no-task-cache\": \"yes\"}").is_err());
+    }
+
+    #[test]
+    fn a_manual_run_names_one_pipeline_and_typed_inputs() {
+        let parse = |body: &str| serde_json::from_str::<RunRequest>(body).unwrap();
+        let req = parse(
+            r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/deploy.yml",
+                "inputs": {"urls": "a\nb $(id)", "force": true, "shards": 3}}"#,
+        );
+        assert_eq!(req.event(), Ok(Event::Manual));
+        assert!(req.trusted(), "a branch of the repository itself");
+        let inputs = req.inputs().unwrap();
+        assert_eq!(inputs["urls"], "a\nb $(id)");
+        assert_eq!(inputs["force"], "true");
+        assert_eq!(inputs["shards"], "3");
+
+        for (body, needle) in [
+            (
+                r#"{"repo": "r", "inputs": {"a": "x"}}"#,
+                "only a manual run",
+            ),
+            (
+                r#"{"repo": "r", "event": "schedule", "pipeline-file": ".infrawrench/ci/a.yml"}"#,
+                "only a manual run",
+            ),
+            (r#"{"repo": "r", "event": "manual"}"#, "names one pipeline"),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline": "x", "pipeline-file": ".infrawrench/ci/a.yml"}"#,
+                "names one pipeline",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/../../etc/a.yml"}"#,
+                "is a file in .infrawrench/ci/",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": "deploy.yml"}"#,
+                "is a file in .infrawrench/ci/",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/a.yml", "inputs": {"a": [1]}}"#,
+                "a string, a boolean or a number",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/a.yml", "inputs": {"a b": "x"}}"#,
+                "not a valid name",
+            ),
+            (r#"{"repo": "r", "event": "dispatch"}"#, "or `manual`"),
+        ] {
+            let err = parse(body).inputs().unwrap_err();
+            assert!(err.contains(needle), "{body}: {err}");
+        }
     }
 
     #[test]

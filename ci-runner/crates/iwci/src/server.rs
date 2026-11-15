@@ -671,6 +671,12 @@ impl Server {
         if let Err(e) = req.repo_id() {
             return error(400, e);
         }
+        // The event, a manual run's file and its inputs' names and types,
+        // refused before the run is admitted: the values themselves are
+        // checked against the pipeline once its file is read.
+        if let Err(e) = req.inputs() {
+            return error(400, e);
+        }
         // Helping another runner's run is not a run of this runner's: it
         // is admitted by a count of its own and takes none of the others.
         let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());

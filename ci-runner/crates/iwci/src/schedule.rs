@@ -1771,6 +1771,7 @@ impl expr::Env for ConditionEnv<'_> {
             Name::Event => ctx.event.as_str().to_string(),
             Name::PipelineName => ctx.pipeline_name.clone(),
             Name::PullRequestNumber => ctx.pull_request_number(),
+            Name::Input { name } => ctx.inputs.get(name).cloned().unwrap_or_default(),
         }
     }
 

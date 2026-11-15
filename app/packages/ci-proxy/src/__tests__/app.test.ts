@@ -575,6 +575,36 @@ describe("secrets and variables", () => {
     expect(runner.resolved[0]).not.toHaveProperty("trusted");
   });
 
+  it("gives a manual run its secrets and what it is lent, and passes its file and inputs through", async () => {
+    const runner = new FakeRunner("http://a.test", 4, 4);
+    const { call } = await setup([runner]);
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/TOKEN", { value: "deploy" });
+    const lent = { connections: { prod: { env: { KUBECONFIG: "/root/.kube/config" } } } };
+    const inputs = { urls: "$(id)\n'x'", force: true, shards: 3 };
+    expect(
+      (
+        await call("POST", "/v1/runs", {
+          repo,
+          branch: "feature/x",
+          event: "manual",
+          "pipeline-file": ".infrawrench/ci/purge.yml",
+          inputs,
+          lent,
+        })
+      ).status,
+    ).toBe(202);
+    // A branch of the repository itself, as a push: secrets and what the
+    // app lent, with nothing to vouch for, and the inputs as sent.
+    expect(runner.runs[0]?.body).toMatchObject({
+      event: "manual",
+      "pipeline-file": ".infrawrench/ci/purge.yml",
+      inputs,
+      secrets: { TOKEN: "deploy" },
+      lent,
+    });
+    expect(runner.runs[0]?.body).not.toHaveProperty("trusted");
+  });
+
   it("gives scheduled runs their secrets", async () => {
     const runner = new FakeRunner("http://a.test", 4, 4);
     const { call, deps } = await setup([runner]);

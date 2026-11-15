@@ -1289,6 +1289,13 @@
       "when": 1794611568091,
       "tag": "0183_ci_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1794770628896,
+      "tag": "0184_ci_manual_runs",
+      "breakpoints": true
     }
   ]
 }

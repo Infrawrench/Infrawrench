@@ -17,6 +17,7 @@ import {
   CiCacheClearedSchema,
   CiCachesSchema,
   CiDownloadLinkSchema,
+  CiManualPipelinesSchema,
   CiRunDetailSchema,
   CiRunSchema,
   CiSchedulesSchema,
@@ -53,8 +54,9 @@ import {
   cancelRun,
   rejectRun,
   retryRun,
+  startManualRun,
 } from "@infrawrench/server-core/ci/runs";
-import { listCiSchedules } from "@infrawrench/server-core/ci/schedules";
+import { listCiManualPipelines, listCiSchedules } from "@infrawrench/server-core/ci/schedules";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 import { orgHasFeature } from "@infrawrench/server-core/features";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
@@ -255,6 +257,50 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
           }),
         );
         return yield* respond(Ok)({ ok: true });
+      }),
+    )
+    .handle("startRun", ({ payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* requireCi;
+        const run = yield* legacyTry(
+          () =>
+            startManualRun(organizationId, session.userId ?? "", session.email || null, {
+              installationId: payload.installationId,
+              repoFullName: payload.repoFullName,
+              pipelineFile: payload.pipelineFile,
+              ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
+              ...(payload.inputs !== undefined ? { inputs: { ...payload.inputs } } : {}),
+            }),
+          refusal,
+        );
+        // `keepAlive`: on the edge the dispatch outlives the response.
+        yield* fireAndForget(() => keepAlive(dispatchRun(run.id)));
+        // Inputs are not secret (they are in the run's plan), and a start
+        // is a decision someone may need to trace back to its values.
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "ci.run.start",
+            entityType: "ci_run",
+            entityId: run.id,
+            metadata: {
+              repo: run.repoFullName,
+              pipeline: run.pipelineFile ?? payload.pipelineFile,
+              branch: run.headRef,
+              sha: run.sha,
+              inputs: run.inputs ?? {},
+            },
+          }),
+        );
+        return yield* respond(CiRunSchema)(run);
+      }),
+    )
+    .handle("listManual", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* requireCi;
+        const manual = yield* legacy(() => listCiManualPipelines(organizationId));
+        return yield* respond(CiManualPipelinesSchema)(manual);
       }),
     )
     .handle("retryRun", ({ params, payload }) =>

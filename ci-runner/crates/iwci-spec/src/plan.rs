@@ -293,6 +293,54 @@ pub struct Triggers {
     pub pull_request: Option<TriggerFilter>,
     /// When scheduled runs happen, in UTC.
     pub schedule: Vec<crate::cron::Cron>,
+    /// `on.manual`: someone may start the pipeline by hand, with these
+    /// inputs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manual: Option<ManualTrigger>,
+}
+
+/// `on.manual`, checked.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct ManualTrigger {
+    /// In file order.
+    pub inputs: Vec<InputSpec>,
+}
+
+/// One input of a manual run, checked. What the app builds its form from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InputSpec {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: InputKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub required: bool,
+    /// As text: `true`/`false` for a boolean, the number as written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    /// A `choice` input's values; empty for the others.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputKind {
+    String,
+    Boolean,
+    Choice,
+    Number,
+}
+
+impl InputKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InputKind::String => "string",
+            InputKind::Boolean => "boolean",
+            InputKind::Choice => "choice",
+            InputKind::Number => "number",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -308,6 +356,8 @@ pub enum Event {
     Push,
     PullRequest,
     Schedule,
+    /// Started by hand (`on.manual`), on a branch of the repository itself.
+    Manual,
 }
 
 impl Event {
@@ -316,6 +366,7 @@ impl Event {
             Event::Push => "push",
             Event::PullRequest => "pull-request",
             Event::Schedule => "schedule",
+            Event::Manual => "manual",
         }
     }
 }
@@ -336,6 +387,9 @@ impl Triggers {
             // A scheduled run was started because a schedule matched; it
             // has no branch or path filter of its own.
             Event::Schedule => return !self.schedule.is_empty(),
+            // Started by a person for this pipeline: no branch or path
+            // filter, since they chose the branch.
+            Event::Manual => return self.manual.is_some(),
         };
         let Some(filter) = filter else {
             return false;

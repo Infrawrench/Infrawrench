@@ -2,8 +2,10 @@
 //!
 //! ```text
 //! iwci run --repo https://github.com/org/repo --sha <commit> --repo-id <id>
-//!          [--branch main] [--event push|pull-request] [--base <sha>]
-//!          [--pipeline <file.yml>] [--cpus <n>] [--memory <size>] [--json]
+//!          [--branch main] [--event push|pull-request|schedule|manual]
+//!          [--base <sha>] [--pipeline <file.yml>]
+//!          [--pipeline-file .infrawrench/ci/<file>.yml] [--input NAME=value]...
+//!          [--cpus <n>] [--memory <size>] [--json]
 //!          [--stall-after 5m | --stall-after 0] [--module-memory 2GiB]
 //!          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB]
 //!          [--default-branch main]
@@ -298,6 +300,21 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             Some(path) => Some(std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?),
             None => None,
         },
+        pipeline_file: args.value("--pipeline-file")?,
+        // Each as a string: the pipeline's declaration types it.
+        inputs: {
+            let mut inputs = std::collections::BTreeMap::new();
+            while let Some(pair) = args.value("--input")? {
+                let (name, value) = pair
+                    .split_once('=')
+                    .ok_or_else(|| format!("--input takes NAME=value, not `{pair}`"))?;
+                inputs.insert(
+                    name.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
+            inputs
+        },
         storage_quota: None,
         // From the environment only, never a flag (see `Runner::resolve`).
         token: None,
@@ -327,6 +344,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());
     }
+    request.inputs()?;
     let limits = limits(&mut args)?;
     let quota = storage_quota(&mut args)?;
     // One run uses the machine's jobs-per-cpu share too, so a local run

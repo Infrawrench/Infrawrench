@@ -14,6 +14,7 @@ import {
 } from "@infrawrench/client-core";
 import type { CiClient } from "./types.js";
 import { CiCachesCard } from "./CiCachesCard.js";
+import { CiManualCard } from "./CiManualCard.js";
 import { CiSchedulesCard } from "./CiSchedulesCard.js";
 import { CiValuesCard } from "./CiValuesCard.js";
 import { CiAccessCard } from "./CiAccessCard.js";
@@ -32,7 +33,7 @@ export interface CiPanelProps {
    * grants, cloud jobs). Defaults to off.
    */
   canManageAccess?: boolean | undefined;
-  /** `ci:approve`: approve or reject forks' pull requests, and retry and cancel runs. */
+  /** `ci:approve`: approve or reject forks' pull requests, retry and cancel runs, and start manual ones. */
   canApprove: boolean;
   /**
    * Open a link (GitHub, the App install page). Desktop passes its
@@ -536,6 +537,19 @@ function RunSource({ run }: { run: CiRun }) {
       </span>
     );
   }
+  if (run.event === "manual") {
+    return (
+      <span>
+        {run.pipelineFile
+          ? gt("Started by hand: {file} on {branch}", {
+              file: run.pipelineFile,
+              branch: run.headRef,
+            })
+          : gt("Started by hand on {branch}", { branch: run.headRef })}
+        {run.retryOfRunId ? <RetryTag /> : null}
+      </span>
+    );
+  }
   if (run.event === "schedule") {
     return (
       <span>
@@ -560,6 +574,32 @@ function RetryTag() {
     <span className="ml-1 rounded bg-surface-sunken px-1 text-[10px] text-on-surface-faint">
       {gt("retry")}
     </span>
+  );
+}
+
+/** A manual run's inputs, as it was started with them. */
+function RunInputs({ run }: { run: CiRun }) {
+  const gt = useGT();
+  const entries = Object.entries(run.inputs ?? {});
+  if (run.event !== "manual") return null;
+  return (
+    <div className="text-xs text-on-surface-muted">
+      {entries.length === 0 ? (
+        <p>{gt("Started with every input at its default.")}</p>
+      ) : (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          {entries.map(([name, value]) => (
+            <div key={name} className="contents">
+              <dt className="font-mono text-on-surface-faint">{name}</dt>
+              <dd className="font-mono break-all whitespace-pre-wrap text-on-surface">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {run.actorLogin ? (
+        <p className="mt-0.5">{gt("Started by {who}", { who: run.actorLogin })}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -694,6 +734,7 @@ function RunDetailView({
             <RunSource run={run} />
             {run.statusReason ? <span className="ml-2">{run.statusReason}</span> : null}
           </p>
+          <RunInputs run={run} />
           {run.status === "awaiting_approval" ? (
             <Notice tone="warning">
               <p className="mb-2">
@@ -875,6 +916,11 @@ export function CiPanel({
                 canNarrow={canWrite}
               />
               {usage ? <UsageCard usage={usage} /> : null}
+              <CiManualCard
+                client={client}
+                canStart={canApprove}
+                onStarted={(run) => onSelectRun(run.id)}
+              />
               <CiSchedulesCard client={client} />
               <CiCachesCard client={client} canWrite={canWrite} />
 

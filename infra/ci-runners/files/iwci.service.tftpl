@@ -12,9 +12,9 @@ ExecStart=/opt/iwci/bin/iwci serve --listen ${listen} --cache /var/lib/iwci/cach
 Restart=always
 RestartSec=5
 # SIGTERM drains: no new runs, and running ones finish before it exits. The
-# longest a job may run is 60 minutes.
+# longest a job may run is 6 hours (`MAX_TIMEOUT_SECS` in iwci-spec).
 KillSignal=SIGTERM
-TimeoutStopSec=65min
+TimeoutStopSec=365min
 # An update replaces /opt/iwci/bin/iwci in place and execs it, so that
 # directory is writable; nothing else outside the cache is.
 NoNewPrivileges=yes

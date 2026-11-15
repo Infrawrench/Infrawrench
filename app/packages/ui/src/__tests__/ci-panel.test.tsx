@@ -70,6 +70,7 @@ const run: CiRun = {
 };
 
 const RETRY_ID = "33333333-3333-4333-8333-333333333333";
+const MANUAL_ID = "44444444-4444-4444-8444-444444444444";
 
 function client() {
   return {
@@ -141,6 +142,49 @@ function client() {
           error: "other.yml: unknown key `whenn`",
         },
       ],
+    })),
+    listManual: vi.fn(async () => ({
+      repositories: [
+        {
+          installationId: 7,
+          repoFullName: "acme/web",
+          defaultBranch: "main",
+          sha: "d".repeat(40),
+          refreshedAt: "2026-11-15T10:00:00.000Z",
+          pipelines: [
+            {
+              file: ".infrawrench/ci/purge.yml",
+              name: "Purge the CDN",
+              inputs: [
+                {
+                  name: "urls",
+                  type: "string" as const,
+                  required: false,
+                  description: "One URL per line",
+                },
+                {
+                  name: "zone",
+                  type: "choice" as const,
+                  required: false,
+                  default: "www",
+                  options: ["www", "docs"],
+                },
+                { name: "dry-run", type: "boolean" as const, required: false },
+                { name: "shards", type: "number" as const, required: false, default: "4" },
+                { name: "reason", type: "string" as const, required: true },
+              ],
+            },
+          ],
+        },
+      ],
+    })),
+    startRun: vi.fn(async () => ({
+      ...run,
+      id: MANUAL_ID,
+      event: "manual" as const,
+      status: "queued" as const,
+      pullNumber: null,
+      headRef: "main",
     })),
     clearCache: vi.fn(async (installationId: number, repo: string) => ({
       installationId,
@@ -609,6 +653,115 @@ describe("CiPanel", () => {
     await waitFor(() =>
       expect(screen.getByText("Scheduled .infrawrench/ci/nightly.yml on main")).toBeTruthy(),
     );
+  });
+
+  it("starts a manual pipeline from a form built from its inputs, and opens the run", async () => {
+    const c = client();
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    const card = screen.getByRole("region", { name: "Manual runs" });
+    fireEvent.click(within(card).getByRole("button", { name: "Run" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("One URL per line")).toBeTruthy();
+    expect((within(dialog).getByLabelText("Branch") as HTMLInputElement).value).toBe("main");
+    expect((within(dialog).getByLabelText(/zone/) as HTMLSelectElement).value).toBe("www");
+    expect((within(dialog).getByLabelText(/shards/) as HTMLInputElement).value).toBe("4");
+
+    // A required input left empty, and a number that is not one, stop it.
+    fireEvent.change(within(dialog).getByLabelText(/shards/), { target: { value: "lots" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(within(dialog).getByText("Required")).toBeTruthy());
+    expect(within(dialog).getByText("A number")).toBeTruthy();
+    expect(c.startRun).not.toHaveBeenCalled();
+
+    // A value a shell would run is sent as typed; defaults left alone are
+    // not sent, so the branch's own file decides them.
+    const hostile = "$(touch /tmp/pwned)\n'; rm -rf / #";
+    fireEvent.change(within(dialog).getByLabelText(/shards/), { target: { value: "4" } });
+    fireEvent.change(within(dialog).getByLabelText(/reason/), { target: { value: "release" } });
+    fireEvent.change(within(dialog).getByLabelText(/urls/), { target: { value: hostile } });
+    fireEvent.click(within(dialog).getByLabelText("dry-run"));
+    fireEvent.change(within(dialog).getByLabelText("Branch"), { target: { value: "feature/x" } });
+    expect(
+      within(dialog).getByText(
+        "The inputs below are main's. The run checks them against feature/x's own pipeline file.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(onSelectRun).toHaveBeenCalledWith(MANUAL_ID));
+    expect(c.startRun).toHaveBeenCalledWith({
+      installationId: 7,
+      repoFullName: "acme/web",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      branch: "feature/x",
+      inputs: { urls: hostile, "dry-run": true, reason: "release" },
+    });
+  });
+
+  it("shows the server's refusal in the form, and offers no start without ci:approve", async () => {
+    const c = client();
+    c.startRun.mockRejectedValueOnce(new Error("acme/web has no branch nope."));
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/reason/), { target: { value: "x" } });
+    fireEvent.change(within(dialog).getByLabelText("Branch"), { target: { value: "nope" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() =>
+      expect(within(dialog).getByText("acme/web has no branch nope.")).toBeTruthy(),
+    );
+    unmount();
+
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove={false}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    const button = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe("Starting a run takes permission to approve CI runs.");
+  });
+
+  it("labels a manual run and lists the inputs it was started with", async () => {
+    const c = client();
+    const manualRun: CiRun = {
+      ...run,
+      event: "manual",
+      headRef: "feature/x",
+      pullNumber: null,
+      actorLogin: "someone@example.com",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      inputs: { zone: "docs", urls: "a\nb" },
+    };
+    c.listRuns.mockResolvedValue([manualRun]);
+    c.getRun.mockResolvedValue({ run: manualRun, jobs: [] });
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText("Started by hand: .infrawrench/ci/purge.yml on feature/x"),
+      ).toBeTruthy(),
+    );
+    unmount();
+    render(
+      <CiPanel client={c} selectedRunId={run.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("zone")).toBeTruthy());
+    expect(screen.getByText("docs")).toBeTruthy();
+    expect(screen.getByText("Started by someone@example.com")).toBeTruthy();
   });
 
   it("opens a run from anywhere on its row, but not from the approval buttons", async () => {
