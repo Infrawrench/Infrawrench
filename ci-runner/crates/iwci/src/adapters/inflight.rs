@@ -315,7 +315,10 @@ impl StoreInFlight {
             .get(&self.inner.run)
             .map(|(_, at)| *at)
             .filter(|at| *at > 0);
-        let lease = self.timing.lease.as_secs().max(1);
+        // The store dates objects to the second, so two seconds more: a
+        // beat late in one second and another early in the next would
+        // otherwise look a second further apart than they are.
+        let lease = self.timing.lease.as_secs() + 2;
         for (run, (mut beats, newest)) in signs {
             if now.is_some_and(|now| newest > 0 && newest.saturating_add(lease) < now) {
                 look.gone.insert(run.clone());

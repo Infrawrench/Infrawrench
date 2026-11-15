@@ -455,6 +455,9 @@ pub(super) fn watch<'p>(
     let timing = inflight.timing();
     // Each holder's sign of life and when it last changed, by this clock.
     let mut alive: HashMap<String, (String, Instant)> = HashMap::new();
+    // Looks in a row that found no sign of life of a run: one listing can
+    // miss a sign of life that moves while it is read.
+    let mut missing: HashMap<String, u32> = HashMap::new();
     let mut next = Instant::now();
     loop {
         {
@@ -491,7 +494,9 @@ pub(super) fn watch<'p>(
                     alive.insert(run.clone(), (sign.clone(), now));
                 }
             }
+            missing.retain(|run, _| !look.alive.contains_key(run));
         }
+        let mut absent: HashSet<String> = HashSet::new();
         let mut s = state.lock().unwrap();
         let mut back = Vec::new();
         let mut i = 0;
@@ -511,7 +516,12 @@ pub(super) fn watch<'p>(
                     Some(version) => {
                         holder.version.get_or_insert_with(|| version.clone());
                         let run = &holder.run;
-                        if look.gone.contains(run) || !look.alive.contains_key(run) {
+                        if !look.alive.contains_key(run) {
+                            absent.insert(run.clone());
+                        }
+                        let unseen = !look.alive.contains_key(run)
+                            && missing.get(run).copied().unwrap_or(0) >= 1;
+                        if look.gone.contains(run) || unseen {
                             Some(Why::Dead("which is no longer running".to_string()))
                         } else if alive.get(run).is_some_and(|(_, at)| {
                             now.saturating_duration_since(*at) >= timing.lease
@@ -540,6 +550,9 @@ pub(super) fn watch<'p>(
                 Some(why) => back.push((s.awaiting.swap_remove(i), why)),
                 None => i += 1,
             }
+        }
+        for run in absent {
+            *missing.entry(run).or_default() += 1;
         }
         for (a, why) in back {
             // Counted again when a lookup thread takes it.
