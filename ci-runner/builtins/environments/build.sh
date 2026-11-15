@@ -197,8 +197,17 @@ GCLOUD_APIS_PKG="iwci/gcloud-apis 593.0.0-iwci.1 74d94ed1d43a7eb1f49ebb23f154f48
 #     process it leaves behind; off.
 #   AZURE_CORE_SURVEY_MESSAGE, AZURE_CORE_NO_COLOR  no survey prompt, and
 #     plain text in the log.
+# cloud_env <dir>: env:python's defaults with <dir> on PATH right after
+# /usr/local/bin (the job's tools), wherever that sits in PATH (the user
+# site's bin comes first since python 3.13.19). Fails rather than build an
+# environment whose CLI is not on PATH.
 cloud_env() {
-  printf '%s' "${PYTHON_ENV/\"PATH\": \"\/usr\/local\/bin:/\"PATH\": \"\/usr\/local\/bin:$1:}"
+  local env="${PYTHON_ENV/\/usr\/local\/bin:/\/usr\/local\/bin:$1:}"
+  if [[ "$env" == "$PYTHON_ENV" || "$env" != *"\"PATH\": \""*"$1:"* ]]; then
+    echo "error: cannot put $1 on env:python's PATH" >&2
+    exit 1
+  fi
+  printf '%s' "$env"
 }
 AWS_ENV="$(cloud_env /opt/aws-cli/bin)"',
     "AWS_PAGER": "",
