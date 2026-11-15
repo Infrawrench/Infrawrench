@@ -54,6 +54,12 @@ export const manifest = {
     maxHistoryDays: 60,
   },
   statusFeed,
+  // CI jobs can be lent the API key (ci-credential.ts).
+  ciCredential: {
+    description:
+      "The connection's API key as NEON_API_KEY, which the Neon CLI reads, to create and delete branches for a job.",
+    shortLived: false,
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

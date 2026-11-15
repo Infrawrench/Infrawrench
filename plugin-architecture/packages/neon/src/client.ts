@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
+import { lendNeonKey } from "./ci-credential.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { CiCredentialRequest, CiLentMaterial, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -178,12 +179,16 @@ export class NeonClient implements PluginClient {
 
   private readonly http: HttpHostServices | undefined;
 
+  /** The connection's key, which is what a CI job is lent (ci-credential.ts). */
+  private readonly apiKey: string;
+
   /** What `listResources` reads through. A sync calls it once per type, all at once. */
   private readonly pollRun: ListRun;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const key = credentials["apiKey"];
     if (!key) throw new Error("Neon plugin: missing apiKey credential");
+    this.apiKey = key;
     this.http = services?.http;
     this.api = createApiClient({
       apiKey: key,
@@ -194,6 +199,11 @@ export class NeonClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(() => this.listType(this.pollRun, typeId, accountId));
+  }
+
+  /** `NEON_API_KEY` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
+  lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendNeonKey(this.apiKey));
   }
 
   private async listType(

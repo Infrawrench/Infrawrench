@@ -1,7 +1,13 @@
 import type { Credentials } from "./plugin.js";
+import { lendCloudflareToken } from "./ci-credential.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import { hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
-import type { HostServices, PluginEffect } from "@infrawrench/plugin-base";
+import type {
+  CiCredentialRequest,
+  CiLentMaterial,
+  HostServices,
+  PluginEffect,
+} from "@infrawrench/plugin-base";
 import type {
   AiRequestLogFetchRange,
   AiRequestLogFetchResult,
@@ -152,6 +158,13 @@ export class CloudflareClient implements PluginClient {
     // OAuth access tokens authenticate exactly like API tokens (Bearer); only
     // the preflight treats them differently.
     this.oauth = Boolean(credentials[OAUTH_CREDENTIAL_KEY]);
+  }
+
+  /** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
+  lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () =>
+      lendCloudflareToken(this.api.apiToken, await this.api.getAccountId()),
+    );
   }
 
   verifyCredentials(): PluginEffect<PreflightResult> {
