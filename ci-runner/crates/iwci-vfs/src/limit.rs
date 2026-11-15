@@ -11,12 +11,15 @@
 //! What is counted is the bytes a job adds: a file's growth, given back
 //! when it shrinks, is truncated, or is deleted. Copying a snapshot file
 //! up to change it in place is not counted, because the snapshot's size
-//! bounds it already.
+//! bounds it already. So each file the job may change has an [`Account`]
+//! of the bytes it holds without having been charged for them, and only
+//! the rest is ever given back: removing or shrinking a file gives back
+//! what the job added to it, never what it was given.
 
 use std::fmt;
 use std::io::{self, SeekFrom};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use virtual_fs::{AsyncRead, AsyncSeek, AsyncWrite, ReadBuf, VirtualFile};
@@ -26,6 +29,47 @@ use virtual_fs::{AsyncRead, AsyncSeek, AsyncWrite, ReadBuf, VirtualFile};
 pub trait WriteBudget: Send + Sync + fmt::Debug {
     fn take(&self, bytes: u64) -> bool;
     fn give(&self, bytes: u64);
+}
+
+/// What one file was given without being charged: the bytes it had from
+/// the snapshot when the job's copy of it was made. The file's size past
+/// that is what it has been charged. Shared by every open handle of the
+/// file, and moved with it when it is renamed.
+#[derive(Debug, Default)]
+pub(crate) struct Account {
+    free: Mutex<u64>,
+}
+
+impl Account {
+    pub(crate) fn new(free: u64) -> Arc<Self> {
+        Arc::new(Self {
+            free: Mutex::new(free),
+        })
+    }
+
+    fn free(&self) -> std::sync::MutexGuard<'_, u64> {
+        self.free.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The file lost its tail, going from `old` bytes to `new`: what to
+    /// give back. The bytes it was given go last.
+    pub(crate) fn shrunk(&self, old: u64, new: u64) -> u64 {
+        let mut free = self.free();
+        let charged_old = old - (*free).min(old);
+        *free = (*free).min(new);
+        let charged_new = new - (*free).min(new);
+        charged_old.saturating_sub(charged_new)
+    }
+
+    /// The file, `size` bytes, is gone (removed, or replaced by a rename):
+    /// what to give back. A handle still open on it gives nothing more
+    /// back for those bytes.
+    pub(crate) fn released(&self, size: u64) -> u64 {
+        let mut free = self.free();
+        let charged = size - (*free).min(size);
+        *free = size;
+        charged
+    }
 }
 
 pub(crate) fn storage_full() -> io::Error {
@@ -39,6 +83,7 @@ pub(crate) fn storage_full() -> io::Error {
 pub(crate) struct LimitedFile {
     inner: Box<dyn VirtualFile + Send + Sync + 'static>,
     budget: Arc<dyn WriteBudget>,
+    account: Arc<Account>,
     /// Where the next read or write starts, tracked here because the
     /// growth a write causes depends on it.
     pos: u64,
@@ -49,11 +94,13 @@ impl LimitedFile {
     pub(crate) fn new(
         inner: Box<dyn VirtualFile + Send + Sync + 'static>,
         budget: Arc<dyn WriteBudget>,
+        account: Arc<Account>,
         append: bool,
     ) -> Self {
         Self {
             inner,
             budget,
+            account,
             pos: 0,
             append,
         }
@@ -147,7 +194,7 @@ impl VirtualFile for LimitedFile {
         match self.inner.set_len(new_size) {
             Ok(()) => {
                 if new_size < old {
-                    self.budget.give(old - new_size);
+                    self.budget.give(self.account.shrunk(old, new_size));
                 }
                 Ok(())
             }
