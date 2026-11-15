@@ -454,12 +454,14 @@ export const TelemetryAlertResourceType = rt({
 export const TeamMemberResourceType = rt({
   name: "Team Member",
   id: "team-member",
-  description: "A member of a Better Stack team, with their role. Remove them from the team here.",
+  description:
+    "A member of a Better Stack team, with their role, or a pending invitation. Remove a member from the team, or cancel an invitation, here.",
   fields: [
     f("name", "Name", { editable: false }),
     f("email", "Email", { required: false, editable: false }),
     f("role", "Role", { showcase: true, required: false, editable: false }),
     { ...TEAM, showcase: true },
+    f("invitedAt", "Invited", { required: false, editable: false }),
   ],
   outputs: [o("email", "Email")],
   principalRole: {

@@ -15727,7 +15727,7 @@
   "a59974e6b9efb421": "Un marker : un déploiement, un changement de feature flag ou un autre événement affiché sur les graphiques de Honeycomb. Ajoutez-en un à la main, ou modifiez son message, son type et son lien.",
   "3a91e48524b54c6f": "Un contact marketing (les 1 000 plus récents sont listés). Ajoutez-le à des segments, modifiez le nom et le désabonnement global, ou supprimez-le.",
   "4fbb5fb55e99a653": "Un e-mail marketing envoyé à un segment. Créez un brouillon avec des sélecteurs de segment et de topic, modifiez-le tant qu'il est brouillon, envoyez-le maintenant ou selon un calendrier, annulez un envoi planifié, dupliquez-le ou supprimez-le. Les diffusions envoyées tracent leur délivrabilité.",
-  "7a6557b01e555779": "Un membre d'une équipe Better Stack, avec son rôle. Retirez-le de l'équipe ici.",
+  "a5cabae157c1822c": "Un membre d'une équipe Better Stack, avec son rôle, ou une invitation en attente. Retirez un membre de l'équipe ou annulez une invitation ici.",
   "c970fc2c6b87291f": "Un membre d'une organisation : rôle, équipes et (avec les insights activés) dernière connexion. Modifiez le rôle (owner, editor ou member) ou retirez le membre.",
   "e7e844c39fc42efb": "Un membre de l'organisation Axiom, avec son rôle. Retirez un utilisateur d'ici.",
   "ee70d4b79849c6f3": "Un membre de l'organisation Capella avec des rôles d'organisation et de projet",

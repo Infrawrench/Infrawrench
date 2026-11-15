@@ -21,7 +21,14 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { BetterStackContext, Host, JsonApiItem, Paging } from "./api.js";
-import { bsFetch, bsPaged, mapPooled, statusOf, tokenWorksBeyond } from "./api.js";
+import {
+  BetterStackApiError,
+  bsFetch,
+  bsPaged,
+  mapPooled,
+  statusOf,
+  tokenWorksBeyond,
+} from "./api.js";
 import { fetchBetterStackCost } from "./cost.js";
 import {
   mapAlert,
@@ -39,6 +46,7 @@ import {
   mapSimple,
   mapSource,
   mapStatusPage,
+  INVITATION_PREFIX,
   parseMemberExternalId,
   resourceIdFor,
 } from "./mappers.js";
@@ -269,6 +277,25 @@ export class BetterStackClient implements PluginClient {
     }
   }
 
+  /**
+   * A pending invitation, found in its team's member list: the single-member route
+   * "does not return pending invitations", and the list is the only one that does.
+   */
+  private async invitation(accountId: string, externalId: string): Promise<ResourceInstance> {
+    const { team } = parseMemberExternalId(externalId);
+    const { data } = await this.collection(
+      "team-member",
+      team !== undefined ? { team_name: team } : {},
+    );
+    const found = data
+      .map((x) => mapMember(accountId, x, team))
+      .find((r) => r.externalId === externalId);
+    if (!found) {
+      throw new BetterStackApiError(404, `Better Stack plugin: invitation ${externalId} not found`);
+    }
+    return found;
+  }
+
   private async listPageChildren(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     const pages = (await this.collection("status-page")).data;
     const out = await mapPooled(pages, POOL, (p) => this.pageChildren(typeId, accountId, p.id));
@@ -374,6 +401,7 @@ export class BetterStackClient implements PluginClient {
         // A member read for one team is fetched for that team, as the document asks of a
         // global token.
         const { userId, team } = parseMemberExternalId(id);
+        if (userId.startsWith(INVITATION_PREFIX)) return this.invitation(accountId, id);
         if (team !== undefined) {
           const { item } = await this.one(typeId, userId, { team_name: team });
           return mapMember(accountId, item, team);
@@ -1555,6 +1583,17 @@ export class BetterStackClient implements PluginClient {
       if (typeId === "team-member") {
         // The document asks a global token for `team_name` on removal too.
         const { userId, team } = parseMemberExternalId(id);
+        if (userId.startsWith(INVITATION_PREFIX)) {
+          // Only the e-mail route cancels an invitation.
+          // Matched by external id, so the account the row is mapped under does not matter.
+          const email = String((await this.invitation("", id)).fields["email"] ?? "");
+          if (!email) throw new Error("Better Stack did not say who this invitation is for.");
+          await bsFetch<unknown>(this.ctx, c.host, c.path, {
+            method: "DELETE",
+            query: { email, ...(team !== undefined ? { team_name: team } : {}) },
+          });
+          return;
+        }
         if (team !== undefined) {
           await bsFetch<unknown>(this.ctx, c.host, `${c.path}/${encodeURIComponent(userId)}`, {
             method: "DELETE",

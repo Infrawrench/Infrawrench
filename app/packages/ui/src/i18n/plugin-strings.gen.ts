@@ -652,7 +652,7 @@ export const PLUGIN_STRINGS: readonly string[] = [
   msg("A marker: a deploy, feature flag change or other event drawn on Honeycomb's graphs. Add one by hand, or edit its message, type and link."),
   msg("A marketing contact (the 1,000 newest are listed). Add one to segments, edit the name and global unsubscribe, or delete it."),
   msg("A marketing email to a segment. Create a draft with segment and topic pickers, edit it while it is a draft, send it now or on a schedule, cancel a scheduled send, duplicate or delete it. Sent broadcasts chart their deliverability."),
-  msg("A member of a Better Stack team, with their role. Remove them from the team here."),
+  msg("A member of a Better Stack team, with their role, or a pending invitation. Remove a member from the team, or cancel an invitation, here."),
   msg("A member of a Console workspace and their workspace role (admin, developer, restricted developer, user or billing). Requires an Admin API key."),
   msg("A member of an organization: role, teams and (with insights enabled) last sign-in. Change the role (owner, editor or member) or remove the member."),
   msg("A member of the Axiom organization, with their role. Remove a user from here."),

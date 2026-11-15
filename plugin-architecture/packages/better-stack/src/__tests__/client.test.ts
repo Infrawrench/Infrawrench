@@ -466,6 +466,72 @@ describe("team members for a global token over several teams (#822)", () => {
   });
 });
 
+describe("pending invitations in the team member list", () => {
+  const page = (data: unknown[]) => ({ body: { data, pagination: { next: null } } });
+  const invitation = {
+    id: "7",
+    type: "team_member_invitation",
+    attributes: { email: "new@x.io", role: "member", invited_at: "2026-11-01T10:00:00Z" },
+  };
+  const member = {
+    id: "7",
+    type: "team_member",
+    attributes: { email: "a@x.io", first_name: "Ada", last_name: null, role: "admin" },
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("global fetch must not be used");
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keys an invitation apart from a user with the same number", async () => {
+    const { c } = client(() => page([member, invitation]));
+    const rows = await c.listResources("team-member", ACCOUNT);
+    expect(rows.map((r) => [r.externalId, r.fields["email"], r.fields["invitedAt"]])).toEqual([
+      ["7", "a@x.io", undefined],
+      ["invitation:7", "new@x.io", "2026-11-01T10:00:00Z"],
+    ]);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(2);
+  });
+
+  it("reads an invitation from the list, which is the only route that has it", async () => {
+    const { c, calls } = client(() => page([member, invitation]));
+    const got = await c.getResource("team-member", `${ACCOUNT}:team-member:invitation:7`, ACCOUNT);
+    expect(got.fields["email"]).toBe("new@x.io");
+    expect(calls.map((x) => [x.method, x.url.pathname])).toEqual([["GET", "/api/v2/team-members"]]);
+  });
+
+  it("cancels an invitation by e-mail, with the team where it was read for one", async () => {
+    const { c, calls } = client((url, method) =>
+      method === "DELETE" ? { status: 204 } : page([invitation]),
+    );
+    await c.deleteResource("team-member", `${ACCOUNT}:team-member:Ops/invitation:7`);
+    expect(
+      calls.map((x) => [
+        x.method,
+        x.url.pathname,
+        x.url.searchParams.get("email"),
+        x.url.searchParams.get("team_name"),
+      ]),
+    ).toEqual([
+      ["GET", "/api/v2/team-members", null, "Ops"],
+      ["DELETE", "/api/v2/team-members", "new@x.io", "Ops"],
+    ]);
+  });
+
+  it("says an invitation that is gone is not found, rather than deleting a user", async () => {
+    const { c, calls } = client(() => page([member]));
+    await expect(
+      c.deleteResource("team-member", `${ACCOUNT}:team-member:invitation:7`),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(calls.filter((x) => x.method === "DELETE")).toEqual([]);
+  });
+});
+
 describe("actions", () => {
   it("pauses monitors and sources with the right attribute", async () => {
     const { c, calls } = client(() => ({ body: {} }));

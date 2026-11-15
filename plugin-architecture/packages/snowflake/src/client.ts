@@ -28,6 +28,7 @@ import {
   ListTruncatedError,
   decodePromptArgs,
   externalIdOf,
+  reportUnreadListPart,
 } from "@infrawrench/plugin-base";
 import type { SnowflakeAccount } from "./account.js";
 import { parseAccount, snowsightUrl } from "./account.js";
@@ -123,7 +124,8 @@ const SCHEMA_OBJECTS: Record<
   { show: string; sql: string; map: typeof mapTask; pageable: boolean }
 > = {
   [TYPE.task]: { show: "TASKS", sql: "TASK", map: mapTask, pageable: true },
-  // SHOW PIPES takes no LIMIT and drops what is past 10,000 even in a narrower scope.
+  // SHOW PIPES takes no LIMIT and drops what is past 10,000 even in a narrower scope,
+  // so past 10,000 it is read a schema at a time and nothing is pruned (#876).
   [TYPE.pipe]: { show: "PIPES", sql: "PIPE", map: (a, r) => mapPipe(a, r), pageable: false },
   [TYPE.dynamicTable]: {
     show: "DYNAMIC TABLES",
@@ -263,9 +265,7 @@ export class SnowflakeClient implements PluginClient {
         default: {
           const obj = SCHEMA_OBJECTS[typeId];
           if (!obj) throw new Error(`Snowflake plugin: unknown resource type "${typeId}"`);
-          const rows = obj.pageable
-            ? await this.acrossAccount(accountId, typeId, obj.show, 2)
-            : await this.rows(`SHOW ${obj.show} IN ACCOUNT`);
+          const rows = await this.acrossAccount(accountId, typeId, obj.show, 2, !obj.pageable);
           return rows.map((r) => obj.map(accountId, r));
         }
       }
@@ -273,10 +273,19 @@ export class SnowflakeClient implements PluginClient {
   }
 
   /** `SHOW <object> IN ACCOUNT`, one scope down at a time past 10,000 rows. */
-  private acrossAccount(accountId: string, typeId: string, object: string, depth: 1 | 2) {
+  private acrossAccount(
+    accountId: string,
+    typeId: string,
+    object: string,
+    depth: 1 | 2,
+    unpaged = false,
+  ) {
     return showAcrossAccount(this.show, {
       object,
       depth,
+      ...(unpaged
+        ? { unpaged: { unreadAll: () => reportUnreadListPart({ idPrefixes: [""] }) } }
+        : {}),
       // External ids are the encoded name parts joined with dots, so a scope's rows
       // are the ids under its own parts and a dot.
       unread: unreadUnder((scope) => `${accountId}:${typeId}:${encodeId(...scope)}.`),
