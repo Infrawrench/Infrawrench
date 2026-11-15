@@ -97,7 +97,7 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 | Key           | Meaning                                                                                                                                                                        |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `name`        | Required.                                                                                                                                                                      |
-| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push.                                                    |
+| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.                                           |
 | `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                         |
 | `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                               |
 | `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                 |
@@ -115,6 +115,13 @@ branch. Runners do not keep time: something outside them has to fire the
 schedule, which in this repository is the app for repositories connected
 through its GitHub App, and the proxy Worker for repositories registered
 with it directly (see [Scheduled runs](#scheduled-runs)).
+
+`on.manual` lets someone start the pipeline by hand, on a branch of the
+repository they choose, from the CI tab or the API: `manual:` with nothing
+after it (or `{}`, or `true`) turns it on, and `inputs` are what they fill
+in. A manual run's event is `manual`; it runs that one pipeline file as the
+branch's head has it, with no branch or path filter, and reads and writes
+the same caches as a push to that branch. See [Manual runs](#manual-runs).
 
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
@@ -169,7 +176,7 @@ everything through.
 | `if`          | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
 | `outputs`     | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
 | `paths`       | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
-| `timeout`     | `90s`, `10m`, `1h`. Default `10m`, at most `60m`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                     |
+| `timeout`     | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
 | `memory`      | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
 | `cache`       | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
 | `env-cache`   | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
@@ -191,13 +198,75 @@ Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `${{ commit.branch }}`, `${{ repo.id }}`, `${{ event }}`,
 `${{ pipeline.name }}` (the file's `name:`), `${{ pull-request.number }}`
 (empty unless the event is `pull-request`), `${{ vars.<name> }}`,
-and, in `env:` values only, `${{ secrets.<name> }}` (see
+`${{ inputs.<name> }}` (an `on.manual` input; never in a script, see
+[Manual runs](#manual-runs)), and, in `env:` values only, `${{ secrets.<name> }}` (see
 [Secrets and variables](#secrets-and-variables)) and
 `${{ resources.<name>.<output> }}` (see
 [Connections, SSH keys and resources](#connections-ssh-keys-and-resources)). Each is one name;
 operators belong in `if:`. Every name is checked when the file is parsed:
 reading a job that is not in `needs:`, or an output that job does not
 declare, is an error at push time rather than an empty string at run time.
+
+### Manual runs
+
+```yaml
+name: Purge the CDN cache
+on:
+  manual:
+    inputs:
+      urls:
+        description: URLs to purge, one per line. Empty purges everything.
+      zone:
+        type: choice
+        options: [www, docs, app]
+        default: www
+      dry-run: { type: boolean }
+concurrency: purge-${{ inputs.zone }}
+jobs:
+  purge:
+    name: Purge ${{ inputs.zone }}
+    using: env:bash-node@24
+    if: "!inputs.dry-run"
+    env:
+      URLS: ${{ inputs.urls }}
+      ZONE: ${{ inputs.zone }}
+    run: node scripts/purge.mjs --zone "$ZONE" --urls "$URLS"
+```
+
+| Key           | Meaning                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`        | `string` (the default), `boolean`, `choice` or `number`.                                                                                       |
+| `description` | Shown beside the field, up to 1024 characters.                                                                                                 |
+| `required`    | A run cannot start without a value (an empty one counts as none). An input with a `default` always has one.                                    |
+| `default`     | What the input reads when a run gives none, and on every other event (a push of the same pipeline). Without one: `false` for a boolean, empty. |
+| `options`     | A `choice` input's values, up to 64.                                                                                                           |
+
+Up to 32 inputs, named with letters, digits, `_` and `-` (starting with a
+letter or `_`). A value is checked against its input before anything reads
+it: a boolean is `true` or `false`, a number is a finite decimal number (as
+written, trimmed), a choice is one of its options, and any value is at most
+16 KiB without a NUL byte. A name the pipeline does not declare, a value of
+the wrong type and a required input left out each fail the pipeline under
+`inputs.<name>`, before a job starts.
+
+**Inputs are data, never code.** Whoever starts a run types them, so a
+value never becomes part of a script: `${{ inputs.<name> }}` is refused in
+`run:`, a service's `run:` and its `ready.command`, and in a one-line
+`args:`, which is split into words after substitution. Put an input in a
+variable with `env:` and quote the variable in the script (`"$URLS"`), or
+make it one element of a list `args:`. Everywhere else an expression works
+(`env:` values, `name`, `cwd`, paths, `cloud:` fields, a list `args:`
+element, `if:`, `concurrency:`) it is substituted as text, once: a value
+holding `$(...)`, quotes, newlines or `${{ secrets.X }}` is those
+characters in a variable, never run, split or read as another expression.
+Inputs are not secret: they are in the plan, the job's environment and the
+app's audit log.
+
+Who may start one, and with what, is the caller's to decide: the app lets
+members with `ci:approve` start a manual run of a pipeline on a branch of
+the repository itself (never a fork's), trusted like a push to that branch,
+so it gets the repository's secrets and only what is lent to that branch.
+It holds its `concurrency:` groups like any other run.
 
 ### Concurrency
 
@@ -2385,8 +2454,10 @@ What else is and is not available:
 iwci validate .infrawrench/ci/*.yml [--json]      # check files, all errors at once
 iwci plan .infrawrench/ci/tests.yml [--json]      # the expanded jobs
 iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
-         [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
-         [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
+         [--repo-id <id>] [--owner <owner>] [--event push|pull-request|schedule|manual] \
+         [--base <sha>] [--default-branch main] [--pipeline <file>] \
+         [--pipeline-file .infrawrench/ci/<file>.yml] [--input NAME=value]... \
+         [--cpus <n>] [--jobs-per-cpu 4] \
          [--memory <size>] [--memory-admission limit|estimate] [--storage-quota <size>] \
          [--stall-after 5m] [--json] [--store <dir>] \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
@@ -2669,6 +2740,16 @@ whole pipeline.
   network in silence for that long is stopped too, so print something now
   and then. Measured on Linux only; elsewhere jobs wait for their timeout.
   tsc jobs are not watched.
+- **A job's `timeout:`** is at most 6 hours (`MAX_TIMEOUT_SECS` in
+  `iwci-spec`). The cap is not a billing rule: a job is billed for the
+  time it runs, and neither the proxy nor the app holds a plan to less.
+  It is what a runner promises the things that stop it: a drain (a
+  signal, an update, `POST /v1/drain`) waits for the longest job, so a
+  systemd unit's `TimeoutStopSec` covers it (`infra/ci-runners` sets 6
+  hours and 5 minutes), and an update waits that long behind one. Raising
+  it again means raising those with it. Credentials the app lends a job
+  are minted for 4 hours from dispatch (less where a provider caps them),
+  so a job longer than that should not need them near its end.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
 limit) and, separately, the files it writes, which live in memory: without
@@ -2795,7 +2876,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
 | `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches, never its downloads (below), and answers what went.                                                                                    |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
-| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch: file, name, crons and the file's text.                                                                                  |
+| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch (file, name, crons and the file's text), and its `manual` ones (file, name and inputs).                                  |
 | `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
 
 A request body (for `runs` and `prepare`):
@@ -2805,13 +2886,15 @@ A request body (for `runs` and `prepare`):
   "repo": "https://github.com/acme/web",
   "branch": "main",
   "sha": "optional: a commit; without it, the branch's head",
-  "event": "push, pull-request or schedule",
+  "event": "push, pull-request, schedule or manual",
   "base": "optional: commit to diff against for paths: and changed()",
   "owner": "optional: defaults to github.com-acme",
   "repo-id": "optional: defaults to web",
   "default-branch": "main",
   "storage-quota": "10GiB, or bytes; overrides the server's --storage-quota",
   "pipeline": "optional: a pipeline file's text, run instead of the repository's",
+  "pipeline-file": "a manual run's file to run, such as .infrawrench/ci/deploy.yml (or send pipeline instead)",
+  "inputs": { "zone": "optional, a manual run's only: a string, a boolean or a number each" },
   "ref": "optional: the ref the commit is reachable from, such as refs/pull/12/head; default refs/heads/<branch>",
   "token": "optional: for a private repository; never stored or echoed",
   "secrets": { "NPM_TOKEN": "optional: never stored or echoed, masked in output" },
@@ -3020,6 +3103,18 @@ it is masked, and an untrusted run is given none of it:
   request, `422` when the commit cannot be fetched. `POST
 /v1/schedules/read` carries each scheduled pipeline's `concurrency` the
   same way.
+- **Manual runs.** `"event": "manual"` with `pipeline-file` (or `pipeline`)
+  runs that one file, as the commit has it, with `inputs`; anything but a
+  manual run sending `inputs` or `pipeline-file` is a `400`, and so is an
+  input that is not a string, a boolean or a number, or a name that is not
+  one. The values are checked against the file's `on.manual.inputs` when it
+  is parsed: a file without `on.manual`, or a value its input refuses,
+  reports the pipeline `invalid` with the reason. `POST /v1/schedules/read`
+  lists the branch's pipelines with `on.manual` under `manual`, each
+  `{ file, name, inputs: [{ name, type, description?, required, default?,
+options? }] }`, which is what the app builds its form from. A runner
+  from before 0.3.34 refuses both fields (`deny_unknown_fields`), so only
+  a manual run fails against one, with its reason.
 - **Cloud jobs.** See [Cloud jobs: the executor's routes](#cloud-jobs-the-executors-routes).
 - **Without the task cache.** A request with `"no-task-cache": true`, or
   `iwci run --no-task-cache`, runs every `task-cache:` job instead of
@@ -3268,7 +3363,9 @@ make that safe to do while jobs run:
   being admitted (`429`, and `draining` in `/v1/capacity`, which the proxy
   reads to place work elsewhere) and let the running ones finish; on a
   signal the server then exits 0. A systemd unit's stop timeout therefore
-  has to cover the longest job (60 minutes). What the server is doing for
+  has to cover the longest job (6 hours, `MAX_TIMEOUT_SECS`), and so does
+  an update's drain: a runner with a long job running takes that long to
+  update. What the server is doing for
   other runners' [split runs](#split-runs) ends first: those jobs are
   stopped and handed back to the runner that has the run, and the drain
   waits until they have been before it goes on to wait for the server's

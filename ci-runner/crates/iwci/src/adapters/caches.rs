@@ -50,6 +50,9 @@ impl StoreCaches {
             Event::PullRequest => format!("pr-{}", short_hash(branch)),
             // A scheduled run builds the default branch's own code.
             Event::Schedule => push_scope(branch),
+            // A manual run builds a branch of the repository itself, as a
+            // push to that branch would.
+            Event::Manual => push_scope(branch),
         };
         let mut read_scopes = vec![write_scope.clone()];
         let default_scope = push_scope(default_branch);

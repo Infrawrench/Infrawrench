@@ -67,6 +67,14 @@ fn schema_matches_the_structs() {
             "/$defs/triggerFilter",
         ),
         (
+            "name: x\non:\n  manual: { zzz: 1 }\njobs: {}\n",
+            "/$defs/manual",
+        ),
+        (
+            "name: x\non:\n  manual:\n    inputs:\n      a: { zzz: 1 }\njobs: {}\n",
+            "/$defs/input",
+        ),
+        (
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    cache: { zzz: 1 }\n",
             "/$defs/cacheEntry",
         ),

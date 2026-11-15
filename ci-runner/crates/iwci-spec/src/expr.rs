@@ -37,6 +37,11 @@ pub enum Name {
     PipelineName,
     /// A pull request's number; empty for any other event.
     PullRequestNumber,
+    /// An `on.manual` input: what the person starting the run chose, or its
+    /// default.
+    Input {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +135,9 @@ pub fn parse_name(text: &str) -> Result<Name, String> {
         ["event"] => Ok(Name::Event),
         ["pipeline", "name"] => Ok(Name::PipelineName),
         ["pull-request", "number"] => Ok(Name::PullRequestNumber),
+        ["inputs", name] => Ok(Name::Input {
+            name: name.to_string(),
+        }),
         ["needs", job, "result"] => Ok(Name::NeedsResult {
             job: job.to_string(),
         }),
@@ -138,7 +146,7 @@ pub fn parse_name(text: &str) -> Result<Name, String> {
             output: output.to_string(),
         }),
         _ => Err(format!(
-            "unknown name `{text}`; available: `needs.<job>.result`, `needs.<job>.outputs.<name>`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`"
+            "unknown name `{text}`; available: `needs.<job>.result`, `needs.<job>.outputs.<name>`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `inputs.<name>`"
         )),
     }
 }
@@ -482,6 +490,7 @@ impl fmt::Display for Name {
             Name::Event => f.write_str("event"),
             Name::PipelineName => f.write_str("pipeline.name"),
             Name::PullRequestNumber => f.write_str("pull-request.number"),
+            Name::Input { name } => write!(f, "inputs.{name}"),
         }
     }
 }

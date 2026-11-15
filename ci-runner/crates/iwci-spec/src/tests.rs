@@ -382,8 +382,8 @@ fn needs_limits_and_policies() {
         "no job named `zzz`",
     );
     assert_error(
-        "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 2h\n",
-        "between 1s and 60m",
+        "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 7h\n",
+        "between 1s and 6h",
     );
     assert_error(
         "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: \"10\"\n",
@@ -2258,5 +2258,367 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ bun: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "only applies to pnpm",
+    );
+}
+
+const MANUAL: &str = r#"name: Deploy
+on:
+  push: { branches: [main] }
+  manual:
+    inputs:
+      urls:
+        description: URLs to purge, one per line
+      force: { type: boolean }
+      target: { type: choice, options: [staging, production], default: staging }
+      shards: { type: number, default: 4 }
+      note: { required: true }
+concurrency: deploy-${{ inputs.target }}
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.target }}
+    using: env:bash@5
+    if: inputs.force || event == 'push'
+    env:
+      URLS: ${{ inputs.urls }}
+      NOTE: "note: ${{ inputs.note }}"
+      AUTH: "Bearer ${{ secrets.TOKEN }} for ${{ inputs.target }}"
+    run: purge "$URLS"
+  tool:
+    using: builtin:t@1
+    args: [--shards, "${{ inputs.shards }}", "${{ inputs.urls }}"]
+"#;
+
+fn manual_ctx(inputs: &[(&str, &str)]) -> Context {
+    Context {
+        event: Event::Manual,
+        inputs: inputs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..ctx()
+    }
+}
+
+fn manual_errors(yaml: &str, inputs: &[(&str, &str)]) -> Vec<String> {
+    match parse(yaml, &manual_ctx(inputs)) {
+        Ok(_) => panic!("expected errors"),
+        Err(e) => {
+            e.0.into_iter()
+                .map(|e| format!("{}: {}", e.path, e.message))
+                .collect()
+        }
+    }
+}
+
+#[test]
+fn manual_inputs_are_declared_typed_and_listed() {
+    let plan = parse(MANUAL, &manual_ctx(&[("note", "hi")])).unwrap();
+    let manual = plan.triggers.manual.as_ref().unwrap();
+    let names: Vec<&str> = manual.inputs.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["urls", "force", "target", "shards", "note"],
+        "file order"
+    );
+    let target = &manual.inputs[2];
+    assert_eq!(target.kind, InputKind::Choice);
+    assert_eq!(target.default.as_deref(), Some("staging"));
+    assert_eq!(target.options, ["staging", "production"]);
+    assert_eq!(manual.inputs[3].default.as_deref(), Some("4"));
+    assert!(manual.inputs[4].required);
+    // What the app's form is built from.
+    let json = serde_json::to_value(manual).unwrap();
+    assert_eq!(
+        json["inputs"][2],
+        serde_json::json!({
+            "name": "target", "type": "choice", "required": false,
+            "default": "staging", "options": ["staging", "production"]
+        })
+    );
+    assert_eq!(
+        json["inputs"][0]["description"],
+        "URLs to purge, one per line"
+    );
+    assert!(plan.triggers.matches(Event::Manual, "feature/x", None));
+    assert!(!plan.triggers.matches(Event::PullRequest, "feature/x", None));
+}
+
+#[test]
+fn manual_takes_every_short_form() {
+    for on in ["manual:", "manual: {}", "manual: true"] {
+        let plan = parse(
+            &format!("name: x\non:\n  {on}\njobs:\n  a:\n    using: builtin:t@1\n"),
+            &manual_ctx(&[]),
+        )
+        .unwrap();
+        assert_eq!(plan.triggers.manual, Some(ManualTrigger::default()), "{on}");
+        assert!(plan.triggers.push.is_none(), "{on}: only by hand");
+    }
+    assert_error(
+        "name: x\non:\n  manual: false\njobs:\n  a:\n    using: builtin:t@1\n",
+        "lists no events",
+    );
+    assert_error(
+        "name: x\non:\n  manual: [a]\njobs:\n  a:\n    using: builtin:t@1\n",
+        "`manual` is",
+    );
+}
+
+#[test]
+fn inputs_read_as_values_with_their_defaults() {
+    let plan = parse(
+        MANUAL,
+        &manual_ctx(&[
+            ("note", "ship it"),
+            ("force", "true"),
+            ("target", "production"),
+        ]),
+    )
+    .unwrap();
+    let inputs = &plan.context().inputs;
+    assert_eq!(inputs["urls"], "", "a string with no default is empty");
+    assert_eq!(inputs["force"], "true");
+    assert_eq!(inputs["shards"], "4", "the default");
+    assert_eq!(
+        plan.concurrency.as_ref().unwrap().group,
+        "deploy-production"
+    );
+    let deploy = plan.job("deploy").unwrap();
+    assert_eq!(deploy.display_name, "Deploy to production");
+    assert!(
+        deploy
+            .env
+            .contains(&("NOTE".to_string(), "note: ship it".to_string()))
+    );
+    // Beside a secret, the input is text the job is given, never a name.
+    assert_eq!(
+        deploy.secret_env[0].parts,
+        vec![
+            SecretPart::Text("Bearer ".into()),
+            SecretPart::Secret("TOKEN".into()),
+            SecretPart::Text(" for production".into()),
+        ]
+    );
+    let tool = plan.job("tool").unwrap();
+    assert_eq!(
+        tool.action,
+        Action::Args {
+            args: vec!["--shards".into(), "4".into(), String::new()]
+        }
+    );
+
+    // Any other event reads the defaults, and needs none of the required.
+    let push = parse(MANUAL, &ctx()).unwrap();
+    assert_eq!(push.context().inputs["force"], "false");
+    assert_eq!(push.context().inputs["note"], "");
+    assert_eq!(push.concurrency.as_ref().unwrap().group, "deploy-staging");
+}
+
+#[test]
+fn inputs_are_checked_against_their_types() {
+    let errs = manual_errors(
+        MANUAL,
+        &[
+            ("force", "yes"),
+            ("target", "prod"),
+            ("shards", "NaN"),
+            ("nope", "x"),
+        ],
+    );
+    let has = |needle: &str| {
+        assert!(
+            errs.iter().any(|e| e.contains(needle)),
+            "no error containing {needle:?} in {errs:#?}"
+        )
+    };
+    has("inputs.force: is a boolean");
+    has("inputs.target: is one of `staging`, `production`, not `prod`");
+    has("inputs.shards: is a number");
+    has("inputs.nope: the pipeline declares no input `nope`");
+    has("inputs.note: is required");
+    // An empty value for a required input is no value.
+    let errs = manual_errors(MANUAL, &[("note", "")]);
+    assert!(
+        errs.iter().any(|e| e == "inputs.note: is required"),
+        "{errs:?}"
+    );
+    // Numbers as JSON gives them, and an exponent.
+    let plan = parse(MANUAL, &manual_ctx(&[("note", "n"), ("shards", " 1.5e3 ")])).unwrap();
+    assert_eq!(plan.context().inputs["shards"], "1.5e3");
+    for bad in ["inf", "-Infinity", "0x10", "1,5"] {
+        let errs = manual_errors(MANUAL, &[("note", "n"), ("shards", bad)]);
+        assert!(
+            errs.iter().any(|e| e.starts_with("inputs.shards")),
+            "{bad:?}: {errs:?}"
+        );
+    }
+    // An empty number is no value: the default.
+    let plan = parse(MANUAL, &manual_ctx(&[("note", "n"), ("shards", "")])).unwrap();
+    assert_eq!(plan.context().inputs["shards"], "4");
+}
+
+#[test]
+fn input_declarations_are_checked() {
+    let on = |inputs: &str| {
+        format!(
+            "name: x\non:\n  manual:\n    inputs:\n{inputs}jobs:\n  a:\n    using: builtin:t@1\n"
+        )
+    };
+    for (inputs, needle) in [
+        ("      1bad: {}\n", "an input's name"),
+        (
+            "      a: { type: text }\n",
+            "is `string`, `boolean`, `choice` or `number`",
+        ),
+        ("      a: { type: choice }\n", "needs at least one option"),
+        (
+            "      a: { type: choice, options: [x, x] }\n",
+            "lists `x` twice",
+        ),
+        (
+            "      a: { options: [x] }\n",
+            "only a `choice` input has options",
+        ),
+        (
+            "      a: { type: boolean, default: maybe }\n",
+            "on.manual.inputs.a.default: is a boolean",
+        ),
+        (
+            "      a: { type: choice, options: [x], default: y }\n",
+            "is one of `x`",
+        ),
+        ("      a: { type: number, default: lots }\n", "is a number"),
+        (
+            "      a: { default: [1] }\n",
+            "is a string, a boolean or a number",
+        ),
+        ("      a: { zzz: 1 }\n", "unknown field `zzz`"),
+    ] {
+        assert_error(&on(inputs), needle);
+    }
+    let many: String = (0..33).map(|i| format!("      i{i}: {{}}\n")).collect();
+    assert_error(&on(&many), "the limit is 32");
+}
+
+#[test]
+fn inputs_never_become_code() {
+    let job = |field: &str| {
+        format!(
+            "name: x\non:\n  manual:\n    inputs:\n      urls: {{}}\njobs:\n  a:\n    using: env:bash@5\n{field}"
+        )
+    };
+    assert_error(
+        &job("    run: purge ${{ inputs.urls }}\n"),
+        "jobs.a.run: inputs are data, never part of a script",
+    );
+    assert_error(
+        &job("    run: |\n      echo \"${{ inputs.urls }}\"\n"),
+        "never part of a script",
+    );
+    assert_error(
+        &job("    args: --url ${{ inputs.urls }}\n"),
+        "jobs.a.args: inputs are data, never split into words",
+    );
+    assert_error(
+        &job(
+            "    run: x\n    services:\n      db:\n        using: env:bash@5\n        run: serve ${{ inputs.urls }}\n",
+        ),
+        "jobs.a.services.db.run: inputs are data",
+    );
+    assert_error(
+        &job(
+            "    run: x\n    services:\n      db:\n        using: env:bash@5\n        run: serve\n        ready: { command: \"test ${{ inputs.urls }}\" }\n",
+        ),
+        "jobs.a.services.db.ready.command: inputs are data",
+    );
+    assert_error(
+        &job("    run: echo ${{ inputs.nope }}\n    env: { A: \"${{ inputs.nope }}\" }\n"),
+        "the pipeline declares no input `nope`",
+    );
+    assert_error(
+        &job("    run: x\n    if: inputs.nope == 'y'\n"),
+        "jobs.a.if: the pipeline declares no input `nope`",
+    );
+
+    // A value that would be code in a script is only ever a variable's
+    // value, character for character: never expanded or split, and never
+    // read as another expression.
+    let hostile = "$(touch /tmp/pwned) `id` '; rm -rf / #\"\nsecond line ${{ secrets.TOKEN }}";
+    let plan = parse(
+        &job("    env:\n      URLS: ${{ inputs.urls }}\n    run: purge \"$URLS\"\n"),
+        &manual_ctx(&[("urls", hostile)]),
+    )
+    .unwrap();
+    let a = plan.job("a").unwrap();
+    assert_eq!(a.env, vec![("URLS".to_string(), hostile.to_string())]);
+    assert!(
+        a.secret_env.is_empty(),
+        "an input naming a secret reads none"
+    );
+    assert_eq!(
+        a.action,
+        Action::Script {
+            script: "purge \"$URLS\"".into()
+        }
+    );
+    // One list element stays one argument, whatever it holds.
+    let plan = parse(
+        &job("    args: [--url, \"${{ inputs.urls }}\"]\n").replace("env:bash@5", "builtin:t@1"),
+        &manual_ctx(&[("urls", hostile)]),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.job("a").unwrap().action,
+        Action::Args {
+            args: vec!["--url".into(), hostile.into()]
+        }
+    );
+}
+
+#[test]
+fn conditions_read_inputs() {
+    struct Env<'a>(&'a Plan);
+    impl expr::Env for Env<'_> {
+        fn name(&self, name: &expr::Name) -> String {
+            match name {
+                expr::Name::Input { name } => self.0.context().inputs[name].clone(),
+                expr::Name::Event => self.0.context().event.as_str().into(),
+                _ => String::new(),
+            }
+        }
+        fn all_needs_passed(&self) -> bool {
+            true
+        }
+        fn changed(&self, _: &[String]) -> bool {
+            true
+        }
+    }
+    let forced = parse(MANUAL, &manual_ctx(&[("note", "n"), ("force", "true")])).unwrap();
+    assert!(forced.template("deploy").unwrap().should_run(&Env(&forced)));
+    let not = parse(MANUAL, &manual_ctx(&[("note", "n")])).unwrap();
+    assert!(
+        !not.template("deploy").unwrap().should_run(&Env(&not)),
+        "`false` is false"
+    );
+    assert_eq!(Event::Manual.as_str(), "manual");
+}
+
+#[test]
+fn a_job_may_run_for_up_to_six_hours() {
+    let plan = parse(
+        "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 3h\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(first(&plan).timeout.as_secs(), 3 * 3600);
+    let plan = parse(
+        "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 360m\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(first(&plan).timeout.as_secs(), MAX_TIMEOUT_SECS);
+    assert_error(
+        "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 6h1s\n",
+        "between 1s and 6h",
     );
 }
