@@ -540,6 +540,12 @@ class TLSServer(Server):
             sys.stderr.write(f"fake-cloud: TLS through memory BIOs (wrap_socket: {err})\n")
             return TLSConnection(sock, self.context), address
 
+    def handle_error(self, request, client_address):
+        # A client that closes without TLS's close_notify (requests does)
+        # is not an error worth a traceback in the job's log.
+        if not isinstance(sys.exc_info()[1], (ConnectionError, ssl.SSLError)):
+            super().handle_error(request, client_address)
+
     def shutdown_request(self, request):
         try:
             request.shutdown(socket.SHUT_WR)

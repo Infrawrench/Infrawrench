@@ -1978,6 +1978,10 @@ storage` does what it did) and so is everything native: the component
   manager cannot install anything here, `gke-gcloud-auth-plugin` included,
   so a kubeconfig from `gcloud container clusters get-credentials` cannot
   log in. Write one with a token instead (`gcloud auth print-access-token`).
+- **The Azure CLI locks its token cache** with `flock`, which fails with
+  `ENOSYS` in a job (#1216), so `az login` failed after getting its token.
+  `env:az`'s `az` goes on without the lock where there is none to take; a
+  job's `az` commands run one after another.
 - **Azure CLI extensions** (`az extension add`) are not tested: pure
   Python ones should install into the job, and ones with compiled code
   need a WASIX build on Wasmer's index, as with pip.

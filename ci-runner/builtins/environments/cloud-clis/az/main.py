@@ -10,6 +10,8 @@ with the subscription, before the command it was asked for. A job that
 signs in itself (`az login`), or has already, is left alone.
 """
 
+import errno
+import fcntl
 import json
 import os
 import runpy
@@ -19,6 +21,23 @@ import sys
 
 for directory in ("/opt/azure-cli/site", "/opt/azure-cli-mgmt/site"):
     site.addsitedir(directory)
+
+# The CLI keeps its token cache under a file lock (msal-extensions, through
+# portalocker's fcntl.flock), and flock fails with ENOSYS in a job, which
+# stopped `az login` once it had its token. A job's `az`s run one after
+# another, so where there is no lock to take it goes on without one.
+_flock = fcntl.flock
+
+
+def flock(fd, operation):
+    try:
+        return _flock(fd, operation)
+    except OSError as err:
+        if err.errno != errno.ENOSYS:
+            raise
+
+
+fcntl.flock = flock
 
 # Commands that need no account, or are the job signing in or out itself.
 NO_SIGN_IN = {"login", "logout", "version", "--version", "-h", "--help", "cloud", "config"}
