@@ -153,7 +153,7 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.14 aa2df2e7f2bb96aa5a46e0764536d78d66f46540449c02b5712c8d1f7e1aaa5f"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c454e66abf35c24f02f58fcff"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -317,7 +317,9 @@ for env in "$@"; do
       #          with its caret (#1097).
       # 24.0.17: and an uncaught exception is reported as Node reports it
       #          (#1141, #1142, #1143).
-      build_env bash-node 24.0.17 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.18: and `node --version` says what `process.version` does
+      #          (#1151).
+      build_env bash-node 24.0.18 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
@@ -369,7 +371,8 @@ for env in "$@"; do
       # PostgreSQL's; its patch number is the environment's own.
       # 26.11.1: bash-node 24.0.16's Edge.js (#1097).
       # 26.11.2: bash-node 24.0.17's Edge.js (#1141, #1142, #1143).
-      build_env clickhouse 26.11.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.3: bash-node 24.0.18's Edge.js (#1151).
+      build_env clickhouse 26.11.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     *)

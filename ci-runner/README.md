@@ -1133,6 +1133,14 @@ is a caught `import()` of a module that does not parse now having Node's
 stack, without the arrow. The same
 Edge.js build is in `env:clickhouse` 26.11.2.
 
+24.0.18 adds `edgejs-release-version.patch` (#1151): `node --version`
+says what `process.version` does, `v24.13.2`, where it said
+`v24.13.2-pre`. Edge.js's version header is a Node tree's between
+releases, and only `process.version` and `process.versions` left its
+"-pre" off; the header now says it is a release, so a fatal error's
+diagnostic report and the compile cache's directory name drop it too, as
+in Node. The same Edge.js build is in `env:clickhouse` 26.11.3.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,

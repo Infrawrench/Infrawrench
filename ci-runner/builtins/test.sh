@@ -1204,11 +1204,18 @@ YAML
       cat <<'YAML'
 name: bash-node
 jobs:
+  # `node --version` and `-v` print `process.version`, as Node's do: they
+  # said v24.13.2-pre where it is v24.13.2 (#1151).
   node-passes:
     using: env:bash-node@24
     run: |
       test "$(node -e 'console.log(6 * 7)')" = 42
       node --version
+      version="$(node -p process.version)"
+      [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      test "$(node --version)" = "$version"
+      test "$(node -v)" = "$version"
+      test "v$(node -p process.versions.node)" = "$version"
   # A small Node HTTP server as a service: started before the job, ready
   # once it listens, reached by its name, and stopped after the job.
   node-service-passes:
@@ -1309,8 +1316,7 @@ jobs:
     needs: [node-passes]
     run: |
       mkdir -p /tmp/er && cd /tmp/er
-      # process.version: `node --version` says v24.13.2-pre (#1151).
-      version="$(node -p process.version)"
+      version="$(node --version)"
       # report <file> <stderr up to the first frame>: the node fails, says
       # that, and ends with the version as Node does.
       report() {
