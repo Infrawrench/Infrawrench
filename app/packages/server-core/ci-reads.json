@@ -1,0 +1,9 @@
+{
+  "reads": [
+    {
+      "files": ["app/packages/bastion-agent/src/public-address.ts"],
+      "from": ["src/__tests__/bastion-account-hosts.test.ts"],
+      "why": "Asserts the agent's copy of the address rules is the same file as this package's."
+    }
+  ]
+}

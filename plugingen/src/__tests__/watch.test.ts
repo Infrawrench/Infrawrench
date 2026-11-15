@@ -6,6 +6,7 @@ import type { GitHubPort } from "../watch/github.js";
 import { renderSummary, runWatch, type WatchPorts } from "../watch/index.js";
 import { issueTitle, renderIssueBody, renderPullRequestBody } from "../watch/render.js";
 
+// ci-reads-ignore: a path in a made-up report, never opened
 const FILE = "plugin-architecture/packages/acme/src/api-types.gen.ts";
 
 const outcome = (fields: Partial<CheckReport> = {}, text?: string): CheckOutcome => ({

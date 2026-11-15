@@ -1,0 +1,14 @@
+{
+  "reads": [
+    {
+      "files": ["app/packages/api-contract/src/domains/**"],
+      "from": ["src/api/__tests__/cost-visibility-routes.test.ts"],
+      "why": "Reads each domain's endpoint definitions as text; the tests are handed the contract's dist/, not its source."
+    },
+    {
+      "files": ["app/packages/website/src/content/docs/team-and-billing/instance-pricing-api.md"],
+      "from": ["src/http/domains/__tests__/instance-pricing.test.ts"],
+      "why": "Asserts the docs page describes every table, column and note of the pricing schema."
+    }
+  ]
+}

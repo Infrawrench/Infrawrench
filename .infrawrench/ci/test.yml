@@ -20,6 +20,8 @@
 # is handed has to be everything it reads of the packages it depends on:
 # their dist/ (`^bundle`, `^build`) and a hash of what it reads of them
 # straight from the checkout (`^source`), which `prep` checks every job has.
+# A test that reads a file by path outside its package and its dependencies
+# names it in the package's ci-reads.json (`reads`), which `prep` checks too.
 #
 # Every `memory:` is sized from what the job was measured to hold (its
 # report's `peak_memory_mib`), with room above it: a job starts only when
@@ -81,9 +83,11 @@ jobs:
       - plugin-architecture/packages
     # First, the check that every task-cached job below is keyed on the
     # source of the packages it depends on (`source`): it fails here, before
-    # anything that could be wrongly skipped.
+    # anything that could be wrongly skipped. Then the check that a test which
+    # reads outside its package has declared what it reads (`reads`).
     run: |
       node .infrawrench/ci/source-digest.mjs --check
+      node .infrawrench/ci/outside-reads.mjs --check
       cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
@@ -115,6 +119,30 @@ jobs:
     run: node /app/.infrawrench/ci/source-digest.mjs
     artifacts: [.source-digest]
     task-cache: { root-inputs: [.infrawrench/ci/source-digest.mjs], artifacts: false }
+    memory: 1GiB
+    timeout: 5m
+
+  # The files a package's tests read by path outside the package, as one hash
+  # in .reads-digest (outside-reads.mjs). server-core's tests compare a file
+  # with bastion-agent's copy of it, ui's scan web's and desktop's components,
+  # web's read a page of the website's docs: none of those packages is a
+  # dependency of the reader, so `^source` does not reach them, and the tests
+  # were replayed from the cache when the file changed (#1177). A package
+  # lists such files in a ci-reads.json beside its package.json, and its test
+  # jobs need this job, so they are keyed on the hash: a change to
+  # bastion-agent's copy reruns server-core's tests and nothing else.
+  #
+  # Only the packages with a ci-reads.json get one. It is not task-cached: its
+  # key would hold its own package's files, not the ones it hashes. `prep`
+  # scans every package for a test that leaves it without declaring what it
+  # reads (outside-reads.mjs has what the scan can and cannot see).
+  reads:
+    name: Outside reads ${{ package.name }}
+    packages: { has: [ci-reads.json] }
+    using: env:bash-node@24.0.18
+    deps: false
+    run: node /app/.infrawrench/ci/outside-reads.mjs
+    artifacts: [.reads-digest]
     memory: 1GiB
     timeout: 5m
 
@@ -196,7 +224,7 @@ jobs:
     packages:
       scripts: { test: "*vitest run*" }
       only: ["**", "!app/packages/web", "!app/packages/server-core"]
-    needs: &test-needs [prep, bundle, "^bundle", "^source"]
+    needs: &test-needs [prep, bundle, reads, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     env: &test-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
