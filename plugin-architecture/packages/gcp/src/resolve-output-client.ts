@@ -25,7 +25,7 @@ export async function resolveOutput(
     }
   }
 
-  if (typeId === "gke-cluster" && outputKey === "kubeconfig") {
+  if (typeId === "gke-cluster" && (outputKey === "kubeconfig" || outputKey === "ciKubeconfig")) {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const cluster = await ctx.get<Record<string, unknown>>(
       `https://container.googleapis.com/v1/projects/${p}/locations/${String(resource.fields["location"])}/clusters/${resource.externalId}`,
@@ -36,7 +36,16 @@ export async function resolveOutput(
       ((cluster["masterAuth"] as Record<string, unknown> | undefined)?.[
         "clusterCaCertificate"
       ] as string) ?? "";
-    const tok = await ctx.token();
+    // A CI job's kubeconfig carries a token of its own, minted now with only
+    // the scope GKE needs, never the cached `cloud-platform` one the peer
+    // tabs share (`ci-credential.ts`).
+    let tok: string;
+    if (outputKey === "ciKubeconfig") {
+      if (!ctx.gkeCiToken) throw new Error("This host cannot mint a token for a CI job.");
+      tok = (await ctx.gkeCiToken()).token;
+    } else {
+      tok = await ctx.token();
+    }
     const kubeconfig = [
       "apiVersion: v1",
       "kind: Config",

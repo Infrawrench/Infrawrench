@@ -28,6 +28,7 @@
  */
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
+  CI_LEND_SECONDS,
   ciAlias,
   type CiLentMaterial,
   type CiLentValue,
@@ -57,6 +58,7 @@ import {
 import { buildAad, decrypt } from "../encryption.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { getClientForResource } from "../peer-clients.js";
+import { ciPeerClient, tunnelRefusal, type CiPeerClient } from "./peers.js";
 
 /** A value as the run request carries it: secret as a whole, or shown and secret parts. */
 export type LentValue = string | Array<{ text: string } | { secret: string }>;
@@ -118,7 +120,7 @@ const MAX_REASON = 1024;
 /** The whole run request body. */
 export const MAX_RUN_BODY_BYTES = 1024 * 1024;
 /** How long minted credentials last: a run's jobs may start well after dispatch. */
-export const LEND_TTL_SECONDS = 4 * 60 * 60;
+export const LEND_TTL_SECONDS = CI_LEND_SECONDS;
 
 /** The names a run's jobs reference, merged across jobs. */
 export interface ReferencedNames {
@@ -346,6 +348,8 @@ export interface LendResource {
   resourceTypeId: string;
   accountId: string;
   displayName: string;
+  /** Which life of the id this is (`resources.incarnation`). */
+  incarnation: number;
 }
 
 type ResolvedClient = {
@@ -360,32 +364,15 @@ export interface LendDeps {
   /** The plugin's accounts are hosts another account connects through (`jumpHost`). */
   isJumpHost(pluginId: string): Promise<boolean>;
   /**
-   * The client of `peerPluginId` for a resource whose type has a peer
-   * integration with it: its credentials resolved from the resource's
-   * outputs and through the credential rewriters, as the peer tabs do.
+   * The client of `peerPluginId` for a resource whose type declares lending
+   * it to CI (`ciPeerClient`): credentials from its outputs and through the
+   * credential rewriters, as the peer tabs build theirs, or why CI may not.
    */
   peerClient(
     organizationId: string,
     resource: LendResource,
     peerPluginId: string,
-  ): Promise<ResolvedClient>;
-}
-
-/** A resource's peer client, or null when the peer cannot be built (or is not a peer). */
-export async function resourcePeerClient(
-  organizationId: string,
-  resource: Pick<LendResource, "id" | "accountId">,
-  peerPluginId: string,
-): Promise<ResolvedClient> {
-  const resolved = await getClientForResource(
-    peerPluginId,
-    resource.accountId,
-    organizationId,
-    resource.id,
-  );
-  // The account's own plugin is not a peer of its resources.
-  if (!resolved || resolved.plugin.manifest.id !== peerPluginId) return null;
-  return resolved;
+  ): Promise<CiPeerClient | null>;
 }
 
 const defaultDeps: LendDeps = {
@@ -394,7 +381,8 @@ const defaultDeps: LendDeps = {
     const { getPlugin } = await import("../plugin-loader.js");
     return (await getPlugin(pluginId))?.plugin.manifest.jumpHost === true;
   },
-  peerClient: resourcePeerClient,
+  peerClient: (organizationId, resource, peerPluginId) =>
+    ciPeerClient(organizationId, resource, peerPluginId, "lend"),
 };
 
 type GrantRow = typeof ciResourceGrants.$inferSelect;
@@ -426,6 +414,7 @@ export async function grantedResource(
       resourceTypeId: resources.resourceTypeId,
       accountId: resources.accountId,
       displayName: resources.displayName,
+      incarnation: resources.incarnation,
     })
     .from(resources)
     .where(
@@ -454,14 +443,27 @@ async function lendPeer(
 ): Promise<CiLentMaterial> {
   const what = `resource \`${grant.ciName}\``;
   const peerPluginId = grant.peerPluginId;
-  if (!peerPluginId) throw new Error(`${what} is not lent to CI as a connection`);
+  // Running jobs on it is a switch of its own, and lends nothing.
+  if (!peerPluginId || !grant.peerLendEnabled) {
+    throw new Error(`${what} is not lent to CI as a connection`);
+  }
   const refused = scopeRefusal(what, run, grant);
   if (refused) throw new Error(refused);
   const resource = await grantedResource(run.organizationId, grant.resourceId);
   if (!resource) throw new Error(`the resource ${grant.ciName} is granted for no longer exists`);
+  if (resource.incarnation !== grant.resourceIncarnation) {
+    throw new Error(
+      `the resource ${grant.ciName} was granted for was deleted, and the one there now has not been granted; grant it again`,
+    );
+  }
   const resolved = await deps.peerClient(run.organizationId, resource, peerPluginId);
   if (!resolved) {
     throw new Error(`${what} can no longer be reached as a \`${peerPluginId}\` connection`);
+  }
+  if ("refused" in resolved) {
+    throw new Error(
+      `${what} cannot be lent as a \`${peerPluginId}\` connection: ${resolved.refused}`,
+    );
   }
   if (!resolved.plugin.manifest.ciCredential || !resolved.client.lendCiCredential) {
     throw new Error(`${resolved.plugin.manifest.displayName} connections cannot be lent to jobs`);
@@ -508,6 +510,10 @@ async function lendAccount(
     branchPattern: access.lendBranchPattern,
   });
   if (refused) throw new Error(refused);
+  // Its credentials would point at the gateway's end of the tunnel, with
+  // the real password: useless to a job, and not something to hand out.
+  const tunnelled = await tunnelRefusal(account.id);
+  if (tunnelled) throw new Error(`${what} cannot be lent: ${tunnelled}`);
   const resolved = await deps.accountClient(account.id, run.organizationId);
   if (!resolved) throw new Error(`${what} is no longer connected`);
   if (!resolved.plugin.manifest.ciCredential || !resolved.client.lendCiCredential) {
@@ -824,6 +830,7 @@ async function lendResources(
         resourceTypeId: resources.resourceTypeId,
         accountId: resources.accountId,
         parentResourceId: resources.parentResourceId,
+        incarnation: resources.incarnation,
       })
       .from(resources)
       .where(
@@ -836,6 +843,13 @@ async function lendResources(
       .limit(1);
     if (!resource) {
       out[name] = reason(`the resource ${name} is granted for no longer exists`);
+      continue;
+    }
+    // The same id, another resource: what was granted to the old one is not its.
+    if (resource.incarnation !== grant.resourceIncarnation) {
+      out[name] = reason(
+        `the resource ${name} was granted for was deleted, and the one there now has not been granted; grant it again`,
+      );
       continue;
     }
     const outputs: Record<string, LentValue> = {};

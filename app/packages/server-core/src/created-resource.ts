@@ -75,7 +75,12 @@ export async function upsertCreatedResource(
     .onConflictDoUpdate({
       target: resources.id,
       // Re-creating over a soft-deleted id revives the row.
-      set: { ...row, deletedAt: null, updatedAt: new Date() },
+      set: {
+        ...row,
+        incarnation: sql`CASE WHEN ${resources.deletedAt} IS NULL THEN ${resources.incarnation} ELSE ${resources.incarnation} + 1 END`,
+        deletedAt: null,
+        updatedAt: new Date(),
+      },
     });
 }
 

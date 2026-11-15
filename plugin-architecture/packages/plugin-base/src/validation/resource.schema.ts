@@ -65,6 +65,19 @@ const peerPluginIntegrationSchema = Schema.Struct({
   ),
   credentialSetupAction: Schema.optional(peerGuidanceActionSchema),
   exposeMetricsToParent: Schema.optional(Schema.Boolean),
+  ci: Schema.optional(
+    Schema.Struct({
+      lends: NonEmpty,
+      reach: NonEmpty,
+      lifetime: NonEmpty,
+      credentialMappings: Schema.optional(
+        Schema.Array(Schema.Struct({ outputKey: NonEmpty, credentialKey: NonEmpty })),
+      ),
+      availableWhen: Schema.optional(
+        Schema.Struct({ fieldKey: NonEmpty, equals: Schema.String, reason: NonEmpty }),
+      ),
+    }),
+  ),
 });
 
 const secretExportTemplateSchema = Schema.Struct({

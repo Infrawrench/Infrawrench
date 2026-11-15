@@ -377,17 +377,31 @@ export const ciResourceGrants = pgTable(
     repos: jsonb("repos").$type<string[] | null>(),
     branchPattern: text("branch_pattern"),
     /**
-     * The plugin the resource is lent as, when it is: one its type has a peer
-     * integration with (a managed cluster as `kubernetes`, a managed database
-     * as `postgres`). Then `connections: [<ciName>]` lends the resource as a
-     * connection of that plugin would be lent, and `cloud:` jobs may run on it
-     * (`peerJobKinds`). Null: only the ticked outputs are granted.
+     * The resource's incarnation when it was granted (`resources.incarnation`).
+     * A resource deleted and created again under the same id has another, and
+     * the grant no longer holds for it.
+     */
+    resourceIncarnation: integer("resource_incarnation").notNull().default(0),
+    /**
+     * The plugin the resource is used as, when it is: one its type has a peer
+     * integration with a CI declaration for (a managed cluster as
+     * `kubernetes`, a managed database as `postgres`). What it may do as that
+     * peer is two separate switches: `peerLendEnabled` and `peerJobKinds`.
+     * Null: only the ticked outputs are granted.
      */
     peerPluginId: text("peer_plugin_id"),
+    /** `connections: [<ciName>]` lends the resource as a connection of the peer would be. */
+    peerLendEnabled: boolean("peer_lend_enabled").notNull().default(false),
     /** The kinds of cloud job (`cluster`, ...) that may run on the peer; empty for none. */
     peerJobKinds: jsonb("peer_job_kinds").$type<string[]>().notNull().default([]),
     peerMaxConcurrentJobs: integer("peer_max_concurrent_jobs").notNull().default(2),
     peerMaxJobMinutes: integer("peer_max_job_minutes").notNull().default(60),
+    /**
+     * Where else, besides where each kind was checked (its preflight's
+     * `region`, a cluster's home namespace), a job may ask to run with
+     * `cloud.region`. Each is checked when it is added.
+     */
+    peerJobRegions: jsonb("peer_job_regions").$type<string[]>().notNull().default([]),
     /** The last permission check per kind, as the peer plugin answered it. */
     peerPreflight: jsonb("peer_preflight")
       .$type<

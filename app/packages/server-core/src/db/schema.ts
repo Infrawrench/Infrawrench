@@ -149,6 +149,13 @@ export const resources = pgTable(
     lastSyncedAt: timestamp("last_synced_at"),
     syncVersion: integer("sync_version").notNull().default(0),
     deletedAt: timestamp("deleted_at"),
+    /**
+     * Bumped each time a soft-deleted row comes back (a sync or a create
+     * lists the id again): the same id, another resource. What was granted
+     * to the old one (`ci_resource_grants.resource_incarnation`) does not
+     * pass to the new.
+     */
+    incarnation: integer("incarnation").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

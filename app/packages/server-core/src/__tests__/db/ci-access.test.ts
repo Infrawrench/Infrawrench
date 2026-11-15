@@ -78,6 +78,7 @@ const fakePlugins = vi.hoisted(() => ({
             ],
             tabLabel: "PostgreSQL",
             showWhen: { fieldKey: "engine", equals: "postgres" },
+            ci: { lends: "its connection string", reach: "the database", lifetime: "stored" },
           },
         ],
       },
@@ -90,6 +91,12 @@ const fakePlugins = vi.hoisted(() => ({
             pluginId: "kubernetes",
             credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
             tabLabel: "Kubernetes",
+            ci: {
+              lends: "an EKS token",
+              reach: "the cluster",
+              lifetime: "fifteen minutes",
+              credentialMappings: [{ outputKey: "ciKubeconfig", credentialKey: "kubeconfig" }],
+            },
           },
         ],
       },
@@ -153,6 +160,7 @@ vi.mock("../../org-accounts.js", () => ({
   getOrgAccountClient: async (accountId: string) => {
     if (accountId.startsWith("acc-k8s")) {
       return {
+        account: { id: accountId, pluginId: "kubernetes" },
         credentials: {},
         plugin: fakePlugins.kubernetes,
         client: {
@@ -170,9 +178,19 @@ vi.mock("../../org-accounts.js", () => ({
       };
     }
     return {
+      account: { id: accountId, pluginId: "aws" },
       credentials: {},
       plugin: fakePlugins.aws,
       client: {
+        // What the provider lists now, as the resources table has it.
+        getResource: async (type: string, id: string) => {
+          const { db } = await import("../../db/client");
+          const { resources } = await import("../../db/schema");
+          const { eq } = await import("drizzle-orm");
+          const [row] = await db.select().from(resources).where(eq(resources.id, id));
+          if (!row) throw new Error("not found");
+          return { id, resourceTypeId: type, fields: row.fieldsJson, resolvedOutputs: {} };
+        },
         ciStart: async (spec: Record<string, unknown>) => {
           plugins.started.push(spec);
           return { id: "i-test", region: "eu-west-1", label: "aws ec2 i-test (eu-west-1)" };
@@ -189,7 +207,12 @@ vi.mock("../../org-accounts.js", () => ({
 
 /** What the fake peers were asked, and whether the cluster passes its check. */
 const peers = vi.hoisted(() => ({
-  asked: [] as Array<{ pluginId: string; accountId: string; resourceId: string | undefined }>,
+  asked: [] as Array<{
+    pluginId: string;
+    accountId: string;
+    resourceId: string | undefined;
+    outputs: string[];
+  }>,
   preflightOk: true,
 }));
 
@@ -197,17 +220,21 @@ vi.mock("../../peer-clients.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../peer-clients.js")>();
   return {
     ...real,
-    // The peer a resource exposes, as `getClientForResource` builds it from
-    // the resource's outputs; otherwise the account's own client, which
-    // reads outputs.
-    getClientForResource: async (
-      pluginId: string,
-      accountId: string,
-      _organizationId: string,
-      resourceId?: string,
-    ) => {
-      peers.asked.push({ pluginId, accountId, resourceId });
-      if (pluginId === "kubernetes" && resourceId?.includes(":eks-cluster:")) {
+    // The peer a resource exposes, as `buildPeerPluginClient` builds it from
+    // the outputs the integration (or its CI declaration) names.
+    buildPeerPluginClient: async (input: {
+      integration: { pluginId: string; credentialMappings: Array<{ outputKey: string }> };
+      accountId: string;
+      parentResourceId: string;
+    }) => {
+      const pluginId = input.integration.pluginId;
+      peers.asked.push({
+        pluginId,
+        accountId: input.accountId,
+        resourceId: input.parentResourceId,
+        outputs: input.integration.credentialMappings.map((m) => m.outputKey),
+      });
+      if (pluginId === "kubernetes") {
         return {
           credentials: { kubeconfig: "inline" },
           plugin: fakePlugins.kubernetes,
@@ -225,13 +252,14 @@ vi.mock("../../peer-clients.js", async (importOriginal) => {
               ],
               summary: "the kubeconfig's token",
             }),
-            ciPreflight: async () =>
+            ciPreflight: async (_kind: string, region?: string) =>
               peers.preflightOk
-                ? { ok: true, missing: [], problems: [] }
+                ? { ok: true, missing: [], problems: [], region: region ?? "ci-home" }
                 : {
                     ok: false,
                     missing: [{ permission: "create jobs.batch", label: "start jobs" }],
                     problems: [],
+                    region: region ?? "ci-home",
                   },
             ciStart: async (spec: Record<string, unknown>) => {
               plugins.started.push({ ...spec, via: "kubernetes" });
@@ -244,27 +272,26 @@ vi.mock("../../peer-clients.js", async (importOriginal) => {
           },
         };
       }
-      if (pluginId === "postgres" && resourceId?.includes(":rds-instance:")) {
-        return {
-          credentials: { connectionString: "postgres://user:pw@db.example.test/app" },
-          plugin: fakePlugins.postgres,
-          client: {
-            lendCiCredential: async () => ({
-              env: { DATABASE_URL: "postgres://user:pw@db.example.test/app" },
-              files: [],
-              summary: "the connection string",
-            }),
-          },
-        };
-      }
       return {
-        plugin: fakePlugins.aws,
+        credentials: { connectionString: "postgres://user:pw@db.example.test/app" },
+        plugin: fakePlugins.postgres,
         client: {
-          resolveOutput: async (_type: string, _id: string, key: string) =>
-            key === "connectionString" ? "postgres://user:pw@db.example.test/app" : "",
+          lendCiCredential: async () => ({
+            env: { DATABASE_URL: "postgres://user:pw@db.example.test/app" },
+            files: [],
+            summary: "the connection string",
+          }),
         },
       };
     },
+    // An output a grant reads, through the account's own client.
+    getClientForResource: async () => ({
+      plugin: fakePlugins.aws,
+      client: {
+        resolveOutput: async (_type: string, _id: string, key: string) =>
+          key === "connectionString" ? "postgres://user:pw@db.example.test/app" : "",
+      },
+    }),
   };
 });
 
@@ -406,6 +433,7 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
       scheduled: [],
     });
     Object.assign(plugins, { started: [], tornDown: [], tagged: [] });
+    Object.assign(peers, { asked: [], preflightOk: true });
   });
 
   /**
@@ -1114,7 +1142,12 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     resourceId: string,
     ciName: string,
     pluginId: string,
-    extra: { jobKinds?: Array<"cluster">; branchPattern?: string | null } = {},
+    extra: {
+      lend?: boolean;
+      jobKinds?: Array<"cluster">;
+      jobRegions?: string[];
+      branchPattern?: string | null;
+    } = {},
   ) => ({
     resourceId,
     ciName,
@@ -1122,18 +1155,86 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     secretVersion: null,
     repos: ["acme/web"],
     branchPattern: extra.branchPattern === undefined ? "main" : extra.branchPattern,
-    peer: { pluginId, jobKinds: extra.jobKinds ?? [], maxConcurrentJobs: 1, maxJobMinutes: 60 },
+    peer: {
+      pluginId,
+      lend: extra.lend ?? true,
+      jobKinds: extra.jobKinds ?? [],
+      maxConcurrentJobs: 1,
+      maxJobMinutes: 60,
+      jobRegions: extra.jobRegions ?? [],
+    },
   });
 
-  it("offers and grants a resource as its peer, only a peer it has", async () => {
+  const deployJob = (connections: Array<{ name: string; namespace?: string }>) => [
+    {
+      file: ".infrawrench/ci/deploy.yml",
+      name: "Deploy",
+      concurrency: null,
+      jobs: [{ key: "deploy", connections }],
+    },
+  ];
+
+  const sentLent = () => proxy.calls.find((c) => c.path === "/v1/runs")?.body?.["lent"];
+
+  /** A cloud job on the cluster granted as `eks-prod`, as the runner lists it. */
+  const clusterJob = (region?: string) => ({
+    run: "x",
+    job: "migrate",
+    name: "migrate",
+    pipeline: ".infrawrench/ci/deploy.yml",
+    state: "external",
+    cloud: {
+      provider: "kubernetes",
+      kind: "cluster",
+      connection: "eks-prod",
+      ...(region ? { region } : {}),
+    },
+    commit: {
+      repo: "https://github.com/acme/web",
+      sha: "a",
+      branch: "main",
+      ref: "refs/heads/main",
+    },
+    clone: { depth: 1, into: "/app" },
+    cwd: "/app",
+    script: "make migrate",
+    timeout_secs: 600,
+    inputs: null,
+    artifacts: null,
+  });
+
+  async function pushClusterJob(org: TestOrg, region?: string): Promise<string> {
+    const runId = await push(org, "main", [
+      {
+        file: ".infrawrench/ci/deploy.yml",
+        name: "Deploy",
+        concurrency: null,
+        jobs: [{ key: "migrate", cloud: clusterJob(region).cloud }],
+      },
+    ]);
+    proxy.cloudJobs = [clusterJob(region)];
+    proxy.calls = [];
+    return runId;
+  }
+
+  const refusedJob = () =>
+    String(proxy.calls.find((c) => c.path.endsWith("/jobs/migrate/finish"))?.body?.["error"] ?? "");
+
+  it("offers a resource only as a peer it declares lending to CI, with what it lends", async () => {
     const { access } = m;
     const org = await organization({ optedIn: false });
     const { clusterId, dbId } = await managed(org);
     expect((await access.resourceOutputs(org.orgId, clusterId)).peers).toMatchObject([
-      { pluginId: "kubernetes", executor: { kinds: [{ kind: "cluster" }] } },
+      {
+        pluginId: "kubernetes",
+        lends: "an EKS token",
+        lifetime: "fifteen minutes",
+        executor: { kinds: [{ kind: "cluster" }] },
+        unavailable: null,
+      },
     ]);
     expect((await access.resourceOutputs(org.orgId, dbId)).peers).toMatchObject([
-      { pluginId: "postgres", executor: null },
+      { pluginId: "postgres", executor: null, lends: "its connection string" },
     ]);
     // The database without its engine set is no PostgreSQL.
     expect((await access.resourceOutputs(org.orgId, org.resourceId)).peers).toEqual([]);
@@ -1144,18 +1245,33 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
       org.userId,
     );
     expect(grant.outputs).toEqual([]);
-    expect(grant.peer).toMatchObject({ pluginId: "kubernetes", pluginName: "Kubernetes" });
+    expect(grant.peer).toMatchObject({ pluginId: "kubernetes", lend: true, jobKinds: [] });
     await expect(
       access.createGrant(org.orgId, peerGrant(dbId, "orders", "kubernetes"), org.userId),
-    ).rejects.toThrow("cannot be lent to CI as `kubernetes`");
+    ).rejects.toThrow("cannot be used by CI as `kubernetes`");
+    // A peer that neither lends nor runs jobs does nothing.
+    await expect(
+      access.createGrant(
+        org.orgId,
+        peerGrant(dbId, "orders", "postgres", { lend: false }),
+        org.userId,
+      ),
+    ).rejects.toThrow("Lend it to jobs, let jobs run on it, or both");
     // A name a connection already has would mean two things in `connections:`.
     await expect(
       access.createGrant(org.orgId, peerGrant(dbId, "Production", "postgres"), org.userId),
     ).rejects.toThrow("A connection is already called Production");
-    // An update that leaves `peer` out keeps it.
+    // A client that cannot show the peer (an older desktop sends no `peer`)
+    // may not change the grant, so it cannot widen where it is lent unseen.
     const { peer: _peer, ...withoutPeer } = peerGrant(clusterId, "eks-prod", "kubernetes");
-    const kept = await access.updateGrant(org.orgId, grant.id, withoutPeer, org.userId);
-    expect(kept.peer?.pluginId).toBe("kubernetes");
+    await expect(
+      access.updateGrant(
+        org.orgId,
+        grant.id,
+        { ...withoutPeer, outputs: ["kubeconfig"], repos: null },
+        org.userId,
+      ),
+    ).rejects.toThrow("cannot show");
     const dropped = await access.updateGrant(
       org.orgId,
       grant.id,
@@ -1173,21 +1289,12 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     await access.createGrant(org.orgId, peerGrant(dbId, "orders", "postgres"), org.userId);
     peers.asked = [];
     proxy.calls = [];
-    await push(org, "main", [
-      {
-        file: ".infrawrench/ci/deploy.yml",
-        name: "Deploy",
-        concurrency: null,
-        jobs: [
-          {
-            key: "deploy",
-            connections: [{ name: "eks-prod", namespace: "web" }, { name: "orders" }],
-          },
-        ],
-      },
-    ]);
-    const sent = proxy.calls.find((c) => c.path === "/v1/runs")?.body ?? {};
-    expect(sent["lent"]).toEqual({
+    await push(
+      org,
+      "main",
+      deployJob([{ name: "eks-prod", namespace: "web" }, { name: "orders" }]),
+    );
+    expect(sentLent()).toEqual({
       connections: {
         "eks-prod": {
           env: { KUBECONFIG: [{ text: "/root/.kube/eks-prod.yaml" }] },
@@ -1201,11 +1308,22 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
         orders: { env: { DATABASE_URL: "postgres://user:pw@db.example.test/app" } },
       },
     });
-    // Resolved through the resource's peer, on the account that holds it.
+    // Resolved through the resource's peer, on the account that holds it,
+    // from the outputs the CI declaration names (a token minted per run).
     expect(peers.asked).toEqual(
       expect.arrayContaining([
-        { pluginId: "kubernetes", accountId: org.awsId, resourceId: clusterId },
-        { pluginId: "postgres", accountId: org.awsId, resourceId: dbId },
+        {
+          pluginId: "kubernetes",
+          accountId: org.awsId,
+          resourceId: clusterId,
+          outputs: ["ciKubeconfig"],
+        },
+        {
+          pluginId: "postgres",
+          accountId: org.awsId,
+          resourceId: dbId,
+          outputs: ["connectionString"],
+        },
       ]),
     );
     const lends = (
@@ -1234,19 +1352,12 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     const org = await organization({ optedIn: true });
     const { clusterId } = await managed(org);
     await access.createGrant(org.orgId, peerGrant(clusterId, "eks-prod", "kubernetes"), org.userId);
-    const deploy = [
-      {
-        file: ".infrawrench/ci/deploy.yml",
-        name: "Deploy",
-        concurrency: null,
-        jobs: [{ key: "deploy", connections: [{ name: "eks-prod" }] }],
-      },
-    ];
+    const deploy = deployJob([{ name: "eks-prod" }]);
 
     // Another branch: refused, by name.
     proxy.calls = [];
     await push(org, "feature/x", deploy);
-    expect(proxy.calls.find((c) => c.path === "/v1/runs")?.body?.["lent"]).toEqual({
+    expect(sentLent()).toEqual({
       connections: {
         "eks-prod": { refused: "resource `eks-prod` is not lent to CI for acme/web on feature/x" },
       },
@@ -1287,7 +1398,7 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
       .where(and(eq(schema.accounts.id, org.k8sId), eq(schema.accounts.organizationId, org.orgId)));
     proxy.calls = [];
     await push(org, "main", deploy);
-    expect(proxy.calls.find((c) => c.path === "/v1/runs")?.body?.["lent"]).toEqual({
+    expect(sentLent()).toEqual({
       connections: {
         "eks-prod": {
           refused:
@@ -1297,7 +1408,155 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     });
   });
 
-  it("runs a cloud job on a cluster granted as its peer, through the peer", async () => {
+  it("never lends a peer that may only run jobs", async () => {
+    const { access } = m;
+    const org = await organization({ optedIn: true });
+    const { clusterId } = await managed(org);
+    await access.createGrant(
+      org.orgId,
+      peerGrant(clusterId, "eks-prod", "kubernetes", { lend: false, jobKinds: ["cluster"] }),
+      org.userId,
+    );
+    peers.asked = [];
+    proxy.calls = [];
+    await push(org, "main", deployJob([{ name: "eks-prod" }]));
+    expect(sentLent()).toEqual({
+      connections: {
+        "eks-prod": { refused: "resource `eks-prod` is not lent to CI as a connection" },
+      },
+    });
+    expect(peers.asked).toEqual([]);
+  });
+
+  it("refuses to lend a database Infrawrench reaches through an SSH tunnel", async () => {
+    const { db, schema, access } = m;
+    const org = await organization({ optedIn: true });
+    const { dbId } = await managed(org);
+    await access.createGrant(org.orgId, peerGrant(dbId, "orders", "postgres"), org.userId);
+    // Through a tunnel, the rewriter would point the string at the gateway's
+    // loopback and keep the password: useless to a job, and not to be lent.
+    for (const accountId of [org.awsId, org.k8sId]) {
+      await db.insert(schema.sshTunnelConfigs).values({
+        id: randomUUID(),
+        accountId,
+        organizationId: org.orgId,
+        sshHost: "bastion.example.test",
+        remotePort: 5432,
+        encryptedPrivateKey: "unused",
+        privateKeyIv: "unused",
+      } as typeof schema.sshTunnelConfigs.$inferInsert);
+    }
+    peers.asked = [];
+    proxy.calls = [];
+    await push(org, "main", deployJob([{ name: "orders" }, { name: "Production cluster" }]));
+    const lent = sentLent() as { connections: Record<string, { refused?: string }> };
+    expect(lent.connections["orders"]?.refused).toMatch(
+      /SSH tunnel of its own, which a job cannot use/,
+    );
+    expect(lent.connections["Production cluster"]?.refused).toMatch(/SSH tunnel of its own/);
+    expect(peers.asked).toEqual([]);
+    expect(JSON.stringify(lent)).not.toContain("user:pw");
+  });
+
+  it("does not hand a grant to a resource deleted and created again under its id", async () => {
+    const { db, schema, eq, access, cloud } = m;
+    const { upsertCreatedResource } = await import("../../created-resource");
+    const org = await organization({ optedIn: true });
+    const { clusterId } = await managed(org);
+    await access.createGrant(
+      org.orgId,
+      peerGrant(clusterId, "eks-prod", "kubernetes", { jobKinds: ["cluster"] }),
+      org.userId,
+    );
+    // While it is deleted, no cloud job starts on it.
+    await db
+      .update(schema.resources)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.resources.id, clusterId));
+    await pushClusterJob(org);
+    await cloud.runCiCloudPass();
+    expect(refusedJob()).toContain("No `kubernetes` connection called `eks-prod`");
+    expect(plugins.started).toEqual([]);
+
+    // Created again under the same id: another incarnation, not granted.
+    await upsertCreatedResource({
+      organizationId: org.orgId,
+      pluginId: "aws",
+      resourceTypeId: "eks-cluster",
+      accountId: org.awsId,
+      resource: {
+        id: clusterId,
+        pluginId: "aws",
+        resourceTypeId: "eks-cluster",
+        accountId: org.awsId,
+        displayName: "prod",
+        fields: {},
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    });
+    const [revived] = await db
+      .select()
+      .from(schema.resources)
+      .where(eq(schema.resources.id, clusterId));
+    expect(revived).toMatchObject({ deletedAt: null, incarnation: 1 });
+    proxy.calls = [];
+    await push(org, "main", deployJob([{ name: "eks-prod" }]));
+    expect(sentLent()).toEqual({
+      connections: {
+        "eks-prod": {
+          refused:
+            "the resource eks-prod was granted for was deleted, and the one there now has not been granted; grant it again",
+        },
+      },
+    });
+    await pushClusterJob(org);
+    await cloud.runCiCloudPass();
+    expect(refusedJob()).toContain("No `kubernetes` connection called `eks-prod`");
+    expect(plugins.started).toEqual([]);
+  });
+
+  it("runs cloud jobs only in the places the grant allows", async () => {
+    const { access, cloud } = m;
+    const org = await organization({ optedIn: true });
+    const { clusterId } = await managed(org);
+    const grant = await access.createGrant(
+      org.orgId,
+      peerGrant(clusterId, "eks-prod", "kubernetes", { lend: false, jobKinds: ["cluster"] }),
+      org.userId,
+    );
+    // Checked where the kind runs by default: the cluster's home namespace.
+    expect(grant.peer?.preflight["cluster"]?.region).toBe("ci-home");
+    await pushClusterJob(org, "kube-system");
+    await cloud.runCiCloudPass();
+    expect(refusedJob()).toBe(
+      "No `kubernetes` connection called `eks-prod` may run `cluster` jobs in `kube-system` (`cloud.region`); it may in `ci-home`. Add it to the grant in CI, CI access.",
+    );
+    expect(plugins.started).toEqual([]);
+
+    // A place added to the grant is checked, then allowed.
+    const widened = await access.updateGrant(
+      org.orgId,
+      grant.id,
+      peerGrant(clusterId, "eks-prod", "kubernetes", {
+        lend: false,
+        jobKinds: ["cluster"],
+        jobRegions: ["ci-extra"],
+      }),
+      org.userId,
+    );
+    expect(Object.keys(widened.peer?.preflight ?? {}).sort()).toEqual([
+      "cluster",
+      "cluster@ci-extra",
+    ]);
+    await pushClusterJob(org, "ci-extra");
+    await cloud.runCiCloudPass();
+    expect(plugins.started.at(-1)).toMatchObject({ via: "kubernetes", region: "ci-extra" });
+  });
+
+  it("runs a cloud job on a cluster granted as its peer, and tears it down after the grant is gone", async () => {
     const { db, schema, eq, access, cloud } = m;
     const org = await organization({ optedIn: true });
     const { clusterId } = await managed(org);
@@ -1318,41 +1577,7 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     );
     expect(grant.peer?.preflight["cluster"]?.ok).toBe(true);
 
-    const runId = await push(org, "main", [
-      {
-        file: ".infrawrench/ci/deploy.yml",
-        name: "Deploy",
-        concurrency: null,
-        jobs: [
-          {
-            key: "migrate",
-            cloud: { provider: "kubernetes", kind: "cluster", connection: "eks-prod" },
-          },
-        ],
-      },
-    ]);
-    proxy.cloudJobs = [
-      {
-        run: "x",
-        job: "migrate",
-        name: "migrate",
-        pipeline: ".infrawrench/ci/deploy.yml",
-        state: "external",
-        cloud: { provider: "kubernetes", kind: "cluster", connection: "eks-prod" },
-        commit: {
-          repo: "https://github.com/acme/web",
-          sha: "a",
-          branch: "main",
-          ref: "refs/heads/main",
-        },
-        clone: { depth: 1, into: "/app" },
-        cwd: "/app",
-        script: "make migrate",
-        timeout_secs: 600,
-        inputs: null,
-        artifacts: null,
-      },
-    ];
+    const runId = await pushClusterJob(org);
     await cloud.runCiCloudPass();
     const [job] = await db
       .select()
@@ -1368,7 +1593,9 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     const claim = proxy.calls.find((c) => c.path.endsWith("/jobs/migrate/claim"));
     expect(String(claim?.body?.["executor"])).toBe("Kubernetes cluster on eks-prod");
 
-    // Ending it tears the job down through the same peer.
+    // The grant is removed while the job runs; ending it still tears the
+    // job down, through the resource's peer.
+    await access.deleteGrant(org.orgId, grant.id);
     const token = /IWCI_TOKEN='([0-9a-f]{64})'/.exec(
       String(plugins.started.at(-1)!["bootstrap"]),
     )![1]!;
@@ -1383,5 +1610,46 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     proxy.cloudJobs = [];
     await cloud.runCiCloudPass();
     expect(plugins.tornDown).toContain("peer:default/iwci-job");
+    const [ended] = await db
+      .select()
+      .from(schema.ciCloudJobs)
+      .where(eq(schema.ciCloudJobs.id, job!.id));
+    expect(ended).toMatchObject({ state: "done", teardownError: null });
+  });
+
+  it("lends what a manual run's chosen branch is lent, not the default branch's", async () => {
+    const { db, schema, eq, access, runs } = m;
+    const org = await organization({ optedIn: true });
+    const { clusterId } = await managed(org);
+    await access.createGrant(org.orgId, peerGrant(clusterId, "eks-prod", "kubernetes"), org.userId);
+    // A run started by hand on a branch has that branch as its head ref.
+    const [row] = await db
+      .insert(schema.ciRuns)
+      .values({
+        id: randomUUID(),
+        organizationId: org.orgId,
+        installationId: org.installationId,
+        repoFullName: "acme/web",
+        ownerKey: "acme",
+        repoKey: "web",
+        sha: "d".repeat(40),
+        branch: "feature/x",
+        headRef: "feature/x",
+        defaultBranch: "main",
+        event: "manual",
+        status: "queued",
+        dedupeKey: `manual-test-${randomUUID()}`,
+        nextAttemptAt: new Date(Date.now() - 60_000),
+      } as typeof schema.ciRuns.$inferInsert)
+      .returning();
+    proxy.pipelines = deployJob([{ name: "eks-prod" }]);
+    proxy.calls = [];
+    await runs.dispatchRun(row!.id);
+    expect(sentLent()).toEqual({
+      connections: {
+        "eks-prod": { refused: "resource `eks-prod` is not lent to CI for acme/web on feature/x" },
+      },
+    });
+    await db.delete(schema.ciRuns).where(eq(schema.ciRuns.id, row!.id));
   });
 });

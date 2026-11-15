@@ -9,6 +9,7 @@
  *   Two databases lent to one job keep both groups; the last one named is
  *   the default, and `mysql --defaults-group-suffix=_<alias>` picks another.
  * - A CA certificate the connection holds is written beside it as `ssl-ca`.
+ * - The password is also `MYSQL_PASSWORD`, raw, so it is masked bare as well.
  *
  * Verified 2026-11 against the MySQL 8.4 manual (environment variables,
  * option files and `--defaults-group-suffix`).
@@ -23,13 +24,24 @@ import type {
 
 export const MYSQL_CI_CREDENTIAL: CiCredentialDeclaration = {
   description:
-    "The connection string as DATABASE_URL, and an option group named after it in ~/.my.cnf that MYSQL_GROUP_SUFFIX selects, so mysql connects with no arguments.",
+    "The connection string as DATABASE_URL, its password as MYSQL_PASSWORD, and an option group named after it in ~/.my.cnf that MYSQL_GROUP_SUFFIX selects, so mysql connects with no arguments.",
   shortLived: false,
 };
 
-/** An option file value, quoted the way MySQL reads one. */
-function quoted(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+/**
+ * An option file value as MySQL's reader (`mysys/my_default.cc`) gives it
+ * back, or null when no quoting can: the reader drops a quote of the same
+ * kind at both ends and nothing else, ends the line at a `#` outside quotes
+ * (a `"` inside `'...'` does not count as one), and turns `\\` into one
+ * backslash (and `\s`, `\n` and so on into what they stand for). So a value
+ * is quoted with a kind of quote it does not contain, and its backslashes
+ * are doubled. One with both kinds of quote is left out.
+ */
+export function optionValue(value: string): string | null {
+  if (/[\r\n]/.test(value)) return null;
+  const quote = !value.includes('"') ? '"' : !value.includes("'") ? "'" : null;
+  if (!quote) return null;
+  return `${quote}${value.replace(/\\/g, "\\\\")}${quote}`;
 }
 
 export function lendMysql(
@@ -58,22 +70,27 @@ export function lendMysql(
     const suffix = `_${request.alias.replace(/-/g, "_")}`;
     const parts: Array<{ text: string } | { secret: string }> = [{ text: `[client${suffix}]\n` }];
     const line = (key: string, value: string) => {
-      if (value && !/[\r\n]/.test(value)) parts.push({ text: `${key}=${quoted(value)}\n` });
+      const quoted = value ? optionValue(value) : null;
+      if (quoted) parts.push({ text: `${key}=${quoted}\n` });
     };
     user = decode(url.username);
     line("host", decode(url.hostname).replace(/^\[|\]$/g, ""));
     line("port", url.port || "3306");
     line("user", user);
     const password = decode(url.password);
-    if (password && !/[\r\n]/.test(password)) {
-      // The password itself is the masked part where quoting leaves it as
-      // it is, so a job that prints it bare is masked too.
+    const quoted = password ? optionValue(password) : null;
+    if (password) {
+      // The raw password, so a job that prints it bare is masked too; a
+      // client other than mysql reads it from here.
+      env["MYSQL_PASSWORD"] = password;
+    }
+    if (quoted) {
+      // The quoted body is the password with its backslashes doubled: where
+      // there are none, that is the password itself.
       parts.push(
-        { text: "password=" },
-        ...(/["\\]/.test(password)
-          ? [{ secret: quoted(password) }]
-          : [{ text: '"' }, { secret: password }, { text: '"' }]),
-        { text: "\n" },
+        { text: `password=${quoted[0]}` },
+        { secret: quoted.slice(1, -1) },
+        { text: `${quoted[0]}\n` },
       );
     }
     line("database", decode(url.pathname.replace(/^\//, "")));

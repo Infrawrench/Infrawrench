@@ -45,6 +45,27 @@ describe("lendPostgres", () => {
     );
   });
 
+  it("keeps a password with special characters exact, and out of the file when libpq would change it", () => {
+    const pw = " p@ss#w=rd\\ ";
+    const m = lendPostgres(
+      `postgresql://app:${encodeURIComponent(pw)}@db.example.com/shop`,
+      undefined,
+      { alias: "db" },
+    );
+    expect(m.env["PGPASSWORD"]).toBe(pw);
+    expect(text(m.files.find((f) => f.path.endsWith("pg_service.conf"))!.content)).not.toContain(
+      "password=",
+    );
+    const plain = lendPostgres(
+      `postgresql://app:${encodeURIComponent("p@ss#w=rd")}@db.example.com/shop`,
+      undefined,
+      { alias: "db" },
+    );
+    const service = plain.files.find((f) => f.path.endsWith("pg_service.conf"))!;
+    expect(text(service.content)).toContain("password=p@ss#w=rd\n");
+    expect(secrets(service.content)).toEqual(["p@ss#w=rd"]);
+  });
+
   it("lends a key/value string as it is", () => {
     const m = lendPostgres("host=db user=x password=y", undefined, { alias: "db" });
     expect(m.env).toEqual({ DATABASE_URL: "host=db user=x password=y" });

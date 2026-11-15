@@ -21,4 +21,6 @@ export interface GcpClientContext extends GcpHostContext {
   id(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
+  /** A token minted for a GKE cluster's CI kubeconfig (`gkeCiToken`): its own, never the cached one. */
+  gkeCiToken?(): Promise<{ token: string; expiresAt: string }>;
 }

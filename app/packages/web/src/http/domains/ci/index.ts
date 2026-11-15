@@ -89,14 +89,26 @@ const grantAudit = (grant: {
   secretVersion: string | null;
   repos: readonly string[] | null;
   branchPattern: string | null;
-  peer?: { pluginId: string; jobKinds: readonly string[] } | null;
+  peer?: {
+    pluginId: string;
+    lend: boolean;
+    jobKinds: readonly string[];
+    jobRegions: readonly string[];
+  } | null;
 }) => ({
   ciName: grant.ciName,
   resourceId: grant.resourceId,
   resourceName: grant.resourceName,
   outputs: grant.outputs,
   secretVersion: grant.secretVersion,
-  peer: grant.peer ? { pluginId: grant.peer.pluginId, jobKinds: grant.peer.jobKinds } : null,
+  peer: grant.peer
+    ? {
+        pluginId: grant.peer.pluginId,
+        lend: grant.peer.lend,
+        jobKinds: grant.peer.jobKinds,
+        jobRegions: grant.peer.jobRegions,
+      }
+    : null,
   repos: grant.repos,
   branchPattern: grant.branchPattern,
 });
@@ -106,7 +118,13 @@ const grantInput = ({ peer, ...payload }: typeof CiResourceGrantInputSchema.Type
   ...payload,
   outputs: [...payload.outputs],
   repos: payload.repos ? [...payload.repos] : null,
-  ...(peer !== undefined ? { peer: peer ? { ...peer, jobKinds: [...peer.jobKinds] } : null } : {}),
+  ...(peer !== undefined
+    ? {
+        peer: peer
+          ? { ...peer, jobKinds: [...peer.jobKinds], jobRegions: [...peer.jobRegions] }
+          : null,
+      }
+    : {}),
 });
 
 /** A values scope as sent: an installation id, and a repository or none. */

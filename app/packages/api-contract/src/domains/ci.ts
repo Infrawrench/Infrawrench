@@ -281,22 +281,37 @@ export const CiResourceGrantPeerSchema = Schema.Struct({
       "The plugin the resource is lent as, one its type has a peer integration with (a managed cluster as `kubernetes`). Pipelines name it in `connections:` by the grant's CI name.",
   }),
   pluginName: Schema.String,
+  lend: Schema.Boolean.annotate({
+    description:
+      "`connections: [<ciName>]` lends it. Separate from running jobs on it, which lends nothing.",
+  }),
   jobKinds: Schema.Array(KindSchema).annotate({
     description: "Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it. Empty for none.",
   }),
   maxConcurrentJobs: Schema.Int,
   maxJobMinutes: Schema.Int,
+  jobRegions: Schema.Array(Schema.String).annotate({
+    description:
+      "Where else a job may run with `cloud.region` (a cluster's namespaces), besides where each kind was checked. Empty: only there.",
+  }),
   preflight: Schema.Record(Schema.String, CiPreflightRecordSchema),
 }).annotate({ identifier: "CiResourceGrantPeer" });
 
 export const CiResourceGrantPeerInputSchema = Schema.Struct({
   pluginId: Schema.String,
+  lend: Schema.Boolean.annotate({
+    description: "Lend it to jobs that name it in `connections:`.",
+  }),
   jobKinds: Schema.Array(KindSchema).annotate({
     description:
       "Cloud jobs that may run on it. A kind turned on is checked first, through the peer, and refused when the check fails.",
   }),
   maxConcurrentJobs: Schema.Int,
   maxJobMinutes: Schema.Int,
+  jobRegions: Schema.Array(Schema.String).annotate({
+    description:
+      "Where else jobs may run with `cloud.region`, each checked through the peer when added. Empty: only where each kind was checked.",
+  }),
 }).annotate({ identifier: "CiResourceGrantPeerInput" });
 
 export const CiPeerOptionSchema = Schema.Struct({
@@ -304,6 +319,19 @@ export const CiPeerOptionSchema = Schema.Struct({
   pluginName: Schema.String,
   credential: Schema.NullOr(CiCredentialInfoSchema),
   executor: Schema.NullOr(CiExecutorInfoSchema),
+  lends: Schema.String.annotate({
+    description: "The credential a job is lent, as the resource's provider declares it.",
+  }),
+  reach: Schema.String.annotate({
+    description: "What that credential reaches beyond the resource.",
+  }),
+  lifetime: Schema.String.annotate({ description: "How long it lasts once lent." }),
+  unavailable: Schema.NullOr(
+    Schema.String.annotate({
+      description:
+        "Why this resource cannot be used as it (and cannot be granted as it), when it cannot.",
+    }),
+  ),
   unreachable: Schema.NullOr(
     Schema.String.annotate({
       description: "Why it cannot be reached from outside its network, when its provider says so.",
@@ -350,7 +378,7 @@ export const CiResourceGrantInputSchema = Schema.Struct({
   peer: Schema.optionalKey(
     Schema.NullOr(CiResourceGrantPeerInputSchema).annotate({
       description:
-        "Lend the resource as a connection of a peer plugin (`connections: [<ciName>]`), and run cloud jobs on it. Null: not lent as a peer. Left out of an update: unchanged.",
+        "Use the resource as a peer plugin's connection: lend it (`connections: [<ciName>]`), run cloud jobs on it, or both. Null: neither. An update must send it when the grant has one: a client that cannot show it is refused (409) rather than changing a grant whose lending it cannot see.",
     }),
   ),
 }).annotate({ identifier: "CiResourceGrantInput" });
@@ -863,7 +891,7 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(OpenApi.Summary, "Change a resource grant")
       .annotate(
         OpenApi.Description,
-        "Replaces the grant. `peer` left out keeps what the grant is lent as; a cloud job kind newly turned on is checked through the peer first.",
+        "Replaces the grant. `peer` must be sent when the grant has one (409 otherwise); a cloud job kind or region newly turned on is checked through the peer first.",
       )
       .annotate(SuccessDescription, "The grant"),
     HttpApiEndpoint.delete("deleteGrant", "/access/grants/:grantId", {

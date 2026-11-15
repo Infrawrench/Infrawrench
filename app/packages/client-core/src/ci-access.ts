@@ -162,10 +162,17 @@ export interface CiConnectionAccess {
 export interface CiResourceGrantPeer {
   pluginId: string;
   pluginName: string;
+  /** `connections: [<ciName>]` lends it. A switch of its own: running jobs on it lends nothing. */
+  lend: boolean;
   /** Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it; empty for none. */
   jobKinds: CiExecutorKindId[];
   maxConcurrentJobs: number;
   maxJobMinutes: number;
+  /**
+   * Where else a job may run with `cloud.region` (a cluster's namespaces),
+   * besides where each kind was checked. Empty: only there.
+   */
+  jobRegions: string[];
   /** The last permission check per kind, made when the kind was turned on. */
   preflight: Record<string, CiPreflightRecord>;
 }
@@ -173,9 +180,11 @@ export interface CiResourceGrantPeer {
 /** A peer a grant's lending can be set to, as `CiResourceGrantPeer` without what the peer offers. */
 export interface CiResourceGrantPeerInput {
   pluginId: string;
+  lend: boolean;
   jobKinds: CiExecutorKindId[];
   maxConcurrentJobs: number;
   maxJobMinutes: number;
+  jobRegions: string[];
 }
 
 export const CI_DEFAULT_PEER_LIMITS = { maxConcurrentJobs: 2, maxJobMinutes: 60 } as const;
@@ -211,6 +220,14 @@ export interface CiPeerOption {
     kinds: CiExecutorKindInfo[];
     helpLink: { label: string; url: string } | null;
   } | null;
+  /** What a job is lent, as the resource's provider declares it: the credential. */
+  lends: string;
+  /** What that credential reaches beyond the resource. */
+  reach: string;
+  /** How long it lasts. */
+  lifetime: string;
+  /** Why this resource cannot be used as it, when it cannot (an AKS cluster with only local accounts). */
+  unavailable: string | null;
   /** Why it cannot be reached from outside its network, when its provider says so. */
   unreachable: string | null;
 }

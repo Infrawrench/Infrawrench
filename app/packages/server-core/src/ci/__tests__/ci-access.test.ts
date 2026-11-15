@@ -20,7 +20,8 @@ const {
 } = await import("../lend");
 const { claimBackoffMs, jobSegment, matchConnections, MAX_CLAIM_ATTEMPTS, orgTag } =
   await import("../cloud-jobs");
-const { cleanPattern, cleanRepos, peerOptionsOf } = await import("../access");
+const { cleanPattern, cleanRepos } = await import("../access");
+const { peerOptionsOf } = await import("../peers");
 
 describe("what jobs name, from the runners' answer", () => {
   const answer = {
@@ -391,7 +392,35 @@ describe("what a resource can be lent as", () => {
                 pluginId: "kubernetes",
                 credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
                 tabLabel: "Kubernetes",
+                ci: { lends: "A Google token", reach: "The cluster", lifetime: "An hour" },
               },
+            ],
+          },
+          {
+            // Lent only with Entra sign-in; never offered without a declaration.
+            id: "aks-cluster",
+            peerIntegrations: [
+              {
+                pluginId: "kubernetes",
+                credentialMappings: [],
+                tabLabel: "Kubernetes",
+                ci: {
+                  lends: "An Entra token",
+                  reach: "The cluster",
+                  lifetime: "An hour",
+                  availableWhen: {
+                    fieldKey: "entraId",
+                    equals: "true",
+                    reason: "Local accounts only",
+                  },
+                },
+              },
+            ],
+          },
+          {
+            id: "undeclared-cluster",
+            peerIntegrations: [
+              { pluginId: "kubernetes", credentialMappings: [], tabLabel: "Kubernetes" },
             ],
           },
           {
@@ -407,15 +436,22 @@ describe("what a resource can be lent as", () => {
                   title: "No public IP",
                   suggestions: [],
                 },
+                ci: { lends: "The string", reach: "The database", lifetime: "Stored" },
               },
               {
                 pluginId: "mysql",
                 credentialMappings: [],
                 tabLabel: "MySQL",
                 showWhen: { fieldKey: "databaseVersion", prefix: "MYSQL_" },
+                ci: { lends: "The string", reach: "The database", lifetime: "Stored" },
               },
               // A peer that can do nothing for CI is not offered.
-              { pluginId: "opensearch", credentialMappings: [], tabLabel: "Search" },
+              {
+                pluginId: "opensearch",
+                credentialMappings: [],
+                tabLabel: "Search",
+                ci: { lends: "x", reach: "x", lifetime: "x" },
+              },
             ],
           },
         ],
@@ -448,8 +484,28 @@ describe("what a resource can be lent as", () => {
       pluginId: "kubernetes",
       credential: { description: "A kubeconfig", namespaces: true },
       executor: { kinds: [{ kind: "cluster" }] },
+      lends: "A Google token",
+      reach: "The cluster",
+      lifetime: "An hour",
+      unavailable: null,
       unreachable: null,
     });
+  });
+
+  it("offers nothing a peer integration does not declare for CI, and says why a gated one is out", () => {
+    expect(
+      peerOptionsOf({ pluginId: "gcp", resourceTypeId: "undeclared-cluster", fields: {} }, plugins),
+    ).toEqual([]);
+    const [local] = peerOptionsOf(
+      { pluginId: "gcp", resourceTypeId: "aks-cluster", fields: { entraId: false } },
+      plugins,
+    );
+    expect(local?.unavailable).toBe("Local accounts only");
+    const [entra] = peerOptionsOf(
+      { pluginId: "gcp", resourceTypeId: "aks-cluster", fields: { entraId: true } },
+      plugins,
+    );
+    expect(entra?.unavailable).toBeNull();
   });
 
   it("offers a managed database as the engine it runs, with the same gates as its tabs", () => {

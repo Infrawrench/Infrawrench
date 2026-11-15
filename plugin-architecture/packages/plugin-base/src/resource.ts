@@ -145,7 +145,46 @@ export interface PeerPluginIntegration {
    * a Metrics tab even when its own `supportsMetrics` is false.
    */
   exposeMetricsToParent?: boolean;
+  /**
+   * Whether, and how, CI jobs may be lent this peer (`connections:`) or run
+   * on it (`cloud:`), when an admin grants the resource to CI as it. Absent:
+   * the peer is never offered to CI. What the peer plugin would lend from a
+   * connection of its own says nothing about the credential this resource
+   * hands it, so the parent declares it here and the grant form shows it.
+   */
+  ci?: PeerCiDeclaration;
 }
+
+/** What a resource lends a CI job through a peer integration (`PeerPluginIntegration.ci`). */
+export interface PeerCiDeclaration {
+  /** The credential a job gets, in a sentence: "A Google access token for the connection's service account". */
+  lends: string;
+  /** What that credential can reach beyond the resource, if anything. */
+  reach: string;
+  /** How long it lasts once lent. */
+  lifetime: string;
+  /**
+   * The outputs CI reads instead of `credentialMappings`, when lending wants
+   * something the peer tabs do not (a token minted per run, narrower or
+   * longer-lived). Unlisted credential keys come from `credentialMappings`.
+   */
+  credentialMappings?: { outputKey: string; credentialKey: string }[];
+  /**
+   * Offered only when this field of the resource equals `equals`; otherwise
+   * the grant form says `reason` and the peer cannot be lent or run on.
+   */
+  availableWhen?: { fieldKey: string; equals: string; reason: string };
+}
+
+/**
+ * The declaration a managed database's peer integration usually makes: its
+ * connection string, as stored.
+ */
+export const CI_DATABASE_PASSWORD_LENDING: PeerCiDeclaration = {
+  lends: "The database's connection string, with the user and password Infrawrench reads it with.",
+  reach: "Whatever that database user may do in this database server. Nothing outside it.",
+  lifetime: "Until the password is changed: it is the stored password, not a short-lived one.",
+};
 
 /**
  * Whether the host's Edit form offers this field, and therefore whether the

@@ -63,8 +63,12 @@ export function postgresUrlParts(connectionString: string): {
   };
 }
 
-/** A service file value: one line, as libpq reads it. */
-const oneLine = (v: string) => !/[\r\n]/.test(v);
+/**
+ * A value libpq's service file reader gives back as written: one line,
+ * with no space at either end (it trims them) and no `=`-less surprises.
+ * Anything else is left out of the file; the variables still carry it.
+ */
+const oneLine = (v: string) => !/[\r\n]/.test(v) && v === v.trim();
 
 export function lendPostgres(
   connectionString: string,

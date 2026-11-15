@@ -67,6 +67,12 @@ vi.mock("../../plugin-loader.js", async () => {
             pluginId: "kubernetes",
             credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
             tabLabel: "Kubernetes",
+            ci: {
+              lends: "A kubeconfig with a Google access token",
+              reach: "The cluster",
+              lifetime: "Up to seven hours",
+              credentialMappings: [{ outputKey: "ciKubeconfig", credentialKey: "kubeconfig" }],
+            },
           },
         ],
       },
@@ -96,14 +102,21 @@ vi.mock("../../org-accounts.js", () => ({
               pluginId: "kubernetes",
               credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
               tabLabel: "Kubernetes",
+              ci: {
+                lends: "A kubeconfig with a Google access token",
+                reach: "The cluster",
+                lifetime: "Up to seven hours",
+                credentialMappings: [{ outputKey: "ciKubeconfig", credentialKey: "kubeconfig" }],
+              },
             },
           ],
         },
       ],
     },
     client: {
+      // The GCP plugin mints the CI one's token for the run; this fake's is fixed.
       resolveOutput: async (_type: string, _id: string, key: string) =>
-        key === "kubeconfig" ? GKE_KUBECONFIG : "",
+        key === "ciKubeconfig" ? GKE_KUBECONFIG : key === "kubeconfig" ? "not-for-ci" : "",
       getResource: async (type: string, id: string) => ({
         id,
         resourceTypeId: type,
@@ -224,7 +237,14 @@ describe.skipIf(!configured)("a GKE cluster lent to a job as Kubernetes", () => 
         secretVersion: null,
         repos: ["acme/web"],
         branchPattern: "main",
-        peer: { pluginId: "kubernetes", jobKinds: [], maxConcurrentJobs: 1, maxJobMinutes: 60 },
+        peer: {
+          pluginId: "kubernetes",
+          lend: true,
+          jobKinds: [],
+          maxConcurrentJobs: 1,
+          maxJobMinutes: 60,
+          jobRegions: [],
+        },
       },
       userId,
     );

@@ -138,7 +138,7 @@ jobs:
 - The Job has `activeDeadlineSeconds` set to the job's time limit and is deleted with its pods when the job ends; a finished Job the cluster still has is removed after ten minutes.
 - The connection needs `create`, `get`, `list` and `delete` on `jobs.batch` in the namespace. **Check permissions** names any that are missing.
 
-A CoreWeave CKS, EKS, GKE, AKS or DOKS cluster runs jobs the same way, either connected as a Kubernetes connection with its kubeconfig, or straight from its cloud connection: grant the cluster to CI as a Kubernetes connection and name it by its name in pipelines (`cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }`, `connections: [gke-prod]`). See [a cluster or database in a cloud account](../features/ci.md#a-cluster-or-database-in-a-cloud-account).
+A CoreWeave CKS, EKS, GKE, AKS or DOKS cluster runs jobs the same way, either connected as a Kubernetes connection with its kubeconfig, or straight from its cloud connection: grant the cluster to CI as a Kubernetes connection, switch on running jobs on it (and, separately, lending it), and name it by its name in pipelines (`cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }`, `connections: [gke-prod]`). See [a cluster or database in a cloud account](../features/ci.md#a-cluster-or-database-in-a-cloud-account).
 
 ## Tips and limits
 

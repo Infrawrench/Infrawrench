@@ -210,55 +210,84 @@ function PeerFields({
   const id = useId();
   const option = peer ? options.find((o) => o.pluginId === peer.pluginId) : undefined;
   const kinds = option?.executor?.kinds ?? [];
+  const regionLabel = kinds.find((k) => peer?.jobKinds.includes(k.kind))?.regionLabel;
   const name = ciName || "<name>";
+  const [regionsText, setRegionsText] = useState((peer?.jobRegions ?? []).join(", "));
   return (
     <div className="space-y-3">
       <div>
         <label htmlFor={`${id}-peer`} className={LABEL}>
-          {gt("Lend it as a connection")}
+          {gt("Use it in CI as a connection")}
         </label>
         <select
           id={`${id}-peer`}
           value={peer?.pluginId ?? ""}
-          onChange={(e) =>
+          onChange={(e) => {
+            const chosen = options.find((o) => o.pluginId === e.target.value);
+            setRegionsText("");
             onChange(
-              e.target.value === ""
-                ? null
-                : {
-                    pluginId: e.target.value,
+              chosen
+                ? {
+                    pluginId: chosen.pluginId,
+                    // Nothing is switched on until the admin has read what it lends.
+                    lend: false,
                     jobKinds: [],
                     maxConcurrentJobs:
                       peer?.maxConcurrentJobs ?? CI_DEFAULT_PEER_LIMITS.maxConcurrentJobs,
                     maxJobMinutes: peer?.maxJobMinutes ?? CI_DEFAULT_PEER_LIMITS.maxJobMinutes,
-                  },
-            )
-          }
+                    jobRegions: [],
+                  }
+                : null,
+            );
+          }}
           className={INPUT}
         >
-          <option value="">{gt("Not lent as a connection")}</option>
+          <option value="">{gt("Not used as a connection")}</option>
           {options.map((o) => (
-            <option key={o.pluginId} value={o.pluginId}>
+            <option key={o.pluginId} value={o.pluginId} disabled={Boolean(o.unavailable)}>
               {gt("As a {plugin} connection", { plugin: o.pluginName })}
             </option>
           ))}
         </select>
+        {options
+          .filter((o) => o.unavailable)
+          .map((o) => (
+            <p key={o.pluginId} className="mt-1 text-[11px] text-warning">
+              {data(o.unavailable ?? "")}
+            </p>
+          ))}
       </div>
       {peer && option ? (
         <div className="space-y-3 rounded-lg border border-border p-3">
-          {option.credential ? (
-            <div className="space-y-1">
-              <p className="text-xs text-on-surface-muted">{data(option.credential.description)}</p>
-              <p className="font-mono text-[11px] text-on-surface-faint">{`connections: [${name}]`}</p>
-            </div>
-          ) : (
-            <p className="text-xs text-on-surface-muted">
-              {gt("{plugin} connections can't be lent to jobs, but jobs can run on it.", {
-                plugin: option.pluginName,
-              })}
-            </p>
-          )}
+          <dl
+            aria-label={gt("What it lends")}
+            className="grid gap-x-3 gap-y-1.5 text-xs sm:grid-cols-[auto_1fr]"
+          >
+            <dt className="text-on-surface-faint">{gt("Credential")}</dt>
+            <dd className="text-on-surface">{data(option.lends)}</dd>
+            <dt className="text-on-surface-faint">{gt("Reach")}</dt>
+            <dd className="text-on-surface">{data(option.reach)}</dd>
+            <dt className="text-on-surface-faint">{gt("Lifetime")}</dt>
+            <dd className="text-on-surface">{data(option.lifetime)}</dd>
+          </dl>
           {option.unreachable ? (
             <p className="text-xs text-warning">{data(option.unreachable)}</p>
+          ) : null}
+          {option.credential ? (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={peer.lend}
+                onChange={(e) => onChange({ ...peer, lend: e.target.checked })}
+              />
+              <span className="min-w-0">
+                <span className="block text-on-surface">{gt("Lend it to jobs")}</span>
+                <span className="block font-mono text-[11px] text-on-surface-faint">
+                  {`connections: [${name}]`}
+                </span>
+              </span>
+            </label>
           ) : null}
           {kinds.length > 0 ? (
             <>
@@ -290,7 +319,9 @@ function PeerFields({
                 </div>
                 {peer.jobKinds.length > 0 ? (
                   <p className="mt-1 text-[11px] text-on-surface-faint">
-                    {gt("Each kind is checked through it when you save.")}
+                    {gt(
+                      "Running jobs on it lends them nothing. Each kind is checked when you save.",
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -330,6 +361,34 @@ function PeerFields({
                       />
                     </div>
                   </div>
+                  <div>
+                    <label htmlFor={`${id}-regions`} className={LABEL}>
+                      {regionLabel
+                        ? gt("Other places jobs may run ({label})", { label: data(regionLabel) })
+                        : gt("Other places jobs may run")}
+                    </label>
+                    <input
+                      id={`${id}-regions`}
+                      value={regionsText}
+                      onChange={(e) => {
+                        setRegionsText(e.target.value);
+                        onChange({
+                          ...peer,
+                          jobRegions: e.target.value
+                            .split(",")
+                            .map((r) => r.trim())
+                            .filter((r) => r !== ""),
+                        });
+                      }}
+                      className={`${INPUT} font-mono`}
+                      autoComplete="off"
+                    />
+                    <p className="mt-1 text-[11px] text-on-surface-faint">
+                      {gt(
+                        "Separated by commas. Leave empty for only where each kind was checked; jobs that name anywhere else are refused.",
+                      )}
+                    </p>
+                  </div>
                   <p className="font-mono text-[11px] text-on-surface-faint">
                     {`cloud: { provider: ${peer.pluginId}, kind: ${peer.jobKinds[0]}, connection: ${name} }`}
                   </p>
@@ -349,9 +408,11 @@ function peerInputOf(grant: CiResourceGrant | null): CiResourceGrantPeerInput | 
   return peer
     ? {
         pluginId: peer.pluginId,
+        lend: peer.lend,
         jobKinds: peer.jobKinds,
         maxConcurrentJobs: peer.maxConcurrentJobs,
         maxJobMinutes: peer.maxJobMinutes,
+        jobRegions: peer.jobRegions,
       }
     : null;
 }
@@ -578,7 +639,11 @@ function GrantForm({
         <button
           type="submit"
           disabled={
-            busy || !nameOk || (input.outputs.length === 0 && !input.secretVersion && !peer)
+            busy ||
+            !nameOk ||
+            // A peer chosen does something only once lent or run on.
+            (peer !== null && !peer.lend && peer.jobKinds.length === 0) ||
+            (input.outputs.length === 0 && !input.secretVersion && !peer)
           }
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
@@ -809,12 +874,15 @@ export function CiAccessCard({
                         <span className="truncate font-mono text-[11px] text-on-surface-faint">
                           {[...g.outputs, ...(g.secretVersion ? ["value"] : [])].join(", ")}
                         </span>
-                        {g.peer ? (
+                        {g.peer?.lend ? (
                           <Chip tone="on">
                             {gt("Lent as {plugin}", { plugin: g.peer.pluginName })}
-                            {g.peer.jobKinds.length > 0 ? (
-                              <span className="opacity-80">{` · ${g.peer.jobKinds.join(", ")}`}</span>
-                            ) : null}
+                          </Chip>
+                        ) : null}
+                        {g.peer && g.peer.jobKinds.length > 0 ? (
+                          <Chip tone="on">
+                            {gt("Runs jobs as {plugin}", { plugin: g.peer.pluginName })}
+                            <span className="opacity-80">{` · ${g.peer.jobKinds.join(", ")}`}</span>
                           </Chip>
                         ) : null}
                         <Chip>{scopeSummary(gt, g.repos, g.branchPattern)}</Chip>

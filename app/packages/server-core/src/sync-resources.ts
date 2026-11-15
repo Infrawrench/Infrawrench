@@ -153,6 +153,8 @@ async function upsertResources(
           lastSyncedAt: now,
           updatedAt: now,
           syncVersion: version,
+          // Coming back from a soft delete: another incarnation of the id.
+          incarnation: sql`CASE WHEN ${resources.deletedAt} IS NULL THEN ${resources.incarnation} ELSE ${resources.incarnation} + 1 END`,
           deletedAt: null,
         },
       });

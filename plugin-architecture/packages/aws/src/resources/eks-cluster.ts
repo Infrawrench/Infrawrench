@@ -111,6 +111,14 @@ export const EKSClusterResourceType = rt({
       // own Metrics tab, so cluster spend sits next to the provider's node
       // metrics instead of being buried one tab deeper.
       exposeMetricsToParent: true,
+      ci: {
+        lends:
+          "A kubeconfig with an EKS token: a GetCallerIdentity request presigned with the AWS connection's access key, which the cluster reads as that IAM user.",
+        reach:
+          "Only this cluster: EKS turns the token into the IAM user's identity there, and it can do what the cluster's access entries or aws-auth map that user to. It is not an AWS credential.",
+        lifetime:
+          "Fifteen minutes from when the run starts, which EKS enforces. A job that starts later, behind others it needs, is refused by the cluster.",
+      },
     },
   ],
   secretExportTemplates: [

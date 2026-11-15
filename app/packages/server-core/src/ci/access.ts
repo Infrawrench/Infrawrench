@@ -11,7 +11,7 @@
  * call plugins, so their routes are gateway routes; the rest is Postgres.
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { HostPlugin, HostPluginClient, PeerPluginIntegration } from "@infrawrench/plugin-base";
+import type { HostPlugin, HostPluginClient } from "@infrawrench/plugin-base";
 import {
   CI_DEFAULT_CONNECTION_ACCESS,
   CI_DEFAULT_PEER_LIMITS,
@@ -23,7 +23,6 @@ import {
   type CiConnectionAccess,
   type CiConnectionAccessSettings,
   type CiExecutorKindId,
-  type CiExecutorKindInfo,
   type CiPeerOption,
   type CiPreflightRecord,
   type CiResourceGrantPeerInput,
@@ -44,9 +43,9 @@ import {
   users,
 } from "../db/schema.js";
 import { getOrgAccountClient } from "../org-accounts.js";
-import { filterVisiblePeerIntegrations, getClientForResource } from "../peer-clients.js";
+import { getClientForResource } from "../peer-clients.js";
 import { loadPlugins } from "../plugin-loader.js";
-import { resourcePeerClient } from "./lend.js";
+import { ciPeerClient, credentialInfoOf, executorInfoOf, peerOptionsOf } from "./peers.js";
 import { CiInputError } from "./runs.js";
 
 const SECRET_VALUE_OUTPUT = CI_SECRET_VALUE_OUTPUT;
@@ -109,42 +108,6 @@ function settingsOf(row: AccessRow | undefined): CiConnectionAccessSettings {
   };
 }
 
-/** What a plugin can run for CI, as the wire carries it. */
-function executorOf(plugin: HostPlugin): CiConnectionAccess["executor"] {
-  const { ciExecutor } = plugin.manifest;
-  return ciExecutor
-    ? {
-        kinds: ciExecutor.kinds.map((k): CiExecutorKindInfo => ({
-          kind: k.kind,
-          label: k.label,
-          defaults: { ...k.defaults },
-          ...(k.typicalStartSeconds !== undefined
-            ? { typicalStartSeconds: k.typicalStartSeconds }
-            : {}),
-          ...(k.minimumBillingSeconds !== undefined
-            ? { minimumBillingSeconds: k.minimumBillingSeconds }
-            : {}),
-          ...(k.gpus ? { gpus: true } : {}),
-          ...(k.machineSuggestions ? { machineSuggestions: [...k.machineSuggestions] } : {}),
-          ...(k.regionLabel ? { regionLabel: k.regionLabel } : {}),
-        })),
-        helpLink: ciExecutor.helpLink ? { ...ciExecutor.helpLink } : null,
-      }
-    : null;
-}
-
-/** What a plugin lends a job, as the wire carries it. */
-function credentialOf(plugin: HostPlugin): CiConnectionAccess["credential"] {
-  const { ciCredential } = plugin.manifest;
-  return ciCredential
-    ? {
-        description: ciCredential.description,
-        shortLived: ciCredential.shortLived,
-        namespaces: ciCredential.namespaces === true,
-      }
-    : null;
-}
-
 function connectionOf(
   account: { id: string; displayName: string; pluginId: string },
   plugin: HostPlugin,
@@ -155,8 +118,8 @@ function connectionOf(
     accountName: account.displayName,
     pluginId: account.pluginId,
     pluginName: plugin.manifest.displayName,
-    executor: executorOf(plugin),
-    credential: credentialOf(plugin),
+    executor: executorInfoOf(plugin),
+    credential: credentialInfoOf(plugin),
     settings: settingsOf(row),
     preflight: row?.jobPreflight ?? {},
     updatedAt: row?.updatedAt.toISOString() ?? null,
@@ -387,11 +350,13 @@ function grantOf(
       ? {
           pluginId: row.peerPluginId,
           pluginName: peerPlugin?.manifest.displayName ?? row.peerPluginId,
+          lend: row.peerLendEnabled,
           jobKinds: row.peerJobKinds.filter((k): k is CiExecutorKindId =>
             (CI_EXECUTOR_KIND_IDS as readonly string[]).includes(k),
           ),
           maxConcurrentJobs: row.peerMaxConcurrentJobs,
           maxJobMinutes: row.peerMaxJobMinutes,
+          jobRegions: row.peerJobRegions,
           preflight: row.peerPreflight,
         }
       : null,
@@ -424,6 +389,7 @@ async function loadResource(organizationId: string, resourceId: string) {
       displayName: resources.displayName,
       parentResourceId: resources.parentResourceId,
       fields: resources.fieldsJson,
+      incarnation: resources.incarnation,
     })
     .from(resources)
     .where(
@@ -444,52 +410,10 @@ async function typeOutputs(pluginId: string, resourceTypeId: string) {
   return type?.outputs ?? [];
 }
 
-/** Whether every field a peer integration names as its way in is empty. */
-function unreachableOf(
-  integration: PeerPluginIntegration,
-  fields: Record<string, unknown>,
-): string | null {
-  const gate = integration.unreachableWhen;
-  if (!gate) return null;
-  const empty = gate.fieldsEmpty.every((k) => fields[k] == null || fields[k] === "");
-  return empty ? gate.title : null;
-}
-
-/**
- * What a resource can be lent to CI as: the peer integrations its type
- * declares that apply to it (the same gates the peer tabs use), whose
- * plugin lends a connection to jobs or runs cloud jobs.
- */
-export function peerOptionsOf(
-  resource: { pluginId: string; resourceTypeId: string; fields: Record<string, unknown> | null },
-  plugins: Map<string, HostPlugin>,
-): CiPeerOption[] {
-  const type = plugins
-    .get(resource.pluginId)
-    ?.resourceTypes.find((t) => t.id === resource.resourceTypeId);
-  const fields = resource.fields ?? {};
-  const out: CiPeerOption[] = [];
-  for (const integration of filterVisiblePeerIntegrations(type?.peerIntegrations ?? [], fields)) {
-    const peer = plugins.get(integration.pluginId);
-    if (!peer || out.some((o) => o.pluginId === integration.pluginId)) continue;
-    const credential = credentialOf(peer);
-    const executor = executorOf(peer);
-    if (!credential && !executor) continue;
-    out.push({
-      pluginId: integration.pluginId,
-      pluginName: peer.manifest.displayName,
-      credential,
-      executor,
-      unreachable: unreachableOf(integration, fields),
-    });
-  }
-  return out;
-}
-
 /**
  * What a resource can be granted: its type's outputs, for a secret with
  * versions its versions (read through the plugin, so a gateway route), and
- * what it can be lent as.
+ * what it can be used as, with what each lends.
  */
 export async function resourceOutputs(
   organizationId: string,
@@ -536,34 +460,45 @@ export interface GrantInput {
   secretVersion: string | null;
   repos: string[] | null;
   branchPattern: string | null;
-  /** Undefined: unchanged on an update, none on a new grant. */
+  /** Undefined: none on a new grant; refused on an update of a grant that has one. */
   peer?: CiResourceGrantPeerInput | null;
 }
 
-/** A peer as it is stored, checked against what the resource can be lent as. */
-function checkPeer(
-  input: CiResourceGrantPeerInput | null,
-  options: CiPeerOption[],
-): {
+/** `cloud.region` values a grant may list: a namespace, a region, a zone. */
+const REGION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+const MAX_REGIONS = 20;
+
+interface PeerValues {
   peerPluginId: string | null;
+  peerLendEnabled: boolean;
   peerJobKinds: string[];
   peerMaxConcurrentJobs: number;
   peerMaxJobMinutes: number;
-} {
+  peerJobRegions: string[];
+}
+
+/** A peer as it is stored, checked against what the resource can be used as. */
+function checkPeer(input: CiResourceGrantPeerInput | null, options: CiPeerOption[]): PeerValues {
   if (!input) {
     return {
       peerPluginId: null,
+      peerLendEnabled: false,
       peerJobKinds: [],
       peerMaxConcurrentJobs: CI_DEFAULT_PEER_LIMITS.maxConcurrentJobs,
       peerMaxJobMinutes: CI_DEFAULT_PEER_LIMITS.maxJobMinutes,
+      peerJobRegions: [],
     };
   }
   const option = options.find((o) => o.pluginId === input.pluginId);
   if (!option) {
     throw new CiInputError(
-      `This resource cannot be lent to CI as \`${input.pluginId}\`.${options.length > 0 ? ` It can be lent as ${options.map((o) => `\`${o.pluginId}\``).join(", ")}.` : ""}`,
+      `This resource cannot be used by CI as \`${input.pluginId}\`.${options.length > 0 ? ` It can be used as ${options.map((o) => `\`${o.pluginId}\``).join(", ")}.` : ""}`,
       400,
     );
+  }
+  if (option.unavailable) throw new CiInputError(option.unavailable, 400);
+  if (input.lend && !option.credential) {
+    throw new CiInputError(`${option.pluginName} connections cannot be lent to jobs.`, 400);
   }
   const offered = new Set<string>(option.executor?.kinds.map((k) => k.kind) ?? []);
   const kinds = [...new Set(input.jobKinds)];
@@ -571,6 +506,12 @@ function checkPeer(
     if (!offered.has(kind)) {
       throw new CiInputError(`${option.pluginName} does not run \`${kind}\` jobs.`, 400);
     }
+  }
+  if (!input.lend && kinds.length === 0) {
+    throw new CiInputError(
+      `Lend it to jobs, let jobs run on it, or both: a ${option.pluginName} peer that does neither does nothing.`,
+      400,
+    );
   }
   const maxConcurrentJobs = Math.trunc(input.maxConcurrentJobs);
   if (!(maxConcurrentJobs >= 1 && maxConcurrentJobs <= 50)) {
@@ -580,11 +521,23 @@ function checkPeer(
   if (!(maxJobMinutes >= 1 && maxJobMinutes <= 24 * 60)) {
     throw new CiInputError("Minutes per job must be between 1 and 1440.", 400);
   }
+  const regions = [...new Set(input.jobRegions.map((r) => r.trim()).filter((r) => r !== ""))];
+  if (regions.length > MAX_REGIONS) {
+    throw new CiInputError(`At most ${MAX_REGIONS} places a job may ask to run in.`, 400);
+  }
+  for (const r of regions) {
+    if (!REGION.test(r)) throw new CiInputError(`Not a place a job can run in: ${r}`, 400);
+  }
+  if (regions.length > 0 && kinds.length === 0) {
+    throw new CiInputError("Places to run jobs in need a kind of job to run there.", 400);
+  }
   return {
     peerPluginId: option.pluginId,
+    peerLendEnabled: input.lend,
     peerJobKinds: kinds,
     peerMaxConcurrentJobs: maxConcurrentJobs,
     peerMaxJobMinutes: maxJobMinutes,
+    peerJobRegions: regions,
   };
 }
 
@@ -600,6 +553,14 @@ async function checkGrant(
       400,
     );
   }
+  // A client from before peers (an older desktop) sends no `peer`. It cannot
+  // show what the grant is used as, so it must not widen where that holds.
+  if (input.peer === undefined && existing?.peerPluginId) {
+    throw new CiInputError(
+      `This grant is also used as a ${existing.peerPluginId} connection, which this version of Infrawrench cannot show. Update Infrawrench to change it.`,
+      409,
+    );
+  }
   const resource = await loadResource(organizationId, input.resourceId);
   const known = new Set(
     (await typeOutputs(resource.pluginId, resource.resourceTypeId)).map((o) => o.key),
@@ -611,28 +572,13 @@ async function checkGrant(
   }
   const secretVersion = input.secretVersion?.trim() || null;
   if (secretVersion && !outputs.includes(SECRET_VALUE_OUTPUT)) outputs.push(SECRET_VALUE_OUTPUT);
-  // Left out of an update: what the grant is lent as stays, unless the
-  // resource changes, which no peer of the old one need fit.
-  const keepPeer = input.peer === undefined && existing?.resourceId === resource.id;
-  const peerInput: CiResourceGrantPeerInput | null =
-    input.peer !== undefined
-      ? input.peer
-      : keepPeer && existing?.peerPluginId
-        ? {
-            pluginId: existing.peerPluginId,
-            jobKinds: existing.peerJobKinds as CiExecutorKindId[],
-            maxConcurrentJobs: existing.peerMaxConcurrentJobs,
-            maxJobMinutes: existing.peerMaxJobMinutes,
-          }
-        : null;
-  const options = peerOptionsOf(resource, plugins);
-  const peer = checkPeer(peerInput, options);
+  const peer = checkPeer(input.peer ?? null, peerOptionsOf(resource, plugins));
   if (outputs.length === 0 && !peer.peerPluginId) {
-    throw new CiInputError("Tick at least one output, or lend it as a connection.", 400);
+    throw new CiInputError("Tick at least one output, or use it as a connection.", 400);
   }
   if (peer.peerPluginId) {
-    // A pipeline names a peer in `connections:`, where a connection of the
-    // same name would make the name mean two things.
+    // A pipeline names a peer in `connections:` and `cloud.connection`, where
+    // a connection of the same name would make the name mean two things.
     const [clash] = await db
       .select({ id: accounts.id })
       .from(accounts)
@@ -652,6 +598,7 @@ async function checkGrant(
     values: {
       resourceTypeId: resource.resourceTypeId,
       resourceName: resource.displayName,
+      resourceIncarnation: resource.incarnation,
       ciName: input.ciName,
       outputs,
       secretVersion,
@@ -662,45 +609,64 @@ async function checkGrant(
   };
 }
 
+/** The key a kind's check is kept under: the kind for where it was first checked, `kind@region` for one added. */
+function checkKey(kind: string, region: string | null): string {
+  return region === null ? kind : `${kind}@${region}`;
+}
+
 /**
  * Checks, through the peer and without starting anything, every cloud job
- * kind the grant turns on that has not passed already, and refuses the
- * grant when one fails: a peer that cannot run a kind must not take jobs of
- * it. Calls the plugin, so the grant routes are gateway routes.
+ * kind the grant turns on (where each runs by default, and each region it
+ * adds) that has not passed already, and refuses the grant when one fails:
+ * a peer that cannot run a kind somewhere must not take jobs of it there.
+ * Calls the plugin, so the grant routes are gateway routes.
  */
 async function preflightPeer(
   organizationId: string,
-  resource: { id: string; accountId: string },
-  peer: { peerPluginId: string | null; peerJobKinds: string[] },
+  resource: { id: string; accountId: string; resourceTypeId: string },
+  peer: PeerValues,
   existing: GrantRow | null,
 ): Promise<GrantRow["peerPreflight"]> {
   const kept =
     existing && existing.peerPluginId === peer.peerPluginId && existing.resourceId === resource.id
       ? existing.peerPreflight
       : {};
-  if (!peer.peerPluginId) return {};
-  const due = peer.peerJobKinds.filter((k) => kept[k]?.ok !== true);
-  if (due.length === 0) return kept;
-  const resolved = await resourcePeerClient(organizationId, resource, peer.peerPluginId).catch(
+  if (!peer.peerPluginId || peer.peerJobKinds.length === 0) return {};
+  const wanted = peer.peerJobKinds.flatMap((kind) => [
+    { kind, region: null as string | null },
+    ...peer.peerJobRegions.map((region) => ({ kind, region })),
+  ]);
+  const due = wanted.filter((w) => kept[checkKey(w.kind, w.region)]?.ok !== true);
+  const out: GrantRow["peerPreflight"] = Object.fromEntries(
+    wanted.flatMap((w) => {
+      const k = checkKey(w.kind, w.region);
+      return kept[k] ? [[k, kept[k]]] : [];
+    }),
+  );
+  if (due.length === 0) return out;
+  const resolved = await ciPeerClient(organizationId, resource, peer.peerPluginId, "run").catch(
     () => null,
   );
-  if (!resolved) {
+  if (!resolved || "refused" in resolved) {
     throw new CiInputError(
-      `The resource could not be reached as \`${peer.peerPluginId}\` to check it can run cloud jobs.`,
+      `The resource could not be reached as \`${peer.peerPluginId}\` to check it can run cloud jobs${resolved ? `: ${resolved.refused}` : ""}.`,
       409,
     );
   }
-  const out = { ...kept };
   const failing: string[] = [];
-  for (const kind of due) {
-    const record = await preflightRecord(resolved.client, kind as CiExecutorKindId, undefined);
-    out[kind] = record;
+  for (const { kind, region } of due) {
+    const record = await preflightRecord(
+      resolved.client,
+      kind as CiExecutorKindId,
+      region ?? undefined,
+    );
+    out[checkKey(kind, region)] = record;
     if (!record.ok) {
       const why = [
         ...record.missing.map((m) => `${m.permission} (${m.label})`),
         ...record.problems,
       ].join("; ");
-      failing.push(`\`${kind}\`${why ? `: ${why}` : ""}`);
+      failing.push(`\`${kind}\`${region ? ` in ${region}` : ""}${why ? `: ${why}` : ""}`);
     }
   }
   if (failing.length > 0) {

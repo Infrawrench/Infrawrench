@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.110.0",
+    "version": "1.111.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -62645,6 +62645,10 @@
           "pluginName": {
             "type": "string"
           },
+          "lend": {
+            "type": "boolean",
+            "description": "`connections: [<ciName>]` lends it. Separate from running jobs on it, which lends nothing."
+          },
           "jobKinds": {
             "type": "array",
             "items": {
@@ -62669,6 +62673,13 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "jobRegions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where else a job may run with `cloud.region` (a cluster's namespaces), besides where each kind was checked. Empty: only there."
+          },
           "preflight": {
             "type": "object",
             "additionalProperties": {
@@ -62679,9 +62690,11 @@
         "required": [
           "pluginId",
           "pluginName",
+          "lend",
           "jobKinds",
           "maxConcurrentJobs",
           "maxJobMinutes",
+          "jobRegions",
           "preflight"
         ],
         "additionalProperties": false
@@ -62794,7 +62807,7 @@
                 "type": "null"
               }
             ],
-            "description": "Lend the resource as a connection of a peer plugin (`connections: [<ciName>]`), and run cloud jobs on it. Null: not lent as a peer. Left out of an update: unchanged."
+            "description": "Use the resource as a peer plugin's connection: lend it (`connections: [<ciName>]`), run cloud jobs on it, or both. Null: neither. An update must send it when the grant has one: a client that cannot show it is refused (409) rather than changing a grant whose lending it cannot see."
           }
         },
         "required": [
@@ -62812,6 +62825,10 @@
         "properties": {
           "pluginId": {
             "type": "string"
+          },
+          "lend": {
+            "type": "boolean",
+            "description": "Lend it to jobs that name it in `connections:`."
           },
           "jobKinds": {
             "type": "array",
@@ -62836,13 +62853,22 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "jobRegions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where else jobs may run with `cloud.region`, each checked through the peer when added. Empty: only where each kind was checked."
           }
         },
         "required": [
           "pluginId",
+          "lend",
           "jobKinds",
           "maxConcurrentJobs",
-          "maxJobMinutes"
+          "maxJobMinutes",
+          "jobRegions"
         ],
         "additionalProperties": false
       },
@@ -63084,6 +63110,29 @@
               }
             ]
           },
+          "lends": {
+            "type": "string",
+            "description": "The credential a job is lent, as the resource's provider declares it."
+          },
+          "reach": {
+            "type": "string",
+            "description": "What that credential reaches beyond the resource."
+          },
+          "lifetime": {
+            "type": "string",
+            "description": "How long it lasts once lent."
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Why this resource cannot be used as it (and cannot be granted as it), when it cannot."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "unreachable": {
             "anyOf": [
               {
@@ -63101,6 +63150,10 @@
           "pluginName",
           "credential",
           "executor",
+          "lends",
+          "reach",
+          "lifetime",
+          "unavailable",
           "unreachable"
         ],
         "additionalProperties": false
@@ -129049,7 +129102,7 @@
             }
           }
         },
-        "description": "Replaces the grant. `peer` left out keeps what the grant is lent as; a cloud job kind newly turned on is checked through the peer first.\n\n_Requires permission: `ci-access:write`._",
+        "description": "Replaces the grant. `peer` must be sent when the grant has one (409 otherwise); a cloud job kind or region newly turned on is checked through the peer first.\n\n_Requires permission: `ci-access:write`._",
         "summary": "Change a resource grant",
         "requestBody": {
           "content": {

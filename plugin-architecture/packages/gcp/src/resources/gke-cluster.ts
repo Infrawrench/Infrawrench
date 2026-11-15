@@ -101,6 +101,16 @@ export const GkeClusterResourceType = rt({
       // own Metrics tab, so cluster spend sits next to the provider's node
       // metrics instead of being buried one tab deeper.
       exposeMetricsToParent: true,
+      ci: {
+        lends:
+          "A kubeconfig with a Google access token for the Google Cloud connection's service account, minted for the run.",
+        reach:
+          "The token carries only the userinfo.email scope, so it calls no Google API but the cluster's: in the cluster it can do what that service account's IAM roles and RBAC bindings allow.",
+        lifetime:
+          "Seven hours where the organization allows longer tokens for the account (iam.allowServiceAccountCredentialLifetimeExtension) and it may mint its own; otherwise one hour from when the run starts.",
+        // A token minted for the lend, not the peer tabs' cached one.
+        credentialMappings: [{ outputKey: "ciKubeconfig", credentialKey: "kubeconfig" }],
+      },
     },
   ],
 });

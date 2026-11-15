@@ -413,7 +413,7 @@ describe("CI access", () => {
       }),
     );
   });
-  it("grants a managed cluster as a Kubernetes connection, with cloud jobs on it", async () => {
+  it("shows what a cluster lends before it is granted, and runs jobs on it without lending it", async () => {
     const c = client();
     c.searchResources.mockImplementation(async () => [
       {
@@ -437,9 +437,26 @@ describe("CI access", () => {
           pluginName: "Kubernetes",
           credential: { description: "A kubeconfig", shortLived: false, namespaces: true },
           executor: {
-            kinds: [{ kind: "cluster", label: "Kubernetes Job", defaults: {} }],
+            kinds: [
+              { kind: "cluster", label: "Kubernetes Job", defaults: {}, regionLabel: "Namespace" },
+            ],
             helpLink: null,
           },
+          lends: "A Google token minted for the run",
+          reach: "Only the cluster",
+          lifetime: "Up to seven hours",
+          unavailable: null,
+          unreachable: null,
+        },
+        {
+          pluginId: "postgres",
+          pluginName: "PostgreSQL",
+          credential: { description: "DATABASE_URL", shortLived: false, namespaces: false },
+          executor: null,
+          lends: "x",
+          reach: "x",
+          lifetime: "x",
+          unavailable: "Not with local accounts",
           unreachable: null,
         },
       ],
@@ -450,14 +467,28 @@ describe("CI access", () => {
       target: { value: "prod" },
     });
     fireEvent.click(await screen.findByRole("button", { name: /prod-cluster/ }));
-    // Nothing ticked and not lent: nothing to save.
-    const lendAs = await screen.findByLabelText("Lend it as a connection");
+    const useAs = (await screen.findByLabelText(
+      "Use it in CI as a connection",
+    )) as HTMLSelectElement;
+    // A peer its provider rules out is shown, with why, and cannot be chosen.
+    expect(
+      ([...useAs.options].find((o) => o.value === "postgres") as HTMLOptionElement).disabled,
+    ).toBe(true);
+    expect(screen.getByText("Not with local accounts")).toBeTruthy();
+    fireEvent.change(useAs, { target: { value: "kubernetes" } });
+    // What it lends, before anything is switched on.
+    expect(screen.getByText("A Google token minted for the run")).toBeTruthy();
+    expect(screen.getByText("Only the cluster")).toBeTruthy();
+    expect(screen.getByText("Up to seven hours")).toBeTruthy();
+    const lend = screen.getByRole("checkbox", { name: /Lend it to jobs/ }) as HTMLInputElement;
+    expect(lend.checked).toBe(false);
     expect((screen.getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
-    fireEvent.change(lendAs, { target: { value: "kubernetes" } });
-    expect(screen.getByText("connections: [prod-cluster]", { exact: false })).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: /Kubernetes Job/ }));
+    fireEvent.change(screen.getByLabelText("Other places jobs may run (Namespace)"), {
+      target: { value: "ci, staging" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Grant" }));
     await waitFor(() =>
       expect(c.createGrant).toHaveBeenCalledWith({
@@ -469,9 +500,11 @@ describe("CI access", () => {
         branchPattern: null,
         peer: {
           pluginId: "kubernetes",
+          lend: false,
           jobKinds: ["cluster"],
           maxConcurrentJobs: 2,
           maxJobMinutes: 60,
+          jobRegions: ["ci", "staging"],
         },
       }),
     );
