@@ -283,6 +283,17 @@ mod tests {
     }
 
     #[test]
+    fn markers_read_as_in_a_job() {
+        // What env:python's interpreter and pip report (#1210).
+        assert!(eval("sys_platform == 'wasix'"));
+        assert!(!eval("sys_platform == 'wasi'"));
+        assert!(eval("platform_system == 'wasi'"));
+        assert!(eval(
+            "platform_release == '0.0.0' and platform_version == '0.0.0'"
+        ));
+    }
+
+    #[test]
     fn extras() {
         assert!(!evaluate("extra == 'socks'", &env(), None).unwrap());
         assert!(evaluate("extra == 'SOCKS'", &env(), Some("socks")).unwrap());

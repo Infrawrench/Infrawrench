@@ -79,19 +79,22 @@ pub struct Target {
 
 impl Default for Target {
     fn default() -> Self {
-        // What CPython 3.13.15 in `python/python` 3.13.20 reports under
-        // WASIX, with `_PYTHON_HOST_PLATFORM=wasix-wasm32` as the
-        // environment sets it (README, "Python").
+        // What CPython 3.13.15 in `python/python` 3.13.20 reports in a
+        // job, with `_PYTHON_HOST_PLATFORM=wasix-wasm32` as the
+        // environment sets it (README, "Python"): `sys.platform` is the
+        // build's own `wasix`, and `platform.system()`, `release()` and
+        // `version()` read `os.uname()`, which says `wasi`, `0.0.0` and
+        // `0.0.0` (#1210). pip's marker environment there is the same.
         Target {
             python: (3, 13),
             full_version: "3.13.15".to_string(),
             platforms: vec!["wasix_wasm32".to_string()],
             os_name: "posix".to_string(),
-            sys_platform: "wasi".to_string(),
+            sys_platform: "wasix".to_string(),
             platform_machine: "wasm32".to_string(),
-            platform_system: "WASI".to_string(),
-            platform_release: String::new(),
-            platform_version: String::new(),
+            platform_system: "wasi".to_string(),
+            platform_release: "0.0.0".to_string(),
+            platform_version: "0.0.0".to_string(),
         }
     }
 }
