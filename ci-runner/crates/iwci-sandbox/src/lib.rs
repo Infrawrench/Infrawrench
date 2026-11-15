@@ -14,4 +14,6 @@
 #[cfg(target_os = "linux")]
 pub mod lisafs;
 #[cfg(target_os = "linux")]
+pub mod net;
+#[cfg(target_os = "linux")]
 pub mod runsc;

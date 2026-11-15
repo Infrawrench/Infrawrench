@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use iwci_sandbox::lisafs::{Export, serve, socket_pair};
+use iwci_sandbox::net::{Gateway, Network, Outside};
 use iwci_sandbox::runsc::{Config, Release, boot};
 use iwci_vfs::virtual_fs::FileSystem;
 use iwci_vfs::{Change, JobFs, SnapshotBuilder};
@@ -63,7 +64,8 @@ fn snapshot(busybox: &Path, extra: impl FnOnce(&SnapshotBuilder)) -> JobFs {
     b.set_mode("/bin/busybox", 0o755).unwrap();
     for applet in [
         "sh", "ls", "cat", "find", "stat", "sort", "readlink", "mkdir", "mv", "ln", "chmod", "rm",
-        "echo", "wc", "xargs", "sed", "head", "test", "touch", "cp", "dd",
+        "echo", "wc", "xargs", "sed", "head", "test", "touch", "cp", "dd", "wget", "httpd", "nc",
+        "sleep", "kill", "timeout", "nslookup",
     ] {
         b.symlink(format!("/bin/{applet}"), "busybox").unwrap();
     }
@@ -74,6 +76,11 @@ fn snapshot(busybox: &Path, extra: impl FnOnce(&SnapshotBuilder)) -> JobFs {
     b.symlink("/work/link", "a.txt").unwrap();
     b.mkdir_all("/tmp").unwrap();
     b.mkdir_all("/root").unwrap();
+    // What the runner gives a sandboxed job: its resolver is the gateway.
+    b.write("/etc/resolv.conf", b"nameserver 10.0.2.2\n")
+        .unwrap();
+    b.write("/etc/hosts", b"127.0.0.1 localhost\n::1 localhost\n")
+        .unwrap();
     extra(&b);
     b.freeze().fork()
 }
@@ -85,8 +92,21 @@ struct Ran {
     millis: u128,
 }
 
-/// Runs `args` in a sandbox over `job`'s file system.
+/// Runs `args` in a sandbox over `job`'s file system, with no network
+/// but its loopback.
 fn run(release: &Release, job: &JobFs, args: &[&str]) -> Ran {
+    run_with(release, job, args, None)
+}
+
+/// Runs `args` in a sandbox, with `network` its way out if there is one.
+fn run_with(release: &Release, job: &JobFs, args: &[&str], network: Option<Network>) -> Ran {
+    let (gateway, link) = match network {
+        Some(n) => {
+            let (g, l) = Gateway::start(n).unwrap();
+            (Some(g), Some(l))
+        }
+        None => (None, None),
+    };
     let (ours, theirs) = socket_pair().unwrap();
     let serving = serve(
         Export {
@@ -128,6 +148,7 @@ fn run(release: &Release, job: &JobFs, args: &[&str]) -> Ran {
         theirs,
         [stdin, out.into(), err.into()],
         log,
+        link,
     )
     .unwrap();
     if let Err(e) = sandbox.start() {
@@ -139,6 +160,7 @@ fn run(release: &Release, job: &JobFs, args: &[&str]) -> Ran {
     let status = sandbox.wait().unwrap();
     let millis = started.elapsed().as_millis();
     drop(sandbox);
+    drop(gateway);
     serving.wait();
     let ran = Ran {
         status,
@@ -370,4 +392,166 @@ fn bun_maps_writes_and_renames_through_the_server() {
     );
     assert_eq!(job.modes().get(Path::new("/work/b.txt")), Some(0o700));
     eprintln!("bun ran in {} ms", ran.millis);
+}
+
+/// The test's internet: one "public" address, served by a local HTTP
+/// server, and names. Everything else is refused, as the runner's policy
+/// refuses private and internal addresses.
+struct FakeInternet {
+    upstream: std::net::SocketAddr,
+}
+
+const PUBLIC: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 7));
+
+impl Outside for FakeInternet {
+    fn allows(&self, ip: std::net::IpAddr) -> bool {
+        ip == PUBLIC
+    }
+    fn connect(&self, to: std::net::SocketAddr) -> std::io::Result<std::net::TcpStream> {
+        if to.port() != 8080 {
+            return Err(std::io::ErrorKind::ConnectionRefused.into());
+        }
+        std::net::TcpStream::connect(self.upstream)
+    }
+    fn resolve(&self, name: &str) -> std::io::Result<Vec<std::net::IpAddr>> {
+        match name {
+            "upstream.test" => Ok(vec![PUBLIC]),
+            "inside.test" => Ok(vec!["10.1.2.3".parse().unwrap()]),
+            _ => Err(std::io::ErrorKind::NotFound.into()),
+        }
+    }
+}
+
+/// A tiny HTTP server answering every request with `body`.
+fn http_upstream(body: &'static str) -> std::net::SocketAddr {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            std::thread::spawn(move || {
+                let mut req = Vec::new();
+                let mut buf = [0u8; 4096];
+                while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut buf) {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => req.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            });
+        }
+    });
+    addr
+}
+
+fn fake_internet() -> Network {
+    Network {
+        outside: std::sync::Arc::new(FakeInternet {
+            upstream: http_upstream("hello from upstream\n"),
+        }),
+        services: vec!["postgres".into()],
+    }
+}
+
+#[test]
+#[ignore = "needs gVisor and a static busybox; see the module docs"]
+fn a_sandbox_reaches_allowed_addresses_and_shares_its_loopback() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |b| {
+        b.write("/work/www/index.html", b"hello from the job\n")
+            .unwrap();
+    });
+    let script = r#"
+        wget -q -O- http://203.0.113.7:8080/
+        wget -q -O- http://upstream.test:8080/
+        wget -q -T 5 -O- http://10.1.2.3:8080/ 2>/dev/null && echo "internal address reached"
+        wget -q -T 5 -O- http://inside.test:8080/ 2>/dev/null && echo "internal name reached"
+        wget -q -T 5 -O- http://203.0.113.7:9999/ 2>/dev/null && echo "closed port reached"
+        httpd -p 127.0.0.1:8081 -h /work/www
+        sleep 1
+        wget -q -O- http://127.0.0.1:8081/index.html
+        wget -q -O- http://localhost:8081/index.html
+        echo done
+    "#;
+    let ran = run_with(
+        &release,
+        &job,
+        &["/bin/sh", "-c", script],
+        Some(fake_internet()),
+    );
+    assert_eq!(ran.status, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        ran.stdout,
+        "hello from upstream\nhello from upstream\nhello from the job\nhello from the job\ndone\n"
+    );
+    eprintln!("network round trip in {} ms", ran.millis);
+}
+
+#[test]
+#[ignore = "needs gVisor and a static busybox; see the module docs"]
+fn without_a_network_only_the_loopback_is_there() {
+    let (Some(gvisor), Some(busybox)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX"))
+    else {
+        return;
+    };
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |b| {
+        b.write("/work/www/index.html", b"still here\n").unwrap();
+    });
+    let script = r#"
+        wget -q -T 5 -O- http://203.0.113.7:8080/ 2>/dev/null && echo "reached outside"
+        httpd -p 127.0.0.1:8081 -h /work/www
+        sleep 1
+        wget -q -O- http://127.0.0.1:8081/index.html
+    "#;
+    let ran = run(&release, &job, &["/bin/sh", "-c", script]);
+    assert_eq!(ran.status, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "still here\n");
+}
+
+#[test]
+#[ignore = "needs gVisor, a static busybox and Bun; see the module docs"]
+fn bun_serves_on_the_loopback_and_fetches_through_the_gateway() {
+    let (Some(gvisor), Some(busybox), Some(bun)) = (
+        input("IWCI_TEST_GVISOR"),
+        input("IWCI_TEST_BUSYBOX"),
+        input("IWCI_TEST_BUN_ROOT"),
+    ) else {
+        return;
+    };
+    let release = Release { dir: gvisor };
+    let job = snapshot(&busybox, |b| copy_tree(b, &bun, Path::new("/")));
+    let script = r#"
+        const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("from Bun.serve\n") });
+        const url = `http://127.0.0.1:${server.port}/`;
+        // Another process of the job reaches it.
+        const wget = Bun.spawn(["wget", "-q", "-O-", url]);
+        process.stdout.write(await new Response(wget.stdout).text());
+        process.stdout.write(await (await fetch("http://upstream.test:8080/")).text());
+        try {
+            await fetch("http://10.1.2.3:8080/", { signal: AbortSignal.timeout(5000) });
+            console.log("internal address reached");
+        } catch {
+            console.log("refused");
+        }
+        server.stop(true);
+    "#;
+    let ran = run_with(
+        &release,
+        &job,
+        &["/usr/local/bin/bun", "-e", script],
+        Some(fake_internet()),
+    );
+    assert_eq!(ran.status, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "from Bun.serve\nhello from upstream\nrefused\n");
 }

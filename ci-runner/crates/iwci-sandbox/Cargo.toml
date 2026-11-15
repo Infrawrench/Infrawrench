@@ -15,3 +15,7 @@ serde_json.workspace = true
 # Shared memory, futexes, descriptor passing and namespaces. Already in the
 # tree.
 libc = "0.2"
+# The sandbox's network: a user-space TCP/IP stack standing in for every
+# host the job connects to (`net/`). Already in the tree, through
+# virtual-net; only IP-medium IPv4 and IPv6 TCP and UDP sockets are used.
+smoltcp = { version = "0.14", default-features = false, features = ["std", "alloc", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }

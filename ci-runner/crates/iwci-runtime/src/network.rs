@@ -70,6 +70,33 @@ impl OutsideNet {
     }
 }
 
+/// A sandboxed job's way out (`iwci_sandbox::net`) goes through the same
+/// policy as a WASIX job's: the same addresses are allowed, and names
+/// resolve through the host with internal answers dropped. Its connections
+/// are host sockets too, opened only for an allowed address.
+#[cfg(target_os = "linux")]
+impl iwci_sandbox::net::Outside for OutsideNet {
+    fn allows(&self, ip: IpAddr) -> bool {
+        OutsideNet::allows(self, ip)
+    }
+
+    fn connect(&self, to: SocketAddr) -> std::io::Result<std::net::TcpStream> {
+        if !OutsideNet::allows(self, to.ip()) {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
+        std::net::TcpStream::connect_timeout(&to, std::time::Duration::from_secs(30))
+    }
+
+    fn resolve(&self, name: &str) -> std::io::Result<Vec<IpAddr>> {
+        use std::net::ToSocketAddrs;
+        Ok((name, 0)
+            .to_socket_addrs()?
+            .map(|a| a.ip())
+            .filter(|ip| OutsideNet::allows(self, *ip))
+            .collect())
+    }
+}
+
 /// The addresses on the host's own interfaces.
 pub(crate) fn host_addresses() -> HashSet<IpAddr> {
     let mut out = HashSet::new();
@@ -762,6 +789,47 @@ mod tests {
         ));
         // And both may use the same port.
         assert!(block_on(b.listen_tcp(addr("127.0.0.1:8080"), false, false, false)).is_ok());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_sandboxed_jobs_way_out_keeps_to_the_same_policy() {
+        use iwci_sandbox::net::Outside;
+        let own: IpAddr = "198.51.100.1".parse().unwrap();
+        let outside = OutsideNet::new(
+            Arc::new(LoopbackNetworking::new()),
+            [own, "1.2.3.4".parse().unwrap()].into_iter().collect(),
+        );
+        for refused in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "100.64.0.1",
+            "169.254.169.254",
+            "::1",
+            "::ffff:10.0.0.1",
+            "fd00::1",
+            "1.2.3.4",
+        ] {
+            assert!(
+                !Outside::allows(&outside, refused.parse().unwrap()),
+                "{refused}"
+            );
+        }
+        assert!(Outside::allows(&outside, "1.1.1.1".parse().unwrap()));
+        // A host listener on the loopback is not connected to, even asked
+        // directly.
+        let host = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        host.set_nonblocking(true).unwrap();
+        let err = outside.connect(host.local_addr().unwrap()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(host.accept().is_err());
+        // Names whose answers are internal resolve to nothing.
+        assert_eq!(
+            Outside::resolve(&outside, "localhost").unwrap(),
+            Vec::<IpAddr>::new()
+        );
     }
 
     #[test]
