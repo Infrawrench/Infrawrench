@@ -8813,7 +8813,7 @@
   "d87f87ec78d92657": "Malasia",
   "24abc03826144256": "Administre ClickHouse Cloud: servicios, ClickPipes, copias de seguridad, Managed Postgres, claves de API y miembros. Cree, escale y consulte sus bases de datos ClickHouse.",
   "b0d9fb0274668647": "Administre los workspaces de Databricks: cómputo, workflows, SQL, AI/BI, apps, recursos del workspace, model serving, vector search, Lakebase Postgres y Unity Catalog.",
-  "ac2e5abecc2a3896": "Administre Fireworks AI: despliegues, routers, modelos, conjuntos de datos, fine-tuning (SFT, DPO, RFT), evaluadores y trabajos de evaluación, trabajos por lotes, usuarios, claves de API, secretos y cuotas, con costes de uso.",
+  "d59654160d143fe6": "Administre Fireworks AI: despliegues, routers, modelos, conjuntos de datos, fine-tuning (SFT y DPO), trabajos por lotes, usuarios, claves de API, secretos y cuotas, con costes de uso.",
   "7e0d2b9fd6041893": "Administre su tailnet (dispositivos, usuarios, claves, Services, webhooks, DNS y ajustes) e incorpore servidores de cualquier proveedor compatible con SSH.",
   "5d6ac9a40da8b274": "Administrado por Scaleway",
   "7dd18f78720b8985": "Solo certificados administrados",
