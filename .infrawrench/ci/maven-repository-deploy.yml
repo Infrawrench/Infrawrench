@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Deploys the Maven repository (app/packages/maven-repository, maven.infrawrench.com).
+# The Worker is the only thing between the bucket and the internet, so its
+# own tests (mostly about what it refuses) gate the deploy.
+#
+# A pull request builds the Worker the way a deploy would and uploads
+# nothing (`wrangler deploy --dry-run`), with no credentials. A push to main
+# deploys it with the Infrawrench CF connection lent to the job
+# (`connections:`, which sets CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID). That connection is lent to this repository's main
+# branch only, so the deploy job cannot run anywhere else.
+#
+# `builtin:wrangler` is Wrangler on the environment's node, bundling with
+# esbuild-wasm (ci-runner/README.md, "Deployment CLIs"): the package's own
+# Wrangler loads workerd, which has no WebAssembly build.
+name: Deploy maven-repository
+
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - app/packages/maven-repository/**
+      - pnpm-lock.yaml
+      - .infrawrench/ci/maven-repository-deploy.yml
+  pull-request:
+    paths: *inputs
+
+concurrency:
+  group: maven-repository-deploy-${{ commit.branch }}
+  cancel-in-progress: true
+
+workspace:
+  deps:
+    - pnpm: { only: [app/packages/maven-repository] }
+
+jobs:
+  # As test.yml runs every package's Vitest: the runner writes no
+  # node_modules/.bin, so `vitest` runs as its entry point, and
+  # node-preload.cjs answers for the native packages Vite loads.
+  test:
+    name: Test
+    using: env:bash-node@24.0.18
+    cwd: /app/app/packages/maven-repository
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+    run: node node_modules/vitest/vitest.mjs run --maxWorkers=2
+    network: false
+    memory: 3GiB
+    timeout: 15m
+
+  dry-run:
+    name: Build (dry run)
+    if: event == 'pull-request'
+    using: env:bash-node@24.0.18
+    tools: [builtin:wrangler@4]
+    cwd: /app/app/packages/maven-repository
+    run: wrangler deploy --dry-run
+    memory: 2GiB
+    timeout: 10m
+
+  deploy:
+    name: Deploy to Cloudflare
+    if: event == 'push'
+    needs: [test]
+    using: env:bash-node@24.0.18
+    tools: [builtin:wrangler@4]
+    connections: [Infrawrench CF]
+    cwd: /app/app/packages/maven-repository
+    run: wrangler deploy
+    memory: 2GiB
+    timeout: 10m

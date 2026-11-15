@@ -63,8 +63,9 @@ pnpm --filter @infrawrench/instances-bundles test
 pnpm --filter @infrawrench/instances-bundles deploy
 ```
 
-CI (`.github/workflows/instances-bundles-deploy.yml`) redeploys on any push to
-`app/packages/instances-bundles/**`. The custom domain, the R2 binding and the
+Infrawrench CI (`.infrawrench/ci/instances-bundles-deploy.yml`) redeploys on any
+push to `main` that touches `app/packages/instances-bundles/**`, after the
+tests pass, and dry-runs the deploy on pull requests. The custom domain, the R2 binding and the
 service binding all come from `wrangler.jsonc`. The web Worker has to serve
 `/api/v1/whoami` (API 1.85.0) before this one can authenticate anyone.
 
