@@ -21,6 +21,42 @@ import {
 } from "./primitives.js";
 
 /**
+ * A tool a cloud job's machine is given (`ciCredential.tools`). Every part
+ * ends up in a shell script that runs as root on someone's machine, so the
+ * manifest is where the shapes are held: a command and package names that
+ * are plain words, a download that is HTTPS and pinned by its SHA-256.
+ */
+const CiToolWord = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/, {
+    message: "must be a plain command or package name",
+  }),
+);
+const CiToolDownload = Schema.Struct({
+  url: httpsUrl("a tool is downloaded over HTTPS"),
+  sha256: Schema.String.check(
+    Schema.isPattern(/^[0-9a-f]{64}$/, { message: "must be 64 lowercase hex digits" }),
+  ),
+});
+const CiTool = Schema.Struct({
+  command: CiToolWord,
+  packages: Schema.optional(
+    Schema.Struct({
+      apt: Schema.optional(CiToolWord),
+      apk: Schema.optional(CiToolWord),
+      dnf: Schema.optional(CiToolWord),
+      zypper: Schema.optional(CiToolWord),
+      pacman: Schema.optional(CiToolWord),
+    }),
+  ),
+  downloads: Schema.optional(
+    Schema.Struct({
+      x86_64: Schema.optional(CiToolDownload),
+      aarch64: Schema.optional(CiToolDownload),
+    }),
+  ),
+});
+
+/**
  * `logoSvg` is injected verbatim with `dangerouslySetInnerHTML` by every host
  * surface, so the manifest is the trust boundary for that markup and this is
  * where the boundary is enforced. Both loaders (`server-core/plugin-loader.ts`
@@ -481,6 +517,7 @@ export const pluginManifestSchema = Schema.Struct({
       description: NonEmpty,
       shortLived: Schema.Boolean,
       namespaces: Schema.optional(Schema.Boolean),
+      tools: Schema.optional(Schema.Array(CiTool)),
     }),
   ),
   tokenFormats: Schema.optional(

@@ -23,7 +23,35 @@
  * parts; the rest of the file is shown, so a job's log masks only them.
  */
 import yaml from "js-yaml";
-import type { CiCredentialRequest, CiLentMaterial, CiLentValue } from "@infrawrench/plugin-base";
+import type {
+  CiCredentialRequest,
+  CiLentMaterial,
+  CiLentValue,
+  CiToolDeclaration,
+} from "@infrawrench/plugin-base";
+
+/**
+ * kubectl, which reads the kubeconfig a job is lent: Kubernetes' own static
+ * build for Linux, pinned by the SHA-256 its release publishes beside it
+ * (`https://dl.k8s.io/release/<version>/bin/linux/<arch>/kubectl.sha256`,
+ * read November 2026). A cloud job's machine downloads it when its image has
+ * no `kubectl`; a job on the runner lists `builtin:kubectl` in `tools:`,
+ * which is the same version. A new version is a new URL and a new hash,
+ * both from that release.
+ */
+export const KUBECTL: CiToolDeclaration = {
+  command: "kubectl",
+  downloads: {
+    x86_64: {
+      url: "https://dl.k8s.io/release/v1.37.2/bin/linux/amd64/kubectl",
+      sha256: "c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4",
+    },
+    aarch64: {
+      url: "https://dl.k8s.io/release/v1.37.2/bin/linux/arm64/kubectl",
+      sha256: "fcc16f63186659d9722014b7e02d5fdd2d4e669cb8c0ab66365d7d3b8ba03509",
+    },
+  },
+};
 
 interface Named<T> {
   name?: string;

@@ -1,4 +1,4 @@
-import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { CI_OPENSSH_CLIENT, defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type {
   PluginManifest,
   ResourceTypeDefinition,
@@ -69,6 +69,9 @@ export const manifest = {
     description:
       "An SSH config entry named after the connection, with its key and a check against the host key pinned in Infrawrench.",
     shortLived: false,
+    // What the entry is read by. A cloud job's machine gets it when its image
+    // has none; a job on the runner lists `builtin:ssh` in `tools:`.
+    tools: [CI_OPENSSH_CLIENT],
   },
 } satisfies PluginManifest;
 

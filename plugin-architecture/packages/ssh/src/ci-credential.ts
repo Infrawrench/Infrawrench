@@ -14,7 +14,8 @@
  *   key's SHA-256 fingerprint: the command vouches for the offered key (`%H
  *   %t %K`) only when that fingerprint is the pinned one, and otherwise says
  *   nothing, which makes ssh refuse the host. A host with nothing pinned is
- *   not lent at all.
+ *   not lent at all. An older ssh cannot make the check, so it refuses the
+ *   host too (`IgnoreUnknown` only keeps it from refusing the whole file).
  *
  * The private key is a secret as a whole; the config entry and the check are
  * shown, since they hold nothing secret.
@@ -70,6 +71,12 @@ export async function lendSshHost(
     throw new Error("The connection goes through a jump host that is not lent to this job.");
   }
   const lines = [
+    // An ssh older than 8.5 stops at an option it does not know, for every
+    // host, whichever entry holds it. Told to ignore this one it reads the
+    // file, still uses the other entries and any lent key, and refuses this
+    // host for want of a known key, rather than accepting one unchecked.
+    "Host *",
+    "  IgnoreUnknown KnownHostsCommand",
     `Host ${alias}`,
     `  HostName ${host}`,
     `  Port ${port}`,

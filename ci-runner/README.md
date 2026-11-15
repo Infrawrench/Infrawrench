@@ -381,8 +381,44 @@ the run starts; `machine`, `image`, `region` and `gpu` may use
   `outputs` (`$IWCI_OUTPUT`), `artifacts` both ways (it gets the artifacts
   of the jobs it needs, and hands its own on), `matrix`, `paths`,
   `timeout`, `cwd`, `changes: fail`, `connections`, `ssh-keys` and
-  `env-from`. It starts from the commit, cloned as `workspace.clone` says
-  (`clone: { depth }` may change the depth).
+  `env-from`. It starts from the commit, in the directory `workspace.clone`
+  says (`into`, `/app` by default).
+- **The commit is a source archive**, not a clone: the files of the commit
+  and nothing else. As on the runner the checkout is not a repository (no
+  `.git`), so there is no history whatever `clone: { depth }` says;
+  submodules are not fetched, and a file kept in Git LFS is its pointer. A
+  job that needs any of those fetches it in its own script, with a token of
+  its own. A workspace with `clone: false` starts in an empty `cwd`.
+- **What the machine needs:** `bash`, `curl`, `tar`, `gzip` and `base64`.
+  Where one is missing and the job is root on fresh compute, it is installed
+  first with the image's package manager (apt, apk, dnf, yum, zypper or
+  pacman). An image where that cannot be done (no shell tools and no package
+  manager, or a user other than root) fails the job at once, naming what is
+  missing, as long as it has `curl` or `wget` to say so with; an image with
+  no shell at all can only time out.
+- **`ssh` and `kubectl` come with what is lent.** A cloud job has no
+  `tools:`, so a job that is lent an SSH key or an SSH host gets OpenSSH's
+  client from the image's packages when the image has no `ssh`, and one
+  that is lent a cluster gets `kubectl` (the version of
+  `builtin:kubectl`, Kubernetes' own static build, checked against its
+  published SHA-256) in a directory of the job's on its `PATH` when the
+  image has no `kubectl`. Nothing is installed on a `host` job's machine,
+  where only the download applies. A tool that could not be had is a line in
+  the job's log, not a failure. Host keys are checked with
+  `KnownHostsCommand`, which takes OpenSSH 8.5 or later.
+- **Where lent files land.** `~/.ssh` and the kubeconfig are written to the
+  home directory of the user the job runs as, with `HOME` and `KUBECONFIG`
+  pointing there: `/root` for root, as on the runner. Where that is not the
+  directory OpenSSH reads (a `host` job, a read-only home), the job's
+  `ssh`, `scp` and `sftp` are started with the lent configuration, so `ssh
+web-1` works as written. A job that is not root and cannot write the
+  clone's directory runs in a directory of its own, with the clone under it
+  (`$PWD` says where) and `/app` in its `env:` values rewritten to match.
+  OpenSSH refuses to run for a user with no entry in `/etc/passwd`.
+- **The network is the machine's.** A job reaches whatever its machine
+  reaches, private addresses included, so a jump host is only needed where
+  the machine's own network does not reach the host. A lent host is still
+  written with its `ProxyJump` when its connection has one.
 - **Not yet**, each an error naming the key: `using`, `args`, `deps`,
   `tools`, `cache`, `memory`, `network: false`, `services`, `packages`,
   `task-cache`, `env-cache`, `downloads`, `changes: commit`, and `clone`

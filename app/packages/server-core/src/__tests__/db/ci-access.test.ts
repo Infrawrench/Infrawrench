@@ -76,7 +76,18 @@ const fakePlugins = vi.hoisted(() => ({
     manifest: {
       id: "kubernetes",
       displayName: "Kubernetes",
-      ciCredential: { description: "x", shortLived: false },
+      ciCredential: {
+        description: "x",
+        shortLived: false,
+        tools: [
+          {
+            command: "kubectl",
+            downloads: {
+              x86_64: { url: "https://dl.example.test/kubectl", sha256: "a".repeat(64) },
+            },
+          },
+        ],
+      },
       credentialFields: [{ key: "kubeconfig", label: "k", sensitive: true }],
     },
     resourceTypes: [],
@@ -632,7 +643,13 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
         file: ".infrawrench/ci/build.yml",
         name: "Build",
         concurrency: null,
-        jobs: [{ key: "image", cloud: { provider: "aws", kind: "vm" } }],
+        jobs: [
+          {
+            key: "image",
+            cloud: { provider: "aws", kind: "vm" },
+            connections: ["Production cluster"],
+          },
+        ],
       },
     ]);
     const spec = {
@@ -690,15 +707,26 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     // The machine fetches its script once.
     const script = await cloud.cloudJobScript(token);
     expect(script).toContain(Buffer.from("secret-env-for-tests").toString("base64"));
-    await expect(cloud.cloudJobScript(token)).rejects.toThrow("already fetched");
+    // The script reports with a token of its own, and the one the machine
+    // started with (which stays in its user data) opens nothing any more.
+    const session = /IWCI_H='X-Infrawrench-Ci-Job: ([0-9a-f]{64})'/.exec(script)?.[1] ?? "";
+    expect(session).toHaveLength(64);
+    expect(session).not.toBe(token);
+    expect(script).not.toContain(token);
+    await expect(cloud.cloudJobScript(token)).rejects.toThrow("No such job");
+    await expect(cloud.cloudJobLog(token, "stdout", "forged\n")).rejects.toThrow("No such job");
+    await expect(cloud.cloudJobSource(token)).rejects.toThrow("No such job");
+    await expect(cloud.cloudJobScript(session)).rejects.toThrow("already fetched");
+    // The job names a cluster, so its machine is given what reads a kubeconfig.
+    expect(script).toContain("_dl 'kubectl' 'https://dl.example.test/kubectl'");
 
     proxy.calls = [];
-    await cloud.cloudJobLog(token, "stdout", "building\n");
+    await cloud.cloudJobLog(session, "stdout", "building\n");
     expect(proxy.calls[0]).toEqual({
       path: `/v1/runs/${encodeURIComponent(job!.proxyRunId)}/jobs/image/log`,
       body: { claim: "c".repeat(32), stream: "stdout", text: "building\n" },
     });
-    await cloud.cloudJobFinish(token, {
+    await cloud.cloudJobFinish(session, {
       status: "passed",
       exitCode: 0,
       timedOut: false,
@@ -715,7 +743,7 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
       .from(schema.ciCloudJobs)
       .where(eq(schema.ciCloudJobs.id, job!.id));
     expect(ended).toMatchObject({ state: "tearing_down", outcome: "passed", encryptedClaim: null });
-    await expect(cloud.cloudJobLog(token, "stdout", "late\n")).rejects.toThrow("ended");
+    await expect(cloud.cloudJobLog(session, "stdout", "late\n")).rejects.toThrow("ended");
 
     // Teardown, then the reaper removes a tagged leftover no live job owns.
     proxy.cloudJobs = [];

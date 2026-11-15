@@ -324,9 +324,13 @@ export type {
   CiStartSpec,
   CiContainerSize,
   CiTaggedCompute,
+  CiPackageManager,
+  CiToolArchitecture,
+  CiToolDeclaration,
 } from "./ci.js";
 export {
   CI_EXECUTOR_KINDS,
+  CI_OPENSSH_CLIENT,
   CI_JOB_TAG,
   CI_RUN_TAG,
   CI_TAG,

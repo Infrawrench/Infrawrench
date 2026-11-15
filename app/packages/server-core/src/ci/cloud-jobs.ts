@@ -30,7 +30,13 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
-import { CI_JOB_TAG, CI_RUN_TAG, CI_TAG, type CiHandle } from "@infrawrench/plugin-base";
+import {
+  CI_JOB_TAG,
+  CI_RUN_TAG,
+  CI_TAG,
+  type CiHandle,
+  type CiToolDeclaration,
+} from "@infrawrench/plugin-base";
 import { ciBranchMatches, ciRepoAllowed } from "@infrawrench/client-core";
 
 import { appBaseUrl } from "../app-url.js";
@@ -42,6 +48,7 @@ import { getOrgAccountClient } from "../org-accounts.js";
 import { bootstrapScript, jobScript, parseFinishBody } from "./bootstrap.js";
 import { CiProxyError, ciProxyConfigured, proxyJson } from "./proxy.js";
 import { attemptDue, dispatchRun } from "./runs.js";
+import { accessOfJob, toolsOfJob } from "./tools.js";
 
 type RunRow = typeof ciRuns.$inferSelect;
 type JobRow = typeof ciCloudJobs.$inferSelect;
@@ -96,6 +103,8 @@ interface SealedClaim {
   changes: "ignore" | "fail";
   repoFullName: string;
   sha: string;
+  /** What the machine needs for what the job is lent. Absent on a claim sealed before there was any. */
+  tools?: CiToolDeclaration[];
 }
 
 /** A machine that has not called back in this long after the claim never will. */
@@ -308,6 +317,42 @@ export async function startCloudJob(run: RunRow, spec: CloudJobSpec): Promise<vo
   await claimAndStart(row, run, spec, chosen.displayName);
 }
 
+/**
+ * The programs the job's machine needs for what the job is lent (`ssh`,
+ * `kubectl`), from the plugins of the connections it names. A cloud job has
+ * no `tools:`, so the job script puts them on the machine. Never a reason
+ * to fail the job: one that cannot be worked out is left to the image.
+ */
+async function lentTools(
+  run: Pick<RunRow, "organizationId" | "access">,
+  spec: Pick<CloudJobSpec, "job" | "pipeline">,
+): Promise<CiToolDeclaration[]> {
+  const entries = accessOfJob(run.access, spec);
+  const names = [...new Set(entries.flatMap((e) => (e.connections ?? []).map((c) => c.name)))];
+  const rows =
+    names.length === 0
+      ? []
+      : await db
+          .select({ displayName: accounts.displayName, pluginId: accounts.pluginId })
+          .from(accounts)
+          .where(
+            and(
+              eq(accounts.organizationId, run.organizationId),
+              inArray(accounts.displayName, names),
+            ),
+          );
+  const { getPlugin } = await import("../plugin-loader.js");
+  const declared = new Map<string, readonly CiToolDeclaration[]>();
+  for (const pluginId of new Set(rows.map((r) => r.pluginId))) {
+    declared.set(pluginId, (await getPlugin(pluginId))?.plugin.manifest.ciCredential?.tools ?? []);
+  }
+  return toolsOfJob(
+    entries,
+    (name) => rows.filter((r) => r.displayName === name).map((r) => r.pluginId),
+    (pluginId) => declared.get(pluginId) ?? [],
+  );
+}
+
 /** How long to wait before claim attempt `n` (1-based) again. */
 export function claimBackoffMs(attempt: number): number {
   return Math.min(15_000 * 2 ** Math.max(0, attempt - 1), 5 * 60_000);
@@ -322,7 +367,7 @@ export function claimBackoffMs(attempt: number): number {
  */
 async function claimAndStart(
   row: JobRow,
-  run: Pick<RunRow, "id" | "organizationId" | "repoFullName" | "sha">,
+  run: Pick<RunRow, "id" | "organizationId" | "repoFullName" | "sha" | "access">,
   spec: CloudJobSpec,
   connectionName: string,
 ): Promise<void> {
@@ -375,6 +420,10 @@ async function claimAndStart(
     changes: claim.changes === "fail" ? "fail" : "ignore",
     repoFullName: run.repoFullName,
     sha: run.sha,
+    tools: await lentTools(run, spec).catch((err: unknown) => {
+      console.warn(`[ci-cloud] could not work out ${spec.job}'s tools:`, err);
+      return [];
+    }),
   };
   const encrypted = await encrypt(JSON.stringify(sealed), claimAad(row.id));
   await db
@@ -411,7 +460,8 @@ async function claimAndStart(
         ? { region: spec.cloud.region ?? kindInfo.defaults.region }
         : {}),
       ...(spec.cloud.gpu ? { gpu: spec.cloud.gpu } : {}),
-      bootstrap: bootstrapScript(callbackUrl(), token),
+      // A `host` job's machine is someone's server: nothing is installed on it.
+      bootstrap: bootstrapScript(callbackUrl(), token, { install: spec.cloud.kind !== "host" }),
       tags: { [CI_TAG]: orgTag(run.organizationId), [CI_RUN_TAG]: run.id, [CI_JOB_TAG]: row.id },
       name: `infrawrench-ci-${spec.name}`.slice(0, 120),
       maxSeconds: spec.timeout_secs + 600,
@@ -596,13 +646,22 @@ async function byToken(token: string): Promise<JobRow> {
 
 /**
  * The job script, served once: the first fetch moves the job to `running`
- * and every later one is refused, so the token in user data is spent.
+ * and every later one is refused. The script reports with a token of its
+ * own, made here and only ever inside the script, and the job answers to
+ * that one from now on: the token the machine started with, which sits in
+ * its user data for as long as the provider keeps it, is spent.
  */
 export async function cloudJobScript(token: string): Promise<string> {
   const row = await byToken(token);
+  const session = randomBytes(32).toString("hex");
   const [taken] = await db
     .update(ciCloudJobs)
-    .set({ state: "running", lastSeenAt: new Date(), updatedAt: new Date() })
+    .set({
+      state: "running",
+      callbackTokenHash: hashToken(session),
+      lastSeenAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(and(eq(ciCloudJobs.id, row.id), eq(ciCloudJobs.state, "starting")))
     .returning({ id: ciCloudJobs.id });
   if (!taken) throw new CloudJobCallbackError("The job script was already fetched.", 409);
@@ -611,7 +670,7 @@ export async function cloudJobScript(token: string): Promise<string> {
   const proxyUrl = process.env["CI_PROXY_URL"] ?? "";
   return jobScript({
     callbackUrl: callbackUrl(),
-    token,
+    token: session,
     proxyUrl,
     name: row.jobName,
     script: sealed.script,
@@ -626,6 +685,7 @@ export async function cloudJobScript(token: string): Promise<string> {
     // A `host` job runs on a machine that outlives it: in a root of its own,
     // which goes with the job. Every other kind gets fresh compute.
     isolate: row.kind === "host",
+    tools: sealed.tools ?? [],
   });
 }
 
