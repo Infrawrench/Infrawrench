@@ -1209,6 +1209,45 @@ fn growing_memory_past_the_limit_fails_and_is_reported() {
     let outcome = rt.run_command(&module, inv).unwrap();
     assert_eq!(outcome.exit_code, 1, "{outcome:?}");
     assert!(outcome.out_of_memory, "{outcome:?}");
+    // The most it held: the last growth that fit, never the refused one.
+    assert!(
+        (1 << 20..=8 << 20).contains(&outcome.peak_memory_bytes),
+        "{}",
+        outcome.peak_memory_bytes
+    );
+}
+
+#[test]
+fn a_job_reports_the_most_memory_it_held() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    // One page to start, 47 more grown: 3 MiB at its largest.
+    let module = wat_module(
+        "grow-some",
+        r#"(module
+          (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+          (memory (export "memory") 1)
+          (func (export "_start")
+            (drop (memory.grow (i32.const 47)))
+            (call $exit (i32.const 0))))"#,
+    );
+    let outcome = rt
+        .run_command(&module, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    assert_eq!(outcome.peak_memory_bytes, 3 << 20);
+    // Another job's memory is its own.
+    let small = wat_module(
+        "grow-none",
+        r#"(module
+          (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+          (memory (export "memory") 1)
+          (func (export "_start") (call $exit (i32.const 0))))"#,
+    );
+    let outcome = rt
+        .run_command(&small, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert_eq!(outcome.peak_memory_bytes, 64 << 10);
 }
 
 #[test]
@@ -1350,7 +1389,7 @@ fn find(dir: &Path, suffix: &str) -> PathBuf {
 #[test]
 fn jobs_get_a_private_loopback_and_nothing_else() {
     let rt = runtime();
-    let (engine, _) = wasix::job_engine(&cache::JobModules::new(), 1 << 20, 1 << 20);
+    let (engine, _, _) = wasix::job_engine(&cache::JobModules::new(), 1 << 20, 1 << 20);
     let job = wasix::JobRuntime::for_tests(&rt.wasix, engine);
     use wasmer_wasix::Runtime as _;
     let net = job.networking();

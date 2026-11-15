@@ -44,6 +44,16 @@ mod imp {
             self.ctx.runtime_control().terminate_all();
         }
 
+        /// What the job's V8 heaps hold of its `memory:` now: the room
+        /// reserved for each heap, which is what an isolate is refused or
+        /// stopped by, and the external memory its JavaScript declared.
+        /// The buffers of its `ArrayBuffer`s are in the guest's own linear
+        /// memory, which is counted there.
+        pub(crate) fn heap_bytes(&self) -> u64 {
+            let usage = self.ctx.budget().snapshot();
+            usage.v8_heap_reserved.saturating_add(usage.v8_external)
+        }
+
         /// What the job's V8 heaps were refused or stopped for, against
         /// its `memory:` (#964, #972).
         pub(crate) fn exhaustion(&self) -> super::Exhaustion {
@@ -69,6 +79,10 @@ pub(crate) enum NodeHooks {}
 #[cfg(not(feature = "node"))]
 impl NodeHooks {
     pub(crate) fn exhaustion(&self) -> Exhaustion {
+        match *self {}
+    }
+
+    pub(crate) fn heap_bytes(&self) -> u64 {
         match *self {}
     }
 }

@@ -320,6 +320,11 @@ pub struct Execution {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stalled_after: Option<u64>,
     pub out_of_memory: bool,
+    /// The most memory its programs held at once, in bytes (iwci-runtime's
+    /// `Outcome::peak_memory_bytes`). The report carries it, with the
+    /// job's files, as [`JobReport::peak_memory_mib`].
+    #[serde(skip)]
+    pub peak_memory_bytes: u64,
     /// Why the job never started: one of its services exited, or was not
     /// ready in time.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -417,6 +422,17 @@ pub struct JobReport {
     /// The memory the job reserved while it ran (its `memory:`), for
     /// billing; 0 for a job that never ran.
     pub memory_mib: u64,
+    /// The most memory the job held at once, to size its `memory:` by:
+    /// the linear memories of its programs and services, the room its V8
+    /// heaps had reserved, and the files it wrote, each at its own peak.
+    /// 0 for a job that never ran, a task cache hit and a cloud job.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub peak_memory_mib: u64,
+    /// How long the job waited to start after it was ready (its `needs`
+    /// finished and its task cache missed): for the runner's memory to
+    /// have room for its `memory:`, then for a job slot.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub queued_ms: u64,
     /// Not run: its `task-cache:` found a passing run with the same inputs,
     /// whose artifacts, outputs and log this report carries.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -469,6 +485,10 @@ pub struct RunReport {
     /// How each dependency install of the workspaces that were built went.
     pub installs: Vec<String>,
     pub duration_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 impl RunReport {
@@ -892,17 +912,22 @@ impl Wake {
 struct JobBudget {
     cap: u64,
     used: AtomicU64,
+    /// The most `used` has been, for the job's report.
+    peak: AtomicU64,
     refused: AtomicBool,
 }
 
 impl WriteBudget for JobBudget {
     fn take(&self, bytes: u64) -> bool {
-        let ok = self
+        let taken = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 used.checked_add(bytes).filter(|&next| next <= self.cap)
-            })
-            .is_ok();
+            });
+        if let Ok(before) = taken {
+            self.peak.fetch_max(before + bytes, Ordering::SeqCst);
+        }
+        let ok = taken.is_ok();
         if !ok {
             self.refused.store(true, Ordering::SeqCst);
         }
@@ -1091,7 +1116,8 @@ struct State<'p> {
 }
 
 impl<'p> State<'p> {
-    fn enqueue(&mut self, rank: Rank, entry: (&'p JobTemplate, PlannedJob, Lookup)) {
+    fn enqueue(&mut self, rank: Rank, mut entry: (&'p JobTemplate, PlannedJob, Lookup)) {
+        entry.2.queued = Some(Instant::now());
         self.queued.add(entry.1.memory_bytes);
         enqueue(&mut self.queue, rank, entry);
     }
@@ -1152,6 +1178,8 @@ pub const LOOKUPS: usize = 64;
 struct Lookup {
     key: Option<String>,
     lines: Vec<String>,
+    /// When the job joined the queue, for [`JobReport::queued_ms`].
+    queued: Option<Instant>,
 }
 
 /// How a task cache lookup went.
@@ -1285,6 +1313,7 @@ pub fn run<T: Tools>(
         .fork_limited(Arc::new(JobBudget {
             cap: plan.scratch_bytes,
             used: AtomicU64::new(0),
+            peak: AtomicU64::new(0),
             refused: AtomicBool::new(false),
         }));
     let lent_values = options.access.lent.secret_values();
@@ -1477,6 +1506,7 @@ pub fn run<T: Tools>(
                     // A slot shared with every other run on this runner;
                     // held for the job's workspace build and its run.
                     let slot = options.slots.as_ref().map(|s| s.acquire());
+                    let queued_ms = lookup.queued.map_or(0, |at| millis(at.elapsed()));
                     let workspace = LazyWorkspace {
                         spec: &plan.workspaces[job.workspace],
                         workspaces,
@@ -1484,10 +1514,11 @@ pub fn run<T: Tools>(
                         checkout: &checkouts[job.workspace],
                     };
                     let mut kept = Vec::new();
-                    let report = run_job(
+                    let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
                         &inherited, lookup, &mut kept,
                     );
+                    report.queued_ms = queued_ms;
                     drop(slot);
                     if let (true, Some(budget)) = (reserved, &options.memory) {
                         budget.give(job.memory_bytes);
@@ -1799,6 +1830,8 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: 0,
+        peak_memory_mib: 0,
+        queued_ms: 0,
         duration_ms: 0,
         blocks,
         cached: false,
@@ -1853,6 +1886,7 @@ fn look_up<T: Tools>(
             return Looked::Run(Lookup {
                 key: None,
                 lines: vec![format!("task cache: not read, {e}")],
+                queued: None,
             });
         }
     };
@@ -1878,6 +1912,7 @@ fn look_up<T: Tools>(
         return Looked::Run(Lookup {
             key: Some(key),
             lines: vec![line],
+            queued: None,
         });
     }
     let mut lines = Vec::new();
@@ -1900,6 +1935,7 @@ fn look_up<T: Tools>(
     Looked::Run(Lookup {
         key: Some(key),
         lines,
+        queued: None,
     })
 }
 
@@ -1923,6 +1959,7 @@ fn run_job<T: Tools>(
     let Lookup {
         key: task_key,
         lines: task_lines,
+        ..
     } = lookup;
     // What the app lent the job, checked before anything is built: a name
     // it did not supply, or refused, fails the job with the reason.
@@ -1972,6 +2009,7 @@ fn run_job<T: Tools>(
     let write_budget = Arc::new(JobBudget {
         cap: job.memory_bytes,
         used: AtomicU64::new(0),
+        peak: AtomicU64::new(0),
         refused: AtomicBool::new(false),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
@@ -2493,6 +2531,10 @@ fn run_job<T: Tools>(
     }
 
     let blocks = !status.is_success();
+    let peak_memory_mib = execution
+        .peak_memory_bytes
+        .saturating_add(write_budget.peak.load(Ordering::SeqCst))
+        .div_ceil(1 << 20);
     JobReport {
         id: job.id.clone(),
         name: job.display_name.clone(),
@@ -2506,6 +2548,8 @@ fn run_job<T: Tools>(
         downloads,
         notes,
         memory_mib: job.memory_bytes >> 20,
+        peak_memory_mib,
+        queued_ms: 0,
         duration_ms: millis(started.elapsed()),
         blocks,
         cached: false,
@@ -2823,6 +2867,8 @@ fn run_external(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        peak_memory_mib: 0,
+        queued_ms: 0,
         blocks,
         cached: false,
         needs: Vec::new(),
@@ -3129,6 +3175,7 @@ fn replay(
             timed_out: false,
             stalled_after: None,
             out_of_memory: false,
+            peak_memory_bytes: 0,
             service_failure: None,
             cancelled: false,
         }),
@@ -3144,6 +3191,8 @@ fn replay(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        peak_memory_mib: 0,
+        queued_ms: 0,
         blocks: false,
         cached: true,
         needs: Vec::new(),
@@ -3292,6 +3341,8 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
+        peak_memory_mib: 0,
+        queued_ms: 0,
         duration_ms: millis(elapsed),
         blocks: true,
         cached: false,

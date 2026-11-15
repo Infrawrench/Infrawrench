@@ -2310,6 +2310,21 @@ that a job could write past any limit. That is every file it writes, in
 `/tmp` and in its environment's directories (`GOCACHE`) too. A write over it is refused before
 any of it lands, and the job's report says so.
 
+**Sizing `memory:`.** A job's report says what it used beside what it
+reserved (`memory_mib`): `peak_memory_mib` is the most it held at once,
+adding up the linear memories of its programs and its services (every
+process has one, each at the size it had grown to), the room its V8 heaps
+had reserved (read five times a second, so a heap that lived for less can
+be missed) and the files it had written, each at its own peak. A `memory:`
+at or above it would have refused the job nothing; leave room above it,
+since a suite's peak moves from run to run and with what else shares the
+runner. `queued_ms` is how long the job waited, once its `needs` had
+finished and its task cache had missed, for the runner's memory to have
+room for its `memory:` and then for a job slot: a pipeline whose jobs
+queue for long while the runner's cores are idle reserves more than it
+uses. Neither is set for a job that did not run here (a task cache hit, a
+skipped job, a cloud job).
+
 A Node job's V8 heaps, one per `node` and per worker thread, and the
 `ArrayBuffer` memory they share are held to its `memory:` too. When a heap
 cannot grow, its JavaScript is stopped and the runner ends the job; when a
