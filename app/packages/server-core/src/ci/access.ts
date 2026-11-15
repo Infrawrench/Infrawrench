@@ -623,12 +623,17 @@ function checkKey(kind: string, region: string | null): string {
  */
 async function preflightPeer(
   organizationId: string,
-  resource: { id: string; accountId: string; resourceTypeId: string },
+  resource: { id: string; accountId: string; resourceTypeId: string; incarnation: number },
   peer: PeerValues,
   existing: GrantRow | null,
 ): Promise<GrantRow["peerPreflight"]> {
+  // A check holds for the resource it was made on: the same id created
+  // again is another cluster, checked again.
   const kept =
-    existing && existing.peerPluginId === peer.peerPluginId && existing.resourceId === resource.id
+    existing &&
+    existing.peerPluginId === peer.peerPluginId &&
+    existing.resourceId === resource.id &&
+    existing.resourceIncarnation === resource.incarnation
       ? existing.peerPreflight
       : {};
   if (!peer.peerPluginId || peer.peerJobKinds.length === 0) return {};

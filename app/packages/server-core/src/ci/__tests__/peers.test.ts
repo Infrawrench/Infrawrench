@@ -5,6 +5,7 @@ const world = vi.hoisted(() => ({
   tunnelled: false,
   accountPluginId: "gcp",
   fields: {} as Record<string, unknown>,
+  credentials: {} as Record<string, string>,
   built: [] as Array<{ pluginId: string; outputs: string[] }>,
 }));
 
@@ -70,7 +71,7 @@ vi.mock("../../peer-clients.js", () => ({
     return {
       client: {},
       plugin: { manifest: { id: input.integration.pluginId } },
-      credentials: {},
+      credentials: world.credentials,
     };
   },
 }));
@@ -85,6 +86,7 @@ describe("the peer client CI uses", () => {
       tunnelled: false,
       accountPluginId: "gcp",
       fields: { entraId: true },
+      credentials: { token: "opaque-token" },
       built: [],
     });
   });
@@ -117,10 +119,26 @@ describe("the peer client CI uses", () => {
     expect(world.built).toEqual([]);
   });
 
-  it("refuses a connection reached through an SSH tunnel, but still tears down through it", async () => {
+  it("refuses credentials an SSH tunnel rewrote, lends ones it left alone, and tears down through it", async () => {
     world.tunnelled = true;
-    const refused = await ciPeerClient("org", resource, "kubernetes", "lend");
-    expect(refused && "refused" in refused && refused.refused).toMatch(/SSH tunnel/);
+    // A bare token is not something the rewriter touches.
+    const token = await ciPeerClient("org", resource, "kubernetes", "lend");
+    expect(token && !("refused" in token)).toBe(true);
+    // A connection string it pointed at the gateway's loopback is refused,
+    // and so is a kubeconfig, which it rewrites too.
+    for (const credentials of [
+      { connectionString: "postgres://u:pw@127.0.0.1:41234/db" },
+      { kubeconfig: "apiVersion: v1\nkind: Config\n" },
+    ]) {
+      world.credentials = credentials;
+      const refused = await ciPeerClient("org", resource, "kubernetes", "lend");
+      expect(refused && "refused" in refused && refused.refused).toMatch(/SSH tunnel/);
+    }
+    // Without a tunnel the same credentials are lent.
+    world.tunnelled = false;
+    const plain = await ciPeerClient("org", resource, "kubernetes", "lend");
+    expect(plain && !("refused" in plain)).toBe(true);
+    world.tunnelled = true;
     world.fields = { entraId: false };
     const teardown = await ciPeerClient("org", resource, "kubernetes", "teardown");
     expect(teardown && !("refused" in teardown)).toBe(true);

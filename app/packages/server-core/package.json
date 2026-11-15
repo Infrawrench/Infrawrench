@@ -11,6 +11,7 @@
     "./encryption": "./src/encryption.ts",
     "./secret-states": "./src/secret-states.ts",
     "./created-resource": "./src/created-resource.ts",
+    "./resource-revive": "./src/resource-revive.ts",
     "./tick-loop": "./src/tick-loop.ts",
     "./runtime/request-scope": "./src/runtime/request-scope.ts",
     "./runtime/gateway-only": "./src/runtime/gateway-only.ts",

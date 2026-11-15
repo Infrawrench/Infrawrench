@@ -510,12 +510,12 @@ async function lendAccount(
     branchPattern: access.lendBranchPattern,
   });
   if (refused) throw new Error(refused);
-  // Its credentials would point at the gateway's end of the tunnel, with
-  // the real password: useless to a job, and not something to hand out.
-  const tunnelled = await tunnelRefusal(account.id);
-  if (tunnelled) throw new Error(`${what} cannot be lent: ${tunnelled}`);
   const resolved = await deps.accountClient(account.id, run.organizationId);
   if (!resolved) throw new Error(`${what} is no longer connected`);
+  // A credential the tunnel rewriter changed points at the gateway's end of
+  // the tunnel, with the real password: useless to a job, and not to be lent.
+  const tunnelled = await tunnelRefusal(account.id, resolved.credentials);
+  if (tunnelled) throw new Error(`${what} cannot be lent: ${tunnelled}`);
   if (!resolved.plugin.manifest.ciCredential || !resolved.client.lendCiCredential) {
     throw new Error(`${resolved.plugin.manifest.displayName} connections cannot be lent to jobs`);
   }

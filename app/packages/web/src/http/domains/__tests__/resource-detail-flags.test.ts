@@ -1,3 +1,5 @@
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi, type TestApi } from "@/http/testing";
 
@@ -240,6 +242,22 @@ async function getDetail(app: TestApi) {
 describe("resource-detail feature flag parity with desktop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("brings a deleted row back as another incarnation when the provider lists it again", async () => {
+    setupMocks();
+    await getDetail(buildApp());
+    const values = mockInsert.mock.results.at(-1)?.value.values as ReturnType<typeof vi.fn>;
+    const onConflictDoUpdate = values.mock.results.at(-1)?.value.onConflictDoUpdate as ReturnType<
+      typeof vi.fn
+    >;
+    const { set } = onConflictDoUpdate.mock.calls.at(-1)![0] as { set: Record<string, unknown> };
+    expect(set["deletedAt"]).toBeNull();
+    // The shared revive: one more incarnation when the row was deleted.
+    const { sql } = new PgDialect().sqlToQuery(set["incarnation"] as SQL);
+    expect(sql).toBe(
+      'CASE WHEN "resources"."deleted_at" IS NULL THEN "resources"."incarnation" ELSE "resources"."incarnation" + 1 END',
+    );
   });
 
   it("hasSshTerminal=true when client.getSshConfig() returns config (SSH plugin)", async () => {

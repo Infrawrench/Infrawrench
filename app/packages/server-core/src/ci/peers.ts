@@ -8,9 +8,9 @@
  *
  * The peer client is built the way the peer tabs build it
  * (`buildPeerPluginClient`: output mappings, then the credential rewriters),
- * with two refusals of CI's own: a connection Infrawrench reaches through an
- * SSH tunnel (the rewriter points its credentials at the gateway's loopback,
- * which a job cannot use, while keeping the real password), and a resource
+ * with two refusals of CI's own: credentials the SSH-tunnel rewriter changed
+ * (it points a connection string at the gateway's loopback, which a job
+ * cannot use, while keeping the real password), and a resource
  * whose declaration's `availableWhen` does not hold.
  */
 import { eq } from "drizzle-orm";
@@ -25,6 +25,7 @@ import type { CiPeerOption } from "@infrawrench/client-core";
 import { db } from "../db/client.js";
 import { sshTunnelConfigs } from "../db/schema.js";
 import { getOrgAccountClient } from "../org-accounts.js";
+import { tunnelRewrites } from "../credential-rewriters/tunnel-form.js";
 import { buildPeerPluginClient, filterVisiblePeerIntegrations } from "../peer-clients.js";
 
 /** What a plugin can run for CI, as the wire carries it. */
@@ -168,12 +169,6 @@ export async function ciPeerClient(
   if (!integration || !declaration) {
     return { refused: `it is no longer offered to CI as \`${peerPluginId}\`` };
   }
-  if (use !== "teardown" && (await reachedThroughTunnel(resource.accountId))) {
-    return {
-      refused:
-        "Infrawrench reaches its connection through an SSH tunnel of its own, which a job cannot use; lend the database to jobs that can reach it directly, or connect it without the tunnel",
-    };
-  }
   const instance = await parent.client
     .getResource(resource.resourceTypeId, resource.id, resource.accountId)
     .catch(() => null);
@@ -199,12 +194,28 @@ export async function ciPeerClient(
     accountId: resource.accountId,
     organizationId,
   });
+  if (built && use !== "teardown") {
+    const tunnelled = await tunnelRefusal(resource.accountId, built.credentials);
+    if (tunnelled) return { refused: tunnelled };
+  }
   return built;
 }
 
-/** Whether there is a tunnel config row for the account, for callers outside a peer. */
-export async function tunnelRefusal(accountId: string): Promise<string | null> {
+/**
+ * Why credentials resolved for a connection cannot be lent: the connection
+ * has an SSH tunnel of its own and the tunnel rewriter changed one of them
+ * (a URL or `host:port` now pointing at the gateway's end of the tunnel,
+ * still carrying the real password). A credential it leaves alone, such as
+ * a kubeconfig, is lent as usual. Null when they can be.
+ */
+export async function tunnelRefusal(
+  accountId: string,
+  credentials: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  if (!Object.values(credentials).some((v) => typeof v === "string" && tunnelRewrites(v))) {
+    return null;
+  }
   return (await reachedThroughTunnel(accountId))
-    ? "Infrawrench reaches it through an SSH tunnel of its own, which a job cannot use; connect it without the tunnel to lend it"
+    ? "Infrawrench reaches its connection through an SSH tunnel of its own, which a job cannot use; lend it to jobs that can reach it directly, or connect it without the tunnel"
     : null;
 }

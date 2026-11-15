@@ -32,6 +32,7 @@ import {
   starredItems,
   syntheticProbes,
 } from "./db/schema";
+import { deletedAtOnUpsert } from "./resource-revive.js";
 
 /** `db`, or a transaction on it. */
 type Executor = Pick<Db, "insert" | "update" | "select">;
@@ -77,8 +78,7 @@ export async function upsertCreatedResource(
       // Re-creating over a soft-deleted id revives the row.
       set: {
         ...row,
-        incarnation: sql`CASE WHEN ${resources.deletedAt} IS NULL THEN ${resources.incarnation} ELSE ${resources.incarnation} + 1 END`,
-        deletedAt: null,
+        ...deletedAtOnUpsert(null),
         updatedAt: new Date(),
       },
     });

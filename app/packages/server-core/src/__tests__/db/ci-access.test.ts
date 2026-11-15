@@ -1428,13 +1428,15 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
     expect(peers.asked).toEqual([]);
   });
 
-  it("refuses to lend a database Infrawrench reaches through an SSH tunnel", async () => {
+  it("refuses to lend a credential the SSH-tunnel rewriter changed, and lends one it did not", async () => {
     const { db, schema, access } = m;
     const org = await organization({ optedIn: true });
     const { dbId } = await managed(org);
     await access.createGrant(org.orgId, peerGrant(dbId, "orders", "postgres"), org.userId);
-    // Through a tunnel, the rewriter would point the string at the gateway's
-    // loopback and keep the password: useless to a job, and not to be lent.
+    // Through a tunnel, the rewriter points a connection string at the
+    // gateway's loopback and keeps the password: useless to a job, and not
+    // to be lent. A connection whose credentials it leaves alone (this fake
+    // cluster's are none) is lent as usual.
     for (const accountId of [org.awsId, org.k8sId]) {
       await db.insert(schema.sshTunnelConfigs).values({
         id: randomUUID(),
@@ -1446,15 +1448,15 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
         privateKeyIv: "unused",
       } as typeof schema.sshTunnelConfigs.$inferInsert);
     }
-    peers.asked = [];
     proxy.calls = [];
     await push(org, "main", deployJob([{ name: "orders" }, { name: "Production cluster" }]));
-    const lent = sentLent() as { connections: Record<string, { refused?: string }> };
+    const lent = sentLent() as {
+      connections: Record<string, { refused?: string; files?: unknown[] }>;
+    };
     expect(lent.connections["orders"]?.refused).toMatch(
       /SSH tunnel of its own, which a job cannot use/,
     );
-    expect(lent.connections["Production cluster"]?.refused).toMatch(/SSH tunnel of its own/);
-    expect(peers.asked).toEqual([]);
+    expect(lent.connections["Production cluster"]?.files).toHaveLength(1);
     expect(JSON.stringify(lent)).not.toContain("user:pw");
   });
 
@@ -1615,6 +1617,81 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
       .from(schema.ciCloudJobs)
       .where(eq(schema.ciCloudJobs.id, job!.id));
     expect(ended).toMatchObject({ state: "done", teardownError: null });
+  });
+
+  it("checks a cluster created again under its id again before running jobs on it", async () => {
+    const { db, schema, eq, access } = m;
+    const { upsertCreatedResource } = await import("../../created-resource");
+    const org = await organization({ optedIn: true });
+    const { clusterId } = await managed(org);
+    const input = peerGrant(clusterId, "eks-prod", "kubernetes", { jobKinds: ["cluster"] });
+    const grant = await access.createGrant(org.orgId, input, org.userId);
+    expect(grant.peer?.preflight["cluster"]?.ok).toBe(true);
+    // Saved again unchanged: the kept check holds, nothing is asked.
+    peers.preflightOk = false;
+    await access.updateGrant(org.orgId, grant.id, input, org.userId);
+    // Deleted and created again: another cluster, whose check the old one
+    // does not stand for.
+    await db
+      .update(schema.resources)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.resources.id, clusterId));
+    await upsertCreatedResource({
+      organizationId: org.orgId,
+      pluginId: "aws",
+      resourceTypeId: "eks-cluster",
+      accountId: org.awsId,
+      resource: {
+        id: clusterId,
+        pluginId: "aws",
+        resourceTypeId: "eks-cluster",
+        accountId: org.awsId,
+        displayName: "prod",
+        fields: {},
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    });
+    await expect(access.updateGrant(org.orgId, grant.id, input, org.userId)).rejects.toThrow(
+      "create jobs.batch (start jobs)",
+    );
+    peers.preflightOk = true;
+    const regranted = await access.updateGrant(org.orgId, grant.id, input, org.userId);
+    expect(regranted.peer?.preflight["cluster"]?.ok).toBe(true);
+  });
+
+  it("bumps the incarnation on every revive, and only then", async () => {
+    const { db, schema, eq } = m;
+    const { deletedAtOnUpsert } = await import("../../resource-revive");
+    const org = await organization({ optedIn: false });
+    const id = `${org.awsId}:eks-cluster:revive`;
+    const row = {
+      id,
+      organizationId: org.orgId,
+      pluginId: "aws",
+      resourceTypeId: "eks-cluster",
+      accountId: org.awsId,
+      displayName: "revive",
+    } as typeof schema.resources.$inferInsert;
+    const upsert = (next: Date | null) =>
+      db
+        .insert(schema.resources)
+        .values({ ...row, deletedAt: next })
+        .onConflictDoUpdate({ target: schema.resources.id, set: { ...deletedAtOnUpsert(next) } });
+    const incarnation = async () =>
+      (await db.select().from(schema.resources).where(eq(schema.resources.id, id)))[0]?.incarnation;
+    await upsert(null);
+    expect(await incarnation()).toBe(0);
+    await upsert(null); // Listed again while live: the same resource.
+    expect(await incarnation()).toBe(0);
+    await upsert(new Date()); // Pushed as deleted: still the same one.
+    expect(await incarnation()).toBe(0);
+    await upsert(new Date()); // Deleted again: nothing comes back.
+    expect(await incarnation()).toBe(0);
+    await upsert(null); // Back from the delete: another resource.
+    expect(await incarnation()).toBe(1);
   });
 
   it("lends what a manual run's chosen branch is lent, not the default branch's", async () => {

@@ -59,6 +59,7 @@ import { loadSecretStatesForResource } from "../../../services/secret-states";
 import { exportStoredResourcesToTerraform } from "../../../services/terraform-export";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { logAudit } from "../../../services/audit";
+import { deletedAtOnUpsert } from "@infrawrench/server-core/resource-revive";
 
 /** A resolved account (or peer resource) client, as `getClientForResource` answers. */
 export type ResourceClient = NonNullable<Awaited<ReturnType<typeof getClientForResource>>>;
@@ -186,7 +187,8 @@ export async function loadResourceDetail(input: DetailRequest) {
             outputsJson: liveInstance.resolvedOutputs ?? {},
             lastSyncedAt: new Date(),
             updatedAt: new Date(),
-            deletedAt: null,
+            // Listed again after a delete: another incarnation of the id.
+            ...deletedAtOnUpsert(null),
           },
           // Ids are global; never refresh a row another org owns.
           setWhere: eq(resources.organizationId, organizationId),

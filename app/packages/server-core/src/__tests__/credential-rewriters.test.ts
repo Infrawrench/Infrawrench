@@ -68,3 +68,19 @@ describe("applyCredentialRewriters", () => {
     expect(observed).toBe("1");
   });
 });
+
+describe("what the SSH-tunnel rewriter changes", () => {
+  it("is anything the URL parser takes or host:port, which includes a kubeconfig", async () => {
+    const { tunnelRewrites, applyTunnelToConnectionString } =
+      await import("../credential-rewriters/tunnel-form");
+    expect(tunnelRewrites("postgres://u:p@db.internal:5432/app")).toBe(true);
+    expect(tunnelRewrites("10.0.0.5:6379")).toBe(true);
+    // The URL parser takes a kubeconfig's YAML as an opaque URL, so the
+    // rewriter changes it (and breaks it): it is not lendable through a tunnel.
+    const kubeconfig = "apiVersion: v1\nkind: Config\n";
+    expect(applyTunnelToConnectionString(kubeconfig, 4000)).not.toBe(kubeconfig);
+    expect(tunnelRewrites(kubeconfig)).toBe(true);
+    // A bare token is left as it is.
+    expect(tunnelRewrites("ya29.a0AfH6SMB")).toBe(false);
+  });
+});
