@@ -613,7 +613,7 @@ export const PLUGIN_STRINGS: readonly string[] = [
   msg("A Kubernetes worker node"),
   msg("A Lakebase Postgres project: autoscaling, scale-to-zero managed Postgres"),
   msg("A Lakeflow Spark Declarative Pipeline (formerly Delta Live Tables)"),
-  msg("A Lambda Cloud API key, from the Lambda Cloud dashboard's API keys page (cloud.lambda.ai/api-keys), Generate API key. Keys are team-wide and carry full access; Lambda shows the key only once."),
+  msg("A Lambda Cloud API key, from the Lambda Cloud dashboard's API keys page (cloud.lambda.com/api-keys), Generate API key. Keys are team-wide and carry full access; Lambda shows the key only once."),
   msg("A Lambda Cloud on-demand GPU instance"),
   msg("A lease on a dynamic secret (database or cloud credentials and similar): when it was issued and when it expires. Renew or revoke it. Listing leases needs a sudo-capable token. Past 2,000, a different part of the list refreshes on each poll."),
   msg("A legacy native integration (the predecessor of secret syncs). Listed so existing ones can be watched, re-synced and removed."),

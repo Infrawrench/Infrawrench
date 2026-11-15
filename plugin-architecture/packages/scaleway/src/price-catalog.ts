@@ -50,6 +50,8 @@ const ZONE_LABELS: Record<string, string> = {
   "pl-waw-2": "Warsaw 2",
   "pl-waw-3": "Warsaw 3",
   "it-mil-1": "Milan 1",
+  "it-mil-2": "Milan 2",
+  "it-mil-3": "Milan 3",
 };
 
 export const scalewayPriceCatalog: PriceCatalogDeclaration = {

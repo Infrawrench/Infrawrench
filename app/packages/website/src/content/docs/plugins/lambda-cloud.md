@@ -52,7 +52,7 @@ Lambda Cloud has no billing or usage API, so Infrawrench doesn't report spend. E
 
 - **Orphan finder**: filesystems no instance mounts, which keep billing for their stored data.
 - **Posture checks**: a firewall ruleset, or the global rules, that allow SSH (TCP 22) from `0.0.0.0/0`.
-- **Provider status**: incidents on [status.lambda.ai](https://status.lambda.ai) are matched to the regions they name and to your instances and filesystems.
+- **Provider status**: incidents on [status.lambda.com](https://status.lambda.com) are matched to the regions they name and to your instances and filesystems.
 
 ## Run CI jobs
 
