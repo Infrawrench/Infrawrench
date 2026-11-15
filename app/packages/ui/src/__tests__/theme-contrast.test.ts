@@ -1,6 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { cwd } from "node:process";
+import { readFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { PALETTE_TEXT_ADVICE, scanBlueFills, scanPaletteText } from "../theme-scan";
 
 /**
  * WCAG AA contrast guard for the semantic colour tokens.
@@ -22,30 +24,22 @@ import { describe, expect, it } from "vitest";
  *     fixed colour in both schemes, so it can only be legible in one of them;
  *     the tokens above exist so nobody has to pick.
  *
- * The second check reaches outside this package on purpose: `theme.css` is
- * defined here but `web` and `desktop` consume it, so a guard that watched
- * only `ui` would let the defect back in through either host.
+ * `theme.css` is defined here but `web` and `desktop` consume it, so a guard
+ * that watched only `ui` would let the defect back in through either host.
+ * Each app therefore runs the second check over its own `src/` in its own
+ * suite (`theme-palette.test.ts`), with the rules in `../theme-scan.ts`; this
+ * file scans `ui`. It used to scan all three, which reran this package's
+ * whole suite on Infrawrench CI for any change to either app.
  */
 
 /**
- * The workspace root, found by walking up from the cwd rather than assuming
- * one: `vitest` run inside the package and `turbo test` from the repo root
+ * This package's `src/`, from where this file is rather than from the cwd:
+ * `vitest` run inside the package and `turbo test` from the repo root
  * disagree about what the cwd is, and a path that silently resolves to
  * nothing would make the palette scan pass by scanning zero files.
  */
-function workspaceRoot(): string {
-  let dir = cwd();
-  for (let up = 0; up < 10; up++) {
-    if (existsSync(`${dir}/pnpm-workspace.yaml`)) return dir;
-    const parent = dir.slice(0, dir.lastIndexOf("/"));
-    if (parent === "" || parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(`no pnpm-workspace.yaml above ${cwd()}`);
-}
-
-const ROOT = workspaceRoot();
-const themeCss = readFileSync(`${ROOT}/app/packages/ui/src/theme.css`, "utf8");
+const UI_SRC = dirname(dirname(fileURLToPath(import.meta.url)));
+const themeCss = readFileSync(`${UI_SRC}/theme.css`, "utf8");
 
 /** `--color-x: #rrggbb;` pairs inside a slice of the stylesheet. */
 function parseVars(css: string): Record<string, string> {
@@ -223,76 +217,24 @@ describe("token hierarchy", () => {
 });
 
 describe("no blue in the interface", () => {
-  // Accent is grey. A `bg-blue-600` is not just the wrong hue: its hardcoded
-  // `text-white` label also goes unreadable the moment it is swapped for the
-  // accent, whose dark mode fill is light. Use the accent tokens.
-  const BLUE =
-    /(?<![\w-])(?:bg|border|ring|accent|shadow|from|via|to|fill|stroke|outline|divide)-(?:blue|sky|indigo)-\d{2,3}\b/;
-
-  it.each(["ui", "web", "desktop"])("is true of every component in %s", (pkg) => {
-    const offenders: string[] = [];
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = `${dir}/${entry.name}`;
-        if (entry.isDirectory()) {
-          // `mcp/` renders inside third-party AI clients, under its own theme.
-          if (entry.name !== "__tests__" && entry.name !== "mcp") walk(path);
-        } else if (/\.tsx?$/.test(entry.name)) {
-          readFileSync(path, "utf8")
-            .split("\n")
-            .forEach((line, i) => {
-              const hit = BLUE.exec(line);
-              if (hit) offenders.push(`${path.slice(ROOT.length + 1)}:${i + 1} → ${hit[0]}`);
-            });
-        }
-      }
-    };
-    walk(`${ROOT}/app/packages/${pkg}/src`);
+  it("is true of every component in ui", () => {
+    const { files, offenders } = scanBlueFills(UI_SRC);
+    // A mis-resolved root would otherwise scan nothing and pass.
+    expect(files, `no sources found under ${UI_SRC}`).toBeGreaterThan(50);
     expect(offenders).toEqual([]);
   });
 });
 
 describe("no hardcoded palette text utilities", () => {
-  const PALETTE =
-    /\btext-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
-
   /**
-   * `mobile` is deliberately absent: it is dark-only and styles from a named
-   * token object (`mobile/src/lib/theme.ts`), not Tailwind, so it has no
-   * palette classes to regress. `theme.css` is likewise out of reach, only
-   * `.ts`/`.tsx` are read, so the comment there that names the old classes
-   * for the reader does not trip the scan.
+   * `mobile` has no scan: it is dark-only and styles from a named token
+   * object (`mobile/src/lib/theme.ts`), not Tailwind, so it has no palette
+   * classes to regress.
    */
-  const SCANNED = ["ui", "web", "desktop"].map((pkg) => `app/packages/${pkg}/src`);
-
-  function* sources(dir: string): Generator<string> {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) {
-        if (entry.name !== "__tests__") yield* sources(path);
-      } else if (/\.tsx?$/.test(entry.name)) {
-        yield path;
-      }
-    }
-  }
-
-  it.each(SCANNED)("is true of every component in %s", (relative) => {
-    const files = [...sources(`${ROOT}/${relative}`)];
+  it("is true of every component in ui", () => {
+    const { files, offenders } = scanPaletteText(UI_SRC);
     // A mis-resolved root would otherwise scan nothing and pass.
-    expect(files.length, `no sources found under ${relative}`).toBeGreaterThan(50);
-
-    const offenders: string[] = [];
-    for (const file of files) {
-      readFileSync(file, "utf8")
-        .split("\n")
-        .forEach((line, i) => {
-          const hit = PALETTE.exec(line);
-          if (hit) offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1} → ${hit[0]}`);
-        });
-    }
-    expect(
-      offenders,
-      `${relative} uses fixed palette text colours, which cannot clear WCAG AA in both schemes — replace each with a semantic token (text-danger / text-warning / text-success / text-info / text-severe / text-notice / text-series-N)`,
-    ).toEqual([]);
+    expect(files, `no sources found under ${UI_SRC}`).toBeGreaterThan(50);
+    expect(offenders, `ui ${PALETTE_TEXT_ADVICE}`).toEqual([]);
   });
 });

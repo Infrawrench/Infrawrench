@@ -33,6 +33,10 @@ export default defineConfig({
     // component barrel: importing that into a Node context drags Monaco and
     // React along and times imports out.
     "workflows/prompt-bridge": "src/workflows/prompt-bridge.ts",
+    // The palette scans web's and desktop's test suites run over their own
+    // components. Nothing in the barrel imports it (it reads the file
+    // system), so without an entry it would not be emitted.
+    "theme-scan": "src/theme-scan.ts",
   },
   format: ["esm", "cjs"],
   dts: true,

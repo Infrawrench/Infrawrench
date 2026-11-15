@@ -124,12 +124,12 @@ jobs:
 
   # The files a package's tests read by path outside the package, as one hash
   # in .reads-digest (outside-reads.mjs). server-core's tests compare a file
-  # with bastion-agent's copy of it, ui's scan web's and desktop's components,
-  # web's read a page of the website's docs: none of those packages is a
-  # dependency of the reader, so `^source` does not reach them, and the tests
-  # were replayed from the cache when the file changed (#1177). A package
-  # lists such files in a ci-reads.json beside its package.json, and its test
-  # jobs need this job, so they are keyed on the hash: a change to
+  # with bastion-agent's copy of it, ui's read server-core's generated edge
+  # registry, web's read a page of the website's docs: none of those packages
+  # is a dependency of the reader, so `^source` does not reach them, and the
+  # tests were replayed from the cache when the file changed (#1177). A
+  # package lists such files in a ci-reads.json beside its package.json, and
+  # its test jobs need this job, so they are keyed on the hash: a change to
   # bastion-agent's copy reruns server-core's tests and nothing else.
   #
   # Only the packages with a ci-reads.json get one. It is not task-cached: its
