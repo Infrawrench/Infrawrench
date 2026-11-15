@@ -23292,5 +23292,15 @@
   "769cc15402f536b5": "{repo} auf {branch}",
   "c0635aaba2417a31": "Das letzte Lesen ist fehlgeschlagen: {error}",
   "27835f74fbdd7600": "Geplante Pipelines von {repo}",
-  "c0554b7fe1c99cf0": "Nächste Ausführung"
+  "c0554b7fe1c99cf0": "Nächste Ausführung",
+  "568cf92071ca48e4": "Wählen Sie mindestens eine Job-Art.",
+  "898e6e43e1915ed3": "{plugin}-Verbindungen können keine Jobs ausführen.",
+  "b550937345bbdfee": "{plugin}-Verbindungen können nicht an Jobs verliehen werden.",
+  "ad92fdc08320b1cf": "Berechtigungen werden geprüft…",
+  "0b0692e73d4ca4b7": "{plugin}-Verbindungen können keine Jobs ausführen. Schalten Sie das Ausführen von Jobs aus.",
+  "8671967effb60926": "Entfernen Sie das Häkchen bei {kinds}: die Berechtigungsprüfung ist nicht bestanden.",
+  "d0ea7213167da242": "{plugin}-Verbindungen können nicht an Jobs verliehen werden. Schalten Sie das Verleihen aus.",
+  "c5f77207e2bc9852": "Gleichzeitige Jobs müssen zwischen 1 und 50 liegen.",
+  "06b60ad9d0993a71": "Minuten pro Job müssen zwischen 1 und 1440 liegen.",
+  "cde59236f595da74": "Nennen Sie mindestens einen Branch, oder leeren Sie das Feld für alle Branches."
 }

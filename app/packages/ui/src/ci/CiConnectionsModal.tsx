@@ -1,9 +1,10 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
-import type {
-  CiConnectionAccess,
-  CiConnectionAccessSettings,
-  CiExecutorKindId,
+import {
+  ciBranchGlobs,
+  type CiConnectionAccess,
+  type CiConnectionAccessSettings,
+  type CiExecutorKindId,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { ArrowIcon, ChevronIcon, CloseIcon, SearchIcon } from "../components/icons/ChromeIcons.js";
@@ -16,6 +17,56 @@ type Settings = CiConnectionAccessSettings;
 
 const same = (a: Settings, b: Settings) => JSON.stringify(a) === JSON.stringify(b);
 const isOn = (s: Settings) => s.jobsEnabled || s.lendEnabled;
+
+/**
+ * Permission checks in flight, by connection and kind: `tick` when ticking
+ * the kind started it (the box shows ticked, and the kind joins the draft if
+ * the check passes), `check` for the button alone.
+ */
+type Checks = Record<string, Partial<Record<CiExecutorKindId, "tick" | "check">>>;
+
+const hasNoBranch = (pattern: string | null) =>
+  pattern !== null && ciBranchGlobs(pattern).length === 0;
+
+/**
+ * Why the server would refuse `draft`, in the words the dialog shows beside
+ * Save, which stays off while there is one: the same rules as
+ * `setConnectionAccess` in server-core, so Save never sends what is bound to
+ * fail. Null when it may be saved.
+ */
+function draftProblem(
+  gt: ReturnType<typeof useGT>,
+  data: (s: string) => string,
+  connection: CiConnectionAccess,
+  draft: Settings,
+): string | null {
+  const plugin = connection.pluginName;
+  if (draft.jobsEnabled) {
+    if (!connection.executor) {
+      return gt("{plugin} connections can't run jobs. Turn running jobs off.", { plugin });
+    }
+    if (draft.jobKinds.length === 0) return gt("Choose at least one kind of job.");
+    const unchecked = connection.executor.kinds
+      .filter((k) => draft.jobKinds.includes(k.kind) && connection.preflight[k.kind]?.ok !== true)
+      .map((k) => data(k.label));
+    if (unchecked.length > 0) {
+      return gt("Untick {kinds}: its permission check has not passed.", {
+        kinds: unchecked.join(", "),
+      });
+    }
+  }
+  if (draft.lendEnabled && !connection.credential) {
+    return gt("{plugin} connections can't be lent to jobs. Turn lending off.", { plugin });
+  }
+  const jobs = Math.trunc(draft.maxConcurrentJobs);
+  if (!(jobs >= 1 && jobs <= 50)) return gt("Jobs at once must be between 1 and 50.");
+  const minutes = Math.trunc(draft.maxJobMinutes);
+  if (!(minutes >= 1 && minutes <= 1440)) return gt("Minutes per job must be between 1 and 1440.");
+  if (hasNoBranch(draft.jobBranchPattern) || hasNoBranch(draft.lendBranchPattern)) {
+    return gt("Name at least one branch, or clear the field for every branch.");
+  }
+  return null;
+}
 
 /** A kind's last permission check, and the button that runs it again. */
 function KindCheck({
@@ -35,7 +86,7 @@ function KindCheck({
   const record = connection.preflight[kind];
   return (
     <div className="flex flex-shrink-0 items-center gap-2 pl-6 text-xs sm:pl-0">
-      {record ? (
+      {checking ? null : record ? (
         <span
           role="status"
           className={`whitespace-nowrap ${record.ok ? "text-success" : "text-danger"}`}
@@ -45,7 +96,9 @@ function KindCheck({
             <span className="ml-1 font-mono text-on-surface-faint">{record.region}</span>
           ) : null}
         </span>
-      ) : null}
+      ) : (
+        <span className="whitespace-nowrap text-on-surface-faint">{gt("Not checked")}</span>
+      )}
       <button
         type="button"
         disabled={checking}
@@ -109,7 +162,7 @@ function Capability({
   description?: string | undefined;
   on: boolean;
   onToggle: (on: boolean) => void;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-border bg-surface-raised">
@@ -124,9 +177,32 @@ function Capability({
           <Switch checked={on} onChange={onToggle} label={title} />
         </div>
       </div>
-      {on ? <div className="space-y-5 border-t border-border px-4 py-4">{children}</div> : null}
+      {on && children ? (
+        <div className="space-y-5 border-t border-border px-4 py-4">{children}</div>
+      ) : null}
     </section>
   );
+}
+
+/**
+ * A capability the connection's provider does not have. Said in a line; with
+ * a switch only while it is somehow on, so it can be turned off.
+ */
+function Unsupported({
+  title,
+  reason,
+  on,
+  onTurnOff,
+}: {
+  title: string;
+  reason: string;
+  on: boolean;
+  onTurnOff: () => void;
+}) {
+  if (on) {
+    return <Capability title={title} description={reason} on onToggle={() => onTurnOff()} />;
+  }
+  return <p className="px-1 text-xs text-on-surface-muted">{reason}</p>;
 }
 
 function ConnectionDetail({
@@ -135,9 +211,10 @@ function ConnectionDetail({
   logo,
   allRepos,
   canWrite,
-  client,
+  checks,
+  checkErrors,
   onDraft,
-  onSaved,
+  onCheck,
   onBack,
 }: {
   connection: CiConnectionAccess;
@@ -145,28 +222,30 @@ function ConnectionDetail({
   logo: string | undefined;
   allRepos: string[];
   canWrite: boolean;
-  client: CiClient;
-  onDraft: (next: Settings) => void;
-  onSaved: (c: CiConnectionAccess) => void;
+  /** This connection's checks in flight. */
+  checks: Partial<Record<CiExecutorKindId, "tick" | "check">>;
+  /** Checks that could not run, shown under their kind, where the reader looks. */
+  checkErrors: Partial<Record<CiExecutorKindId, string>>;
+  onDraft: (patch: (draft: Settings) => Partial<Settings>) => void;
+  /** Runs a kind's permission check; `tick` adds the kind to the draft if it passes. */
+  onCheck: (kind: CiExecutorKindId, tick: boolean) => void;
   onBack: () => void;
 }) {
   const gt = useGT();
   const data = useDataString();
   const id = useId();
-  const [checking, setChecking] = useState<CiExecutorKindId | null>(null);
-  // A check that could not run, shown under its kind, where the reader looks.
-  const [checkErrors, setCheckErrors] = useState<Partial<Record<CiExecutorKindId, string>>>({});
-  const set = (patch: Partial<Settings>) => onDraft({ ...draft, ...patch });
+  const set = (patch: Partial<Settings>) => onDraft(() => patch);
 
-  const check = async (kind: CiExecutorKindId) => {
-    setChecking(kind);
-    setCheckErrors(({ [kind]: _, ...rest }) => rest);
-    try {
-      onSaved(await client.preflightConnection(connection.accountId, kind));
-    } catch (e) {
-      setCheckErrors((m) => ({ ...m, [kind]: errorText(e, gt("Could not check the connection")) }));
-    } finally {
-      setChecking(null);
+  const tickKind = (kind: CiExecutorKindId, on: boolean) => {
+    if (!on) {
+      onDraft((d) => ({ jobKinds: d.jobKinds.filter((x) => x !== kind) }));
+    } else if (connection.preflight[kind]?.ok === true) {
+      onDraft((d) => ({
+        jobKinds: d.jobKinds.includes(kind) ? d.jobKinds : [...d.jobKinds, kind],
+      }));
+    } else {
+      // Not checked, or failed last time: check it now, and tick it if it passes.
+      onCheck(kind, true);
     }
   };
 
@@ -211,7 +290,7 @@ function ConnectionDetail({
                 </span>
                 <ul className="divide-y divide-border rounded-lg border border-border">
                   {kinds.map((k) => {
-                    const ready = connection.preflight[k.kind]?.ok === true;
+                    const inFlight = checks[k.kind];
                     return (
                       <li key={k.kind} className="px-3 py-2.5">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -219,16 +298,10 @@ function ConnectionDetail({
                             <input
                               type="checkbox"
                               className="mt-1"
-                              disabled={!ready}
-                              title={ready ? undefined : gt("Check its permissions first")}
-                              checked={draft.jobKinds.includes(k.kind)}
-                              onChange={(e) =>
-                                set({
-                                  jobKinds: e.target.checked
-                                    ? [...draft.jobKinds, k.kind]
-                                    : draft.jobKinds.filter((x) => x !== k.kind),
-                                })
-                              }
+                              // Only while its check runs; the check's state shows beside it.
+                              disabled={inFlight !== undefined}
+                              checked={draft.jobKinds.includes(k.kind) || inFlight === "tick"}
+                              onChange={(e) => tickKind(k.kind, e.target.checked)}
                             />
                             <span className="min-w-0">
                               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -260,8 +333,8 @@ function ConnectionDetail({
                             connection={connection}
                             kind={k.kind}
                             label={data(k.label)}
-                            checking={checking === k.kind}
-                            onCheck={() => void check(k.kind)}
+                            checking={inFlight !== undefined}
+                            onCheck={() => onCheck(k.kind, false)}
                           />
                         </div>
                         {checkErrors[k.kind] ? (
@@ -269,11 +342,16 @@ function ConnectionDetail({
                             {checkErrors[k.kind]}
                           </p>
                         ) : null}
-                        <KindProblems connection={connection} kind={k.kind} />
+                        {inFlight ? null : <KindProblems connection={connection} kind={k.kind} />}
                       </li>
                     );
                   })}
                 </ul>
+                {draft.jobKinds.length === 0 && !Object.values(checks).includes("tick") ? (
+                  <p className="mt-1.5 text-xs text-warning">
+                    {gt("Choose at least one kind of job.")}
+                  </p>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -312,7 +390,14 @@ function ConnectionDetail({
                 onChange={(jobRepos, jobBranchPattern) => set({ jobRepos, jobBranchPattern })}
               />
             </Capability>
-          ) : null}
+          ) : (
+            <Unsupported
+              title={gt("Run jobs on it")}
+              reason={gt("{plugin} connections can't run jobs.", { plugin: connection.pluginName })}
+              on={draft.jobsEnabled}
+              onTurnOff={() => set({ jobsEnabled: false })}
+            />
+          )}
           {connection.credential ? (
             <Capability
               title={gt("Lend its credentials to jobs")}
@@ -327,7 +412,16 @@ function ConnectionDetail({
                 onChange={(lendRepos, lendBranchPattern) => set({ lendRepos, lendBranchPattern })}
               />
             </Capability>
-          ) : null}
+          ) : (
+            <Unsupported
+              title={gt("Lend its credentials to jobs")}
+              reason={gt("{plugin} connections can't be lent to jobs.", {
+                plugin: connection.pluginName,
+              })}
+              on={draft.lendEnabled}
+              onTurnOff={() => set({ lendEnabled: false })}
+            />
+          )}
         </fieldset>
       </div>
     </>
@@ -360,6 +454,8 @@ export function CiConnectionsModal({
   onClose: () => void;
 }) {
   const gt = useGT();
+  const data = useDataString();
+  const footerId = useId();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialAccountId ?? connections[0]?.accountId ?? null,
@@ -368,10 +464,20 @@ export function CiConnectionsModal({
   const [pane, setPane] = useState<"list" | "detail">(initialAccountId ? "detail" : "list");
   // Unsaved changes by connection, so moving between them loses nothing.
   const [drafts, setDrafts] = useState<Record<string, Settings>>({});
+  const [checks, setChecks] = useState<Checks>({});
+  const [checkErrors, setCheckErrors] = useState<
+    Record<string, Partial<Record<CiExecutorKindId, string>>>
+  >({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [confirmingClose, setConfirmingClose] = useState(false);
+  // The connections as last rendered, for a draft started by a check that
+  // finishes after a newer answer arrived.
+  const latest = useRef(connections);
+  useEffect(() => {
+    latest.current = connections;
+  }, [connections]);
 
   const selected = connections.find((c) => c.accountId === selectedId) ?? null;
   const draftOf = (c: CiConnectionAccess) => drafts[c.accountId] ?? c.settings;
@@ -380,6 +486,53 @@ export function CiConnectionsModal({
     return d !== undefined && !same(d, c.settings);
   };
   const anyDirty = connections.some(isDirty);
+
+  const editDraft = (accountId: string, patch: (draft: Settings) => Partial<Settings>) => {
+    setSavedId(null);
+    setError(null);
+    setDrafts((all) => {
+      const base =
+        all[accountId] ?? latest.current.find((c) => c.accountId === accountId)?.settings;
+      return base ? { ...all, [accountId]: { ...base, ...patch(base) } } : all;
+    });
+  };
+  const setCheck = (accountId: string, kind: CiExecutorKindId, to: "tick" | "check" | null) =>
+    setChecks(({ [accountId]: mine = {}, ...rest }) => {
+      const { [kind]: _, ...others } = mine;
+      return { ...rest, [accountId]: to ? { ...others, [kind]: to } : others };
+    });
+  const setCheckError = (accountId: string, kind: CiExecutorKindId, message: string | null) =>
+    setCheckErrors(({ [accountId]: mine = {}, ...rest }) => {
+      const { [kind]: _, ...others } = mine;
+      return { ...rest, [accountId]: message ? { ...others, [kind]: message } : others };
+    });
+
+  const check = async (accountId: string, kind: CiExecutorKindId, tick: boolean) => {
+    setCheck(accountId, kind, tick ? "tick" : "check");
+    setCheckError(accountId, kind, null);
+    try {
+      const checked = await client.preflightConnection(accountId, kind);
+      onSaved(checked);
+      const passed = checked.preflight[kind]?.ok === true;
+      if (passed && tick) {
+        editDraft(accountId, (d) => ({
+          jobKinds: d.jobKinds.includes(kind) ? d.jobKinds : [...d.jobKinds, kind],
+        }));
+      } else if (!passed) {
+        // The server turned the kind off; an open draft follows it.
+        setDrafts((all) => {
+          const d = all[accountId];
+          return d && d.jobKinds.includes(kind)
+            ? { ...all, [accountId]: { ...d, jobKinds: d.jobKinds.filter((x) => x !== kind) } }
+            : all;
+        });
+      }
+    } catch (e) {
+      setCheckError(accountId, kind, errorText(e, gt("Could not check the connection")));
+    } finally {
+      setCheck(accountId, kind, null);
+    }
+  };
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -400,8 +553,20 @@ export function CiConnectionsModal({
     setError(null);
     setSavedId(null);
   };
+  const dirty = selected ? isDirty(selected) : false;
+  const checking = selected ? Object.keys(checks[selected.accountId] ?? {}).length > 0 : false;
+  // What keeps Save off, said beside it: a check still running, or what the
+  // server would refuse.
+  const blocker = !selected
+    ? null
+    : checking
+      ? gt("Checking permissions…")
+      : dirty
+        ? draftProblem(gt, data, selected, draftOf(selected))
+        : null;
+
   const save = async () => {
-    if (!selected) return;
+    if (!selected || blocker) return;
     setBusy(true);
     setError(null);
     setSavedId(null);
@@ -416,8 +581,6 @@ export function CiConnectionsModal({
       setBusy(false);
     }
   };
-
-  const dirty = selected ? isDirty(selected) : false;
 
   return (
     <Modal onClose={requestClose} ariaLabel={gt("Manage connections")}>
@@ -514,12 +677,10 @@ export function CiConnectionsModal({
                 logo={logos[selected.pluginId]}
                 allRepos={allRepos}
                 canWrite={canWrite}
-                client={client}
-                onDraft={(next) => {
-                  setSavedId(null);
-                  setDrafts((d) => ({ ...d, [selected.accountId]: next }));
-                }}
-                onSaved={onSaved}
+                checks={checks[selected.accountId] ?? {}}
+                checkErrors={checkErrors[selected.accountId] ?? {}}
+                onDraft={(patch) => editDraft(selected.accountId, patch)}
+                onCheck={(kind, tick) => void check(selected.accountId, kind, tick)}
                 onBack={() => setPane("list")}
               />
             ) : (
@@ -554,7 +715,7 @@ export function CiConnectionsModal({
           <div
             className={`${pane === "list" ? "hidden md:flex" : "flex"} flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3`}
           >
-            <p className="mr-auto min-w-0 text-xs">
+            <p id={footerId} className="mr-auto min-w-0 text-xs">
               {error ? (
                 <span role="alert" className="text-danger">
                   {error}
@@ -562,6 +723,10 @@ export function CiConnectionsModal({
               ) : savedId === selected.accountId ? (
                 <span role="status" className="text-success">
                   {gt("Saved")}
+                </span>
+              ) : blocker ? (
+                <span role="status" className="text-warning">
+                  {blocker}
                 </span>
               ) : dirty ? (
                 <span className="text-on-surface-faint">{gt("Unsaved changes")}</span>
@@ -573,7 +738,8 @@ export function CiConnectionsModal({
             <button
               type="button"
               onClick={() => void save()}
-              disabled={busy || !dirty}
+              disabled={busy || !dirty || blocker !== null}
+              aria-describedby={footerId}
               className={PRIMARY_BUTTON}
             >
               {busy ? gt("Saving…") : gt("Save")}

@@ -23513,5 +23513,15 @@
   "769cc15402f536b5": "{repo} en {branch}",
   "c0635aaba2417a31": "La última lectura falló: {error}",
   "27835f74fbdd7600": "Pipelines programados de {repo}",
-  "c0554b7fe1c99cf0": "Próxima ejecución"
+  "c0554b7fe1c99cf0": "Próxima ejecución",
+  "568cf92071ca48e4": "Elige al menos un tipo de trabajo.",
+  "898e6e43e1915ed3": "Las conexiones de {plugin} no pueden ejecutar trabajos.",
+  "b550937345bbdfee": "Las conexiones de {plugin} no se pueden prestar a los trabajos.",
+  "ad92fdc08320b1cf": "Comprobando permisos…",
+  "0b0692e73d4ca4b7": "Las conexiones de {plugin} no pueden ejecutar trabajos. Desactiva la ejecución de trabajos.",
+  "8671967effb60926": "Desmarca {kinds}: su comprobación de permisos no ha pasado.",
+  "d0ea7213167da242": "Las conexiones de {plugin} no se pueden prestar a los trabajos. Desactiva el préstamo.",
+  "c5f77207e2bc9852": "Los trabajos simultáneos deben estar entre 1 y 50.",
+  "06b60ad9d0993a71": "Los minutos por trabajo deben estar entre 1 y 1440.",
+  "cde59236f595da74": "Indica al menos una rama, o vacía el campo para todas las ramas."
 }

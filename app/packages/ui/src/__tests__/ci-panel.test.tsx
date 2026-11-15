@@ -275,8 +275,13 @@ describe("CI access", () => {
     await waitFor(() => expect(screen.getByText("ec2:RunInstances")).toBeTruthy());
     expect(c.preflightConnection).toHaveBeenCalledWith("acc-aws", "vm");
     expect(screen.getByText("Not ready")).toBeTruthy();
+    // The box can still be ticked: that checks again, and it stays off while the check fails.
     const kind = screen.getByRole("checkbox", { name: /EC2 instance/ }) as HTMLInputElement;
-    expect(kind.disabled).toBe(true);
+    expect(kind.disabled).toBe(false);
+    fireEvent.click(kind);
+    await waitFor(() => expect(c.preflightConnection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(kind.disabled).toBe(false));
+    expect(kind.checked).toBe(false);
   });
 
   it("lists only the connections that are on, in short, and saves one from the dialog", async () => {
@@ -362,6 +367,191 @@ describe("CI access", () => {
         repos: null,
         branchPattern: "main",
       }),
+    );
+  });
+});
+
+/** A ready check, as the server keeps it. */
+const passed = {
+  ok: true,
+  missing: [],
+  problems: [],
+  checkedAt: "2026-11-15T00:00:00.000Z",
+};
+
+/** Google Cloud runs jobs but cannot lend; Kubernetes can do both. */
+function gcpAndCluster(): CiAccessOverview {
+  return {
+    viewerUserId: "u1",
+    connections: [
+      {
+        accountId: "acc-gcp",
+        accountName: "Infrawrench GCP",
+        pluginId: "gcp",
+        pluginName: "Google Cloud",
+        executor: {
+          kinds: [
+            { kind: "vm", label: "Compute Engine instance", defaults: {} },
+            { kind: "container", label: "Cloud Run job", defaults: {} },
+          ],
+          helpLink: null,
+        },
+        credential: null,
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+        preflight: {},
+        updatedAt: null,
+      },
+      {
+        accountId: "acc-k8s",
+        accountName: "Cluster",
+        pluginId: "kubernetes",
+        pluginName: "Kubernetes",
+        executor: null,
+        credential: { description: "A kubeconfig.", shortLived: false, namespaces: true },
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+        preflight: {},
+        updatedAt: null,
+      },
+    ],
+    grants: [],
+    sshKeys: [],
+  };
+}
+
+async function openDialog(c: ReturnType<typeof client>, overview: () => CiAccessOverview) {
+  c.access.mockImplementation(async () => overview());
+  renderPanel(c);
+  fireEvent.click(await screen.findByText("Manage connections"));
+  return screen.findByRole("dialog", { name: "Manage connections" });
+}
+
+const saveButton = (dialog: HTMLElement) =>
+  within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+
+describe("CI connections dialog", () => {
+  it("keeps Save off, and says why, while running jobs has no kind", async () => {
+    const c = client();
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(true);
+    // Beside the kinds and beside Save.
+    expect(within(dialog).getAllByText("Choose at least one kind of job.")).toHaveLength(2);
+    expect(within(dialog).getAllByText("Not checked")).toHaveLength(2);
+    const boxes = within(dialog).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes.every((b) => !b.disabled)).toBe(true);
+    expect(c.setConnectionAccess).not.toHaveBeenCalled();
+  });
+
+  it("checks a kind when it is ticked, ticks it once the check passes, and saves", async () => {
+    const c = client();
+    c.preflightConnection.mockImplementation(async () => ({
+      ...gcpAndCluster().connections[0]!,
+      preflight: { vm: { ...passed, region: "us-central1" } },
+    }));
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    const vm = within(dialog).getByRole("checkbox", {
+      name: /Compute Engine instance/,
+    }) as HTMLInputElement;
+    fireEvent.click(vm);
+    expect(c.preflightConnection).toHaveBeenCalledWith("acc-gcp", "vm");
+    await waitFor(() => expect(within(dialog).getByText("Ready")).toBeTruthy());
+    expect(vm.checked).toBe(true);
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(within(dialog).getByText("Saved")).toBeTruthy());
+    expect(c.setConnectionAccess).toHaveBeenCalledWith(
+      "acc-gcp",
+      expect.objectContaining({ jobsEnabled: true, jobKinds: ["vm"] }),
+    );
+  });
+
+  it("shows the server's refusal beside Save", async () => {
+    const c = client();
+    c.setConnectionAccess.mockImplementation(async () => {
+      throw new Error("Kubernetes connections cannot be lent to jobs.");
+    });
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe("Kubernetes connections cannot be lent to jobs.");
+  });
+
+  it("says the save failed when the failure has no message", async () => {
+    const c = client();
+    c.setConnectionAccess.mockImplementation(async () => {
+      throw new Error("");
+    });
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("Could not save");
+  });
+
+  it("saves lending alone, with running jobs off", async () => {
+    const c = client();
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    // Kubernetes here runs no jobs: said, with no switch.
+    expect(within(dialog).getByText("Kubernetes connections can't run jobs.")).toBeTruthy();
+    expect(within(dialog).queryByRole("switch", { name: "Run jobs on it" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    await waitFor(() => expect(within(dialog).getByText("Saved")).toBeTruthy());
+    expect(c.setConnectionAccess).toHaveBeenCalledWith(
+      "acc-k8s",
+      expect.objectContaining({ jobsEnabled: false, lendEnabled: true }),
+    );
+  });
+
+  it("says a provider cannot lend, and lets lending that is on anyway be turned off", async () => {
+    const c = client();
+    const lentAnyway = () => {
+      const o = gcpAndCluster();
+      o.connections[0] = {
+        ...o.connections[0]!,
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS, lendEnabled: true },
+      };
+      return o;
+    };
+    c.preflightConnection.mockImplementation(async () => ({
+      ...lentAnyway().connections[0]!,
+      preflight: { vm: { ...passed, region: "us-central1" } },
+    }));
+    const dialog = await openDialog(c, lentAnyway);
+    expect(
+      within(dialog).getByText("Google Cloud connections can't be lent to jobs."),
+    ).toBeTruthy();
+    const lend = within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" });
+    expect(lend.getAttribute("aria-checked")).toBe("true");
+    // Any other change cannot be saved while it is on, since the server would refuse it.
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Compute Engine instance/ }));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(
+          "Google Cloud connections can't be lent to jobs. Turn lending off.",
+        ),
+      ).toBeTruthy(),
+    );
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(true);
+    fireEvent.click(lend);
+    expect(
+      within(dialog).queryByRole("switch", { name: "Lend its credentials to jobs" }),
+    ).toBeNull();
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(c.setConnectionAccess).toHaveBeenCalledWith(
+        "acc-gcp",
+        expect.objectContaining({ jobsEnabled: true, jobKinds: ["vm"], lendEnabled: false }),
+      ),
     );
   });
 });
