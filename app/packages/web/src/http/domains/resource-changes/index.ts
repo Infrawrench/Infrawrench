@@ -55,6 +55,7 @@ import { requireNoChangeFreeze } from "../../change-freeze";
 import { makeDomain } from "../../domain";
 import { fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { legacy, legacyTry } from "../../legacy";
+import { pageNumber } from "../../paging";
 import { OrgPrincipal, requirePermission } from "../../principal";
 import { respond } from "../../response";
 
@@ -76,10 +77,6 @@ function toWire(s: DriftAlertSettingsRecord) {
     lastNotifiedAt: s.lastNotifiedAt ? s.lastNotifiedAt.toISOString() : null,
   };
 }
-
-/** `parseInt(raw ?? fallback, 10) || fallback`, clamped. */
-const pageNumber = (raw: string | undefined, fallback: number, max: number) =>
-  Math.min(Math.max(parseInt(raw ?? String(fallback), 10) || fallback, 1), max);
 
 const revertFailure = (failure: RevertFailure): NotFound | BadGateway =>
   failure.kind === "account-not-found"
@@ -120,7 +117,7 @@ const ResourceChangesHandlers = HttpApiBuilder.group(ResourceChangesApi, "change
         const [countRows, entries] = yield* legacy(() =>
           Promise.all([
             db
-              .select({ count: sql<number>`count(*)` })
+              .select({ count: sql<number>`count(*)::int` })
               .from(resourceChanges)
               .where(where),
             db

@@ -37,7 +37,8 @@ export const AuditResponse = Schema.Struct({
 
 /**
  * The filters are read raw, as they always were: the handler parses `page`
- * and `pageSize` with `parseInt` and passes the rest to the query unchecked.
+ * and `pageSize` itself, clamping each to its documented range, and passes
+ * the rest to the query unchecked.
  */
 const raw = <S extends Schema.Top>(doc: S) => Schema.optionalKey(documentedAs(doc));
 
@@ -46,8 +47,16 @@ export class AuditGroup extends HttpApiGroup.make("audit")
     HttpApiEndpoint.get("list", "/", {
       params: OrgParams,
       query: {
-        page: raw(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
-        pageSize: raw(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+        page: raw(
+          Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).annotate({
+            description: "The page to read, from 1 (the default).",
+          }),
+        ),
+        pageSize: raw(
+          Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 })).annotate({
+            description: "Entries per page, 25 by default. A value above 200 reads as 200.",
+          }),
+        ),
         action: raw(Schema.String),
         entityType: raw(Schema.String),
         userId: raw(Uuid),
