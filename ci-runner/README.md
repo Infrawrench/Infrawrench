@@ -1665,16 +1665,31 @@ What it cannot:
 - **Build native code from source.** A job has no C compiler, so a package
   with a C, C++ or Rust extension that the WASIX index lacks fails to
   install.
-- **Make a virtual environment.** `python -m venv` fails (it cannot copy
-  the interpreter, which lives inside the package). Packages install into
-  the interpreter itself, which is the job's own copy; to keep a set apart,
-  `pip install --target <dir>` and `PYTHONPATH=<dir>`.
+- **Run pipx.** pipx starts pip with `start_new_session=True`, and
+  CPython's `subprocess` on WASIX refuses that ("start_new_session is not
+  supported on wasix"), so `pipx install` and `pipx run` fail. Use one of
+  the ways below.
+
+Packages install into the interpreter itself by default, which is the
+job's own copy. To keep a set apart:
+
+- **The user site**: `pip install --user <package>` installs into
+  `/root/.local` (`PYTHONUSERBASE`), and its commands are on `PATH`
+  (`/root/.local/bin`, first).
+- **A directory**: `pip install --target <dir> <package>`, then
+  `PYTHONPATH=<dir>`.
+- **A virtual environment of copies**: `python -m venv --copies .venv`
+  works, with pip (from `ensurepip`) and its `activate` script. Without
+  `--copies` it fails: venv links the interpreter, and a command run
+  through a symbolic link fails here (#1199). virtualenv works as well
+  (`pip install virtualenv`, then `virtualenv .venv`).
 
 pip and the tools it installs need these defaults, which the environment
 sets and a job's `env:` can override:
 
 | Variable                        | Value                                       | Why                                                                                                                                                                     |
 | ------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PYTHONUSERBASE`                | `/root/.local`                              | CPython on WASIX has no user site without it, so `pip install --user` refused ("User site-packages are disabled"). Its commands are first on `PATH`.                    |
 | `_PYTHON_HOST_PLATFORM`         | `wasix-wasm32`                              | The interpreter reports its platform as `wasi_0_0_0_wasm32`, under which pip takes none of the `wasix_wasm32` wheels and tries to build numpy and the like from source. |
 | `PIP_EXTRA_INDEX_URL`           | `https://python-registry.wasix.org/simple/` | The WASIX wheel index, next to PyPI.                                                                                                                                    |
 | `PIP_PREFER_BINARY`             | `1`                                         | Otherwise pip takes a newer sdist on PyPI over the index's wheel of the previous release, and fails to build it.                                                        |

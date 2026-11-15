@@ -113,7 +113,12 @@ CLICKHOUSE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/opt/clickhouse/bin"'
 # (`pytest`).
 PYTHON_PREFIX="/nix/store/wf0002v5izqcb7kg59n8cilx58lcp373-python3-static-wasm32-unknown-wasi-3.13.15"
 # What `pip install` and pytest need here (README.md, "Python"):
-#   PATH  the default plus where pip puts console scripts.
+#   PATH  the default plus where pip puts console scripts: the user site's
+#     first, then the interpreter's.
+#   PYTHONUSERBASE  the user site, /root/.local as on Linux. CPython on
+#     WASIX has no user base without it (site.py: no home directories
+#     there), so `pip install --user` refused ("User site-packages are
+#     disabled") and `deps: [pip]` had to set it.
 #   _PYTHON_HOST_PLATFORM  the interpreter calls its platform
 #     `wasi_0_0_0_wasm32`, under which pip takes none of the `wasix_wasm32`
 #     wheels and builds numpy and the like from source, which cannot work.
@@ -128,7 +133,8 @@ PYTHON_PREFIX="/nix/store/wf0002v5izqcb7kg59n8cilx58lcp373-python3-static-wasm32
 #   PYTEST_ADDOPTS  pytest's faulthandler plugin fails to start ("Value too
 #     large for data type"). pytest adds this to a repository's own
 #     `addopts` rather than replacing them.
-PYTHON_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:'"$PYTHON_PREFIX"'/bin",
+PYTHON_ENV='"PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin:'"$PYTHON_PREFIX"'/bin",
+    "PYTHONUSERBASE": "/root/.local",
     "_PYTHON_HOST_PLATFORM": "wasix-wasm32",
     "PIP_EXTRA_INDEX_URL": "https://python-registry.wasix.org/simple/",
     "PIP_PREFER_BINARY": "1",
@@ -341,7 +347,8 @@ for env in "$@"; do
       # 3.13.16: bash passes an argument with a line feed in it whole (#1003).
       # 3.13.17: and so does sed's `e` command (#1022).
       # 3.13.18: and Git.
-      build_env python 3.13.18 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
+      # 3.13.19: and `pip install --user`, its commands on PATH.
+      build_env python 3.13.19 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     php)

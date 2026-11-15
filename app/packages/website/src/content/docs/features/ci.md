@@ -59,7 +59,7 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
 | `env:postgres@18`              | the same as `env:bash@5`, plus PostgreSQL 18.4, for a job's `services:`          |
 
-In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not, and `python -m venv` is not available: packages install into the job's own copy of Python. pip downloads while the job runs, so leave the job's network on (no `network: false`).
+In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv`. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
 In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
 

@@ -378,6 +378,32 @@ func main() {
 	fmt.Println(resp.Status)
 }
 EOF
+# A local package index for the pip jobs that have no network: one wheel,
+# made here with the standard library, with a module, a `__main__` and a
+# console script (`iwci-hello`), in a directory pip reads with
+# `--no-index --find-links`.
+mkdir -p "$repo/py/wheels"
+python3 - "$repo/py/wheels" <<'PY'
+import base64, hashlib, sys, zipfile
+dist, version = "iwci_hello", "1.0"
+info = f"{dist}-{version}.dist-info"
+files = {
+    f"{dist}/__init__.py": 'def main():\n    print("hello from iwci-hello")\n',
+    f"{dist}/__main__.py": "from iwci_hello import main\n\nmain()\n",
+    f"{info}/METADATA": f"Metadata-Version: 2.1\nName: iwci-hello\nVersion: {version}\n",
+    f"{info}/WHEEL": "Wheel-Version: 1.0\nGenerator: iwci-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+    f"{info}/entry_points.txt": "[console_scripts]\niwci-hello = iwci_hello:main\n",
+}
+record = []
+with zipfile.ZipFile(f"{sys.argv[1]}/{dist}-{version}-py3-none-any.whl", "w") as whl:
+    for name, text in files.items():
+        data = text.encode()
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        record.append(f"{name},sha256={digest},{len(data)}")
+        whl.writestr(name, data)
+    record.append(f"{info}/RECORD,,")
+    whl.writestr(f"{info}/RECORD", "\n".join(record) + "\n")
+PY
 # A Python project installed by `deps: [pip]`: requests and what it needs
 # from PyPI, and numpy as Wasmer's WASIX wheel, in pip-compile's format
 # with the WASIX wheel's hash beside PyPI's sdist (README, "WASIX wheels in
@@ -3345,6 +3371,45 @@ jobs:
         run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
         ready: { port: 7002 }
     run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
+  # pip's three ways to keep packages apart from the interpreter's own, from
+  # the local wheel and with no network: the user site, whose console
+  # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
+  # environment of copies (`--copies`), with pip from ensurepip.
+  pip-user-passes:
+    using: env:python@3.13
+    network: false
+    env: { PIP_NO_INDEX: "1", PIP_FIND_LINKS: /app/py/wheels }
+    run: |
+      test "$PYTHONUSERBASE" = /root/.local
+      pip install --user iwci-hello
+      test "$(iwci-hello)" = "hello from iwci-hello"
+      test "$(command -v iwci-hello)" = /root/.local/bin/iwci-hello
+      python -c 'import iwci_hello, site; assert iwci_hello.__file__.startswith(site.getusersitepackages()), iwci_hello.__file__'
+      pip list --user | grep -q '^iwci-hello '
+  pip-target-passes:
+    using: env:python@3.13
+    network: false
+    env: { PIP_NO_INDEX: "1", PIP_FIND_LINKS: /app/py/wheels }
+    run: |
+      pip install --target /tmp/libs iwci-hello
+      test "$(PYTHONPATH=/tmp/libs python -m iwci_hello)" = "hello from iwci-hello"
+      if python -c 'import iwci_hello' 2>/dev/null; then exit 1; fi
+  venv-passes:
+    using: env:python@3.13
+    network: false
+    timeout: 5m
+    env: { PIP_NO_INDEX: "1", PIP_FIND_LINKS: /app/py/wheels }
+    run: |
+      python -m venv --copies /tmp/venv
+      /tmp/venv/bin/pip install iwci-hello
+      test "$(/tmp/venv/bin/iwci-hello)" = "hello from iwci-hello"
+      test "$(/tmp/venv/bin/python -c 'import sys; print(sys.prefix)')" = /tmp/venv
+      source /tmp/venv/bin/activate
+      test "$(command -v python)" = /tmp/venv/bin/python
+      test "$(iwci-hello)" = "hello from iwci-hello"
+      # Not the interpreter's own: outside the venv it is not there.
+      deactivate
+      if python -c 'import iwci_hello' 2>/dev/null; then exit 1; fi
   # Git is on PATH here too, and Python can run it.
   git-passes:
     using: env:python@3.13
