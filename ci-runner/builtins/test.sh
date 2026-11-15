@@ -3374,7 +3374,8 @@ jobs:
   # pip's three ways to keep packages apart from the interpreter's own, from
   # the local wheel and with no network: the user site, whose console
   # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
-  # environment of copies (`--copies`), with pip from ensurepip.
+  # environment of copies (`--copies`), with pip from ensurepip, which
+  # `venv` here does not run by itself.
   pip-user-passes:
     using: env:python@3.13
     network: false
@@ -3401,6 +3402,7 @@ jobs:
     env: { PIP_NO_INDEX: "1", PIP_FIND_LINKS: /app/py/wheels }
     run: |
       python -m venv --copies /tmp/venv
+      /tmp/venv/bin/python -m ensurepip --default-pip
       /tmp/venv/bin/pip install iwci-hello
       test "$(/tmp/venv/bin/iwci-hello)" = "hello from iwci-hello"
       test "$(/tmp/venv/bin/python -c 'import sys; print(sys.prefix)')" = /tmp/venv

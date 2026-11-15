@@ -1679,7 +1679,8 @@ job's own copy. To keep a set apart:
 - **A directory**: `pip install --target <dir> <package>`, then
   `PYTHONPATH=<dir>`.
 - **A virtual environment of copies**: `python -m venv --copies .venv`
-  works, with pip (from `ensurepip`) and its `activate` script. Without
+  works, and its `activate` script; venv does not install pip into it here,
+  so run `.venv/bin/python -m ensurepip --default-pip` after it. Without
   `--copies` it fails: venv links the interpreter, and a command run
   through a symbolic link fails here (#1199). virtualenv works as well
   (`pip install virtualenv`, then `virtualenv .venv`).
