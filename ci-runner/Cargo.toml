@@ -7,6 +7,7 @@ members = [
   "crates/iwci-git",
   "crates/iwci-deps",
   "crates/iwci-runtime",
+  "crates/iwci-sandbox",
   "crates/iwci",
 ]
 # The builtin tools build for wasm32-wasip1 with their own lockfiles, and
