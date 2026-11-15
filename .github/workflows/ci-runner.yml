@@ -71,9 +71,13 @@ jobs:
   # are tested by ci-runner-builtins.yml.
   # The `node` feature links V8, so it builds on its own: on ARM64 that is
   # the ARM64 build of the bridge's V8, its `c_char` and its libatomic,
-  # none of which the x86 release would notice breaking.
+  # none of which the x86 release would notice breaking. It also runs the
+  # tests of the crates the feature changes, built as a release is: the
+  # feature turns on more than the bridge (wasmer-napi enables
+  # wasmer-wasix's host features for the whole build), so a test can pass
+  # in the job above and fail here (#1157).
   node-arm64:
-    name: Build with Node on ARM64
+    name: Build and test with Node on ARM64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     defaults:
@@ -105,6 +109,11 @@ jobs:
         run: |
           cargo build -p iwci --features node
           ./target/debug/iwci version
+
+      # Without fixtures, like `cargo test` in the job above: the tests that
+      # need a built environment skip here and run in ci-runner-builtins.yml.
+      - name: cargo test --features node
+        run: cargo test -p iwci -p iwci-runtime --features iwci/node
 
   builtins:
     name: Builtins (gofmt, bash, tools)

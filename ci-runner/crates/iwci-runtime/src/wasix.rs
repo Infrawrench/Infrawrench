@@ -104,6 +104,9 @@ const WASIX_STACK: usize = 64 << 20;
 pub(crate) struct WasixShared {
     pub(crate) store: Arc<ModuleStore>,
     pub(crate) tasks: Arc<dyn VirtualTaskManager>,
+    /// The async runtime `tasks` runs on, entered where wasmer-wasix reads
+    /// the ambient one ([`JobRuntime::new`]).
+    tokio: tokio::runtime::Handle,
     /// Parsed packages, keyed by the webc digest and the digests of the set
     /// they were resolved against (a package's dependencies come from that
     /// set). Only while a job uses them and for [`KEEP_PARSED`] after: they
@@ -121,12 +124,17 @@ pub(crate) struct WasixShared {
 }
 
 impl WasixShared {
-    pub(crate) fn new(store: Arc<ModuleStore>, tasks: Arc<dyn VirtualTaskManager>) -> Self {
+    pub(crate) fn new(
+        store: Arc<ModuleStore>,
+        tasks: Arc<dyn VirtualTaskManager>,
+        tokio: tokio::runtime::Handle,
+    ) -> Self {
         // A guest's CPU clocks are its own, not the host's (#1038).
         wasmer_wasix::set_cpu_clocks(crate::stall::guest_cpu);
         Self {
             store,
             tasks,
+            tokio,
             packages: Recent::default(),
             containers: Recent::default(),
             outside: None,
@@ -240,6 +248,12 @@ impl JobRuntime {
         services: &[String],
     ) -> Self {
         crate::signals::install();
+        // With the `node` feature, wasmer-napi turns on wasmer-wasix's host
+        // networking, and `PluggableRuntime::new` then makes a host network
+        // (replaced below) that takes the async runtime of the calling
+        // thread and panics where there is none. Enter ours, so this does
+        // not depend on where it is called from (#1157).
+        let _enter = shared.tokio.enter();
         // The shared threads, with the job's tasks counted by its meter
         // (stall.rs).
         let mut inner = PluggableRuntime::new(Arc::new(JobTasks::new(shared.tasks.clone(), cpu)));
