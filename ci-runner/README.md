@@ -1726,9 +1726,9 @@ platform, and the exported file is where the WASIX wheels come in (below).
 What the installer does with it:
 
 - **Markers.** Each entry's markers are evaluated for `env:python`
-  (CPython 3.13.15, `sys_platform` `wasi`, `platform_machine` `wasm32`) and
-  the entries that do not hold are left out, as pip would leave them out
-  there.
+  (CPython 3.13.15, `sys_platform` `wasix`, `platform_system` `wasi`,
+  `platform_machine` `wasm32`) and the entries that do not hold are left
+  out, as pip would leave them out there.
 - **Which file.** A requirements entry's files are looked up on the file's
   own `--index-url` and `--extra-index-url`, then on PyPI and
   `https://python-registry.wasix.org/simple/`; a `pylock.toml` names its
