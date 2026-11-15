@@ -428,9 +428,274 @@
              },
          }
      }
+--- /dev/null
++++ b/src/fs/locks.rs
+@@ -0,0 +1,254 @@
++//! iwci patch (#1216): advisory file locks between the processes of one
++//! control plane, which is every process a job's command starts.
++//!
++//! WASIX has no file locking, so a C library's `flock` and `fcntl(F_SETLK)`
++//! had nothing to call. Two kinds are kept here, independently of each
++//! other as on Linux:
++//!
++//! - **`flock` locks** belong to an open file description: every descriptor
++//!   `dup` or a fork made from the one that was opened shares it (they share
++//!   its offset, which is what identifies it here). Such a lock is released
++//!   by `LOCK_UN`, or once no descriptor of that description is left in any
++//!   process.
++//! - **Record locks** (`fcntl`'s `F_SETLK`, `F_SETLKW`, `F_GETLK`) belong to
++//!   a process and cover a byte range. A process never conflicts with
++//!   itself; its locks on a file are released when it closes any descriptor
++//!   of that file, or when it exits.
++//!
++//! A file is known by its path in the job's file system. A lock whose owner
++//! has gone (a description with no descriptors left, a process that exited)
++//! is dropped the next time the file's locks are looked at, so a waiter
++//! polls rather than being woken.
++
++use std::collections::HashMap;
++use std::path::{Path, PathBuf};
++use std::sync::atomic::AtomicU64;
++use std::sync::{Arc, Mutex, Weak};
++
++use wasmer_wasix_types::wasi::Errno;
++
++use crate::os::task::{OwnedTaskStatus, process::WasiProcessId};
++
++/// The locks of every file of one control plane.
++#[derive(Debug, Default)]
++pub struct FileLocks {
++    files: Mutex<HashMap<PathBuf, LocksOfFile>>,
++}
++
++#[derive(Debug, Default)]
++struct LocksOfFile {
++    flocks: Vec<Flock>,
++    records: Vec<Record>,
++}
++
++/// A `flock` lock, held by an open file description.
++#[derive(Debug)]
++struct Flock {
++    holder: Weak<AtomicU64>,
++    exclusive: bool,
++}
++
++/// A record lock, held by a process over `[start, end)`.
++#[derive(Debug, Clone)]
++struct Record {
++    pid: WasiProcessId,
++    alive: Weak<OwnedTaskStatus>,
++    start: u64,
++    end: u64,
++    write: bool,
++}
++
++/// What a `flock` call asks for.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum FlockOp {
++    Shared,
++    Exclusive,
++    Unlock,
++}
++
++/// The type of a record lock (`F_RDLCK`, `F_WRLCK`, `F_UNLCK`).
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum RecordType {
++    Read,
++    Write,
++    Unlock,
++}
++
++/// A record lock in another process's way, as `F_GETLK` reports it.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct Conflict {
++    pub write: bool,
++    pub start: u64,
++    /// Exclusive; `u64::MAX` is "to the end of the file and beyond".
++    pub end: u64,
++    pub pid: WasiProcessId,
++}
++
++/// The process a record lock is asked for by.
++#[derive(Debug, Clone)]
++pub struct RecordOwner {
++    pub pid: WasiProcessId,
++    pub alive: Weak<OwnedTaskStatus>,
++}
++
++impl Flock {
++    fn held(&self) -> bool {
++        self.holder.strong_count() > 0
++    }
++}
++
++impl Record {
++    fn held(&self) -> bool {
++        self.alive.upgrade().is_some_and(|status| !status.status().is_finished())
++    }
++
++    fn overlaps(&self, start: u64, end: u64) -> bool {
++        self.start < end && start < self.end
++    }
++}
++
++impl LocksOfFile {
++    fn forget_released(&mut self) {
++        self.flocks.retain(Flock::held);
++        self.records.retain(Record::held);
++    }
++
++    fn is_empty(&self) -> bool {
++        self.flocks.is_empty() && self.records.is_empty()
++    }
++}
++
++impl FileLocks {
++    /// Takes, changes or releases `holder`'s `flock` lock on `file`.
++    /// `Err(Errno::Again)` when another description holds one in the way;
++    /// the caller waits and asks again for a blocking lock.
++    pub fn flock(&self, file: &Path, holder: &Arc<AtomicU64>, op: FlockOp) -> Result<(), Errno> {
++        let mut files = self.files.lock().unwrap();
++        let locks = files.entry(file.to_path_buf()).or_default();
++        locks.forget_released();
++        let mine = |f: &Flock| std::ptr::eq(f.holder.as_ptr(), Arc::as_ptr(holder));
++        if op == FlockOp::Unlock {
++            locks.flocks.retain(|f| !mine(f));
++        } else {
++            let exclusive = op == FlockOp::Exclusive;
++            if locks
++                .flocks
++                .iter()
++                .any(|f| !mine(f) && (f.exclusive || exclusive))
++            {
++                return Err(Errno::Again);
++            }
++            match locks.flocks.iter_mut().find(|f| mine(f)) {
++                Some(held) => held.exclusive = exclusive,
++                None => locks.flocks.push(Flock {
++                    holder: Arc::downgrade(holder),
++                    exclusive,
++                }),
++            }
++        }
++        if locks.is_empty() {
++            files.remove(file);
++        }
++        Ok(())
++    }
++
++    /// The first record lock of another process that `[start, end)` of type
++    /// `write` would conflict with, if any (`F_GETLK`).
++    pub fn conflicting_record(
++        &self,
++        file: &Path,
++        pid: WasiProcessId,
++        start: u64,
++        end: u64,
++        write: bool,
++    ) -> Option<Conflict> {
++        let mut files = self.files.lock().unwrap();
++        let locks = files.get_mut(file)?;
++        locks.forget_released();
++        locks
++            .records
++            .iter()
++            .find(|r| r.pid != pid && r.overlaps(start, end) && (r.write || write))
++            .map(|r| Conflict {
++                write: r.write,
++                start: r.start,
++                end: r.end,
++                pid: r.pid,
++            })
++    }
++
++    /// Sets `owner`'s record lock over `[start, end)` (`F_SETLK`), replacing
++    /// whatever of its own it held there, or releases that range.
++    /// `Err(Errno::Again)` when another process holds a lock in the way.
++    pub fn set_record(
++        &self,
++        file: &Path,
++        owner: &RecordOwner,
++        start: u64,
++        end: u64,
++        kind: RecordType,
++    ) -> Result<(), Errno> {
++        if start >= end {
++            return Err(Errno::Inval);
++        }
++        let mut files = self.files.lock().unwrap();
++        let locks = files.entry(file.to_path_buf()).or_default();
++        locks.forget_released();
++        if kind != RecordType::Unlock {
++            let write = kind == RecordType::Write;
++            if locks
++                .records
++                .iter()
++                .any(|r| r.pid != owner.pid && r.overlaps(start, end) && (r.write || write))
++            {
++                return Err(Errno::Again);
++            }
++        }
++        // What the owner held in the range goes; what it held either side
++        // of it stays.
++        let mut kept = Vec::with_capacity(locks.records.len() + 2);
++        for record in locks.records.drain(..) {
++            if record.pid != owner.pid || !record.overlaps(start, end) {
++                kept.push(record);
++                continue;
++            }
++            if record.start < start {
++                kept.push(Record {
++                    end: start,
++                    ..record.clone()
++                });
++            }
++            if record.end > end {
++                kept.push(Record { start: end, ..record });
++            }
++        }
++        if kind != RecordType::Unlock {
++            kept.push(Record {
++                pid: owner.pid,
++                alive: owner.alive.clone(),
++                start,
++                end,
++                write: kind == RecordType::Write,
++            });
++        }
++        locks.records = kept;
++        if locks.is_empty() {
++            files.remove(file);
++        }
++        Ok(())
++    }
++
++    /// Releases every record lock `pid` holds on `file`: it closed a
++    /// descriptor of it.
++    pub fn release_records(&self, file: &Path, pid: WasiProcessId) {
++        let mut files = self.files.lock().unwrap();
++        if let Some(locks) = files.get_mut(file) {
++            locks.records.retain(|r| r.pid != pid);
++            locks.forget_released();
++            if locks.is_empty() {
++                files.remove(file);
++            }
++        }
++    }
++}
++
 --- a/src/fs/mod.rs
 +++ b/src/fs/mod.rs
-@@ -35,6 +35,7 @@
+@@ -17,6 +17,7 @@
+ mod fd;
+ mod fd_list;
+ mod inode_guard;
++mod locks;
+ mod notification;
+ mod path_posix;
+ 
+@@ -35,6 +36,7 @@
  
  use crate::{
      net::socket::InodeSocketKind,
@@ -438,7 +703,15 @@
      state::{Stderr, Stdin, Stdout},
  };
  use futures::{Future, future::BoxFuture};
-@@ -575,6 +576,14 @@
+@@ -54,6 +56,7 @@
+ 
+ pub(crate) use self::fd::VirtualFileLock;
+ pub use self::fd::{Fd, FdInner, InodeVal, Kind, SymlinkKind};
++pub use self::locks::{Conflict, FileLocks, FlockOp, RecordOwner, RecordType};
+ pub(crate) use self::fd_list::FdList;
+ pub(crate) use self::inode_guard::{
+     InodeValFilePollGuard, InodeValFilePollGuardJoin, InodeValFilePollGuardMode,
+@@ -575,6 +578,14 @@
      pub root_inode: InodeGuard,
      pub has_unioned: Mutex<HashSet<PackageId>>,
      ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
@@ -453,7 +726,7 @@
  
      // TODO: remove
      // using an atomic is a hack to enable customization after construction,
-@@ -709,6 +718,8 @@
+@@ -709,6 +720,8 @@
              root_inode: self.root_inode.clone(),
              has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
              ephemeral_symlinks: self.ephemeral_symlinks.clone(),
@@ -462,7 +735,7 @@
              init_preopens: self.init_preopens.clone(),
              init_vfs_preopens: self.init_vfs_preopens.clone(),
          }
-@@ -735,6 +746,9 @@
+@@ -735,6 +748,9 @@
              let mut flush_targets = Vec::new();
              for fd in to_close {
                  let outcome = Self::close_fd_locked(&mut fd_map, fd);
@@ -472,7 +745,7 @@
                  if let Some(target) = outcome.flush_target {
                      flush_targets.push(target);
                  }
-@@ -869,6 +883,8 @@
+@@ -869,6 +885,8 @@
              root_inode,
              has_unioned: Mutex::new(HashSet::new()),
              ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
@@ -481,7 +754,7 @@
              init_preopens: Default::default(),
              init_vfs_preopens: Default::default(),
          };
-@@ -1096,7 +1112,7 @@
+@@ -1096,7 +1114,7 @@
  
      /// refresh size from filesystem
      pub fn filestat_resync_size(&self, fd: WasiFd) -> Result<Filesize, Errno> {
@@ -490,7 +763,7 @@
          let mut guard = inode.write();
          match guard.deref_mut() {
              Kind::File { handle, .. } => {
-@@ -1758,7 +1774,13 @@
+@@ -1758,7 +1776,13 @@
          path: &str,
          follow_symlinks: bool,
      ) -> Result<InodeGuard, Errno> {
@@ -505,7 +778,7 @@
          let mut symlink_count = 0;
          self.get_inode_at_path_inner(
              inodes,
-@@ -1797,7 +1819,7 @@
+@@ -1797,7 +1821,7 @@
      ) -> Result<(InodeGuard, String), Errno> {
          let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
          if parent_dir.as_str().is_empty() {
@@ -514,7 +787,7 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1816,9 +1838,51 @@
+@@ -1816,9 +1840,51 @@
              Ok(Self::virtual_root_fd(self.root_inode.clone()))
          } else {
              ret
@@ -530,9 +803,9 @@
 +            Ok(Self::virtual_root_fd(self.root_inode.clone()))
 +        } else {
 +            self.get_dir_fd(fd)
-         }
-     }
- 
++        }
++    }
++
 +    /// The directory a path call given `fd` resolves a relative path from:
 +    /// what is on `fd`, unless that is not a directory and a preopen used to
 +    /// be there, in which case that preopen (#1019).
@@ -550,13 +823,13 @@
 +            && matches!(*entry.inode.read(), Kind::Dir { .. } | Kind::Root { .. })
 +        {
 +            return current;
-+        }
+         }
 +        match self.displaced_preopens.read().unwrap().get(&fd) {
 +            Some(preopen) => Ok(preopen.clone()),
 +            None => current,
 +        }
-+    }
-+
+     }
+ 
 +    /// Forgets the preopens `dup2_at` kept, with the descriptors they were
 +    /// kept for.
 +    pub(crate) fn clear_displaced_preopens(&self) {
@@ -566,7 +839,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,68 +1897,100 @@
+@@ -1833,68 +1899,100 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -707,7 +980,7 @@
                  },
                  _ => Filetype::Unknown,
              },
-@@ -1905,10 +2001,21 @@
+@@ -1905,10 +2003,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -730,7 +1003,7 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2133,7 @@
+@@ -2026,6 +2135,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -738,7 +1011,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2202,7 @@
+@@ -2094,6 +2204,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -746,7 +1019,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2241,7 @@
+@@ -2132,6 +2243,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -754,7 +1027,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2281,29 @@
+@@ -2171,18 +2283,29 @@
                  return Ok(None);
              }
  
@@ -787,7 +1060,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2720,7 @@
+@@ -2599,6 +2722,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -795,7 +1068,7 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,9 +2796,26 @@
+@@ -2674,9 +2798,26 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -849,6 +1122,26 @@
      /// Bad handle
      #[error("bad handle")]
      BadHandle,
+@@ -547,6 +555,9 @@
+         "fd_renumber" => Function::new_typed_with_env(&mut store, env, fd_renumber),
+         "fd_dup" => Function::new_typed_with_env(&mut store, env, fd_dup::<Memory32>),
+         "fd_dup2" => Function::new_typed_with_env(&mut store, env, fd_dup2::<Memory32>),
++        // iwci patch (#1216): file locking (src/syscalls/wasix/iwci_fd_lock.rs).
++        "iwci_fd_flock" => Function::new_typed_with_env(&mut store, env, iwci_fd_flock),
++        "iwci_fd_record_lock" => Function::new_typed_with_env(&mut store, env, iwci_fd_record_lock::<Memory32>),
+         "fd_fdflags_get" => Function::new_typed_with_env(&mut store, env, fd_fdflags_get::<Memory32>),
+         "fd_fdflags_set" => Function::new_typed_with_env(&mut store, env, fd_fdflags_set),
+         "fd_event" => Function::new_typed_with_env(&mut store, env, fd_event::<Memory32>),
+@@ -696,6 +707,9 @@
+         "fd_renumber" => Function::new_typed_with_env(&mut store, env, fd_renumber),
+         "fd_dup" => Function::new_typed_with_env(&mut store, env, fd_dup::<Memory64>),
+         "fd_dup2" => Function::new_typed_with_env(&mut store, env, fd_dup2::<Memory64>),
++        // iwci patch (#1216): file locking (src/syscalls/wasix/iwci_fd_lock.rs).
++        "iwci_fd_flock" => Function::new_typed_with_env(&mut store, env, iwci_fd_flock),
++        "iwci_fd_record_lock" => Function::new_typed_with_env(&mut store, env, iwci_fd_record_lock::<Memory64>),
+         "fd_fdflags_get" => Function::new_typed_with_env(&mut store, env, fd_fdflags_get::<Memory64>),
+         "fd_fdflags_set" => Function::new_typed_with_env(&mut store, env, fd_fdflags_set),
+         "fd_event" => Function::new_typed_with_env(&mut store, env, fd_event::<Memory64>),
 --- a/src/net/socket.rs
 +++ b/src/net/socket.rs
 @@ -509,11 +509,10 @@
@@ -931,7 +1224,36 @@
                          _ => return Poll::Ready(Err(Errno::Notsup)),
 --- a/src/os/task/control_plane.rs
 +++ b/src/os/task/control_plane.rs
-@@ -132,6 +132,18 @@
+@@ -75,6 +75,9 @@
+ 
+     /// Mutable state.
+     mutable: RwLock<MutableState>,
++
++    /// iwci patch (#1216): the advisory file locks its processes hold.
++    file_locks: Arc<crate::fs::FileLocks>,
+ }
+ 
+ #[derive(Debug)]
+@@ -96,10 +99,18 @@
+                     process_seed: 0,
+                     processes: Default::default(),
+                 }),
++                file_locks: Default::default(),
+             }),
+         }
+     }
+ 
++    /// iwci patch (#1216): the advisory file locks (`flock`, `fcntl` record
++    /// locks) of this control plane's processes, which only ever arbitrate
++    /// between them.
++    pub fn file_locks(&self) -> &Arc<crate::fs::FileLocks> {
++        &self.state.file_locks
++    }
++
+     pub fn handle(&self) -> WasiControlPlaneHandle {
+         WasiControlPlaneHandle::new(&self.state)
+     }
+@@ -132,6 +143,18 @@
      // FIXME: De-register terminated processes!
      // Currently they just accumulate.
      pub fn new_process(&self, module_hash: ModuleHash) -> Result<WasiProcess, ControlPlaneError> {
@@ -950,7 +1272,7 @@
          if let Some(max) = self.state.config.max_task_count
              && self.active_task_count() >= max
          {
-@@ -142,6 +154,9 @@
+@@ -142,6 +165,9 @@
  
          // Create the process first to do all the allocations before locking.
          let mut proc = WasiProcess::new(WasiProcessId::from(0), module_hash, self.handle());
@@ -960,7 +1282,7 @@
  
          let mut mutable = self.state.mutable.write().unwrap();
  
-@@ -167,6 +182,19 @@
+@@ -167,6 +193,19 @@
              .get(&pid)
              .cloned()
      }
@@ -1635,6 +1957,33 @@
      let unix_clock_id = match clock_id {
          Snapshot0Clockid::Monotonic => CLOCK_MONOTONIC,
          Snapshot0Clockid::ProcessCputimeId => CLOCK_PROCESS_CPUTIME_ID,
+--- a/src/syscalls/wasi/fd_close.rs
++++ b/src/syscalls/wasi/fd_close.rs
+@@ -42,6 +42,13 @@
+     let env = ctx.data();
+     let (_, mut state) = unsafe { env.get_memory_and_wasi_state(&ctx, 0) };
+ 
++    // iwci patch (#1216): a process's record locks on a file go when it
++    // closes any descriptor of it.
++    let locked_file = state.fs.get_fd(fd).ok().and_then(|fd| match fd.inode.read().deref() {
++        Kind::File { path, .. } | Kind::Dir { path, .. } => Some(path.clone()),
++        _ => None,
++    });
++
+     let outcome = state.fs.close_fd_and_capture_flush(fd);
+ 
+     if outcome.skipped_preopen {
+@@ -53,6 +60,10 @@
+         return Ok(Errno::Badf);
+     }
+ 
++    if let (Some(path), Some(plane)) = (locked_file, env.process.compute.upgrade()) {
++        plane.file_locks().release_records(&path, env.process.pid());
++    }
++
+     flush_captured_handle(env, outcome.flush_target)?;
+ 
+     #[cfg(feature = "journal")]
 --- a/src/syscalls/wasi/fd_fdstat_get.rs
 +++ b/src/syscalls/wasi/fd_fdstat_get.rs
 @@ -19,7 +19,8 @@
@@ -2255,6 +2604,232 @@
      };
      if st_nlink == 0 {
          {
+--- /dev/null
++++ b/src/syscalls/wasix/iwci_fd_lock.rs
+@@ -0,0 +1,205 @@
++//! iwci patch (#1216): advisory file locking, which WASIX has no syscall
++//! for. `iwci_fd_flock` is `flock(2)` and `iwci_fd_record_lock` is
++//! `fcntl(2)`'s `F_GETLK`, `F_SETLK` and `F_SETLKW`; a C library calls them
++//! where it would make those system calls. The locks are kept by the
++//! process's control plane (`crate::fs::FileLocks`), so they arbitrate
++//! between the processes of one job's command and nothing else.
++
++use std::{
++    path::PathBuf,
++    sync::{Arc, atomic::AtomicU64},
++    time::Duration,
++};
++
++use super::*;
++use crate::{
++    fs::{FileLocks, FlockOp, RecordOwner, RecordType},
++    syscalls::*,
++};
++
++/// How often a blocking lock looks again: a lock is released when its
++/// holder closes it or exits, which nothing announces.
++const RETRY: Duration = Duration::from_millis(10);
++
++// The C library's values (musl's, which WASIX's is).
++const LOCK_SH: u32 = 1;
++const LOCK_EX: u32 = 2;
++const LOCK_NB: u32 = 4;
++const LOCK_UN: u32 = 8;
++const F_RDLCK: i16 = 0;
++const F_WRLCK: i16 = 1;
++const F_UNLCK: i16 = 2;
++const SEEK_SET: i16 = 0;
++const SEEK_CUR: i16 = 1;
++const SEEK_END: i16 = 2;
++
++/// `struct flock` as wasm32 and wasm64 lay it out: `short l_type`, `short
++/// l_whence`, `off_t l_start` (at 8), `off_t l_len` (at 16), `pid_t l_pid`
++/// (at 24), 32 bytes in all.
++const FLOCK_SIZE: usize = 32;
++
++/// What a lock on `fd` is taken on: the file's path, the open file
++/// description (its shared offset), and the file's size.
++fn lock_target(env: &WasiEnv, fd: WasiFd) -> Result<(PathBuf, Arc<AtomicU64>, u64), Errno> {
++    let state = env.state();
++    let fd = state.fs.get_fd(fd)?;
++    let guard = fd.inode.read();
++    let (path, size) = match guard.deref() {
++        Kind::File { path, handle, .. } => {
++            let size = match handle {
++                Some(handle) => handle.read().unwrap().size(),
++                None => fd.inode.stat.read().unwrap().st_size,
++            };
++            (path.clone(), size)
++        }
++        Kind::Dir { path, .. } => (path.clone(), 0),
++        _ => return Err(Errno::Inval),
++    };
++    Ok((path, fd.inner.offset.clone(), size))
++}
++
++fn file_locks(env: &WasiEnv) -> Result<Arc<FileLocks>, Errno> {
++    env.process
++        .compute
++        .upgrade()
++        .map(|plane| plane.file_locks().clone())
++        .ok_or(Errno::Nolck)
++}
++
++/// Waits a little before a blocking lock looks again; a signal ends the wait
++/// with `EINTR`, as it ends a blocked `flock` or `F_SETLKW` on Linux.
++fn wait_to_retry(ctx: &mut FunctionEnvMut<'_, WasiEnv>) -> Result<Result<(), Errno>, WasiError> {
++    let tasks = ctx.data().tasks().clone();
++    __asyncify(ctx, None, async move {
++        tasks.sleep_now(RETRY).await;
++        Ok(())
++    })
++}
++
++/// ### `iwci_fd_flock()`
++/// `flock(2)`: takes (`LOCK_SH`, `LOCK_EX`), or releases (`LOCK_UN`), the
++/// lock of `fd`'s open file description on its file, waiting for one in the
++/// way unless `LOCK_NB` is set (`EAGAIN` then).
++#[instrument(level = "trace", skip_all, fields(%fd, %op), ret)]
++pub fn iwci_fd_flock(
++    mut ctx: FunctionEnvMut<'_, WasiEnv>,
++    fd: WasiFd,
++    op: u32,
++) -> Result<Errno, WasiError> {
++    WasiEnv::do_pending_operations(&mut ctx)?;
++
++    let lock = match op & !LOCK_NB {
++        LOCK_SH => FlockOp::Shared,
++        LOCK_EX => FlockOp::Exclusive,
++        LOCK_UN => FlockOp::Unlock,
++        _ => return Ok(Errno::Inval),
++    };
++    let (path, holder, _) = wasi_try_ok!(lock_target(ctx.data(), fd));
++    let locks = wasi_try_ok!(file_locks(ctx.data()));
++    loop {
++        match locks.flock(&path, &holder, lock) {
++            Ok(()) => return Ok(Errno::Success),
++            Err(Errno::Again) if op & LOCK_NB == 0 => {
++                wasi_try_ok!(wait_to_retry(&mut ctx)?);
++            }
++            Err(err) => return Ok(err),
++        }
++    }
++}
++
++/// ### `iwci_fd_record_lock()`
++/// `fcntl(2)`'s record locks on `fd`'s file, owned by the calling process:
++/// `cmd` 0 is `F_GETLK`, 1 `F_SETLK` and 2 `F_SETLKW`; `lock` points at a
++/// `struct flock` (see [`FLOCK_SIZE`]). `F_SETLK` answers `EAGAIN` for a
++/// lock of another process in the way, `F_SETLKW` waits for it, and
++/// `F_GETLK` writes the first such lock back, or `F_UNLCK` for none.
++#[instrument(level = "trace", skip_all, fields(%fd, %cmd), ret)]
++pub fn iwci_fd_record_lock<M: MemorySize>(
++    mut ctx: FunctionEnvMut<'_, WasiEnv>,
++    fd: WasiFd,
++    cmd: u32,
++    lock: WasmPtr<u8, M>,
++) -> Result<Errno, WasiError> {
++    WasiEnv::do_pending_operations(&mut ctx)?;
++
++    let env = ctx.data();
++    let memory = unsafe { env.memory_view(&ctx) };
++    let slice = wasi_try_mem_ok!(lock.slice(&memory, wasi_try_ok!(to_offset::<M>(FLOCK_SIZE))));
++    let bytes = wasi_try_mem_ok!(slice.read_to_vec());
++    let short = |at: usize| i16::from_le_bytes([bytes[at], bytes[at + 1]]);
++    let long = |at: usize| i64::from_le_bytes(bytes[at..at + 8].try_into().unwrap());
++    let (kind, whence, l_start, l_len) = (short(0), short(2), long(8), long(16));
++
++    let (path, _, size) = wasi_try_ok!(lock_target(env, fd));
++    let base = match whence {
++        SEEK_SET => 0,
++        SEEK_CUR => {
++            let fd = wasi_try_ok!(env.state().fs.get_fd(fd));
++            fd.inner.offset.load(std::sync::atomic::Ordering::Acquire) as i64
++        }
++        SEEK_END => size as i64,
++        _ => return Ok(Errno::Inval),
++    };
++    // A negative length covers the bytes before `l_start`, as POSIX allows.
++    let Some(start) = base.checked_add(l_start) else {
++        return Ok(Errno::Overflow);
++    };
++    let (start, end) = match l_len {
++        0 => (start, u64::MAX),
++        len if len > 0 => (start, start.saturating_add(len) as u64),
++        len => (start + len, start as u64),
++    };
++    if start < 0 {
++        return Ok(Errno::Inval);
++    }
++    let start = start as u64;
++    let kind = match kind {
++        F_RDLCK => RecordType::Read,
++        F_WRLCK => RecordType::Write,
++        F_UNLCK => RecordType::Unlock,
++        _ => return Ok(Errno::Inval),
++    };
++    let locks = wasi_try_ok!(file_locks(env));
++    let pid = env.process.pid();
++
++    if cmd == 0 {
++        if kind == RecordType::Unlock {
++            return Ok(Errno::Inval);
++        }
++        let mut out = bytes.clone();
++        match locks.conflicting_record(&path, pid, start, end, kind == RecordType::Write) {
++            Some(conflict) => {
++                let kind = if conflict.write { F_WRLCK } else { F_RDLCK };
++                let len = if conflict.end == u64::MAX {
++                    0
++                } else {
++                    (conflict.end - conflict.start) as i64
++                };
++                out[0..2].copy_from_slice(&kind.to_le_bytes());
++                out[2..4].copy_from_slice(&SEEK_SET.to_le_bytes());
++                out[8..16].copy_from_slice(&(conflict.start as i64).to_le_bytes());
++                out[16..24].copy_from_slice(&len.to_le_bytes());
++                out[24..28].copy_from_slice(&(conflict.pid.raw() as i32).to_le_bytes());
++            }
++            None => out[0..2].copy_from_slice(&F_UNLCK.to_le_bytes()),
++        }
++        wasi_try_mem_ok!(slice.write_slice(&out));
++        return Ok(Errno::Success);
++    }
++    if cmd != 1 && cmd != 2 {
++        return Ok(Errno::Inval);
++    }
++    let owner = RecordOwner {
++        pid,
++        alive: Arc::downgrade(&env.process.finished),
++    };
++    loop {
++        match locks.set_record(&path, &owner, start, end, kind) {
++            Ok(()) => return Ok(Errno::Success),
++            Err(Errno::Again) if cmd == 2 => {
++                wasi_try_ok!(wait_to_retry(&mut ctx)?);
++            }
++            Err(err) => return Ok(err),
++        }
++    }
++}
+--- a/src/syscalls/wasix/mod.rs
++++ b/src/syscalls/wasix/mod.rs
+@@ -16,6 +16,7 @@
+ mod epoll_ctl;
+ mod epoll_wait;
+ mod fd_dup2;
++mod iwci_fd_lock;
+ mod fd_fdflags_get;
+ mod fd_fdflags_set;
+ mod fd_pipe;
+@@ -110,6 +111,7 @@
+ pub use epoll_ctl::*;
+ pub use epoll_wait::*;
+ pub use fd_dup2::*;
++pub use iwci_fd_lock::*;
+ pub use fd_fdflags_get::*;
+ pub use fd_fdflags_set::*;
+ pub use fd_pipe::*;
 --- a/src/syscalls/wasix/path_open2.rs
 +++ b/src/syscalls/wasix/path_open2.rs
 @@ -167,6 +167,19 @@

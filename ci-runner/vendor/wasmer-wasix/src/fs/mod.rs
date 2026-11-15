@@ -17,6 +17,7 @@
 mod fd;
 mod fd_list;
 mod inode_guard;
+mod locks;
 mod notification;
 mod path_posix;
 
@@ -55,6 +56,7 @@ use wasmer_wasix_types::{
 
 pub(crate) use self::fd::VirtualFileLock;
 pub use self::fd::{Fd, FdInner, InodeVal, Kind, SymlinkKind};
+pub use self::locks::{Conflict, FileLocks, FlockOp, RecordOwner, RecordType};
 pub(crate) use self::fd_list::FdList;
 pub(crate) use self::inode_guard::{
     InodeValFilePollGuard, InodeValFilePollGuardJoin, InodeValFilePollGuardMode,
