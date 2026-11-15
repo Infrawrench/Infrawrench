@@ -34,8 +34,11 @@ import { UserResourceType } from "./resources/user.js";
 // mark and is deliberately not used here.
 export const manifest = {
   id: "fireworks",
-  // Signed log URLs: the document says its signed URLs point at GCS, and the
-  // ones for logs do not name a host. Unconfirmed against a real response (#555).
+  // Signed log URLs (#555): the document calls them short-lived signed URLs
+  // without naming a host. A published `getBuildLogEndpoint` answer is a
+  // path-style Cloud Storage URL (`https://storage.googleapis.com/<bucket>/...`,
+  // signed by Fireworks' control plane); the wildcard covers a virtual-hosted
+  // bucket URL.
   egressHosts: ["api.fireworks.ai", "storage.googleapis.com", "*.storage.googleapis.com"],
   displayName: "Fireworks AI",
   description:

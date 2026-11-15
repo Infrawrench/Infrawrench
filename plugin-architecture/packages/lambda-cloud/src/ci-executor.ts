@@ -4,7 +4,7 @@
  * job ends.
  *
  * **Wire shapes verified against Lambda's OpenAPI document (1.10.0,
- * `cloud.lambda.ai/api/v1/openapi.json`) and docs, November 2026:**
+ * `cloud.lambda.com/api/v1/openapi.json`) and docs, November 2026:**
  * - `POST /instance-operations/launch`: `region_name`, `instance_type_name`,
  *   `ssh_key_names` ("currently, exactly one SSH key must be specified"),
  *   `name` (at most 64 characters), `hostname` (`^[a-z0-9][0-9a-z-]{0,62}$`),
@@ -92,7 +92,7 @@ export const LAMBDA_CI_EXECUTOR = {
   ],
   helpLink: {
     label: "Give the API key's identity the Workspace Member role",
-    url: "https://docs.lambda.ai/public-cloud/predefined-roles/",
+    url: "https://docs.lambda.com/public-cloud/predefined-roles/",
   },
 } as const satisfies CiExecutorDeclaration;
 

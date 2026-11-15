@@ -1,6 +1,6 @@
 /**
  * Lambda's mark, the two paths of the favicon served at
- * https://lambda.ai/hubfs/favicon-48x48-1.svg (a lambda inside a square
+ * https://lambda.com/hubfs/favicon-48x48-1.svg (a lambda inside a square
  * outline, white on black), unmodified apart from scaling the 36x36 mark onto
  * the 100x100 rounded rect the host expects.
  */

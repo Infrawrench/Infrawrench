@@ -15703,7 +15703,7 @@
   "6d10e7b31ce4b456": "Un service web, worker ou base de données Postgres gérée Koyeb",
   "597770962844ac33": "Un domaine attribué par Koyeb ou personnalisé, routé vers une application",
   "50213c158475ca45": "Un cluster Kubernetes surveillé par le Dynatrace Operator.",
-  "4852d0527b6f3633": "Une clé d'API Lambda Cloud, depuis la page API keys du tableau de bord Lambda Cloud (cloud.lambda.ai/api-keys), Generate API key. Les clés sont valables pour toute l'équipe et donnent un accès complet ; Lambda n'affiche la clé qu'une seule fois.",
+  "1652ec477c95980d": "Une clé d'API Lambda Cloud, depuis la page API keys du tableau de bord Lambda Cloud (cloud.lambda.com/api-keys), Generate API key. Les clés sont valables pour toute l'équipe et donnent un accès complet ; Lambda n'affiche la clé qu'une seule fois.",
   "6e484ccb45936277": "Une instance GPU à la demande Lambda Cloud",
   "6d83326ea2177030": "Un lease sur un secret dynamique (identifiants de base de données ou cloud et similaires) : date d'émission et d'expiration. Renouvelez-le ou révoquez-le. Lister les leases nécessite un jeton capable de sudo ; les 300 premiers sont affichés.",
   "b844464ac9c6b13e": "Une intégration native héritée (le prédécesseur des synchronisations de secrets). Listée pour que les existantes puissent être surveillées, resynchronisées et supprimées.",

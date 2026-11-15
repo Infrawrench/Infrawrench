@@ -26,7 +26,7 @@ describe("lambdaCloudRemediationCommands", () => {
       resource: res("filesystem", "398578a2336b49079e74043f0bd2cfe8"),
     });
     expect(commands.map((c) => c.command)).toEqual([
-      `curl -sS -X DELETE https://cloud.lambda.ai/api/v1/filesystems/398578a2336b49079e74043f0bd2cfe8 -H "Authorization: Bearer $LAMBDA_API_KEY"`,
+      `curl -sS -X DELETE https://cloud.lambda.com/api/v1/filesystems/398578a2336b49079e74043f0bd2cfe8 -H "Authorization: Bearer $LAMBDA_API_KEY"`,
     ]);
     expect(commands[0]?.destructive).toBe(true);
     expect(commands[0]?.placeholders?.map((p) => p.name)).toEqual(["LAMBDA_API_KEY"]);
@@ -34,7 +34,7 @@ describe("lambdaCloudRemediationCommands", () => {
 
   it("keeps a hostile id inside the quoted URL", () => {
     expect(lines({ kind: "orphan", reason: "r", resource: res("filesystem", "a'b") })).toEqual([
-      `! curl -sS -X DELETE 'https://cloud.lambda.ai/api/v1/filesystems/a'"'"'b' -H "Authorization: Bearer $LAMBDA_API_KEY"`,
+      `! curl -sS -X DELETE 'https://cloud.lambda.com/api/v1/filesystems/a'"'"'b' -H "Authorization: Bearer $LAMBDA_API_KEY"`,
     ]);
   });
 
