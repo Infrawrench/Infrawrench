@@ -10,6 +10,13 @@ export interface CiPushEvent {
   repoFullName: string;
   branch: string;
   sha: string;
+  /**
+   * The commit the branch was at before the push, which `paths:` filters
+   * diff against. `null` when there is none to compare with: a new branch,
+   * or a force push, whose old head the new one need not descend from and
+   * the remote may no longer serve.
+   */
+  baseSha: string | null;
   defaultBranch: string;
   actorLogin: string | null;
 }
@@ -47,6 +54,8 @@ function int(v: unknown): number | null {
 }
 
 const SHA = /^[0-9a-f]{40}$/;
+/** What GitHub sends as `before` for a branch that did not exist. */
+const NO_COMMIT = /^0+$/;
 const FULL_NAME = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
 
 /** The pull request actions that mean "there is new code to test". */
@@ -67,12 +76,20 @@ export function parseCiEvent(event: string | null | undefined, body: unknown): C
     const ref = str(o["ref"]);
     const sha = str(o["after"]);
     if (!ref?.startsWith("refs/heads/") || !sha || !SHA.test(sha)) return null;
+    const before = str(o["before"]);
+    const comparable =
+      before !== null &&
+      SHA.test(before) &&
+      !NO_COMMIT.test(before) &&
+      o["created"] !== true &&
+      o["forced"] !== true;
     return {
       kind: "push",
       installationId,
       repoFullName,
       branch: ref.slice("refs/heads/".length),
       sha,
+      baseSha: comparable ? before : null,
       defaultBranch,
       actorLogin: str(obj(o["sender"])?.["login"]),
     };

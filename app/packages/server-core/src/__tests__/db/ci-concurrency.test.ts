@@ -105,6 +105,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     proxy.pipelines.set(commit, pipelines(group, cancel));
     const accepted = await runs.acceptCiEvent({
       kind: "push",
+      baseSha: null,
       installationId,
       repoFullName: repo,
       branch,
@@ -381,6 +382,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     try {
       const accepted = await runs.acceptCiEvent({
         kind: "push",
+        baseSha: null,
         installationId,
         repoFullName: repo,
         branch: "skewed",

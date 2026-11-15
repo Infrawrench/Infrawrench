@@ -19,6 +19,7 @@ describe("parseCiEvent", () => {
       repoFullName: "acme/web",
       branch: "feature/x",
       sha: sha("a"),
+      baseSha: null,
       defaultBranch: "main",
       actorLogin: "octo",
     });
@@ -26,6 +27,29 @@ describe("parseCiEvent", () => {
     expect(parseCiEvent("push", { ...push, ref: "refs/tags/v1" })).toBeNull();
     expect(parseCiEvent("push", { ...push, after: "nope" })).toBeNull();
     expect(parseCiEvent("push", { ...push, installation: {} })).toBeNull();
+  });
+
+  it("gives a push the commit it moved the branch from, when the two compare", () => {
+    const push = {
+      installation: { id: 7 },
+      repository: repo,
+      ref: "refs/heads/main",
+      before: sha("c"),
+      after: sha("a"),
+      created: false,
+      forced: false,
+    };
+    const base = (body: unknown) => {
+      const ev = parseCiEvent("push", body);
+      return ev?.kind === "push" ? ev.baseSha : undefined;
+    };
+    expect(base(push)).toBe(sha("c"));
+    // A new branch has no earlier commit: GitHub sends forty zeros.
+    expect(base({ ...push, before: sha("0"), created: true })).toBeNull();
+    expect(base({ ...push, before: sha("0") })).toBeNull();
+    // A force push's old head may be unreachable, and is not what changed.
+    expect(base({ ...push, forced: true })).toBeNull();
+    expect(base({ ...push, before: "nope" })).toBeNull();
   });
 
   const pr = (head: unknown, action = "opened") => ({

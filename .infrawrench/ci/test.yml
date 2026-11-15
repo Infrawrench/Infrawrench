@@ -335,12 +335,38 @@ jobs:
         esac
       done
       node node_modules/prettier/bin/prettier.cjs --check --ignore-unknown --no-error-on-unmatched-pattern "${paths[@]}"
+    # Everything outside the packages but what Prettier has no parser for,
+    # which is most of what changes there: the runner's and the app server's
+    # Rust, the provider's Go, Terraform, shell scripts and the patches. With
+    # those in the key the job ran on nearly every commit to check the same
+    # seventy files. Only exclusions, so a kind of file not named here is
+    # still in the key: the list can cost a run it did not need, never skip
+    # one it did. .prettierrc and .prettierignore are among what is left. The
+    # provider's docs/ is the one directory left out for being in
+    # .prettierignore: tfplugindocs rewrites it with every schema change.
     task-cache:
       inputs:
         - "**"
         - "!app/packages/*/**"
         - "!plugin-architecture/packages/*/**"
         - "!plugingen/**"
+        - "!terraform-provider-infrawrench/docs/**"
+        - "!**/*.rs"
+        - "!**/*.go"
+        - "!**/*.toml"
+        - "!**/*.sh"
+        - "!**/*.tf"
+        - "!**/*.patch"
+        - "!**/*.sql"
+        - "!**/*.php"
+        - "!**/*.h"
+        - "!**/*.cc"
+        - "!**/*.cmake"
+        - "!**/*.txt"
+        - "!**/Cargo.lock"
+        - "!**/go.mod"
+        - "!**/go.sum"
+        - "!**/VERSION"
     timeout: 20m
     memory: 2GiB
 
@@ -449,21 +475,31 @@ jobs:
   # (KNOWLEDGE.md, "Editor extensions"): the VS Code extension's .vsix and
   # the Raycast extension's `ray build` output. Their typecheck and tests are
   # `check` and `test`. A job that keeps downloads cannot be task-cached, so
-  # `paths:` skips them when nothing they package changed. Each bundles
+  # `paths:` skips them when nothing they package changed: the extension
+  # itself, the two libraries it bundles (client-core, and plugin-base under
+  # it), what decides the versions and settings of what it is built with, and
+  # this pipeline. The app sends a push the commit the branch moved from, as
+  # it sends a pull request its base; a new branch or a force push has
+  # neither, and runs both. Each bundles
   # client-core's JavaScript, which `^bundle` hands them, with esbuild, whose
   # native binary cannot run here: each package lists the matching
   # esbuild-wasm, which node-preload.cjs hands them in its place.
   vscode:
     name: Package the VS Code extension
     packages: { only: [app/packages/vscode] }
-    paths: &extension-paths
+    paths:
       - app/packages/vscode/**
-      - app/packages/raycast/**
       - app/packages/client-core/**
       - plugin-architecture/packages/plugin-base/**
+      - "!**/__tests__/**"
+      - "!**/*.test.ts"
+      - "!**/*.test.tsx"
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
       - .infrawrench/ci/test.yml
       - .infrawrench/ci/node-preload.cjs
+      - .infrawrench/ci/stubs/**
     deps:
       - pnpm:
           only: [app/packages/vscode]
@@ -491,7 +527,19 @@ jobs:
   raycast:
     name: Package the Raycast extension
     packages: { only: [app/packages/raycast] }
-    paths: *extension-paths
+    paths:
+      - app/packages/raycast/**
+      - app/packages/client-core/**
+      - plugin-architecture/packages/plugin-base/**
+      - "!**/__tests__/**"
+      - "!**/*.test.ts"
+      - "!**/*.test.tsx"
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .infrawrench/ci/test.yml
+      - .infrawrench/ci/node-preload.cjs
+      - .infrawrench/ci/stubs/**
     deps:
       - pnpm:
           only: [app/packages/raycast]

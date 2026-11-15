@@ -37,6 +37,17 @@ describe("dispatchBody", () => {
     });
   });
 
+  it("sends a push the commit it moved the branch from, for `paths:` to diff against", () => {
+    const body = dispatchBody(
+      { ...base, event: "push", branch: "main", pullNumber: null, fromFork: false },
+      TOKEN,
+    );
+    expect(body).toMatchObject({ event: "push", base: base.baseSha });
+    // Still a push: no pull request ref, and nothing to vouch for.
+    expect(body).not.toHaveProperty("ref");
+    expect(body).not.toHaveProperty("trusted");
+  });
+
   it("sends a scheduled run with its one pipeline's text, on the default branch", () => {
     const body = dispatchBody(
       {

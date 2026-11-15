@@ -178,7 +178,7 @@ export async function acceptCiEvent(
       headRef: isPull ? ev.headRef : ev.branch,
       defaultBranch: ev.defaultBranch,
       sha,
-      baseSha: isPull ? ev.baseSha : null,
+      baseSha: ev.baseSha,
       pullNumber: isPull ? ev.number : null,
       headRepoFullName: isPull ? ev.headRepoFullName : null,
       fromFork: isPull && ev.fromFork,
@@ -299,9 +299,13 @@ export function dispatchBody(
     "default-branch": row.defaultBranch,
     token,
   };
+  // What `paths:` filters and `changed()` diff the commit against: a pull
+  // request's base, or the commit a push moved the branch from. Without one
+  // (a new branch, a force push, a schedule) the filters let everything
+  // through.
+  if (row.baseSha) body["base"] = row.baseSha;
   if (isPull) {
     body["ref"] = `refs/pull/${row.pullNumber}/head`;
-    if (row.baseSha) body["base"] = row.baseSha;
     // Only a pull request from the repository itself is trusted with
     // secrets. A fork's request carries no `trusted`, and no secrets of its
     // own, so the proxy gives it none.
