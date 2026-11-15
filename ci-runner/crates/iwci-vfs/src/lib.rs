@@ -1517,6 +1517,57 @@ mod tests {
     }
 
     #[test]
+    fn resizing_a_snapshot_file_keeps_its_content() {
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/a.txt", b"0123456789\n").unwrap();
+        builder.write("/app/b.txt", b"01").unwrap();
+        builder.write("/app/c.txt", b"abcdef").unwrap();
+        let job = builder.freeze().fork();
+        let fs = job.as_dyn();
+        // ftruncate(2) then close(2): nothing else touches the file.
+        for (path, size) in [("/app/a.txt", 4), ("/app/b.txt", 5)] {
+            fs.new_open_options()
+                .read(true)
+                .write(true)
+                .open(Path::new(path))
+                .unwrap()
+                .set_len(size)
+                .unwrap();
+        }
+        // Resized, then read through the same handle.
+        let mut f = fs
+            .new_open_options()
+            .read(true)
+            .write(true)
+            .open(Path::new("/app/c.txt"))
+            .unwrap();
+        f.set_len(2).unwrap();
+        let mut back = Vec::new();
+        futures::executor::block_on(f.read_to_end(&mut back)).unwrap();
+        assert_eq!(back, b"ab");
+        drop(f);
+        assert_eq!(job.read("/app/a.txt").unwrap(), b"0123");
+        assert_eq!(job.read("/app/b.txt").unwrap(), b"01\0\0\0");
+        assert_eq!(
+            job.changes("/app"),
+            vec![
+                Change::Modified {
+                    path: "/app/a.txt".into(),
+                    bytes: b"0123".to_vec()
+                },
+                Change::Modified {
+                    path: "/app/b.txt".into(),
+                    bytes: b"01\0\0\0".to_vec()
+                },
+                Change::Modified {
+                    path: "/app/c.txt".into(),
+                    bytes: b"ab".to_vec()
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn a_layer_reads_through_records_what_it_read_and_keeps_its_own_writes() {
         let checkout = SnapshotBuilder::new();
         checkout.write("/app/pnpm-lock.yaml", b"lock").unwrap();

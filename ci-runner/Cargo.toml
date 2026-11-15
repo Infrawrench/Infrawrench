@@ -76,8 +76,8 @@ opt-level = 2
 #
 # virtual-fs 0.705.0 with vendor/virtual-fs.patch: the in-memory file
 # system decides a change under the lock it makes it under, so two renames
-# onto one name no longer panic (#1092). See vendor/README.md for when to
-# remove it.
+# onto one name no longer panic (#1092), and resizing a checked-out file
+# keeps its content (#1211). See vendor/README.md for when to remove it.
 [patch.crates-io]
 wasmer-napi = { path = "vendor/wasmer-napi" }
 wasmer-wasix = { path = "vendor/wasmer-wasix" }

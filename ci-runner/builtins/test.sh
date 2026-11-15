@@ -1678,6 +1678,22 @@ jobs:
   # library reads modes by `st_ino`, and a renamed file kept the number of
   # its old path, so this read 644: an atomic write (a temporary file
   # renamed over the target) lost its `chmod`, and so did Git's.
+  # Resizing a checked-out file keeps what it had (#1211): it read back as
+  # zeros, from truncate(2) and ftruncate(2) alike.
+  truncate-checkout-passes:
+    using: env:bash-node@24
+    run: |
+      node -e '
+        const fs = require("node:fs");
+        fs.truncateSync("data.txt", 7);
+        const fd = fs.openSync("run.sh", "r+");
+        fs.ftruncateSync(fd, fs.fstatSync(fd).size + 3);
+        fs.closeSync(fd);
+      '
+      test "$(cat data.txt)" = fixture
+      test "$(head -c 9 run.sh)" = "#!/bin/sh"
+      test "$(wc -c < run.sh)" -eq 22
+
   renamed-modes-passes:
     using: env:bash-node@24
     run: |
