@@ -203,7 +203,7 @@
       }
     },
     "ecosystem": {
-      "enum": ["pnpm", "go", "cargo", "pip", "composer"]
+      "enum": ["pnpm", "bun", "go", "cargo", "pip", "composer"]
     },
     "deps": {
       "type": "array",

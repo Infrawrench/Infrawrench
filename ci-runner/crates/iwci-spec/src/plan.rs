@@ -392,6 +392,7 @@ pub struct DepSpec {
 #[serde(rename_all = "kebab-case")]
 pub enum Ecosystem {
     Pnpm,
+    Bun,
     Go,
     Cargo,
     Pip,
@@ -402,6 +403,7 @@ impl Ecosystem {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
             "pnpm" => Some(Ecosystem::Pnpm),
+            "bun" => Some(Ecosystem::Bun),
             "go" => Some(Ecosystem::Go),
             "cargo" => Some(Ecosystem::Cargo),
             "pip" => Some(Ecosystem::Pip),
@@ -413,6 +415,7 @@ impl Ecosystem {
     pub fn name(self) -> &'static str {
         match self {
             Ecosystem::Pnpm => "pnpm",
+            Ecosystem::Bun => "bun",
             Ecosystem::Go => "go",
             Ecosystem::Cargo => "cargo",
             Ecosystem::Pip => "pip",

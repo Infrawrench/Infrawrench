@@ -3513,8 +3513,19 @@ fn task_cache_key(
         hash.update([0]);
     }
     for dep in &ws.deps {
+        // Patch files, which `bun.lock` names without pinning their content.
+        let bun_patches;
         let names: Vec<&str> = match dep.ecosystem {
             iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+            iwci_spec::Ecosystem::Bun => {
+                let lock = snapshot.read(format!("{}/bun.lock", dep.dir)).ok();
+                bun_patches = iwci_deps::bun::patch_files(lock.as_deref());
+                let patches = bun_patches.iter().map(String::as_str);
+                iwci_deps::bun::INPUT_FILES
+                    .into_iter()
+                    .chain(patches)
+                    .collect()
+            }
             iwci_spec::Ecosystem::Go => vec!["go.mod", "go.sum"],
             iwci_spec::Ecosystem::Cargo => vec!["Cargo.lock"],
             iwci_spec::Ecosystem::Pip => match &dep.file {

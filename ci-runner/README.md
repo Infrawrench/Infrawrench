@@ -28,7 +28,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    costs no network at all.
 3. **Install** (`iwci-deps`). Read the lockfiles from the snapshot and fetch
    exactly what they pin, verified against the lockfile's hashes and cached
-   by content: pnpm (laid out like pnpm's isolated `node_modules`), Go
+   by content: pnpm (laid out like pnpm's isolated `node_modules`), Bun
+   (its hoisted or isolated `node_modules`, whichever Bun would use), Go
    modules (a `GOMODCACHE`), Cargo crates (a `vendor/` directory), Python
    wheels (the interpreter's user site) and Composer packages (`vendor/`
    and its autoloader). No package manager runs and no install script
@@ -118,12 +119,12 @@ with it directly (see [Scheduled runs](#scheduled-runs)).
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
 
-`workspace.deps`: a list of `pnpm`, `go`, `cargo`, `pip` or `composer`, or
-`- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
+`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip` or
+`composer`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
 `only: [app/packages/web]` to install just those importers' closure, and pip
 `file: requirements/ci.txt` to read another lock than `pylock.toml` or
-`requirements.txt`. [Python](#python) and [PHP](#php) say what the pip and
-Composer installers check.
+`requirements.txt`. [Bun](#bun), [Python](#python) and [PHP](#php) say what
+the Bun, pip and Composer installers read and check.
 
 ### Filters
 
@@ -594,8 +595,9 @@ task-cache:
   script, `env:`, `cwd`, `tools:`, `services:`, `artifacts:`, `outputs:`,
   `network:`, `changes:`), what each of its tools, its `tools:` and its
   services' environments resolves to, its workspace's settings and
-  lockfiles (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `go.mod`,
-  `go.sum`, `Cargo.lock`), the files its inputs match as the commit has
+  lockfiles (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `bun.lock`,
+  `bunfig.toml` and the patches `bun.lock` names, `go.mod`, `go.sum`,
+  `Cargo.lock`), the files its inputs match as the commit has
   them, and the bytes of every artifact it is handed. A job downstream of
   one that changed is handed different files, so its key changes too; one
   whose upstream rebuilt the same files is not. A tool counts as the
@@ -1522,6 +1524,67 @@ on (Edge.js's, with exception handling) has no `fork()`, so one patch
 starts them with `posix_spawn()` instead; `build.sh` lists the three
 patches and why. The package is 9 MB: Git's module is 3.6 MB and
 `git-remote-https`'s, with OpenSSL, 4 MB.
+
+### Bun
+
+`deps: [bun]` installs a Bun project's `node_modules` from `bun.lock`, the
+text lockfile Bun has written since 1.2, without running Bun:
+
+```yaml
+workspace:
+  deps: [bun] # bun.lock at the root; `- bun: { dir: web }` for another
+
+jobs:
+  test:
+    using: env:bash-node@24
+    run: node --test
+```
+
+There is no `bun` in a job: jobs run Node (Edge.js), so this is for
+projects that install with Bun and whose scripts run under Node. What a
+job gets is the `node_modules` `bun install --frozen-lockfile` makes, in
+the layout Bun would pick:
+
+- **hoisted** for a single package: `bun.lock` records that tree itself
+  (a package's key is its path in it), so every package is unpacked where
+  its key says.
+- **isolated** for a workspace whose lockfile says `"configVersion": 1`
+  (new lockfiles since Bun 1.3.2): every package in
+  `node_modules/.bun/<name>@<version>`, its dependencies symlinked beside
+  it, each workspace's own dependencies linked into its `node_modules`,
+  and a package with peer dependencies once per set of peers, in a
+  directory with Bun's own hash of that set. `hoist`, `hoistPattern` and
+  `publicHoistPattern` are read from `bunfig.toml`.
+- `[install] linker = "hoisted"` or `"isolated"` in `bunfig.toml` decides
+  it either way, as it does for Bun. `registry` and `scopes` are read from
+  the same table (their URLs; a registry that needs a token is not
+  reachable).
+
+What it installs, each checked against the hash in `bun.lock`: registry
+packages and `npm:` aliases, tarballs by URL or by a path in the
+repository, and GitHub dependencies (the archive Bun hashed, from
+`codeload.github.com`, so public repositories). Workspace packages and
+`link:` dependencies are symlinks. `overrides` and catalogs are already
+applied in the lockfile, and `patchedDependencies` patches are applied to
+the packages they name. Optional dependencies are matched against the
+job's platform as for pnpm (cpu `wasm32`, no operating system), so native
+builds are left out and `wasm32` ones installed.
+
+What it refuses, saying so:
+
+| In the repository                         | Why, and what to do                                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `bun.lockb` and no `bun.lock`             | The binary lockfile is not read. `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`, commit `bun.lock`. |
+| a package with no integrity in `bun.lock` | Nothing to verify it against (GitHub dependencies locked by Bun 1.2). Run `bun install` with a current Bun.               |
+| a git dependency that is not on GitHub    | It would need a clone, which no hash covers. Depend on a tarball or a GitHub repository.                                  |
+| a `file:` directory dependency            | Bun copies the directory. Make it a workspace or a `link:` dependency.                                                    |
+| a dependency with no entry in `bun.lock`  | The lockfile is behind `package.json`. Run `bun install` and commit it.                                                   |
+| a `lockfileVersion` above 3               | Written by a Bun newer than this runner knows.                                                                            |
+
+Not done, as for pnpm: `node_modules/.bin` is not written, and no install
+script runs. A package in `trustedDependencies` that has one is named in a
+warning on the run; Bun's built-in list of packages it trusts by default
+is not consulted.
 
 ### Python
 
@@ -3156,15 +3219,15 @@ pipeline itself spells it out.
 
 ## Crates
 
-| Crate          | Does                                                                                |
-| -------------- | ----------------------------------------------------------------------------------- |
-| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                            |
-| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                          |
-| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.           |
-| `iwci-deps`    | pnpm, Go, Cargo, pip and Composer installers over a verifying, caching fetcher.     |
-| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                             |
-| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments. |
-| `iwci`         | The scheduler and the `iwci` command.                                               |
+| Crate          | Does                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                             |
+| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                           |
+| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.            |
+| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip and Composer installers over a verifying, caching fetcher. |
+| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                              |
+| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.  |
+| `iwci`         | The scheduler and the `iwci` command.                                                |
 
 ## Development
 

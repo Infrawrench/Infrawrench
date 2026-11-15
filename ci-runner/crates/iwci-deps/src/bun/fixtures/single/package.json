@@ -1,0 +1,11 @@
+{
+  "name": "single",
+  "version": "1.0.0",
+  "dependencies": {
+    "is-number": "7.0.0",
+    "is-odd": "3.0.1"
+  },
+  "devDependencies": {
+    "ms": "2.1.3"
+  }
+}

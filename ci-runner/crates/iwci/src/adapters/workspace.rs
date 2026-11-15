@@ -129,6 +129,23 @@ impl Workspaces for GitWorkspaces {
                             .map(|_| Vec::new())
                     })
                 }
+                Ecosystem::Bun => {
+                    let mut options = iwci_deps::bun::BunOptions {
+                        parallelism: 0,
+                        ..Default::default()
+                    };
+                    let key = options_key("bun", &dep.dir, &options);
+                    options.parallelism = threads;
+                    self.layers.install(&builder, &key, |layer| {
+                        iwci_deps::bun::install(layer, &dep.dir, fetcher, &options).map(|report| {
+                            report
+                                .warnings
+                                .iter()
+                                .map(|warning| format!("bun in {}: {warning}", dep.dir))
+                                .collect()
+                        })
+                    })
+                }
                 Ecosystem::Go => {
                     let mut options = iwci_deps::go::GoOptions {
                         parallelism: 0,

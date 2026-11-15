@@ -1,6 +1,6 @@
 [package]
 name = "iwci-deps"
-description = "Installs a workspace's dependencies (pnpm, Go modules, Cargo crates, pip wheels, Composer packages) into its snapshot"
+description = "Installs a workspace's dependencies (pnpm, Bun, Go modules, Cargo crates, pip wheels, Composer packages) into its snapshot"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

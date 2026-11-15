@@ -1,0 +1,30 @@
+{
+  "name": "features",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "esbuild": "0.25.0",
+    "is-odd": "3.0.1",
+    "isnum": "npm:is-number@6.0.0",
+    "kleur": "github:lukeed/kleur#v4.1.5",
+    "lib": "workspace:*",
+    "linked": "link:./vendor/linked",
+    "ms": "https://registry.npmjs.org/ms/-/ms-2.1.2.tgz",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "optionalDependencies": {
+    "fsevents": "2.3.3"
+  },
+  "overrides": {
+    "js-tokens": "4.0.0"
+  },
+  "trustedDependencies": [
+    "esbuild"
+  ],
+  "patchedDependencies": {
+    "is-odd@3.0.1": "patches/is-odd@3.0.1.patch"
+  }
+}
