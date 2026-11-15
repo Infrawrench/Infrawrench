@@ -1,7 +1,8 @@
 # Node preload for environment jobs
 
-The runner's Node is Edge.js. This directory fills two gaps between it and
-Node; each file can go once the pinned Edge.js closes its gap.
+The runner's Node is Edge.js. This directory fills the gaps between it and
+Node, and one of pnpm's; each file can go once what it covers is fixed
+where it belongs.
 
 ## `node:wasi`
 
@@ -45,6 +46,37 @@ overrode. `env:bash-node` (from 24.0.1) fixes it where it is: its Edge.js is
 built from source on a C library with wasix-libc #145
 (`builtins/environments/edgejs/build.sh`), and `builtins/test.sh`'s
 `relative-reads-passes` checks 40,000 concurrent reads by relative path.
+
+## pnpm's first global install (#1200)
+
+Edge.js's `npm` and `pnpm` commands are pnpm 10.34.5, run with
+`node-linker=hoisted` and a `store-dir`. With those two settings, pnpm's
+global install resolves into a lockfile-only install first and writes
+`<global-dir>/5/pnpm-lock.yaml` before anything has made `<global-dir>/5`,
+so the first `npm i -g` or `pnpm add -g` of a job failed with `ENOENT`
+(Node on macOS does the same given those settings). `pnpm-global.cjs` makes
+that directory when the main script is pnpm's and the arguments ask for a
+global install (`-g`, `--global`), under `npm_config_global_dir` or
+`$PNPM_HOME/global`. `builtins/test.sh`'s `bash-node/global-install-passes`
+covers it; remove the file once pnpm makes the directory itself.
+
+The runner also writes `npx` to `/usr/local/bin` for these jobs: npm's
+own, `/npm/bin/npx-cli.js` from Edge.js's copy of npm, which Edge.js ships
+without a command for it (`wasix.rs`, `NPX`).
+
+## A child's PATH (#1201)
+
+libuv looks a child's command up on the `PATH` of the environment the
+child is given (`options.env.PATH`); Edge.js's hands WASIX's `proc_spawn3`
+the parent's `PATH` instead, so a command only the child's `PATH` names
+was not found (`spawn hello ENOENT`): `pnpm dlx`, and execa's `preferLocal`.
+`spawn-path.cjs` wraps `child_process`'s `spawn`, `spawnSync`, `execFile`
+and `execFileSync` to resolve such a name on the child's `PATH` first and
+pass the full path, with the name as `argv0`. It does nothing when the
+child's `PATH` is the parent's, when the command has a `/` in it, or for a
+shell, which reads the child's `PATH` already. `builtins/test.sh`'s
+`bash-node/spawn-child-path-passes` covers it; remove the file once
+Edge.js's libuv searches the child's `PATH`.
 
 ## Empty blob parts (#940)
 

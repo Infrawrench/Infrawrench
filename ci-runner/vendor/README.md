@@ -1008,6 +1008,18 @@ A builtin command (Wasmer's `/bin/wasmer`) keeps the old ownership, since
 its environment may be dropped before its task ends. Reported upstream as
 wasmerio/wasmer#7174; upstream main is unchanged (checked November 2026).
 
+**A command runs through a symbolic link (#1199).** `BinFactory` read the
+file to run by opening its path, and the file system's `open` does not
+follow symbolic links, so running a link failed with `ENOENT` from bash and
+from `child_process` alike, while the file it points at ran. npm and pnpm
+install every command as one (`bin/tool -> ../lib/node_modules/tool/cli.js`),
+so nothing `npm i -g`, `pnpm add -g` or `npx` installed could run.
+`src/bin_factory/mod.rs` now follows the links along the path first, up to
+40 (a loop fails to run, as with `ELOOP`), the way `execve` resolves a path,
+and still hands a script's interpreter the path the caller spelled, as on
+Linux, so a program finds its own files through the link as it would
+there. Upstream main opens the path the same way (checked November 2026).
+
 **A control plane lists its processes (#1094).** `WasiControlPlane` had
 only `get_process(pid)`, so the runner found a job's processes, to signal
 them on a timeout, a cancel or a service's stop and to wait for them, by
@@ -1114,7 +1126,8 @@ spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
-process, a process's exit signals only its own threads, and once the runner finds a
+process, a process's exit signals only its own threads, a command runs
+through a symbolic link, and once the runner finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
@@ -1130,7 +1143,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
-`bash-node/unlink-race-passes`,
+`bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,

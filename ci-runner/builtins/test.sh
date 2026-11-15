@@ -473,6 +473,17 @@ serve() {
 }
 SH
 fi
+# A package registry the Node jobs install from (npm-registry/registry.mjs),
+# with a command-line package in two versions.
+mkdir -p "$repo/npm"
+cp "$here/npm-registry/registry.mjs" "$repo/npm/"
+for version in 1.0.0 2.0.0; do
+  mkdir -p "$repo/npm/packages/hello-cli/$version/bin"
+  printf '{ "name": "hello-cli", "version": "%s", "bin": { "hello": "bin/hello.js" } }\n' "$version" \
+    >"$repo/npm/packages/hello-cli/$version/package.json"
+  printf '#!/usr/bin/env node\nconsole.log("hello %s " + process.argv.slice(2).join(" "));\n' "$version" \
+    >"$repo/npm/packages/hello-cli/$version/bin/hello.js"
+done
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -1276,6 +1287,131 @@ jobs:
     run: |
       npm --version
       pnpm --version
+      npx --version
+  # HOME is a directory: it was only a variable, so `pnpm dlx` failed with
+  # "lstat '/root'".
+  home-passes:
+    using: env:bash-node@24
+    run: |
+      test "$HOME" = /root
+      test -d "$HOME"
+      test "$(node -p 'require("os").homedir()')" = /root
+  # A command reached through a symbolic link runs what the link points
+  # at, as execve does: npm and pnpm install commands as links into their
+  # packages, and running one failed with "No such file or directory". The
+  # script is handed the path that was run, as on Linux.
+  symlink-exec-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/l/lib /tmp/l/bin
+      printf '#!/usr/bin/env node\nconsole.log(process.argv[1])\n' >/tmp/l/lib/s.js
+      ln -s ../lib/s.js /tmp/l/bin/rel
+      ln -s /tmp/l/lib/s.js /tmp/l/bin/abs
+      ln -s rel /tmp/l/bin/chain
+      ln -s ../l/lib /tmp/l/dir
+      test "$(/tmp/l/bin/rel)" = /tmp/l/bin/rel
+      test "$(/tmp/l/bin/abs)" = /tmp/l/bin/abs
+      test "$(/tmp/l/bin/chain)" = /tmp/l/bin/chain
+      test "$(/tmp/l/dir/s.js)" = /tmp/l/dir/s.js
+      test "$(PATH="/tmp/l/bin:$PATH" rel)" = /tmp/l/bin/rel
+      test "$(node -e 'process.stdout.write(require("child_process").execFileSync("/tmp/l/bin/chain"))')" = /tmp/l/bin/chain
+      # A loop is a failure to run, not a hang.
+      ln -s loop-b /tmp/l/bin/loop-a
+      ln -s loop-a /tmp/l/bin/loop-b
+      if /tmp/l/bin/loop-a 2>/dev/null; then exit 1; fi
+  # A child's command is looked up on the PATH it is given, as Node does
+  # (#1201): Edge.js searched its parent's.
+  spawn-child-path-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/x
+      printf '#!/usr/bin/env node\nconsole.log("x ran")\n' >/tmp/x/xcmd
+      cat >/tmp/spawn.cjs <<'JS'
+      const cp = require("node:child_process");
+      const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+      const out = [
+        cp.execFileSync("xcmd", { env }),
+        cp.spawnSync("xcmd", [], { env }).stdout,
+        cp.execFileSync("xcmd", [], { env, cwd: "/tmp" }),
+      ].join("");
+      if (out !== "x ran\n".repeat(3)) throw new Error(JSON.stringify(out));
+      // Not on the parent's PATH, so not found without it.
+      if (cp.spawnSync("xcmd").error?.code !== "ENOENT") throw new Error("found");
+      cp.spawn("xcmd", { env, stdio: "inherit" }).on("exit", (code) => process.exit(code));
+      JS
+      test "$(node /tmp/spawn.cjs)" = "x ran"
+  # Global installs (README.md, "Global installs"), from a registry on the
+  # job's loopback: `npm i -g` (pnpm, in Edge.js) and `pnpm add -g` put
+  # the package's commands on PATH, the first time in a job too, and
+  # `pnpm remove -g` takes them away again.
+  global-install-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: |
+      npm i -g hello-cli@1.0.0
+      test "$(command -v hello)" = /root/.local/share/pnpm/hello
+      test "$(hello a b)" = "hello 1.0.0 a b"
+      pnpm add -g hello-cli@2.0.0
+      test "$(hello c)" = "hello 2.0.0 c"
+      test "$(node -e 'process.stdout.write(require("child_process").execFileSync("hello", ["d"]))')" = "hello 2.0.0 d"
+      pnpm remove -g hello-cli
+      if command -v hello; then exit 1; fi
+  # npx (npm's, which Edge.js ships without putting on PATH) and pnpm dlx
+  # run a package's command without installing it, and npx prefers the
+  # project's own.
+  npx-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: |
+      test "$(npx --yes hello-cli@1.0.0 x)" = "hello 1.0.0 x"
+      test "$(pnpm dlx hello-cli@2.0.0 y)" = "hello 2.0.0 y"
+      mkdir -p /tmp/proj && cd /tmp/proj && echo '{}' >package.json
+      pnpm add hello-cli@1.0.0
+      test "$(npx hello z)" = "hello 1.0.0 z"
+  # A global install can be kept with a job cache, and runs again with the
+  # registry gone (no service, no network).
+  global-cache-save-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    cache: { key: pnpm-global-fixture, paths: [/root/.local/share/pnpm] }
+    run: |
+      npm i -g hello-cli@2.0.0
+      test "$(hello)" = "hello 2.0.0 "
+  global-cache-restore-passes:
+    using: env:bash-node@24
+    needs: [global-cache-save-passes]
+    network: false
+    cache: { key: pnpm-global-fixture, paths: [/root/.local/share/pnpm] }
+    run: test "$(hello again)" = "hello 2.0.0 again"
+  # A package the registry does not have fails the install, and the job.
+  global-install-missing-fails:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: npm i -g no-such-cli
   throw-fails:
     using: env:bash-node@24
     run: |
@@ -3990,6 +4126,7 @@ want_reason() {
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/unsettled-tla-fails) echo "exited with 13" ;;
+    bash-node/global-install-missing-fails) echo "exited with 1" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;

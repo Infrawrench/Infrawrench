@@ -971,7 +971,7 @@ Environments:
 | Environment            | Packages                                                                                                                                                                                                                               |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)) |
-| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`)                                                                                                                         |
+| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`, and the runner's `npx`)                                                                                                 |
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                                                     |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
@@ -1344,6 +1344,9 @@ releases, and only `process.version` and `process.versions` left its
 diagnostic report and the compile cache's directory name drop it too, as
 in Node. The same Edge.js build is in `env:clickhouse` 26.11.3.
 
+24.0.19 changes no package: it sets `PNPM_HOME` and puts it on `PATH`, so
+`npm i -g` and `pnpm add -g` work (see [Global installs](#global-installs)).
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
@@ -1385,6 +1388,60 @@ it through files the runner serves at `/proc/iwci`:
 or one that already has a mode recorded (the checkout's executables,
 anything `chmod`ed), and leaves any other as it was. Other programs see no
 modes (see the known limitations).
+
+### Global installs
+
+A job on `env:bash-node` can install a command-line package for itself and
+run it, as on any CI machine:
+
+```yaml
+deploy:
+  using: env:bash-node@24
+  run: |
+    npm i -g some-cli@4.2.1     # or: pnpm add -g some-cli@4.2.1
+    some-cli deploy
+    npx other-cli@1.0.3 check   # or: pnpm dlx other-cli@1.0.3 check
+```
+
+- **Fetched when the job runs, and not verified.** Unlike `deps:`, which
+  installs exactly what the lockfile pins and checks every byte against its
+  hash, a global install asks the registry for whatever the name and
+  version mean at that moment, with its dependencies' ranges resolved fresh.
+  Pin an exact version. A package's install scripts do not run (pnpm's
+  default for dependencies it has not been told to build).
+- **Edge.js's `npm` is pnpm**, so `npm i -g` and `pnpm add -g` are the same
+  install: into `PNPM_HOME` (`/root/.local/share/pnpm`, which the
+  environment sets and puts on `PATH` after the system's directories),
+  with the package under `$PNPM_HOME/global/5`. `pnpm remove -g` takes it
+  away. `npx` is npm's own (`/npm/bin/npx-cli.js`, which the runner puts on
+  `PATH`): it runs a project's installed command first and fetches the
+  package otherwise, into `~/.npm/_npx`; `pnpm dlx` always fetches.
+- **Only for that job.** It is installed into the job's own file system,
+  as anything else it writes, so the next job starts without it. To keep it
+  between runs, cache the directory with a [job cache](#job-caches), which
+  restores it whole (a job with no network runs it too):
+
+  ```yaml
+  cache:
+    key: global-clis-1
+    paths: [/root/.local/share/pnpm]
+  ```
+
+  Change the key when you change what is installed: a cache restored by
+  its exact key is not saved again.
+
+- **What runs, runs on Edge.js.** A package that needs a native binary for
+  Linux (an optional dependency per platform) finds none: a job is
+  `wasm32` with no operating system to the package managers, so they leave
+  native packages out and keep `wasm32` ones (see
+  [Tools and environments](#tools-and-environments)).
+- Four fixes made it work (#1200): `HOME` exists in every environment job
+  (it was only a variable, so `pnpm dlx` failed with "lstat '/root'"); a
+  command runs through the symbolic link npm and pnpm install it as (#1199,
+  in `vendor/wasmer-wasix`); pnpm finds its global directory made
+  (`crates/iwci-runtime/node/pnpm-global.cjs`); and a `node` child's
+  command is looked up on the `PATH` it is given, as `pnpm dlx` and execa's
+  `preferLocal` expect (#1201, `crates/iwci-runtime/node/spawn-path.cjs`).
 
 ### Tools in a script
 

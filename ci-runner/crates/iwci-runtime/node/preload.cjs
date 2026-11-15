@@ -11,6 +11,10 @@
 
 // A blob's stream ends even when the blob has an empty part (#940).
 require("./blob-stream.cjs");
+// pnpm's first global install finds its directory made.
+require("./pnpm-global.cjs");
+// A child's command is found on the PATH it is given.
+require("./spawn-path.cjs");
 
 const mod = require("node:module");
 

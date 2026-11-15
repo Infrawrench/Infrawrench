@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     future::Future,
     ops::Deref,
-    path::Path,
+    path::{Component, Path, PathBuf},
     pin::Pin,
     sync::{Arc, RwLock},
 };
@@ -244,7 +244,8 @@ impl BinFactory {
         if name.starts_with('/')
             && let Some(fs) = fs
         {
-            match load_executable_from_filesystem(fs, name.as_ref(), self.runtime()).await {
+            let path = follow_links(fs, Path::new(&name));
+            match load_executable_from_filesystem(fs, &path, self.runtime()).await {
                 Ok(executable) => {
                     if let Executable::BinaryPackage(pkg) = &executable {
                         cache.insert(name, Some(pkg.clone()));
@@ -269,6 +270,65 @@ impl BinFactory {
         // executable at a path after an earlier miss.
         Ok(None)
     }
+}
+
+/// Links `execve` follows before it gives up with `ELOOP`, as on Linux.
+const MAX_LINKS: usize = 40;
+
+/// `path` with every symbolic link along it replaced by what it points at,
+/// as `execve` resolves a path before it reads the file. A relative target
+/// is relative to the link's directory. npm and pnpm install a package's
+/// commands as links into the package (`bin/tool -> ../lib/node_modules/
+/// tool/cli.js`), and the file system's `open` does not follow them.
+///
+/// Only the file that is read changes: the path the caller spelled is still
+/// what a script's interpreter is handed, as on Linux, so a program finds
+/// its own files through the link as it would there. A loop, or a chain of
+/// more than [`MAX_LINKS`], is left as it is and fails to open.
+fn follow_links(fs: &dyn FileSystem, path: &Path) -> PathBuf {
+    let mut pending: Vec<std::ffi::OsString> = path
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(part) => Some(part.to_owned()),
+            Component::ParentDir => Some("..".into()),
+            _ => None,
+        })
+        .collect();
+    pending.reverse();
+    let mut out = PathBuf::from("/");
+    let mut links = 0;
+    while let Some(part) = pending.pop() {
+        if part == ".." {
+            out.pop();
+            continue;
+        }
+        out.push(&part);
+        if !fs
+            .symlink_metadata(&out)
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            continue;
+        }
+        links += 1;
+        let Ok(target) = fs.readlink(&out) else {
+            return path.to_path_buf();
+        };
+        if links > MAX_LINKS {
+            return path.to_path_buf();
+        }
+        out.pop();
+        if target.is_absolute() {
+            out = PathBuf::from("/");
+        }
+        for component in target.components().rev() {
+            match component {
+                Component::Normal(part) => pending.push(part.to_owned()),
+                Component::ParentDir => pending.push("..".into()),
+                _ => {}
+            }
+        }
+    }
+    out
 }
 
 pub enum Executable {

@@ -158,6 +158,14 @@ PHP_CLI_PKG="iwci/php-cli 1.0.0 83be1308ebb5e9aca02ded9133aec8f6de24c15e763ae056
 PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
+# What global installs need in env:bash-node (README.md, "Global installs"):
+#   PNPM_HOME  where `pnpm add -g` (and `npm i -g`, which Edge.js runs as
+#     pnpm) installs and links commands; pnpm refuses a global install
+#     without it. It is pnpm's own default on Linux.
+#   PATH  the default plus that directory, after the system's, so a
+#     global install cannot shadow a command the environment ships.
+BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
+    "PNPM_HOME": "/root/.local/share/pnpm"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c454e66abf35c24f02f58fcff"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
@@ -325,7 +333,8 @@ for env in "$@"; do
       #          (#1141, #1142, #1143).
       # 24.0.18: and `node --version` says what `process.version` does
       #          (#1151).
-      build_env bash-node 24.0.18 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.19: and `npm i -g` and `pnpm add -g` put commands on PATH.
+      build_env bash-node 24.0.19 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
