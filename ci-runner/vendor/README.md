@@ -658,6 +658,46 @@ This is a port onto 0.705.0, not a rebase onto wasmerio/napi main
 main would take an unreleased guest API with it; the V8 port is the part
 of main this needed.
 
+**And: what Node prints to standard error goes to the job's stderr
+(#1150).** Node writes a few things to its standard error from C++, not
+through `process.stderr`: the warning for a top-level await that never
+settles, which Edge.js asks the bridge to check for at exit (the exit
+status 13 comes from there), the same for a `require` of a module whose
+await stalled, an exception thrown inside the promise-reject callback, and
+a fatal error's message. The bridge's C++ printed them with
+`fprintf(stderr, ...)`, and its Rust printed `napi_fatal_error`'s with
+`eprintln!`: both are the standard error of the process the bridge is
+linked into, so in a job the text was not on the job's stderr, which stayed
+empty, and a `2>file` or `2>&1 |` in the script did not see it.
+`src/guest/callback.rs` now has `write_guest_stderr`, which writes to the
+program's descriptor 2 as its own `write` would: `src/ctx.rs` keeps the
+embedder's WASI `fd_write` from the imports the module is instantiated
+with, and the text and its iovec sit in the guest heap for the length of
+the call. No JavaScript runs, so nothing in the program can replace or
+observe it, and it needs nothing from Edge.js: every published
+`env:bash-node` gets it from the runner. The V8 provider reaches it through
+`WriteProgramStderr` (`v8/src/unofficial_napi_error_utils.cc`) and the
+weak `napi_host_write_guest_stderr`, which `src/napi_bridge_init.cc`
+defines: it finds the env's bridge state and uses the store lent by the
+import on the stack, so `unofficial_napi_module_wrap_check_unsettled_top_level_await`
+now lends its store (`src/guest/napi.rs`); without a lent store, or under
+an embedder without WASI, the text is dropped rather than printed.
+`napi_fatal_error` prints `FATAL ERROR: <location> <message>`, as Node
+words it, the same way, and ends the program with status 134, as an abort
+does. The debug line behind `EDGE_DEBUG_EXCEPTIONS` keeps the event and
+drops the rejected value. What is left on the bridge's own standard error
+is the bridge's: its diagnostics (a callback dropped for want of a store,
+the guest heap's integrity notes, V8's out-of-memory reports) and the
+lifetime tracker's dumps. One thing stays different from Node 24, in
+Edge.js: `NODE_NO_WARNINGS=1` silences the warning, where in Node only
+`--no-warnings` does (`AreProcessWarningsEnabled` in `edge_runtime.cc`).
+Upstream main prints with `fprintf` (checked November 2026).
+`builtins/test.sh bash-node`'s `unsettled-tla-passes` and
+`unsettled-tla-fails` are the checks, with the run's own stderr searched
+for the warning, and `iwci-runtime`'s
+`an_unsettled_top_level_await_warns_on_the_jobs_stderr_not_the_runners` and
+`a_fatal_error_is_printed_on_the_jobs_stderr_and_ends_only_the_job`.
+
 **Remove it** when a wasmer-napi release after 0.705.0 links V8 15.9 or
 later in a form the runner can link (no CREL, libstdc++ on ARM64), includes
 wasmerio/napi main's rework of `g_mu` (envs owned per thread, termination outside the
@@ -666,13 +706,14 @@ and #146's fix, lends the store in the imports #1090 names, and either a
 guest's event loop is kept alive and woken
 for its isolate's background work or the pinned Edge.js does that itself,
 the stall check has another way to count V8's worker threads or goes
-without, the embedder owns the runtime's configuration, and a panic in a guest callback no longer aborts the process: delete
+without, the embedder owns the runtime's configuration, a panic in a guest callback no longer aborts the process, and what Node prints straight to standard error reaches the program's: delete
 `vendor/wasmer-napi*`, the `[patch.crates-io]` entry in `../Cargo.toml`, and
 bump the version. `builtins/test.sh bash-node` has a job that must time out,
 one that runs Workers, one that churns envs, one that compiles WebAssembly
 in the background, one that makes code cache (`cached-data-passes`), one
-that posts large values and buffers (`post-message-passes`) and one that
-calls back into Edge.js from inside bridge calls (`store-lending-passes`),
+that posts large values and buffers (`post-message-passes`) one that
+calls back into Edge.js from inside bridge calls (`store-lending-passes`)
+and one whose top-level await never settles (`unsettled-tla-passes`),
 which are the checks; check the heap sizes against a Worker pool too.
 
 To regenerate after editing: `diff -u` each changed file against the crate

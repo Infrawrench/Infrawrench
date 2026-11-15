@@ -3800,6 +3800,137 @@ node -e 'let depth = 0; const f = () => { depth++; f(); }; try { f(); } catch {}
     assert!(depth > 4_000, "depth {depth}: {stderr}");
 }
 
+/// Runs `f` and returns, with its result, what this process wrote to its
+/// own standard error meanwhile, which a job's text must never reach (the
+/// bridge's C++ and Rust both have that descriptor at hand). The bytes are
+/// passed on as they come, so other tests' output is not lost; theirs is
+/// recorded too, so a caller looks for its own job's text.
+#[cfg(feature = "node")]
+fn own_stderr_during<R>(f: impl FnOnce() -> R) -> (R, String) {
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    struct Restore(libc::c_int);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            // Also closes the pipe's last writing end, which ends the reader.
+            unsafe { libc::dup2(self.0, 2) };
+        }
+    }
+    let mut pipe = [0 as libc::c_int; 2];
+    let saved = unsafe {
+        assert_eq!(libc::pipe2(pipe.as_mut_ptr(), libc::O_CLOEXEC), 0);
+        let saved = libc::fcntl(2, libc::F_DUPFD_CLOEXEC, 3);
+        assert!(saved >= 0);
+        assert_eq!(libc::dup2(pipe[1], 2), 2);
+        libc::close(pipe[1]);
+        saved
+    };
+    let read_end = pipe[0];
+    let reader = std::thread::spawn(move || {
+        let mut seen = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = unsafe { libc::read(read_end, buf.as_mut_ptr().cast(), buf.len()) };
+            if n <= 0 {
+                break;
+            }
+            seen.extend_from_slice(&buf[..n as usize]);
+            unsafe { libc::write(saved, buf.as_ptr().cast(), n as usize) };
+        }
+        unsafe { libc::close(read_end) };
+        seen
+    });
+    let result = {
+        let _restore = Restore(saved);
+        f()
+    };
+    let seen = reader.join().unwrap();
+    unsafe { libc::close(saved) };
+    (result, String::from_utf8_lossy(&seen).into_owned())
+}
+
+/// Calls `napi_fatal_error("in the job's module", "the job's own words")`.
+#[cfg(feature = "node")]
+const FATAL_ERROR: &str = r#"
+(module
+  ;; Room for the bridge's guest heap, which the text passes through.
+  (import "env" "memory" (memory 1 1024 shared))
+  (import "napi" "napi_fatal_error"
+    (func $fatal (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (data (i32.const 16) "in the job's module")
+  (data (i32.const 64) "the job's own words")
+  (func (export "_start")
+    (drop (call $fatal (i32.const 16) (i32.const 19) (i32.const 64) (i32.const 19)))
+    (call $proc_exit (i32.const 0))))
+"#;
+
+/// What Node prints straight to standard error is the job's: a fatal error
+/// a job's module reports through the bridge is on the job's stderr, ends
+/// that program as an abort would, and leaves the runner's own standard
+/// error without a word of it (#1150).
+#[cfg(feature = "node")]
+#[test]
+fn a_fatal_error_is_printed_on_the_jobs_stderr_and_ends_only_the_job() {
+    let Some(packages) = node_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.memory_bytes = 1 << 30;
+    inv.limits.timeout = Duration::from_secs(60);
+    inv.commands = vec![PathCommand {
+        name: "fatal".into(),
+        module: wat_module("fatal", FATAL_ERROR),
+    }];
+    let script = "status=0; fatal || status=$?; echo \"status $status\"";
+    let (outcome, own) =
+        own_stderr_during(|| rt.run_script(&packages, "bash", script, inv).unwrap());
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{outcome:?} {stderr}");
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "status 134\n");
+    assert_eq!(
+        stderr,
+        "FATAL ERROR: in the job's module the job's own words\n"
+    );
+    assert!(!own.contains("the job's own words"), "{own:?}");
+}
+
+/// An ES module whose top-level await never settles exits 13 with Node's
+/// warning on the job's stderr, where its `2>` put it, and none of it on
+/// the runner's own standard error, where the bridge used to print it
+/// (#1150).
+#[cfg(feature = "node")]
+#[test]
+fn an_unsettled_top_level_await_warns_on_the_jobs_stderr_not_the_runners() {
+    let Some(packages) = node_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.memory_bytes = 1 << 30;
+    inv.limits.timeout = Duration::from_secs(120);
+    let script = r#"mkdir -p /tmp/tla && cd /tmp/tla
+printf 'const marker1150 = 1;\nawait new Promise(() => {});\n' >stall.mjs
+status=0; node stall.mjs || status=$?
+echo "status $status"
+status=0; node stall.mjs 2>redirected || status=$?
+echo "status $status"
+cat redirected"#;
+    let (outcome, own) =
+        own_stderr_during(|| rt.run_script(&packages, "bash", script, inv).unwrap());
+    let stdout = String::from_utf8_lossy(&outcome.stdout);
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    let warning = "Warning: Detected unsettled top-level await at file:///tmp/tla/stall.mjs:2\n\
+                   await new Promise(() => {});\n^\n\n\n\n";
+    assert_eq!(outcome.exit_code, 0, "{outcome:?} {stderr}");
+    assert_eq!(stderr, warning);
+    assert_eq!(stdout, format!("status 13\nstatus 13\n{warning}"));
+    assert!(!own.contains("top-level await"), "{own:?}");
+}
+
 /// Cancels `cancel` after `after`, from another thread, as the server does
 /// when `POST /v1/runs/{id}/cancel` comes in.
 fn cancel_after(cancel: &Cancel, after: Duration) {

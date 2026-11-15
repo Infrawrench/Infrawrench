@@ -1101,11 +1101,8 @@ void PromiseRejectCallback(v8::PromiseRejectMessage message) {
   v8::Context::Scope context_scope(context);
   v8::TryCatch tc(isolate);
   if (debug_promise_reject) {
-    v8::String::Utf8Value text(isolate, value);
-    std::fprintf(stderr,
-                 "[edge-pr] event=%d value=%s\n",
-                 static_cast<int>(event),
-                 *text != nullptr ? *text : "<unprintable>");
+    // iwci patch (#1150): the event alone; the value is the program's.
+    std::fprintf(stderr, "[edge-pr] event=%d\n", static_cast<int>(event));
   }
   v8::Local<v8::Value> args[] = {
       v8::Integer::New(isolate, static_cast<int>(event)),
@@ -1115,14 +1112,13 @@ void PromiseRejectCallback(v8::PromiseRejectMessage message) {
   if (tc.HasCaught() && !tc.HasTerminated()) {
     // Match Node behavior: V8 expects this callback to return without a pending
     // exception. Print a best-effort diagnostic instead of scheduling it.
-    std::fprintf(stderr, "Exception in PromiseRejectCallback:\n");
     v8::Local<v8::Value> caught = tc.Exception();
     v8::String::Utf8Value text(isolate, caught);
-    if (*text != nullptr) {
-      std::fprintf(stderr, "%s\n", *text);
-    } else {
-      std::fprintf(stderr, "<exception>\n");
-    }
+    unofficial_napi_internal::WriteProgramStderr(
+        env,
+        std::string("Exception in PromiseRejectCallback:\n") +
+            (*text != nullptr ? std::string(*text, text.length()) : std::string("<exception>")) +
+            "\n");
   }
 }
 

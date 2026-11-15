@@ -1372,6 +1372,43 @@ jobs:
     run: |
       printf 'const x = 1;\nthrow new Error("boom");\n' >/tmp/throw.cjs
       node /tmp/throw.cjs
+  # An ES module whose top-level await never settles exits 13 with Node's
+  # warning on its stderr: where the await is, its line and a caret, then
+  # three empty lines. The warning went to iwci's own stderr and the job's
+  # was empty (#1150); the run's stderr is checked for it below.
+  unsettled-tla-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      mkdir -p /tmp/tla && cd /tmp/tla
+      printf 'const x = 1;\nawait new Promise(() => {});\n' >stall.mjs
+      status=0; node stall.mjs 2>err || status=$?
+      test "$status" = 13
+      test "$(cat err; echo .)" = "$(printf 'Warning: Detected unsettled top-level await at file:///tmp/tla/stall.mjs:2\nawait new Promise(() => {});\n^\n\n\n\n.')"
+      # Through a pipe, as `2>&1 | tee` gives it.
+      test "$({ node stall.mjs 2>&1 || true; } | head -n 1)" = 'Warning: Detected unsettled top-level await at file:///tmp/tla/stall.mjs:2'
+      # In an imported module, indented: the line and caret are the await's.
+      printf 'import "./inner.mjs";\n' >outer.mjs
+      printf 'export const a = 1;\nif (a) {\n  await new Promise(() => {});\n}\n' >inner.mjs
+      status=0; node outer.mjs 2>err || status=$?
+      test "$status" = 13
+      test "$(cat err; echo .)" = "$(printf 'Warning: Detected unsettled top-level await at file:///tmp/tla/inner.mjs:3\n  await new Promise(() => {});\n  ^\n\n\n\n.')"
+      # --no-warnings keeps the exit status and drops the warning.
+      status=0; node --no-warnings stall.mjs 2>err || status=$?
+      test "$status" = 13
+      test ! -s err
+      # A process.exitCode set before the loop ends is kept, with no warning.
+      printf 'process.exitCode = 3;\nawait new Promise(() => {});\n' >code.mjs
+      status=0; node code.mjs 2>err || status=$?
+      test "$status" = 3
+      test ! -s err
+  # The job's own stderr carries the warning (want_stderr).
+  unsettled-tla-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      printf 'const x = 1;\nawait new Promise(() => {});\n' >/tmp/stall.mjs
+      node /tmp/stall.mjs
   # `fs.renameSync` of a checked-out file and directory (#985), which threw
   # ENOENT in a job that had not written them, and of a checked-out symlink
   # (#1005), which WASIX could not find to move.
@@ -3846,6 +3883,7 @@ want_reason() {
     openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
+    bash-node/unsettled-tla-fails) echo "exited with 13" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
@@ -3877,6 +3915,7 @@ want_stderr() {
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
     bash-node/error-report-fails) echo "^/tmp/throw\.cjs:2 throw new Error\(\"boom\"\); \^  Error: boom     at Object\.<anonymous> \(/tmp/throw\.cjs:2:7\)" ;;
+    bash-node/unsettled-tla-fails) echo "^Warning: Detected unsettled top-level await at file:///tmp/stall\.mjs:2 await new Promise\(\(\) => \{\}\); \^" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
@@ -3964,6 +4003,12 @@ JSON
   # ran, and read as `undefined` (#1090). A debug iwci aborts on the first.
   if dropped="$(grep -c 'no store lent to this thread' "$SCRATCH/$name.err")"; then
     echo "  FAIL $dropped guest callbacks did not run for want of a store (\"no store lent\" in iwci's stderr)"
+    failed=1
+  fi
+  # What Node prints straight to standard error is the job's: the bridge
+  # printed an unsettled top-level await's warning on iwci's own (#1150).
+  if grep -q 'top-level await' "$SCRATCH/$name.err"; then
+    echo "  FAIL a job's top-level await warning is on iwci's own stderr"
     failed=1
   fi
   if ! jq -e '.pipelines[0].outcome == "ran"' >/dev/null 2>&1 <<<"$out"; then

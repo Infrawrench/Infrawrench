@@ -1618,22 +1618,24 @@ fn guest_unofficial_napi_module_wrap_check_unsettled_top_level_await(
     handle: i32,
     warnings: i32,
     settled_ptr: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     let env_handle = snapi_env(&env, napi_env);
     let handle_id = if handle > 0 { handle as u32 } else { 0 };
     let mut settled = 0i32;
-    let status = unsafe {
+    // iwci patch (#1150): lends the store, which the warning is written to
+    // the program's standard error with.
+    let status = with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_module_wrap_check_unsettled_top_level_await(
             env_handle,
             handle_id,
             warnings,
             &mut settled,
         )
-    };
+    })?;
     if status == 0 && settled_ptr > 0 {
         write_guest_u8(&mut env, settled_ptr as u32, (settled != 0) as u8);
     }
-    status
+    Ok(status)
 }
 
 fn guest_unofficial_napi_module_wrap_set_export(
@@ -4760,7 +4762,7 @@ fn guest_napi_fatal_error(
     loc_len: i32,
     msg_ptr: i32,
     msg_len: i32,
-) -> i32 {
+) -> Result<i32, WasiError> {
     // Read location and message from guest memory
     let loc = if loc_ptr > 0 {
         let len = if loc_len as u32 == 0xFFFFFFFFu32 {
@@ -4786,12 +4788,20 @@ fn guest_napi_fatal_error(
     } else {
         None
     };
-    eprintln!(
-        "FATAL ERROR: location={}, message={}",
-        loc.as_deref().unwrap_or("(null)"),
-        msg.as_deref().unwrap_or("(null)")
+    // iwci patch (#1150): the error is the program's, so it is printed on
+    // the program's standard error, as Node words it, and ends the program
+    // as an abort would (status 134).
+    let text = format!(
+        "FATAL ERROR: {} {}\n",
+        loc.as_deref().unwrap_or(""),
+        msg.as_deref().unwrap_or("")
     );
-    std::process::abort();
+    let func_env = env.as_ref();
+    super::callback::write_guest_stderr(&mut env.as_store_mut(), &func_env, text.as_bytes());
+    let _ = take_pending_guest_exit();
+    Err(WasiError::Exit(
+        wasmer_wasix::wasmer_wasix_types::wasi::ExitCode::from(134),
+    ))
 }
 
 // --- Constructor ---

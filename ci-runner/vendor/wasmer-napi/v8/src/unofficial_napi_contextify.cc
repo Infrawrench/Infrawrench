@@ -2889,7 +2889,8 @@ napi_status NAPI_CDECL unofficial_napi_module_wrap_evaluate_sync(
       // Node's FormatErrorMessage: the exception line, then an empty reason.
       const std::string info =
           unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message) + "\n\n";
-      std::fprintf(stderr, "Error: unexpected top-level await at %s\n", info.c_str());
+      unofficial_napi_internal::WriteProgramStderr(
+          env, "Error: unexpected top-level await at " + info + "\n");
     }
     ThrowCodeError(env,
                    "ERR_REQUIRE_ASYNC_MODULE",
@@ -2990,7 +2991,8 @@ napi_status NAPI_CDECL unofficial_napi_module_wrap_check_unsettled_top_level_awa
     // Node's FormatErrorMessage: the exception line, then an empty reason.
     const std::string info =
         unofficial_napi_internal::BuildSyntaxArrowMessage(isolate, context, message) + "\n\n";
-    std::fprintf(stderr, "Warning: Detected unsettled top-level await at %s\n", info.c_str());
+    unofficial_napi_internal::WriteProgramStderr(
+        env, "Warning: Detected unsettled top-level await at " + info + "\n");
   }
   return napi_ok;
 }
