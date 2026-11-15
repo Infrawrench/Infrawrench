@@ -1151,8 +1151,8 @@ process closes any descriptor of the file (`fd_close`) or exits. A lock
 whose owner is gone is dropped the next time its file's locks are looked
 at, so a blocking lock looks again every 10 ms rather than being woken; a
 signal ends its wait with `EINTR`. No deadlock is detected. A program only
-locks through these if its C library calls them, which Wasmer's does not;
-env:python's CPython is made to in a change of its own. The tests are
+locks through these if its C library calls them: env:python's CPython is
+rewritten to (`builtins/environments/python/build.sh`). The tests are
 `iwci-runtime`'s `flock_and_record_locks_are_taken_and_released`,
 `record_locks_belong_to_a_process_while_it_runs` and
 `a_flock_is_held_until_its_description_has_no_descriptor`. Upstream has no
@@ -1177,8 +1177,9 @@ spawned child stops counting against `max_threads` once it exits
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
-through a symbolic link, WASIX has file locks a C library calls (and no
-module imports the two calls above any more), and once the runner
+through a symbolic link, WASIX has file locks a C library calls (and
+`builtins/environments/python/build.sh` is dropped for a CPython built on
+it, since that module imports the two calls above), and once the runner
 finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
@@ -1196,6 +1197,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
+`python/file-locks-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails`,
 `python/tls-server-passes` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s

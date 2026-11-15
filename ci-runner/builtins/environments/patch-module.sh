@@ -1,7 +1,9 @@
 # shellcheck shell=bash
 # Shared by bash/build.sh and sed/build.sh, which each change a few bytes of
-# the module in one of Wasmer's published packages and package it again.
-# Sourced after builtins/lib.sh; defines `patch_package` and runs nothing.
+# the module in one of Wasmer's published packages and package it again,
+# and python/build.sh, which changes its module another way.
+# Sourced after builtins/lib.sh; defines `patch_package` and
+# `rewrite_package` and runs nothing.
 #
 # The module goes back into the package with the Wasmer CLI, as
 # `edgejs/build.sh` does it, which records each file's hash for the
@@ -62,6 +64,35 @@ put_bytes() {
 patch_package() {
   local work="$1" name="$2" version="$3" webc_sha="$4" module_sha="$5" patched_sha="$6" built_on="$7"
   shift 7
+  rewrite_package "$work" "$name" "$version" "$webc_sha" "$module_sha" "$patched_sha" "$built_on" \
+    apply_patches "$@"
+}
+
+# apply_patches <module> <patch>...: patch_package's byte patches.
+apply_patches() {
+  local module="$1" entry offset old new
+  shift
+  for entry in "$@"; do
+    read -r offset old new <<<"$entry"
+    if [[ "$(bytes_at "$module" "$offset" $((${#old} / 2)))" != "$old" ]]; then
+      echo "error: the module does not hold $old at $offset" >&2
+      exit 1
+    fi
+    put_bytes "$module" "$offset" "$new"
+  done
+}
+
+# rewrite_package <work> <name> <version> <webc sha256> <module sha256>
+#   <rewritten module sha256> <built on> <command>...
+#
+# patch_package with any change: runs <command> with the module's path
+# put after its first word (`<command> <module> <arguments>...`), which
+# changes the module in place, and goes on as patch_package does. The
+# package is `<owner>/<name>`'s from the CDN; its module is
+# `modules/<name>`.
+rewrite_package() {
+  local work="$1" name="$2" version="$3" webc_sha="$4" module_sha="$5" patched_sha="$6" built_on="$7"
+  shift 7
   local asset asset_sha
   case "$(uname -s)-$(uname -m)" in
     Linux-x86_64)
@@ -100,19 +131,13 @@ patch_package() {
     exit 1
   fi
 
-  local entry offset old new
-  for entry in "$@"; do
-    read -r offset old new <<<"$entry"
-    if [[ "$(bytes_at "$module" "$offset" $((${#old} / 2)))" != "$old" ]]; then
-      echo "error: the module does not hold $old at $offset" >&2
-      exit 1
-    fi
-    put_bytes "$module" "$offset" "$new"
-  done
+  local command="$1"
+  shift
+  "$command" "$module" "$@"
   local built
   built="$(sha256 "$module")"
   if [[ "$built" != "$patched_sha" ]]; then
-    echo "error: the patched module hashed to $built, expected $patched_sha" >&2
+    echo "error: the changed module hashed to $built, expected $patched_sha" >&2
     exit 1
   fi
 

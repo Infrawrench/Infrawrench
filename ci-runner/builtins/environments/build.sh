@@ -32,11 +32,12 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Seven packages are not taken from the CDN as they are. `edgejs/build.sh`
+# Eight packages are not taken from the CDN as they are. `edgejs/build.sh`
 # builds Wasmer's Edge.js 0.2.5 from source on a C library without the races
 # behind #937 and #967, which no Wasmer release has yet; `bash/build.sh` and
 # `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
 # that split an argument at its line feeds (#1003, #1022);
+# `python/build.sh` gives Wasmer's CPython the runner's file locks (#1216);
 # `php-cli/build.sh` packages env:php's own `php` and Composer; and
 # `pglite-server/build.sh` env:postgres's server for many connections;
 # `git/build.sh` builds Git, which Wasmer does not publish, from its
@@ -91,7 +92,9 @@ FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe3490
 # Git, built by git/build.sh from its release for WASIX; the hash is its
 # output's, as with Edge.js. Every environment has it (README.md, "Git").
 GIT_PKG="iwci/git 2.56.1-iwci.2 841a8d6b293c94ff2879186dae83989e7b1893c41768532d15cb09c8f415d876"
-PYTHON_PKG="python/python 3.13.20 a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
+# Built by python/build.sh as 3.13.20-iwci.1, keeping Wasmer's version the
+# same way: Wasmer's CPython with file locks (#1216).
+PYTHON_PKG="python/python 3.13.20 d6cd79a53cd7d49798955b1bbc1d9e7c7d4d4e9b10af0acf40d2bc0ff590a9e4 3.13.20-iwci.1"
 PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
 PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
 PHP83_PKG="phpix/phpix-83-64bit 0.3.1 d2ff745903b5c6130662a198d330456daf8cb953438a0d8b8246130a3fb25043"
@@ -177,7 +180,7 @@ BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
 # each hash is its output's, as with Edge.js. The Azure CLI and gcloud are
 # two packages each (the store's 256 MiB per file).
 AWS_CLI_PKG="iwci/aws-cli 1.46.3-iwci.1 542d9c4f0b40cddb158fafdd6a72488a441c6725537143bcb578f76121f336d7"
-AZURE_CLI_PKG="iwci/azure-cli 2.92.0-iwci.1 d7d3f7fb3a82fc1ddcfd489d9a9c5333a5ae8e172230f033f329c1fd02cd53aa"
+AZURE_CLI_PKG="iwci/azure-cli 2.92.0-iwci.2 a34e6ae487c9aca37800c3f18d4a293b9104b17532cba6fc75a97571391b288d"
 AZURE_CLI_MGMT_PKG="iwci/azure-cli-mgmt 2.92.0-iwci.1 59b670548a0b6de0d96378f587405a46d226cfe067c2c15d2dbb03c0eae3c3d8"
 GCLOUD_PKG="iwci/gcloud 593.0.0-iwci.1 47e6d58f2373a27d72d23e62a5b8571c74186410c827fe00f4446e4448fbb8a4"
 GCLOUD_APIS_PKG="iwci/gcloud-apis 593.0.0-iwci.1 74d94ed1d43a7eb1f49ebb23f154f48073f424d84b6bf63efe4920b04cf3a410"
@@ -270,6 +273,7 @@ fetch() {
   case "$name" in
     wasmer/bash) ours=bash ;;
     wasmer/sed) ours="sed" ;;
+    python/python) ours=python ;;
     wasmer/edgejs) ours=edgejs ;;
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
@@ -428,26 +432,30 @@ for env in "$@"; do
       # 3.13.18: and Git.
       # 3.13.19: and `pip install --user`, its commands on PATH.
       # 3.13.20: and Git's prompts read /dev/tty, so they end at once (#1264).
-      build_env python 3.13.20 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
+      # 3.13.21: and `fcntl.flock` and `fcntl.lockf` lock (#1216).
+      build_env python 3.13.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     aws)
       # Its version is the AWS CLI's major and minor, as python's is
       # CPython's; its patch number is the environment's own.
       # 1.46.1: Git's prompts read /dev/tty (#1264).
-      build_env aws 1.46.1 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
+      # 1.46.2: and file locks (#1216).
+      build_env aws 1.46.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
         "$AWS_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AWS_CLI_PKG"
       ;;
     az)
       # 2.92.1: Git's prompts read /dev/tty (#1264).
-      build_env az 2.92.1 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
+      # 2.92.2: and file locks (#1216), so `az` takes its token cache's.
+      build_env az 2.92.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
         "$AZ_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AZURE_CLI_PKG" "$AZURE_CLI_MGMT_PKG"
       ;;
     gcloud)
       # gcloud's releases are one number (593.0.0); the environment's patch
       # number is its own revision.
       # 593.0.1: Git's prompts read /dev/tty (#1264).
-      build_env gcloud 593.0.1 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
+      # 593.0.2: and file locks (#1216).
+      build_env gcloud 593.0.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
         "$GCLOUD_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$GCLOUD_PKG" "$GCLOUD_APIS_PKG"
       ;;
     php)

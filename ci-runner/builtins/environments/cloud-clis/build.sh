@@ -56,7 +56,9 @@ GCLOUD_SHA256="42c32b7553c712f71fcf6f124546c0519437f53755f47f9bd0c957998cd6b826"
 # Each package's own version: the CLI's, then our revision. A change to
 # anything here is a new revision.
 AWS_PKG_VERSION="1.46.3-iwci.1"
-AZ_PKG_VERSION="2.92.0-iwci.1"
+AZ_PKG_VERSION="2.92.0-iwci.2"
+# The management SDKs did not change with the launcher (#1216).
+AZ_MGMT_PKG_VERSION="2.92.0-iwci.1"
 GCLOUD_PKG_VERSION="$GCLOUD_VERSION-iwci.1"
 
 # install <tool> <dir>: the tool's lock into <dir>, by env:python's pip.
@@ -144,8 +146,8 @@ PY
     cp "$self/az/main.py" "$root/lib/main.py"
     launcher "$root/bin/az" /opt/azure-cli/lib/main.py
     package azure-cli "$AZ_PKG_VERSION" /opt/azure-cli "$root" "The Azure CLI ${AZ_PKG_VERSION%-iwci.*} for env:az"
-    package azure-cli-mgmt "$AZ_PKG_VERSION" /opt/azure-cli-mgmt "$tools_work/azure-cli-mgmt" \
-      "The Azure CLI ${AZ_PKG_VERSION%-iwci.*}'s management SDKs for env:az"
+    package azure-cli-mgmt "$AZ_MGMT_PKG_VERSION" /opt/azure-cli-mgmt "$tools_work/azure-cli-mgmt" \
+      "The Azure CLI ${AZ_MGMT_PKG_VERSION%-iwci.*}'s management SDKs for env:az"
     ;;
   gcloud)
     archive="$(fetch "$GCLOUD_URL" "$GCLOUD_SHA256" gcloud.tar.gz)"

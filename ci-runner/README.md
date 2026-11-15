@@ -1160,7 +1160,7 @@ Environments:
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)) |
 | `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`, and the runner's `npx`)                                                                                                 |
-| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                                                     |
+| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                            |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
@@ -2222,8 +2222,11 @@ is not consulted.
 `env:python@3.13` is CPython 3.13.15 built for WASIX, with pip, beside the
 tools of `env:bash@5`. It is Wasmer's `python/python` 3.13.20 (the package's
 version is Wasmer's own), which loads compiled extension modules at run
-time. `python`, `python3` and `pip` are commands, and the console scripts
-pip installs (`pytest`) are on `PATH`.
+time, with file locks put in (`builtins/environments/python/build.sh`):
+`fcntl.flock` and `fcntl.lockf` lock between a job's processes, as on Linux
+(#1216; before, they failed with "Function not implemented"). `python`,
+`python3` and `pip` are commands, and the console scripts pip installs
+(`pytest`) are on `PATH`.
 
 ```yaml
 test:
@@ -2430,10 +2433,6 @@ storage` does what it did) and so is everything native: the component
   manager cannot install anything here, `gke-gcloud-auth-plugin` included,
   so a kubeconfig from `gcloud container clusters get-credentials` cannot
   log in. Write one with a token instead (`gcloud auth print-access-token`).
-- **The Azure CLI locks its token cache** with `flock`, which fails with
-  `ENOSYS` in a job (#1216), so `az login` failed after getting its token.
-  `env:az`'s `az` goes on without the lock where there is none to take; a
-  job's `az` commands run one after another.
 - **Azure CLI extensions** (`az extension add`) are not tested: pure
   Python ones should install into the job, and ones with compiled code
   need a WASIX build on Wasmer's index, as with pip.
@@ -3941,6 +3940,17 @@ the routes; the short version:
 
 ## Known limitations
 
+- **File locks need a C library that asks for them.** The runner keeps
+  `flock` locks (an open file's, released with its last descriptor) and
+  `fcntl` record locks (a process's, released when it closes the file or
+  exits) between the processes a job's script starts, but not with its
+  `services:`. WASIX has no call for either, so the runner adds two of its
+  own (vendor/README.md), and a program only locks if its C library calls
+  them: `env:python`'s CPython does (`fcntl.flock`, `fcntl.lockf`); the C
+  library Wasmer's other packages are built on answers `ENOSYS` for
+  `fcntl`'s locks and takes every `flock` without asking. A blocking lock
+  looks again every 10 ms, and a deadlock between two of them is not
+  detected (no `EDEADLK`).
 - **Pipelines in `env:` scripts.** WASIX bash reports only the last
   command's exit status: `false | cat` succeeds even under `pipefail`, and
   `PIPESTATUS` holds one entry. A plain failing command, or one inside
