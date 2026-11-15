@@ -15685,7 +15685,7 @@
   "6d10e7b31ce4b456": "Koyebのウェブサービス、ワーカー、またはマネージドPostgresデータベース",
   "597770962844ac33": "アプリにルーティングされる、Koyebが割り当てたドメインまたはカスタムドメイン",
   "50213c158475ca45": "Dynatrace Operatorで監視されているKubernetesクラスター。",
-  "4852d0527b6f3633": "Lambda Cloud APIキー。Lambda Cloudダッシュボードの API keys ページ(cloud.lambda.ai/api-keys)で Generate API key から取得します。キーはチーム全体で共有され、フルアクセス権を持ちます。Lambdaはキーを一度だけ表示します。",
+  "1652ec477c95980d": "Lambda Cloud APIキー。Lambda Cloudダッシュボードの API keys ページ(cloud.lambda.com/api-keys)で Generate API key から取得します。キーはチーム全体で共有され、フルアクセス権を持ちます。Lambdaはキーを一度だけ表示します。",
   "6e484ccb45936277": "Lambda Cloudのオンデマンド GPUインスタンス",
   "6d83326ea2177030": "動的シークレット(データベースやクラウドの認証情報など)のリース: 発行日時と有効期限。更新や失効ができます。リースの一覧表示にはsudo権限のあるトークンが必要で、最初の300件が表示されます。",
   "b844464ac9c6b13e": "レガシーのネイティブ連携(シークレット同期の前身)。既存のものを監視、再同期、削除できるように一覧表示されます。",
