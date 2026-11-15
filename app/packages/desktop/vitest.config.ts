@@ -97,6 +97,18 @@ const npmPackagesNamedLikeBuiltins: EsbuildPlugin = {
   },
 };
 
+/*
+ * A constant rather than a literal in the config: `force` is Vite's option, which Vitest hands on
+ * to the optimizer but leaves out of its own type.
+ */
+const prebundle = {
+  enabled: true,
+  force: true,
+  include: prebundled,
+  exclude: [...builtinModules],
+  esbuildOptions: { plugins: [npmPackagesNamedLikeBuiltins], sourcemap: false },
+};
+
 export default defineConfig({
   // gt-react's default export condition is a server build whose SPA setup
   // refuses to run; the renderer's components need the browser one.
@@ -108,17 +120,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "electron/**/*.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
     env: electronWithoutBinary,
-    deps: {
-      optimizer: {
-        ssr: {
-          enabled: true,
-          force: true,
-          include: prebundled,
-          exclude: [...builtinModules],
-          esbuildOptions: { plugins: [npmPackagesNamedLikeBuiltins], sourcemap: false },
-        },
-      },
-    },
+    deps: { optimizer: { ssr: prebundle } },
     // Cold barrel imports (cloud-api, plugin loader) stretch past the 5s
     // default when `turbo test` is saturating the machine.
     testTimeout: 20_000,
