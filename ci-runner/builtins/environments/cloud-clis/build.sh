@@ -2,7 +2,8 @@
 # The packages env:aws, env:az and env:gcloud add to env:python: each cloud
 # CLI installed into a directory of its own under /opt, with a command in
 # its bin/ that runs it on the environment's CPython apart from whatever a
-# job installs (`python3 -I -S`, its own site directory added by hand).
+# job installs (`python3 -E -s -S`: no PYTHON* variables, no user or
+# system site directory; its own added by hand).
 #
 #   cloud-clis/build.sh aws     iwci/aws-cli      AWS CLI 1, /opt/aws-cli
 #   cloud-clis/build.sh az      iwci/azure-cli    Azure CLI, /opt/azure-cli,
@@ -70,13 +71,15 @@ install() {
   mv "$tools_work/site" "$2"
 }
 
-# launcher <file> <main.py path>: the command, on the environment's CPython
-# isolated from the job's own packages and PYTHON* variables.
+# launcher <file> <script>: the command, on the environment's CPython apart
+# from the job's own packages and PYTHON* variables. Not `-I`, which would
+# also leave the script's directory off sys.path: gcloud's bq imports its
+# bootstrapping module from there.
 launcher() {
   mkdir -p "$(dirname "$1")"
   cat >"$1" <<SH
 #!/bin/bash
-exec /usr/bin/python3 -I -S $2 "\$@"
+exec /usr/bin/python3 -E -s -S $2 "\$@"
 SH
   chmod 0755 "$1"
 }

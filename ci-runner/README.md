@@ -1958,7 +1958,7 @@ Each environment sets what its CLI needs to run unattended, which a job's
 What to know:
 
 - **Each CLI is apart from the job's packages.** `aws`, `az`, `gcloud` and
-  `bq` run on the environment's CPython with `-I -S`, from their own
+  `bq` run on the environment's CPython with `-E -s -S`, from their own
   directories under `/opt`, so what a job installs with `pip` (an older
   `urllib3`, a `PYTHONPATH`) does not change them, and they do not appear in
   `pip list`. pip is there for the job's own packages, as in `env:python`.

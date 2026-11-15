@@ -35,7 +35,7 @@ def signed_in():
 
 def az(*args):
     """Another `az` in a child, so its output and exit are its own."""
-    return subprocess.run([sys.executable or "/usr/bin/python3", "-I", "-S", __file__, *args]).returncode
+    return subprocess.run([sys.executable or "/usr/bin/python3", "-E", "-s", "-S", __file__, *args]).returncode
 
 
 def sign_in():
