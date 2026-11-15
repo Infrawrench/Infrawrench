@@ -145,7 +145,7 @@ jobs:
   # desktop and ui.
   #
   # `memory:` holds the most workers a suite can get. desktop and ui at four
-  # peak at 3.3 and 3.7 GiB and pass at 3 GiB. web at six and server-core at
+  # peak at 3.2 and 3.6 GiB and pass at 3 GiB. web at six and server-core at
   # four pass at 5 GiB, so they are a job of their own (`test-large`) one
   # step above that, with the same script.
   test:
@@ -174,7 +174,7 @@ jobs:
     timeout: 30m
 
   # web and server-core, which need more memory than the rest at the workers
-  # they get (above). Peak 5.3 GiB (web at six workers), 4.6 GiB (server-core
+  # they get (above). Peak 5.2 GiB (web at six workers), 4.5 GiB (server-core
   # at four).
   test-large:
     name: Test ${{ package.name }}
