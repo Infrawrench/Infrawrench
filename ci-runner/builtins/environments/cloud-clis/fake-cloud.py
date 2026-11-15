@@ -26,9 +26,11 @@ Standard library only. Run as `python fake-cloud.py [--cert c --key k]`.
 import base64
 import hashlib
 import http.server
+import io
 import json
 import os
 import re
+import socket
 import ssl
 import sys
 import threading
@@ -454,6 +456,97 @@ class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
 
+class TLSStream(io.RawIOBase):
+    """TLS over a connection through memory BIOs, for where `wrap_socket`
+    cannot be used: it asks the socket for SO_TYPE first, which a job's
+    sockets do not answer."""
+
+    def __init__(self, sock, context):
+        self.sock = sock
+        self.incoming, self.outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
+        self.tls = context.wrap_bio(self.incoming, self.outgoing, server_side=True)
+        self.call(self.tls.do_handshake)
+
+    def flush_out(self):
+        data = self.outgoing.read()
+        if data:
+            self.sock.sendall(data)
+
+    def call(self, fn, *args):
+        while True:
+            try:
+                result = fn(*args)
+                self.flush_out()
+                return result
+            except ssl.SSLWantReadError:
+                self.flush_out()
+                chunk = self.sock.recv(65536)
+                if chunk:
+                    self.incoming.write(chunk)
+                else:
+                    self.incoming.write_eof()
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        try:
+            data = self.call(self.tls.read, len(buffer))
+        except (ssl.SSLZeroReturnError, ssl.SSLEOFError):
+            data = b""
+        buffer[: len(data)] = data
+        return len(data)
+
+
+class TLSConnection:
+    """What a request handler needs of its connection, over TLSStream."""
+
+    def __init__(self, sock, context):
+        self.sock = sock
+        self.stream = TLSStream(sock, context)
+
+    def makefile(self, mode="rb", buffering=-1):
+        return io.BufferedReader(self.stream)
+
+    def sendall(self, data):
+        self.stream.call(self.stream.tls.write, bytes(data))
+
+    def settimeout(self, timeout):
+        self.sock.settimeout(timeout)
+
+    def shutdown(self, how):
+        try:
+            self.sock.shutdown(how)
+        except OSError:
+            pass
+
+    def close(self):
+        self.sock.close()
+
+
+class TLSServer(Server):
+    """HTTPS, each connection wrapped as it is accepted (a listening socket
+    in a job cannot be wrapped)."""
+
+    def __init__(self, address, handler, context):
+        self.context = context
+        super().__init__(address, handler)
+
+    def get_request(self):
+        sock, address = self.socket.accept()
+        try:
+            return self.context.wrap_socket(sock, server_side=True), address
+        except OSError:
+            return TLSConnection(sock, self.context), address
+
+    def shutdown_request(self, request):
+        try:
+            request.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        request.close()
+
+
 def main():
     args = sys.argv[1:]
     cert = key = None
@@ -462,11 +555,9 @@ def main():
         key = args[args.index("--key") + 1]
     servers = [Server(("127.0.0.1", 4566), Handler)]
     if cert:
-        tls = Server(("127.0.0.1", 4567), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert, key)
-        tls.socket = context.wrap_socket(tls.socket, server_side=True)
-        servers.append(tls)
+        servers.append(TLSServer(("127.0.0.1", 4567), Handler, context))
     for s in servers[1:]:
         threading.Thread(target=s.serve_forever, daemon=True).start()
     print("fake-cloud listening on " + ", ".join(str(s.server_port) for s in servers), flush=True)

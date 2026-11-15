@@ -158,6 +158,9 @@ PY
     # build), gsutil (gcloud storage replaces it), and installers.
     rm -rf "$sdk/platform/bundledpythonunix" "$sdk/platform/gsutil" "$sdk/platform/gcloud-crc32c_licenses" \
       "$sdk/bin/gcloud-crc32c" "$sdk/bin/gsutil" "$sdk/rpm" "$sdk/deb" "$sdk/install.sh" "$sdk/install.bat"
+    # And their components from what gcloud says is installed (`gcloud
+    # version`, `gcloud components list`).
+    rm -f "$sdk"/.install/{bundled-python3-unix,gcloud-crc32c,gsutil}{,-*}.{manifest,snapshot.json}
     if find "$sdk" -type f \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.exe' -o -name '*.dll' \) | grep -q .; then
       echo "error: native code left in gcloud:" >&2
       find "$sdk" -type f \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.exe' -o -name '*.dll' \) >&2

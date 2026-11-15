@@ -179,7 +179,7 @@ BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
 AWS_CLI_PKG="iwci/aws-cli 1.46.3-iwci.1 542d9c4f0b40cddb158fafdd6a72488a441c6725537143bcb578f76121f336d7"
 AZURE_CLI_PKG="iwci/azure-cli 2.92.0-iwci.1 a34e6ae487c9aca37800c3f18d4a293b9104b17532cba6fc75a97571391b288d"
 AZURE_CLI_MGMT_PKG="iwci/azure-cli-mgmt 2.92.0-iwci.1 59b670548a0b6de0d96378f587405a46d226cfe067c2c15d2dbb03c0eae3c3d8"
-GCLOUD_PKG="iwci/gcloud 593.0.0-iwci.1 85217e984c0f58c5f0602dbc4ae5fdf598288930d9da6241fc557af2dd42bffa"
+GCLOUD_PKG="iwci/gcloud 593.0.0-iwci.1 47e6d58f2373a27d72d23e62a5b8571c74186410c827fe00f4446e4448fbb8a4"
 GCLOUD_APIS_PKG="iwci/gcloud-apis 593.0.0-iwci.1 74d94ed1d43a7eb1f49ebb23f154f48073f424d84b6bf63efe4920b04cf3a410"
 # What each CLI needs here beyond env:python's defaults (README.md, "Cloud
 # CLIs"): its bin/ on PATH after /usr/local/bin, and:

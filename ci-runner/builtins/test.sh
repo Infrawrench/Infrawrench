@@ -3622,7 +3622,7 @@ jobs:
       test "$AWS_EC2_METADATA_DISABLED" = true
       # The CLI's own packages, not the job's: a urllib3 the job installs
       # does not reach it.
-      python3 -c 'import awscli' 2>/dev/null && exit 1
+      if python3 -c 'import awscli' 2>/dev/null; then exit 1; fi
   # Lent the way the app lends an AWS connection (cloud_lent): the session
   # as variables and as a profile named after the connection. Every common
   # path, with no network: the fake cloud is the only thing it can reach.
@@ -3706,6 +3706,8 @@ jobs:
     run: |
       gcloud version
       gcloud version | grep -q '^Google Cloud SDK 593\.0\.0$'
+      # What was left out is not listed as installed.
+      if gcloud version | grep -q -e gsutil -e bundled-python; then exit 1; fi
       bq version | grep -q '^This is BigQuery CLI'
       test "$(gcloud config get-value core/disable_prompts 2>/dev/null)" = 1
   # Lent the way the app lends a Google Cloud connection (cloud_lent): an
